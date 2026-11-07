@@ -281,7 +281,7 @@ async fn dispatch_message(
                 .map_err(Into::into);
             }
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
-                let (run, response) = compatibility_interface::invoke_blocking_with_principal(
+                let (run, response) = match compatibility_interface::invoke_blocking_with_principal(
                     state.clone(),
                     resume_binding_id,
                     principal,
@@ -295,10 +295,19 @@ async fn dispatch_message(
                         },
                     },
                 )
-                .await?
-                .into_parts();
+                .await
+                {
+                    Ok(output) => output.into_parts(),
+                    Err(error) => {
+                        if let Some(run) = error.run() {
+                            client_observer::correlate_blocking_capture(&state, &recorder, run.id)
+                                .await;
+                        }
+                        return Err(error.into_anthropic());
+                    }
+                };
                 client_observer::correlate_blocking_capture(&state, &recorder, run.id).await;
-                return Ok(Json(response.into_anthropic()?).into_response());
+                return Ok(Json(response).into_response());
             }
             Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory { .. }) => {
                 // The callback payload was already consumed, but its model continuation failed
@@ -378,7 +387,7 @@ async fn dispatch_message(
         .map_err(Into::into);
     }
 
-    let (run, response) = compatibility_interface::invoke_blocking_with_principal(
+    let (run, response) = match compatibility_interface::invoke_blocking_with_principal(
         state.clone(),
         compatibility_interface::ANTHROPIC_MESSAGES_BINDING_ID,
         principal,
@@ -392,10 +401,18 @@ async fn dispatch_message(
             },
         },
     )
-    .await?
-    .into_parts();
+    .await
+    {
+        Ok(output) => output.into_parts(),
+        Err(error) => {
+            if let Some(run) = error.run() {
+                client_observer::correlate_blocking_capture(&state, &recorder, run.id).await;
+            }
+            return Err(error.into_anthropic());
+        }
+    };
     client_observer::correlate_blocking_capture(&state, &recorder, run.id).await;
-    Ok(Json(response.into_anthropic()?).into_response())
+    Ok(Json(response).into_response())
 }
 
 #[utoipa::path(
@@ -481,7 +498,7 @@ async fn dispatch_count_message_tokens(
         translation_decision_count = translation.report.decisions.len(),
         "anthropic count tokens request translated"
     );
-    let (run, response) = compatibility_interface::invoke_blocking(
+    let (run, response) = match compatibility_interface::invoke_blocking(
         state.clone(),
         compatibility_interface::ANTHROPIC_COUNT_TOKENS_BINDING_ID,
         bearer_token,
@@ -495,10 +512,18 @@ async fn dispatch_count_message_tokens(
             },
         },
     )
-    .await?
-    .into_parts();
+    .await
+    {
+        Ok(output) => output.into_parts(),
+        Err(error) => {
+            if let Some(run) = error.run() {
+                client_observer::correlate_blocking_capture(&state, &recorder, run.id).await;
+            }
+            return Err(error.into_anthropic());
+        }
+    };
     client_observer::correlate_blocking_capture(&state, &recorder, run.id).await;
-    Ok(Json(response.into_anthropic()?))
+    Ok(Json(response))
 }
 
 fn anthropic_token(headers: &HeaderMap) -> Result<String, native::NativeApiError> {

@@ -2,7 +2,7 @@ use control_plane::client_trajectory::ClientTrajectoryRecorder;
 pub(crate) mod document_projection;
 pub(crate) mod http_result;
 mod managed_projection;
-pub(crate) use http_result::CompatibilityProtocolOutput;
+pub(crate) use http_result::{CompatibilityProtocolOutput, CompatibilityProtocolTargetError};
 
 use std::{future::Future, pin::Pin, sync::Arc};
 
@@ -245,7 +245,7 @@ impl
     InterfaceHandler<
         CompatibilityBlockingInput,
         CompatibilityProtocolOutput,
-        CompatibilityBlockingTargetError,
+        CompatibilityProtocolTargetError,
         ApplicationPrincipal,
     > for CompatibilityBlockingHandler
 {
@@ -253,15 +253,23 @@ impl
         &self,
         context: InterfaceHandlerContext<ApplicationPrincipal>,
         mut input: CompatibilityBlockingInput,
-    ) -> InterfaceHandlerFuture<CompatibilityProtocolOutput, CompatibilityBlockingTargetError> {
+    ) -> InterfaceHandlerFuture<CompatibilityProtocolOutput, CompatibilityProtocolTargetError> {
         let port = Arc::clone(&self.port);
         let consumer = self.consumer;
         let projection = input.response_projection.take();
         Box::pin(async move {
-            port.execute(context.principal(), input, consumer)
+            let output = port
+                .execute(context.principal(), input, consumer)
                 .await
-                .map(|output| CompatibilityProtocolOutput::project(output.0, projection))
-                .map_err(|error| InterfaceTargetFailure::new("compatibility_blocking", error))
+                .map_err(|error| {
+                    InterfaceTargetFailure::new(
+                        "compatibility_blocking",
+                        CompatibilityProtocolTargetError::from(error.0),
+                    )
+                })?;
+            CompatibilityProtocolOutput::project(output.0, projection).map_err(|error| {
+                InterfaceTargetFailure::new("compatibility_protocol_projection", error)
+            })
         })
     }
 }
@@ -943,7 +951,7 @@ pub(crate) async fn invoke_blocking(
     binding_id: &'static str,
     bearer_token: String,
     input: CompatibilityBlockingInput,
-) -> Result<CompatibilityProtocolOutput, NativeApiError> {
+) -> Result<CompatibilityProtocolOutput, CompatibilityProtocolTargetError> {
     let boot_snapshot = state.extension_boot_snapshot.as_ref().ok_or_else(|| {
         NativeApiError::new(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -994,14 +1002,14 @@ pub(crate) async fn invoke_blocking(
     .invoke_with_dispatch_target::<
         CompatibilityBlockingInput,
         CompatibilityProtocolOutput,
-        CompatibilityBlockingTargetError,
+        CompatibilityProtocolTargetError,
     >(
         snapshot,
         authenticated.into_envelope(input),
         dispatch_target,
     )
     .await
-    .map_err(|failure| invocation_error(failure.into_error()))?;
+    .map_err(|failure| protocol_invocation_error(failure.into_error()))?;
     let _receipt = outcome.receipt().clone().projected();
     Ok(outcome.into_value())
 }
@@ -1011,7 +1019,7 @@ pub(crate) async fn invoke_blocking_with_principal(
     binding_id: &'static str,
     principal: impl Into<ApplicationInvocationAuthentication>,
     input: CompatibilityBlockingInput,
-) -> Result<CompatibilityProtocolOutput, NativeApiError> {
+) -> Result<CompatibilityProtocolOutput, CompatibilityProtocolTargetError> {
     let release = match &input.command {
         CompatibilityInvocationCommand::Resume {
             reservation: Some(reservation),
@@ -1020,7 +1028,11 @@ pub(crate) async fn invoke_blocking_with_principal(
         _ => None,
     };
     let result = invoke_blocking_with_principal_inner(state, binding_id, principal, input).await;
-    if result.is_err() {
+    if result
+        .as_ref()
+        .err()
+        .is_some_and(|error| error.run().is_none())
+    {
         if let Some(release) = release {
             release.release().await;
         }
@@ -1033,7 +1045,7 @@ async fn invoke_blocking_with_principal_inner(
     binding_id: &'static str,
     principal: impl Into<ApplicationInvocationAuthentication>,
     input: CompatibilityBlockingInput,
-) -> Result<CompatibilityProtocolOutput, NativeApiError> {
+) -> Result<CompatibilityProtocolOutput, CompatibilityProtocolTargetError> {
     let principal = principal.into();
     let snapshot = match principal.snapshot() {
         Some(snapshot) => snapshot,
@@ -1074,16 +1086,34 @@ async fn invoke_blocking_with_principal_inner(
     .invoke_with_dispatch_target::<
         CompatibilityBlockingInput,
         CompatibilityProtocolOutput,
-        CompatibilityBlockingTargetError,
+        CompatibilityProtocolTargetError,
     >(
         snapshot,
         principal.into_envelope(binding_id, authentication_activation, input)?,
         dispatch_target,
     )
     .await
-    .map_err(|failure| invocation_error(failure.into_error()))?;
+    .map_err(|failure| protocol_invocation_error(failure.into_error()))?;
     let _receipt = outcome.receipt().clone().projected();
     Ok(outcome.into_value())
+}
+
+fn protocol_invocation_error(
+    error: interface_runtime::InterfaceInvocationError,
+) -> CompatibilityProtocolTargetError {
+    match error {
+        interface_runtime::InterfaceInvocationError::TargetFailed(error) => error
+            .into_source::<CompatibilityProtocolTargetError>()
+            .unwrap_or_else(|| {
+                NativeApiError::new(
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "compatibility_target_failed",
+                    "compatibility target failed",
+                )
+                .into()
+            }),
+        error => invocation_error(error).into(),
+    }
 }
 
 fn invocation_error(error: interface_runtime::InterfaceInvocationError) -> NativeApiError {

@@ -6,31 +6,72 @@ use crate::routes::application_public_api::{anthropic, openai};
 use serde::Serialize;
 use serde_json::{json, Value};
 
+#[derive(Debug)]
 enum ProjectionError {
+    Native(NativeApiError),
     OpenAi(openai::OpenAiRouteError),
     Anthropic(anthropic::AnthropicRouteError),
     Missing,
 }
 pub(crate) type Projection = Box<dyn FnOnce(&NativeRunResult) -> ProtocolResult + Send + Sync>;
 pub(crate) struct ProtocolResult(Result<Value, ProjectionError>);
-impl ProtocolResult {
-    pub(crate) fn into_openai(self) -> Result<Value, openai::OpenAiRouteError> {
-        match self.0 {
-            Ok(value) => Ok(value),
-            Err(ProjectionError::OpenAi(error)) => Err(error),
-            Err(ProjectionError::Anthropic(_) | ProjectionError::Missing) => {
-                Err(internal_error().into())
-            }
+#[derive(Debug)]
+pub(crate) struct CompatibilityProtocolTargetError {
+    run: Option<Box<NativeRunResult>>,
+    error: ProjectionError,
+}
+impl From<NativeApiError> for CompatibilityProtocolTargetError {
+    fn from(error: NativeApiError) -> Self {
+        Self {
+            run: None,
+            error: ProjectionError::Native(error),
         }
     }
-    pub(crate) fn into_anthropic(self) -> Result<Value, anthropic::AnthropicRouteError> {
-        match self.0 {
-            Ok(value) => Ok(value),
-            Err(ProjectionError::Anthropic(error)) => Err(error),
-            Err(ProjectionError::OpenAi(_) | ProjectionError::Missing) => {
-                Err(internal_error().into())
+}
+impl CompatibilityProtocolTargetError {
+    pub(crate) fn run(&self) -> Option<&NativeRunResult> {
+        self.run.as_deref()
+    }
+    pub(crate) fn into_openai(self) -> openai::OpenAiRouteError {
+        match self.error {
+            ProjectionError::OpenAi(error) => error,
+            ProjectionError::Native(error)
+            | ProjectionError::Anthropic(anthropic::AnthropicRouteError::Native(error)) => {
+                error.into()
             }
+            ProjectionError::Anthropic(_) | ProjectionError::Missing => internal_error().into(),
         }
+    }
+    pub(crate) fn into_anthropic(self) -> anthropic::AnthropicRouteError {
+        match self.error {
+            ProjectionError::Anthropic(error) => error,
+            ProjectionError::Native(error)
+            | ProjectionError::OpenAi(openai::OpenAiRouteError::Native(error)) => error.into(),
+            ProjectionError::OpenAi(_) | ProjectionError::Missing => internal_error().into(),
+        }
+    }
+    fn summary(&self) -> (u16, &str, usize) {
+        match &self.error {
+            ProjectionError::Native(error)|ProjectionError::OpenAi(openai::OpenAiRouteError::Native(error))|ProjectionError::Anthropic(anthropic::AnthropicRouteError::Native(error))=>(error.status.as_u16(),error.code,error.message.len()),
+            ProjectionError::OpenAi(openai::OpenAiRouteError::Compat(error))=>(400,&error.code,error.message.len()),
+            ProjectionError::Anthropic(anthropic::AnthropicRouteError::Compat(error))=>(400,&error.error_type,error.message.len()),
+            ProjectionError::OpenAi(openai::OpenAiRouteError::RequiredAction)|ProjectionError::Anthropic(anthropic::AnthropicRouteError::RequiredAction)=>(409,"required_action_not_supported","waiting states are not supported by compatible endpoints; use the Native API to inspect and resume required_action runs".len()),
+            ProjectionError::Missing=>(500,"protocol_result_projection_unavailable","protocol result projection is unavailable".len()),
+        }
+    }
+}
+impl InterfaceContract for CompatibilityProtocolTargetError {
+    const CONTRACT_ID: &'static str = CompatibilityBlockingTargetError::CONTRACT_ID;
+    const CONTRACT_VERSION: &'static str = CompatibilityBlockingTargetError::CONTRACT_VERSION;
+    fn managed_projection_schema() -> Option<Value> {
+        CompatibilityBlockingTargetError::managed_projection_schema()
+    }
+    fn project_for_managed_hook(&self) -> Option<Value> {
+        use crate::extension_bus::managed_projection as mp;
+        let (status, code, message_bytes) = self.summary();
+        Some(
+            json!({"0":{"status":status,"code":mp::text(code)?,"message":{"byte_count":message_bytes}}}),
+        )
     }
 }
 
@@ -77,22 +118,33 @@ fn internal_error() -> NativeApiError {
     )
 }
 
+#[derive(Debug)]
 pub(crate) struct CompatibilityProtocolOutput {
     run: NativeRunResult,
-    result: ProtocolResult,
+    result: Value,
 }
 impl CompatibilityProtocolOutput {
-    pub(super) fn project(run: NativeRunResult, projection: Option<Projection>) -> Self {
+    pub(super) fn project(
+        run: NativeRunResult,
+        projection: Option<Projection>,
+    ) -> Result<Self, CompatibilityProtocolTargetError> {
         let result = match projection {
-            Some(project) => project(&run),
-            None => ProtocolResult(Err(ProjectionError::Missing)),
+            Some(project) => project(&run).0,
+            None => Err(ProjectionError::Missing),
         };
-        Self { run, result }
+        match result {
+            Ok(result) => Ok(Self { run, result }),
+            Err(error) => Err(CompatibilityProtocolTargetError {
+                run: Some(Box::new(run)),
+                error,
+            }),
+        }
     }
-    pub(crate) fn into_parts(self) -> (NativeRunResult, ProtocolResult) {
+    pub(crate) fn into_parts(self) -> (NativeRunResult, Value) {
         (self.run, self.result)
     }
 }
+
 impl InterfaceContract for CompatibilityProtocolOutput {
     // The prepared wire document is private adapter state. Preserve the existing
     // canonical/managed contract identity and its exact legacy projection.
@@ -128,11 +180,7 @@ impl ApiEventOutput for CompatibilityProtocolOutput {
         })
     }
     fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
-        self.result
-            .0
-            .as_ref()
-            .cloned()
-            .map_err(|_| Arc::from("protocol_result_projection_failed"))
+        Ok(self.result.clone())
     }
 }
 

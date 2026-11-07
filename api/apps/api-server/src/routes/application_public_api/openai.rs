@@ -296,7 +296,7 @@ async fn dispatch_chat_completion(
                     "chat_usage_boundary_failed",
                 )
                 .await?;
-                let (run, response) = compatibility_interface::invoke_blocking_with_principal(
+                let (run, response) = match compatibility_interface::invoke_blocking_with_principal(
                     state.clone(),
                     resume_binding_id,
                     principal,
@@ -314,10 +314,18 @@ async fn dispatch_chat_completion(
                         },
                     },
                 )
-                .await?
-                .into_parts();
+                .await
+                {
+                    Ok(output) => output.into_parts(),
+                    Err(error) => {
+                        if let Some(run) = error.run() {
+                            correlate_blocking_chat_capture(&state, &recorder, run.id).await;
+                        }
+                        return Err(error.into_openai());
+                    }
+                };
                 correlate_blocking_chat_capture(&state, &recorder, run.id).await;
-                return Ok(Json(response.into_openai()?).into_response());
+                return Ok(Json(response).into_response());
             }
             Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory { .. }) => {
                 // The callback delivery is complete; re-admit its full history as a new turn.
@@ -414,7 +422,7 @@ async fn dispatch_chat_completion(
         .map_err(Into::into);
     }
 
-    let (run, response) = compatibility_interface::invoke_blocking_with_principal(
+    let (run, response) = match compatibility_interface::invoke_blocking_with_principal(
         state.clone(),
         binding_id,
         principal,
@@ -428,8 +436,16 @@ async fn dispatch_chat_completion(
             },
         },
     )
-    .await?
-    .into_parts();
+    .await
+    {
+        Ok(output) => output.into_parts(),
+        Err(error) => {
+            if let Some(run) = error.run() {
+                correlate_blocking_chat_capture(&state, &recorder, run.id).await;
+            }
+            return Err(error.into_openai());
+        }
+    };
 
     correlate_blocking_chat_capture(&state, &recorder, run.id).await;
     info!(
@@ -443,7 +459,7 @@ async fn dispatch_chat_completion(
         "openai compatible chat completion accepted"
     );
 
-    Ok(Json(response.into_openai()?).into_response())
+    Ok(Json(response).into_response())
 }
 
 async fn load_callback_usage_baseline(

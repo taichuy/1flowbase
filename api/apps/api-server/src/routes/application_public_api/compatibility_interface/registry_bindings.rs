@@ -95,7 +95,7 @@ pub(super) fn register_binding(
     let contracts = InterfaceContracts::unary(
         contract::<CompatibilityBlockingInput>(),
         contract::<CompatibilityProtocolOutput>(),
-        contract::<CompatibilityBlockingTargetError>(),
+        contract::<CompatibilityProtocolTargetError>(),
     );
     let identity = InterfaceIdentity::new(
         interface_id.clone(),
@@ -146,7 +146,7 @@ pub(super) fn register_binding(
             None,
         ),
     )?;
-    compiler.bind_handler::<CompatibilityBlockingInput, CompatibilityProtocolOutput, CompatibilityBlockingTargetError, ApplicationPrincipal>(
+    compiler.bind_handler::<CompatibilityBlockingInput, CompatibilityProtocolOutput, CompatibilityProtocolTargetError, ApplicationPrincipal>(
         &interface_id,
         handler,
         Arc::new(CompatibilityBlockingHandler { port, consumer:super::super::compat_sse::CompatibleResumeConsumer::for_binding(binding_id) }),

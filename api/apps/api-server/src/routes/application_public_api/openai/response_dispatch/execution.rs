@@ -234,7 +234,7 @@ async fn execute_compact(
             ProviderCompactProfile::ResponsesCompactionV2
         }
     };
-    let (run, response) = compatibility_interface::invoke_blocking_with_principal(
+    let (run, response) = match compatibility_interface::invoke_blocking_with_principal(
         state,
         blocking_binding_id,
         principal,
@@ -251,13 +251,21 @@ async fn execute_compact(
             },
         },
     )
-    .await?
-    .into_parts();
+    .await
+    {
+        Ok(output) => output.into_parts(),
+        Err(error) => {
+            if let Some(run) = error.run() {
+                if let Some(recorder) = recorder.as_ref() {
+                    recorder.bind_run(run.id, None);
+                }
+            }
+            return Err(error.into_openai());
+        }
+    };
     if let Some(recorder) = recorder.as_ref() {
         recorder.bind_run(run.id, None);
     }
-
-    let response = response.into_openai()?;
 
     info!(
         route,

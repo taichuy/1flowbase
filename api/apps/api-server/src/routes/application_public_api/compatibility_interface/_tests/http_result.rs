@@ -51,7 +51,8 @@ fn unary_chat_document_is_the_same_http_result_with_real_round_usage() {
             Some(callback),
             Some(baseline),
         )),
-    );
+    )
+    .unwrap();
     let operation = operation("compat.openai.chat-completions.blocking");
     let event = output.project_document_output(&operation).unwrap();
     assert_eq!(event["model"], "actual-model");
@@ -68,8 +69,7 @@ fn unary_chat_document_is_the_same_http_result_with_real_round_usage() {
     )
     .unwrap()
     .is_valid(&event));
-    let (actual_run, result) = output.into_parts();
-    let http = result.into_openai().unwrap();
+    let (actual_run, http) = output.into_parts();
     assert_eq!(actual_run.id, id);
     assert_eq!(http, event);
 }
@@ -81,7 +81,8 @@ fn unary_anthropic_random_message_identity_is_frozen_once_for_event_and_http() {
         Some(anthropic::message_protocol_projection(
             "actual-claude".into(),
         )),
-    );
+    )
+    .unwrap();
     let operation = operation("compat.anthropic.messages.blocking");
     let first = output.project_document_output(&operation).unwrap();
     let second = output.project_document_output(&operation).unwrap();
@@ -93,8 +94,7 @@ fn unary_anthropic_random_message_identity_is_frozen_once_for_event_and_http() {
     )
     .unwrap()
     .is_valid(&first));
-    let (_, result) = output.into_parts();
-    let http = result.into_anthropic().unwrap();
+    let (_, http) = output.into_parts();
     assert_eq!(http, first);
 }
 
@@ -102,16 +102,16 @@ fn unary_anthropic_random_message_identity_is_frozen_once_for_event_and_http() {
 fn unary_protocol_projection_failures_keep_the_existing_http_error_and_no_success_value() {
     let mut run = run();
     run.status = NativeRunStatus::Waiting;
-    let output = CompatibilityProtocolOutput::project(
+    let id = run.id;
+    let error = CompatibilityProtocolOutput::project(
         run,
         Some(openai::chat_protocol_projection("model".into(), None, None)),
-    );
-    assert!(output
-        .project_document_output(&operation("compat.openai.chat-completions.blocking"))
-        .is_err());
+    )
+    .unwrap_err();
+    assert_eq!(error.run().unwrap().id, id);
     assert!(matches!(
-        output.into_parts().1.into_openai(),
-        Err(openai::OpenAiRouteError::RequiredAction)
+        error.into_openai(),
+        openai::OpenAiRouteError::RequiredAction
     ));
 }
 
@@ -135,4 +135,91 @@ fn all_compatibility_bindings_have_typed_documents_and_unary_protocol_schemas_ar
     assert!(unary["properties"].get("choices").is_some());
     assert!(stream["properties"].get("answer").is_some());
     assert!(stream["properties"].get("api_key_id").is_none());
+}
+
+struct WaitingPort;
+impl CompatibilityBlockingPort for WaitingPort {
+    fn execute<'a>(
+        &'a self,
+        _: &'a ApplicationPrincipal,
+        _: CompatibilityBlockingInput,
+        _: crate::routes::application_public_api::compat_sse::CompatibleResumeConsumer,
+    ) -> super::super::CompatibilityBlockingFuture<'a> {
+        Box::pin(async {
+            let mut run = run();
+            run.status = NativeRunStatus::Waiting;
+            Ok(CompatibilityBlockingOutput(run))
+        })
+    }
+    fn execute_stream<'a>(
+        &'a self,
+        _: &'a ApplicationPrincipal,
+        _: CompatibilityBlockingInput,
+        _: crate::routes::application_public_api::compat_sse::CompatibleResumeConsumer,
+    ) -> super::super::CompatibilityBlockingStreamFuture<'a> {
+        Box::pin(std::future::pending())
+    }
+}
+
+#[tokio::test]
+async fn unary_protocol_projection_error_is_a_failed_kernel_completion_with_the_original_error() {
+    use interface_runtime::{
+        InterfaceInvocationKernel, InterfaceInvocationTerminal, InterfaceProtocol,
+        InvocationEnvelope, InvocationId, InvocationLineage,
+    };
+    let registry = super::super::compile_registry(
+        Arc::new(WaitingPort),
+        super::super::models::unavailable_port(),
+    )
+    .unwrap();
+    let workspace = uuid::Uuid::now_v7();
+    let principal = ApplicationPrincipal::new(
+        uuid::Uuid::now_v7(),
+        uuid::Uuid::now_v7(),
+        workspace,
+        domain::ActorContext::scoped(uuid::Uuid::now_v7(), workspace, "member", []),
+    )
+    .unwrap();
+    let binding = BindingId::new(OPENAI_CHAT_BINDING_ID).unwrap();
+    let authentication = registry.authentication(&binding).unwrap();
+    let envelope = InvocationEnvelope::with_principal(
+        InvocationLineage::root(InvocationId::now_v7()),
+        binding.clone(),
+        InterfaceProtocol::Http,
+        authentication.adapter().clone(),
+        authentication.activation().clone(),
+        principal,
+        None,
+        CompatibilityBlockingInput {
+            response_projection: Some(openai::chat_protocol_projection(
+                "actual-model".into(),
+                None,
+                None,
+            )),
+            document: super::super::document_projection::ProtocolRequestDocument::chat(
+                &json!({"model":"actual-model","messages":[{"role":"user","content":"actual request"}]}),
+            ),
+            command: CompatibilityInvocationCommand::Start {
+                request: serde_json::from_value(json!({"query":"actual request"})).unwrap(),
+                protocol: TranslationProtocol::OpenAiChat,
+                provider_transport: None,
+            },
+        },
+    );
+    let result=InterfaceInvocationKernel::new(Arc::new(super::super::CompatibilityBlockingAuthorization))
+        .invoke::<CompatibilityBlockingInput,CompatibilityProtocolOutput,CompatibilityProtocolTargetError>(registry,envelope).await;
+    let failure = match result {
+        Err(failure) => failure,
+        Ok(_) => panic!("protocol projection failure must not complete successfully"),
+    };
+    assert_eq!(
+        failure.receipt().terminal(),
+        InterfaceInvocationTerminal::Failed
+    );
+    let error = super::super::protocol_invocation_error(failure.into_error());
+    assert!(error.run().is_some());
+    assert!(matches!(
+        error.into_openai(),
+        openai::OpenAiRouteError::RequiredAction
+    ));
 }
