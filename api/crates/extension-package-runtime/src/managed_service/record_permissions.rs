@@ -40,6 +40,8 @@ pub struct ManagedServiceRecordPermission {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ManagedServiceRecordSelector {
     List,
+    /// Existing operation admission creates a new record; no per-row create grant exists.
+    Create,
     Record {
         pointer: String,
         #[serde(default)]
@@ -150,7 +152,8 @@ pub(super) fn validate_record_permissions(
         }
         let mut actions = BTreeSet::new();
         for action in &resource.actions {
-            if !identifier(&action.action_code)
+            if action.action_code == "create"
+                || !identifier(&action.action_code)
                 || !actions.insert(&action.action_code)
                 || action.label.trim().is_empty()
                 || action.description.trim().is_empty()
@@ -193,10 +196,18 @@ pub(super) fn validate_record_permissions(
                 "managed record operation references an unknown resource",
             ));
         };
-        if !resource.actions.iter().any(|action| {
-            action.action_code == binding.action_code
-                && action.operation_ids.contains(&operation.interface_id)
-        }) {
+        let is_create = matches!(binding.selector, ManagedServiceRecordSelector::Create);
+        if is_create && (binding.action_code != "create" || operation.method != "POST") {
+            return Err(invalid(
+                "managed create selector requires a POST reserved create action",
+            ));
+        }
+        if !is_create
+            && !resource.actions.iter().any(|action| {
+                action.action_code == binding.action_code
+                    && action.operation_ids.contains(&operation.interface_id)
+            })
+        {
             return Err(invalid(
                 "managed record operation references an undeclared action",
             ));

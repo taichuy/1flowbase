@@ -328,3 +328,26 @@ async fn capabilities_intersect_host_actions_and_record_roles_without_cross_plug
         .await
         .is_ok());
 }
+
+#[tokio::test]
+async fn editor_capability_requires_view_and_replace_but_each_api_keeps_its_own_operation() {
+    let (service, actor, key, role) = fixture();
+    service.repository.0.lock().unwrap().console_operations =
+        vec![RECORD_PERMISSIONS_REPLACE_OPERATION_ID.into()];
+    assert!(!service.can_manage_permissions(&actor).await.unwrap());
+    assert!(service.get(&actor, &key).await.is_err());
+    assert!(service
+        .replace(&actor, &key, &restricted(role), &["open".into()])
+        .await
+        .is_ok());
+    service.repository.0.lock().unwrap().console_operations =
+        vec![RECORD_PERMISSIONS_VIEW_OPERATION_ID.into()];
+    assert!(!service.can_manage_permissions(&actor).await.unwrap());
+    assert!(service.get(&actor, &key).await.is_ok());
+    assert!(service
+        .replace(&actor, &key, &restricted(role), &["open".into()])
+        .await
+        .is_err());
+    permit_management(&service);
+    assert!(service.can_manage_permissions(&actor).await.unwrap());
+}

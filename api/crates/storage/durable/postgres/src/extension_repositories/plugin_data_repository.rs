@@ -13,6 +13,9 @@ use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;
 
+mod record_permissions;
+use record_permissions::{RequestAuthorization, ResolvedRecordPermission};
+
 const OWNED_COLLECTION: &str = "owned_collection";
 const OWNED_FIELD: &str = "owned_field";
 const EXTENSION_FIELD: &str = "extension_field";
@@ -62,9 +65,14 @@ pub(crate) async fn execute_request_in_transaction(
     let workspace_id = Uuid::parse_str(&binding.workspace_id)
         .map_err(|_| PluginDataError::invalid("plugin_data_workspace"))?;
     let owner_id = format!("{}/{}", binding.publisher_namespace, binding.plugin_code);
+    let authorization =
+        RequestAuthorization::load(transaction, binding, request.idempotency_key.is_some()).await?;
+    let request_material = match &authorization {
+        Some(context) => serde_json::to_vec(&(request, &context.receipt_fingerprint)),
+        None => serde_json::to_vec(request),
+    };
     let request_hash = hex_digest(
-        &serde_json::to_vec(request)
-            .map_err(|_| PluginDataError::invalid("plugin_data_request_encoding"))?,
+        &request_material.map_err(|_| PluginDataError::invalid("plugin_data_request_encoding"))?,
     );
 
     if let Some(key) = request.idempotency_key.as_deref() {
@@ -100,6 +108,7 @@ pub(crate) async fn execute_request_in_transaction(
                 &binding.plugin_version,
                 workspace_id,
                 operation,
+                authorization.as_ref(),
             )
             .await?,
         );
@@ -167,6 +176,7 @@ async fn execute_operation(
     owner_version: &str,
     workspace_id: Uuid,
     operation: &PluginDataOperation,
+    authorization: Option<&RequestAuthorization>,
 ) -> Result<PluginDataOperationResult, PluginDataError> {
     match operation {
         PluginDataOperation::Find {
@@ -177,6 +187,10 @@ async fn execute_operation(
             page,
         } => {
             let resolved = resolve_target(transaction, owner_id, owner_version, target).await?;
+            let record_permission = authorization
+                .map(|context| context.for_target(target, &resolved, operation))
+                .transpose()?
+                .flatten();
             let rows = select_rows(
                 transaction,
                 workspace_id,
@@ -185,6 +199,7 @@ async fn execute_operation(
                 filters,
                 order,
                 Some((page.limit, page.offset)),
+                record_permission.as_ref(),
             )
             .await?;
             Ok(PluginDataOperationResult::Rows { rows })
@@ -195,6 +210,10 @@ async fn execute_operation(
             filters,
         } => {
             let resolved = resolve_target(transaction, owner_id, owner_version, target).await?;
+            let record_permission = authorization
+                .map(|context| context.for_target(target, &resolved, operation))
+                .transpose()?
+                .flatten();
             let row = select_rows(
                 transaction,
                 workspace_id,
@@ -203,6 +222,7 @@ async fn execute_operation(
                 filters,
                 &[],
                 Some((1, 0)),
+                record_permission.as_ref(),
             )
             .await?
             .into_iter()
@@ -211,13 +231,35 @@ async fn execute_operation(
         }
         PluginDataOperation::Count { target, filters } => {
             let resolved = resolve_target(transaction, owner_id, owner_version, target).await?;
-            let count = count_rows(transaction, workspace_id, &resolved, filters).await?;
+            let record_permission = authorization
+                .map(|context| context.for_target(target, &resolved, operation))
+                .transpose()?
+                .flatten();
+            let count = count_rows(
+                transaction,
+                workspace_id,
+                &resolved,
+                filters,
+                record_permission.as_ref(),
+            )
+            .await?;
             Ok(PluginDataOperationResult::Count { count })
         }
         PluginDataOperation::Insert { target, values } => {
             let resolved = resolve_target(transaction, owner_id, owner_version, target).await?;
+            let record_permission = authorization
+                .map(|context| context.for_target(target, &resolved, operation))
+                .transpose()?
+                .flatten();
             require_owned(&resolved, "plugin_data_insert_target")?;
-            let affected = insert_owned(transaction, workspace_id, &resolved, values).await?;
+            let affected = insert_owned(
+                transaction,
+                workspace_id,
+                &resolved,
+                values,
+                record_permission.as_ref(),
+            )
+            .await?;
             Ok(PluginDataOperationResult::Mutation { affected })
         }
         PluginDataOperation::Update {
@@ -229,8 +271,19 @@ async fn execute_operation(
                 return Err(PluginDataError::invalid("plugin_data_update_filters"));
             }
             let resolved = resolve_target(transaction, owner_id, owner_version, target).await?;
-            let affected =
-                update_rows(transaction, workspace_id, &resolved, filters, values).await?;
+            let record_permission = authorization
+                .map(|context| context.for_target(target, &resolved, operation))
+                .transpose()?
+                .flatten();
+            let affected = update_rows(
+                transaction,
+                workspace_id,
+                &resolved,
+                filters,
+                values,
+                record_permission.as_ref(),
+            )
+            .await?;
             Ok(PluginDataOperationResult::Mutation { affected })
         }
         PluginDataOperation::Delete { target, filters } => {
@@ -238,8 +291,19 @@ async fn execute_operation(
                 return Err(PluginDataError::invalid("plugin_data_delete_filters"));
             }
             let resolved = resolve_target(transaction, owner_id, owner_version, target).await?;
+            let record_permission = authorization
+                .map(|context| context.for_target(target, &resolved, operation))
+                .transpose()?
+                .flatten();
             require_owned(&resolved, "plugin_data_delete_target")?;
-            let affected = delete_rows(transaction, workspace_id, &resolved, filters).await?;
+            let affected = delete_rows(
+                transaction,
+                workspace_id,
+                &resolved,
+                filters,
+                record_permission.as_ref(),
+            )
+            .await?;
             Ok(PluginDataOperationResult::Mutation { affected })
         }
         PluginDataOperation::Upsert {
@@ -248,9 +312,20 @@ async fn execute_operation(
             values,
         } => {
             let resolved = resolve_target(transaction, owner_id, owner_version, target).await?;
+            let record_permission = authorization
+                .map(|context| context.for_target(target, &resolved, operation))
+                .transpose()?
+                .flatten();
             require_owned(&resolved, "plugin_data_upsert_target")?;
-            let affected =
-                upsert_owned(transaction, workspace_id, &resolved, identity, values).await?;
+            let affected = upsert_owned(
+                transaction,
+                workspace_id,
+                &resolved,
+                identity,
+                values,
+                record_permission.as_ref(),
+            )
+            .await?;
             Ok(PluginDataOperationResult::Mutation { affected })
         }
     }
@@ -383,6 +458,7 @@ async fn select_rows(
     filters: &[PluginDataFilter],
     order: &[PluginDataOrder],
     page: Option<(u32, u64)>,
+    record_permission: Option<&ResolvedRecordPermission>,
 ) -> Result<Vec<PluginDataRow>, PluginDataError> {
     let fields = resolve_fields(target, requested_fields, false)?;
     let mut query = QueryBuilder::<Postgres>::new("select ");
@@ -403,6 +479,9 @@ async fn select_rows(
         .push(" where ");
     push_scope(&mut query, workspace_id);
     push_filters(&mut query, target, filters)?;
+    if let Some(permission) = record_permission {
+        permission.push_where(&mut query);
+    }
     if !order.is_empty() {
         query.push(" order by ");
         let mut separated = query.separated(", ");
@@ -441,11 +520,15 @@ async fn count_rows(
     workspace_id: Uuid,
     target: &ResolvedTarget,
     filters: &[PluginDataFilter],
+    record_permission: Option<&ResolvedRecordPermission>,
 ) -> Result<u64, PluginDataError> {
     let mut query = QueryBuilder::<Postgres>::new("select count(*)::bigint from ");
     query.push(quoted(&target.table)?).push(" where ");
     push_scope(&mut query, workspace_id);
     push_filters(&mut query, target, filters)?;
+    if let Some(permission) = record_permission {
+        permission.push_where(&mut query);
+    }
     let count: i64 = query
         .build_query_scalar()
         .fetch_one(&mut **transaction)
@@ -459,7 +542,14 @@ async fn insert_owned(
     workspace_id: Uuid,
     target: &ResolvedTarget,
     values: &BTreeMap<String, PluginDataValue>,
+    record_permission: Option<&ResolvedRecordPermission>,
 ) -> Result<u64, PluginDataError> {
+    let generated_id = Uuid::now_v7();
+    if let Some(permission) = record_permission {
+        permission
+            .authorize_insert(transaction, values, generated_id, target, workspace_id)
+            .await?;
+    }
     let values = resolve_values(target, values, false)?;
     let mut query = QueryBuilder::<Postgres>::new("insert into ");
     query.push(quoted(&target.table)?).push(" (id, scope_id");
@@ -468,7 +558,7 @@ async fn insert_owned(
     }
     query
         .push(") values (")
-        .push_bind(Uuid::now_v7())
+        .push_bind(generated_id)
         .push(", ")
         .push_bind(workspace_id);
     for (_, _, value) in &values {
@@ -490,7 +580,11 @@ async fn update_rows(
     target: &ResolvedTarget,
     filters: &[PluginDataFilter],
     values: &BTreeMap<String, PluginDataValue>,
+    record_permission: Option<&ResolvedRecordPermission>,
 ) -> Result<u64, PluginDataError> {
+    if let Some(permission) = record_permission {
+        permission.validate_update_identity(values)?;
+    }
     let values = resolve_values(target, values, false)?;
     let mut query = QueryBuilder::<Postgres>::new("update ");
     query.push(quoted(&target.table)?).push(" set ");
@@ -509,6 +603,9 @@ async fn update_rows(
     query.push(" where ");
     push_scope(&mut query, workspace_id);
     push_filters(&mut query, target, filters)?;
+    if let Some(permission) = record_permission {
+        permission.push_where(&mut query);
+    }
     Ok(query
         .build()
         .execute(&mut **transaction)
@@ -522,11 +619,15 @@ async fn delete_rows(
     workspace_id: Uuid,
     target: &ResolvedTarget,
     filters: &[PluginDataFilter],
+    record_permission: Option<&ResolvedRecordPermission>,
 ) -> Result<u64, PluginDataError> {
     let mut query = QueryBuilder::<Postgres>::new("delete from ");
     query.push(quoted(&target.table)?).push(" where ");
     push_scope(&mut query, workspace_id);
     push_filters(&mut query, target, filters)?;
+    if let Some(permission) = record_permission {
+        permission.push_where(&mut query);
+    }
     Ok(query
         .build()
         .execute(&mut **transaction)
@@ -541,6 +642,7 @@ async fn upsert_owned(
     target: &ResolvedTarget,
     identity: &BTreeMap<String, PluginDataValue>,
     values: &BTreeMap<String, PluginDataValue>,
+    record_permission: Option<&ResolvedRecordPermission>,
 ) -> Result<u64, PluginDataError> {
     let lock_material = serde_json::to_string(&(target.table.as_str(), workspace_id, identity))
         .map_err(|_| PluginDataError::invalid("plugin_data_identity"))?;
@@ -557,15 +659,44 @@ async fn upsert_owned(
             value: Some(value.clone()),
         })
         .collect::<Vec<_>>();
-    let affected = update_rows(transaction, workspace_id, target, &filters, values).await?;
+    let stable_values = record_permission
+        .map(|permission| permission.stable_upsert_values(identity, values))
+        .transpose()?;
+    let update_values = stable_values.as_ref().unwrap_or(values);
+    let affected = update_rows(
+        transaction,
+        workspace_id,
+        target,
+        &filters,
+        update_values,
+        record_permission,
+    )
+    .await?;
     if affected > 0 {
         return Ok(affected);
+    }
+    // A denied existing row must never fall through to insert and manufacture a second identity.
+    if record_permission.is_some()
+        && count_rows(transaction, workspace_id, target, &filters, None).await? > 0
+    {
+        return Err(error(
+            PluginDataErrorKind::PermissionDenied,
+            "plugin_data_record_permission",
+            false,
+        ));
     }
     let mut merged = identity.clone();
     for (field, value) in values {
         merged.insert(field.clone(), value.clone());
     }
-    insert_owned(transaction, workspace_id, target, &merged).await
+    insert_owned(
+        transaction,
+        workspace_id,
+        target,
+        &merged,
+        record_permission,
+    )
+    .await
 }
 
 fn resolve_fields<'a>(

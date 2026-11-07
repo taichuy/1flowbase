@@ -1,5 +1,5 @@
 mod bootstrap;
-mod effective_roles;
+pub(crate) mod effective_roles;
 pub(crate) mod identity_binding;
 pub(crate) mod lifecycle;
 

@@ -726,3 +726,48 @@ fn record_and_host_handle_selectors_validate_requiredness_and_open_response_bind
         "explicit optional record permits draft without weakening normal records"
     );
 }
+
+#[test]
+fn record_create_is_an_explicit_non_grantable_insert_classification() {
+    let mut value = record_fixture();
+    let mut create = value["managed_service"]["operations"][0].clone();
+    create["interface_id"] = json!("managed_fixture.create");
+    create["contribution_id"] = json!("managed_fixture.create");
+    create["method"] = json!("POST");
+    create["record_permission"] =
+        json!({"resource_code":"hosts", "action_code":"create", "selector":{"kind":"create"}});
+    value["managed_service"]["operations"]
+        .as_array_mut()
+        .unwrap()
+        .push(create);
+    let mut contribution = value["managed"]["module"]["contributions"][0].clone();
+    contribution["contribution_id"] = json!("managed_fixture.create");
+    value["managed"]["module"]["contributions"]
+        .as_array_mut()
+        .unwrap()
+        .push(contribution);
+    let mut execution = value["managed"]["execution_bindings"][0].clone();
+    execution["contribution_id"] = json!("managed_fixture.create");
+    value["managed"]["execution_bindings"]
+        .as_array_mut()
+        .unwrap()
+        .push(execution);
+    assert!(parse(&value).is_ok());
+    for (field, replacement) in [
+        ("method", json!("GET")),
+        (
+            "record_permission",
+            json!({"resource_code":"hosts","action_code":"open","selector":{"kind":"create"}}),
+        ),
+        (
+            "record_permission",
+            json!({"resource_code":"unknown","action_code":"create","selector":{"kind":"create"}}),
+        ),
+    ] {
+        let mut invalid = value.clone();
+        invalid["managed_service"]["operations"][1][field] = replacement;
+        assert!(parse(&invalid).is_err());
+    }
+    value["managed_service"]["record_resources"][0]["actions"].as_array_mut().unwrap().push(json!({"action_code":"create", "label":"Create", "description":"Must never be grantable per record", "operation_ids":["managed_fixture.create"]}));
+    assert!(parse(&value).is_err());
+}

@@ -75,8 +75,12 @@ impl<R: RecordPermissionRepository + RoleConsolePolicyReader> RecordPermissionSe
     }
 
     pub async fn can_manage_permissions(&self, actor: &ActorContext) -> Result<bool> {
-        self.has_operation(actor, RECORD_PERMISSIONS_REPLACE_OPERATION_ID)
-            .await
+        Ok(self
+            .has_operation(actor, RECORD_PERMISSIONS_VIEW_OPERATION_ID)
+            .await?
+            && self
+                .has_operation(actor, RECORD_PERMISSIONS_REPLACE_OPERATION_ID)
+                .await?)
     }
 
     pub async fn get(
@@ -98,7 +102,9 @@ impl<R: RecordPermissionRepository + RoleConsolePolicyReader> RecordPermissionSe
         if !self
             .has_operation(actor, RECORD_PERMISSIONS_VIEW_OPERATION_ID)
             .await?
-            && !self.can_manage_permissions(actor).await?
+            && !self
+                .has_operation(actor, RECORD_PERMISSIONS_REPLACE_OPERATION_ID)
+                .await?
         {
             return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
         }
