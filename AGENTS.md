@@ -32,9 +32,9 @@
 1.需求类请求，以及会导向产品决策的功能差异、缺失能力、不可编辑状态或入口归属诊断，默认先使用 `problem-framing`；方向确认前不修改产品代码。
 2.普通任务使用 Single Issue；跨上下文、多 agent、跨仓或包含多个可独立集成结果的长计划使用 Root → Delivery 两层 Issue Tree。Root 一次批准既定 Delivery，用户只验收 Root。
 3.只有不影响产品 / 设计决策的事实查询、机械精确改动，或用户明确要求直接开始 / 无需确认时，才可跳过需求对齐；“为什么流程不一致 / 能力缺失 / 无法编辑 / 应放在哪个入口”不属于纯查询。
-4.长计划执行必须读取 `.agents/skills/problem-framing/references/long-running-work.md`；默认先用一个只读 Scout，Root agent 汇总路径、现状、目标、AC 与集中 Test Batch，并成为唯一 packetizer、assembly owner 和 Control Ledger owner。
+4.长计划执行必须读取 `.agents/skills/problem-framing/references/long-running-work.md`；默认先用一个只读 Scout；Root 保留用户目标原文及已确认变更，汇总路径、现状、AC 与集中 Test Batch，负责拆包、装配和执行状态。
 5.开发只接收边界明确的 Work Packet；同一 Delivery 可连续复用开发上下文，新 Delivery 使用最小 handoff。开发、reviewer、QA agent 不再嵌套调度 agent。
-6.Root 下全部开发与 fixture Work Packet 装配到隔离 assembly 后，只启动一个 fresh QA 做集中测试；不做 per-packet / per-Delivery QA。无依赖、无共享写 / contract / migration / 端口 / 构建冲突的开发 Packet 才可并行，状态与资源检查保持事件驱动。
+6.Root 下全部开发与 fixture Work Packet 装配到隔离 assembly 后，首次启动一个独立 fresh QA 做集中测试，同一目标下的修复由原 QA 增量核验；不做 per-packet / per-Delivery QA。无依赖、无共享写 / contract / migration / 端口 / 构建冲突的开发 Packet 才可并行，状态与资源检查保持事件驱动。
 
 # 文件管理约定
 1.理论上来说单个代码文件不应该超过1500行
