@@ -23,6 +23,8 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("POST", "/api/console/events"),
                 ("PUT", "/api/console/events/{event_definition_id}"),
                 ("GET", "/api/console/events/runtime"),
+                ("GET", "/api/console/events/api-operations"),
+                ("GET", "/api/console/events/api-operations/{operation_id}"),
             ]),
         },
         SettingsFeatureRegistration {
