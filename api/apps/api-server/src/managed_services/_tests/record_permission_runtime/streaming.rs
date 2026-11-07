@@ -152,8 +152,17 @@ async fn completed<L>(active: Active<L>) {
         "http.record_fixture.stream.v1"
     );
     let observers = receipt.observer_records();
-    assert_eq!(observers.len(), 2, "{observers:?}");
-    for (observer, (point, plugin)) in observers.iter().zip([
+    let managed = observers
+        .iter()
+        .filter(|observer| {
+            matches!(
+                observer.plugin().as_str(),
+                "interface-runtime.managed.failure" | "interface-runtime.managed.completion"
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(managed.len(), 2, "{observers:?}");
+    for (observer, (point, plugin)) in managed.iter().zip([
         (
             InterfaceExtensionPoint::Failure,
             "interface-runtime.managed.failure",
@@ -168,6 +177,14 @@ async fn completed<L>(active: Active<L>) {
         assert_eq!(observer.status(), InterfaceObserverStatus::Executed);
         assert_eq!(observer.reason(), None);
     }
+    let document = observers
+        .iter()
+        .filter(|observer| observer.plugin().as_str() == "interface-runtime.document-operations")
+        .collect::<Vec<_>>();
+    assert_eq!(document.len(), 1, "{observers:?}");
+    assert_eq!(document[0].point(), InterfaceExtensionPoint::Before);
+    assert_eq!(document[0].status(), InterfaceObserverStatus::Executed);
+    assert_eq!(document[0].reason(), None);
     let target = match failure.into_error() {
         InterfaceInvocationError::TargetFailed(target) => target,
         error => panic!("revoked managed target must report its exact failure: {error:?}"),

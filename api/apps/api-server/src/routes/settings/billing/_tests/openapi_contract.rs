@@ -37,12 +37,15 @@ fn assert_wire_schema<T: ToSchema>(actual: &impl Serialize) -> Value {
     // Exact owner-field inventory detects drift in schema-only external DTOs,
     // including additions that a permissive object validator would otherwise allow.
     assert_eq!(
-        wire.as_object().unwrap().keys().collect::<Vec<_>>(),
+        wire.as_object()
+            .unwrap()
+            .keys()
+            .collect::<std::collections::BTreeSet<_>>(),
         schema["properties"]
             .as_object()
             .unwrap()
             .keys()
-            .collect::<Vec<_>>()
+            .collect::<std::collections::BTreeSet<_>>()
     );
     assert!(jsonschema::validator_for(&schema).unwrap().is_valid(&wire));
     wire
