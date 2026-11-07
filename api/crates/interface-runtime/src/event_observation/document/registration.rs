@@ -72,6 +72,10 @@ pub(crate) trait ErasedDocumentOperationRegistration: Send + Sync {
     fn contract_types(&self) -> (std::any::TypeId, std::any::TypeId);
     fn static_projection(&self) -> Option<Projection>;
     fn static_descriptor(&self) -> Option<&DocumentOperationDescriptor>;
+    fn rebind_descriptor(
+        &self,
+        descriptor: DocumentOperationDescriptor,
+    ) -> Option<Arc<dyn ErasedDocumentOperationRegistration>>;
     fn select(&self, snapshot: &(dyn Any + Send + Sync)) -> Result<Projection, Arc<str>>;
     fn fingerprint(&self) -> Vec<u8>;
 }
@@ -89,6 +93,19 @@ impl<I: InterfaceContract, O: InterfaceContract> ErasedDocumentOperationRegistra
             ContractIdentity::new(I::CONTRACT_ID, I::CONTRACT_VERSION).expect("typed contract"),
             ContractIdentity::new(O::CONTRACT_ID, O::CONTRACT_VERSION).expect("typed contract"),
         )
+    }
+    fn rebind_descriptor(
+        &self,
+        descriptor: DocumentOperationDescriptor,
+    ) -> Option<Arc<dyn ErasedDocumentOperationRegistration>> {
+        let original = self.static_operation.as_ref()?;
+        Some(Arc::new(Self::static_operation(
+            self.generation.clone(),
+            DocumentOperationProjection {
+                descriptor,
+                codec: original.codec.clone(),
+            },
+        )))
     }
     fn static_descriptor(&self) -> Option<&DocumentOperationDescriptor> {
         self.static_operation
@@ -126,6 +143,29 @@ impl RegistryCompiler {
     ) -> Self {
         self.document_observer = Some(observer);
         self
+    }
+    /// Composition-only metadata refinement before publication. Keeps the originally registered
+    /// typed codec and executable handler; dynamic selectors cannot be replaced by this port.
+    pub fn rebind_document_operation_descriptor(
+        &mut self,
+        binding_id: &BindingId,
+        descriptor: DocumentOperationDescriptor,
+    ) -> Result<(), RegistryCompilationError> {
+        let invalid = || RegistryCompilationError::DocumentOperationMismatch(binding_id.clone());
+        let registration = self
+            .document_operations
+            .get(binding_id)
+            .ok_or_else(invalid)?;
+        let (binding, _) = self.protocol_bindings.get(binding_id).ok_or_else(invalid)?;
+        if !validate_descriptor(&descriptor, binding, registration.generation()) {
+            return Err(invalid());
+        }
+        let replacement = registration
+            .rebind_descriptor(descriptor)
+            .ok_or_else(invalid)?;
+        self.document_operations
+            .insert(binding_id.clone(), replacement);
+        Ok(())
     }
     pub fn bind_document_operation<I: InterfaceContract, O: InterfaceContract>(
         &mut self,

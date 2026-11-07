@@ -24,3 +24,5 @@ pub use dispatcher::{
     CallableDispatchHttpResponse, CallableDispatchPort, CallableDispatchResult, DispatchArguments,
     DispatchError, DispatchSuccess,
 };
+
+pub(crate) use catalog::close_api_event_schema;

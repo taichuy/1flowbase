@@ -73,6 +73,8 @@ impl InterfaceRegistryContribution {
 }
 
 pub(crate) struct InterfaceContributionCollector {
+    api_docs: Option<Arc<crate::openapi_docs::ApiDocsRegistry>>,
+    document_observer: Option<Arc<dyn interface_runtime::DocumentOperationObserver>>,
     managed_factory: Option<Arc<dyn interface_runtime::ManagedInterfaceInvocationFactory>>,
     event_observer: Option<Arc<dyn interface_runtime::InterfaceEventObserver>>,
     graph_fingerprint: GraphFingerprint,
@@ -83,12 +85,24 @@ pub(crate) struct InterfaceContributionCollector {
 impl InterfaceContributionCollector {
     pub(crate) fn new(graph_fingerprint: GraphFingerprint) -> Self {
         Self {
+            api_docs: None,
+            document_observer: None,
             managed_factory: None,
             event_observer: None,
             graph_fingerprint,
             contributions: Vec::new(),
             contribution_ids: BTreeSet::new(),
         }
+    }
+
+    pub(crate) fn with_api_event_observation(
+        mut self,
+        docs: Arc<crate::openapi_docs::ApiDocsRegistry>,
+        observer: Arc<dyn interface_runtime::DocumentOperationObserver>,
+    ) -> Self {
+        self.api_docs = Some(docs);
+        self.document_observer = Some(observer);
+        self
     }
 
     pub(crate) fn with_event_observer(
@@ -135,8 +149,23 @@ impl InterfaceContributionCollector {
         if let Some(observer) = self.event_observer {
             compiler = compiler.with_event_observer(observer);
         }
+        if let Some(observer) = self.document_observer {
+            compiler = compiler.with_document_operation_observer(observer);
+        }
+        let snapshots = self
+            .contributions
+            .iter()
+            .map(|contribution| contribution.registry.clone())
+            .collect::<Vec<_>>();
         for contribution in self.contributions {
             compiler.absorb_snapshot(contribution.registry.as_ref())?;
+        }
+        if let Some(docs) = self.api_docs {
+            crate::event_center::api_projection::refine_static_api_events(
+                &mut compiler,
+                &docs,
+                &snapshots,
+            )?;
         }
         Ok(compiler.compile()?)
     }

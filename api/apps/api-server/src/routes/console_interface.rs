@@ -15,6 +15,9 @@ use interface_runtime::{
     UserPrincipal,
 };
 
+use crate::event_center::api_projection::{
+    register_static_api_event, ApiEventInput, ApiEventOutput,
+};
 use crate::{app_state::ApiState, error_response::ApiError};
 
 #[derive(Clone)]
@@ -230,8 +233,8 @@ pub(crate) fn compile_registry<I, O>(
     port: Arc<dyn ConsoleInterfacePort<I, O>>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
-    I: InterfaceContract,
-    O: InterfaceContract,
+    I: ApiEventInput,
+    O: ApiEventOutput,
 {
     compile_registry_with_scope(owner, graph, declarations, port, InterfaceScope::Workspace)
 }
@@ -244,8 +247,8 @@ pub(crate) fn compile_registry_with_event_observation<I, O>(
     event_operations: &[&str],
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
-    I: InterfaceContract,
-    O: InterfaceContract,
+    I: ApiEventInput,
+    O: ApiEventOutput,
 {
     compile_registry_with_scope_and_events(
         owner,
@@ -265,8 +268,8 @@ pub(crate) fn compile_registry_with_scope<I, O>(
     scope: InterfaceScope,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
-    I: InterfaceContract,
-    O: InterfaceContract,
+    I: ApiEventInput,
+    O: ApiEventOutput,
 {
     compile_registry_with_scope_and_events(owner, graph, declarations, port, scope, &[])
 }
@@ -280,8 +283,8 @@ fn compile_registry_with_scope_and_events<I, O>(
     event_operations: &[&str],
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
-    I: InterfaceContract,
-    O: InterfaceContract,
+    I: ApiEventInput,
+    O: ApiEventOutput,
 {
     let owner = InterfaceOwner::new(owner).expect("static Console family owner is valid");
     let declaration_ids = declarations
@@ -366,17 +369,18 @@ where
             contract::<O>(),
             contract::<ConsoleInterfaceTargetError>(),
         );
-        compiler.register_binding(
-            ProtocolBinding::new(
-                BindingId::new(declaration.binding_id)
-                    .expect("static Console family binding is valid"),
-                identity,
-                contracts,
-                ProtocolProjection::http(
-                    RouteIdentity::new(declaration.method, declaration.path)
-                        .expect("static Console family route is valid"),
-                ),
+        let event_binding = ProtocolBinding::new(
+            BindingId::new(declaration.binding_id).expect("static Console family binding is valid"),
+            identity,
+            contracts,
+            ProtocolProjection::http(
+                RouteIdentity::new(declaration.method, declaration.path)
+                    .expect("static Console family route is valid"),
             ),
+        );
+        register_static_api_event::<I, O>(&mut compiler, &event_binding, graph)?;
+        compiler.register_binding(
+            event_binding,
             InvocationAdapterPlan::new(
                 AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
                     .expect("static Console authentication adapter is valid"),
@@ -399,9 +403,9 @@ pub(crate) fn compile_server_stream_registry<I, S, O>(
     port: Arc<dyn ConsoleServerStreamPort<I, S, O>>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
-    I: InterfaceContract,
+    I: ApiEventInput,
     S: InterfaceContract,
-    O: InterfaceContract,
+    O: ApiEventOutput,
 {
     compile_server_stream_registry_with_scope(
         owner,
@@ -420,9 +424,9 @@ pub(crate) fn compile_server_stream_registry_with_event_observation<I, S, O>(
     event_operations: &[&str],
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
-    I: InterfaceContract,
+    I: ApiEventInput,
     S: InterfaceContract,
-    O: InterfaceContract,
+    O: ApiEventOutput,
 {
     compile_server_stream_registry_with_scope_and_events(
         owner,
@@ -442,9 +446,9 @@ pub(crate) fn compile_server_stream_registry_with_scope<I, S, O>(
     scope: InterfaceScope,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
-    I: InterfaceContract,
+    I: ApiEventInput,
     S: InterfaceContract,
-    O: InterfaceContract,
+    O: ApiEventOutput,
 {
     compile_server_stream_registry_with_scope_and_events(
         owner,
@@ -465,9 +469,9 @@ fn compile_server_stream_registry_with_scope_and_events<I, S, O>(
     event_operations: &[&str],
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
-    I: InterfaceContract,
+    I: ApiEventInput,
     S: InterfaceContract,
-    O: InterfaceContract,
+    O: ApiEventOutput,
 {
     let owner = InterfaceOwner::new(owner).expect("static Console family owner is valid");
     let operations = declarations
@@ -525,17 +529,18 @@ where
             definition
         })?;
         register_authentication(&mut compiler, &interface_id)?;
-        compiler.register_binding(
-            ProtocolBinding::new(
-                BindingId::new(declaration.binding_id)
-                    .expect("static Console family binding is valid"),
-                identity,
-                contracts,
-                ProtocolProjection::http(
-                    RouteIdentity::new(declaration.method, declaration.path)
-                        .expect("static Console family route is valid"),
-                ),
+        let event_binding = ProtocolBinding::new(
+            BindingId::new(declaration.binding_id).expect("static Console family binding is valid"),
+            identity,
+            contracts,
+            ProtocolProjection::http(
+                RouteIdentity::new(declaration.method, declaration.path)
+                    .expect("static Console family route is valid"),
             ),
+        );
+        register_static_api_event::<I, O>(&mut compiler, &event_binding, graph)?;
+        compiler.register_binding(
+            event_binding,
             InvocationAdapterPlan::new(
                 AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
                     .expect("static Console authentication adapter is valid"),
