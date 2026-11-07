@@ -16,48 +16,88 @@ pub(crate) async fn summaries_with(
     dependencies: &OpenApiCapabilityCatalogDependencies,
     actor: &ActorContext,
 ) -> Result<Vec<ApiEventOperationSummary>, ApiError> {
-    Ok(
-        crate::openapi_interface::build_openapi_capability_catalog_with(
-            dependencies,
-            actor.current_workspace_id,
-        )
-        .await?
-        .iter()
-        .map(|entry| {
-            project_entry(
-                entry,
-                dependencies.interface_registry.as_deref(),
-                actor,
-                None,
-                false,
-            )
-            .operation
-        })
-        .collect(),
+    let entries = crate::openapi_interface::build_openapi_capability_catalog_with(
+        dependencies,
+        actor.current_workspace_id,
     )
+    .await?;
+    let mut summaries = Vec::with_capacity(entries.len());
+    for entry in &entries {
+        summaries.push(
+            project_current_entry(dependencies, actor, entry, false)
+                .await?
+                .operation,
+        );
+    }
+    Ok(summaries)
 }
 pub(crate) async fn get_with(
     dependencies: &OpenApiCapabilityCatalogDependencies,
     actor: &ActorContext,
     operation_id: &str,
 ) -> Result<Option<ApiEventOperationDetails>, ApiError> {
-    Ok(
-        crate::openapi_interface::build_openapi_capability_catalog_with(
-            dependencies,
-            actor.current_workspace_id,
-        )
-        .await?
+    let entries = crate::openapi_interface::build_openapi_capability_catalog_with(
+        dependencies,
+        actor.current_workspace_id,
+    )
+    .await?;
+    let Some(entry) = entries
         .iter()
         .find(|entry| entry.interface.operation_id == operation_id)
-        .map(|entry| {
-            details_for_entry(
+    else {
+        return Ok(None);
+    };
+    project_current_entry(dependencies, actor, entry, true)
+        .await
+        .map(Some)
+}
+async fn project_current_entry(
+    dependencies: &OpenApiCapabilityCatalogDependencies,
+    actor: &ActorContext,
+    entry: &OpenApiCapabilityCatalogEntry,
+    include_schemas: bool,
+) -> Result<ApiEventOperationDetails, ApiError> {
+    let selected = match entry.source {
+        OpenApiCapabilitySource::PublishedWorkflow => crate::routes::application_public_api::workflow_extension_interface::document_descriptor_for_entry(dependencies,actor,entry).await,
+        OpenApiCapabilitySource::BuiltinDataModelCrud|OpenApiCapabilitySource::WorkspaceDataModelCrud => crate::routes::runtime_models::event_projection::document_descriptor_for_entry(dependencies,actor,entry).await,
+        _=>Ok(None),
+    };
+    let descriptor = match selected {
+        Ok(descriptor) => descriptor,
+        Err(error)
+            if error
+                .0
+                .downcast_ref::<control_plane::errors::ControlPlaneError>()
+                .is_some_and(|error| {
+                    matches!(
+                        error,
+                        control_plane::errors::ControlPlaneError::PermissionDenied(_)
+                    )
+                }) =>
+        {
+            let mut details = project_entry(
                 entry,
                 dependencies.interface_registry.as_deref(),
                 actor,
                 None,
-            )
-        }),
-    )
+                false,
+            );
+            details.operation.scope = EventSourceScope::Workspace {
+                workspace_id: actor.current_workspace_id,
+            };
+            details.operation.before = unavailable(ApiEventUnavailableReason::PermissionDenied);
+            details.operation.completion = unavailable(ApiEventUnavailableReason::PermissionDenied);
+            return Ok(details);
+        }
+        Err(error) => return Err(error),
+    };
+    Ok(project_entry(
+        entry,
+        dependencies.interface_registry.as_deref(),
+        actor,
+        descriptor.as_ref(),
+        include_schemas,
+    ))
 }
 fn unavailable(reason: ApiEventUnavailableReason) -> ApiEventPhaseAvailability {
     ApiEventPhaseAvailability::Unavailable { reason }

@@ -2,7 +2,10 @@ use std::{future::Future, pin::Pin, sync::Arc};
 
 use control_plane::application_public_api::{
     mapping::WorkflowExtensionHttpMethod,
-    workflow_extension::{WorkflowExtensionRequestParameters, WorkflowHttpPrincipal},
+    workflow_extension::{
+        AuthorizedPublishedWorkflowOperation, WorkflowExtensionRequestParameters,
+        WorkflowHttpPrincipal,
+    },
 };
 use interface_runtime::{
     AuthenticationAdapterReference, AuthorizationAdapterReference, AuthorizationOperation,
@@ -23,6 +26,8 @@ pub(crate) const BINDING_ID: &str = "http.workflow-extension.invoke.v1";
 const INTERFACE_ID: &str = "workflow-extension.invoke";
 const HANDLER: &str = "api-server.workflow-extension.invoke";
 const OPERATION: &str = "workflow-extension.invoke";
+mod document_observation;
+pub(crate) use document_observation::document_descriptor_for_entry;
 
 pub(crate) struct WorkflowExtensionInput {
     pub(crate) request_path: String,
@@ -801,12 +806,26 @@ pub(crate) type WorkflowExtensionFuture<'a> = Pin<
     >,
 >;
 
+pub(crate) type WorkflowExtensionAuthorizeFuture<'a> = Pin<
+    Box<
+        dyn Future<
+                Output = Result<AuthorizedPublishedWorkflowOperation, WorkflowExtensionTargetError>,
+            > + Send
+            + 'a,
+    >,
+>;
 pub(crate) trait WorkflowExtensionPort: Send + Sync + 'static {
-    fn invoke<'a>(
+    fn authorize<'a>(
         &'a self,
         actor: &'a domain::ActorContext,
+        input: &'a WorkflowExtensionInput,
+    ) -> WorkflowExtensionAuthorizeFuture<'a>;
+    fn invoke_authorized<'a>(
+        &'a self,
+        authorized: AuthorizedPublishedWorkflowOperation,
         principal: WorkflowHttpPrincipal,
         input: WorkflowExtensionInput,
+        observation: Option<interface_runtime::DocumentOperationSession>,
     ) -> WorkflowExtensionFuture<'a>;
 }
 
@@ -838,8 +857,20 @@ impl
             }
         };
         Box::pin(async move {
-            port.invoke(&actor, principal, input)
+            let authorized = port
+                .authorize(&actor, &input)
                 .await
+                .map_err(|error| InterfaceTargetFailure::new("workflow_extension", error))?;
+            let observation = context.document_operation().cloned();
+            if let Some(session) = &observation {
+                let _ = session.select(Arc::new(authorized.clone()));
+            }
+            port.invoke_authorized(authorized, principal, input, observation)
+                .await
+                .and_then(|output| {
+                    super::ex::normalize_workflow_extension_output(output)
+                        .map_err(WorkflowExtensionTargetError)
+                })
                 .map_err(|error| InterfaceTargetFailure::new("workflow_extension", error))
         })
     }
@@ -950,6 +981,16 @@ pub(crate) fn compile_registry(
         &interface_id,
         HandlerReference::new(HANDLER).expect("static handler is valid"),
         Arc::new(WorkflowExtensionHandler { port }),
+    )?;
+    compiler.bind_document_operation(
+        &BindingId::new(BINDING_ID).expect("static binding"),
+        interface_runtime::DocumentOperationRegistration::<
+            WorkflowExtensionInput,
+            WorkflowExtensionOutput,
+        >::dynamic(
+            document_observation::REGISTRATION_GENERATION,
+            Arc::new(document_observation::Selector),
+        ),
     )?;
     compiler.compile()
 }

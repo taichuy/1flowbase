@@ -11,15 +11,12 @@ use super::{
     mapping::{WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode},
     published_workflow_operation::{
         build_published_workflow_operations, resolve_published_workflow_operation,
-        PublishedWorkflowOperationError,
+        PublishedWorkflowOperation, PublishedWorkflowOperationError,
     },
     run_service::{public_compiled_plan_start_node_id, ApplicationPublishedFlowRunRepository},
     workflow_invocation::{
         InvokeWorkflowCommand, WorkflowInvocationError, WorkflowInvocationService,
         WorkflowInvocationTrigger,
-    },
-    workflow_start_http_inputs::{
-        build_workflow_start_node_input_payload, parse_workflow_start_http_inputs,
     },
 };
 use crate::{
@@ -102,6 +99,51 @@ pub struct WorkflowExtensionRunResult {
     pub created_at: OffsetDateTime,
 }
 
+/// Proof returned only after the existing workspace/application authorization owner succeeds.
+/// The publication is immutable and retained for preparation, observation and execution.
+#[derive(Debug, Clone)]
+pub struct AuthorizedPublishedWorkflowOperation {
+    operation: Arc<PublishedWorkflowOperation>,
+    actor_user_id: Uuid,
+    workspace_id: Uuid,
+    generation: String,
+}
+impl AuthorizedPublishedWorkflowOperation {
+    pub fn operation(&self) -> &PublishedWorkflowOperation {
+        &self.operation
+    }
+    pub fn operation_snapshot(&self) -> Arc<PublishedWorkflowOperation> {
+        self.operation.clone()
+    }
+    pub fn workspace_id(&self) -> Uuid {
+        self.workspace_id
+    }
+    pub fn generation(&self) -> &str {
+        &self.generation
+    }
+    pub fn prepare_input(
+        &self,
+        parameters: &WorkflowExtensionRequestParameters,
+        request_path: &str,
+    ) -> Result<Value, WorkflowExtensionRunError> {
+        self.operation.prepare_input(parameters, request_path)
+    }
+}
+#[derive(Debug)]
+pub struct PreparedWorkflowExtensionRun {
+    authorized: AuthorizedPublishedWorkflowOperation,
+    principal: WorkflowHttpPrincipal,
+    node_input_payload: Value,
+}
+impl PreparedWorkflowExtensionRun {
+    pub fn operation(&self) -> &PublishedWorkflowOperation {
+        self.authorized.operation()
+    }
+    pub fn node_input_payload(&self) -> &Value {
+        &self.node_input_payload
+    }
+}
+
 pub struct WorkflowExtensionRunService<R> {
     repository: R,
     published_plan_cache: Option<Arc<dyn PublishedPlanCache>>,
@@ -129,10 +171,12 @@ where
         self
     }
 
-    pub async fn create_run(
+    pub async fn authorize_operation(
         &self,
-        command: CreateWorkflowExtensionRunCommand,
-    ) -> Result<WorkflowExtensionRunResult, WorkflowExtensionRunError> {
+        actor: &domain::ActorContext,
+        method: WorkflowExtensionHttpMethod,
+        request_path: &str,
+    ) -> Result<AuthorizedPublishedWorkflowOperation, WorkflowExtensionRunError> {
         let operations = build_published_workflow_operations(
             self.repository
                 .list_enabled_extension_publications()
@@ -141,67 +185,126 @@ where
         )
         .map_err(map_operation_error)?;
         if operations.iter().any(|operation| {
-            operation.method != command.method
-                && operation.match_path(&command.request_path).is_some()
+            operation.method != method && operation.match_path(request_path).is_some()
         }) && !operations.iter().any(|operation| {
-            operation.method == command.method
-                && operation.match_path(&command.request_path).is_some()
+            operation.method == method && operation.match_path(request_path).is_some()
         }) {
             return Err(WorkflowExtensionRunError::MethodNotAllowed);
         }
-        let (operation, path) = resolve_published_workflow_operation(
-            &operations,
-            command.method,
-            &command.request_path,
+        let (operation, _) =
+            resolve_published_workflow_operation(&operations, method, request_path)
+                .map_err(map_operation_error)?;
+        self.authorize_resolved_operation(actor, operation).await
+    }
+
+    pub async fn authorize_operation_id(
+        &self,
+        actor: &domain::ActorContext,
+        operation_id: &str,
+    ) -> Result<AuthorizedPublishedWorkflowOperation, WorkflowExtensionRunError> {
+        let operations = build_published_workflow_operations(
+            self.repository
+                .list_enabled_extension_publications()
+                .await
+                .map_err(WorkflowExtensionRunError::Internal)?,
         )
         .map_err(map_operation_error)?;
-        let publication = operation.publication.clone();
-        if command.actor.current_workspace_id != operation.workspace_id {
+        let operation = operations
+            .into_iter()
+            .find(|operation| operation.interface_id == operation_id)
+            .ok_or(WorkflowExtensionRunError::ExtensionNotFound)?;
+        self.authorize_resolved_operation(actor, operation).await
+    }
+
+    async fn authorize_resolved_operation(
+        &self,
+        actor: &domain::ActorContext,
+        operation: PublishedWorkflowOperation,
+    ) -> Result<AuthorizedPublishedWorkflowOperation, WorkflowExtensionRunError> {
+        if actor.current_workspace_id != operation.workspace_id {
             return Err(WorkflowExtensionRunError::Forbidden);
         }
-        let workspace_id = command.actor.current_workspace_id;
         let application = self
             .repository
-            .get_application(workspace_id, operation.application_id)
+            .get_application(actor.current_workspace_id, operation.application_id)
             .await
             .map_err(WorkflowExtensionRunError::Internal)?
             .ok_or(WorkflowExtensionRunError::ExtensionNotFound)?;
-        ensure_application_view_permission(&self.repository, &command.actor, &application)
+        ensure_application_view_permission(&self.repository, actor, &application)
             .await
             .map_err(map_authorization_error)?;
         if application.workflow_trigger_type != Some(domain::WorkflowTriggerType::Extension) {
             return Err(WorkflowExtensionRunError::TriggerTypeMismatch);
         }
-        let extension = publication
-            .mapping_snapshot
-            .extension
-            .as_ref()
-            .ok_or(WorkflowExtensionRunError::InvalidMapping)?;
+        let generation = operation.snapshot_generation();
+        Ok(AuthorizedPublishedWorkflowOperation {
+            generation,
+            operation: Arc::new(operation),
+            actor_user_id: actor.user_id,
+            workspace_id: actor.current_workspace_id,
+        })
+    }
 
-        let mut parameters = command.parameters;
-        parameters.path = path;
-        let start_contract = parse_workflow_start_http_inputs(&publication.document_snapshot)
-            .map_err(|_| WorkflowExtensionRunError::InvalidMapping)?;
-        let node_input_payload =
-            build_workflow_start_node_input_payload(&start_contract, &parameters)
-                .map_err(|_| WorkflowExtensionRunError::InvalidMapping)?;
-        let response_mode = extension.response_mode;
-        let api_key_id = command.principal.api_key_id();
+    pub fn prepare_authorized_run(
+        &self,
+        authorized: AuthorizedPublishedWorkflowOperation,
+        principal: WorkflowHttpPrincipal,
+        parameters: &WorkflowExtensionRequestParameters,
+        request_path: &str,
+    ) -> Result<PreparedWorkflowExtensionRun, WorkflowExtensionRunError> {
+        let node_input_payload = authorized.prepare_input(parameters, request_path)?;
+        Ok(PreparedWorkflowExtensionRun {
+            authorized,
+            principal,
+            node_input_payload,
+        })
+    }
+
+    pub async fn create_run(
+        &self,
+        command: CreateWorkflowExtensionRunCommand,
+    ) -> Result<WorkflowExtensionRunResult, WorkflowExtensionRunError> {
+        let authorized = self
+            .authorize_operation(&command.actor, command.method, &command.request_path)
+            .await?;
+        let prepared = self.prepare_authorized_run(
+            authorized,
+            command.principal,
+            &command.parameters,
+            &command.request_path,
+        )?;
+        self.create_prepared_run(prepared).await
+    }
+
+    pub async fn create_prepared_run(
+        &self,
+        prepared: PreparedWorkflowExtensionRun,
+    ) -> Result<WorkflowExtensionRunResult, WorkflowExtensionRunError> {
+        let PreparedWorkflowExtensionRun {
+            authorized,
+            principal,
+            node_input_payload,
+            ..
+        } = prepared;
+        let operation = authorized.operation();
+        let publication = operation.publication.clone();
+        let response_mode = operation.response_mode;
+        let api_key_id = principal.api_key_id();
         let mut invocation = WorkflowInvocationService::new(self.repository.clone());
         if let Some(cache) = &self.published_plan_cache {
             invocation = invocation.with_published_plan_cache(cache.clone());
         }
         let invoked = invocation
             .invoke(InvokeWorkflowCommand {
-                actor_user_id: command.actor.user_id,
+                actor_user_id: authorized.actor_user_id,
                 publication: publication.clone(),
                 node_input_payload,
                 trigger: WorkflowInvocationTrigger::Http {
                     api_key_id,
                     interface_id: operation.interface_id.clone(),
                     route_template: operation.route_template.clone(),
-                    method: command.method.as_str().to_string(),
-                    principal: command.principal.kind(),
+                    method: operation.method.as_str().to_string(),
+                    principal: principal.kind(),
                     response_mode: response_mode.as_str().to_string(),
                 },
             })
