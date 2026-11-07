@@ -71,6 +71,7 @@ pub(crate) trait ErasedDocumentOperationRegistration: Send + Sync {
     fn contracts(&self) -> (ContractIdentity, ContractIdentity);
     fn contract_types(&self) -> (std::any::TypeId, std::any::TypeId);
     fn static_projection(&self) -> Option<Projection>;
+    fn static_descriptor(&self) -> Option<&DocumentOperationDescriptor>;
     fn select(&self, snapshot: &(dyn Any + Send + Sync)) -> Result<Projection, Arc<str>>;
     fn fingerprint(&self) -> Vec<u8>;
 }
@@ -88,6 +89,11 @@ impl<I: InterfaceContract, O: InterfaceContract> ErasedDocumentOperationRegistra
             ContractIdentity::new(I::CONTRACT_ID, I::CONTRACT_VERSION).expect("typed contract"),
             ContractIdentity::new(O::CONTRACT_ID, O::CONTRACT_VERSION).expect("typed contract"),
         )
+    }
+    fn static_descriptor(&self) -> Option<&DocumentOperationDescriptor> {
+        self.static_operation
+            .as_ref()
+            .map(|projection| &projection.descriptor)
     }
     fn static_projection(&self) -> Option<Projection> {
         self.static_operation.clone().map(Into::into)

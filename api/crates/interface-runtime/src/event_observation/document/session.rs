@@ -95,7 +95,7 @@ impl DocumentOperationSession {
         Ok(())
     }
     pub(crate) fn is_static(&self) -> bool {
-        self.registration.static_projection().is_some()
+        self.registration.static_descriptor().is_some()
     }
     pub(crate) fn update_attempt(&self, attempt: Option<crate::ExecutionAttempt>) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());

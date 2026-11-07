@@ -6,10 +6,10 @@ mod decision;
 mod event_observation;
 mod extension;
 pub use event_observation::document::{
-    DocumentOperationCodec, DocumentOperationDescriptor, DocumentOperationEvent,
-    DocumentOperationInterestFuture, DocumentOperationObserver, DocumentOperationObserverFuture,
-    DocumentOperationProjection, DocumentOperationRegistration, DocumentOperationSchemas,
-    DocumentOperationSelector, DocumentOperationSession,
+    DocumentOperationCapability, DocumentOperationCodec, DocumentOperationDescriptor,
+    DocumentOperationEvent, DocumentOperationInterestFuture, DocumentOperationObserver,
+    DocumentOperationObserverFuture, DocumentOperationProjection, DocumentOperationRegistration,
+    DocumentOperationSchemas, DocumentOperationSelector, DocumentOperationSession,
 };
 pub use event_observation::{
     InterfaceEvent, InterfaceEventCapability, InterfaceEventContext, InterfaceEventObserver,

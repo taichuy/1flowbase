@@ -35,6 +35,17 @@ pub struct DocumentOperationDescriptor {
     pub schemas: DocumentOperationSchemas,
 }
 
+/// Read-only metadata borrowed from the exact compiled binding. No callable selector or codec.
+#[derive(Clone, Copy, Debug)]
+pub struct DocumentOperationCapability<'a> {
+    pub binding_id: &'a BindingId,
+    pub interface_identity: &'a InterfaceIdentity,
+    pub registration_generation: &'a str,
+    pub dynamic: bool,
+    pub observer_enabled: bool,
+    pub static_descriptor: Option<&'a DocumentOperationDescriptor>,
+}
+
 /// An explicit codec over the real handler types; never a Serialize fallback.
 pub trait DocumentOperationCodec<I: InterfaceContract, O: InterfaceContract>:
     Send + Sync + 'static

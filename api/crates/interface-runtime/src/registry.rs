@@ -1029,6 +1029,7 @@ pub enum RegistryCompilationError {
 
 pub struct RegistryCompiler {
     pub(crate) document_observer: Option<Arc<dyn crate::DocumentOperationObserver>>,
+    document_operation_observers: BTreeMap<BindingId, Arc<dyn crate::DocumentOperationObserver>>,
     pub(crate) document_operations: BTreeMap<
         BindingId,
         Arc<dyn crate::event_observation::document::ErasedDocumentOperationRegistration>,
@@ -1083,6 +1084,38 @@ impl std::fmt::Debug for CompiledInterfaceRegistry {
 }
 
 impl CompiledInterfaceRegistry {
+    pub fn document_operations(
+        &self,
+    ) -> impl Iterator<Item = crate::DocumentOperationCapability<'_>> {
+        self.plans.values().filter_map(|plan| {
+            let registration = plan.document_operation.as_ref()?;
+            Some(crate::DocumentOperationCapability {
+                binding_id: plan.binding().binding_id(),
+                interface_identity: plan.binding().interface_identity(),
+                registration_generation: registration.generation(),
+                dynamic: registration.static_descriptor().is_none(),
+                observer_enabled: plan.document_observer.is_some(),
+                static_descriptor: registration.static_descriptor(),
+            })
+        })
+    }
+
+    pub fn document_operation(
+        &self,
+        binding_id: &BindingId,
+    ) -> Option<crate::DocumentOperationCapability<'_>> {
+        let plan = self.plans.get(binding_id)?;
+        let registration = plan.document_operation.as_ref()?;
+        Some(crate::DocumentOperationCapability {
+            binding_id: plan.binding().binding_id(),
+            interface_identity: plan.binding().interface_identity(),
+            registration_generation: registration.generation(),
+            dynamic: registration.static_descriptor().is_none(),
+            observer_enabled: plan.document_observer.is_some(),
+            static_descriptor: registration.static_descriptor(),
+        })
+    }
+
     pub fn event_capabilities(
         &self,
     ) -> impl ExactSizeIterator<Item = &crate::InterfaceEventCapability> {

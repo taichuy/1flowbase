@@ -16,6 +16,7 @@ impl RegistryCompiler {
     ) -> Self {
         Self {
             document_observer: None,
+            document_operation_observers: BTreeMap::new(),
             document_operations: BTreeMap::new(),
             event_observer: None,
             managed_factory: None,
@@ -144,6 +145,25 @@ impl RegistryCompiler {
                 .adapter_plan()
                 .clone();
             self.register_binding(binding.clone(), adapter_plan)?;
+            let source_plan = snapshot
+                .plans
+                .get(binding_id)
+                .expect("compiled binding owns a plan");
+            if let Some(registration) = &source_plan.document_operation {
+                if self
+                    .document_operations
+                    .insert(binding_id.clone(), registration.clone())
+                    .is_some()
+                {
+                    return Err(RegistryCompilationError::DocumentOperationMismatch(
+                        binding_id.clone(),
+                    ));
+                }
+                if let Some(observer) = &source_plan.document_observer {
+                    self.document_operation_observers
+                        .insert(binding_id.clone(), observer.clone());
+                }
+            }
             let authentication = snapshot
                 .plans
                 .get(binding_id)
@@ -993,7 +1013,11 @@ impl RegistryCompiler {
             plans.insert(
                 binding.binding_id().clone(),
                 CompiledInvocationPlan {
-                    document_observer: self.document_observer.clone(),
+                    document_observer: self.document_observer.clone().or_else(|| {
+                        self.document_operation_observers
+                            .get(binding.binding_id())
+                            .cloned()
+                    }),
                     document_operation: self.document_operations.get(binding.binding_id()).cloned(),
                     event_observer: if definition.event_observation_enabled() {
                         self.event_observer.clone()
@@ -1049,6 +1073,10 @@ impl RegistryCompiler {
             digest.update([0]);
             digest.update(id.as_str().as_bytes());
             digest.update(registration.fingerprint());
+            digest.update([u8::from(
+                self.document_observer.is_some()
+                    || self.document_operation_observers.contains_key(id),
+            )]);
         }
         for capability in event_capabilities.values() {
             digest.update([0]);

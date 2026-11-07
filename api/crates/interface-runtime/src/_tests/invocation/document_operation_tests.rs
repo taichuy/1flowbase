@@ -897,3 +897,109 @@ async fn capture_context_panic_is_a_diagnostic_and_preserves_primary_result() {
         .iter()
         .any(|r| r.status() == InterfaceObserverStatus::Failed));
 }
+
+#[test]
+fn compiled_document_metadata_reports_static_dynamic_and_missing_bindings_without_codecs() {
+    for dynamic in [false, true] {
+        let (mut compiler, _, _) = document_compiler(ObserverBehavior::Record, true, false);
+        let calls = Arc::new(AtomicUsize::new(0));
+        bind_handler(&mut compiler, false, false);
+        if dynamic {
+            compiler
+                .bind_document_operation(
+                    binding().binding_id(),
+                    DocumentOperationRegistration::dynamic(
+                        "catalog:v1",
+                        Arc::new(Selector {
+                            calls: calls.clone(),
+                        }),
+                    ),
+                )
+                .unwrap();
+        } else {
+            register_static(&mut compiler, descriptor(), calls.clone());
+        }
+        let snapshot = compiler.compile().unwrap();
+        assert_eq!(snapshot.document_operations().count(), 1);
+        let metadata = snapshot.document_operation(binding().binding_id()).unwrap();
+        assert_eq!(metadata.binding_id, binding().binding_id());
+        assert_eq!(metadata.interface_identity, &interface_identity());
+        assert_eq!(metadata.registration_generation, "catalog:v1");
+        assert_eq!(metadata.dynamic, dynamic);
+        assert!(metadata.observer_enabled);
+        assert_eq!(metadata.static_descriptor.is_none(), dynamic);
+        if let Some(desc) = metadata.static_descriptor {
+            assert_eq!(desc, &descriptor());
+            assert!(
+                std::ptr::eq(
+                    desc,
+                    snapshot
+                        .document_operation(binding().binding_id())
+                        .unwrap()
+                        .static_descriptor
+                        .unwrap()
+                ),
+                "read-only inventory borrows the compiled descriptor"
+            );
+        }
+        assert!(snapshot
+            .document_operation(&BindingId::new("missing").unwrap())
+            .is_none());
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[tokio::test]
+async fn absorbing_snapshot_or_interface_retains_document_registration_and_observer() {
+    for single in [false, true] {
+        let (mut source, observer, _) = document_compiler(ObserverBehavior::Record, true, false);
+        let calls = Arc::new(AtomicUsize::new(0));
+        register_static(&mut source, descriptor(), calls.clone());
+        bind_handler(&mut source, false, false);
+        let source = source.compile().unwrap();
+        let mut merged = compiler("graph:merged-document");
+        if single {
+            merged.absorb_interface(&source, &interface_id()).unwrap();
+        } else {
+            merged.absorb_snapshot(&source).unwrap();
+        }
+        let merged = merged.compile().unwrap();
+        let capability = merged.document_operation(binding().binding_id()).unwrap();
+        assert!(capability.observer_enabled);
+        assert_eq!(capability.static_descriptor, Some(&descriptor()));
+        let result = kernel(false)
+            .invoke::<Input, Output, TargetError>(merged.clone(), envelope(actor(true)))
+            .await
+            .unwrap();
+        assert_eq!(result.value(), &Output(5));
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        let events = observer.events.lock().unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(
+            events[1].context().registry_fingerprint(),
+            merged.fingerprint()
+        );
+        assert_eq!(
+            events[1].context().graph_fingerprint(),
+            merged.graph_fingerprint()
+        );
+        completion(
+            &events[1],
+            InterfaceInvocationTerminal::Completed,
+            true,
+            Some(json!({"number":5})),
+        );
+    }
+}
+
+#[test]
+fn compiled_document_metadata_distinguishes_registered_codec_from_active_observer() {
+    let (legacy, _) = observer(ObserverBehavior::Record);
+    let mut source = event_compiler(legacy, false);
+    register_static(&mut source, descriptor(), Arc::new(AtomicUsize::new(0)));
+    bind_handler(&mut source, false, false);
+    let snapshot = source.compile().unwrap();
+    let capability = snapshot.document_operation(binding().binding_id()).unwrap();
+    assert!(!capability.observer_enabled);
+    assert!(capability.static_descriptor.is_some());
+}
