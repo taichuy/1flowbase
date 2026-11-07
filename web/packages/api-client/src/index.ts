@@ -55,3 +55,5 @@ export * from './console/managed-service-stream';
 export * from './console/notifications';
 
 export * from './console/events';
+
+export * from './console/identity/record-permissions';
