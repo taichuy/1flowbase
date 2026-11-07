@@ -711,11 +711,11 @@ async fn document_stream_uses_unique_real_terminal_and_drop_does_not_fabricate_c
                 )
             }
             "cancelled" => {
-                assert!(result.is_ok());
+                assert!(result.is_err());
                 (InterfaceInvocationTerminal::Cancelled, None)
             }
             "rejected" => {
-                assert!(result.is_ok());
+                assert!(result.is_err());
                 (InterfaceInvocationTerminal::Rejected, None)
             }
             _ => {

@@ -260,12 +260,22 @@ jobs:
           fi
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker > "$evidence/managed-worker-build.log" 2>&1 || { tail -c 7000 "$evidence/managed-worker-build.log"; exit 1; }
           echo "MANAGED_EVENT_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
+      - name: Collect affected host test type errors before linking
+        id: full-api-host-types
+        if: inputs.scope == 'full-api-events'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          log=tmp/test-governance/event-center/ci/host-types-check.log
+          cargo check --locked --manifest-path api/Cargo.toml -p api-server --features test-support --tests --keep-going > "$log" 2>&1 || { tail -c 18000 "$log"; exit 1; }
       - name: Event Center host and affected route acceptance
         if: inputs.scope != 'full-api-events-types'
         shell: bash
         env:
           EVIDENCE_SCOPE: ${{ inputs.scope }}
           REUSED_API_TREE: ${{ inputs.reused_api_tree }}
+          HOST_TYPES_OUTCOME: ${{ steps.full-api-host-types.outcome }}
         run: |
           set -euo pipefail
           evidence=tmp/test-governance/event-center/ci
@@ -277,6 +287,10 @@ jobs:
               node scripts/node/verify/cargo-test-results.js "$evidence/$label.log" || failed=1
             else
               tail -c 7000 "$evidence/$label.log"
+              if [ "$EVIDENCE_SCOPE" = full-api-events ] && grep -q 'could not compile' "$evidence/$label.log"; then
+                echo "Compilation blocked $label; do not rebuild the same failure through other filters." > "$evidence/compilation-blocked.txt"
+                exit 1
+              fi
               failed=1
             fi
           }
@@ -287,34 +301,39 @@ jobs:
               node scripts/node/verify/cargo-test-results.js "$evidence/$label.log" || failed=1
             else
               tail -c 7000 "$evidence/$label.log"
+              if [ "$EVIDENCE_SCOPE" = full-api-events ] && grep -q 'could not compile' "$evidence/$label.log"; then
+                echo "Compilation blocked $label; do not rebuild the same failure through other filters." > "$evidence/compilation-blocked.txt"
+                exit 1
+              fi
               failed=1
             fi
           }
           if [ "$EVIDENCE_SCOPE" = full-api-events ]; then
             # One assembled candidate, finite behavioral batch; no per-family QA runs.
             run_crate_tests api-kernel -p interface-runtime --lib event_observation
-            test "$failed" = 0
             run_crate_tests api-domain -p domain --lib event_center
             run_crate_tests api-configuration -p control-plane --lib event_center
             run_crate_tests api-workflow-prepare -p control-plane --lib workflow_extension
             run_crate_tests api-model-snapshot -p runtime-core --lib runtime_model_
             run_crate_tests api-pg-configuration -p control-plane-postgres-tests --test event_center_configuration
-            test "$failed" = 0
-            run_tests api-catalog-observer --test api_private_contracts event_center
-            test "$failed" = 0
-            run_tests api-codecs-core --lib event_projection
-            run_tests api-document-owner --lib openapi_docs::cache
-            run_tests api-codecs-console --test api_private_routes event_projection
-            run_tests api-codecs-public --test api_public_api event_projection
-            run_tests api-document-codecs-public --test api_public_api document_projection
-            run_tests api-compatibility-http-result --test api_public_api compatibility_interface::http_result
-            run_tests api-compatibility-contract --test api_private_contracts compatibility_interface
-            run_tests api-protocol-projection --test api_public_api protocol_projection
-            test "$failed" = 0
-            run_tests api-event-routes --test api_system_settings event_center
-            run_tests api-workflow-routes --test api_application workflow_extension
-            run_tests api-mcp-directory --test api_mcp_management interface_capabilities
-            run_tests api-authorization --test api_console event_center_operations_compile
+            if [ "$HOST_TYPES_OUTCOME" = success ]; then
+              run_tests api-catalog-observer --test api_private_contracts event_center
+              run_tests api-codecs-core --lib event_projection
+              run_tests api-document-owner --lib openapi_docs::cache
+              run_tests api-codecs-console --test api_private_routes event_projection
+              run_tests api-codecs-public --test api_public_api event_projection
+              run_tests api-document-codecs-public --test api_public_api document_projection
+              run_tests api-compatibility-http-result --test api_public_api compatibility_interface::http_result
+              run_tests api-compatibility-contract --test api_private_contracts compatibility_interface
+              run_tests api-protocol-projection --test api_public_api protocol_projection
+              run_tests api-event-routes --test api_system_settings event_center
+              run_tests api-workflow-routes --test api_application workflow_extension
+              run_tests api-mcp-directory --test api_mcp_management interface_capabilities
+              run_tests api-authorization --test api_console event_center_operations_compile
+            else
+              echo 'Host scopes unverified: shared host test compilation failed; see host-types-check.log.' > "$evidence/host-scopes-unverified.txt"
+              failed=1
+            fi
             run_crate_tests api-dependencies -p control-plane-postgres-tests --test dependency_boundaries
             # Unchanged D2/D3 sources remain protected by their focused affected owner cases.
             run_crate_tests application-facts -p control-plane-postgres-tests --test orchestration_runtime_integration application_lifecycle
@@ -427,7 +446,7 @@ jobs:
           fi
           test "$failed" = 0
       - name: Build matching system-event local verification candidate
-        if: (inputs.scope == 'full-api-events' || inputs.scope == 'event-business-mcp' || inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
+        if: ${{ always() && !cancelled() && (inputs.scope == 'full-api-events' || (success() && (inputs.scope == 'event-business-mcp' || inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage'))) }}
         shell: bash
         run: |
           set -euo pipefail
