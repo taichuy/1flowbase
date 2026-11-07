@@ -56,13 +56,15 @@ pub(super) async fn fixture() -> Fixture {
             .bind(id).bind(scope).bind(code).execute(&pool).await.unwrap();
     }
     for id in [role, department_role, foreign_role] {
-        sqlx::query("insert into user_role_bindings(id,user_id,role_id) values($1,$2,$3)")
+        // Binding scope belongs to its role, including the role in other_workspace.
+        let bound = sqlx::query("insert into user_role_bindings(id,user_id,role_id,scope_id) select $1,$2,id,scope_id from roles where id=$3")
             .bind(Uuid::now_v7())
             .bind(user)
             .bind(id)
             .execute(&pool)
             .await
             .unwrap();
+        assert_eq!(bound.rows_affected(), 1, "fixture role must exist");
     }
     let operations = vec![
         ManagedSchemaOperation::EnsureOwnedCollection {
