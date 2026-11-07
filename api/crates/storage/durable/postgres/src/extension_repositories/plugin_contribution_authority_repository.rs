@@ -281,6 +281,7 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
                 }
             }
             let binding = PluginDataBinding {
+                record_permissions: None,
                 managed_subject: None,
                 publisher_namespace: installation.organization.clone(),
                 plugin_code: installation.provider_code.clone(),
