@@ -56,6 +56,58 @@ async function saveNode(dialog: HTMLElement) {
   );
 }
 
+async function waitForDirectorySaveReady(dialog: HTMLElement) {
+  await waitForRequests();
+  return waitFor(() => {
+    // Ant Design keeps an inner loading state after the HTTP/mutation callbacks finish.
+    const save = within(dialog).getByRole('button', { name: '保存目录' });
+    expect(save).toBeEnabled();
+    expect(save).not.toHaveClass('ant-btn-loading');
+    expect(
+      within(dialog).getByRole('button', { name: '关闭目录编辑' })
+    ).toBeEnabled();
+    return save;
+  });
+}
+
+async function expandMountAncestors(
+  dialog: HTMLElement,
+  groupPath: string,
+  snapshot: ConsoleMcpInstanceDirectory
+) {
+  const ancestorPaths = ['/'];
+  let path = '';
+  for (const segment of groupPath.split('/').filter(Boolean)) {
+    path += `/${segment}`;
+    ancestorPaths.push(path);
+  }
+  for (const ancestorPath of ancestorPaths) {
+    const title =
+      ancestorPath === '/'
+        ? '/'
+        : snapshot.groups.find((group) => group.path === ancestorPath)
+            ?.display_name || ancestorPath.split('/').at(-1)!;
+    const currentItem = () => {
+      const tree = within(dialog).getByRole('tree');
+      const item = within(tree).getByTitle(title).closest('[role="treeitem"]');
+      expect(item).toBeInstanceOf(HTMLElement);
+      expect(item).toBeVisible();
+      return item as HTMLElement;
+    };
+    const item = await waitFor(currentItem);
+    if (item.getAttribute('aria-expanded') === 'false') {
+      const switcher = currentItem().querySelector<HTMLElement>(
+        ':scope > .ant-tree-switcher'
+      );
+      expect(switcher).toBeInstanceOf(HTMLElement);
+      await click(switcher!);
+    }
+    await waitFor(() =>
+      expect(currentItem()).toHaveAttribute('aria-expanded', 'true')
+    );
+  }
+}
+
 function expectNoImmediateWrites() {
   for (const method of [
     mcpManagementApi.upsertSettingsMcpGroup,
@@ -216,7 +268,7 @@ describe('instance directory confirmed tree and node form', () => {
       expect(
         within(dialog).queryByRole('textbox', { name: '显示名称' })
       ).not.toBeInTheDocument();
-      await click(within(dialog).getByRole('button', { name: '保存目录' }));
+      await click(await waitForDirectorySaveReady(dialog));
       await waitForRequests();
       expect(
         mcpManagementApi.replaceSettingsMcpInstanceDirectory
@@ -541,22 +593,36 @@ describe('instance directory confirmed tree and node form', () => {
   });
 
   test('AC-S2 deleting a mount changes only the draft until footer save', async () => {
+    const groupPath = '/ops/customer';
     const { dialog, snapshot } = await openDirectory({
       includeGroup: true,
-      bindingGroupPath: '/ops'
+      bindingGroupPath: groupPath
     });
-    const tree = within(dialog).getByRole('tree');
-    const groupItem = within(tree)
-      .getByText('ops')
-      .closest('[role="treeitem"]')!;
-    await click(groupItem.querySelector('.ant-tree-switcher')!);
-    const bindingLabel = await within(tree).findByText('search_customer');
-    const bindingItem = bindingLabel.closest(
-      '.ant-tree-node-content-wrapper'
-    ) as HTMLElement;
-    await click(within(bindingItem).getByRole('button', { name: 'Delete' }));
+    await expandMountAncestors(dialog, groupPath, snapshot);
+    const currentBindingItem = () => {
+      const tree = within(dialog).getByRole('tree');
+      return within(tree)
+        .getByText('search_customer')
+        .closest('[role="treeitem"]') as HTMLElement;
+    };
+    await waitFor(() => expect(currentBindingItem()).toBeVisible());
+    await click(within(currentBindingItem()).getByText('search_customer'));
+    await waitFor(() =>
+      expect(
+        within(dialog).getByRole('group', { name: '挂载路径' })
+      ).toHaveTextContent(`${groupPath}/search_customer`)
+    );
+    // Selecting a binding changes editor mode and can remount the tree; use its current row.
+    await waitFor(() => expect(currentBindingItem()).toBeVisible());
+    await click(
+      within(currentBindingItem()).getByRole('button', { name: 'Delete' })
+    );
     await click(screen.getByRole('button', { name: /^确\s*定$/ }));
-    await waitFor(() => expect(tree).not.toHaveTextContent('search_customer'));
+    await waitFor(() =>
+      expect(within(dialog).getByRole('tree')).not.toHaveTextContent(
+        'search_customer'
+      )
+    );
     expectNoImmediateWrites();
     expect(
       mcpManagementApi.replaceSettingsMcpInstanceDirectory
