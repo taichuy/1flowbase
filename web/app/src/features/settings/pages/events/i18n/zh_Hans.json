@@ -8,7 +8,6 @@
   "description": "说明",
   "payload_schema": "事件正文结构",
   "enabled": "启用",
-  "disabled": "停用",
   "save": "保存",
   "close": "关闭详情",
   "edit": "编辑",

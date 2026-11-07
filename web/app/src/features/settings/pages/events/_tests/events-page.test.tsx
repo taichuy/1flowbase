@@ -225,7 +225,8 @@ describe('event center configuration and observations', () => {
     expect(screen.queryByText('core.owner')).not.toBeInTheDocument();
     expect(screen.queryByText('core.point')).not.toBeInTheDocument();
     const row = screen.getByRole('row', { name: /Core ready/ });
-    expect(within(row).getByText('—')).toBeInTheDocument();
+    expect(within(row).getByRole('switch', { name: 'Enabled' })).toBeChecked();
+    expect(within(row).getByRole('switch', { name: 'Enabled' })).toBeDisabled();
     expect(
       within(row).queryByRole('button', { name: 'Edit' })
     ).not.toBeInTheDocument();
@@ -233,11 +234,111 @@ describe('event center configuration and observations', () => {
     const drawer = screen.getByRole('dialog');
     expect(within(drawer).getByText('core.owner')).toBeInTheDocument();
     expect(within(drawer).getByText('core.point')).toBeInTheDocument();
-    expect(within(drawer).getByText('—')).toBeInTheDocument();
-    expect(within(drawer).queryByRole('switch')).not.toBeInTheDocument();
+    expect(
+      within(drawer).getByRole('switch', { name: 'Enabled' })
+    ).toBeChecked();
+    expect(
+      within(drawer).getByRole('switch', { name: 'Enabled' })
+    ).toBeDisabled();
     expect(
       within(drawer).queryByText('Contract version')
     ).not.toBeInTheDocument();
+  });
+
+  test.each(['core', 'plugin'] as const)(
+    '%s events show an enabled disabled switch and never issue updates',
+    async (origin) => {
+      api.listEventCatalog.mockResolvedValue([
+        {
+          ...custom,
+          id: null,
+          origin,
+          enabled: null,
+          owner_id: `${origin}.owner`
+        }
+      ]);
+      renderPage();
+      const row = await screen.findByRole('row', { name: /Order/ });
+      const toggle = within(row).getByRole('switch', { name: 'Enabled' });
+      expect(toggle).toBeChecked();
+      expect(toggle).toBeDisabled();
+      fireEvent.click(toggle);
+      expect(api.updateEventDefinition).not.toHaveBeenCalled();
+    }
+  );
+
+  test('toggles a custom event both ways, preserves its definition and waits for the server', async () => {
+    let resolveUpdate!: (value: object) => void;
+    api.updateEventDefinition.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveUpdate = resolve;
+        })
+    );
+    renderPage();
+    const row = await screen.findByRole('row', { name: /Order/ });
+    const toggle = within(row).getByRole('switch', { name: 'Enabled' });
+    expect(toggle).not.toBeChecked();
+    expect(toggle).toBeEnabled();
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(api.updateEventDefinition).toHaveBeenCalledWith(
+        'definition',
+        {
+          name: 'Order',
+          description: 'New order',
+          payload_schema: schema,
+          enabled: true
+        },
+        'csrf'
+      )
+    );
+    expect(toggle).toBeDisabled();
+    expect(toggle).not.toBeChecked();
+    api.listEventCatalog.mockResolvedValue([{ ...custom, enabled: true }]);
+    await act(async () => resolveUpdate({ id: 'definition' }));
+    await waitFor(() => expect(toggle).toBeChecked());
+    await waitFor(() => expect(toggle).toBeEnabled());
+    api.listEventCatalog.mockResolvedValue([custom]);
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(api.updateEventDefinition).toHaveBeenLastCalledWith(
+        'definition',
+        {
+          name: 'Order',
+          description: 'New order',
+          payload_schema: schema,
+          enabled: false
+        },
+        'csrf'
+      )
+    );
+    await waitFor(() => expect(toggle).not.toBeChecked());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  test('a failed toggle keeps the server state and shows an error', async () => {
+    api.updateEventDefinition.mockRejectedValueOnce(new Error('update failed'));
+    renderPage();
+    const row = await screen.findByRole('row', { name: /Order/ });
+    const toggle = within(row).getByRole('switch', { name: 'Enabled' });
+    fireEvent.click(toggle);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The event could not be saved.'
+    );
+    expect(toggle).not.toBeChecked();
+    expect(toggle).toBeEnabled();
+  });
+
+  test('custom event switches respect update permissions', async () => {
+    access.operations.delete('events.definitions.update');
+    renderPage();
+    const row = await screen.findByRole('row', { name: /Order/ });
+    const toggle = within(row).getByRole('switch', { name: 'Enabled' });
+    expect(toggle).not.toBeChecked();
+    expect(toggle).toBeDisabled();
+    fireEvent.click(toggle);
+    expect(api.updateEventDefinition).not.toHaveBeenCalled();
   });
 
   test.each([schema, {}, true, false, null])(
