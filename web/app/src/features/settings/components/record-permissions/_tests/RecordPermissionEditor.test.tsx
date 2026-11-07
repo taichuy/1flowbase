@@ -67,11 +67,13 @@ beforeEach(async () => {
 describe('RecordPermissionEditor', () => {
   test('keeps inherited permission mode explicit and sends no role policy on cancel', async () => {
     const callbacks = editor();
-    expect(
-      await screen.findByText(
-        'This record uses the roles’ existing API permissions.'
-      )
-    ).toBeVisible();
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'This record uses the roles’ existing API permissions.'
+        )
+      ).toBeVisible()
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(callbacks.onCancel).toHaveBeenCalledOnce();
     expect(replaceRecordPermissions).not.toHaveBeenCalled();
@@ -275,15 +277,21 @@ describe('RecordPermissionEditor', () => {
         locale === 'zh_Hans'
           ? ['查看', '编辑', '打开', '删除']
           : ['View', 'Edit', 'Open', 'Delete'];
-      for (const label of labels)
+      for (const label of labels) {
+        const checkbox = await screen.findByRole('checkbox', {
+          name: `Operator ${label}`
+        });
+        // Ant Design intentionally makes the native input transparent; users interact with its label.
+        await waitFor(() => expect(checkbox.closest('label')).toBeVisible());
+        expect(checkbox).toBeEnabled();
+      }
+      await waitFor(() =>
         expect(
-          await screen.findByRole('checkbox', { name: `Operator ${label}` })
-        ).toBeVisible();
-      expect(
-        within(screen.getByRole('dialog')).getByText(
-          locale === 'zh_Hans' ? '权限' : 'Permissions'
-        )
-      ).toBeVisible();
+          within(screen.getByRole('dialog')).getByText(
+            locale === 'zh_Hans' ? '权限' : 'Permissions'
+          )
+        ).toBeVisible()
+      );
     }
   );
 });
