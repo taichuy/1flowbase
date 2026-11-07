@@ -31,7 +31,10 @@ impl ApiEventInput for MembershipInput {
     fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::ListMemberRoleOptions | Self::GetWorkspace | Self::ListWorkspaces => json!({}),
-            Self::ListMembers { department_id } => json!({"query":{"department_id":department_id}}),
+            Self::ListMembers { department_id } => match department_id {
+                Some(id) => json!({"query":{"department_id":id}}),
+                None => json!({"query":{}}),
+            },
             Self::CreateMember(body) => json!({"body": event::to_value(&CreateMemberEvent {
                 account:&body.account, email:&body.email, phone:&body.phone, name:&body.name,
                 nickname:&body.nickname, introduction:&body.introduction,
