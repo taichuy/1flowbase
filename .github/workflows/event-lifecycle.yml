@@ -307,6 +307,7 @@ jobs:
             run_tests api-codecs-console --test api_private_routes event_projection
             run_tests api-codecs-public --test api_public_api event_projection
             run_tests api-document-codecs-public --test api_public_api document_projection
+            run_tests api-compatibility-http-result --test api_public_api compatibility_interface::http_result
             run_tests api-compatibility-contract --test api_private_contracts compatibility_interface
             run_tests api-protocol-projection --test api_public_api protocol_projection
             test "$failed" = 0
