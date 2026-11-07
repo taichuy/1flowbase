@@ -784,3 +784,20 @@ fn map_engine_error(error: anyhow::Error) -> anyhow::Error {
 
     error
 }
+
+impl crate::event_center::api_projection::ApiEventInput for FrontstageDataCapabilitiesInput {
+    fn project_document_input(
+        &self,
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(crate::routes::frontstage::event_projection::empty())
+    }
+}
+impl crate::event_center::api_projection::ApiEventOutput for FrontstageDataCapabilitiesOutput {
+    fn project_document_output(
+        &self,
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        crate::event_center::api_projection::to_value(&self.0)
+    }
+}

@@ -1028,3 +1028,120 @@ pub(crate) fn compile_registry(
         Arc::new(FrontstagePagesAdapter(dependencies)),
     )
 }
+
+impl crate::event_center::api_projection::ApiEventInput for FrontstagePagesInput {
+    fn project_document_input(
+        &self,
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::List | Self::ListUiTemplates => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({}),
+                    serde_json::json!({}),
+                    None,
+                )
+            }
+            Self::CreateGroup(body) => crate::routes::frontstage::event_projection::request(
+                serde_json::json!({}),
+                serde_json::json!({}),
+                Some(crate::event_center::api_projection::to_value(body)?),
+            ),
+            Self::CreatePage(body, _locale) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({}),
+                    serde_json::json!({}),
+                    Some(crate::event_center::api_projection::to_value(body)?),
+                )
+            }
+            Self::Detail(page_id, tab_reference, _locale) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"tab_reference":tab_reference}),
+                    serde_json::json!({}),
+                    None,
+                )
+            }
+            Self::Delete(page_id) => crate::routes::frontstage::event_projection::request(
+                serde_json::json!({"page_id":page_id}),
+                serde_json::json!({}),
+                None,
+            ),
+            Self::ListTabs(page_id, _locale) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id}),
+                    serde_json::json!({}),
+                    None,
+                )
+            }
+            Self::Update(page_id, body) => crate::routes::frontstage::event_projection::request(
+                serde_json::json!({"page_id":page_id}),
+                serde_json::json!({}),
+                Some(crate::event_center::api_projection::to_value(body)?),
+            ),
+            Self::Move(page_id, body) => crate::routes::frontstage::event_projection::request(
+                serde_json::json!({"page_id":page_id}),
+                serde_json::json!({}),
+                Some(crate::event_center::api_projection::to_value(body)?),
+            ),
+            Self::CreateTab(page_id, body) => crate::routes::frontstage::event_projection::request(
+                serde_json::json!({"page_id":page_id}),
+                serde_json::json!({}),
+                Some(crate::event_center::api_projection::to_value(body)?),
+            ),
+            Self::UpdateTab(page_id, tab_id, body) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"tab_id":tab_id}),
+                    serde_json::json!({}),
+                    Some(crate::event_center::api_projection::to_value(body)?),
+                )
+            }
+            Self::SaveDocument(page_id, tab_id, body) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"tab_id":tab_id}),
+                    serde_json::json!({}),
+                    Some(crate::event_center::api_projection::to_value(body)?),
+                )
+            }
+            Self::DispatchQuery(page_id, tab_id, body) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"tab_id":tab_id}),
+                    serde_json::json!({}),
+                    Some(crate::event_center::api_projection::to_value(body)?),
+                )
+            }
+            Self::DispatchAction(page_id, tab_id, body) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"tab_id":tab_id}),
+                    serde_json::json!({}),
+                    Some(crate::event_center::api_projection::to_value(body)?),
+                )
+            }
+            Self::DeleteTab(page_id, tab_id) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"tab_id":tab_id}),
+                    serde_json::json!({}),
+                    None,
+                )
+            }
+        })
+    }
+}
+
+impl crate::event_center::api_projection::ApiEventOutput for FrontstagePagesOutput {
+    fn project_document_output(
+        &self,
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::Tree(value) => crate::event_center::api_projection::to_value(value),
+            Self::Page(value) => crate::event_center::api_projection::to_value(value),
+            Self::Creation(value) => crate::event_center::api_projection::to_value(value),
+            Self::Detail(value) => crate::event_center::api_projection::to_value(value),
+            Self::Tabs(value) => crate::event_center::api_projection::to_value(value),
+            Self::Tab(value) => crate::event_center::api_projection::to_value(value),
+            Self::UiTemplates(value) => crate::event_center::api_projection::to_value(value),
+            Self::Json(value) => crate::event_center::api_projection::to_value(value),
+            Self::NoContent => Ok(serde_json::Value::Null),
+        }
+    }
+}

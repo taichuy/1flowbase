@@ -1,7 +1,7 @@
 use super::*;
 use control_plane::frontstage as source;
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Deserialize, IntoParams, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SearchFrontstageBlockCodeQuery {
     pub query: String,
@@ -17,14 +17,14 @@ fn default_code_search_limit() -> u32 {
     20
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FrontstageSourceTextEditBody {
     pub old_text: String,
     pub new_text: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReplaceFrontstageBlockCodeBody {
     pub expected_source_revision: String,

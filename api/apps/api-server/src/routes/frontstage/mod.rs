@@ -7,6 +7,7 @@ pub(crate) mod callable_interface_dispatch;
 pub mod callable_interfaces;
 pub mod components;
 pub mod data_capabilities;
+pub(crate) mod event_projection;
 pub(crate) mod interface_pages;
 
 use axum::{
@@ -138,7 +139,7 @@ pub struct FrontstagePageDetailResponse {
     pub document: FrontstageTabDocumentResponse,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateFrontstageGroupBody {
     pub title: Option<String>,
     pub icon: Option<String>,
@@ -150,7 +151,7 @@ pub struct CreateFrontstageGroupBody {
     pub slug: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateFrontstagePageBody {
     pub title: Option<String>,
     pub icon: Option<String>,
@@ -162,22 +163,25 @@ pub struct CreateFrontstagePageBody {
     pub slug: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateFrontstagePageMetadataBody {
     #[serde(
         default,
         deserialize_with = "crate::routes::helpers::deserialize_present_optional"
     )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<Option<String>>,
     #[serde(
         default,
         deserialize_with = "crate::routes::helpers::deserialize_present_optional"
     )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<Option<String>>,
     #[serde(
         default,
         deserialize_with = "crate::routes::helpers::deserialize_present_optional"
     )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tooltip: Option<Option<String>>,
     pub is_hidden: Option<bool>,
     pub show_title: Option<bool>,
@@ -187,10 +191,11 @@ pub struct UpdateFrontstagePageMetadataBody {
         default,
         deserialize_with = "crate::routes::helpers::deserialize_present_optional"
     )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub slug: Option<Option<String>>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct MoveFrontstagePageBody {
     pub placement: Option<FrontstageNavigationPlacementResponse>,
     pub parent_id: Option<String>,
@@ -199,24 +204,25 @@ pub struct MoveFrontstagePageBody {
     pub after_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateFrontstagePageTabBody {
     pub title: Option<String>,
     pub route_segment: Option<String>,
     pub rank: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateFrontstagePageTabBody {
     #[serde(
         default,
         deserialize_with = "crate::routes::helpers::deserialize_present_optional"
     )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<Option<String>>,
     pub rank: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SaveFrontstageTabDocumentBody {
     pub payload: Value,
 }
@@ -235,14 +241,14 @@ pub struct FrontstageUiTemplateResponse {
     pub is_default: bool,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DispatchFrontstageQueryBody {
     pub query_id: String,
     #[serde(default)]
     pub params: Value,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DispatchFrontstageActionBody {
     pub action_id: String,
     #[serde(default)]

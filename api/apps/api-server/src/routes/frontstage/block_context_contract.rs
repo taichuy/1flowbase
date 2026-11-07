@@ -363,3 +363,20 @@ pub async fn get_frontstage_block_context_contract(
     .await?;
     Ok(Json(ApiSuccess::new(contract)))
 }
+
+impl crate::event_center::api_projection::ApiEventInput for BlockContextContractInput {
+    fn project_document_input(
+        &self,
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(crate::routes::frontstage::event_projection::empty())
+    }
+}
+impl crate::event_center::api_projection::ApiEventOutput for BlockContextContractResponse {
+    fn project_document_output(
+        &self,
+        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        crate::event_center::api_projection::to_value(self)
+    }
+}

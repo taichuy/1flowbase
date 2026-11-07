@@ -152,27 +152,31 @@ pub async fn list_frontstage_interface_capabilities(
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
         crate::routes::frontstage::callable_interface_catalog::FrontstageCallableCatalogInput::List(query),
     ).await? else { unreachable!() };
-    Ok(Json(ApiSuccess::new(
-        FrontstageInterfaceCapabilityPageResponse {
-            items: page
-                .items
-                .into_iter()
-                .map(|entry| FrontstageInterfaceCapabilitySummaryResponse {
-                    interface_id: entry.interface_id,
-                    method: entry.method,
-                    path: entry.path,
-                    adapter_id: entry.source.adapter_id().to_string(),
-                })
-                .collect(),
-            total: page.total,
-            offset: page.offset,
-            limit: page.limit,
-            has_more: page.has_more,
-            next_offset: page.next_offset,
-            adapter_ids: page.adapter_ids,
-            methods: page.methods,
-        },
-    )))
+    Ok(Json(ApiSuccess::new(page_response(page))))
+}
+
+pub(super) fn page_response(
+    page: crate::openapi_interface::OpenApiCapabilityCatalogPage,
+) -> FrontstageInterfaceCapabilityPageResponse {
+    FrontstageInterfaceCapabilityPageResponse {
+        items: page
+            .items
+            .into_iter()
+            .map(|entry| FrontstageInterfaceCapabilitySummaryResponse {
+                interface_id: entry.interface_id,
+                method: entry.method,
+                path: entry.path,
+                adapter_id: entry.source.adapter_id().to_string(),
+            })
+            .collect(),
+        total: page.total,
+        offset: page.offset,
+        limit: page.limit,
+        has_more: page.has_more,
+        next_offset: page.next_offset,
+        adapter_ids: page.adapter_ids,
+        methods: page.methods,
+    }
 }
 
 #[utoipa::path(
@@ -200,9 +204,13 @@ pub async fn get_frontstage_interface_capability(
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
         crate::routes::frontstage::callable_interface_catalog::FrontstageCallableCatalogInput::Get { interface_id },
     ).await? else { unreachable!() };
-    Ok(Json(ApiSuccess::new(to_response(registered_callable(
-        entry,
-    )))))
+    Ok(Json(ApiSuccess::new(entry_response(entry))))
+}
+
+pub(super) fn entry_response(
+    entry: OpenApiCapabilityCatalogEntry,
+) -> FrontstageInterfaceCapabilityResponse {
+    to_response(registered_callable(entry))
 }
 
 fn registered_callable(entry: OpenApiCapabilityCatalogEntry) -> RegisteredCallable {
