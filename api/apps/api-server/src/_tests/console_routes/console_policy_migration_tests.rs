@@ -873,6 +873,8 @@ fn event_center_operations_compile_as_new_authority_without_legacy_grants() {
         "events.definitions.create",
         "events.definitions.update",
         "events.runtime.get",
+        "events.api_operations.list",
+        "events.api_operations.get",
     ];
     for operation_id in operation_ids {
         let disposition = migration.disposition(operation_id).unwrap();
@@ -883,9 +885,9 @@ fn event_center_operations_compile_as_new_authority_without_legacy_grants() {
         if let ConsolePolicyMigrationLegacyGrantProjection::Operations(operations) =
             &mapping.projection
         {
-            assert!(operations.iter().all(|operation| {
-                !operation_ids.contains(&operation.operation_id().as_str())
-            }));
+            assert!(operations
+                .iter()
+                .all(|operation| { !operation_ids.contains(&operation.operation_id().as_str()) }));
         }
     }
 }

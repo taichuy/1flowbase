@@ -72,6 +72,16 @@ Legacy free-schema records remain readable and retain their existing publication
 
 Publication reports admission per subscription. Zero targets is valid but does not retain events for future subscribers. Partial rejection does not roll back other targets or automatically retry all targets. A consumption fact and admission of its observer workflow are separate outcomes. An uncertain prior command attempt is not blindly published again.
 
+## Events from the complete API catalog
+
+New rules use the same backend API documentation source as MCP interface wrapping, including static APIs, published data-model operations and published workflows. Options show the API name, HTTP method and path. Internal owner groups are not name prefixes. Existing IDs such as `notifications.instances.send` retain their meaning.
+
+`GET /api/console/events/api-operations` returns lightweight metadata. Request the selected `operation_id` beneath that path for phase schemas. These endpoints have independent Events permissions and do not require MCP management access. Discovery retains the complete source set regardless of MCP bindability. Each phase reports its actual availability, including binary transfers, credential boundaries, missing documentation or missing stream terminal contracts. Stream frames and logical completion results have separate owner-declared schemas.
+
+New rules store `interface_event: { operation_id, phase, results? }`. Before events expose actual parameters at `input.path/query/body`. Completion events identify the real terminal and include the declared business result on success. Schemas inherit the API documentation; explicit owner credential exclusions apply to both schema and values. Headers, passwords, access tokens and native handles do not become ordinary event fields.
+
+Existing rules retain `interface_id`, canonical matching, their saved schemas and workflow mappings. Renaming or toggling them does not migrate the binding. The two identities cannot be mixed. Dynamic models bind the actual model and operation; workflows bind the actual application. Authorization and execution share a frozen target snapshot and generation, so a generic CRUD or workflow binding cannot cross-trigger another target's rule. An unchanged rule can still be disabled after its target is withdrawn.
+
 ## Host resource policy
 
 `API_EVENT_CENTER_POLICY` accepts an explicit JSON host policy. There is no guessed production capacity default. Without a policy, configuration remains available but the runtime is unavailable; the page reports that condition. Restart the host after changing the policy.
@@ -106,7 +116,7 @@ The only new tables store configuration: `event_definitions` belongs to the `sys
 
 ## Verification
 
-The `event-business` scope in `event-lifecycle.yml` runs the focused business-event Test Batch and retains the exact source SHA, nonzero test results, and matching host candidate. Interface observation, application terminals, credit filters, communication deduplication/results, and permissions have separate evidence; source checks do not replace runtime verification.
+The `full-api-events` scope in `event-lifecycle.yml` runs the assembled API-event Test Batch. `full-api-events-types` collects compile diagnostics only. The existing `event-business` scope runs the business-event Test Batch and retains the exact source SHA, nonzero test results, and matching host candidate. Interface observation, application terminals, credit filters, communication deduplication/results, and permissions have separate evidence; source checks do not replace runtime verification.
 
 Implementation evidence comes from event-service unit tests, the `event_center_configuration` PostgreSQL target, event routes in `api_system_settings`, event workflow/communication cases in `api_private_contracts`, frontend feature tests and page-debug evidence. Finite design models do not replace implementation tests.
 

@@ -13,7 +13,7 @@ on:
         description: Full acceptance or a scoped evidence supplement
         type: choice
         default: full
-        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp]
+        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp, full-api-events-types, full-api-events]
 
       reused_api_tree:
         description: Unchanged api tree hash from the prior green host evidence (finish scope only)
@@ -35,7 +35,7 @@ env:
 
 jobs:
   acceptance:
-    if: inputs.scope != 'event-business-mcp' && inputs.scope != 'event-business-finish' && inputs.scope != 'event-business-host' && inputs.scope != 'event-business' && inputs.scope != 'event-center' && inputs.scope != 'event-center-supplement' && inputs.scope != 'system-event-center' && inputs.scope != 'system-event-center-supplement' && inputs.scope != 'system-event-center-lineage'
+    if: inputs.scope != 'full-api-events-types' && inputs.scope != 'full-api-events' && inputs.scope != 'event-business-mcp' && inputs.scope != 'event-business-finish' && inputs.scope != 'event-business-host' && inputs.scope != 'event-business' && inputs.scope != 'event-center' && inputs.scope != 'event-center-supplement' && inputs.scope != 'system-event-center' && inputs.scope != 'system-event-center-supplement' && inputs.scope != 'system-event-center-lineage'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -162,7 +162,7 @@ jobs:
           path: tmp/test-governance/event-lifecycle/ci
 
   event-center-acceptance:
-    if: inputs.scope == 'event-business-mcp' || inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'event-center' || inputs.scope == 'event-center-supplement' || (inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
+    if: inputs.scope == 'full-api-events-types' || inputs.scope == 'full-api-events' || inputs.scope == 'event-business-mcp' || inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'event-center' || inputs.scope == 'event-center-supplement' || (inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -207,9 +207,17 @@ jobs:
           jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
           echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
       - name: Fetch locked dependencies for offline boundary audit
-        if: inputs.scope == 'event-business' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business-finish'
+        if: inputs.scope == 'full-api-events-types' || inputs.scope == 'full-api-events' || inputs.scope == 'event-business' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business-finish'
         run: |
           cargo fetch --locked --manifest-path api/Cargo.toml > tmp/test-governance/event-center/ci/dependency-fetch.log 2>&1 || { tail -c 7000 tmp/test-governance/event-center/ci/dependency-fetch.log; exit 1; }
+      - name: Collect full API event type diagnostics without behavior acceptance
+        if: inputs.scope == 'full-api-events-types'
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence=tmp/test-governance/event-center/ci
+          cargo check --locked --manifest-path api/Cargo.toml -p api-server -p interface-runtime -p runtime-core -p control-plane -p domain -p control-plane-postgres-tests --features api-server/test-support --tests --keep-going > "$evidence/full-api-types.log" 2>&1 || { tail -c 18000 "$evidence/full-api-types.log"; exit 1; }
+          echo 'Compile diagnostics only; no behavioral acceptance.' > "$evidence/compile-only.txt"
       - name: Compile affected host targets and prepare existing managed worker
         if: inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage'
         shell: bash
@@ -253,6 +261,7 @@ jobs:
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker > "$evidence/managed-worker-build.log" 2>&1 || { tail -c 7000 "$evidence/managed-worker-build.log"; exit 1; }
           echo "MANAGED_EVENT_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - name: Event Center host and affected route acceptance
+        if: inputs.scope != 'full-api-events-types'
         shell: bash
         env:
           EVIDENCE_SCOPE: ${{ inputs.scope }}
@@ -281,7 +290,33 @@ jobs:
               failed=1
             fi
           }
-          if [ "$EVIDENCE_SCOPE" = event-business-mcp ]; then
+          if [ "$EVIDENCE_SCOPE" = full-api-events ]; then
+            # One assembled candidate, finite behavioral batch; no per-family QA runs.
+            run_crate_tests api-kernel -p interface-runtime --lib event_observation
+            test "$failed" = 0
+            run_crate_tests api-domain -p domain --lib event_center
+            run_crate_tests api-configuration -p control-plane --lib event_center
+            run_crate_tests api-workflow-prepare -p control-plane --lib workflow_extension
+            run_crate_tests api-model-snapshot -p runtime-core --lib runtime_model_
+            run_crate_tests api-pg-configuration -p control-plane-postgres-tests --test event_center_configuration
+            test "$failed" = 0
+            run_tests api-catalog-observer --test api_private_contracts event_center
+            test "$failed" = 0
+            run_tests api-codecs-core --lib event_projection
+            run_tests api-document-owner --lib openapi_docs::cache
+            run_tests api-codecs-console --test api_private_routes event_projection
+            run_tests api-codecs-public --test api_public_api event_projection
+            test "$failed" = 0
+            run_tests api-event-routes --test api_system_settings event_center
+            run_tests api-workflow-routes --test api_application workflow_extension
+            run_tests api-mcp-directory --test api_mcp_management interface_capabilities
+            run_tests api-authorization --test api_console event_center_operations_compile
+            run_crate_tests api-dependencies -p control-plane-postgres-tests --test dependency_boundaries
+            # Unchanged D2/D3 sources remain protected by their focused affected owner cases.
+            run_crate_tests application-facts -p control-plane-postgres-tests --test orchestration_runtime_integration application_lifecycle
+            run_crate_tests communication-facts -p control-plane-postgres-tests --test notifications_integration lifecycle
+            run_crate_tests credit-facts -p control-plane --lib lifecycle_outbox_dispatcher::source_observation_tests
+          elif [ "$EVIDENCE_SCOPE" = event-business-mcp ]; then
             run_tests rules-mcp --test api_system_settings event_center
           elif [ "$EVIDENCE_SCOPE" = event-business-finish ]; then
             [[ "$REUSED_API_TREE" =~ ^[0-9a-f]{40}$ ]]
@@ -383,12 +418,12 @@ jobs:
             run_tests command-workflow --lib communication_runtime::commands
             run_tests applications --test api_application workflow
           fi
-          if [ "$EVIDENCE_SCOPE" != event-business-mcp ] && [ "$EVIDENCE_SCOPE" != event-business-finish ] && [ "$EVIDENCE_SCOPE" != event-business-host ] && [ "$EVIDENCE_SCOPE" != event-business ] && [ "$EVIDENCE_SCOPE" != system-event-center-supplement ] && [ "$EVIDENCE_SCOPE" != system-event-center-lineage ]; then
+          if [ "$EVIDENCE_SCOPE" != full-api-events ] && [ "$EVIDENCE_SCOPE" != event-business-mcp ] && [ "$EVIDENCE_SCOPE" != event-business-finish ] && [ "$EVIDENCE_SCOPE" != event-business-host ] && [ "$EVIDENCE_SCOPE" != event-business ] && [ "$EVIDENCE_SCOPE" != system-event-center-supplement ] && [ "$EVIDENCE_SCOPE" != system-event-center-lineage ]; then
             run_tests communications --test api_private_routes routes::communications
           fi
           test "$failed" = 0
       - name: Build matching system-event local verification candidate
-        if: (inputs.scope == 'event-business-mcp' || inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
+        if: (inputs.scope == 'full-api-events' || inputs.scope == 'event-business-mcp' || inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
         shell: bash
         run: |
           set -euo pipefail

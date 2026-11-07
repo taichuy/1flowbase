@@ -108,14 +108,7 @@ async fn event_center_mcp_rules_use_declared_dto_fields() {
             .find(|entry| entry["interface_id"] == operation)
             .unwrap();
         let descriptors = entry["parameter_descriptors"].as_array().unwrap();
-        for name in [
-            "name",
-            "description",
-            "enabled",
-            "interface_event.interface_id",
-            "interface_event.phase",
-            "interface_event.results",
-        ] {
+        for name in ["name", "description", "enabled", "interface_event"] {
             assert!(
                 descriptors.iter().any(|field| field["name"] == name),
                 "{operation} must expose the actual DTO field {name}: {entry}"
@@ -127,14 +120,24 @@ async fn event_center_mcp_rules_use_declared_dto_fields() {
         );
         let binding =
             &entry["parameter_schema"]["properties"]["body"]["properties"]["interface_event"];
-        assert_eq!(
-            binding["properties"]["phase"]["enum"],
-            json!(["before", "completion"])
-        );
-        assert_eq!(
-            binding["properties"]["results"]["items"]["enum"],
-            json!(["completed", "failed", "rejected", "cancelled"])
-        );
+        let wire = binding.to_string();
+        for field in [
+            "operation_id",
+            "interface_id",
+            "phase",
+            "before",
+            "completion",
+            "results",
+            "completed",
+            "failed",
+            "rejected",
+            "cancelled",
+        ] {
+            assert!(
+                wire.contains(field),
+                "typed API/legacy union must expose {field}: {binding}"
+            );
+        }
         let mappings: Vec<_> = descriptors
             .iter()
             .map(|field| {
@@ -606,7 +609,7 @@ async fn interface_rules_publish_actual_call_values_once_and_keep_result_and_wor
                 entry["origin"] == "core"
                     && entry["interface_event"]["interface_id"] == "applications.list"
                     && entry["interface_event"]["phase"]
-                        == serde_json::to_value(rule.interface_event.as_ref().unwrap().phase)
+                        == serde_json::to_value(rule.interface_event.as_ref().unwrap().phase())
                             .unwrap()
             })
             .expect("compiled generation advertises the selected capability");
@@ -707,3 +710,6 @@ async fn interface_rules_publish_actual_call_values_once_and_keep_result_and_wor
     assert!(before_subscription.try_recv().unwrap().is_none());
     assert!(completion_subscription.try_recv().unwrap().is_none());
 }
+
+#[path = "event_center_routes/api_operations.rs"]
+mod api_operations;

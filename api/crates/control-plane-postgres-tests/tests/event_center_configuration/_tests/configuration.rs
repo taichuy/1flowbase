@@ -12,11 +12,10 @@ fn input() -> CreateEventDefinitionInput {
     CreateEventDefinitionInput {
         name: "Order interface observed".into(),
         description: "Event configuration fixture".into(),
-        interface_event: InterfaceEventBinding {
-            interface_id: "orders.create".into(),
-            phase: InterfaceEventPhase::Before,
-            results: Vec::new(),
-        },
+        interface_event: InterfaceEventBinding::legacy(
+            "orders.create",
+            InterfaceEventPhase::Before,
+        ),
         enabled: true,
     }
 }
@@ -134,7 +133,8 @@ async fn definitions_roundtrip_with_workspace_scoped_identity_and_namespace_cons
         .await
         .is_ok());
     let mut unavailable = input();
-    unavailable.interface_event.interface_id = "orders.undeclared".into();
+    unavailable.interface_event =
+        InterfaceEventBinding::legacy("orders.undeclared", InterfaceEventPhase::Before);
     assert!(service
         .create_definition(&owner, unavailable)
         .await

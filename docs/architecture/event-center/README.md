@@ -60,9 +60,19 @@
 
 旧自由事件定义保持可读及原发布契约；缺少 `interface_event` 的旧记录在编辑器中只读，不借旧入口新建自由 Schema。通信指令的原发布契约只适用于旧自由事件，不允许伪造接口规则的调用事实。增量迁移只增加 nullable 规则元数据，不删除其他环境配置。当前开发库盘点未发现旧定义、触发器或通信事件绑定引用，这不代表所有环境均为空。
 
+## 完整 API 接口事件
+
+新建规则的接口目录与 MCP 的接口封装功能共用后端 API 文档源，包括静态接口、已发布数据模型操作和已发布 Workflow。选项显示 API 名称、HTTP 方法及路径；内部 owner 分组不作为接口名前缀，原有接口 ID（例如 `notifications.instances.send`）保持原义。
+
+`GET /api/console/events/api-operations` 返回轻量目录；按 `operation_id` 请求同路径的详情获取所选阶段 Schema。两个入口独立归属事件设置权限，不要求 MCP 管理权限。目录完整性与阶段可用性分别表达：不按 MCP 的可封装状态过滤，二进制、凭据、缺少文档或真实流终态等限制提供具体原因。流事件帧的结构和调用完成结果的结构分别由各自 owner 声明。
+
+新规则保存 `interface_event: { operation_id, phase, results? }`。请求前的事件提供实际参数位置 `input.path/query/body`；完成事件提供真实终态，成功时提供 owner 声明的实际业务结果。字段 Schema 继承 API 文档，凭据字段由接口 owner 显式排除且同步反映到 Schema；headers、密码、访问 token 和 native handle 不进入普通事件。
+
+既有规则仍保存 `interface_id`，继续匹配原 Canonical Interface，沿用原 Schema 和工作流映射。修改名称或启停不会自动切换到新规则。新旧身份不能混填。动态模型按实际 model 与 operation 区分，工作流按实际应用区分；执行前冻结已授权目标与代次，观察和执行使用同一快照。同一个通用 CRUD 或工作流 binding 不会让不同模型、应用的规则串线。停用目标撤回后保持绑定不变的规则仍可完成。
+
 ## 使用路径
 
-1. 在事件目录新建接口事件规则：选择已声明的 Canonical Interface 操作，再选“请求前”或“响应结束后”；响应结束可筛选全部或指定终态。填写名称，查看继承的只读 Schema。事件标识由后端生成，不再自由填写 `custom.*` 或 Schema。用户规则在有更新权限时可启停；系统与插件统一显示开启且禁用的开关。
+1. 在事件目录新建接口事件规则：从完整 API 文档目录选择具体接口（名称、HTTP 方法与路径），再选“请求前”或“响应结束后”；响应结束可筛选全部或指定终态。填写名称，查看继承的只读 Schema。事件标识由后端生成，不再自由填写 `custom.*` 或 Schema。用户规则在有更新权限时可启停；系统与插件统一显示开启且禁用的开关。
 2. 在应用中创建 Workflow，选择 Event 触发类型，保存事件、阶段与输入映射，再发布工作流。未发布、无权限或来源不可用时不激活订阅，当前队列页显示原因。
 3. 输入映射使用 RFC6901 指针，例如 `/payload/order_id`；沿用现有 Start 的 string/number/boolean 输入规则。只把明确映射的输入和必要事件标识写入工作流运行，不额外保存完整事件正文。
 4. 通信绑定可新增 `user/<name>` 指令，并映射 `/arguments`、`/input_id`、`/conversation_id`、`/instance_id` 到事件字段。底座、插件与用户指令不能重名；不覆盖 `/new`、`/model` 或 `/help`。
@@ -104,7 +114,7 @@
 
 ## 验证入口
 
-本轮业务事件的集中验证入口为 `event-lifecycle.yml` 的 `event-business` scope，保存精确 source SHA、非零测试结果和匹配的宿主候选产物。接口观察、应用终态、积分筛选、通信去重/结果与权限分别验证；源码检查不代替运行结果。
+完整 API 纠偏的集中验证入口为 `event-lifecycle.yml` 的 `full-api-events` scope；`full-api-events-types` 仅收集类型诊断，不是行为验收。既有业务事件使用 `event-business` scope，保存精确 source SHA、非零测试结果和匹配的宿主候选产物。接口观察、应用终态、积分筛选、通信去重/结果与权限分别验证；源码检查不代替运行结果。
 
 行为证据分为事件服务单元测试、`event_center_configuration` PostgreSQL target、`api_system_settings` 的 event center 路由用例、`api_private_contracts` 的 event workflow/communication 用例，以及对应前端 feature 测试和 page-debug 页面证据。有限设计模型不替代这些实现测试。
 

@@ -148,11 +148,10 @@ fn communication_command_cannot_fabricate_an_interface_invocation_fact() {
     let workspace = Uuid::now_v7();
     let command = binding();
     let mut target = event(workspace);
-    target.interface_event = Some(InterfaceEventBinding {
-        interface_id: "applications.list".into(),
-        phase: InterfaceEventPhase::Before,
-        results: Vec::new(),
-    });
+    target.interface_event = Some(InterfaceEventBinding::legacy(
+        "applications.list",
+        InterfaceEventPhase::Before,
+    ));
     assert!(definition(&command, &[target.clone()], workspace).is_none());
     assert!(communication_event_payload(
         &command,
