@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 473,
+  "projected_interface_count": 475,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -728,6 +728,18 @@
       "GET",
       "/api/console/events",
       "List registered event definitions"
+    ],
+    [
+      "events.api_operations.list",
+      "GET",
+      "/api/console/events/api-operations",
+      "List API event operations"
+    ],
+    [
+      "events.api_operations.get",
+      "GET",
+      "/api/console/events/api-operations/:operation_id",
+      "Read API event operation details"
     ],
     [
       "events.runtime.get",

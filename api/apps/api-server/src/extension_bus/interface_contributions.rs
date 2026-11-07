@@ -796,6 +796,8 @@ pub(crate) fn production_interface_contributions(
         InterfaceRegistryContribution::new(
             "api-server.console-events",
             &[
+                "events.api_operations.list",
+                "events.api_operations.get",
                 "events.catalog.list",
                 "events.definitions.create",
                 "events.definitions.update",

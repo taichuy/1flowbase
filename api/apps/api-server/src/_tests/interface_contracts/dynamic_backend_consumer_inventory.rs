@@ -122,6 +122,8 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     // from this fixture. Their exact summaries and descriptions are also
                     // absent from the pinned seed; await an official catalog release.
                     | "events.catalog.list"
+                    | "events.api_operations.list"
+                    | "events.api_operations.get"
                     | "events.definitions.create"
                     | "events.definitions.update"
                     | "events.runtime.get"
