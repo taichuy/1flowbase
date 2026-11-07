@@ -10,6 +10,8 @@ pub struct EventCenterConfigurationService<R> {
     repository: R,
     registered_events: Vec<EventCatalogEntry>,
     registered_workspace_id: Option<Uuid>,
+    api_operations: Vec<ApiEventOperationDetails>,
+    api_workspace_id: Option<Uuid>,
 }
 
 impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
@@ -18,6 +20,8 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
             repository,
             registered_events: Vec::new(),
             registered_workspace_id: None,
+            api_operations: Vec::new(),
+            api_workspace_id: None,
         }
     }
 
@@ -32,7 +36,21 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
             repository,
             registered_events,
             registered_workspace_id: Some(workspace_id),
+            api_operations: Vec::new(),
+            api_workspace_id: None,
         }
+    }
+
+    /// Host supplies authorized details for the selected documented operation. The operation
+    /// catalog and its typed codecs remain owned by the host; this service owns saved rules.
+    pub fn with_api_operations(
+        mut self,
+        workspace_id: Uuid,
+        operations: Vec<ApiEventOperationDetails>,
+    ) -> Self {
+        self.api_workspace_id = Some(workspace_id);
+        self.api_operations = operations;
+        self
     }
 
     pub async fn list_definitions(
@@ -113,8 +131,16 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
     ) -> anyhow::Result<EventDefinitionRecord> {
         let mut record = self.get_definition(actor, id).await?;
         // Stopping an unchanged rule stays possible when its interface is unavailable.
+        let unchanged_legacy_target = record.interface_event.as_ref().is_some_and(|previous| {
+            previous.legacy_interface_id().is_some() && previous.same_target(&input.interface_event)
+        });
         let payload_schema =
             if !input.enabled && record.interface_event.as_ref() == Some(&input.interface_event) {
+                record.payload_schema.clone()
+            } else if unchanged_legacy_target {
+                // Validate activation against the current owner without rewriting existing
+                // typed payloads or the Workflow mappings which consume those payloads.
+                self.interface_schema(actor, &input.interface_event)?;
                 record.payload_schema.clone()
             } else {
                 self.interface_schema(actor, &input.interface_event)?
@@ -138,10 +164,30 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
         actor: &ActorContext,
         binding: &InterfaceEventBinding,
     ) -> anyhow::Result<Value> {
-        if binding.interface_id.trim().is_empty()
-            || (binding.phase == InterfaceEventPhase::Before && !binding.results.is_empty())
+        if binding.target_id().trim().is_empty()
+            || (binding.phase() == InterfaceEventPhase::Before && !binding.results().is_empty())
         {
             return Err(Error::InvalidInput("invalid_interface_event_binding").into());
+        }
+        if let Some(operation_id) = binding.operation_id() {
+            if self.api_workspace_id != Some(actor.current_workspace_id) {
+                return Err(Error::InvalidInput("api_event_unavailable").into());
+            }
+            let operation = self
+                .api_operations
+                .iter()
+                .find(|entry| entry.operation.operation_id == operation_id)
+                .ok_or(Error::InvalidInput("api_event_unavailable"))?;
+            if operation.operation.scope == EventSourceScope::Unbound
+                || !source_visible(actor, &operation.operation.scope)
+            {
+                return Err(Error::PermissionDenied("api_event_scope").into());
+            }
+            return operation
+                .phase_schema(binding.phase())
+                .filter(|schema| schema.is_object() || schema.is_boolean())
+                .cloned()
+                .ok_or_else(|| Error::InvalidInput("api_event_phase_unavailable").into());
         }
         if self.registered_workspace_id != Some(actor.current_workspace_id) {
             return Err(Error::InvalidInput("interface_event_unavailable").into());
@@ -152,9 +198,10 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
             .find(|entry| {
                 entry.origin != EventDefinitionOrigin::Custom
                     && source_visible(actor, &entry.scope)
-                    && entry.interface_event.as_ref().is_some_and(|source| {
-                        source.interface_id == binding.interface_id && source.phase == binding.phase
-                    })
+                    && entry
+                        .interface_event
+                        .as_ref()
+                        .is_some_and(|source| source.same_target(binding))
                     && entry.payload_schema != Value::Null
                     && !entry.supported_phases.is_empty()
             })

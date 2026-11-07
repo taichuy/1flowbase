@@ -83,3 +83,48 @@ fn interface_rules_reject_free_schema_and_filter_by_terminal() {
     free["payload_schema"] = serde_json::json!({});
     assert!(serde_json::from_value::<CreateEventDefinitionInput>(free).is_err());
 }
+
+#[test]
+fn documented_operation_and_legacy_bindings_roundtrip_without_aliasing_identity() {
+    for key in ["operation_id", "interface_id"] {
+        let mut wire = serde_json::json!({"phase":"completion","results":["failed"]});
+        wire[key] = serde_json::json!("same.identifier");
+        let value: InterfaceEventBinding = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&value).unwrap(), wire);
+        assert_eq!(
+            value.matches(
+                "same.identifier",
+                InterfaceEventPhase::Completion,
+                Some(InterfaceEventTerminal::Failed)
+            ),
+            key == "interface_id"
+        );
+        assert_eq!(
+            value.matches_operation(
+                "same.identifier",
+                InterfaceEventPhase::Completion,
+                Some(InterfaceEventTerminal::Failed)
+            ),
+            key == "operation_id"
+        );
+        assert!(!value.matches_operation(
+            "same.identifier",
+            InterfaceEventPhase::Completion,
+            Some(InterfaceEventTerminal::Completed)
+        ));
+        let mut mixed = wire.clone();
+        mixed[if key == "operation_id" {
+            "interface_id"
+        } else {
+            "operation_id"
+        }] = serde_json::json!("other");
+        assert!(serde_json::from_value::<InterfaceEventBinding>(mixed).is_err());
+        wire["unknown"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<InterfaceEventBinding>(wire).is_err());
+    }
+    assert!(
+        !InterfaceEventBinding::api("same.identifier", InterfaceEventPhase::Before).same_target(
+            &InterfaceEventBinding::legacy("same.identifier", InterfaceEventPhase::Before)
+        )
+    );
+}

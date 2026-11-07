@@ -110,11 +110,10 @@ fn input() -> CreateEventDefinitionInput {
         name: "Order interface observed".into(),
         description: String::new(),
         enabled: true,
-        interface_event: InterfaceEventBinding {
-            interface_id: "orders.create".into(),
-            phase: InterfaceEventPhase::Before,
-            results: Vec::new(),
-        },
+        interface_event: InterfaceEventBinding::legacy(
+            "orders.create",
+            InterfaceEventPhase::Before,
+        ),
     }
 }
 fn trigger_input() -> WorkflowEventTriggerInput {
@@ -197,13 +196,13 @@ async fn absent_interface_and_invalid_before_result_filter_are_rejected() {
     );
     let service = declared_service(&owner);
     let mut value = input();
-    value
+    value.interface_event = value
         .interface_event
-        .results
-        .push(InterfaceEventTerminal::Failed);
+        .with_results(vec![InterfaceEventTerminal::Failed]);
     assert!(service.create_definition(&owner, value).await.is_err());
     let mut value = input();
-    value.interface_event.interface_id = "undeclared".into();
+    value.interface_event =
+        InterfaceEventBinding::legacy("undeclared", InterfaceEventPhase::Before);
     assert!(service.create_definition(&owner, value).await.is_err());
     let mut value = input();
     value.name = "  ".into();
@@ -373,5 +372,170 @@ async fn unchanged_rule_can_be_disabled_after_its_interface_is_removed() {
             .await
             .is_err(),
         "missing declaration cannot be reactivated"
+    );
+}
+
+fn api_details(owner: &ActorContext) -> ApiEventOperationDetails {
+    let request = serde_json::json!({"type":"object","properties":{"query":{"type":"object","properties":{"page":{"type":"integer"}}}},"additionalProperties":false});
+    let result = serde_json::json!({"type":"object","properties":{"items":{"type":"array","items":{"type":"string"}}},"required":["items"]});
+    ApiEventOperationDetails {
+        operation: ApiEventOperationSummary {
+            operation_id: "list_applications".into(),
+            method: "GET".into(),
+            path: "/api/console/settings/applications".into(),
+            name: "List applications".into(),
+            description: String::new(),
+            scope: EventSourceScope::Workspace {
+                workspace_id: owner.current_workspace_id,
+            },
+            before: ApiEventPhaseAvailability::Available,
+            completion: ApiEventPhaseAvailability::Available,
+        },
+        before_schema: Some(api_operation_event_schema(
+            InterfaceEventPhase::Before,
+            request.clone(),
+            result.clone(),
+        )),
+        completion_schema: Some(api_operation_event_schema(
+            InterfaceEventPhase::Completion,
+            request.clone(),
+            result.clone(),
+        )),
+        request_schema: Some(request),
+        result_schema: Some(result),
+    }
+}
+
+#[tokio::test]
+async fn api_rules_use_selected_operation_schema_and_reject_scope_phase_and_identity_mismatch() {
+    let owner = actor();
+    let details = api_details(&owner);
+    let service = EventCenterConfigurationService::new(MemoryRepository::default())
+        .with_api_operations(owner.current_workspace_id, vec![details.clone()]);
+    let mut value = input();
+    value.interface_event =
+        InterfaceEventBinding::api("list_applications", InterfaceEventPhase::Before);
+    let created = service
+        .create_definition(&owner, value.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        created.payload_schema,
+        details.before_schema.clone().unwrap()
+    );
+    assert!(created.payload_schema["properties"]
+        .get("operation_id")
+        .is_some());
+    assert!(created.payload_schema["properties"]
+        .get("interface_id")
+        .is_none());
+    value.interface_event =
+        InterfaceEventBinding::legacy("list_applications", InterfaceEventPhase::Before);
+    assert!(service
+        .create_definition(&owner, value.clone())
+        .await
+        .is_err());
+    value.interface_event =
+        InterfaceEventBinding::api("unknown_operation", InterfaceEventPhase::Before);
+    assert!(service
+        .create_definition(&owner, value.clone())
+        .await
+        .is_err());
+    value.interface_event =
+        InterfaceEventBinding::api("list_applications", InterfaceEventPhase::Completion)
+            .with_results(vec![InterfaceEventTerminal::Failed]);
+    let completion = service
+        .create_definition(&owner, value.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        completion.payload_schema,
+        details.completion_schema.clone().unwrap()
+    );
+    assert!(service
+        .create_definition(&actor(), value.clone())
+        .await
+        .is_err());
+    let mut unavailable = details.clone();
+    unavailable.operation.completion = ApiEventPhaseAvailability::Unavailable {
+        reason: ApiEventUnavailableReason::MissingStreamingTerminal,
+    };
+    let service = EventCenterConfigurationService::new(MemoryRepository::default())
+        .with_api_operations(owner.current_workspace_id, vec![unavailable]);
+    assert!(service
+        .create_definition(&owner, value.clone())
+        .await
+        .is_err());
+    let mut foreign = details.clone();
+    foreign.operation.scope = EventSourceScope::Workspace {
+        workspace_id: Uuid::now_v7(),
+    };
+    let service = EventCenterConfigurationService::new(MemoryRepository::default())
+        .with_api_operations(owner.current_workspace_id, vec![foreign]);
+    assert!(service
+        .create_definition(&owner, value.clone())
+        .await
+        .is_err());
+    let mut missing = details;
+    missing.completion_schema = None;
+    let service = EventCenterConfigurationService::new(MemoryRepository::default())
+        .with_api_operations(owner.current_workspace_id, vec![missing]);
+    assert!(service.create_definition(&owner, value).await.is_err());
+}
+
+#[tokio::test]
+async fn unchanged_legacy_target_preserves_saved_schema_and_workflow_mapping() {
+    let owner = actor();
+    let service = declared_service(&owner);
+    let created = service.create_definition(&owner, input()).await.unwrap();
+    let mut mapping = trigger_input();
+    mapping.contract_id = created.contract_id.clone();
+    mapping
+        .input_mapping
+        .insert("order".into(), "/input/order_id".into());
+    mapping.enabled = false;
+    let application = Uuid::now_v7();
+    service
+        .save_workflow_trigger(&owner, application, mapping.clone())
+        .await
+        .unwrap();
+    let repository = service.repository;
+    let mut changed = source_entry(
+        EventSourceScope::Workspace {
+            workspace_id: owner.current_workspace_id,
+        },
+        vec![EventTriggerPhase::Published],
+    );
+    changed.interface_event = created.interface_event.clone();
+    changed.payload_schema =
+        serde_json::json!({"type":"object","properties":{"different":{"type":"integer"}}});
+    let service = EventCenterConfigurationService::with_registered_events(
+        repository,
+        owner.current_workspace_id,
+        vec![changed],
+    );
+    let updated = service
+        .update_definition(
+            &owner,
+            created.id,
+            UpdateEventDefinitionInput {
+                name: "Rename existing rule".into(),
+                description: String::new(),
+                interface_event: created.interface_event.clone().unwrap(),
+                enabled: true,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(updated.payload_schema, created.payload_schema);
+    assert_eq!(updated.interface_event, created.interface_event);
+    assert_eq!(
+        service
+            .get_workflow_trigger(&owner, application)
+            .await
+            .unwrap()
+            .unwrap()
+            .configuration,
+        mapping
     );
 }

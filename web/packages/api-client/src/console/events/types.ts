@@ -73,10 +73,49 @@ export type InterfaceEventTerminal =
   | 'failed'
   | 'rejected'
   | 'cancelled';
-export interface InterfaceEventBinding {
+export interface LegacyInterfaceEventBinding {
   interface_id: string;
   phase: InterfaceEventPhase;
   results?: InterfaceEventTerminal[];
+}
+export interface ApiInterfaceEventBinding {
+  operation_id: string;
+  phase: InterfaceEventPhase;
+  results?: InterfaceEventTerminal[];
+}
+export type InterfaceEventBinding =
+  | ApiInterfaceEventBinding
+  | LegacyInterfaceEventBinding;
+export type ApiEventUnavailableReason =
+  | 'missing_openapi_contract'
+  | 'missing_binding'
+  | 'missing_typed_codec'
+  | 'no_workspace_principal'
+  | 'permission_denied'
+  | 'target_unavailable'
+  | 'binary_request'
+  | 'binary_response'
+  | 'missing_streaming_terminal'
+  | 'credential_boundary'
+  | 'ambiguous_operation';
+export type ApiEventPhaseAvailability =
+  | { status: 'available' }
+  | { status: 'unavailable'; reason: ApiEventUnavailableReason };
+export interface ApiEventOperationSummary {
+  operation_id: string;
+  method: string;
+  path: string;
+  name: string;
+  description: string;
+  scope: EventSourceScope;
+  before: ApiEventPhaseAvailability;
+  completion: ApiEventPhaseAvailability;
+}
+export interface ApiEventOperationDetails extends ApiEventOperationSummary {
+  request_schema: Record<string, unknown> | boolean | null;
+  result_schema: Record<string, unknown> | boolean | null;
+  before_schema: Record<string, unknown> | boolean | null;
+  completion_schema: Record<string, unknown> | boolean | null;
 }
 export interface EventCatalogEntry {
   interface_event?: InterfaceEventBinding;
