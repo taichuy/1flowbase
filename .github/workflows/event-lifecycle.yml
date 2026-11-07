@@ -13,7 +13,7 @@ on:
         description: Full acceptance or a scoped evidence supplement
         type: choice
         default: full
-        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp, full-api-events-types, full-api-events, full-api-events-host, full-api-events-registration, full-api-events-publish, full-api-events-query, full-api-events-docs, full-api-events-integration]
+        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp, full-api-events-types, full-api-events, full-api-events-host, full-api-events-registration, full-api-events-publish, full-api-events-query, full-api-events-docs, full-api-events-integration, full-api-events-fixture-finish]
 
       reused_api_tree:
         description: Unchanged api tree hash from the prior green host evidence (finish scope only)
@@ -269,7 +269,7 @@ jobs:
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker > "$evidence/managed-worker-build.log" 2>&1 || { tail -c 7000 "$evidence/managed-worker-build.log"; exit 1; }
           echo "MANAGED_EVENT_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - name: Prepare managed record permissions runtime fixture
-        if: inputs.scope == 'full-api-events-integration'
+        if: inputs.scope == 'full-api-events-integration' || inputs.scope == 'full-api-events-fixture-finish'
         shell: bash
         run: |
           set -euo pipefail
@@ -301,6 +301,7 @@ jobs:
             shift
             local harness=(--test-threads=1)
             if [ "$label" = api-record-runtime ]; then harness+=(--include-ignored); fi
+            if [ "$label" = api-managed-record-integration ]; then harness+=(--skip record_permission_runtime); fi
             if cargo test --locked --manifest-path api/Cargo.toml -p api-server --features test-support "$@" -- "${harness[@]}" > "$evidence/$label.log" 2>&1; then
               node scripts/node/verify/cargo-test-results.js "$evidence/$label.log" || failed=1
             else
@@ -326,7 +327,16 @@ jobs:
               failed=1
             fi
           }
-          if [ "$EVIDENCE_SCOPE" = full-api-events-docs ] || [ "$EVIDENCE_SCOPE" = full-api-events-integration ]; then
+          if [ "$EVIDENCE_SCOPE" = full-api-events-fixture-finish ]; then
+            if [ "$HOST_TYPES_OUTCOME" = success ]; then
+              run_tests api-doc-billing --test api_private_routes billing::openapi_contract_tests
+              run_tests api-managed-record-integration --lib managed_services::
+              run_tests api-record-runtime --lib record_permission_runtime
+            else
+              echo 'Host scopes unverified: shared host test compilation failed; see host-types-check.log.' > "$evidence/host-scopes-unverified.txt"
+              failed=1
+            fi
+          elif [ "$EVIDENCE_SCOPE" = full-api-events-docs ] || [ "$EVIDENCE_SCOPE" = full-api-events-integration ]; then
             if [ "$HOST_TYPES_OUTCOME" = success ]; then
               run_tests api-catalog-observer --test api_private_contracts event_center
               run_tests api-event-routes --test api_system_settings event_center
@@ -338,7 +348,7 @@ jobs:
               run_tests api-doc-icons --test api_private_routes model_providers::icons::openapi_tests
               if [ "$EVIDENCE_SCOPE" = full-api-events-integration ]; then
                 run_tests api-assistant-protocol --test api_private_routes websocket_interface
-                run_tests api-managed-record-integration --lib managed_services:: --skip record_permission_runtime
+                run_tests api-managed-record-integration --lib managed_services::
                 run_tests api-record-runtime --lib record_permission_runtime
                 run_tests api-operation-metadata --test api_private_contracts console_interface_projection_inventory_is_key_only_and_exact
                 run_tests api-operation-set --test api_private_routes complete_operation_specifications_match_the_production_route_set
