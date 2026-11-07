@@ -3,29 +3,27 @@ use super::*;
 use crate::event_center::api_projection::{
     self as ep, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
 };
-use crate::routes::settings::mcp_management::{
-    McpClientCredentialResponse, SaveMcpClientCredentialBody,
-};
+use crate::routes::mcp_management::{McpClientCredentialResponse, SaveMcpClientCredentialBody};
 use serde::Serialize;
 use serde_json::{json, Value};
 use utoipa::OpenApi;
 
 #[derive(OpenApi)]
 #[openapi(paths(
-    crate::routes::settings::mcp_management::bundles::list_official_bundles,
-    crate::routes::settings::mcp_management::bundles::preview_official_bundle,
-    crate::routes::settings::mcp_management::bundles::import_official_bundle,
-    crate::routes::settings::mcp_management::bundles::export_bundle,
-    crate::routes::settings::mcp_management::bundles::export_bundle_defaults,
-    crate::routes::settings::mcp_management::bundles::export_instance_bundle,
-    crate::routes::settings::mcp_management::bundles::preview_uploaded_bundle,
-    crate::routes::settings::mcp_management::bundles::import_uploaded_bundle,
-    crate::routes::settings::mcp_management::bundles::switch_library_bundle,
-    crate::routes::settings::mcp_management::bundles::delete_library_bundle_release,
-    crate::routes::settings::mcp_management::bundles::repair_library_bundle_release,
-    crate::routes::settings::mcp_management::get_mcp_client_credential,
-    crate::routes::settings::mcp_management::save_mcp_client_credential,
-    crate::routes::settings::mcp_management::delete_mcp_client_credential
+    crate::routes::mcp_management::bundles::list_official_bundles,
+    crate::routes::mcp_management::bundles::preview_official_bundle,
+    crate::routes::mcp_management::bundles::import_official_bundle,
+    crate::routes::mcp_management::bundles::export_bundle,
+    crate::routes::mcp_management::bundles::export_bundle_defaults,
+    crate::routes::mcp_management::bundles::export_instance_bundle,
+    crate::routes::mcp_management::bundles::preview_uploaded_bundle,
+    crate::routes::mcp_management::bundles::import_uploaded_bundle,
+    crate::routes::mcp_management::bundles::switch_library_bundle,
+    crate::routes::mcp_management::bundles::delete_library_bundle_release,
+    crate::routes::mcp_management::bundles::repair_library_bundle_release,
+    crate::routes::mcp_management::get_mcp_client_credential,
+    crate::routes::mcp_management::save_mcp_client_credential,
+    crate::routes::mcp_management::delete_mcp_client_credential
 ))]
 struct McpBundleApiDocs;
 
@@ -283,7 +281,7 @@ fn mcp_source_selector_schemas_accept_each_real_typed_input_shape() {
 
 #[test]
 fn mcp_credential_wire_schema_and_existing_event_safe_views_stay_separate() {
-    use crate::routes::settings::mcp_management::interface_core::{McpCoreInput, McpCoreOutput};
+    use crate::routes::mcp_management::interface_core::{McpCoreInput, McpCoreOutput};
     const CREDENTIAL: &str = "MCP_DOCUMENT_WIRE_CREDENTIAL_CANARY";
     let body_wire = json!({"api_key":CREDENTIAL});
     let body: SaveMcpClientCredentialBody = serde_json::from_value(body_wire.clone()).unwrap();

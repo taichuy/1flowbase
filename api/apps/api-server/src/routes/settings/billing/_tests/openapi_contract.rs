@@ -232,7 +232,7 @@ fn billing_pricing_documents_preserve_rfc3339_fields_and_existing_tuple_timestam
 
 #[test]
 fn billing_query_event_date_uses_the_real_serde_tuple_and_matches_its_document_schema() {
-    use crate::routes::settings::billing_interface::BillingInput;
+    use crate::routes::billing_interface::BillingInput;
     let input = BillingInput::ListCreditLedger(PageQuery {
         limit: Some(10),
         offset: None,
