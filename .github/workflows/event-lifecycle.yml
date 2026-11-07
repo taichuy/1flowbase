@@ -306,6 +306,9 @@ jobs:
             run_tests api-document-owner --lib openapi_docs::cache
             run_tests api-codecs-console --test api_private_routes event_projection
             run_tests api-codecs-public --test api_public_api event_projection
+            run_tests api-document-codecs-public --test api_public_api document_projection
+            run_tests api-compatibility-contract --test api_private_contracts compatibility_interface
+            run_tests api-protocol-projection --test api_public_api protocol_projection
             test "$failed" = 0
             run_tests api-event-routes --test api_system_settings event_center
             run_tests api-workflow-routes --test api_application workflow_extension
