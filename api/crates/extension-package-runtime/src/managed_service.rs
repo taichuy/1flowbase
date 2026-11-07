@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeSet;
 
+mod record_permissions;
+pub use record_permissions::*;
+
 pub const MANAGED_SERVICE_POINT: &str = "1flowbase.managed-service.operation";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -231,6 +234,8 @@ pub struct ManagedServiceStream {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManagedServiceOperation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record_permission: Option<ManagedServiceRecordPermission>,
     pub interface_id: String,
     pub contribution_id: String,
     pub method: String,
@@ -310,6 +315,8 @@ pub struct ManagedServiceMcpInstance {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManagedServiceManifest {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub record_resources: Vec<ManagedServiceRecordResource>,
     pub scope: ManagedServiceScope,
     #[serde(
         default,
@@ -333,6 +340,7 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
     let Some(service) = &manifest.managed_service else {
         return Ok(());
     };
+    record_permissions::validate_record_permissions(manifest, service)?;
     if service.worker_idle_timeout_ms == Some(0)
         || (service.worker_lifetime == ManagedServiceWorkerLifetime::PerCall
             && service.worker_idle_timeout_ms.is_some())

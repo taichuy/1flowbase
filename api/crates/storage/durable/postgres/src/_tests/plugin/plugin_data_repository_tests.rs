@@ -29,6 +29,7 @@ async fn store() -> (PgControlPlaneStore, PgPool) {
 
 fn binding(workspace_id: Uuid) -> PluginDataBinding {
     PluginDataBinding {
+        record_permissions: None,
         managed_subject: None,
         publisher_namespace: "acme".to_string(),
         plugin_code: "session".to_string(),
@@ -372,3 +373,6 @@ async fn root_2007_ac_007_receipt_commit_failure_rolls_back_effect() {
 
 #[path = "plugin_data_schema_version_tests.rs"]
 mod schema_versions;
+
+#[path = "plugin_data_repository_tests/record_permissions/mod.rs"]
+mod record_permissions;

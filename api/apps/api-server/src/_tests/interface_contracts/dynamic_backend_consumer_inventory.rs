@@ -127,6 +127,9 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "events.catalog.list"
                     | "events.api_operations.list"
                     | "events.api_operations.get"
+                    // Plugin record permission APIs postdate the pinned official catalog.
+                    | "roles.record_permissions.view"
+                    | "roles.record_permissions.replace"
                     | "events.definitions.create"
                     | "events.definitions.update"
                     | "events.runtime.get"

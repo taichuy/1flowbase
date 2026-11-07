@@ -124,3 +124,6 @@ mod notification_publication;
 mod communications;
 
 pub mod event_center_repository;
+
+#[path = "extension_repositories/record_permissions_repository/mod.rs"]
+mod record_permissions_repository;

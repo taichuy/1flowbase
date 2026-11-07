@@ -340,6 +340,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
     ConsoleRouteAssembly::new()
+        .merge(crate::managed_services::record_permissions::route_assembly())
         .route(
             "/settings/roles",
             console_get(list_roles, ConsoleOperation("roles.list".to_string()))

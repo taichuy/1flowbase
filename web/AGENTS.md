@@ -52,6 +52,6 @@
 
 ## Verification
 - 自检、验收、回归或交付使用 `qa-evaluation`，默认按 Dev Acceptance Gate 复用当前改动的有效证据；证据足够即停，重型全量门禁留给 beta / CI / 专门质量工作区。
-- 导航、壳层、共享 / 全局样式或第三方 slot 覆写需对应候选的样式边界及受影响消费者证据；可复用定向 `style-boundary` 或等价运行态证据。仅缺场景映射不单独阻断已有充分证据的 Dev Acceptance；DTO、请求逻辑或规则文档变化不触发样式门禁。
+- 导航、壳层、共享 / 全局样式或第三方 slot 覆写的验收需受影响场景的 `style-boundary` 证据；仅 DTO、请求逻辑或规则文档变化不因此触发样式门禁。
 - 页面视觉 / 响应式结论需受影响页面的桌面与移动端证据；局部截图不证明全站 UI 通过，纯非视觉改动不默认重跑双端浏览器检查。
 - 受保护页面取证使用 `node scripts/node/page-debug/cli.js`，认证 API 使用 `node scripts/node/tooling.js api-debug`；自定义流程复用 `scripts/node/page-debug/auth.js` 的临时 session owner 并在 `finally` 回收，不直接调用 sign-in。

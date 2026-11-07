@@ -74,7 +74,7 @@
 
 ## Issue Tree
 
-长计划使用两层结构：一个 Root 和若干 Delivery。Root 是唯一执行计划和状态记录，用户原始目标及已确认变更是验收依据；Delivery 是可独立集成的纵向结果，不继续拆子 issue。
+长计划使用两层结构：一个 Root 和若干 Delivery。Root 是计划、进度和用户验收的唯一真值；Delivery 是可独立集成的纵向结果，不继续拆子 issue。
 
 ```text
 [Issue Tree Root]
@@ -115,7 +115,7 @@
 - Work Packet Ledger：ready / active / committed / needs-split / blocked
 - assembled commits 与冲突：
 - Test Batch：AC matrix / commands / fixtures / 重型验证上限 / status
-- 已有时间戳：首次装配 / 验证修复 / 外部等待 / 交付；主要阻塞与证据指针
+- Observation counters：packets / needs-split / assembly-conflicts / agent-contexts / validation-runs / duplicate-evidence-runs / QA-cycles
 - 剩余验收风险：
 - 活动 agent、worktree、进程与端口：
 - 已知阻塞 / 不确定性 / 外部扰动：
@@ -209,7 +209,7 @@ Proposed
 
 ## Implementation Handoff
 
-只传递当前交付所需的最小稳定上下文，保留相关用户目标原文及已确认变更，不复制完整 issue、diff 或执行过程。
+只传递当前交付所需的最小稳定上下文，不复制完整 issue、diff 或执行过程。
 
 ```md
 # Implementation Handoff

@@ -150,6 +150,7 @@ fn distribution_host_calls(
     }
     Ok(Some(ProviderHostCallContext {
         binding: PluginDataBinding {
+            record_permissions: None,
             managed_subject: None,
             publisher_namespace: manifest.publisher_namespace.clone(),
             plugin_code: manifest.plugin_code()?.to_string(),

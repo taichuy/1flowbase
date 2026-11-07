@@ -1,6 +1,6 @@
 use super::{
     core_authenticated_other, core_row_settings, core_simple_other, core_simple_settings,
-    ExpectedOperationGroup,
+    settings_features::ROLE_RECORD_PERMISSION_NEW_OPERATIONS, ExpectedOperationGroup,
 };
 
 // This is intentionally an immutable audit ledger rather than a policy-group expansion. A new
@@ -21,7 +21,10 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         "system.branding",
         &["system.branding.get", "system.branding.save"],
     ),
-    core_authenticated_other("core.authenticated", &["core.authenticated"]),
+    core_authenticated_other(
+        "core.authenticated",
+        &["core.authenticated", "roles.record_capabilities.get"],
+    ),
     core_simple_other(
         "other.personal-account",
         &[
@@ -466,6 +469,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "roles.update",
         ],
     ),
+    core_simple_settings("system.roles", ROLE_RECORD_PERMISSION_NEW_OPERATIONS),
     core_simple_settings(
         "system.system-runtime",
         &[
@@ -661,6 +665,9 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "roles.console_policy.view",
     "roles.console_policy_catalog.view",
     "roles.console_settings_order.replace",
+    // Existing roles-feature grants must not acquire per-record permission management.
+    "roles.record_permissions.replace",
+    "roles.record_permissions.view",
     "system_backups.catalog",
     "system_templates.catalog",
     "system_templates.export",

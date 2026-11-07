@@ -72,6 +72,8 @@ impl RuntimeTargetId {
 
 #[derive(Debug, Clone)]
 pub struct RuntimeExecutionPrincipal {
+    /// Host-only record authorization, independent of resource-import replay guards.
+    pub record_permissions: Option<extension_contracts::PluginDataRecordPermissionContext>,
     /// Host-only caller delegation; never serialized to a worker.
     pub caller: Option<RuntimeCallerContext>,
     pub workspace_id: String,

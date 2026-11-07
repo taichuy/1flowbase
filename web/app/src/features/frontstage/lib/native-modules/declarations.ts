@@ -131,6 +131,16 @@ export function createFrontendModuleExtraLib(
       filePath: 'file:///node_modules/@1flowbase/plugin-settings/index.d.ts',
       content: `
 declare module '@1flowbase/plugin-settings' {
+  import type { ReactElement } from 'react';
+  export interface RecordPermissionEditorProps {
+    pluginCode: string; resourceCode: string; recordId: string; open: boolean;
+    locale?: string; onCancel(): void; onSaved(): void;
+  }
+  export function RecordPermissionEditor(props: RecordPermissionEditorProps): ReactElement;
+  export interface RecordPermissionCapabilities {
+    record_id: string; allowed_actions: string[]; can_manage_permissions: boolean;
+  }
+  export function getRecordCapabilities(pluginCode: string, resourceCode: string, recordIds: string[], signal?: AbortSignal): Promise<{ items: RecordPermissionCapabilities[] }>;
   export interface StreamOptions {
     path: string; body?: unknown; signal?: AbortSignal;
     onEvent(event: unknown): void | Promise<void>;

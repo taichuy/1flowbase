@@ -97,6 +97,7 @@ sys.stdin.read()
     let request = |scope: &str| RuntimeManagedCapabilityRequest {
         handle: handle.clone(),
         principal: RuntimeExecutionPrincipal {
+            record_permissions: None,
             caller: None,
             workspace_id: scope.into(),
             actor_id: Some("actor".into()),
@@ -271,6 +272,7 @@ fn service_request(
     RuntimeManagedCapabilityRequest {
         handle: handle.clone(),
         principal: RuntimeExecutionPrincipal {
+            record_permissions: None,
             caller: None,
             workspace_id: "system-scope".into(),
             actor_id: actor.map(str::to_owned),

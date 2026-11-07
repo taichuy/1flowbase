@@ -9,7 +9,7 @@ description: 验收或审计 1flowbase 当前任务、PR 或项目质量。对�
 
 独立判断实现是否满足目标与架构边界，不能只复述开发者说明或测试绿灯。QA 负责取证与结论，默认不修改产品；已有修复授权可由对应开发 skill 承接，不重复申请同一授权，也不扩张到未授权清理。
 
-先读取用户目标原文及已确认变更，核对 Root AC 是否遗漏或缩窄目标，再检查实现。AC、设计约束和行为证据各有职责；不把开发者摘要或测试绿灯替代用户目标，也不以改文档消除偏离。
+当前任务的目标 / AC、设计和架构约束、源码与行为证据分别承担不同职责。文档与实现冲突时定位偏离及影响，不把改文档、改测试或改产品视为自动获准。
 
 ## Architecture Baseline
 
@@ -34,7 +34,7 @@ R = {规则 r | r 与 C 相关}
 
 `C` 是本次应评估事项，`R` 是需读取的规则；项目体检的 `C` 来自完整质量维度矩阵，不能被局部 diff 限缩。逐项寻找证据，不因名字相似加载全部专项。
 
-- finding 绑定用户目标或适用规则、具体位置、证据与影响，检查合法反例，并区分产品缺陷、装配遗漏、fixture / tooling、环境和证据缺口；命名、行数或主观复杂度仅是调查信号。
+- finding 绑定规则来源、具体位置 / 调用链、证据与影响，并检查合法反例；命名、行数或主观复杂度仅是调查信号。
 - 维护性检查聚焦真实职责与复杂度传播；单调用方层承担事务、权限或错误映射时不算空转抽象。方法长不自动阻断。
 - 核对静默 fallback、吞错、泛化错误和重复防御是否违背当前 contract；不把新增兼容层当作默认修复。
 - 失败先归因产品回归、contract 破坏、fixture / 环境故障或过期预期。旧测试不自动构成兼容要求，不能为收绿弱化当前 contract。
@@ -48,7 +48,7 @@ R = {规则 r | r 与 C 相关}
 - Dev Acceptance：当前目标与直接风险，复用有效证据，补缺口；不自动跑全仓门禁。
 - PR Merge：使用对应候选的 CI / artifact；本地通过不冒充远端门禁通过。
 - Project Health：先用 [project-evaluation-checklist](references/governance/project-evaluation-checklist.md) 建质量维度矩阵，再归类证据与风险；单个失败脚本不代表体检全范围。
-- Issue Tree：遵循 [long-running-work](../problem-framing/references/long-running-work.md)，完整装配后首次由一个独立 fresh QA 集中验收；同一目标的修复由原 QA 补验受影响增量。产品修复仍由开发承担，不做 per-packet QA，不因换候选重复有效证据。
+- Issue Tree：遵循 [long-running-work](../problem-framing/references/long-running-work.md)，全部产品与 fixture 装配冻结后由一个 fresh QA 集中验收，不做 per-packet QA。一次返回全部 blocker，修复后只补受影响证据；语义 / 范围变化或同根因第二次失败回到 Root 定界。
 - 执行成本、并发、资源失败转向、日志和证据失效条件统一使用 [test-driven-development](../test-driven-development/SKILL.md#execution-cost-and-stop-conditions)。换 agent 或进入收尾不自动使证据失效；编译、零用例与未完成链接不算行为测试通过。
 - 四基座需要对应 candidate-bound receipt，通用 tooling green 不替代；资源限制触发时停止该验证路径并列出缺口，不宣布验收通过。
 

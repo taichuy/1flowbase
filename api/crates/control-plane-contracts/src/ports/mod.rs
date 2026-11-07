@@ -121,3 +121,7 @@ pub use communication_commands::*;
 #[path = "resource_ports/event_center.rs"]
 pub mod event_center;
 pub use event_center::*;
+
+#[path = "extension_ports/record_permissions.rs"]
+pub mod record_permissions;
+pub use record_permissions::*;

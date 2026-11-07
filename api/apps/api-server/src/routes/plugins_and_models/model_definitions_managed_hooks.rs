@@ -82,6 +82,7 @@ pub(crate) async fn freeze<I: InterfaceContract>(
         invocation_id: envelope.lineage().invocation_id(),
         registry_fingerprint: registry.fingerprint().clone(),
         principal: RuntimeExecutionPrincipal {
+            record_permissions: None,
             caller: None,
             workspace_id: actor.current_workspace_id.to_string(),
             actor_id: Some(actor.user_id.to_string()),

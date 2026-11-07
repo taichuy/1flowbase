@@ -5,6 +5,22 @@ import { collectNativeModuleDeclarations } from '../../../../../../build/native-
 import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS } from '../editor-declarations';
 
 describe('frontend Monaco module declarations', () => {
+  test('plugin settings exposes typed host-owned record permissions without caller overrides', () => {
+    expect(
+      typeCheckSource({
+        extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+        source: `import { RecordPermissionEditor, getRecordCapabilities } from '@1flowbase/plugin-settings';
+const editor = <RecordPermissionEditor pluginCode="ssh" resourceCode="hosts" recordId="h1" open locale="zh_Hans" onCancel={() => {}} onSaved={() => {}} />;
+const result = getRecordCapabilities('ssh', 'hosts', ['h1']);
+// @ts-expect-error role identity comes from host authorization, never plugin input.
+getRecordCapabilities('ssh', 'hosts', ['h1'], { role_id: 'forged' });
+// @ts-expect-error actor context cannot be overridden by a plugin.
+const forged = <RecordPermissionEditor pluginCode="ssh" resourceCode="hosts" recordId="h1" open onCancel={() => {}} onSaved={() => {}} actor={{ isRoot: true }} />;
+void editor; void result; void forged;`
+      })
+    ).toEqual([]);
+  });
+
   test('data block templates require the standard block context', () => {
     expect(
       typeCheckSource({

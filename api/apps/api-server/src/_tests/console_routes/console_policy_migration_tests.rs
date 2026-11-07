@@ -1180,3 +1180,6 @@ fn terminal_migration_never_projects_legacy_role_grants_into_new_authority() {
         assert!(preview.effective_delta.is_empty());
     }
 }
+
+#[path = "console_policy_migration/record_permissions.rs"]
+mod record_permission_migration;

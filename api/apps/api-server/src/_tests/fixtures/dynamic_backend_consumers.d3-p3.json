@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 477,
+  "projected_interface_count": 479,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -1262,6 +1262,12 @@
       "GET",
       "/api/console/settings/roles/permission-options",
       "List roles permission options"
+    ],
+    [
+      "roles.record_permissions.view",
+      "GET",
+      "/api/console/settings/roles/record-permissions",
+      "Read plugin record permissions"
     ],
     [
       "roles.console_policy.view",
@@ -2828,6 +2834,12 @@
       "PUT",
       "/api/console/settings/roles/console-policy-catalog/order",
       "Replace roles console settings order"
+    ],
+    [
+      "roles.record_permissions.replace",
+      "PUT",
+      "/api/console/settings/roles/record-permissions",
+      "Replace plugin record permissions"
     ],
     [
       "roles.console_policy.replace",
