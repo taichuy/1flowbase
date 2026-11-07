@@ -471,6 +471,6 @@
     "published": "Published",
     "consumed": "Consumed (dequeued)",
     "pointer_invalid": "Enter a valid RFC6901 pointer.",
-    "pointer_hint": "Map a scalar Start input to a lifecycle signal field, for example /payload/order_id."
+    "pointer_hint": "Choose a declared payload field or enter an RFC6901 pointer. Consumption means dequeue and handoff, not workflow completion."
   }
 }

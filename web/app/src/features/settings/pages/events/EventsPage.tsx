@@ -1,5 +1,6 @@
 import {
   createEventDefinition,
+  eventCatalogIdentity,
   listEventCatalog,
   updateEventDefinition,
   type CreateEventDefinitionInput,
@@ -8,7 +9,7 @@ import {
 } from '@1flowbase/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
-import { Alert, Button, Flex, Switch, Tabs, Tag } from 'antd';
+import { Alert, Button, Flex, Switch, Tabs, Tag, TreeSelect } from 'antd';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../../state/auth-store';
@@ -24,6 +25,7 @@ import {
   useEventTab,
   type EventTab
 } from './event-navigation';
+import { eventGroupTree } from './event-groups';
 
 export function EventsPage() {
   const { t } = useTranslation('settingsEvents');
@@ -35,6 +37,7 @@ export function EventsPage() {
     entry: EventCatalogEntry | null;
     mode: 'view' | 'edit';
   } | null>(null);
+  const [group, setGroup] = useState<string>();
   const canList = can('events.catalog.list');
   const canObserve = can('events.runtime.get');
   const tab = canObserve ? requestedTab : 'catalog';
@@ -43,7 +46,7 @@ export function EventsPage() {
       navigateEventTab('catalog', true);
   }, [canObserve, requestedTab]);
   const catalog = useQuery({
-    queryKey: ['settings', 'events', 'catalog'],
+    queryKey: ['events', 'catalog'],
     queryFn: () => listEventCatalog(),
     enabled: canList && tab === 'catalog'
   });
@@ -52,17 +55,17 @@ export function EventsPage() {
     (drawer.entry
       ? drawer.entry.origin === 'custom' &&
         drawer.entry.id !== null &&
-        drawer.entry.payload_schema !== null &&
+        !!drawer.entry.interface_event &&
         can('events.definitions.update')
       : can('events.definitions.create'));
   const save = useMutation({
     mutationFn: async (values: CreateEventDefinitionInput) => {
       if (!csrfToken || !editable) throw new Error('operation not permitted');
       if (drawer?.entry?.id) {
-        const { name, description, payload_schema, enabled } = values;
+        const { name, description, interface_event, enabled } = values;
         return updateEventDefinition(
           drawer.entry.id,
-          { name, description, payload_schema, enabled },
+          { name, description, interface_event, enabled },
           csrfToken
         );
       }
@@ -71,7 +74,7 @@ export function EventsPage() {
     onSuccess: async () => {
       setDrawer(null);
       await queryClient.invalidateQueries({
-        queryKey: ['settings', 'events', 'catalog']
+        queryKey: ['events', 'catalog']
       });
     }
   });
@@ -87,7 +90,7 @@ export function EventsPage() {
         !csrfToken ||
         entry.origin !== 'custom' ||
         !entry.id ||
-        entry.payload_schema === null ||
+        !entry.interface_event ||
         !can('events.definitions.update')
       )
         throw new Error('operation not permitted');
@@ -96,7 +99,7 @@ export function EventsPage() {
         {
           name: entry.name,
           description: entry.description,
-          payload_schema: entry.payload_schema,
+          interface_event: entry.interface_event,
           enabled
         },
         csrfToken
@@ -104,7 +107,7 @@ export function EventsPage() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: ['settings', 'events', 'catalog']
+        queryKey: ['events', 'catalog']
       });
     }
   });
@@ -147,6 +150,12 @@ export function EventsPage() {
       )
     },
     {
+      key: 'group_path',
+      title: t('group_path'),
+      width: 220,
+      render: (_, row) => row.group_path?.join(' / ') || '—'
+    },
+    {
       key: 'contract_id',
       title: t('contract_id'),
       dataIndex: 'contract_id',
@@ -186,7 +195,7 @@ export function EventsPage() {
           disabled={
             row.origin !== 'custom' ||
             !row.id ||
-            row.payload_schema === null ||
+            !row.interface_event ||
             !csrfToken ||
             !can('events.definitions.update') ||
             toggleEnabled.isPending
@@ -218,7 +227,7 @@ export function EventsPage() {
           moreAriaLabel={t('actions')}
           actions={[
             ...(row.origin === 'custom' &&
-            row.payload_schema !== null &&
+            row.interface_event &&
             row.id &&
             can('events.definitions.update')
               ? [
@@ -262,12 +271,32 @@ export function EventsPage() {
               )}
               <EventsTable
                 columns={columns}
-                rows={catalog.data ?? []}
-                rowKey={(row) => JSON.stringify([row.contract_id, row.scope])}
+                rows={(catalog.data ?? []).filter(
+                  (row) =>
+                    !group ||
+                    JSON.stringify(
+                      row.group_path?.slice(
+                        0,
+                        (JSON.parse(group) as string[]).length
+                      )
+                    ) === group
+                )}
+                rowKey={(row) =>
+                  JSON.stringify([eventCatalogIdentity(row), row.scope])
+                }
                 tableKey="catalog"
                 loading={catalog.isPending}
                 toolbar={
                   <>
+                    <TreeSelect
+                      aria-label={t('group_path')}
+                      placeholder={t('all_groups')}
+                      allowClear
+                      value={group}
+                      onChange={setGroup}
+                      treeData={eventGroupTree(catalog.data ?? [])}
+                      style={{ minWidth: 220 }}
+                    />
                     {can('events.definitions.create') && (
                       <Button
                         type="primary"
@@ -297,8 +326,9 @@ export function EventsPage() {
       </Flex>
       {drawer && (
         <EventDefinitionDrawer
-          key={drawer.entry?.id ?? drawer.entry?.contract_id ?? 'create'}
+          key={drawer.entry ? eventCatalogIdentity(drawer.entry) : 'create'}
           entry={drawer.entry}
+          catalog={catalog.data ?? []}
           editable={editable}
           saving={save.isPending}
           error={save.isError}

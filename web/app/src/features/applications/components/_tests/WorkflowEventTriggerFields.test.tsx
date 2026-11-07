@@ -93,7 +93,7 @@ test.each(['disabled', 'missing', 'unsupported phase'])(
     expect(enabled).toBeChecked();
     // Provide the newly required input so activation fails on source availability.
     fireEvent.change(
-      screen.getByRole('textbox', { name: 'New input · string' }),
+      screen.getByRole('combobox', { name: 'New input · string' }),
       {
         target: { value: '/payload/new_input' }
       }
@@ -112,7 +112,7 @@ test.each(['disabled', 'missing', 'unsupported phase'])(
     ).toBe(true);
 
     fireEvent.change(
-      screen.getByRole('textbox', { name: 'New input · string' }),
+      screen.getByRole('combobox', { name: 'New input · string' }),
       {
         target: { value: '' }
       }
@@ -321,3 +321,83 @@ test.each([
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   }
 );
+
+test('same-contract subtype leaves save complete backend filters and discover escaped payload fields', async () => {
+  const source = { source_id: 'business.facts', scope: { kind: 'system' } };
+  const catalog = ['reserved', 'settled'].map((kind) => ({
+    id: null,
+    enabled: null,
+    owner_id: 'billing',
+    origin: 'plugin',
+    contract_id: 'business.fact',
+    name: kind,
+    description: '',
+    group_path: ['billing', 'credits'],
+    scope: source.scope,
+    source: {
+      point_id: 'business.facts',
+      selection: { ...source, filters: { kind, version: 'v1' } }
+    },
+    supported_phases: ['published'],
+    payload_schema: {
+      type: 'object',
+      properties: { 'amount/total~value': { type: 'number' } }
+    }
+  }));
+  api.fetchWorkflowEventCatalog.mockResolvedValue(catalog);
+  const saved = vi.fn();
+  function Editor() {
+    const [form] = Form.useForm();
+    return (
+      <Form
+        form={form}
+        initialValues={{ event: { enabled: true, input_mapping: {} } }}
+        onFinish={saved}
+      >
+        <WorkflowEventTriggerFields
+          form={form}
+          fields={[
+            {
+              key: 'amount',
+              label: 'Amount',
+              valueType: 'number',
+              required: true
+            }
+          ]}
+        />
+        <Button htmlType="submit">Save subtype</Button>
+      </Form>
+    );
+  }
+  render(
+    <AppProviders>
+      <Editor />
+    </AppProviders>
+  );
+  await waitFor(() => expect(api.fetchWorkflowEventCatalog).toHaveBeenCalled());
+  const sourceSelect = screen.getByRole('combobox', { name: '事件来源' });
+  fireEvent.mouseDown(sourceSelect);
+  expect(
+    await screen.findByText(/billing \/ credits \/ reserved/)
+  ).toBeInTheDocument();
+  fireEvent.click(await screen.findByText(/billing \/ credits \/ settled/));
+  const phaseSelect = screen.getByRole('combobox', { name: '触发阶段' });
+  fireEvent.mouseDown(phaseSelect);
+  fireEvent.click(await screen.findByText('发布时'));
+  const mapping = screen.getByRole('combobox', { name: 'Amount · number' });
+  fireEvent.focus(mapping);
+  fireEvent.change(mapping, { target: { value: '/payload/amount' } });
+  fireEvent.click(await screen.findByText('/payload/amount~1total~0value'));
+  fireEvent.click(screen.getByRole('button', { name: 'Save subtype' }));
+  await waitFor(() =>
+    expect(saved).toHaveBeenCalledWith({
+      event: {
+        enabled: true,
+        contract_id: 'business.fact',
+        source: catalog[1].source.selection,
+        trigger_phase: 'published',
+        input_mapping: { amount: '/payload/amount~1total~0value' }
+      }
+    })
+  );
+});

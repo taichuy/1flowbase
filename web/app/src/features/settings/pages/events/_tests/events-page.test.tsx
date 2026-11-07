@@ -76,6 +76,8 @@ const schema = {
 };
 const custom: EventCatalogEntry = {
   id: 'definition',
+  group_path: ['interface_events'],
+  interface_event: { interface_id: 'orders.create', phase: 'before' },
   enabled: false,
   owner_id: null,
   scope: { kind: 'workspace', workspace_id: 'workspace' },
@@ -86,6 +88,28 @@ const custom: EventCatalogEntry = {
   origin: 'custom',
   supported_phases: ['subscribed', 'published', 'consumed']
 };
+const declarations: EventCatalogEntry[] = (
+  ['before', 'completion'] as const
+).map((phase) => ({
+  ...custom,
+  id: null,
+  enabled: null,
+  name: `Create order ${phase}`,
+  origin: 'core',
+  contract_id: `interface.orders.create.${phase}`,
+  interface_event: { interface_id: 'orders.create', phase },
+  group_path: ['interfaces', 'orders'],
+  payload_schema: {
+    type: 'object',
+    properties:
+      phase === 'before'
+        ? { input: schema }
+        : {
+            output: schema,
+            terminal: { enum: ['completed', 'failed', 'rejected', 'cancelled'] }
+          }
+  }
+}));
 const snapshot: EventRuntimeSnapshot = {
   instance_id: 'host-instance',
   workspace_id: 'workspace',
@@ -190,7 +214,7 @@ beforeEach(async () => {
 });
 
 describe('event center configuration and observations', () => {
-  test('catalog has seven management columns and keeps source ownership in read-only details', async () => {
+  test('catalog has business grouping and management columns and keeps source ownership in read-only details', async () => {
     api.listEventCatalog.mockResolvedValue([
       custom,
       {
@@ -214,6 +238,7 @@ describe('event center configuration and observations', () => {
       screen.getAllByRole('columnheader').map((node) => node.textContent)
     ).toEqual([
       'Name',
+      'Business group',
       'Event ID',
       'Source category',
       'Scope',
@@ -267,6 +292,41 @@ describe('event center configuration and observations', () => {
     }
   );
 
+  test('same-contract subtype leaves and user definitions remain distinct rows', async () => {
+    const source = {
+      source_id: 'business.facts',
+      scope: { kind: 'system' as const }
+    };
+    api.listEventCatalog.mockResolvedValue([
+      ...['reserved', 'settled'].map((kind) => ({
+        ...custom,
+        id: null,
+        name: kind,
+        origin: 'plugin',
+        group_path: ['billing', kind],
+        source: {
+          point_id: 'business.facts',
+          selection: { ...source, filters: { kind } }
+        }
+      })),
+      custom,
+      { ...custom, id: 'another-definition', name: 'Another rule' }
+    ]);
+    renderPage();
+    for (const name of ['reserved', 'settled', 'Order', 'Another rule'])
+      expect(
+        await screen.findByRole('button', { name, exact: true })
+      ).toBeInTheDocument();
+    expect(screen.getAllByRole('row')).toHaveLength(5);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'settled', exact: true })
+    );
+    expect(
+      within(screen.getByRole('dialog')).getByText('settled', {
+        selector: '.ant-descriptions-item-content'
+      })
+    ).toBeInTheDocument();
+  });
   test('toggles a custom event both ways, preserves its definition and waits for the server', async () => {
     let resolveUpdate!: (value: object) => void;
     api.updateEventDefinition.mockImplementationOnce(
@@ -287,7 +347,7 @@ describe('event center configuration and observations', () => {
         {
           name: 'Order',
           description: 'New order',
-          payload_schema: schema,
+          interface_event: custom.interface_event,
           enabled: true
         },
         'csrf'
@@ -307,7 +367,7 @@ describe('event center configuration and observations', () => {
         {
           name: 'Order',
           description: 'New order',
-          payload_schema: schema,
+          interface_event: custom.interface_event,
           enabled: false
         },
         'csrf'
@@ -487,43 +547,94 @@ describe('event center configuration and observations', () => {
     ).not.toBeInTheDocument();
     expect(api.getEventRuntime).not.toHaveBeenCalled();
   });
-  test('creates a definition using the structured schema editor and retains disabled configuration', async () => {
+  test.each(['before', 'completion'] as const)(
+    'creates an interface rule for %s with inherited schema and no free-form contract',
+    async (phase) => {
+      api.listEventCatalog.mockResolvedValue([custom, ...declarations]);
+      renderPage();
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Create event' })
+      );
+      const drawer = screen.getByRole('dialog');
+      expect(
+        within(drawer).queryByLabelText('Event ID')
+      ).not.toBeInTheDocument();
+      expect(
+        within(drawer).queryByRole('button', { name: 'Add schema field' })
+      ).not.toBeInTheDocument();
+      fireEvent.change(within(drawer).getByLabelText('Name'), {
+        target: { value: 'Request' }
+      });
+      fireEvent.mouseDown(
+        within(drawer).getByRole('combobox', { name: 'Interface / operation' })
+      );
+      fireEvent.click(
+        await screen.findByText('interfaces / orders · orders.create')
+      );
+      fireEvent.mouseDown(
+        within(drawer).getByRole('combobox', { name: 'Interface phase' })
+      );
+      fireEvent.click(
+        await screen.findByText(
+          phase === 'before' ? 'Before execution' : 'After completion'
+        )
+      );
+      const editor = await within(drawer).findByTestId('schema-json-editor');
+      expect(editor).toHaveAttribute('data-readonly', 'true');
+      expect(JSON.parse(editor.textContent ?? '')).toEqual(
+        declarations.find((item) => item.interface_event?.phase === phase)
+          ?.payload_schema
+      );
+      if (phase === 'completion') {
+        const results = within(drawer).getByRole('combobox', {
+          name: 'Terminal results'
+        });
+        for (const label of ['Completed', 'Failed', 'Rejected', 'Cancelled']) {
+          fireEvent.mouseDown(results);
+          fireEvent.click(
+            await screen.findByText(label, {
+              selector: '.ant-select-item-option-content'
+            })
+          );
+        }
+        fireEvent.keyDown(results, { key: 'Escape' });
+      }
+      fireEvent.click(within(drawer).getByRole('switch', { name: 'Enabled' }));
+      fireEvent.click(within(drawer).getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(api.createEventDefinition).toHaveBeenCalledWith(
+          {
+            name: 'Request',
+            description: '',
+            enabled: false,
+            interface_event: {
+              interface_id: 'orders.create',
+              phase,
+              ...(phase === 'completion'
+                ? { results: ['completed', 'failed', 'rejected', 'cancelled'] }
+                : {})
+            }
+          },
+          'csrf'
+        )
+      );
+      expect(api.createEventDefinition.mock.calls[0][0]).not.toHaveProperty(
+        'payload_schema'
+      );
+      expect(api.createEventDefinition.mock.calls[0][0]).not.toHaveProperty(
+        'contract_id'
+      );
+    }
+  );
+  test('new rules cannot invent interfaces when the declaration catalog is empty', async () => {
     renderPage();
     fireEvent.click(
       await screen.findByRole('button', { name: 'Create event' })
     );
-    const drawer = screen.getByRole('dialog');
-    fireEvent.change(within(drawer).getByLabelText('Name'), {
-      target: { value: 'Request' }
-    });
-    fireEvent.change(within(drawer).getByLabelText('Event ID'), {
-      target: { value: 'custom.request' }
-    });
-    fireEvent.click(within(drawer).getByRole('switch', { name: 'Enabled' }));
-    fireEvent.click(
-      within(drawer).getByRole('button', { name: 'Add schema field' })
-    );
-    fireEvent.change(within(drawer).getByLabelText('Schema field name 1'), {
-      target: { value: 'message' }
-    });
-    fireEvent.click(within(drawer).getByRole('button', { name: 'Save' }));
-    await waitFor(() =>
-      expect(api.createEventDefinition).toHaveBeenCalledWith(
-        expect.objectContaining({
-          contract_id: 'custom.request',
-          name: 'Request',
-          enabled: false,
-          payload_schema: expect.objectContaining({
-            type: 'object',
-            properties: expect.objectContaining({ message: expect.any(Object) })
-          })
-        }),
-        'csrf'
-      )
-    );
-    expect(api.createEventDefinition.mock.calls[0][0]).not.toHaveProperty(
-      'contract_version'
-    );
+    expect(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Save' })
+    ).toBeDisabled();
+    expect(api.createEventDefinition).not.toHaveBeenCalled();
   });
   test('custom event details stay read-only even when editing is authorized', async () => {
     renderPage();
@@ -541,11 +652,12 @@ describe('event center configuration and observations', () => {
     ).not.toBeInTheDocument();
     expect(api.updateEventDefinition).not.toHaveBeenCalled();
   });
-  test('editing a disabled custom definition preserves nested schema and immutable identity', async () => {
+  test('editing a disabled interface rule inherits schema and sends the binding', async () => {
+    api.listEventCatalog.mockResolvedValue([custom, ...declarations]);
     renderPage();
     fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
     const drawer = screen.getByRole('dialog');
-    expect(within(drawer).getByLabelText('Event ID')).toBeDisabled();
+    expect(within(drawer).queryByLabelText('Event ID')).not.toBeInTheDocument();
     expect(
       within(drawer).queryByLabelText('Contract version')
     ).not.toBeInTheDocument();
@@ -560,7 +672,7 @@ describe('event center configuration and observations', () => {
           name: 'Changed order',
           description: 'New order',
           enabled: false,
-          payload_schema: schema
+          interface_event: custom.interface_event
         },
         'csrf'
       )
@@ -597,6 +709,9 @@ describe('event center configuration and observations', () => {
     renderPage();
     fireEvent.click(screen.getByRole('tab', { name: 'Current queues' }));
     expect(await screen.findByText('host-instance')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Events are broadcast across subscriptions/)
+    ).toHaveTextContent('consumers compete within that queue');
     expect(screen.getByText('Dequeued deliveries')).toBeInTheDocument();
     expect(
       screen.getByText(/does not indicate workflow success or failure/)

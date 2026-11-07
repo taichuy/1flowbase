@@ -2,6 +2,7 @@ import type { EventCatalogEntry, EventRuntimeSnapshot } from '../types';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   createEventDefinition,
+  eventCatalogIdentity,
   getEventRuntime,
   listEventCatalog,
   updateEventDefinition
@@ -21,6 +22,15 @@ describe('event center wire contract', () => {
         payload_schema: null,
         contract_id: 'core.ready',
         supported_phases: [],
+        group_path: ['billing', 'reservations'],
+        source: {
+          selection: {
+            source_id: 'credits',
+            scope: { kind: 'system' },
+            filters: { kind: 'reserved' }
+          },
+          point_id: 'credits.fact'
+        },
         origin: 'core'
       }
     ];
@@ -49,18 +59,17 @@ describe('event center wire contract', () => {
       );
     vi.stubGlobal('fetch', fetch);
     const input = {
-      contract_id: 'custom.order',
       name: 'Order',
       description: '',
       enabled: false,
-      payload_schema: {
-        type: 'object',
-        properties: { amount: { type: 'number', minimum: 1 } },
-        required: ['amount']
+      interface_event: {
+        interface_id: 'orders.create',
+        phase: 'completion' as const,
+        results: ['failed' as const, 'rejected' as const, 'cancelled' as const]
       }
     };
     await createEventDefinition(input, 'csrf', 'https://example.test');
-    const { contract_id: _id, ...mutable } = input;
+    const mutable = input;
     await updateEventDefinition(
       'definition/a',
       mutable,
@@ -115,4 +124,42 @@ describe('event center wire contract', () => {
     );
     expect(fetch.mock.calls[0][1].method).toBe('GET');
   });
+});
+
+test('catalog identity distinguishes typed filters and user rule IDs regardless of filter key order', () => {
+  const leaf = {
+    contract_id: 'business.fact',
+    source: {
+      selection: {
+        source_id: 'facts',
+        scope: { kind: 'system' as const },
+        filters: { kind: 'reserved', version: 'v1' }
+      }
+    }
+  };
+  expect(eventCatalogIdentity(leaf)).toBe(
+    eventCatalogIdentity({
+      ...leaf,
+      source: {
+        selection: {
+          ...leaf.source.selection,
+          filters: { version: 'v1', kind: 'reserved' }
+        }
+      }
+    })
+  );
+  expect(eventCatalogIdentity(leaf)).not.toBe(
+    eventCatalogIdentity({
+      ...leaf,
+      source: {
+        selection: {
+          ...leaf.source.selection,
+          filters: { kind: 'settled', version: 'v1' }
+        }
+      }
+    })
+  );
+  expect(eventCatalogIdentity({ ...leaf, id: 'rule-a' })).not.toBe(
+    eventCatalogIdentity({ ...leaf, id: 'rule-b' })
+  );
 });

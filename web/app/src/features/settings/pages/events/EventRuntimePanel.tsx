@@ -63,7 +63,14 @@ export function EventRuntimePanel({ tab }: { tab: 'queues' | 'activity' }) {
       width: 300,
       render: (_, row) =>
         row.source_target
-          ? `${scopeLabel(row.source_target.scope)} · ${row.source_target.source_id} · ${row.source_target.workflow_id}`
+          ? [
+              scopeLabel(row.source_target.scope),
+              row.source_target.source_id,
+              ...Object.entries(row.source_target.filters ?? {}).map(
+                ([key, value]) => `${key}=${value}`
+              ),
+              row.source_target.workflow_id
+            ].join(' · ')
           : '—'
     },
     {

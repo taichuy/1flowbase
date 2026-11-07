@@ -1,9 +1,19 @@
-import type {
-  EventCatalogEntry,
-  EventSourceSelection
+import {
+  eventCatalogIdentity,
+  type EventCatalogEntry,
+  type EventSourceSelection
 } from '@1flowbase/api-client';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Form, Input, Select, Switch, type FormInstance } from 'antd';
+import {
+  Alert,
+  AutoComplete,
+  Form,
+  Input,
+  Select,
+  Switch,
+  type FormInstance
+} from 'antd';
+import { eventSchemaPointers } from './workflow-event-schema';
 import { useTranslation } from 'react-i18next';
 import {
   fetchWorkflowEventCatalog,
@@ -34,19 +44,11 @@ export function WorkflowEventTriggerFields({
   const source = Form.useWatch(['event', 'source'], form) as
     | EventSourceSelection
     | undefined;
-  const identity = (
-    entry: Pick<EventCatalogEntry, 'contract_id'> & {
-      source?: { selection: EventSourceSelection };
-    }
-  ) =>
-    JSON.stringify([
-      entry.contract_id,
-      entry.source?.selection.source_id ?? null,
-      entry.source?.selection.scope.kind ?? null,
-      entry.source?.selection.scope.kind === 'workspace'
-        ? entry.source.selection.scope.workspace_id
-        : null
-    ]);
+  const identity = (entry: Pick<EventCatalogEntry, 'contract_id' | 'source'>) =>
+    eventCatalogIdentity({
+      contract_id: entry.contract_id,
+      source: entry.source
+    });
   const currentIdentity = identity({
     contract_id,
     source: source ? { selection: source } : undefined
@@ -59,7 +61,7 @@ export function WorkflowEventTriggerFields({
     unbound: t('event.unbound_scope')
   };
   const sourceLabel = (entry: EventCatalogEntry) =>
-    `${entry.name}${
+    `${entry.group_path?.length ? `${entry.group_path.join(' / ')} / ` : ''}${entry.name}${
       entry.source
         ? ` · ${entry.source.selection.scope.kind === 'workspace' ? entry.source.selection.scope.workspace_id : scopeLabels[entry.source.selection.scope.kind]} · ${entry.source.selection.source_id}`
         : ''
@@ -81,6 +83,9 @@ export function WorkflowEventTriggerFields({
       disabled: true
     });
   }
+  const pointerOptions = eventSchemaPointers(selected?.payload_schema).map(
+    (value) => ({ value })
+  );
   const phaseLabels = {
     subscribed: t('event.subscribed'),
     published: t('event.published'),
@@ -217,7 +222,12 @@ export function WorkflowEventTriggerFields({
             ]}
             extra={t('event.pointer_hint')}
           >
-            <Input />
+            <AutoComplete
+              options={pointerOptions}
+              filterOption={(input, option) =>
+                !!option?.value.toLowerCase().includes(input.toLowerCase())
+              }
+            />
           </Form.Item>
         ))}
     </>

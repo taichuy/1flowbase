@@ -471,6 +471,6 @@
     "published": "发布时",
     "consumed": "消费时（出队）",
     "pointer_invalid": "请输入有效的 RFC6901 指针。",
-    "pointer_hint": "将标量 Start 输入映射到生命周期信号字段，例如 /payload/order_id。"
+    "pointer_hint": "选择源声明的数据字段，或输入 RFC6901 路径。消费表示出队交接，不代表工作流完成。"
   }
 }

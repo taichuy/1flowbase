@@ -7,6 +7,7 @@ export type EventSourceScope =
 export interface EventSourceSelection {
   source_id: string;
   scope: EventSourceScope;
+  filters?: Record<string, string>;
 }
 export interface EventCatalogSource {
   selection: EventSourceSelection;
@@ -45,6 +46,7 @@ export interface EventRegisteredSourceSnapshot {
   queues: EventSourceQueueSnapshot[];
 }
 export interface EventSourceContext {
+  attributes?: Record<string, string>;
   registration_id: string;
   scope: EventSourceScope;
   source_id: string;
@@ -65,7 +67,21 @@ export interface EventSourceRuntimeSnapshot {
   source_metadata_bytes: number;
   observation_loss: EventObservationLossSnapshot;
 }
+export type InterfaceEventPhase = 'before' | 'completion';
+export type InterfaceEventTerminal =
+  | 'completed'
+  | 'failed'
+  | 'rejected'
+  | 'cancelled';
+export interface InterfaceEventBinding {
+  interface_id: string;
+  phase: InterfaceEventPhase;
+  results?: InterfaceEventTerminal[];
+}
 export interface EventCatalogEntry {
+  interface_event?: InterfaceEventBinding;
+  /** The backend omits empty paths. */
+  group_path?: string[];
   source?: EventCatalogSource;
   id: string | null;
   enabled: boolean | null;
@@ -79,17 +95,19 @@ export interface EventCatalogEntry {
   supported_phases: EventTriggerPhase[];
 }
 export interface CreateEventDefinitionInput {
-  contract_id: string;
   name: string;
   description: string;
-  payload_schema: Record<string, unknown> | boolean;
+  interface_event: InterfaceEventBinding;
   enabled: boolean;
 }
-export type UpdateEventDefinitionInput = Omit<
-  CreateEventDefinitionInput,
-  'contract_id'
->;
-export interface EventDefinitionRecord extends CreateEventDefinitionInput {
+export type UpdateEventDefinitionInput = CreateEventDefinitionInput;
+export interface EventDefinitionRecord {
+  interface_event?: InterfaceEventBinding;
+  contract_id: string;
+  payload_schema: Record<string, unknown> | boolean | null;
+  name: string;
+  description: string;
+  enabled: boolean;
   id: string;
   workspace_id: string;
   created_by: string;
