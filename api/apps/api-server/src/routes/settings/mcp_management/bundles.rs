@@ -1,3 +1,5 @@
+pub(crate) mod openapi;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::{Cursor, Read, Write},
@@ -14,6 +16,7 @@ use axum::{
 use control_plane::errors::ControlPlaneError;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use utoipa::ToSchema;
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
 use crate::{
@@ -157,7 +160,7 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(untagged)]
 pub(crate) enum McpBundleSourceBody {
     OfficialCatalog(OfficialMcpBundleSelector),
@@ -165,26 +168,26 @@ pub(crate) enum McpBundleSourceBody {
     BuiltinTemplate(BuiltinMcpTemplateSelector),
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub(crate) struct OfficialMcpBundleSelector {
     pub(crate) organization: String,
     pub(crate) bundle_id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub(crate) struct InstalledMcpExtensionSelector {
     pub(crate) extension_installation_id: String,
     pub(crate) instance_id: Option<String>,
     pub(crate) integrity_override: Option<crate::routes::plugins::PluginRiskOverrideBody>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub(crate) struct BuiltinMcpTemplateSelector {
     pub(crate) builtin_template_id: String,
     pub(crate) instance_id: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(untagged)]
 pub(crate) enum McpBundlePreviewSourceResponse {
     OfficialCatalog(domain::McpBundlePreview),
@@ -192,24 +195,26 @@ pub(crate) enum McpBundlePreviewSourceResponse {
     BuiltinTemplate(BuiltinMcpTemplatePreviewResponse),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct BuiltinMcpTemplatePreviewResponse {
     pub(crate) builtin_template_id: String,
     pub(crate) workspace_application_status: String,
     pub(crate) preview: domain::McpBundlePreview,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct InstalledMcpExtensionPreviewResponse {
     pub(crate) extension_installation_id: String,
     pub(crate) artifact_installation_status: String,
     pub(crate) workspace_application_status: String,
+    #[schema(value_type = Vec<openapi::McpBundleIntegrityWarningDocument>)]
     pub(crate) integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
+    #[schema(value_type = Option<openapi::McpBundleRiskChallengeDocument>)]
     pub(crate) required_integrity_override: Option<domain::ExtensionRiskChallenge>,
     pub(crate) preview: domain::McpBundlePreview,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(untagged)]
 pub(crate) enum McpBundleImportSourceResponse {
     OfficialCatalog(domain::McpBundleImportReport),
@@ -217,23 +222,24 @@ pub(crate) enum McpBundleImportSourceResponse {
     BuiltinTemplate(BuiltinMcpTemplateImportResponse),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct BuiltinMcpTemplateImportResponse {
     pub(crate) builtin_template_id: String,
     pub(crate) workspace_application_status: String,
     pub(crate) import_report: domain::McpBundleImportReport,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct InstalledMcpExtensionImportResponse {
     pub(crate) extension_installation_id: String,
     pub(crate) artifact_installation_status: String,
     pub(crate) workspace_application_status: String,
+    #[schema(value_type = Vec<openapi::McpBundleIntegrityWarningDocument>)]
     pub(crate) integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
     pub(crate) import_report: domain::McpBundleImportReport,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct InstalledMcpExtensionIntegrityChallengeResponse {
     pub(crate) status: u16,
     pub(crate) code: String,
@@ -241,7 +247,9 @@ pub(crate) struct InstalledMcpExtensionIntegrityChallengeResponse {
     pub(crate) extension_installation_id: String,
     pub(crate) artifact_installation_status: String,
     pub(crate) workspace_application_status: String,
+    #[schema(value_type = Vec<openapi::McpBundleIntegrityWarningDocument>)]
     pub(crate) integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
+    #[schema(value_type = openapi::McpBundleRiskChallengeDocument)]
     pub(crate) required_integrity_override: domain::ExtensionRiskChallenge,
     pub(crate) preview: domain::McpBundlePreview,
 }
@@ -414,7 +422,16 @@ pub(crate) async fn import_library_bundle(
     Ok(Json(ApiSuccess::new(report)))
 }
 
-async fn switch_library_bundle(
+#[utoipa::path(
+    post,
+    path = "/api/console/mcp/bundles/library/{organization}/{bundle_id}/current/{bundle_version}",
+    operation_id = "mcp.bundle_library.current.switch",
+    summary = "Switch MCP bundle library release",
+    description = "Switch MCP bundle library release in the system backend.",
+    params(("organization" = String, Path, description = "Bundle publisher organization"), ("bundle_id" = String, Path, description = "Stable bundle identifier"), ("bundle_version" = String, Path, description = "Bundle release version")),
+    responses((status = 200, body = crate::official_mcp_bundles::LocalMcpBundleReceipt), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
+pub(crate) async fn switch_library_bundle(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((organization, bundle_id, bundle_version)): Path<(String, String, String)>,
@@ -437,7 +454,16 @@ async fn switch_library_bundle(
     Ok(Json(ApiSuccess::new(receipt)))
 }
 
-async fn delete_library_bundle_release(
+#[utoipa::path(
+    delete,
+    path = "/api/console/mcp/bundles/library/{organization}/{bundle_id}/releases/{bundle_version}",
+    operation_id = "mcp.bundle_library.releases.delete",
+    summary = "Delete MCP bundle library release",
+    description = "Delete MCP bundle library release in the system backend.",
+    params(("organization" = String, Path, description = "Bundle publisher organization"), ("bundle_id" = String, Path, description = "Stable bundle identifier"), ("bundle_version" = String, Path, description = "Bundle release version")),
+    responses((status = 200, body = openapi::McpBundleLibraryDeleteResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
+pub(crate) async fn delete_library_bundle_release(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((organization, bundle_id, bundle_version)): Path<(String, String, String)>,
@@ -462,7 +488,16 @@ async fn delete_library_bundle_release(
     )))
 }
 
-async fn repair_library_bundle_release(
+#[utoipa::path(
+    post,
+    path = "/api/console/mcp/bundles/library/{organization}/{bundle_id}/releases/{bundle_version}/repair",
+    operation_id = "mcp.bundle_library.releases.repair",
+    summary = "Repair MCP bundle library release",
+    description = "Repair MCP bundle library release in the system backend.",
+    params(("organization" = String, Path, description = "Bundle publisher organization"), ("bundle_id" = String, Path, description = "Stable bundle identifier"), ("bundle_version" = String, Path, description = "Bundle release version")),
+    responses((status = 200, body = crate::official_mcp_bundles::LocalMcpBundleReceipt), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
+pub(crate) async fn repair_library_bundle_release(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((organization, bundle_id, bundle_version)): Path<(String, String, String)>,
@@ -485,7 +520,15 @@ async fn repair_library_bundle_release(
     Ok(Json(ApiSuccess::new(receipt)))
 }
 
-async fn list_official_bundles(
+#[utoipa::path(
+    get,
+    path = "/api/console/mcp/bundles/official",
+    operation_id = "mcp.bundles.official.list",
+    summary = "List MCP bundles official",
+    description = "List MCP bundles official in the system backend.",
+    responses((status = 200, body = openapi::OfficialMcpBundleCatalogSnapshotDocument), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
+pub(crate) async fn list_official_bundles(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<crate::official_mcp_bundles::OfficialMcpBundleCatalogSnapshot>>, ApiError>
@@ -505,7 +548,16 @@ async fn list_official_bundles(
     Ok(Json(ApiSuccess::new(catalog)))
 }
 
-async fn preview_official_bundle(
+#[utoipa::path(
+    post,
+    path = "/api/console/mcp/bundles/preview-official",
+    operation_id = "preview_official_mcp_bundle",
+    summary = "Preview official MCP bundle",
+    description = "Preview official MCP bundle in the system backend.",
+    request_body = McpBundleSourceBody,
+    responses((status = 200, body = McpBundlePreviewSourceResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
+pub(crate) async fn preview_official_bundle(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(body): Json<McpBundleSourceBody>,
@@ -524,7 +576,16 @@ async fn preview_official_bundle(
     Ok(Json(ApiSuccess::new(response)))
 }
 
-async fn import_official_bundle(
+#[utoipa::path(
+    post,
+    path = "/api/console/mcp/bundles/import-official",
+    operation_id = "import_official_mcp_bundle",
+    summary = "Import official MCP bundle",
+    description = "Import official MCP bundle in the system backend.",
+    request_body = McpBundleSourceBody,
+    responses((status = 200, body = McpBundleImportSourceResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = InstalledMcpExtensionIntegrityChallengeResponse), (status = 500, body = crate::error_response::ErrorBody))
+)]
+pub(crate) async fn import_official_bundle(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(body): Json<McpBundleSourceBody>,
@@ -548,7 +609,7 @@ async fn import_official_bundle(
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ExportMcpBundleBody {
     pub(crate) organization: String,
@@ -557,7 +618,7 @@ pub(crate) struct ExportMcpBundleBody {
     pub(crate) locale: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ExportMcpInstanceBundleBody {
     pub(crate) organization: String,
@@ -567,20 +628,28 @@ pub(crate) struct ExportMcpInstanceBundleBody {
     pub(crate) export_profile: Option<McpInstanceBundleExportProfile>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum McpInstanceBundleExportProfile {
     Portable,
     OfficialBuiltin,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct McpBundleExportDefaults {
     pub(crate) minimum_host_version: String,
     pub(crate) current_system_version: String,
 }
 
-async fn export_bundle_defaults(
+#[utoipa::path(
+    get,
+    path = "/api/console/mcp/bundles/export-defaults",
+    operation_id = "get_mcp_bundle_export_defaults",
+    summary = "Get MCP bundle export defaults",
+    description = "Get MCP bundle export defaults in the system backend.",
+    responses((status = 200, body = McpBundleExportDefaults), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
+pub(crate) async fn export_bundle_defaults(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<McpBundleExportDefaults>>, ApiError> {
@@ -598,7 +667,16 @@ async fn export_bundle_defaults(
     Ok(Json(ApiSuccess::new(response)))
 }
 
-async fn export_bundle(
+#[utoipa::path(
+    post,
+    path = "/api/console/mcp/bundles/export",
+    operation_id = "export_mcp_bundle",
+    summary = "Export MCP bundle",
+    description = "Export MCP bundle in the system backend.",
+    request_body = ExportMcpBundleBody,
+    responses((status = 200, body = inline(crate::openapi::OpenApiBinaryBody), content_type = "application/zip"), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
+pub(crate) async fn export_bundle(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(body): Json<ExportMcpBundleBody>,
@@ -617,7 +695,17 @@ async fn export_bundle(
     bundle_archive_response(archive)
 }
 
-async fn export_instance_bundle(
+#[utoipa::path(
+    post,
+    path = "/api/console/mcp/instances/{instance_id}/bundles/export",
+    operation_id = "mcp.instances.export",
+    summary = "Export MCP instances",
+    description = "Export MCP instances in the system backend.",
+    params(("instance_id" = String, Path, description = "MCP instance identifier")),
+    request_body = ExportMcpInstanceBundleBody,
+    responses((status = 200, body = inline(crate::openapi::OpenApiBinaryBody), content_type = "application/zip"), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
+pub(crate) async fn export_instance_bundle(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(instance_id): Path<String>,
@@ -663,7 +751,16 @@ fn bundle_archive_response(
     Ok(response)
 }
 
-async fn preview_uploaded_bundle(
+#[utoipa::path(
+    post,
+    path = "/api/console/mcp/bundles/preview-upload",
+    operation_id = "preview_uploaded_mcp_bundle",
+    summary = "Preview uploaded MCP bundle",
+    description = "Preview uploaded MCP bundle in the system backend.",
+    request_body(content = inline(openapi::McpBundleUploadMultipartBody), content_type = "multipart/form-data"),
+    responses((status = 200, body = domain::McpBundlePreview), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
+pub(crate) async fn preview_uploaded_bundle(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     mut multipart: Multipart,
@@ -683,7 +780,16 @@ async fn preview_uploaded_bundle(
     Ok(Json(ApiSuccess::new(preview)))
 }
 
-async fn import_uploaded_bundle(
+#[utoipa::path(
+    post,
+    path = "/api/console/mcp/bundles/import-upload",
+    operation_id = "import_uploaded_mcp_bundle",
+    summary = "Import uploaded MCP bundle",
+    description = "Import uploaded MCP bundle in the system backend.",
+    request_body(content = inline(openapi::McpBundleUploadMultipartBody), content_type = "multipart/form-data"),
+    responses((status = 200, body = domain::McpBundleImportReport), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
+pub(crate) async fn import_uploaded_bundle(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     mut multipart: Multipart,
