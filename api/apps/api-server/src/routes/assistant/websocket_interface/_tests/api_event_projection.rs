@@ -8,11 +8,11 @@ fn post_upgrade_commands_are_not_projected_as_http_handshake_payloads() {
     };
     assert_eq!(
         AssistantWebSocketCommandInput::document_input_unavailable(&op),
-        Some(domain::event_center::ApiEventUnavailableReason::MissingOpenapiContract)
+        Some(domain::event_center::ApiEventUnavailableReason::ProtocolControl)
     );
     assert_eq!(
         AssistantWebSocketCommandOutput::document_output_unavailable(&op),
-        Some(domain::event_center::ApiEventUnavailableReason::MissingOpenapiContract)
+        Some(domain::event_center::ApiEventUnavailableReason::ProtocolControl)
     );
     assert!(AssistantWebSocketCommandInput::Cancel {
         application_id: Uuid::nil(),

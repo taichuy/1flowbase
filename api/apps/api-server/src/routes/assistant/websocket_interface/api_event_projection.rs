@@ -11,7 +11,7 @@ impl ApiEventInput for AssistantWebSocketCommandInput {
     fn document_input_unavailable(
         _: &ApiEventOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
-        Some(domain::event_center::ApiEventUnavailableReason::MissingOpenapiContract)
+        Some(domain::event_center::ApiEventUnavailableReason::ProtocolControl)
     }
     fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
         match self {
@@ -29,7 +29,7 @@ impl ApiEventOutput for AssistantWebSocketCommandOutput {
     fn document_output_unavailable(
         _: &ApiEventOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
-        Some(domain::event_center::ApiEventUnavailableReason::MissingOpenapiContract)
+        Some(domain::event_center::ApiEventUnavailableReason::ProtocolControl)
     }
     fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
         match self {

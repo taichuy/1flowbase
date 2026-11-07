@@ -475,3 +475,56 @@ fn canonical_business_http_binding_is_not_hidden_by_a_shared_sse_control_variant
         None
     );
 }
+
+#[test]
+fn post_upgrade_command_binding_does_not_mask_the_http_upgrade_control_owner() {
+    let declarations = [ConsoleInterfaceDeclaration {
+        interface_id: "fixture.canonical",
+        binding_id: "ws.fixture.command",
+        method: "GET",
+        path: "/api/console/assistant/runs/websocket",
+        mutating: true,
+    }];
+    let family = console_interface::compile_registry(
+        "api-server.event-fixture",
+        "graph:event-fixture",
+        &declarations,
+        Arc::new(Port),
+    )
+    .unwrap();
+    let mut compiler = RegistryCompiler::new(
+        GraphFingerprint::new("graph:post-upgrade-event-fixture").unwrap(),
+        family
+            .definitions()
+            .map(|definition| definition.authorization_operation().clone()),
+        family
+            .definitions()
+            .map(|definition| definition.owner().clone()),
+    );
+    compiler.absorb_snapshot(&family).unwrap();
+    let capability = family.document_operations().next().unwrap();
+    let mut descriptor = capability.static_descriptor.unwrap().clone();
+    descriptor.schemas.request = None;
+    descriptor.schemas.result = None;
+    descriptor.schemas.request_unavailable = Some("protocol_control".into());
+    descriptor.schemas.result_unavailable = Some("protocol_control".into());
+    compiler
+        .rebind_document_operation_descriptor(capability.binding_id, descriptor)
+        .unwrap();
+    let registry = compiler.compile().unwrap();
+    let mut entry = entries(&docs()).remove(0);
+    entry.interface.method = "GET".into();
+    entry.interface.path = declarations[0].path.into();
+    entry.disabled_reason = Some("unsupported_response_semantics");
+    let details = details_for_entry(&entry, Some(&registry), &actor(), None);
+    assert_eq!(details.operation.scope, EventSourceScope::Unbound);
+    assert_eq!(
+        details.operation.before,
+        unavailable(ApiEventUnavailableReason::ProtocolControl)
+    );
+    assert_eq!(
+        details.operation.completion,
+        unavailable(ApiEventUnavailableReason::ProtocolControl)
+    );
+    assert!(details.before_schema.is_none() && details.completion_schema.is_none());
+}

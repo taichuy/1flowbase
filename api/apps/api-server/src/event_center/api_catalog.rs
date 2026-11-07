@@ -115,7 +115,16 @@ fn unbound_control_reason(
         registry.bindings().any(|binding| {
             binding.projection().http_route().is_some_and(|route| {
                 route_identity(route.method(), route.path()) == route_identity(method, path)
-            })
+            }) && !registry
+                .document_operation(binding.binding_id())
+                .and_then(|capability| capability.static_descriptor)
+                .is_some_and(|descriptor| {
+                    // A post-upgrade command can carry the handshake URL for admission.
+                    // Its typed owner explicitly excludes both HTTP event phases.
+                    descriptor.schemas.request_unavailable.as_deref() == Some("protocol_control")
+                        && descriptor.schemas.result_unavailable.as_deref()
+                            == Some("protocol_control")
+                })
         })
     }) {
         return None;
