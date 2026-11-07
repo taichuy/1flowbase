@@ -108,7 +108,14 @@ async fn event_center_mcp_rules_use_declared_dto_fields() {
             .find(|entry| entry["interface_id"] == operation)
             .unwrap();
         let descriptors = entry["parameter_descriptors"].as_array().unwrap();
-        for name in ["name", "description", "enabled", "interface_event"] {
+        for name in [
+            "name",
+            "description",
+            "enabled",
+            "interface_event.interface_id",
+            "interface_event.phase",
+            "interface_event.results",
+        ] {
             assert!(
                 descriptors.iter().any(|field| field["name"] == name),
                 "{operation} must expose the actual DTO field {name}: {entry}"
