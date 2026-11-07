@@ -1,4 +1,5 @@
 //! Finite synthetic managed-service peer. All authorization and storage remain in the Host.
+use base64::{engine::general_purpose::STANDARD, Engine};
 use runtime_extension_sdk::{
     serve_duplex, CapabilityStdioRequest, MultiplexEmitter, MultiplexHostService, MultiplexInput,
     MultiplexResourceLease, PluginDataFilter, PluginDataFilterOperator, PluginDataOperation,
@@ -170,9 +171,14 @@ async fn execute(
                 .next()
                 .ok_or("fixture_record_absent")?;
             if handler == "resource" {
-                Ok(
-                    json!({"metadata":{"record_id":row["id"]},"resource":{"uri":format!("fixture://record/{record}"),"mime_type":"text/plain","text":row["name"]}}),
-                )
+                // Include non-UTF-8 bytes so import replay must preserve a real binary payload.
+                let mut bytes = vec![0, 0xff];
+                bytes.extend_from_slice(row["name"].as_str().ok_or("fixture_name")?.as_bytes());
+                Ok(json!({
+                    "metadata":{"record_id":row["id"]},
+                    "resource":{"uri":format!("fixture://record/{record}"),"mime_type":"text/plain","text":row["name"]},
+                    "binary_resource":{"uri":format!("fixture://record/{record}/content.bin"),"mime_type":"application/octet-stream","blob":STANDARD.encode(bytes)}
+                }))
             } else {
                 Ok(row)
             }

@@ -56,7 +56,13 @@ fn operation(
         op["mcp"] = json!({"name":handler,"description":format!("Run fixture {handler}")});
     }
     if handler == "resource" {
-        op["mcp"]["output_mapping"] = json!({"mcp_content":[{"type":"resource","uri_path":"/resource/uri","mime_type_path":"/resource/mime_type","text_path":"/resource/text"}],"structured_content_path":"/metadata","resource_read":true});
+        op["mcp"]["output_mapping"] = json!({
+            "mcp_content":[
+                {"type":"resource","uri_path":"/resource/uri","mime_type_path":"/resource/mime_type","text_path":"/resource/text"},
+                {"type":"resource","uri_path":"/binary_resource/uri","mime_type_path":"/binary_resource/mime_type","blob_path":"/binary_resource/blob"}
+            ],
+            "structured_content_path":"/metadata","resource_read":true
+        });
     }
     op
 }

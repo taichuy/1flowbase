@@ -26,15 +26,19 @@ async fn capabilities(f: &Fixture, root: bool, id: &str) -> Value {
     assert_eq!(status, StatusCode::OK, "{result}");
     result["data"]["items"][0].clone()
 }
-fn find_reference(value: &Value) -> Option<String> {
-    match value {
-        Value::String(s) if s.starts_with(extension_contracts::ResourceReference::PREFIX) => {
-            Some(s.clone())
-        }
-        Value::Array(values) => values.iter().find_map(find_reference),
-        Value::Object(values) => values.values().find_map(find_reference),
-        _ => None,
-    }
+fn resource_reference(result: &Value, payload_field: &str) -> String {
+    let resource = result["result"]["content"]
+        .as_array()
+        .expect("native MCP content")
+        .iter()
+        .find(|block| block["type"] == "resource" && block["resource"].get(payload_field).is_some())
+        .expect("fixture must emit the requested text or binary resource");
+    let uri = resource["resource"]["uri"].as_str().unwrap();
+    assert!(
+        uri.starts_with(extension_contracts::ResourceReference::PREFIX),
+        "Host must wrap a replayable resource reference"
+    );
+    uri.to_owned()
 }
 async fn replay(
     f: &Fixture,
@@ -369,18 +373,40 @@ pub(super) async fn run(f: &Fixture) {
     // An issued MCP resource locator replays the canonical open action, including import replay.
     let resource = f.mcp(false, "resource", json!({"record_id":f.alpha})).await;
     mcp_success(&resource);
-    let uri = find_reference(&resource).expect("Host must wrap a replayable resource reference");
+    let text_uri = resource_reference(&resource, "text");
+    let binary_uri = resource_reference(&resource, "blob");
+    assert_ne!(text_uri, binary_uri);
     let read = f
         .rpc(
             false,
-            json!({"jsonrpc":"2.0","id":43,"method":"resources/read","params":{"uri":uri}}),
+            json!({"jsonrpc":"2.0","id":43,"method":"resources/read","params":{"uri":text_uri}}),
         )
         .await;
     assert!(read.get("error").is_none(), "{read}");
     assert_eq!(read["result"]["contents"][0]["text"], "alpha-edited");
     assert_eq!(
-        replay(f, &uri).await.unwrap().bytes.as_slice(),
-        b"alpha-edited"
+        replay(f, &text_uri)
+            .await
+            .err()
+            .expect("Host must reject text resource file imports")
+            .code,
+        "file_import_resource_not_binary",
+        "text resources remain readable but are not binary file imports"
+    );
+    let binary_read = f
+        .rpc(
+            false,
+            json!({"jsonrpc":"2.0","id":45,"method":"resources/read","params":{"uri":binary_uri}}),
+        )
+        .await;
+    assert!(binary_read.get("error").is_none(), "{binary_read}");
+    assert!(binary_read["result"]["contents"][0]["blob"].is_string());
+    let imported = replay(f, &binary_uri).await.unwrap();
+    assert_eq!(imported.bytes.as_slice(), b"\0\xffalpha-edited");
+    assert_eq!(imported.filename, "content.bin");
+    assert_eq!(
+        imported.mime_type.as_deref(),
+        Some("application/octet-stream")
     );
     f.policy(&f.beta, "restricted", &["open"]).await;
     f.policy(&f.alpha, "restricted", &[]).await;
@@ -401,18 +427,20 @@ pub(super) async fn run(f: &Fixture) {
         )
         .await,
     );
-    let revoked = f
-        .rpc(
-            false,
-            json!({"jsonrpc":"2.0","id":44,"method":"resources/read","params":{"uri":uri}}),
-        )
-        .await;
+    for uri in [&text_uri, &binary_uri] {
+        let revoked = f
+            .rpc(
+                false,
+                json!({"jsonrpc":"2.0","id":44,"method":"resources/read","params":{"uri":uri}}),
+            )
+            .await;
+        assert!(
+            revoked.get("error").is_some() || revoked["result"]["isError"] == true,
+            "revoked locator returned content: {revoked}"
+        );
+    }
     assert!(
-        revoked.get("error").is_some() || revoked["result"]["isError"] == true,
-        "revoked locator returned content: {revoked}"
-    );
-    assert!(
-        replay(f, &uri).await.is_err(),
+        replay(f, &binary_uri).await.is_err(),
         "resource import replay must not inherit a past capability decision"
     );
     let root_open = expect(
