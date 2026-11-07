@@ -13,7 +13,12 @@ on:
         description: Full acceptance or a scoped evidence supplement
         type: choice
         default: full
-        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host]
+        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish]
+
+      reused_api_tree:
+        description: Unchanged api tree hash from the prior green host evidence (finish scope only)
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -30,7 +35,7 @@ env:
 
 jobs:
   acceptance:
-    if: inputs.scope != 'event-business-host' && inputs.scope != 'event-business' && inputs.scope != 'event-center' && inputs.scope != 'event-center-supplement' && inputs.scope != 'system-event-center' && inputs.scope != 'system-event-center-supplement' && inputs.scope != 'system-event-center-lineage'
+    if: inputs.scope != 'event-business-finish' && inputs.scope != 'event-business-host' && inputs.scope != 'event-business' && inputs.scope != 'event-center' && inputs.scope != 'event-center-supplement' && inputs.scope != 'system-event-center' && inputs.scope != 'system-event-center-supplement' && inputs.scope != 'system-event-center-lineage'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -157,7 +162,7 @@ jobs:
           path: tmp/test-governance/event-lifecycle/ci
 
   event-center-acceptance:
-    if: inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'event-center' || inputs.scope == 'event-center-supplement' || (inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
+    if: inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'event-center' || inputs.scope == 'event-center-supplement' || (inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -201,6 +206,10 @@ jobs:
           nproc > tmp/test-governance/event-center/ci/cpus.txt
           jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
           echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
+      - name: Fetch locked dependencies for offline boundary audit
+        if: inputs.scope == 'event-business' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business-finish'
+        run: |
+          cargo fetch --locked --manifest-path api/Cargo.toml > tmp/test-governance/event-center/ci/dependency-fetch.log 2>&1 || { tail -c 7000 tmp/test-governance/event-center/ci/dependency-fetch.log; exit 1; }
       - name: Compile affected host targets and prepare existing managed worker
         if: inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage'
         shell: bash
@@ -247,6 +256,7 @@ jobs:
         shell: bash
         env:
           EVIDENCE_SCOPE: ${{ inputs.scope }}
+          REUSED_API_TREE: ${{ inputs.reused_api_tree }}
         run: |
           set -euo pipefail
           evidence=tmp/test-governance/event-center/ci
@@ -271,7 +281,13 @@ jobs:
               failed=1
             fi
           }
-          if [ "$EVIDENCE_SCOPE" = event-business ] || [ "$EVIDENCE_SCOPE" = event-business-host ]; then
+          if [ "$EVIDENCE_SCOPE" = event-business-finish ]; then
+            [[ "$REUSED_API_TREE" =~ ^[0-9a-f]{40}$ ]]
+            git rev-parse HEAD:api > "$evidence/api-tree-sha.txt"
+            test "$(cat "$evidence/api-tree-sha.txt")" = "$REUSED_API_TREE"
+            printf '%s\n' "$REUSED_API_TREE" > "$evidence/reused-api-tree.txt"
+            run_crate_tests dependencies -p control-plane-postgres-tests --test dependency_boundaries
+          elif [ "$EVIDENCE_SCOPE" = event-business ] || [ "$EVIDENCE_SCOPE" = event-business-host ]; then
             # Stop on a shared compilation/fixture failure instead of rebuilding the same
             # failing dependency for every filter. All evidence remains bound to source-sha.
             run_business() {
@@ -365,12 +381,12 @@ jobs:
             run_tests command-workflow --lib communication_runtime::commands
             run_tests applications --test api_application workflow
           fi
-          if [ "$EVIDENCE_SCOPE" != event-business-host ] && [ "$EVIDENCE_SCOPE" != event-business ] && [ "$EVIDENCE_SCOPE" != system-event-center-supplement ] && [ "$EVIDENCE_SCOPE" != system-event-center-lineage ]; then
+          if [ "$EVIDENCE_SCOPE" != event-business-finish ] && [ "$EVIDENCE_SCOPE" != event-business-host ] && [ "$EVIDENCE_SCOPE" != event-business ] && [ "$EVIDENCE_SCOPE" != system-event-center-supplement ] && [ "$EVIDENCE_SCOPE" != system-event-center-lineage ]; then
             run_tests communications --test api_private_routes routes::communications
           fi
           test "$failed" = 0
       - name: Build matching system-event local verification candidate
-        if: (inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
+        if: (inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
         shell: bash
         run: |
           set -euo pipefail

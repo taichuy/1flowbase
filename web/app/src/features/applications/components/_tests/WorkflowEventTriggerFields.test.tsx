@@ -32,20 +32,39 @@ const stored = {
 
 beforeEach(() => vi.clearAllMocks());
 
-test.each(['disabled', 'missing', 'unsupported phase'])(
+test.each(['disabled', 'missing', 'unsupported phase', 'interface capability'])(
   'an unavailable %s source can be stopped without changing the stored target',
   async (reason) => {
+    const capability = reason === 'interface capability';
+    const target = capability
+      ? {
+          ...stored,
+          contract_id: 'interface.orders.create.before',
+          trigger_phase: 'published'
+        }
+      : stored;
     api.fetchWorkflowEventCatalog.mockResolvedValue(
       reason === 'missing'
         ? []
         : [
             {
-              contract_id: stored.contract_id,
-              name: 'Invoice',
-              origin: 'custom',
-              enabled: reason !== 'disabled',
+              contract_id: target.contract_id,
+              name: capability ? 'Interface capability' : 'Invoice',
+              origin: capability ? 'core' : 'custom',
+              enabled: capability ? null : reason !== 'disabled',
+              ...(capability
+                ? {
+                    interface_event: {
+                      interface_id: 'orders.create',
+                      phase: 'before'
+                    },
+                    payload_schema: { type: 'object' }
+                  }
+                : {}),
               supported_phases:
-                reason === 'unsupported phase' ? ['published'] : ['consumed']
+                capability || reason === 'unsupported phase'
+                  ? ['published']
+                  : ['consumed']
             }
           ]
     );
@@ -56,7 +75,7 @@ test.each(['disabled', 'missing', 'unsupported phase'])(
       return (
         <Form
           form={form}
-          initialValues={{ event: stored }}
+          initialValues={{ event: target }}
           onFinish={saved}
           onFinishFailed={rejected}
         >
@@ -89,6 +108,7 @@ test.each(['disabled', 'missing', 'unsupported phase'])(
     await waitFor(() =>
       expect(api.fetchWorkflowEventCatalog).toHaveBeenCalled()
     );
+    if (capability) await screen.findAllByText(/Interface capability/);
     const enabled = screen.getByRole('switch', { name: '启用订阅' });
     expect(enabled).toBeChecked();
     // Provide the newly required input so activation fails on source availability.
@@ -123,9 +143,9 @@ test.each(['disabled', 'missing', 'unsupported phase'])(
     await waitFor(() =>
       expect(saved).toHaveBeenCalledWith({
         event: {
-          ...stored,
+          ...target,
           enabled: false,
-          input_mapping: { ...stored.input_mapping, new_input: '' }
+          input_mapping: { ...target.input_mapping, new_input: '' }
         }
       })
     );

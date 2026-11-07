@@ -54,8 +54,9 @@ export function WorkflowEventTriggerFields({
     source: source ? { selection: source } : undefined
   });
   const eligible = (entry: EventCatalogEntry) =>
-    (entry.origin !== 'custom' || entry.enabled !== false) &&
-    entry.supported_phases.length > 0;
+    (entry.origin === 'custom'
+      ? entry.enabled !== false
+      : Boolean(entry.source)) && entry.supported_phases.length > 0;
   const scopeLabels = {
     system: t('event.system_scope'),
     unbound: t('event.unbound_scope')
