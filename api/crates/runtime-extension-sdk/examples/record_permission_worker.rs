@@ -47,6 +47,7 @@ async fn data(
     emitter: &MultiplexEmitter,
     operations: Vec<PluginDataOperation>,
 ) -> Result<Vec<PluginDataOperationResult>, String> {
+    trace("plugin_data_callback_start");
     let response = emitter
         .callback(
             MultiplexHostService::PluginDataV1,
@@ -57,10 +58,20 @@ async fn data(
             .unwrap(),
         )
         .await
-        .map_err(|_| "fixture_callback_transport".to_owned())?;
+        .map_err(|_| {
+            trace("plugin_data_callback_transport_error");
+            "fixture_callback_transport".to_owned()
+        })?;
     if response.get("error").is_some() {
+        // Codes are Host classifications; never print callback payloads or credentials.
+        let code = response
+            .pointer("/error/code")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        trace(&format!("plugin_data_callback_error:{code}"));
         return Err("fixture_data_denied".into());
     }
+    trace("plugin_data_callback_ok");
     let response: PluginDataResponse = serde_json::from_value(response["result"].clone())
         .map_err(|_| "fixture_callback_contract".to_owned())?;
     Ok(response.results)

@@ -4,7 +4,7 @@ mod package;
 mod streaming;
 use crate::_tests::support::{
     create_member, create_role, login_and_capture_cookie, replace_member_roles,
-    replace_role_permissions, test_api_state_with_database_url, test_config,
+    replace_role_permissions, test_api_state_with_database_pool_capacity, test_config,
 };
 use crate::{
     app_state::ApiState,
@@ -159,7 +159,11 @@ impl Fixture {
     async fn new() -> Self {
         // Fail on a missing finite peer before creating durable fixture resources.
         let package = package::package();
-        let (initial, _) = test_api_state_with_database_url().await;
+        // ManagedPluginDataService retains one authority transaction while its real inner
+        // PluginDataPort executes an effect transaction. This pre-existing service needs two
+        // connections to the same isolated DB; the ordinary factory intentionally budgets one.
+        let (initial, _) =
+            test_api_state_with_database_pool_capacity(std::num::NonZeroU32::new(2).unwrap()).await;
         let assembly = crate::extension_bus::assemble_extension_graph_input(
             crate::api_workspace_root().unwrap(),
             crate::extension_bus::DEFAULT_PLUGIN_SET_PATH,
@@ -276,7 +280,16 @@ impl Fixture {
                 Some(json!({"name":name})),
             )
             .await;
-            assert_eq!(status, StatusCode::OK, "{body}");
+            assert_eq!(
+                status,
+                StatusCode::OK,
+                "{body}; finite worker stages: {}",
+                std::fs::read_to_string(worker.with_extension("trace"))
+                    .unwrap_or_default()
+                    .chars()
+                    .take(4000)
+                    .collect::<String>()
+            );
         }
         let (status, body) = http(
             &app,
