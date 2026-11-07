@@ -4,6 +4,9 @@ use domain::*;
 use serde_json::json;
 use uuid::Uuid;
 
+#[path = "communications/_tests/lifecycle.rs"]
+mod lifecycle;
+
 pub(super) const KEY: &str = "communications-fixture-master-key";
 pub(super) fn config() -> CommunicationBindingInput {
     CommunicationBindingInput {

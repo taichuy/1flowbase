@@ -9,6 +9,7 @@ use crate::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
+use control_plane_contracts::ports::{CommunicationLifecycleObserver, CommunicationSendResultKind};
 use domain::{
     ActorContext, NotificationInstanceRecord, NotificationInstanceStatus, NotificationMessagePage,
     SystemNotificationRecord,
@@ -26,6 +27,7 @@ pub use event_commands::*;
 mod command_events;
 pub use command_catalog::*;
 pub use command_events::{decode_builtin_command, terminate_communication_command_delivery};
+mod lifecycle;
 mod logging;
 mod managed_send;
 mod migration;
@@ -114,6 +116,7 @@ pub struct NotificationService<R> {
     provider: Option<Arc<dyn NotificationProviderPort>>,
     commands: Option<Arc<dyn CommunicationCommandProviderPort>>,
     events: Option<Arc<dyn NotificationEventPublisher>>,
+    communication_lifecycle_observer: Option<Arc<dyn CommunicationLifecycleObserver>>,
 }
 impl<R> NotificationService<R> {
     pub fn new(repository: R, master_key: String) -> Self {
@@ -123,6 +126,7 @@ impl<R> NotificationService<R> {
             provider: None,
             commands: None,
             events: None,
+            communication_lifecycle_observer: None,
         }
     }
     pub fn with_command_provider(
@@ -138,6 +142,13 @@ impl<R> NotificationService<R> {
     }
     pub fn with_events(mut self, events: Arc<dyn NotificationEventPublisher>) -> Self {
         self.events = Some(events);
+        self
+    }
+    pub fn with_communication_lifecycle_observer(
+        mut self,
+        observer: Arc<dyn CommunicationLifecycleObserver>,
+    ) -> Self {
+        self.communication_lifecycle_observer = Some(observer);
         self
     }
 }
@@ -633,8 +644,18 @@ where
                 completed_at: None,
             })
             .await?;
+        let mut attempt = None;
+        let observed_target = target.clone();
         let outcome = self
-            .send_logged(actor, instance_id, instance, input, log_id, target)
+            .send_logged(
+                actor,
+                instance_id,
+                instance,
+                input,
+                log_id,
+                target,
+                &mut attempt,
+            )
             .await;
         if let Err(error) = &outcome {
             let terminal = error.downcast_ref::<Error>().and_then(|error| match error {
@@ -691,6 +712,10 @@ where
                     .await;
             }
         }
+        if let Some(attempt) = attempt {
+            self.observe_send_result(actor, instance_id, log_id, source, observed_target, attempt)
+                .await;
+        }
         outcome
     }
 }
@@ -706,6 +731,7 @@ where
         input: Value,
         log_id: Uuid,
         target: Option<extension_contracts::NotificationSendTarget>,
+        attempt: &mut Option<lifecycle::SendAttemptObservation>,
     ) -> Result<NotificationSendResult> {
         let instance = instance.ok_or(Error::NotFound("notification_instance"))?;
         if instance.status != NotificationInstanceStatus::Enabled {
@@ -726,7 +752,15 @@ where
         }
         if entry.descriptor.authorization.is_some() || entry.descriptor.receive.is_some() {
             return self
-                .send_managed(actor, &instance, &entry.descriptor, input, log_id, target)
+                .send_managed(
+                    actor,
+                    &instance,
+                    &entry.descriptor,
+                    input,
+                    log_id,
+                    target,
+                    attempt,
+                )
                 .await;
         }
         if target.is_some() {
@@ -808,12 +842,14 @@ where
                 .provider
                 .as_ref()
                 .ok_or(Error::Conflict("plugin_unavailable"))?;
+            let installation_id = instance
+                .installation_id
+                .ok_or(Error::Conflict("type_unavailable"))?;
+            *attempt = Some(lifecycle::SendAttemptObservation::unknown());
             let result = provider
                 .send(
                     actor,
-                    instance
-                        .installation_id
-                        .ok_or(Error::Conflict("type_unavailable"))?,
+                    installation_id,
                     &entry.descriptor,
                     config.clone(),
                     input,
@@ -839,6 +875,10 @@ where
             .validate_output(&result)
             .map_err(|_| Error::Conflict("notification_output_schema"))?;
         if instance.type_code != "system" {
+            *attempt = Some(lifecycle::SendAttemptObservation {
+                result_kind: CommunicationSendResultKind::Accepted,
+                failure_code: None,
+            });
             let log_extra = logging::result_extra(
                 &entry.descriptor,
                 &result,

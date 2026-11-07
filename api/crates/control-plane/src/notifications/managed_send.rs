@@ -19,6 +19,7 @@ where
         input_payload: Value,
         log_id: Uuid,
         target: Option<extension_contracts::NotificationSendTarget>,
+        attempt: &mut Option<super::lifecycle::SendAttemptObservation>,
     ) -> Result<NotificationSendResult> {
         let state = self
             .repository
@@ -72,19 +73,17 @@ where
         input
             .validate(descriptor)
             .map_err(|_| Error::Conflict("notification_authorization_state"))?;
-        let raw = self
+        let provider = self
             .provider
             .as_ref()
-            .ok_or(Error::Conflict("plugin_unavailable"))?
-            .send(
-                actor,
-                instance
-                    .installation_id
-                    .ok_or(Error::Conflict("type_unavailable"))?,
-                descriptor,
-                config.clone(),
-                serde_json::to_value(&input)?,
-            )
+            .ok_or(Error::Conflict("plugin_unavailable"))?;
+        let installation_id = instance
+            .installation_id
+            .ok_or(Error::Conflict("type_unavailable"))?;
+        let payload = serde_json::to_value(&input)?;
+        *attempt = Some(super::lifecycle::SendAttemptObservation::unknown());
+        let raw = provider
+            .send(actor, installation_id, descriptor, config.clone(), payload)
             .await
             .map_err(|_| Error::UpstreamUnavailable("notification_provider_failed"))?;
         let response: NotificationRuntimeResult = serde_json::from_value(raw)
@@ -122,6 +121,22 @@ where
             )?,
             _ => None,
         };
+        *attempt = Some(super::lifecycle::SendAttemptObservation {
+            result_kind: match &outcome {
+                NotificationSendOutcome::Succeeded { .. } => CommunicationSendResultKind::Accepted,
+                NotificationSendOutcome::Failed { .. } => CommunicationSendResultKind::Failed,
+                NotificationSendOutcome::Unknown { .. } => CommunicationSendResultKind::Unknown,
+            },
+            failure_code: match &outcome {
+                NotificationSendOutcome::Succeeded { .. } => None,
+                NotificationSendOutcome::Failed { failure_code }
+                | NotificationSendOutcome::Unknown { failure_code } => {
+                    serde_json::to_value(failure_code)
+                        .ok()
+                        .and_then(|value| value.as_str().map(str::to_owned))
+                }
+            },
+        });
         self.apply_runtime_authorization(
             actor,
             instance.id,
