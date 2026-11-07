@@ -22,11 +22,26 @@ struct Active<L> {
         >,
     >,
 }
-async fn start(f: &Fixture, root: bool) -> Active<impl Send> {
+async fn start(f: &Fixture, root: bool, record: &str) -> Active<stream::SocketLease> {
     let state = f.state();
     let credential = if root { &f.root } else { &f.member };
-    let generation = crate::managed_services::stream_ticket::generation(&state).unwrap();
-    let (lease, cancellation) = stream::register_test_stream(f.installation, &generation).unwrap();
+    let headers = credential.headers();
+    let payload = json!({"path":{"record_id":record},"query":{},"body":{}});
+    let operation = state
+        .console_surface_registry
+        .managed_services()
+        .iter()
+        .find(|service| service.installation_id == f.installation)
+        .unwrap()
+        .declaration
+        .operations
+        .iter()
+        .find(|op| op.interface_id == "record_fixture.stream")
+        .unwrap();
+    let (lease, cancellation) =
+        stream::register_test_stream(&state, &headers, f.installation, operation, &payload)
+            .await
+            .unwrap();
     let (input, input_receiver) = mpsc::channel(1);
     let (unused_events, _) = mpsc::channel::<RuntimeManagedDuplexEvent>(1);
     let server = console_interface::invoke_server_stream::<
@@ -36,13 +51,10 @@ async fn start(f: &Fixture, root: bool) -> Active<impl Send> {
     >(
         state.clone(),
         "http.record_fixture.stream.v1",
-        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
-            state,
-            headers: credential.headers(),
-        },
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
         ManagedServiceInput {
             interface_id: "record_fixture.stream".into(),
-            payload: json!({"path":{"record_id":f.alpha},"query":{},"body":{}}),
+            payload,
             stream: Some(StreamInput::Run {
                 duplex: RuntimeManagedDuplex {
                     input: Arc::new(tokio::sync::Mutex::new(input_receiver)),
@@ -61,7 +73,7 @@ async fn start(f: &Fixture, root: bool) -> Active<impl Send> {
         .await
         .expect("finite worker ready event deadline")
         .expect("stream ended before the worker ready event");
-    assert_eq!(ready.event, json!({"ready":true,"record_id":f.alpha}));
+    assert_eq!(ready.event, json!({"ready":true,"record_id":record}));
     ready
         .consumed
         .send(())
@@ -73,6 +85,16 @@ async fn start(f: &Fixture, root: bool) -> Active<impl Send> {
         _events: events,
         completion,
     }
+}
+fn assert_active<L>(stream: &Active<L>) {
+    assert!(
+        !*stream.cancellation.borrow(),
+        "authorized stream must keep its cancellation lease"
+    );
+    assert!(
+        !stream.completion.is_finished(),
+        "authorized stream must continue executing"
+    );
 }
 async fn completed<L>(active: Active<L>) {
     let Active {
@@ -187,23 +209,49 @@ pub(super) async fn run(f: &Fixture) {
         .await;
     assert_eq!(status, StatusCode::OK, "{ticket}");
     assert!(ticket["data"]["ticket"].is_string());
-    let member = start(f, false).await;
+    f.policy(&f.beta, "restricted", &["open"]).await;
+    let member = start(f, false, &f.alpha).await;
+    let root = start(f, true, &f.alpha).await;
+    let neighbor = start(f, false, &f.beta).await;
+    let epoch = stream::epoch(f.installation);
+    // Saving a still-allowing grant must not interrupt that user's existing terminal.
+    f.policy(&f.alpha, "restricted", &["open"]).await;
+    assert_active(&member);
+    assert_active(&root);
+    assert_active(&neighbor);
+    assert_eq!(
+        stream::epoch(f.installation),
+        epoch,
+        "a record save must not revoke installation tickets"
+    );
     f.policy(&f.alpha, "restricted", &[]).await;
+    assert_active(&root);
+    assert_active(&neighbor);
     completed(member).await;
     assert!(!revalidate(f, false).await);
     assert!(revalidate(f, true).await);
-    // The existing installation-level invalidation also ends root's active stream. It is not
-    // a root row denial: root can immediately start another stream under the same empty policy.
-    let root = start(f, true).await;
-    f.policy(&f.beta, "restricted", &[]).await;
-    completed(root).await;
-    let reopened = start(f, true).await;
-    assert!(
-        !*reopened.cancellation.borrow(),
-        "new root stream must not inherit the past revocation epoch"
-    );
+    let reopened = start(f, true, &f.alpha).await;
+    f.policy(&f.beta, "restricted", &["open"]).await;
     f.policy(&f.alpha, "restricted", &[]).await;
+    for cancellation in [
+        &root.cancellation,
+        &reopened.cancellation,
+        &neighbor.cancellation,
+    ] {
+        assert!(
+            !*cancellation.borrow(),
+            "root and still-authorized neighbors remain active"
+        );
+    }
+    assert_active(&root);
+    assert_active(&reopened);
+    assert_active(&neighbor);
+    // Generation/disable still uses the pre-existing installation-wide cancellation owner.
+    stream::revoke_installation(f.installation);
+    completed(root).await;
     completed(reopened).await;
+    completed(neighbor).await;
+    f.policy(&f.beta, "restricted", &[]).await;
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             let traces =
@@ -212,7 +260,7 @@ pub(super) async fn run(f: &Fixture) {
                 .lines()
                 .filter(|line| *line == "stream_cleanup")
                 .count()
-                >= 3
+                >= 4
             {
                 break;
             }

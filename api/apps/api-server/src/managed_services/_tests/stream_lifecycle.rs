@@ -9,7 +9,7 @@ async fn socket_exit_and_mutation_cancel_the_ephemeral_call_and_release_registra
         .unwrap_or_default();
     let installation = uuid::Uuid::now_v7();
     let (lease, mut cancellation) =
-        register(installation, epoch(installation), &generation).unwrap();
+        register(installation, epoch(installation), &generation, None).unwrap();
     assert!(!*cancellation.borrow());
     drop(lease);
     cancellation.changed().await.unwrap();
@@ -23,11 +23,11 @@ async fn socket_exit_and_mutation_cancel_the_ephemeral_call_and_release_registra
         .sockets
         .is_empty());
     let (lease, mut cancellation) =
-        register(installation, epoch(installation), &generation).unwrap();
+        register(installation, epoch(installation), &generation, None).unwrap();
     revoke_installation(installation);
     cancellation.changed().await.unwrap();
     assert!(*cancellation.borrow());
-    assert!(register(installation, epoch(installation) - 1, &generation).is_err());
+    assert!(register(installation, epoch(installation) - 1, &generation, None).is_err());
     drop(lease);
 }
 
@@ -125,4 +125,74 @@ async fn generation_managed_socket_session_retains_old_owner_until_session_drop(
     drop(session);
     assert!(probe.upgrade().is_none());
     assert!(state_probe.upgrade().is_none());
+}
+
+#[test]
+fn record_revocation_candidates_are_exact_and_never_include_root_or_untracked_streams() {
+    use domain::{ActorContext, RecordPermissionKey, RecordPermissionResourceKey};
+    let installation = uuid::Uuid::now_v7();
+    let workspace = uuid::Uuid::now_v7();
+    let key = RecordPermissionKey {
+        workspace_id: workspace,
+        record_id: "target-record".into(),
+        resource: RecordPermissionResourceKey {
+            publisher_namespace: "fixture".into(),
+            plugin_code: "fixture_plugin".into(),
+            resource_code: "records".into(),
+        },
+    };
+    let mut actor = ActorContext::root(uuid::Uuid::now_v7(), workspace, "operator");
+    actor.is_root = false;
+    let mut all = StreamRegistry::default();
+    let mut add = |installation, actor: ActorContext, key: Option<RecordPermissionKey>| {
+        let id = uuid::Uuid::now_v7();
+        let (cancel, _) = watch::channel(false);
+        all.installations
+            .entry(installation)
+            .or_default()
+            .sockets
+            .insert(
+                id,
+                RegisteredStream {
+                    cancel,
+                    record_permission: key.map(|key| StreamRecordAdmission { actor, key }),
+                },
+            );
+        id
+    };
+    let affected = add(installation, actor.clone(), Some(key.clone()));
+    let mut still_granted = actor.clone();
+    still_granted.user_id = uuid::Uuid::now_v7();
+    let candidate_requiring_fresh_role_evaluation =
+        add(installation, still_granted, Some(key.clone()));
+    let mut root = actor.clone();
+    root.is_root = true;
+    add(installation, root, Some(key.clone()));
+    add(installation, actor.clone(), None);
+    add(uuid::Uuid::now_v7(), actor.clone(), Some(key.clone()));
+    let mut other = key.clone();
+    other.record_id = "another-record".into();
+    add(installation, actor.clone(), Some(other));
+    let mut other = key.clone();
+    other.workspace_id = uuid::Uuid::now_v7();
+    let mut other_workspace_actor = actor.clone();
+    other_workspace_actor.current_workspace_id = other.workspace_id;
+    add(installation, other_workspace_actor, Some(other));
+    let mut other = key.clone();
+    other.resource.resource_code = "another-resource".into();
+    add(installation, actor.clone(), Some(other));
+    let mut other = key.clone();
+    other.resource.plugin_code = "another-plugin".into();
+    add(installation, actor.clone(), Some(other));
+    let mut other = key.clone();
+    other.resource.publisher_namespace = "another-publisher".into();
+    add(installation, actor, Some(other));
+    let candidates = record_candidates(&all, installation, &key);
+    assert_eq!(candidates.len(), 2);
+    let ids = candidates.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+    assert!(ids.contains(&affected));
+    assert!(ids.contains(&candidate_requiring_fresh_role_evaluation));
+    assert!(candidates
+        .iter()
+        .all(|(_, admission)| !admission.actor.is_root && admission.key == key));
 }

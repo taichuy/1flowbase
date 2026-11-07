@@ -228,7 +228,12 @@ impl Adapter {
                                 .collect::<Vec<_>>(),
                         )
                         .await?;
-                    super::stream::revoke_installation(registration.installation_id);
+                    super::stream::revoke_record_permissions(
+                        &state,
+                        registration.installation_id,
+                        &key,
+                    )
+                    .await;
                     return Ok(Output(serde_json::to_value(policy)?));
                 } else {
                     service.get(actor, &key).await?

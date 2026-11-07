@@ -52,10 +52,20 @@ impl InterfaceContract for StreamEvent {
         Some(json!({"body_bytes":serde_json::to_vec(&self.0.event).ok()?.len()}))
     }
 }
+#[derive(Clone)]
+struct StreamRecordAdmission {
+    actor: domain::ActorContext,
+    key: domain::RecordPermissionKey,
+}
+struct RegisteredStream {
+    cancel: watch::Sender<bool>,
+    // Derived by authenticated upgrade admission, never accepted from a worker/frame/body.
+    record_permission: Option<StreamRecordAdmission>,
+}
 #[derive(Default)]
 struct InstallationStreams {
     epoch: u64,
-    sockets: BTreeMap<uuid::Uuid, watch::Sender<bool>>,
+    sockets: BTreeMap<uuid::Uuid, RegisteredStream>,
 }
 #[derive(Default)]
 struct StreamRegistry {
@@ -72,8 +82,8 @@ pub(crate) fn publish_generation(generation: String) {
     all.generation = Some(generation);
     for entry in all.installations.values_mut() {
         entry.epoch += 1;
-        for (_, cancel) in std::mem::take(&mut entry.sockets) {
-            let _ = cancel.send(true);
+        for (_, stream) in std::mem::take(&mut entry.sockets) {
+            let _ = stream.cancel.send(true);
         }
     }
 }
@@ -81,16 +91,69 @@ pub(crate) fn revoke_installation(id: uuid::Uuid) {
     let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
     let entry = all.installations.entry(id).or_default();
     entry.epoch += 1;
-    for (_, cancel) in std::mem::take(&mut entry.sockets) {
-        let _ = cancel.send(true);
+    for (_, stream) in std::mem::take(&mut entry.sockets) {
+        let _ = stream.cancel.send(true);
+    }
+}
+fn record_candidates(
+    all: &StreamRegistry,
+    installation: uuid::Uuid,
+    key: &domain::RecordPermissionKey,
+) -> Vec<(uuid::Uuid, StreamRecordAdmission)> {
+    all.installations
+        .get(&installation)
+        .into_iter()
+        .flat_map(|entry| &entry.sockets)
+        .filter_map(|(id, stream)| {
+            stream
+                .record_permission
+                .as_ref()
+                .filter(|admission| !admission.actor.is_root && &admission.key == key)
+                .map(|admission| (*id, admission.clone()))
+        })
+        .collect()
+}
+/// A record policy change revokes only newly denied streams in that caller workspace.
+/// Admission and periodic validation still own the separate global operation/session gates.
+pub(crate) async fn revoke_record_permissions(
+    state: &ApiState,
+    installation: uuid::Uuid,
+    key: &domain::RecordPermissionKey,
+) {
+    let candidates = {
+        let all = streams().lock().unwrap_or_else(|e| e.into_inner());
+        record_candidates(&all, installation, key)
+    };
+    let service =
+        control_plane::record_permissions::RecordPermissionService::new(state.store.clone());
+    for (id, admission) in candidates {
+        // This can only withdraw a previously admitted stream; it cannot grant an operation.
+        // Effective role IDs and record policy are loaded durably on every check.
+        if service
+            .authorize(&admission.actor, &admission.key, "open", true)
+            .await
+            .is_ok()
+        {
+            continue;
+        }
+        let cancel = {
+            let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
+            all.installations
+                .get_mut(&installation)
+                .and_then(|entry| entry.sockets.remove(&id))
+                .map(|stream| stream.cancel)
+        };
+        if let Some(cancel) = cancel {
+            let _ = cancel.send(true);
+        }
     }
 }
 pub(crate) fn revoke_all() {
     let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
     for entry in all.installations.values_mut() {
         entry.epoch += 1;
-        for (_, cancel) in std::mem::take(&mut entry.sockets) {
-            let _ = cancel.send(true);
+        for (_, stream) in std::mem::take(&mut entry.sockets) {
+            let _ = stream.cancel.send(true);
         }
     }
 }
@@ -103,7 +166,7 @@ pub(super) fn epoch(id: uuid::Uuid) -> u64 {
         .or_default()
         .epoch
 }
-struct SocketLease {
+pub(super) struct SocketLease {
     installation: uuid::Uuid,
     id: uuid::Uuid,
     cancel: watch::Sender<bool>,
@@ -125,6 +188,7 @@ fn register(
     installation: uuid::Uuid,
     expected_epoch: u64,
     generation: &str,
+    record_permission: Option<StreamRecordAdmission>,
 ) -> Result<(SocketLease, watch::Receiver<bool>), ApiError> {
     let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
     if all
@@ -140,7 +204,13 @@ fn register(
     }
     let (cancel, receiver) = watch::channel(false);
     let id = uuid::Uuid::now_v7();
-    entry.sockets.insert(id, cancel.clone());
+    entry.sockets.insert(
+        id,
+        RegisteredStream {
+            cancel: cancel.clone(),
+            record_permission,
+        },
+    );
     Ok((
         SocketLease {
             installation,
@@ -294,7 +364,7 @@ async fn revalidate(
     operation: &plugin_framework::ManagedServiceOperation,
     installation: uuid::Uuid,
     payload: &Value,
-) -> Result<(), ApiError> {
+) -> Result<Option<StreamRecordAdmission>, ApiError> {
     let context = crate::middleware::require_session::require_session(state, headers).await?;
     if context.cookie_session()?.session_id != session {
         return Err(Error::PermissionDenied("managed_service_session").into());
@@ -323,8 +393,44 @@ async fn revalidate(
         .iter()
         .find(|r| r.installation_id == installation)
         .ok_or(Error::Conflict("managed_service_inactive"))?;
-    super::record_acl::authorize(state, registration, &context.actor, operation, payload).await?;
-    Ok(())
+    let record_permissions =
+        super::record_acl::authorize(state, registration, &context.actor, operation, payload)
+            .await?;
+    let admission = match operation
+        .record_permission
+        .as_ref()
+        .filter(|permission| permission.action_code == "open")
+    {
+        Some(permission) => {
+            match record_permissions
+                .as_ref()
+                .and_then(|context| {
+                    context
+                        .resources
+                        .iter()
+                        .find(|resource| resource.resource_code == permission.resource_code)
+                })
+                .and_then(|resource| resource.record_id.as_deref())
+            {
+                Some(record_id) => {
+                    let resource =
+                        super::record_acl::resource(registration, &permission.resource_code)?;
+                    Some(StreamRecordAdmission {
+                        key: super::record_acl::key(
+                            registration,
+                            &context.actor,
+                            resource,
+                            record_id,
+                        )?,
+                        actor: context.actor,
+                    })
+                }
+                None => None,
+            }
+        }
+        None => None,
+    };
+    Ok(admission)
 }
 async fn upgrade(
     state: Arc<ApiState>,
@@ -358,7 +464,7 @@ async fn upgrade(
     if ticket.payload.get("path") != Some(&json!(path)) {
         return Err(Error::PermissionDenied("managed_service_ticket_route").into());
     }
-    revalidate(
+    let record_permission = revalidate(
         &state,
         &headers,
         &session,
@@ -367,7 +473,12 @@ async fn upgrade(
         &ticket.payload,
     )
     .await?;
-    let (lease, cancel) = register(installation, ticket.epoch, &ticket.generation)?;
+    let (lease, cancel) = register(
+        installation,
+        ticket.epoch,
+        &ticket.generation,
+        record_permission,
+    )?;
     let (input, input_receiver) = mpsc::channel(64);
     let (unused_events, _) = mpsc::channel(1);
     let stream = console_interface::invoke_server_stream::<
@@ -694,11 +805,18 @@ fn parse_client_frame(text: &str, input: &jsonschema::Validator) -> Result<Clien
 mod lifecycle_tests;
 
 #[cfg(test)]
-pub(super) fn register_test_stream(
+pub(super) async fn register_test_stream(
+    state: &ApiState,
+    headers: &HeaderMap,
     installation: uuid::Uuid,
-    generation: &str,
-) -> Result<(impl Send, watch::Receiver<bool>), ApiError> {
-    register(installation, epoch(installation), generation)
+    operation: &plugin_framework::ManagedServiceOperation,
+    payload: &Value,
+) -> Result<(SocketLease, watch::Receiver<bool>), ApiError> {
+    let context = crate::middleware::require_session::require_session(state, headers).await?;
+    let session = context.cookie_session()?.session_id.clone();
+    let admission = revalidate(state, headers, &session, operation, installation, payload).await?;
+    let generation = super::stream_ticket::generation(state)?;
+    register(installation, epoch(installation), &generation, admission)
 }
 
 #[cfg(test)]
@@ -710,5 +828,7 @@ pub(super) async fn revalidate_test_stream(
     installation: uuid::Uuid,
     payload: &Value,
 ) -> Result<(), ApiError> {
-    revalidate(state, headers, session, operation, installation, payload).await
+    revalidate(state, headers, session, operation, installation, payload)
+        .await
+        .map(|_| ())
 }
