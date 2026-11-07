@@ -170,7 +170,9 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
     }
     if matches!(model_code, "event_definitions" | "workflow_event_triggers") {
         match field_code {
-            "payload_schema" | "input_mapping" => return crate::ModelFieldKind::Json,
+            "payload_schema" | "input_mapping" | "interface_event" => {
+                return crate::ModelFieldKind::Json
+            }
             "description" => return crate::ModelFieldKind::Text,
             _ => {}
         }
@@ -252,7 +254,7 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
 
 fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
     match model_code {
-        "event_definitions" => true,
+        "event_definitions" => field_code != "interface_event",
         "workflow_event_triggers" => field_code != "source",
         "notification_instances" => field_code != "installation_id",
         "system_notifications" => field_code != "read_at",
@@ -985,6 +987,7 @@ pub fn builtin_data_model_contract(code: &str) -> Option<BuiltinDataModelContrac
                 "name",
                 "description",
                 "payload_schema",
+                "interface_event",
                 "enabled",
                 "created_by",
                 "created_at",

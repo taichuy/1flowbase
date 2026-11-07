@@ -416,7 +416,8 @@ fn event_configuration_models_protect_physical_contract_and_dedicated_service_wr
             let field_contract = contract.field_contract(field).unwrap();
             assert_eq!(
                 field_contract.is_required,
-                !(code == "workflow_event_triggers" && *field == "source")
+                !((code == "workflow_event_triggers" && *field == "source")
+                    || (code == "event_definitions" && *field == "interface_event"))
             );
             assert_eq!(field_contract.physical_column_name, *field);
             assert_eq!(field_contract.is_unique, *field == "id");
@@ -451,4 +452,20 @@ fn workflow_event_trigger_source_is_owned_nullable_json() {
     assert!(!crate::builtin_data_model_contract("event_definitions")
         .unwrap()
         .owns_field_code("source"));
+}
+
+#[test]
+fn event_interface_binding_is_owned_nullable_json() {
+    let contract = crate::builtin_data_model_contract("event_definitions").unwrap();
+    let field = contract
+        .field_contract("interface_event")
+        .expect("interface rules own their persisted binding");
+    assert_eq!(field.field_kind, crate::ModelFieldKind::Json);
+    assert!(
+        !field.is_required,
+        "legacy definitions have no interface binding"
+    );
+    assert!(!field.is_unique);
+    assert_eq!(field.physical_column_name, "interface_event");
+    assert!(!contract.capabilities.record.can_update);
 }
