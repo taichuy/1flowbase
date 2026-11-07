@@ -1,3 +1,5 @@
+#[path = "navigation_interface/event_projection.rs"]
+mod event_projection;
 use std::{collections::BTreeMap, sync::Arc};
 
 use control_plane::ports::RoleRepository;

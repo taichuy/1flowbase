@@ -1,3 +1,5 @@
+#[path = "docs_interface/event_projection.rs"]
+mod event_projection;
 use std::sync::Arc;
 
 use control_plane::errors::ControlPlaneError;

@@ -1,3 +1,5 @@
+#[path = "billing_interface/event_projection.rs"]
+mod event_projection;
 mod managed_projection;
 
 use std::{sync::Arc, time::Duration};

@@ -1,3 +1,5 @@
+#[path = "application_management/event_projection.rs"]
+mod event_projection;
 use std::sync::Arc;
 
 use axum::{extract::Query, extract::State, http::HeaderMap, Json, Router};

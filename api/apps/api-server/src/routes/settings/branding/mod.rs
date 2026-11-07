@@ -1,3 +1,4 @@
+mod event_projection;
 use crate::routes::{
     console_interface::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,

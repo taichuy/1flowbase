@@ -1,3 +1,5 @@
+#[path = "interface/event_projection.rs"]
+mod event_projection;
 use super::plugins::TemplateDependencies;
 use crate::error_response::ApiError;
 use crate::routes::console_interface::{
@@ -17,6 +19,11 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 pub(crate) enum TemplateInput {
     Catalog,
+    CatalogQuery(super::catalog::CatalogQuery),
+    ExportQuery {
+        selection: PortableTemplateSelection,
+        format: Option<String>,
+    },
     Download(super::catalog::CatalogRequest),
     Library(super::catalog::CatalogQuery),
     ExportArchive(PortableTemplateSelection),
@@ -38,7 +45,7 @@ impl InterfaceContract for TemplateInput {
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         Some(
-            json!({"operation": match self {Self::Catalog|Self::Library(_)=>"catalog",Self::Download(_)=>"download",Self::Export(_)|Self::ExportArchive(_)=>"export",Self::Preview(_)|Self::ResolvePreview(_)=>"preview",Self::Install(_)|Self::ResolveInstall(_)=>"install"}}),
+            json!({"operation": match self {Self::Catalog|Self::CatalogQuery(_)|Self::Library(_)=>"catalog",Self::Download(_)=>"download",Self::Export(_)|Self::ExportQuery{..}|Self::ExportArchive(_)=>"export",Self::Preview(_)|Self::ResolvePreview(_)=>"preview",Self::Install(_)|Self::ResolveInstall(_)=>"install"}}),
         )
     }
 }
@@ -60,6 +67,8 @@ fn affects_event_subscriptions(input: &TemplateInput) -> bool {
     match input {
         TemplateInput::Install(_) | TemplateInput::ResolveInstall(_) => true,
         TemplateInput::Catalog
+        | TemplateInput::CatalogQuery(_)
+        | TemplateInput::ExportQuery { .. }
         | TemplateInput::Download(_)
         | TemplateInput::Library(_)
         | TemplateInput::ExportArchive(_)
@@ -82,6 +91,14 @@ impl TemplateAdapter {
             )?));
         }
         let input = match input {
+            TemplateInput::CatalogQuery(query) => {
+                if query.category.is_some() {
+                    TemplateInput::Library(query)
+                } else {
+                    TemplateInput::Catalog
+                }
+            }
+            TemplateInput::ExportQuery { selection, .. } => TemplateInput::Export(selection),
             TemplateInput::ResolvePreview(request) => {
                 TemplateInput::Preview(super::catalog::resolve(request).await?)
             }
@@ -109,7 +126,9 @@ impl TemplateAdapter {
                 .await
                 .context("application_template_export_encode_task")??
             }
-            TemplateInput::Download(_)
+            TemplateInput::CatalogQuery(_)
+            | TemplateInput::ExportQuery { .. }
+            | TemplateInput::Download(_)
             | TemplateInput::ResolvePreview(_)
             | TemplateInput::ResolveInstall(_) => {
                 unreachable!("resolved before dispatch")

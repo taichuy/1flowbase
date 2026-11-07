@@ -1,3 +1,5 @@
+#[path = "interface_cache_inspection/event_projection.rs"]
+mod event_projection;
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use access_control::ConsoleOperationRegistry;

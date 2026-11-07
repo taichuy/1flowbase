@@ -1,3 +1,5 @@
+#[path = "interface_memory_inspection/event_projection.rs"]
+mod event_projection;
 mod managed_projection;
 
 use std::{future::Future, pin::Pin, sync::Arc};

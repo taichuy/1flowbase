@@ -1,3 +1,5 @@
+#[path = "file_storages/event_projection.rs"]
+mod event_projection;
 use std::sync::Arc;
 
 use access_control::{

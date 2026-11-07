@@ -66,11 +66,7 @@ pub async fn catalog(
         snapshot,
         "http.console.settings.system-templates.catalog.v1",
         credential,
-        if query.category.is_some() {
-            interface::TemplateInput::Library(query)
-        } else {
-            interface::TemplateInput::Catalog
-        },
+        interface::TemplateInput::CatalogQuery(query),
     )
     .await?;
     Ok(Json(ApiSuccess::new(output.0)))
@@ -91,7 +87,10 @@ pub async fn export(
         "http.console.settings.system-templates.export.v1",
         credential,
         match query.format.as_deref() {
-            None | Some("json") => interface::TemplateInput::Export(body),
+            None | Some("json") => interface::TemplateInput::ExportQuery {
+                selection: body,
+                format: query.format.clone(),
+            },
             Some("archive") => interface::TemplateInput::ExportArchive(body),
             _ => {
                 return Err(control_plane::errors::ControlPlaneError::InvalidInput(

@@ -65,7 +65,7 @@ pub struct PluginSettingsPageResponse {
     pub code_modules: Vec<plugin_framework::FrontendBlockCodeModuleManifest>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct TemplateBody {
     #[serde(default = "default_template_provider_code")]
     #[schema(default = default_template_provider_code)]
@@ -87,7 +87,7 @@ fn default_template_contribution_code() -> String {
     control_plane::ui_management::DEFAULT_UI_TEMPLATE_CONTRIBUTION_CODE.to_owned()
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateTemplateBody {
     pub name: String,
     pub source: String,
@@ -95,12 +95,12 @@ pub struct UpdateTemplateBody {
     pub language: UiCodeTemplateLanguage,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct PublishTemplateBody {
     pub revision: i32,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct ResetDefaultTemplateBody {
     pub provider_code: String,
     pub contribution_code: String,
@@ -112,7 +112,7 @@ pub struct ComponentUpstreamBody {
     pub version: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct CreateComponentBody {
     pub component_code: String,
     pub name: String,
@@ -126,7 +126,7 @@ pub struct CreateComponentBody {
     pub keywords: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateComponentBody {
     pub name: String,
     pub description: String,

@@ -1,3 +1,5 @@
+#[path = "data_model_openapi_interface/event_projection.rs"]
+mod event_projection;
 use std::sync::Arc;
 
 use interface_runtime::{InterfaceContract, UserPrincipal};

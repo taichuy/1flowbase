@@ -43,6 +43,11 @@ async fn docs_cache_preserves_full_bytes_and_does_not_fill_from_metadata_or_miss
     }
     let first = registry.cached_operation_spec("read").await.unwrap();
     let original = registry.operation_spec("read").unwrap();
+    assert_eq!(first.document_value().unwrap(), original);
+    let mut event_owned = first.document_value().unwrap();
+    event_owned["info"]["title"] = json!("event caller mutation");
+    assert_eq!(first.document_value().unwrap(), original);
+
     assert_eq!(
         serde_json::to_vec(&original).unwrap(),
         body(first.clone()).await

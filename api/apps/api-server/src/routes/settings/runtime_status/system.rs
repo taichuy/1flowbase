@@ -1,3 +1,5 @@
+#[path = "system/event_projection.rs"]
+mod event_projection;
 #[path = "system/runtime_dto.rs"]
 mod runtime_dto;
 pub use runtime_dto::*;

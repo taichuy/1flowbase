@@ -187,16 +187,22 @@ pub(crate) fn compile_registry(
             interface_runtime::PrincipalProfile::Public,
         ),
     )?;
-    compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new("http.public.system-metadata.get.v1").expect("static binding is valid"),
-            identity,
-            contracts,
-            ProtocolProjection::http(
-                RouteIdentity::new("GET", "/api/public/system-metadata")
-                    .expect("static route is valid"),
-            ),
+    let binding = ProtocolBinding::new(
+        BindingId::new("http.public.system-metadata.get.v1").expect("static binding is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::http(
+            RouteIdentity::new("GET", "/api/public/system-metadata")
+                .expect("static route is valid"),
         ),
+    );
+    crate::event_center::api_projection::register_static_api_event::<BrandingInput, BrandingOutput>(
+        &mut compiler,
+        &binding,
+        "graph:public-branding-v1",
+    )?;
+    compiler.register_binding(
+        binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new("api-server.public")
                 .expect("static adapter is valid"),

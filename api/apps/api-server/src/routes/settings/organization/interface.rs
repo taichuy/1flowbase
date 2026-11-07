@@ -1,3 +1,5 @@
+#[path = "interface/event_projection.rs"]
+mod event_projection;
 use super::{
     DepartmentPageResponse, DepartmentResponse, OrganizationAccessResponse,
     ReplaceMemberDepartmentsBody, SaveDepartmentBody,
