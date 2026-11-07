@@ -306,3 +306,6 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: true,
     },
 ];
+
+#[path = "interface/api_event_projection.rs"]
+mod api_event_projection;

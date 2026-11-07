@@ -810,3 +810,6 @@ mod tests {
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }
+
+#[path = "websocket_interface/api_event_projection.rs"]
+mod api_event_projection;

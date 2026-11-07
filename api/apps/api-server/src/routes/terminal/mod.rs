@@ -527,3 +527,6 @@ fn file_error(error: local_terminal::FileError) -> ApiError {
         local_terminal::FileError::Io(error) => error.into(),
     }
 }
+
+#[path = "api_event_projection.rs"]
+mod api_event_projection;

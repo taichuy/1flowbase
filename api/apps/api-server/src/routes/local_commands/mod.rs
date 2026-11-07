@@ -174,3 +174,6 @@ pub async fn execute_local_command(
 #[cfg(test)]
 #[path = "_tests/mod.rs"]
 mod tests;
+
+#[path = "api_event_projection.rs"]
+mod api_event_projection;

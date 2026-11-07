@@ -468,3 +468,6 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
 #[cfg(test)]
 #[path = "_tests/management_scope.rs"]
 mod management_scope_tests;
+
+#[path = "interface/api_event_projection.rs"]
+mod api_event_projection;

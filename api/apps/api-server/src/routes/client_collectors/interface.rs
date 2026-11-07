@@ -206,16 +206,28 @@ pub(crate) fn compile_registry(
             interface_runtime::PrincipalProfile::Public,
         ),
     )?;
-    compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new("http.public.client-collectors.assets.v1").expect("static binding is valid"),
-            identity,
-            contracts,
-            ProtocolProjection::http(
-                RouteIdentity::new("GET", "/api/public/client-collectors/:organization/:artifact_id/:version/assets/:asset")
-                    .expect("static route is valid"),
-            ),
+    let event_binding = ProtocolBinding::new(
+        BindingId::new("http.public.client-collectors.assets.v1").expect("static binding is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::http(
+            RouteIdentity::new(
+                "GET",
+                "/api/public/client-collectors/:organization/:artifact_id/:version/assets/:asset",
+            )
+            .expect("static route is valid"),
         ),
+    );
+    crate::event_center::api_projection::register_static_api_event::<
+        CollectorAssetInput,
+        CollectorAssetOutput,
+    >(
+        &mut compiler,
+        &event_binding,
+        "graph:public-client-collector-assets-v1",
+    )?;
+    compiler.register_binding(
+        event_binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new("api-server.public")
                 .expect("static adapter is valid"),
@@ -241,3 +253,6 @@ fn contract<T: InterfaceContract>() -> ContractIdentity {
     ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
         .expect("static interface contract is valid")
 }
+
+#[path = "interface/api_event_projection.rs"]
+mod api_event_projection;

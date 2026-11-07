@@ -228,3 +228,6 @@ pub async fn get_runtime_i18n_catalog(
     );
     Ok(response.body(Body::from(serde_json::to_vec(&payload)?))?)
 }
+
+#[path = "runtime_i18n_catalog/api_event_projection.rs"]
+mod api_event_projection;

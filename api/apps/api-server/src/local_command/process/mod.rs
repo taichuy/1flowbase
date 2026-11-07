@@ -52,6 +52,12 @@ pub enum ResponsePart {
     File(File),
 }
 impl CompletedCommand {
+    /// Read the already completed owned output, preserving HTTP spool ownership and position.
+    /// Called only by an interested typed event codec; execution never materializes this view.
+    pub fn output_text(&self) -> io::Result<(String, String)> {
+        Ok((self.stdout.text()?, self.stderr.text()?))
+    }
+
     /// Same ordinary JSON envelope as other console APIs, without materializing stdout/stderr.
     pub fn into_json_parts(self) -> io::Result<Vec<ResponsePart>> {
         let metadata = serde_json::to_vec(&self.metadata)?;
@@ -214,3 +220,8 @@ fn collect<R: Read + Send, E: Read + Send>(
 #[cfg(test)]
 #[path = "_tests/mod.rs"]
 mod tests;
+
+#[cfg_attr(test, api_test_selection::group(core, routes))]
+#[cfg(test)]
+#[path = "_tests/event_projection.rs"]
+mod event_projection_tests;

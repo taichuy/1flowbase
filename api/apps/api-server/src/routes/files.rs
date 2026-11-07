@@ -776,3 +776,6 @@ pub(crate) fn content_response(content: FileContentOutput) -> Result<Response, A
         .body(Body::from_stream(stream))
         .map_err(Into::into)
 }
+
+#[path = "files/api_event_projection.rs"]
+mod api_event_projection;

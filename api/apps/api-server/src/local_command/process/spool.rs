@@ -50,6 +50,36 @@ impl Spool {
             encoding_lossy: false,
         }
     }
+    /// Decode the exact JSON string fragment without changing the owned file cursor.
+    pub(super) fn text(&self) -> io::Result<String> {
+        let file = self
+            .file
+            .as_ref()
+            .ok_or_else(|| io::Error::other("raw collector has no JSON carrier"))?;
+        let mut encoded = vec![b'"'];
+        let mut offset = 0u64;
+        let mut chunk = [0u8; 16 * 1024];
+        loop {
+            #[cfg(unix)]
+            let read = std::os::unix::fs::FileExt::read_at(file, &mut chunk, offset);
+            #[cfg(windows)]
+            let read = std::os::windows::fs::FileExt::seek_read(file, &mut chunk, offset);
+            let count = match read {
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                result => result?,
+            };
+            if count == 0 {
+                break;
+            }
+            encoded.extend_from_slice(&chunk[..count]);
+            offset = offset
+                .checked_add(count as u64)
+                .ok_or_else(|| io::Error::other("spool position overflow"))?;
+        }
+        encoded.push(b'"');
+        serde_json::from_slice(&encoded).map_err(io::Error::other)
+    }
+
     pub fn into_file(mut self) -> io::Result<File> {
         let mut file = self
             .file
@@ -120,3 +150,8 @@ pub(super) fn capture(mut reader: impl Read, mut spool: Spool) -> io::Result<Spo
 #[cfg(test)]
 #[path = "_tests/spool.rs"]
 mod tests;
+
+#[cfg_attr(test, api_test_selection::group(core, routes))]
+#[cfg(test)]
+#[path = "_tests/spool_event.rs"]
+mod event_tests;
