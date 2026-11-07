@@ -117,6 +117,9 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "notifications.messages.unread"
                     | "notifications.messages.read_all"
                     | "files.access_links.create"
+                    // Atomic MCP directory contracts (cec9d7e8c) postdate the pinned seed.
+                    | "mcp.directory.view"
+                    | "mcp.directory.replace"
                     | "notifications.instances.list"
                     // Event-center contracts from bf969b7aa were already mounted but absent
                     // from this fixture. Their exact summaries and descriptions are also
