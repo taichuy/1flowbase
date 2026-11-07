@@ -31,6 +31,8 @@
     "tool_mount_type": "Tool mount",
     "create_group": "New group",
     "mount_tool": "Mount Tool",
+    "select_tool": "Select Tool",
+    "copy_mount_path": "Copy mount path",
     "edit_group": "Edit group",
     "edit_tool_mount": "Edit Tool mount",
     "create_tool_mount": "New Tool mount",

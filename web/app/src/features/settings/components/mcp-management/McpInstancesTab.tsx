@@ -7,6 +7,7 @@ import SaveOutlined from '@ant-design/icons/es/icons/SaveOutlined';
 
 import {
   Button,
+  Descriptions,
   Flex,
   Form,
   Input,
@@ -32,6 +33,7 @@ import { settingsMcpCatalogQueryKey } from '../../api/mcp-management';
 import { i18nText } from '../../../../shared/i18n/text';
 import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
 import {
+  buildMcpChildGroupPath,
   nextMcpDirectoryExpandedKeys,
   normalizeMcpDirectoryPath
 } from './mcp-management-view-model';
@@ -99,7 +101,6 @@ export function McpInstancesTab({
     applyDirectoryPathToForms,
     resetBindingFormForCreate,
     applyBindingSelection,
-    getReadablePathFor,
     directorySessionHasChanges,
     requestDirectorySessionChange,
     closeDirectoryModal,
@@ -131,9 +132,12 @@ export function McpInstancesTab({
     handleExportInstanceBundle,
     selectedDiscoveryPolicy
   } = useMcpInstanceActions(catalog, directory);
-  const selectedToolDescription = catalog.tools
-    .find((tool) => tool.tool_id === watchedToolId)
-    ?.short_description?.trim();
+  const selectedTool = catalog.tools.find(
+    (tool) => tool.tool_id === watchedToolId
+  );
+  const toolMountPath = watchedToolId
+    ? buildMcpChildGroupPath(watchedGroupPath, watchedToolId)
+    : normalizeMcpDirectoryPath(watchedGroupPath);
   return (
     <Space
       orientation="vertical"
@@ -513,15 +517,13 @@ export function McpInstancesTab({
                             'auto.create_tool_mount'
                           )}
                   </Typography.Title>
-                  <Typography.Text type="secondary">
-                    {directoryEditorIntent === 'create'
-                      ? `${i18nText('settingsMcpManagement', 'auto.target_directory')} ${selectedDirectoryPath()}`
-                      : directoryEditorMode === 'group'
-                        ? normalizeMcpDirectoryPath(
-                            groupForm.getFieldValue('path')
-                          )
-                        : selectedDirectoryPath()}
-                  </Typography.Text>
+                  {directoryEditorMode === 'group' ? (
+                    <Typography.Text type="secondary">
+                      {directoryEditorIntent === 'create'
+                        ? `${i18nText('settingsMcpManagement', 'auto.target_directory')} ${selectedDirectoryPath()}`
+                        : normalizeMcpDirectoryPath(groupForm.getFieldValue('path'))}
+                    </Typography.Text>
+                  ) : null}
                 </div>
               </div>
               <div hidden={directoryEditorMode !== 'group'}>
@@ -751,51 +753,31 @@ export function McpInstancesTab({
                     <Input />
                   </Form.Item>
                   <Form.Item
-                    id="group_path"
                     label={i18nText('settings', 'auto.mount_path')}
-                    required
                   >
-                    <Input
-                      id="group_path"
+                    <div
                       aria-label={i18nText('settings', 'auto.mount_path')}
-                      value={
-                        typeof process !== 'undefined' &&
-                        (process.env.NODE_ENV === 'test' ||
-                          Boolean(process.env.VITEST))
-                          ? watchedGroupPath
-                          : getReadablePathFor(watchedGroupPath)
-                      }
-                      onChange={(e) => {
-                        bindingForm.setFieldValue('group_path', e.target.value);
-                      }}
-                      readOnly={
-                        !(
-                          typeof process !== 'undefined' &&
-                          (process.env.NODE_ENV === 'test' ||
-                            Boolean(process.env.VITEST))
-                        )
-                      }
-                      variant="borderless"
-                      style={{
-                        padding: 0,
-                        fontWeight: 'bold',
-                        fontSize: 15,
-                        color: 'rgba(0, 0, 0, 0.88)',
-                        cursor: 'default'
-                      }}
-                    />
+                      role="group"
+                    >
+                      <Typography.Text
+                        className="mcp-management__mount-path"
+                        copyable={watchedToolId ? {
+                          text: toolMountPath,
+                          tooltips: [
+                            i18nText('settingsMcpManagement', 'auto.copy_mount_path'),
+                            false
+                          ]
+                        } : false}
+                      >
+                        {toolMountPath}
+                      </Typography.Text>
+                    </div>
                   </Form.Item>
                   <Form.Item
                     name="tool_id"
-                    label="tool_id"
+                    hidden={Boolean(editingBinding)}
+                    label={i18nText('settingsMcpManagement', 'auto.select_tool')}
                     rules={[{ required: true }]}
-                    extra={
-                      selectedToolDescription ? (
-                        <span className="mcp-management__tool-description">
-                          {selectedToolDescription}
-                        </span>
-                      ) : undefined
-                    }
                   >
                     <Select
                       disabled={Boolean(editingBinding)}
@@ -805,6 +787,35 @@ export function McpInstancesTab({
                       }))}
                     />
                   </Form.Item>
+                  {selectedTool ? (
+                    <Descriptions
+                      className="mcp-management__tool-details"
+                      column={1}
+                      layout="vertical"
+                      size="small"
+                      items={[
+                        {
+                          key: 'name',
+                          label: i18nText('settings', 'auto.name'),
+                          children: selectedTool.name
+                        },
+                        {
+                          key: 'tool_id',
+                          label: 'tool_id',
+                          children: selectedTool.tool_id
+                        },
+                        {
+                          key: 'short_description',
+                          label: i18nText('settings', 'auto.description'),
+                          children: (
+                            <span className="mcp-management__tool-description">
+                              {selectedTool.short_description?.trim() || '-'}
+                            </span>
+                          )
+                        }
+                      ]}
+                    />
+                  ) : null}
                   <Form.Item
                     name="visible"
                     label={i18nText('settingsMcpManagement', 'auto.visible')}

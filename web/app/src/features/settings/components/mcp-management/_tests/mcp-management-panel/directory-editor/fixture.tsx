@@ -425,11 +425,13 @@ async function renderPanel(
 
 async function renderPanelWithMountedTool({
   includeBinding = true,
+  bindingGroupPath = '/ops/customer',
   includeGroup = false,
   operation = 'POST /api/console/apps',
   proxy = false
 }: {
   includeBinding?: boolean;
+  bindingGroupPath?: string;
   includeGroup?: boolean;
   operation?: string;
   proxy?: boolean;
@@ -542,7 +544,7 @@ async function renderPanelWithMountedTool({
                   id: 'binding-1',
                   instance_record_id: 'instance-record-1',
                   tool_record_id: 'tool-record-1',
-                  group_path: '/ops/customer',
+                  group_path: bindingGroupPath,
                   tool_id: 'search_customer',
                   display_alias: null,
                   visible: true,

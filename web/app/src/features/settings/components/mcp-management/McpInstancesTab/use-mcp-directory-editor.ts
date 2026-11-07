@@ -15,10 +15,7 @@ import {
   type McpDirectoryTreeDropInfo,
   type MoveBindingValues
 } from './directory-tree';
-import {
-  countMcpInstanceDirectoryItems,
-  formatMcpDirectoryPath
-} from './catalog-view';
+import { countMcpInstanceDirectoryItems } from './catalog-view';
 import type {
   ConsoleMcpCatalog,
   ConsoleMcpInstance,
@@ -455,13 +452,6 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     bindingSavedValuesRef.current = bindingForm.getFieldsValue(true);
   }
 
-  const getReadablePathFor = (rawPath: string | null | undefined) =>
-    formatMcpDirectoryPath(
-      selectedInstance?.name || 'mcp',
-      rawPath,
-      groupByPath
-    );
-
   const discardDirectorySession = () => {
     setDirectoryModalOpen(false);
     setEditingBinding(null);
@@ -652,7 +642,6 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     applyDirectoryPathToForms,
     resetBindingFormForCreate,
     applyBindingSelection,
-    getReadablePathFor,
     directorySessionHasChanges,
     requestDirectorySessionChange,
     closeDirectoryModal,

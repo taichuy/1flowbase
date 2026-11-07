@@ -14,6 +14,48 @@ import {
 describe('McpManagementPanel', () => {
   setupDirectoryEditorFixture();
 
+  test.each([
+    ['/', '/search_customer'],
+    ['/ops/customer', '/ops/customer/search_customer']
+  ])('shows read-only Tool details and the complete mount path under %s', async (groupPath, mountPath) => {
+    await renderPanelWithMountedTool({ bindingGroupPath: groupPath });
+    await click(screen.getByRole('tab', { name: 'MCP 实例' }));
+    await click(screen.getByRole('button', { name: '目录编辑' }));
+    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    const tree = within(dialog).getByRole('tree');
+    // Expand the real tree until the mounted Tool is visible.
+    while (!within(tree).queryByText('search_customer')) {
+      const switcher = tree.querySelector('.ant-tree-switcher_close');
+      expect(switcher).not.toBeNull();
+      await click(switcher!);
+    }
+    await click(within(tree).getByText('search_customer'));
+
+    const details = dialog.querySelector('.mcp-management__tool-details')!;
+    expect(within(details as HTMLElement).getByText('名称')).toBeInTheDocument();
+    expect(within(details as HTMLElement).getByText('Search customer')).toBeInTheDocument();
+    expect(within(details as HTMLElement).getByText('tool_id')).toBeInTheDocument();
+    expect(within(details as HTMLElement).getByText('search_customer')).toBeInTheDocument();
+    expect(within(details as HTMLElement).getByText('说明')).toBeInTheDocument();
+    expect(within(details as HTMLElement).getByText('Find matching customers')).toBeInTheDocument();
+    expect(details.querySelector('input,textarea,select')).toBeNull();
+    expect(within(dialog).queryByRole('combobox', { name: '选择 Tool' })).not.toBeInTheDocument();
+    const path = within(dialog).getByRole('group', { name: '挂载路径' });
+    expect(path).toHaveTextContent(mountPath);
+    expect(path.querySelector('input,textarea')).toBeNull();
+    expect(within(path).getByRole('button', { name: '复制挂载路径' })).toBeEnabled();
+
+    await click(within(dialog).getByRole('switch', { name: '可见' }));
+    await click(within(dialog).getByRole('button', { name: '保存 Tool 挂载' }));
+    await waitFor(() => {
+      expect(mcpManagementApi.updateSettingsMcpToolBinding).toHaveBeenCalledWith(
+        'binding-1',
+        { group_path: groupPath, tool_id: 'search_customer', display_alias: null, visible: false, sort_order: 0 },
+        expect.any(String)
+      );
+    });
+  });
+
   test('confirms before closing an editor with unsaved changes', async () => {
     await renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
 
@@ -309,10 +351,10 @@ describe('McpManagementPanel', () => {
     await click(rootLabel);
     await click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
     await waitFor(() => {
-      expect(within(dialog).getByLabelText('tool_id')).toBeInTheDocument();
+      expect(within(dialog).getByLabelText('选择 Tool')).toBeInTheDocument();
     });
     await mouseDown(
-      within(dialog).getByRole('combobox', { name: 'tool_id' })
+      within(dialog).getByRole('combobox', { name: '选择 Tool' })
     );
     await selectAntdOption('Search customer');
 
@@ -395,7 +437,7 @@ describe('McpManagementPanel', () => {
       expect(
         within(within(dialog).getByRole('tree')).getAllByText('未命名 Tool')
       ).toHaveLength(1);
-      expect(within(dialog).getByLabelText('挂载路径')).toHaveValue('/ops');
+      expect(within(dialog).getByLabelText('挂载路径')).toHaveTextContent('/ops');
     });
   });
 
@@ -419,7 +461,7 @@ describe('McpManagementPanel', () => {
     await click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 
     await waitFor(() => {
-      expect(within(dialog).getByLabelText('挂载路径')).toHaveValue('/');
+      expect(within(dialog).getByLabelText('挂载路径')).toHaveTextContent('/');
     });
   });
 });

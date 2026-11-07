@@ -31,6 +31,8 @@
     "tool_mount_type": "Tool 挂载",
     "create_group": "新建分组",
     "mount_tool": "挂载 Tool",
+    "select_tool": "选择 Tool",
+    "copy_mount_path": "复制挂载路径",
     "edit_group": "编辑分组",
     "edit_tool_mount": "编辑 Tool 挂载",
     "create_tool_mount": "新建 Tool 挂载",

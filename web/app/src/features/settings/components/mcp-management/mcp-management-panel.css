@@ -524,9 +524,15 @@
   min-height: 28px;
 }
 
+.mcp-management__mount-path,
 .mcp-management__tool-description {
   display: block;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mcp-management__tool-details {
+  margin-bottom: var(--ant-margin-lg);
   overflow-wrap: anywhere;
 }
 
