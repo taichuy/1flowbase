@@ -161,6 +161,15 @@ async fn installation_icon_path(
     installed_manifest_icon(installed_path).await
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/console/model-providers/providers/{provider_code}/icon",
+    operation_id = "model_providers.icons.view",
+    summary = "View model providers icons",
+    description = "View model providers icons in the system backend.",
+    params(("provider_code" = String, Path)),
+    responses((status = 200, content((crate::openapi::OpenApiBinaryBody = "image/svg+xml"),(crate::openapi::OpenApiBinaryBody = "image/png"),(crate::openapi::OpenApiBinaryBody = "image/jpeg"),(crate::openapi::OpenApiBinaryBody = "image/webp"),(crate::openapi::OpenApiBinaryBody = "image/gif"),(crate::openapi::OpenApiBinaryBody = "application/octet-stream"))))
+)]
 pub async fn read_provider_icon(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -259,3 +268,8 @@ pub(crate) fn compile_registry(
 
 #[path = "icons/event_projection.rs"]
 mod event_projection;
+
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "icons/_tests/openapi.rs"]
+mod openapi_tests;
