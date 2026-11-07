@@ -13,7 +13,7 @@ on:
         description: Full acceptance or a scoped evidence supplement
         type: choice
         default: full
-        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business]
+        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host]
 
 permissions:
   contents: read
@@ -30,7 +30,7 @@ env:
 
 jobs:
   acceptance:
-    if: inputs.scope != 'event-business' && inputs.scope != 'event-center' && inputs.scope != 'event-center-supplement' && inputs.scope != 'system-event-center' && inputs.scope != 'system-event-center-supplement' && inputs.scope != 'system-event-center-lineage'
+    if: inputs.scope != 'event-business-host' && inputs.scope != 'event-business' && inputs.scope != 'event-center' && inputs.scope != 'event-center-supplement' && inputs.scope != 'system-event-center' && inputs.scope != 'system-event-center-supplement' && inputs.scope != 'system-event-center-lineage'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -157,7 +157,7 @@ jobs:
           path: tmp/test-governance/event-lifecycle/ci
 
   event-center-acceptance:
-    if: inputs.scope == 'event-business' || inputs.scope == 'event-center' || inputs.scope == 'event-center-supplement' || (inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
+    if: inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'event-center' || inputs.scope == 'event-center-supplement' || (inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -202,13 +202,15 @@ jobs:
           jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
           echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
       - name: Compile affected host targets and prepare existing managed worker
-        if: inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage'
+        if: inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage'
         shell: bash
         run: |
           set -euo pipefail
           evidence=tmp/test-governance/event-center/ci
-          if [ '${{ inputs.scope }}' = event-business ]; then
-            : # The finite business Test Batch compiles each selected target once below.
+          if [ '${{ inputs.scope }}' = event-business ] || [ '${{ inputs.scope }}' = event-business-host ]; then
+            # Metadata-only compilation collects independent host fixture type errors before
+            # sequential linking; behavior acceptance remains the finite matrix below.
+            cargo check --locked --manifest-path api/Cargo.toml -p api-server --features test-support --tests --keep-going > "$evidence/host-types-check.log" 2>&1 || { tail -c 10000 "$evidence/host-types-check.log"; exit 1; }
           elif [ '${{ inputs.scope }}' = system-event-center ]; then
             compile_failed=0
             compile_target() {
@@ -269,13 +271,14 @@ jobs:
               failed=1
             fi
           }
-          if [ "$EVIDENCE_SCOPE" = event-business ]; then
+          if [ "$EVIDENCE_SCOPE" = event-business ] || [ "$EVIDENCE_SCOPE" = event-business-host ]; then
             # Stop on a shared compilation/fixture failure instead of rebuilding the same
             # failing dependency for every filter. All evidence remains bound to source-sha.
             run_business() {
               run_crate_tests "$@"
-              test "$failed" = 0
+              if [ "$EVIDENCE_SCOPE" != event-business-host ]; then test "$failed" = 0; fi
             }
+            if [ "$EVIDENCE_SCOPE" = event-business ]; then
             run_business interface-observation -p interface-runtime --lib event_observation
             run_business business-contracts -p control-plane-contracts --lib
             run_business event-domain -p domain --lib event_center
@@ -286,6 +289,9 @@ jobs:
             run_business event-configuration -p control-plane-postgres-tests --test event_center_configuration
             run_business application-lifecycle -p control-plane-postgres-tests --test orchestration_runtime_integration application_lifecycle
             run_business communication-lifecycle -p control-plane-postgres-tests --test notifications_integration lifecycle
+            fi
+            # host supplements reuse prior core/PG evidence only after Root records the
+            # dependency-disjoint delta and its source SHA in the acceptance ledger.
             run_business host-business-sources -p api-server --features test-support --test api_private_contracts event_center
             run_business native-credit-catalog -p api-server --features test-support --lib credit_catalog_leaves
             run_business host-interface-projections -p api-server --features test-support --test api_private_routes event_projection
@@ -359,12 +365,12 @@ jobs:
             run_tests command-workflow --lib communication_runtime::commands
             run_tests applications --test api_application workflow
           fi
-          if [ "$EVIDENCE_SCOPE" != event-business ] && [ "$EVIDENCE_SCOPE" != system-event-center-supplement ] && [ "$EVIDENCE_SCOPE" != system-event-center-lineage ]; then
+          if [ "$EVIDENCE_SCOPE" != event-business-host ] && [ "$EVIDENCE_SCOPE" != event-business ] && [ "$EVIDENCE_SCOPE" != system-event-center-supplement ] && [ "$EVIDENCE_SCOPE" != system-event-center-lineage ]; then
             run_tests communications --test api_private_routes routes::communications
           fi
           test "$failed" = 0
       - name: Build matching system-event local verification candidate
-        if: (inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
+        if: (inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
         shell: bash
         run: |
           set -euo pipefail
