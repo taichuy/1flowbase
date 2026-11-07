@@ -8,7 +8,7 @@ import {
 } from '@1flowbase/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
-import { Alert, Button, Flex, Tabs, Tag } from 'antd';
+import { Alert, Button, Flex, Switch, Tabs, Tag } from 'antd';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../../state/auth-store';
@@ -70,6 +70,39 @@ export function EventsPage() {
     },
     onSuccess: async () => {
       setDrawer(null);
+      await queryClient.invalidateQueries({
+        queryKey: ['settings', 'events', 'catalog']
+      });
+    }
+  });
+  const toggleEnabled = useMutation({
+    mutationFn: async ({
+      entry,
+      enabled
+    }: {
+      entry: EventCatalogEntry;
+      enabled: boolean;
+    }) => {
+      if (
+        !csrfToken ||
+        entry.origin !== 'custom' ||
+        !entry.id ||
+        entry.payload_schema === null ||
+        !can('events.definitions.update')
+      )
+        throw new Error('operation not permitted');
+      return updateEventDefinition(
+        entry.id,
+        {
+          name: entry.name,
+          description: entry.description,
+          payload_schema: entry.payload_schema,
+          enabled
+        },
+        csrfToken
+      );
+    },
+    onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: ['settings', 'events', 'catalog']
       });
@@ -146,8 +179,25 @@ export function EventsPage() {
       key: 'enabled',
       title: t('enabled'),
       width: 120,
-      render: (_, row) =>
-        row.enabled === null ? '—' : row.enabled ? t('enabled') : t('disabled')
+      render: (_, row) => (
+        <Switch
+          aria-label={t('enabled')}
+          checked={row.origin !== 'custom' || row.enabled === true}
+          disabled={
+            row.origin !== 'custom' ||
+            !row.id ||
+            row.payload_schema === null ||
+            !csrfToken ||
+            !can('events.definitions.update') ||
+            toggleEnabled.isPending
+          }
+          loading={
+            toggleEnabled.isPending &&
+            toggleEnabled.variables.entry.id === row.id
+          }
+          onChange={(enabled) => toggleEnabled.mutate({ entry: row, enabled })}
+        />
+      )
     },
     {
       key: 'supported_phases',
@@ -206,6 +256,9 @@ export function EventsPage() {
             <>
               {catalog.isError && (
                 <Alert type="error" showIcon title={t('catalog_error')} />
+              )}
+              {toggleEnabled.isError && (
+                <Alert type="error" showIcon title={t('save_error')} />
               )}
               <EventsTable
                 columns={columns}

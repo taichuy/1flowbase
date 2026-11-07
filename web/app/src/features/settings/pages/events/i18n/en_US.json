@@ -8,7 +8,6 @@
   "description": "Description",
   "payload_schema": "Payload schema",
   "enabled": "Enabled",
-  "disabled": "Disabled",
   "save": "Save",
   "close": "Close drawer",
   "edit": "Edit",

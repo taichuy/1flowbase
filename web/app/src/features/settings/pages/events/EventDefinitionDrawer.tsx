@@ -144,12 +144,15 @@ export function EventDefinitionDrawer({
                 {
                   key: 'enabled',
                   label: t('enabled'),
-                  children:
-                    entry.enabled === null
-                      ? '—'
-                      : entry.enabled
-                        ? t('enabled')
-                        : t('disabled')
+                  children: (
+                    <Switch
+                      aria-label={t('enabled')}
+                      checked={
+                        entry.origin !== 'custom' || entry.enabled === true
+                      }
+                      disabled
+                    />
+                  )
                 },
                 ...(entry.source
                   ? [
