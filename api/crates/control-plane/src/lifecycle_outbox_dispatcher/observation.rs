@@ -278,10 +278,11 @@ impl LifecycleFactObserver for LifecycleSourceObserver {
         let Some(lease) = self.source(context, &input.contract_id, &input.contract_version) else {
             return;
         };
-        // Parsing is deliberately inside the callback: observing alone never reads/copies body.
+        // Only the typed credit discriminator is decoded eagerly. The complete body is
+        // projected only inside the callback for an actual workflow target.
         lease.observe_with_payload(
             EventSourceObservation {
-                attributes: Default::default(),
+                attributes: credit_attributes(&input.contract_id, &input.canonical_payload),
 
                 original_event_id: Some(input.event_id.to_string()),
                 producer_id: Some(context.producer_id.clone()),
@@ -302,7 +303,7 @@ impl LifecycleFactObserver for LifecycleSourceObserver {
             return;
         };
         lease.observe(EventSourceObservation {
-            attributes: Default::default(),
+            attributes: credit_attributes(&record.contract_id, &record.canonical_payload),
 
             original_event_id: Some(record.event_id.to_string()),
             producer_id: Some(context.producer_id.clone()),
@@ -355,4 +356,30 @@ fn native_scope_supported(contract: &str, version: &str, scope: &EventSourceScop
         || (contract == CreditNotificationFact::CONTRACT_ID
             && version == CreditNotificationFact::CONTRACT_VERSION
             && *scope != EventSourceScope::System)
+}
+
+/// Decode only the declared discriminator; unrelated payload fields are skipped by serde.
+fn credit_attributes(contract: &str, payload: &[u8]) -> BTreeMap<String, String> {
+    use control_plane_contracts::ports::{CreditNotificationEventType, CreditNotificationFact};
+    use extension_contracts::LifecycleContract;
+    #[derive(serde::Deserialize)]
+    struct Envelope {
+        payload: Kind,
+    }
+    #[derive(serde::Deserialize)]
+    struct Kind {
+        event_type: CreditNotificationEventType,
+    }
+    if contract != CreditNotificationFact::CONTRACT_ID {
+        return BTreeMap::new();
+    }
+    serde_json::from_slice::<Envelope>(payload)
+        .ok()
+        .map(|value| {
+            BTreeMap::from([(
+                "/payload/event_type".into(),
+                value.payload.event_type.wire_name().into(),
+            )])
+        })
+        .unwrap_or_default()
 }

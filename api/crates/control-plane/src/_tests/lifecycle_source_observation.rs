@@ -538,3 +538,57 @@ fn same_key_and_phase_schema_changes_are_rejected_while_equal_objects_and_phase_
     assert_eq!(registered[1].0.payload_schema, descriptor.payload_schema);
     assert_eq!(registered[1].0.supported_phases, reordered.supported_phases);
 }
+
+#[test]
+fn nine_credit_discriminators_preserve_original_publication_and_handoff_identity() {
+    use control_plane_contracts::ports::{CreditNotificationEventType, CreditNotificationFact};
+    use extension_contracts::LifecycleContract;
+    let registry = Arc::new(SourceRegistry::default());
+    let observer = LifecycleSourceObserver::new(registry.clone());
+    let mut template = native_template();
+    template.contract_id = CreditNotificationFact::CONTRACT_ID.into();
+    template.payload_schema = CreditNotificationFact::event_source_schema();
+    observer.register(template.clone(), (&template.contract_id, "v1"), false, &[]);
+    let workspace_id = Uuid::now_v7();
+    for kind in CreditNotificationEventType::ALL {
+        let event_id = Uuid::now_v7();
+        let input = RecordLifecycleFactInput {
+            observation_context: Some(LifecycleObservationContext {
+                scope: EventSourceScope::Workspace { workspace_id },
+                producer_id: "credit-owner".into(), workflow_ancestor_ids: Vec::new(),
+            }),
+            event_id, transaction_id: Uuid::now_v7(), contract_id: template.contract_id.clone(),
+            contract_version: "v1".into(),
+            canonical_payload: serde_json::to_vec(&serde_json::json!({"payload": {"event_type":kind,"payload":{"never_retained":"sensitive body"}}})).unwrap(),
+            occurred_at: OffsetDateTime::now_utc(),
+            publication: control_plane_contracts::ports::LifecyclePublicationPlan { graph_fingerprint: "frozen".into(), subscribers: Vec::new() },
+        };
+        observer.published(&input);
+        let mut record = super::tests::repository().record;
+        record.event_id = event_id;
+        record.contract_id = input.contract_id.clone();
+        record.contract_version = input.contract_version.clone();
+        record.canonical_payload = input.canonical_payload;
+        record.observation_context = input.observation_context;
+        observer.consumed(&record, "original-handler");
+        let registered = registry.0.lock().unwrap();
+        let lease = &registered
+            .iter()
+            .find(|(d, _)| d.scope == EventSourceScope::Workspace { workspace_id })
+            .unwrap()
+            .1;
+        let facts = lease.facts.lock().unwrap();
+        let pair = &facts[facts.len() - 2..];
+        assert_eq!(pair[0].fact, EventSourceFact::Published);
+        assert!(matches!(pair[1].fact, EventSourceFact::Consumed { .. }));
+        for fact in pair {
+            assert_eq!(
+                fact.original_event_id.as_deref(),
+                Some(event_id.to_string().as_str())
+            );
+            assert_eq!(fact.attributes.len(), 1);
+            assert_eq!(fact.attributes["/payload/event_type"], kind.wire_name());
+        }
+        assert_eq!(lease.projections.load(Ordering::SeqCst), 0);
+    }
+}

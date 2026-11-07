@@ -70,16 +70,14 @@ impl EventSourceCatalog {
                 insert(&mut entries, source.into());
             }
             if let Some(plan) = &self.native_plan {
-                for mut source in
-                    crate::host_extensions::lifecycle::native_lifecycle_source_descriptors(
-                        plan,
-                        scope.clone(),
-                    )
-                {
+                for mut entry in crate::host_extensions::lifecycle::native_lifecycle_catalog_entries(
+                    plan,
+                    scope.clone(),
+                ) {
                     if !configured || self.lifecycle_observer.is_none() {
-                        unavailable(&mut source);
+                        entry.supported_phases.clear();
                     }
-                    insert(&mut entries, source.into());
+                    insert(&mut entries, entry);
                 }
             }
         }

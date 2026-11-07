@@ -607,6 +607,52 @@ mod tests {
         assert!(system.iter().all(|d| d.contract_id
             != control_plane_contracts::ports::CreditNotificationFact::CONTRACT_ID));
     }
+    #[test]
+    fn credit_catalog_leaves_select_the_same_original_source_without_extra_publication() {
+        use control_plane_contracts::ports::{CreditNotificationEventType, CreditNotificationFact};
+        use domain::event_center::*;
+        use extension_contracts::LifecycleContract;
+        let assembly = independent_plugin_fixture_assembly();
+        let graph = assembly.compile_graph().unwrap();
+        let plan = assembly.compile_lifecycle_subscriber_plan(&graph).unwrap();
+        let scope = EventSourceScope::Workspace {
+            workspace_id: uuid::Uuid::now_v7(),
+        };
+        let entries = native_lifecycle_catalog_entries(&plan, scope);
+        let credit = entries
+            .iter()
+            .filter(|e| e.contract_id == CreditNotificationFact::CONTRACT_ID)
+            .collect::<Vec<_>>();
+        assert_eq!(credit.len(), 10);
+        let parent = credit
+            .iter()
+            .find(|e| e.source.as_ref().unwrap().selection.filters.is_empty())
+            .unwrap();
+        for kind in CreditNotificationEventType::ALL {
+            let leaf = credit.iter().find(|e| e.name == kind.wire_name()).unwrap();
+            let selection = &leaf.source.as_ref().unwrap().selection;
+            assert_eq!(
+                selection.scope,
+                parent.source.as_ref().unwrap().selection.scope
+            );
+            assert_eq!(
+                selection.source_id,
+                parent.source.as_ref().unwrap().selection.source_id
+            );
+            assert_eq!(selection.filters.len(), 1);
+            assert_eq!(selection.filters["/payload/event_type"], kind.wire_name());
+            assert_eq!(
+                leaf.payload_schema["properties"]["payload"]["properties"]["event_type"]["const"],
+                kind.wire_name()
+            );
+            assert_eq!(leaf.supported_phases, parent.supported_phases);
+        }
+        assert!(
+            native_lifecycle_catalog_entries(&plan, EventSourceScope::System)
+                .iter()
+                .all(|e| e.contract_id != CreditNotificationFact::CONTRACT_ID)
+        );
+    }
 }
 
 /// Pure typed definition projection. It does not create a lease or a subscriber queue.
@@ -668,4 +714,41 @@ pub(crate) fn register_native_lifecycle_sources(
         let contract = descriptor.contract_id.clone();
         observer.register(descriptor, (&contract, version), false, &[]);
     }
+}
+
+/// Logical subtype leaves select one existing fact; they do not create publications or leases.
+pub(crate) fn native_lifecycle_catalog_entries(
+    plan: &EffectiveLifecycleSubscriberPlan,
+    scope: domain::event_center::EventSourceScope,
+) -> Vec<domain::event_center::EventCatalogEntry> {
+    use control_plane_contracts::ports::{CreditNotificationEventType, CreditNotificationFact};
+    use domain::event_center::EventCatalogEntry;
+    use extension_contracts::LifecycleContract;
+    let mut entries = Vec::new();
+    for descriptor in native_lifecycle_source_descriptors(plan, scope) {
+        let entry: EventCatalogEntry = descriptor.into();
+        if entry.contract_id == CreditNotificationFact::CONTRACT_ID {
+            let mut parent = entry.clone();
+            parent.group_path = vec!["credits".into()];
+            entries.push(parent);
+            for kind in CreditNotificationEventType::ALL {
+                let mut leaf = entry.clone();
+                leaf.group_path =
+                    vec!["credits".into(), CreditNotificationFact::CONTRACT_ID.into()];
+                leaf.name = kind.wire_name().into();
+                leaf.source
+                    .as_mut()
+                    .expect("source projection")
+                    .selection
+                    .filters
+                    .insert("/payload/event_type".into(), kind.wire_name().into());
+                leaf.payload_schema["properties"]["payload"]["properties"]["event_type"] =
+                    serde_json::json!({"type":"string","const":kind.wire_name()});
+                entries.push(leaf);
+            }
+        } else {
+            entries.push(entry);
+        }
+    }
+    entries
 }

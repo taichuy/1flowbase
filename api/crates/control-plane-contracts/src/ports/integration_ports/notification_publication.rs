@@ -16,6 +16,30 @@ pub enum CreditNotificationEventType {
 }
 
 impl CreditNotificationEventType {
+    pub const ALL: [Self; 9] = [
+        Self::CreditReserved,
+        Self::CreditSettled,
+        Self::CreditReleased,
+        Self::CreditGranted,
+        Self::CreditCharged,
+        Self::CreditRefunded,
+        Self::CreditAdjusted,
+        Self::CreditChargeSettingChanged,
+        Self::CreditCommandRejected,
+    ];
+    pub fn wire_name(self) -> &'static str {
+        match self {
+            Self::CreditReserved => "CreditReserved",
+            Self::CreditSettled => "CreditSettled",
+            Self::CreditReleased => "CreditReleased",
+            Self::CreditGranted => "CreditGranted",
+            Self::CreditCharged => "CreditCharged",
+            Self::CreditRefunded => "CreditRefunded",
+            Self::CreditAdjusted => "CreditAdjusted",
+            Self::CreditChargeSettingChanged => "CreditChargeSettingChanged",
+            Self::CreditCommandRejected => "CreditCommandRejected",
+        }
+    }
     pub fn from_event_type(value: &str) -> anyhow::Result<Self> {
         serde_json::from_value(serde_json::Value::String(value.to_owned()))
             .map_err(anyhow::Error::from)
