@@ -10,15 +10,17 @@ use control_plane::portable_template::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 const CATEGORY: &str = "applications-demo";
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
 #[serde(deny_unknown_fields)]
+#[into_params(parameter_in = Query)]
 pub struct CatalogQuery {
     pub category: Option<String>,
     pub cursor: Option<String>,
     pub q: Option<String>,
 }
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
 #[serde(deny_unknown_fields)]
+#[into_params(parameter_in = Query)]
 pub struct ExportQuery {
     pub format: Option<String>,
 }

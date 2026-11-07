@@ -87,6 +87,66 @@ async fn event_center_api_directory_matches_complete_shared_catalog_including_mc
     assert!(rows.len() > 26);
     assert_eq!(event_set.len(), rows.len(), "operation rows must be unique");
     assert!(shared.iter().any(|row| row["bindable"] == false));
+    // Query extractors and the shared document must agree before their schema is
+    // inherited by events or MCP. These handlers previously omitted params.
+    for (method, path, expected) in [
+        (
+            "GET",
+            "/api/console/settings/applications",
+            &["filter", "sort", "page", "page_size"][..],
+        ),
+        (
+            "GET",
+            "/api/console/settings/data-models/model-definitions",
+            &["data_source_id", "filter"][..],
+        ),
+        ("GET", "/v1/models", &["client_version"][..]),
+        (
+            "GET",
+            "/api/console/settings/system-templates/catalog",
+            &["category", "cursor", "q"][..],
+        ),
+        (
+            "POST",
+            "/api/console/settings/system-templates/export",
+            &["format"][..],
+        ),
+    ] {
+        let shared_row = shared
+            .iter()
+            .find(|row| row["method"] == method && row["path"] == path)
+            .unwrap_or_else(|| panic!("shared directory lacks {method} {path}"));
+        let query_parameters = shared_row["parameter_descriptors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|parameter| parameter["parameter_type"] == "url")
+            .map(|parameter| parameter["name"].as_str().unwrap())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            query_parameters,
+            expected.iter().copied().collect(),
+            "actual query contract for {method} {path}"
+        );
+        let row = rows
+            .iter()
+            .find(|row| row["method"] == method && row["path"] == path)
+            .unwrap();
+        if row["before"]["status"] == "available" {
+            let selected = detail(&app, &cookie, row["operation_id"].as_str().unwrap()).await;
+            let properties = selected["request_schema"]["properties"]["query"]["properties"]
+                .as_object()
+                .unwrap_or_else(|| {
+                    panic!("inherited query schema is missing for {method} {path}: {selected}")
+                });
+            for name in expected {
+                assert!(
+                    properties.contains_key(*name),
+                    "inherited query {name} missing for {method} {path}"
+                );
+            }
+        }
+    }
     for row in rows {
         assert!(
             row.get("before_schema").is_none() && row.get("completion_schema").is_none(),

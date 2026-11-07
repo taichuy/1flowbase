@@ -182,7 +182,8 @@ pub struct OpenAiModelObject {
     pub limit: Option<Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct OpenAiModelListQuery {
     pub client_version: Option<String>,
 }

@@ -53,7 +53,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
-#[utoipa::path(get, path = "/api/console/settings/system-templates/catalog", responses((status = 200, body = Object)))]
+#[utoipa::path(get, path = "/api/console/settings/system-templates/catalog", params(CatalogQuery), responses((status = 200, body = Object)))]
 pub async fn catalog(
     State(state): State<Arc<ApiState>>,
     Query(query): Query<CatalogQuery>,
@@ -72,7 +72,7 @@ pub async fn catalog(
     Ok(Json(ApiSuccess::new(output.0)))
 }
 
-#[utoipa::path(post, request_body = Object, path = "/api/console/settings/system-templates/export", responses((status = 200, body = Object)))]
+#[utoipa::path(post, request_body = Object, path = "/api/console/settings/system-templates/export", params(ExportQuery), responses((status = 200, body = Object)))]
 pub async fn export(
     State(state): State<Arc<ApiState>>,
     Query(query): Query<ExportQuery>,
@@ -96,7 +96,7 @@ pub async fn export(
                 return Err(control_plane::errors::ControlPlaneError::InvalidInput(
                     "application_template_export_format",
                 )
-                .into())
+                .into());
             }
         },
     )

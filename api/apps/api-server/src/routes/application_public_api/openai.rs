@@ -734,6 +734,7 @@ fn responses_resume_requires_previous_response_match(correlated_from_host_state:
     get,
     path = "/v1/models",
     operation_id = "list_openai_compatible_models",
+    params(OpenAiModelListQuery),
     responses(
         (status = 200, body = OpenAiModelListResponse),
         (status = 401, body = OpenAiErrorBody),

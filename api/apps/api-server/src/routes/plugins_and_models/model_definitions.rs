@@ -636,6 +636,7 @@ fn parse_field_kind(raw: &str) -> Result<domain::ModelFieldKind, ApiError> {
 #[utoipa::path(
     get,
     path = "/api/console/settings/data-models/model-definitions",
+    params(ListModelsQuery),
     responses((status = 200, body = [ModelDefinitionResponse]), (status = 401, body = crate::error_response::ErrorBody))
 )]
 pub async fn list_models(

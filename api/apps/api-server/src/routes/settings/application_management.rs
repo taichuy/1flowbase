@@ -28,7 +28,8 @@ use crate::{
     routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ApplicationManagementQueryParams {
     pub filter: Option<String>,
     pub sort: Option<String>,
@@ -347,6 +348,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 #[utoipa::path(
     get,
     path = "/api/console/settings/applications",
+    params(ApplicationManagementQueryParams),
     responses(
         (status = 200, body = ApplicationManagementPageResponse),
         (status = 400, body = crate::error_response::ErrorBody),
