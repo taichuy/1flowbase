@@ -297,6 +297,10 @@ impl ExtensionBootSnapshot {
             interface_runtime::GraphFingerprint::new(self.graph.fingerprint().as_str())?,
         )
         .with_managed_invocations(managed.clone())
+        .with_api_event_observation(
+            state.api_docs.clone(),
+            crate::event_center::api_observer::ApiOperationRuleObserver::new(state),
+        )
         .with_event_observer(crate::event_center::interface::InterfaceRuleObserver::new(
             state,
         ));
@@ -310,6 +314,7 @@ impl ExtensionBootSnapshot {
         }
         let (candidate, console_operation_snapshot) = collector
             .compile_complete_console_snapshot(state.console_operation_registry.inventory())?;
+        crate::event_center::api_catalog::validate_static_inventory(&candidate, &state.api_docs)?;
         managed.bind_registry(&candidate)?;
         let module = plugin_framework::extension_bus::compile_managed_interface_module(
             candidate

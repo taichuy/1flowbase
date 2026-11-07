@@ -24,6 +24,14 @@ pub(crate) fn route_assembly(
                 .post(create, Op("events.definitions.create".into())),
         )
         .route(
+            "/events/api-operations",
+            console_get(api_operations, Op("events.api_operations.list".into())),
+        )
+        .route(
+            "/events/api-operations/:operation_id",
+            console_get(api_operation, Op("events.api_operations.get".into())),
+        )
+        .route(
             "/events/:event_definition_id",
             console_put(update, Op("events.definitions.update".into())),
         )
@@ -116,4 +124,39 @@ pub(crate) async fn runtime(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
     invoke(state, headers, "events.runtime.get", Input::Runtime, false).await
+}
+
+#[utoipa::path(get, path="/api/console/events/api-operations", tag="Events", operation_id="events.api_operations.list",
+    summary="List API event operations", description="Lists the complete shared API documentation catalog with independent Before and Completion availability. Schemas are loaded by operation identifier.",
+    responses((status=200,body=Vec<domain::event_center::ApiEventOperationSummary>)))]
+pub(crate) async fn api_operations(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    invoke(
+        state,
+        headers,
+        "events.api_operations.list",
+        Input::ApiOperations,
+        false,
+    )
+    .await
+}
+#[utoipa::path(get, path="/api/console/events/api-operations/{operation_id}", tag="Events", operation_id="events.api_operations.get",
+    summary="Read API event operation details", description="Returns the selected documented operation's owner-filtered request, result and lifecycle payload schemas from the current compiled generation.",
+    params(("operation_id"=String,Path,description="URL-encoded documented operation identifier")),
+    responses((status=200,body=domain::event_center::ApiEventOperationDetails)))]
+pub(crate) async fn api_operation(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(operation_id): Path<String>,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    invoke(
+        state,
+        headers,
+        "events.api_operations.get",
+        Input::ApiOperation(operation_id),
+        false,
+    )
+    .await
 }

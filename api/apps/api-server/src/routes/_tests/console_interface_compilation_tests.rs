@@ -70,3 +70,20 @@ fn one_console_operation_can_publish_multiple_static_bindings() {
         "fixture.operation.read"
     );
 }
+
+impl crate::event_center::api_projection::ApiEventInput for Input {
+    fn project_document_input(
+        &self,
+        _: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, Arc<str>> {
+        Ok(serde_json::json!({}))
+    }
+}
+impl crate::event_center::api_projection::ApiEventOutput for Output {
+    fn project_document_output(
+        &self,
+        _: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, Arc<str>> {
+        Ok(serde_json::json!({}))
+    }
+}

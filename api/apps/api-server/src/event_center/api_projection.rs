@@ -15,28 +15,38 @@ pub(crate) struct ApiEventOperationContext {
 }
 
 pub(crate) trait ApiEventInput: InterfaceContract {
+    /// None inherits the actual shared API document schema at serving composition.
     fn document_input_schema(_operation: &ApiEventOperationContext) -> Option<Value> {
+        None
+    }
+    fn document_input_unavailable(
+        _operation: &ApiEventOperationContext,
+    ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         None
     }
     fn project_document_input(
         &self,
-        _operation: &ApiEventOperationContext,
-    ) -> Result<Value, Arc<str>> {
-        Err(Arc::from("api-event-input-codec-missing"))
-    }
+        operation: &ApiEventOperationContext,
+    ) -> Result<Value, Arc<str>>;
 }
 pub(crate) trait ApiEventOutput: InterfaceContract {
     fn document_output_schema(_operation: &ApiEventOperationContext) -> Option<Value> {
         None
     }
+    fn document_output_unavailable(
+        _operation: &ApiEventOperationContext,
+    ) -> Option<domain::event_center::ApiEventUnavailableReason> {
+        None
+    }
     fn project_document_output(
         &self,
-        _operation: &ApiEventOperationContext,
-    ) -> Result<Value, Arc<str>> {
-        Err(Arc::from("api-event-output-codec-missing"))
-    }
+        operation: &ApiEventOperationContext,
+    ) -> Result<Value, Arc<str>>;
 }
-
+fn reason_code(reason: domain::event_center::ApiEventUnavailableReason) -> Arc<str> {
+    let encoded = serde_json::to_value(reason).expect("owner reason serializes");
+    Arc::from(encoded.as_str().expect("owner reason is a string"))
+}
 /// Explicit owner opt-in for an already safe DTO. Does not implement either codec trait.
 pub(crate) fn to_value<T: serde::Serialize>(value: &T) -> Result<Value, Arc<str>> {
     serde_json::to_value(value).map_err(|_| Arc::from("api-event-safe-dto-serialization-failed"))
@@ -90,11 +100,15 @@ pub(crate) fn register_static_api_event<I: ApiEventInput, O: ApiEventOutput>(
         method: route.method().to_string(),
         path: route.path().to_string(),
     };
-    let request = I::document_input_schema(&operation);
-    let result = O::document_output_schema(&operation);
-    if request.is_none() && result.is_none() {
-        return Ok(());
-    }
+    let request_unavailable = I::document_input_unavailable(&operation).map(reason_code);
+    let result_unavailable = O::document_output_unavailable(&operation).map(reason_code);
+    // Null is an unpublished inheritance marker, resolved from the unique real document in boot.
+    let request = request_unavailable
+        .is_none()
+        .then(|| I::document_input_schema(&operation).unwrap_or(Value::Null));
+    let result = result_unavailable
+        .is_none()
+        .then(|| O::document_output_schema(&operation).unwrap_or(Value::Null));
     let descriptor = DocumentOperationDescriptor {
         // Unpublished family snapshots use their canonical identity; the serving root replaces
         // this metadata from the sole API-doc catalog before execution admission opens.
@@ -111,6 +125,8 @@ pub(crate) fn register_static_api_event<I: ApiEventInput, O: ApiEventOutput>(
             request,
             result,
             event: None,
+            request_unavailable,
+            result_unavailable,
         },
     };
     compiler.bind_document_operation(
@@ -158,6 +174,16 @@ pub(crate) fn refine_static_api_events(
             };
             let Some(operations) = by_route.get(&route_identity(route.method(), route.path()))
             else {
+                let mut descriptor = capability
+                    .static_descriptor
+                    .expect("static capability owns descriptor")
+                    .clone();
+                descriptor.schemas.request = None;
+                descriptor.schemas.result = None;
+                descriptor.schemas.request_unavailable =
+                    Some(Arc::from("missing_openapi_contract"));
+                descriptor.schemas.result_unavailable = Some(Arc::from("missing_openapi_contract"));
+                compiler.rebind_document_operation_descriptor(capability.binding_id, descriptor)?;
                 continue;
             };
             if operations.len() != 1 {
@@ -172,6 +198,42 @@ pub(crate) fn refine_static_api_events(
                 .expect("static capability owns descriptor")
                 .clone();
             descriptor.operation_id = Arc::from(operations[0].as_str());
+            let operation = docs
+                .operation(&operations[0])
+                .expect("indexed API operation exists");
+            let view = docs
+                .operation_spec_view(&operations[0])
+                .ok_or_else(|| anyhow::anyhow!("API document contract is missing"))?;
+            let authentic = crate::openapi_interface::catalog_entry_from_view(&operation, &view)
+                .ok_or_else(|| anyhow::anyhow!("API document contract is missing"))?;
+            if descriptor.schemas.request.as_ref() == Some(&Value::Null) {
+                if authentic
+                    .request_media_type
+                    .as_deref()
+                    .is_some_and(|media| !json_media(media))
+                {
+                    descriptor.schemas.request = None;
+                    descriptor.schemas.request_unavailable = Some(Arc::from("binary_request"));
+                } else {
+                    descriptor.schemas.request =
+                        Some(safe_document_request_schema(authentic.request_schema));
+                }
+            }
+            if descriptor.schemas.result.as_ref() == Some(&Value::Null) {
+                match authentic.response_media_type.as_deref() {
+                    Some("text/event-stream") => {
+                        descriptor.schemas.result = None;
+                        descriptor.schemas.result_unavailable =
+                            Some(Arc::from("missing_streaming_terminal"));
+                    }
+                    Some(media) if !json_media(media) => {
+                        descriptor.schemas.result = None;
+                        descriptor.schemas.result_unavailable = Some(Arc::from("binary_response"));
+                    }
+                    _ => descriptor.schemas.result = Some(authentic.response_schema),
+                }
+            }
+
             compiler.rebind_document_operation_descriptor(capability.binding_id, descriptor)?;
         }
     }
@@ -191,4 +253,18 @@ pub(crate) fn route_identity(method: &str, path: &str) -> (String, String) {
             .collect::<Vec<_>>()
             .join("/"),
     )
+}
+
+pub(crate) fn safe_document_request_schema(mut schema: Value) -> Value {
+    if let Some(properties) = schema.get_mut("properties").and_then(Value::as_object_mut) {
+        properties.remove("headers");
+    }
+    if let Some(required) = schema.get_mut("required").and_then(Value::as_array_mut) {
+        required.retain(|value| value.as_str() != Some("headers"));
+    }
+    schema
+}
+
+fn json_media(media: &str) -> bool {
+    media == "application/json" || media.ends_with("+json")
 }

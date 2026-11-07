@@ -75,6 +75,8 @@ fn descriptor() -> DocumentOperationDescriptor {
             ),
             result: Some(json!({"type":"object","properties":{"number":{"type":"integer"}}})),
             event: None,
+            request_unavailable: None,
+            result_unavailable: None,
         },
     }
 }
@@ -1002,4 +1004,81 @@ fn compiled_document_metadata_distinguishes_registered_codec_from_active_observe
     let capability = snapshot.document_operation(binding().binding_id()).unwrap();
     assert!(!capability.observer_enabled);
     assert!(capability.static_descriptor.is_some());
+}
+
+#[test]
+fn composition_metadata_refinement_rejects_cross_binding_generation_and_dynamic_replacement() {
+    for variant in ["binding", "interface", "generation", "dynamic"] {
+        let (mut compiler, _, _) = document_compiler(ObserverBehavior::Record, true, false);
+        bind_handler(&mut compiler, false, false);
+        if variant == "dynamic" {
+            compiler
+                .bind_document_operation(
+                    binding().binding_id(),
+                    DocumentOperationRegistration::dynamic(
+                        "catalog:v1",
+                        Arc::new(Selector {
+                            calls: Arc::new(AtomicUsize::new(0)),
+                        }),
+                    ),
+                )
+                .unwrap();
+        } else {
+            register_static(&mut compiler, descriptor(), Arc::new(AtomicUsize::new(0)));
+        }
+        let mut replacement = descriptor();
+        replacement.operation_id = Arc::from("document-refined");
+        match variant {
+            "binding" => replacement.binding_id = BindingId::new("other").unwrap(),
+            "interface" => {
+                replacement.interface_identity = InterfaceIdentity::new(
+                    InterfaceId::new("other").unwrap(),
+                    InterfaceVersion::new("1").unwrap(),
+                )
+            }
+            "generation" => replacement.registration_generation = Arc::from("catalog:other"),
+            _ => {}
+        }
+        assert!(matches!(
+            compiler.rebind_document_operation_descriptor(binding().binding_id(), replacement),
+            Err(RegistryCompilationError::DocumentOperationMismatch(_))
+        ));
+        let registry = compiler.compile().unwrap();
+        let metadata = registry.document_operation(binding().binding_id()).unwrap();
+        assert_eq!(metadata.dynamic, variant == "dynamic");
+        if let Some(descriptor) = metadata.static_descriptor {
+            assert_eq!(descriptor.operation_id.as_ref(), "document-api.operation");
+        }
+    }
+}
+#[tokio::test]
+async fn opaque_owner_phase_reasons_disable_projection_without_kernel_policy_or_fault() {
+    let (mut compiler, observer, _) = document_compiler(ObserverBehavior::Record, true, false);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut descriptor = descriptor();
+    descriptor.schemas.request = None;
+    descriptor.schemas.result = None;
+    descriptor.schemas.request_unavailable = Some(Arc::from("owner-specific-input-reason"));
+    descriptor.schemas.result_unavailable = Some(Arc::from("owner-specific-output-reason"));
+    register_static(&mut compiler, descriptor, calls.clone());
+    bind_handler(&mut compiler, false, false);
+    let outcome = kernel(false)
+        .invoke::<Input, Output, TargetError>(compiler.compile().unwrap(), envelope(actor(true)))
+        .await
+        .unwrap();
+    assert_eq!(outcome.value(), &Output(5));
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    let events = observer.events.lock().unwrap();
+    assert_eq!(events.len(), 1);
+    completion(
+        &events[0],
+        InterfaceInvocationTerminal::Completed,
+        false,
+        None,
+    );
+    assert!(outcome
+        .receipt()
+        .observer_records()
+        .iter()
+        .all(|record| record.status() == InterfaceObserverStatus::Executed));
 }

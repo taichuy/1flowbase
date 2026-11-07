@@ -24,6 +24,7 @@ pub(crate) struct Dependencies {
     changes: Arc<tokio::sync::Notify>,
     statuses: crate::workers::event_workflow::EventWorkflowStatuses,
     sources: Arc<crate::event_center::catalog::EventSourceCatalog>,
+    api_catalog: crate::openapi_interface::OpenApiCapabilityCatalogDependencies,
 }
 impl Dependencies {
     pub(crate) fn new(state: &ApiState) -> Self {
@@ -34,11 +35,20 @@ impl Dependencies {
             changes: state.event_workflow_changes.clone(),
             statuses: state.event_workflow_statuses.clone(),
             sources: state.event_sources.clone(),
+            api_catalog: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
+                store: state.store.clone(),
+                console_operations: state.console_operation_registry.inventory().clone(),
+                interface_registry: None,
+                api_docs: state.api_docs.clone(),
+                template_catalog: state.runtime_engine.template_catalog().clone(),
+            },
         }
     }
 }
 pub(crate) enum Input {
     Catalog,
+    ApiOperations,
+    ApiOperation(String),
     Create(CreateEventDefinitionInput),
     Update(Uuid, UpdateEventDefinitionInput),
     Runtime,
@@ -55,7 +65,7 @@ impl InterfaceContract for Input {
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         Some(
-            json!({"operation": match self { Self::Catalog=>"catalog", Self::Create(_)=>"create",Self::Update(..)=>"update",Self::Runtime=>"runtime" }}),
+            json!({"operation": match self { Self::Catalog=>"catalog", Self::ApiOperations=>"api_operations", Self::ApiOperation(_)=>"api_operation", Self::Create(_)=>"create",Self::Update(..)=>"update",Self::Runtime=>"runtime" }}),
         )
     }
 }
@@ -99,12 +109,61 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
                     &self.runtime,
                     registry.as_deref(),
                 );
-                let service = EventCenterConfigurationService::with_registered_events(
+                let mut api_catalog = self.api_catalog.clone();
+                api_catalog.interface_registry = registry.clone();
+                let mut service = EventCenterConfigurationService::with_registered_events(
                     self.store.clone(),
                     actor.current_workspace_id,
                     entries,
                 );
+                let stopping_unchanged_rule = if let Input::Update(id, value) = &input {
+                    !value.enabled
+                        && service
+                            .get_definition(actor, *id)
+                            .await?
+                            .interface_event
+                            .as_ref()
+                            == Some(&value.interface_event)
+                } else {
+                    false
+                };
+                let selected_operation = match &input {
+                    Input::Create(value) => value.interface_event.operation_id(),
+                    Input::Update(_, value) if !stopping_unchanged_rule => {
+                        value.interface_event.operation_id()
+                    }
+                    _ => None,
+                };
+                if let Some(operation_id) = selected_operation {
+                    let selected = crate::event_center::api_catalog::get_with(
+                        &api_catalog,
+                        actor,
+                        operation_id,
+                    )
+                    .await?
+                    .into_iter()
+                    .collect();
+                    service = service.with_api_operations(actor.current_workspace_id, selected);
+                }
                 match input {
+                    Input::ApiOperations => Ok(serde_json::to_value(
+                        crate::event_center::api_catalog::summaries_with(&api_catalog, actor)
+                            .await?,
+                    )?),
+                    Input::ApiOperation(operation_id) => {
+                        let details = crate::event_center::api_catalog::get_with(
+                            &api_catalog,
+                            actor,
+                            &operation_id,
+                        )
+                        .await?
+                        .ok_or(
+                            control_plane::errors::ControlPlaneError::NotFound(
+                                "api_event_operation",
+                            ),
+                        )?;
+                        Ok(serde_json::to_value(details)?)
+                    }
                     Input::Catalog => Ok(serde_json::to_value(service.catalog(actor).await?)?),
                     Input::Create(input) => {
                         definition_value(service.create_definition(actor, input).await?)
@@ -187,6 +246,20 @@ pub(crate) fn compile_registry(
 }
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     ConsoleInterfaceDeclaration {
+        interface_id: "events.api_operations.list",
+        binding_id: "http.console.events.api_operations.list.v1",
+        method: "GET",
+        path: "/api/console/events/api-operations",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "events.api_operations.get",
+        binding_id: "http.console.events.api_operations.get.v1",
+        method: "GET",
+        path: "/api/console/events/api-operations/:operation_id",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
         interface_id: "events.catalog.list",
         binding_id: "http.console.events.catalog.list.v1",
         method: "GET",
@@ -220,3 +293,28 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
 #[cfg(test)]
 #[path = "_tests/interface.rs"]
 mod tests;
+
+impl crate::event_center::api_projection::ApiEventInput for Input {
+    fn project_document_input(
+        &self,
+        _: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<Value, Arc<str>> {
+        use crate::event_center::api_projection::to_value;
+        Ok(match self {
+            Self::Catalog | Self::Runtime | Self::ApiOperations => json!({}),
+            Self::ApiOperation(operation_id) => json!({"path":{"operation_id":operation_id}}),
+            Self::Create(input) => json!({"body":to_value(input)?}),
+            Self::Update(id, input) => {
+                json!({"path":{"event_definition_id":id},"body":to_value(input)?})
+            }
+        })
+    }
+}
+impl crate::event_center::api_projection::ApiEventOutput for Output {
+    fn project_document_output(
+        &self,
+        _: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<Value, Arc<str>> {
+        Ok(self.0.clone())
+    }
+}

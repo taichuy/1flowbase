@@ -4,3 +4,7 @@ pub mod catalog;
 pub(crate) mod interface;
 
 pub(crate) mod api_projection;
+
+pub(crate) mod api_observer;
+
+pub(crate) mod api_catalog;

@@ -6,6 +6,8 @@ use utoipa::OpenApi;
     paths(
         crate::routes::runtime_models::metadata_interface::get_runtime_model_metadata,
         crate::routes::events::catalog,
+        crate::routes::events::api_operations,
+        crate::routes::events::api_operation,
         crate::routes::events::create,
         crate::routes::events::update,
         crate::routes::events::runtime,

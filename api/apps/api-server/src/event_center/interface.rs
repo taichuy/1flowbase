@@ -250,7 +250,7 @@ fn capability_entry(
     };
     EventCatalogEntry {
         id: None, source: None, enabled: None,
-        interface_event: Some(InterfaceEventBinding { interface_id: interface_id.into(), phase, results: Vec::new() }),
+        interface_event: Some(InterfaceEventBinding::legacy(interface_id, phase)),
         group_path: vec!["interfaces".into(), definition.owner().as_str().into()],
         scope: match definition.scope() { InterfaceScope::System => EventSourceScope::System, InterfaceScope::Workspace => EventSourceScope::Workspace { workspace_id: actor.current_workspace_id } },
         owner_id: Some(definition.owner().as_str().into()),

@@ -273,6 +273,8 @@ pub(super) fn expand_core_interface_registrations(
 
 pub(super) fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
+        "events.api_operations.list" => Some("List API event operations"),
+        "events.api_operations.get" => Some("Read API event operation details"),
         "events.catalog.list" => Some("List registered event definitions"),
         "events.definitions.create" => Some("Create a custom event definition"),
         "events.definitions.update" => Some("Update a custom event definition"),
@@ -526,6 +528,8 @@ pub(super) fn compile_console_interface_metadata(
             "terminal.jobs.read" => "Read a bounded stdout or stderr slice of an owned retained backend command, using an explicit byte cursor.".to_owned(),
             "terminal.jobs.cancel" => "Request cancellation of an owned retained backend command and report its current lifecycle and cleanup status.".to_owned(),
             "local_commands.execute" => "Execute a single command string in the backend instance environment as its OS account. Requires the local command operation permission; returns complete output and termination status without a reusable session, deployment opt-in, or automatic retry.".to_owned(),
+            "events.api_operations.list" => "List every shared documented API operation with independent event phase availability, without materializing all lifecycle payload schemas.".to_owned(),
+            "events.api_operations.get" => "Read the selected documented API operation's owner-filtered request, result and lifecycle payload schemas.".to_owned(),
             "events.catalog.list" => "List workspace event contracts and their registered source, schema and supported trigger phases.".to_owned(),
             "events.definitions.create" => "Create a workspace custom event definition without publishing or persisting any event instance.".to_owned(),
             "events.definitions.update" => "Update a custom event's editable configuration while preserving its contract identity and workspace.".to_owned(),

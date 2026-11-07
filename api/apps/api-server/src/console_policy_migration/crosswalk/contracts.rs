@@ -10,6 +10,8 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         "system.events",
         &[
             "events.catalog.list",
+            "events.api_operations.list",
+            "events.api_operations.get",
             "events.definitions.create",
             "events.definitions.update",
             "events.runtime.get",
@@ -535,6 +537,8 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "mcp.directory.replace",
     // Event Center introduces independent authority; no historical feature grant covers it.
     "events.catalog.list",
+    "events.api_operations.list",
+    "events.api_operations.get",
     "events.definitions.create",
     "events.definitions.update",
     "events.runtime.get",

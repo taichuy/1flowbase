@@ -18,6 +18,9 @@ pub struct DocumentOperationSchemas {
     pub request: Option<Value>,
     pub result: Option<Value>,
     pub event: Option<Value>,
+    /// Opaque owner reason codes. The kernel does not interpret product availability policy.
+    pub request_unavailable: Option<Arc<str>>,
+    pub result_unavailable: Option<Arc<str>>,
 }
 
 /// Document identity is separate from the canonical interface and protocol binding.
