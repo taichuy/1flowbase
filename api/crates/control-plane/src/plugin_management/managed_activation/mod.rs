@@ -1,13 +1,10 @@
 pub mod mcp_projection;
 mod mcp_template;
-pub use mcp_template::prepare_managed_mcp_template;
+pub use mcp_template::{prepare_managed_mcp_bundle_template, prepare_managed_mcp_template};
 mod schema;
 pub use schema::prepare_managed_schema_plan;
 
-use super::{
-    verified_installed_managed_manifest, HostContributionGrantPolicy,
-    PluginContributionAuthorityService,
-};
+use super::{HostContributionGrantPolicy, PluginContributionAuthorityService};
 use crate::ports::{
     ManagedSchemaRepository, McpManagementRepository, ModelDefinitionRepository,
     PluginContributionAuthorityRepository, PluginRepository, RoleConsolePolicyReader,
@@ -58,16 +55,34 @@ where
         actor: &domain::ActorContext,
         installation_id: uuid::Uuid,
     ) -> Result<()> {
-        let manifest = verified_installed_managed_manifest(
-            &self.repository,
-            &self.node_id,
-            &self.install_root,
-            installation_id,
-        )
-        .await?
-        .ok_or(crate::errors::ControlPlaneError::InvalidInput(
-            "managed_contribution_installation_required",
-        ))?;
+        let (manifest, package_root) =
+            super::contribution_authority::verified_installed_managed_artifact(
+                &self.repository,
+                &self.node_id,
+                &self.install_root,
+                installation_id,
+            )
+            .await?
+            .ok_or(crate::errors::ControlPlaneError::InvalidInput(
+                "managed_contribution_installation_required",
+            ))?;
+        // Read and validate the complete package before authority/schema/MCP writes.
+        let template = if let Some(reference) = manifest
+            .managed_service
+            .as_ref()
+            .and_then(|service| service.mcp_instance.as_ref())
+            .and_then(|instance| instance.template.as_ref())
+        {
+            let package = mcp_template::load_managed_mcp_bundle(&package_root, reference).await?;
+            Some(prepare_managed_mcp_bundle_template(
+                actor,
+                installation_id,
+                &manifest,
+                package,
+            )?)
+        } else {
+            prepare_managed_mcp_template(actor, installation_id, &manifest)?
+        };
         PluginContributionAuthorityService::new(
             self.repository.clone(),
             HostContributionGrantPolicy::root_composition(),
@@ -92,7 +107,7 @@ where
             .await?;
             self.repository.apply_managed_schema(&plan).await?;
         }
-        if let Some(template) = prepare_managed_mcp_template(actor, installation_id, &manifest)? {
+        if let Some(template) = template {
             self.repository
                 .seed_mcp_bundle_graph_once_atomically(&template)
                 .await?;

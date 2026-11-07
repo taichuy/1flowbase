@@ -1,5 +1,9 @@
 mod activation;
-pub use activation::verified_installed_managed_manifest;
+mod installed_artifact;
+pub use installed_artifact::verified_installed_managed_manifest;
+pub(crate) use installed_artifact::{
+    read_verified_package_asset, verified_installed_managed_artifact,
+};
 
 use anyhow::Result;
 use domain::{ActorContext, ContributionResourceScope, PluginContributionAuthoritySnapshot};

@@ -353,9 +353,7 @@ export function buildMcpDirectoryEditorTreeData({
     directoryDraftActive &&
     !isEditingBinding
   ) {
-    const targetPath = normalizeMcpDirectoryPath(
-      watchedGroupPath || selectedInstance.default_entry_path
-    );
+    const targetPath = normalizeMcpDirectoryPath(watchedGroupPath || '/');
     const targetNode =
       targetPath === normalizeMcpDirectoryPath(rootNode.path)
         ? rootNode

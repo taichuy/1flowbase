@@ -444,7 +444,8 @@ async function renderPanelWithMountedTool({
   includeGroup = false,
   operation = 'POST /api/console/apps',
   proxy = false,
-  secondInstance = false
+  secondInstance = false,
+  defaultEntryPath = '/'
 }: {
   includeBinding?: boolean;
   bindingGroupPath?: string;
@@ -452,6 +453,7 @@ async function renderPanelWithMountedTool({
   operation?: string;
   proxy?: boolean;
   secondInstance?: boolean;
+  defaultEntryPath?: string;
 } = {}) {
   const catalog: ConsoleMcpCatalog = {
     instances: [
@@ -462,7 +464,7 @@ async function renderPanelWithMountedTool({
         name: 'Ops MCP',
         description_short: null,
         status: 'enabled',
-        default_entry_path: '/',
+        default_entry_path: defaultEntryPath,
         webmcp_exposure: 'disabled',
         managed_by: null,
         created_by: 'user-1',
