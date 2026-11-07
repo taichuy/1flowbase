@@ -5,12 +5,23 @@ use std::{collections::BTreeMap, sync::Arc};
 #[derive(Default)]
 pub struct EventSourceCatalog {
     pub(crate) runtime_bound: bool,
+    interface_registry:
+        std::sync::OnceLock<std::sync::Weak<interface_runtime::CompiledInterfaceRegistry>>,
     pub(crate) native_plan:
         Option<Arc<plugin_framework::extension_bus::EffectiveLifecycleSubscriberPlan>>,
     pub(crate) lifecycle_observer:
         Option<Arc<control_plane::lifecycle_outbox_dispatcher::LifecycleSourceObserver>>,
 }
 impl EventSourceCatalog {
+    pub(crate) fn bind_interface_registry(
+        &self,
+        registry: &Arc<interface_runtime::CompiledInterfaceRegistry>,
+    ) -> anyhow::Result<()> {
+        self.interface_registry
+            .set(Arc::downgrade(registry))
+            .map_err(|_| anyhow::anyhow!("event interface registry already bound"))
+    }
+
     /// Shared production/fixture assembly. Call before extracting stream/store clones or
     /// starting producers/workers; keep the returned catalog with the serving generation.
     pub(crate) fn attach_local(
@@ -40,6 +51,7 @@ impl EventSourceCatalog {
             store,
             Arc::new(Self {
                 runtime_bound: true,
+                interface_registry: Default::default(),
                 native_plan,
                 lifecycle_observer: Some(lifecycle),
             }),
@@ -54,6 +66,17 @@ impl EventSourceCatalog {
         let scopes = visible_scopes(actor);
         let configured = runtime.snapshot(actor.current_workspace_id).configured;
         let mut entries = BTreeMap::new();
+        if configured && self.runtime_bound {
+            if let Some(registry) = self
+                .interface_registry
+                .get()
+                .and_then(std::sync::Weak::upgrade)
+            {
+                for entry in super::interface::catalog(&registry, actor) {
+                    insert(&mut entries, entry);
+                }
+            }
+        }
         // Definitions/capabilities exist before the first execution. They do not create leases,
         // consumers or Subscribed observations. Live run instances remain their own owners.
         for scope in &scopes {

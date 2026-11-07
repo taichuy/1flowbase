@@ -296,7 +296,10 @@ impl ExtensionBootSnapshot {
         let mut collector = InterfaceContributionCollector::new(
             interface_runtime::GraphFingerprint::new(self.graph.fingerprint().as_str())?,
         )
-        .with_managed_invocations(managed.clone());
+        .with_managed_invocations(managed.clone())
+        .with_event_observer(crate::event_center::interface::InterfaceRuleObserver::new(
+            state,
+        ));
         for contribution in production_interface_contributions(state, &owner)? {
             collector.add(contribution)?;
         }
@@ -308,6 +311,7 @@ impl ExtensionBootSnapshot {
         let (candidate, console_operation_snapshot) = collector
             .compile_complete_console_snapshot(state.console_operation_registry.inventory())?;
         managed.bind_registry(&candidate)?;
+        state.event_sources.bind_interface_registry(&candidate)?;
         let module = plugin_framework::extension_bus::compile_managed_interface_module(
             candidate
                 .definitions()

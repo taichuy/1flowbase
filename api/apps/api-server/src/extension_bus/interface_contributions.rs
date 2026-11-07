@@ -74,6 +74,7 @@ impl InterfaceRegistryContribution {
 
 pub(crate) struct InterfaceContributionCollector {
     managed_factory: Option<Arc<dyn interface_runtime::ManagedInterfaceInvocationFactory>>,
+    event_observer: Option<Arc<dyn interface_runtime::InterfaceEventObserver>>,
     graph_fingerprint: GraphFingerprint,
     contributions: Vec<InterfaceRegistryContribution>,
     contribution_ids: BTreeSet<String>,
@@ -83,10 +84,19 @@ impl InterfaceContributionCollector {
     pub(crate) fn new(graph_fingerprint: GraphFingerprint) -> Self {
         Self {
             managed_factory: None,
+            event_observer: None,
             graph_fingerprint,
             contributions: Vec::new(),
             contribution_ids: BTreeSet::new(),
         }
+    }
+
+    pub(crate) fn with_event_observer(
+        mut self,
+        observer: Arc<dyn interface_runtime::InterfaceEventObserver>,
+    ) -> Self {
+        self.event_observer = Some(observer);
+        self
     }
 
     pub(crate) fn add(
@@ -121,6 +131,9 @@ impl InterfaceContributionCollector {
         let mut compiler = RegistryCompiler::new(self.graph_fingerprint, operations, owners);
         if let Some(factory) = self.managed_factory {
             compiler = compiler.with_managed_invocations(factory);
+        }
+        if let Some(observer) = self.event_observer {
+            compiler = compiler.with_event_observer(observer);
         }
         for contribution in self.contributions {
             compiler.absorb_snapshot(contribution.registry.as_ref())?;
