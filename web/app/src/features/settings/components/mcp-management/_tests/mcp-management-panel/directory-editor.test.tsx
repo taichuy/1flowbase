@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
   setupDirectoryEditorFixture,
   click,
@@ -17,84 +17,85 @@ describe('McpManagementPanel', () => {
   test.each([
     ['/', '/search_customer'],
     ['/ops/customer', '/ops/customer/search_customer']
-  ])('shows read-only Tool details and the complete mount path under %s', async (groupPath, mountPath) => {
-    await renderPanelWithMountedTool({ bindingGroupPath: groupPath });
-    await click(screen.getByRole('tab', { name: 'MCP 实例' }));
-    await click(screen.getByRole('button', { name: '目录编辑' }));
-    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    const tree = within(dialog).getByRole('tree');
-    // Expand the real tree until the mounted Tool is visible.
-    while (!within(tree).queryByText('search_customer')) {
-      const switcher = tree.querySelector('.ant-tree-switcher_close');
-      expect(switcher).not.toBeNull();
-      await click(switcher!);
-    }
-    await click(within(tree).getByText('search_customer'));
+  ])(
+    'shows read-only Tool details and the complete mount path under %s',
+    async (groupPath, mountPath) => {
+      await renderPanelWithMountedTool({ bindingGroupPath: groupPath });
+      await click(screen.getByRole('tab', { name: 'MCP 实例' }));
+      await click(screen.getByRole('button', { name: '目录编辑' }));
+      const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+      const tree = within(dialog).getByRole('tree');
+      // Expand the real tree until the mounted Tool is visible.
+      while (!within(tree).queryByText('search_customer')) {
+        const switcher = tree.querySelector('.ant-tree-switcher_close');
+        expect(switcher).not.toBeNull();
+        await click(switcher!);
+      }
+      await click(within(tree).getByText('search_customer'));
 
-    const details = dialog.querySelector('.mcp-management__tool-details')!;
-    expect(within(details as HTMLElement).getByText('名称')).toBeInTheDocument();
-    expect(within(details as HTMLElement).getByText('Search customer')).toBeInTheDocument();
-    expect(within(details as HTMLElement).getByText('tool_id')).toBeInTheDocument();
-    expect(within(details as HTMLElement).getByText('search_customer')).toBeInTheDocument();
-    expect(within(details as HTMLElement).getByText('说明')).toBeInTheDocument();
-    expect(within(details as HTMLElement).getByText('Find matching customers')).toBeInTheDocument();
-    expect(details.querySelector('input,textarea,select')).toBeNull();
-    expect(within(dialog).queryByRole('combobox', { name: '选择 Tool' })).not.toBeInTheDocument();
-    const path = within(dialog).getByRole('group', { name: '挂载路径' });
-    expect(path).toHaveTextContent(mountPath);
-    expect(path.querySelector('input,textarea')).toBeNull();
-    expect(within(path).getByRole('button', { name: '复制挂载路径' })).toBeEnabled();
-
-    await click(within(dialog).getByRole('switch', { name: '可见' }));
-    await click(within(dialog).getByRole('button', { name: '保存 Tool 挂载' }));
-    await waitFor(() => {
-      expect(mcpManagementApi.updateSettingsMcpToolBinding).toHaveBeenCalledWith(
-        'binding-1',
-        { group_path: groupPath, tool_id: 'search_customer', display_alias: null, visible: false, sort_order: 0 },
-        expect.any(String)
-      );
-    });
-  });
-
-  test('confirms before closing an editor with unsaved changes', async () => {
-    await renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
-
-    await click(screen.getByRole('tab', { name: 'MCP 实例' }));
-    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
-    await click(
-      within(instancesPanel).getByRole('button', { name: '目录编辑' })
-    );
-
-    const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    await change(within(dialog).getByLabelText('显示名称'), {
-      target: { value: 'Unsaved group' }
-    });
-    await waitFor(() => {
-      expect(within(dialog).getByLabelText('显示名称')).toHaveValue(
-        'Unsaved group'
-      );
-    });
-    await click(
-      within(dialog).getByRole('button', { name: '关闭目录编辑' })
-    );
-
-    expect(screen.getByText('放弃未保存的更改？')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: '放弃更改' })
-    ).toBeInTheDocument();
-    await click(screen.getByRole('button', { name: '继续编辑' }));
-    await waitFor(() =>
+      const details = within(dialog)
+        .getByText('名称')
+        .closest('.mcp-management__tool-details')!;
       expect(
-        screen.queryByRole('dialog', { name: '放弃未保存的更改？' })
-      ).not.toBeInTheDocument()
-    );
-    expect(
-      screen.getByRole('dialog', { name: '目录编辑' })
-    ).toBeInTheDocument();
-  });
+        within(details as HTMLElement).getByText('名称')
+      ).toBeInTheDocument();
+      expect(
+        within(details as HTMLElement).getByText('Search customer')
+      ).toBeInTheDocument();
+      expect(
+        within(details as HTMLElement).getByText('tool_id')
+      ).toBeInTheDocument();
+      expect(
+        within(details as HTMLElement).getByText('search_customer')
+      ).toBeInTheDocument();
+      expect(
+        within(details as HTMLElement).getByText('说明')
+      ).toBeInTheDocument();
+      expect(
+        within(details as HTMLElement).getByText('Find matching customers')
+      ).toBeInTheDocument();
+      expect(details.querySelector('input,textarea,select')).toBeNull();
+      expect(
+        within(dialog).queryByRole('combobox', { name: '选择 Tool' })
+      ).not.toBeInTheDocument();
+      const path = within(dialog).getByRole('group', { name: '挂载路径' });
+      expect(path).toHaveTextContent(mountPath);
+      expect(path.querySelector('input,textarea')).toBeNull();
+      expect(
+        within(path).getByRole('button', { name: '复制挂载路径' })
+      ).toBeEnabled();
+      const clipboardDescriptor = Object.getOwnPropertyDescriptor(
+        navigator,
+        'clipboard'
+      );
+      const writeText = vi.fn(async () => undefined);
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText }
+      });
+      try {
+        await click(within(path).getByRole('button', { name: '复制挂载路径' }));
+        await waitFor(() => expect(writeText).toHaveBeenCalledWith(mountPath));
+      } finally {
+        if (clipboardDescriptor)
+          Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+        else Reflect.deleteProperty(navigator, 'clipboard');
+      }
+
+      expect(
+        within(dialog).getByRole('switch', { name: '可见' })
+      ).toBeDisabled();
+      expect(
+        mcpManagementApi.replaceSettingsMcpInstanceDirectory
+      ).not.toHaveBeenCalled();
+    }
+  );
 
   test('shows explicit group and Tool creation actions without editor tabs', async () => {
-    await renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
+    await renderPanelWithMountedTool({
+      includeBinding: false,
+      includeGroup: true
+    });
 
     await click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
@@ -106,8 +107,8 @@ describe('McpManagementPanel', () => {
 
     await click(within(dialog).getByRole('button', { name: '新建分组' }));
     expect(
-      dialog.querySelector('.mcp-management__directory-editor-status')
-    ).toHaveTextContent('未保存');
+      within(dialog).getByRole('button', { name: '保存节点' })
+    ).toBeEnabled();
 
     expect(
       within(dialog).getByRole('button', { name: '新建分组' })
@@ -124,7 +125,10 @@ describe('McpManagementPanel', () => {
   });
 
   test('AC-R11 hides the immutable path field while editing a group', async () => {
-    await renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
+    await renderPanelWithMountedTool({
+      includeBinding: false,
+      includeGroup: true
+    });
 
     await click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
@@ -135,9 +139,14 @@ describe('McpManagementPanel', () => {
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     const tree = within(dialog).getByRole('tree');
     await expandTreeRootIfCollapsed(tree);
-    expect(within(tree).getByRole('img', { name: 'folder-open' })).toBeInTheDocument();
-    expect(within(tree).getByRole('img', { name: 'folder' })).toBeInTheDocument();
-    await click(within(dialog).getByText('ops'));
+    expect(
+      within(tree).getByRole('img', { name: 'folder-open' })
+    ).toBeInTheDocument();
+    expect(
+      within(tree).getByRole('img', { name: 'folder' })
+    ).toBeInTheDocument();
+    await click(within(within(dialog).getByRole('tree')).getByText('ops'));
+    await click(within(dialog).getByRole('button', { name: '编辑节点' }));
     await waitFor(() => {
       expect(
         within(dialog).getByRole('heading', { name: '编辑分组' })
@@ -150,7 +159,10 @@ describe('McpManagementPanel', () => {
   });
 
   test('does not preview a duplicate draft group when the path already exists', async () => {
-    await renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
+    await renderPanelWithMountedTool({
+      includeBinding: false,
+      includeGroup: true
+    });
 
     await click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
@@ -193,60 +205,26 @@ describe('McpManagementPanel', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('places directory cancel and save actions in the modal footer for both editor tabs', async () => {
+  test('keeps directory actions in the fixed footer independently of node actions', async () => {
     await renderPanelWithMountedTool();
-
-    await click(screen.getByRole('tab', { name: 'MCP 实例' }));
-    const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
-
-    await click(
-      within(instancesPanel).getByRole('button', { name: '目录编辑' })
-    );
-
+    await click(screen.getByRole('button', { name: '目录编辑' }));
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
-    const modalScrollBody = screen.getByTestId(
-      'fixed-height-modal-scroll-body'
-    );
-
-    const cancelButton = within(dialog).getByRole('button', {
-      name: '关闭目录编辑'
-    });
-    const saveButton = within(dialog).getByRole('button', { name: /保存/ });
-
-    expect(cancelButton).toBeInTheDocument();
-    expect(saveButton).toBeInTheDocument();
-    expect(
-      cancelButton.compareDocumentPosition(saveButton) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(
-      within(modalScrollBody).queryByRole('button', { name: /取\s*消/ })
-    ).not.toBeInTheDocument();
-    expect(
-      within(modalScrollBody).queryByRole('button', { name: /保存/ })
-    ).not.toBeInTheDocument();
-
+    const body = within(dialog).getByTestId('fixed-height-modal-scroll-body');
+    for (const action of ['关闭目录编辑', '保存目录']) {
+      expect(
+        within(dialog).getByRole('button', { name: action })
+      ).toBeInTheDocument();
+      expect(
+        within(body).queryByRole('button', { name: action })
+      ).not.toBeInTheDocument();
+    }
     await click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
-
-    const bindingCancelButton = within(dialog).getByRole('button', {
-      name: '关闭目录编辑'
-    });
-    const bindingSaveButton = within(dialog).getByRole('button', {
-      name: /保存/
-    });
-
-    expect(bindingCancelButton).toBeInTheDocument();
-    expect(bindingSaveButton).toBeInTheDocument();
     expect(
-      bindingCancelButton.compareDocumentPosition(bindingSaveButton) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      within(dialog).getByRole('button', { name: '保存节点' })
+    ).toBeInTheDocument();
     expect(
-      within(modalScrollBody).queryByRole('button', { name: /取\s*消/ })
-    ).not.toBeInTheDocument();
-    expect(
-      within(modalScrollBody).queryByRole('button', { name: /保存/ })
-    ).not.toBeInTheDocument();
+      within(dialog).getByRole('button', { name: '保存目录' })
+    ).toBeEnabled();
   });
 
   test('renders draft group nodes with the display name and short description in the tree', async () => {
@@ -268,8 +246,8 @@ describe('McpManagementPanel', () => {
     await click(within(dialog).getByRole('button', { name: '新建分组' }));
     await waitFor(() => {
       expect(
-        dialog.querySelector('.mcp-management__directory-editor-status')
-      ).toHaveTextContent('未保存');
+        within(dialog).getByRole('button', { name: '保存节点' })
+      ).toBeEnabled();
     });
     await change(within(dialog).getByLabelText('显示名称'), {
       target: { value: '客户运营' }
@@ -307,7 +285,7 @@ describe('McpManagementPanel', () => {
     await change(within(dialog).getByLabelText('路径'), {
       target: { value: '后台设置' }
     });
-    await click(within(dialog).getByRole('button', { name: /保存/ }));
+    await click(within(dialog).getByRole('button', { name: '保存节点' }));
 
     expect(
       await within(dialog).findByText(
@@ -398,7 +376,10 @@ describe('McpManagementPanel', () => {
   });
 
   test('moves the single Tool draft when adding under another group', async () => {
-    await renderPanelWithMountedTool({ includeBinding: false, includeGroup: true });
+    await renderPanelWithMountedTool({
+      includeBinding: false,
+      includeGroup: true
+    });
 
     await click(screen.getByRole('tab', { name: 'MCP 实例' }));
     const instancesPanel = screen.getByRole('tabpanel', { name: 'MCP 实例' });
@@ -422,11 +403,13 @@ describe('McpManagementPanel', () => {
       expect(within(dialog).getByRole('tree')).toHaveTextContent('未命名 Tool');
     });
 
-    const groupLabel = within(dialog).getByText('ops');
+    const groupLabel = within(within(dialog).getByRole('tree')).getByText(
+      'ops'
+    );
     await click(groupLabel);
     await waitFor(() => {
       expect(
-        within(dialog)
+        within(within(dialog).getByRole('tree'))
           .getByText('ops')
           .closest('.ant-tree-node-content-wrapper')
       ).toHaveClass('ant-tree-node-selected');
@@ -437,7 +420,9 @@ describe('McpManagementPanel', () => {
       expect(
         within(within(dialog).getByRole('tree')).getAllByText('未命名 Tool')
       ).toHaveLength(1);
-      expect(within(dialog).getByLabelText('挂载路径')).toHaveTextContent('/ops');
+      expect(within(dialog).getByLabelText('挂载路径')).toHaveTextContent(
+        '/ops'
+      );
     });
   });
 
@@ -452,11 +437,13 @@ describe('McpManagementPanel', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
+    await click(within(dialog).getByRole('button', { name: '新建分组' }));
     await change(within(dialog).getByLabelText('路径'), {
-      target: { value: '/ops/customer' }
+      target: { value: 'customer' }
     });
 
-    expect(within(dialog).getByLabelText('路径')).toHaveValue('/ops/customer');
+    expect(within(dialog).getByLabelText('路径')).toHaveValue('customer');
+    await click(within(dialog).getByRole('button', { name: '取消节点编辑' }));
 
     await click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
 

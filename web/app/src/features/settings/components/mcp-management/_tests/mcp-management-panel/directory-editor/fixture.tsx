@@ -1,3 +1,5 @@
+import { installDirectorySnapshotApi } from '../fixtures/directory-snapshot';
+import type { ConsoleMcpCatalog } from '@1flowbase/api-client';
 import {
   act,
   cleanup,
@@ -7,56 +9,53 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import {
-  afterEach,
-  beforeEach,
-  expect,
-  type Mock,
-  vi
-} from 'vitest';
+import { afterEach, beforeEach, expect, type Mock, vi } from 'vitest';
 import type { ConsoleMcpInterfaceCapability } from '@1flowbase/api-client';
 import type { CSSProperties, ReactNode, ReactElement } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 
-vi.mock('../../../../../../../shared/ui/fixed-height-modal/FixedHeightModal', () => ({
-  FixedHeightModal: ({
-    bodyHeader,
-    children,
-    className,
-    footer,
-    open,
-    scrollBodyClassName,
-    title,
-    width
-  }: {
-    bodyHeader?: ReactNode;
-    children: ReactNode;
-    className?: string;
-    footer?: ReactNode;
-    open: boolean;
-    scrollBodyClassName?: string;
-    title: ReactNode;
-    width?: CSSProperties['width'];
-  }) =>
-    open ? (
-      <dialog
-        aria-label={String(title)}
-        className={`ant-modal ${className ?? ''}`}
-        open
-        style={{ width }}
-      >
-        <div className="ant-modal-title">{title}</div>
-        {bodyHeader}
-        <div
-          className={scrollBodyClassName}
-          data-testid="fixed-height-modal-scroll-body"
+vi.mock(
+  '../../../../../../../shared/ui/fixed-height-modal/FixedHeightModal',
+  () => ({
+    FixedHeightModal: ({
+      bodyHeader,
+      children,
+      className,
+      footer,
+      open,
+      scrollBodyClassName,
+      title,
+      width
+    }: {
+      bodyHeader?: ReactNode;
+      children: ReactNode;
+      className?: string;
+      footer?: ReactNode;
+      open: boolean;
+      scrollBodyClassName?: string;
+      title: ReactNode;
+      width?: CSSProperties['width'];
+    }) =>
+      open ? (
+        <dialog
+          aria-label={String(title)}
+          className={`ant-modal ${className ?? ''}`}
+          open
+          style={{ width }}
         >
-          {children}
-        </div>
-        {footer}
-      </dialog>
-    ) : null
-}));
+          <div className="ant-modal-title">{title}</div>
+          {bodyHeader}
+          <div
+            className={scrollBodyClassName}
+            data-testid="fixed-height-modal-scroll-body"
+          >
+            {children}
+          </div>
+          {footer}
+        </dialog>
+      ) : null
+  })
+);
 
 const mcpManagementApi = vi.hoisted(() => ({
   settingsMcpCatalogQueryKey: ['settings', 'mcp-management', 'catalog'],
@@ -105,6 +104,8 @@ const mcpManagementApi = vi.hoisted(() => ({
   exportSettingsMcpBundle: vi.fn(),
   exportSettingsMcpInstanceBundle: vi.fn(),
   exportSettingsMcpCatalog: vi.fn(),
+  fetchSettingsMcpInstanceDirectory: vi.fn(),
+  replaceSettingsMcpInstanceDirectory: vi.fn(),
   fetchSettingsMcpBundleExportDefaults: vi.fn(),
   fetchSettingsMcpTemplateLibrary: vi.fn(),
   fetchSettingsMcpClientCredential: vi.fn(
@@ -378,6 +379,20 @@ const interfaceCapabilities: ConsoleMcpInterfaceCapability[] = [
   }
 ];
 
+export function grantDirectoryPermissions(permissions: string[]) {
+  const { actor, me } = useAuthStore.getState();
+  act(() => {
+    useAuthStore.setState({
+      actor: { ...actor!, effective_display_role: 'readonly.audit.20261107' },
+      me: {
+        ...me!,
+        effective_display_role: 'readonly.audit.20261107',
+        permissions
+      }
+    });
+  });
+}
+
 function authenticate() {
   useAuthStore.getState().setAuthenticated({
     csrfToken: 'csrf-123',
@@ -428,144 +443,165 @@ async function renderPanelWithMountedTool({
   bindingGroupPath = '/ops/customer',
   includeGroup = false,
   operation = 'POST /api/console/apps',
-  proxy = false
+  proxy = false,
+  secondInstance = false
 }: {
   includeBinding?: boolean;
   bindingGroupPath?: string;
   includeGroup?: boolean;
   operation?: string;
   proxy?: boolean;
+  secondInstance?: boolean;
 } = {}) {
+  const catalog: ConsoleMcpCatalog = {
+    instances: [
+      {
+        id: 'instance-record-1',
+        workspace_id: 'workspace-1',
+        instance_id: 'ops_mcp',
+        name: 'Ops MCP',
+        description_short: null,
+        status: 'enabled',
+        default_entry_path: '/',
+        webmcp_exposure: 'disabled',
+        managed_by: null,
+        created_by: 'user-1',
+        updated_by: 'user-1',
+        created_at: '2026-07-06T00:00:00Z',
+        updated_at: '2026-07-06T00:00:00Z',
+        llm_tool_registration: {
+          prefix: 'ops_mcp',
+          tools: [
+            { operation: 'list', name: 'ops_mcp_mcp_list' },
+            { operation: 'get', name: 'ops_mcp_mcp_get' },
+            { operation: 'result', name: 'ops_mcp_mcp_result' },
+            { operation: 'call', name: 'ops_mcp_mcp_call' }
+          ]
+        }
+      }
+    ],
+    groups: includeGroup
+      ? [
+          {
+            id: 'group-1',
+            instance_record_id: 'instance-record-1',
+            path: '/ops',
+            display_name: 'ops',
+            description_short: null,
+            enabled: true,
+            sort_order: 0
+          }
+        ]
+      : [],
+    tools: [
+      {
+        id: 'tool-record-1',
+        workspace_id: 'workspace-1',
+        tool_id: 'search_customer',
+        name: 'Search customer',
+        short_description: 'Find matching customers',
+        full_description: 'Search customer',
+        managed_by: null,
+        execution_target: proxy
+          ? {
+              kind: 'mcp_proxy' as const,
+              upstream_connection_id: '019b-connection',
+              remote_tool_name: 'search_documents',
+              source_schema_hash: 'sha256:source'
+            }
+          : {
+              kind: 'interface_wrapper' as const,
+              interface_id: 'create_app'
+            },
+        operation,
+        parameter_schema: {},
+        result_schema: {},
+        max_inline_chars: null,
+        response_fields: null,
+        input_mapping: proxy
+          ? {
+              mappings: [
+                {
+                  local_path: 'request.query',
+                  remote_path: 'query.text',
+                  required: true
+                }
+              ]
+            }
+          : {},
+        output_mapping: proxy
+          ? {
+              mappings: [
+                {
+                  remote_path: 'document.title',
+                  local_path: 'result.title',
+                  required: true
+                }
+              ]
+            }
+          : {},
+        permission_code: null,
+        risk_level: 'low',
+        des_id: 'des-1',
+        des_id_required: false,
+        status: 'enabled',
+        availability_status: 'available',
+        availability_reason: null,
+        revision: 1
+      }
+    ],
+    bindings: includeBinding
+      ? [
+          {
+            id: 'binding-1',
+            instance_record_id: 'instance-record-1',
+            tool_record_id: 'tool-record-1',
+            group_path: bindingGroupPath,
+            tool_id: 'search_customer',
+            display_alias: null,
+            visible: true,
+            sort_order: 0
+          }
+        ]
+      : [],
+    discovery_policies: [
+      {
+        id: 'policy-1',
+        workspace_id: 'workspace-1',
+        instance_record_id: 'instance-record-1',
+        instance_id: 'ops_mcp',
+        list_default_limit: 20,
+        list_max_depth: 3,
+        list_regex_enabled: false,
+        list_regex_max_length: 120,
+        list_return_fields: []
+      }
+    ]
+  };
+  if (secondInstance) {
+    catalog.instances.push({
+      ...catalog.instances[0]!,
+      id: 'instance-record-2',
+      instance_id: 'other_mcp',
+      name: 'Other MCP'
+    });
+    catalog.groups.push({
+      id: 'group-other',
+      instance_record_id: 'instance-record-2',
+      path: '/other',
+      display_name: 'Other directory',
+      description_short: null,
+      enabled: true,
+      sort_order: 0
+    });
+  }
+  installDirectorySnapshotApi(mcpManagementApi, catalog);
   return renderSettled(
     <AppProviders>
       <ObservePanelQueries />
       <McpManagementPanel
         canManage
-        catalog={{
-          instances: [
-            {
-              id: 'instance-record-1',
-              workspace_id: 'workspace-1',
-              instance_id: 'ops_mcp',
-              name: 'Ops MCP',
-              description_short: null,
-              status: 'enabled',
-              default_entry_path: '/',
-              webmcp_exposure: 'disabled',
-              managed_by: null,
-              created_by: 'user-1',
-              updated_by: 'user-1',
-              created_at: '2026-07-06T00:00:00Z',
-              updated_at: '2026-07-06T00:00:00Z',
-              llm_tool_registration: {
-                prefix: 'ops_mcp',
-                tools: [
-                  { operation: 'list', name: 'ops_mcp_mcp_list' },
-                  { operation: 'get', name: 'ops_mcp_mcp_get' },
-                  { operation: 'result', name: 'ops_mcp_mcp_result' },
-                  { operation: 'call', name: 'ops_mcp_mcp_call' }
-                ]
-              }
-            }
-          ],
-          groups: includeGroup
-            ? [
-                {
-                  id: 'group-1',
-                  instance_record_id: 'instance-record-1',
-                  path: '/ops',
-                  display_name: 'ops',
-                  description_short: null,
-                  enabled: true,
-                  sort_order: 0
-                }
-              ]
-            : [],
-          tools: [
-            {
-              id: 'tool-record-1',
-              workspace_id: 'workspace-1',
-              tool_id: 'search_customer',
-              name: 'Search customer',
-              short_description: 'Find matching customers',
-              full_description: 'Search customer',
-              managed_by: null,
-              execution_target: proxy
-                ? {
-                    kind: 'mcp_proxy' as const,
-                    upstream_connection_id: '019b-connection',
-                    remote_tool_name: 'search_documents',
-                    source_schema_hash: 'sha256:source'
-                  }
-                : {
-                    kind: 'interface_wrapper' as const,
-                    interface_id: 'create_app'
-                  },
-              operation,
-              parameter_schema: {},
-              result_schema: {},
-              max_inline_chars: null,
-              response_fields: null,
-              input_mapping: proxy
-                ? {
-                    mappings: [
-                      {
-                        local_path: 'request.query',
-                        remote_path: 'query.text',
-                        required: true
-                      }
-                    ]
-                  }
-                : {},
-              output_mapping: proxy
-                ? {
-                    mappings: [
-                      {
-                        remote_path: 'document.title',
-                        local_path: 'result.title',
-                        required: true
-                      }
-                    ]
-                  }
-                : {},
-              permission_code: null,
-              risk_level: 'low',
-              des_id: 'des-1',
-              des_id_required: false,
-              status: 'enabled',
-              availability_status: 'available',
-              availability_reason: null,
-              revision: 1
-            }
-          ],
-          bindings: includeBinding
-            ? [
-                {
-                  id: 'binding-1',
-                  instance_record_id: 'instance-record-1',
-                  tool_record_id: 'tool-record-1',
-                  group_path: bindingGroupPath,
-                  tool_id: 'search_customer',
-                  display_alias: null,
-                  visible: true,
-                  sort_order: 0
-                }
-              ]
-            : [],
-          discovery_policies: [
-            {
-              id: 'policy-1',
-              workspace_id: 'workspace-1',
-              instance_record_id: 'instance-record-1',
-              instance_id: 'ops_mcp',
-              list_default_limit: 20,
-              list_max_depth: 3,
-              list_regex_enabled: false,
-              list_regex_max_length: 120,
-              list_return_fields: []
-            }
-          ]
-        }}
+        catalog={catalog}
         interfaceCapabilities={interfaceCapabilities}
       />
     </AppProviders>

@@ -20,6 +20,12 @@ const upstreamApi = vi.hoisted(() => ({
   deleteSettingsMcpUpstreamConnectionCredentials: vi.fn(),
   discoverSettingsMcpUpstreamConnection: vi.fn(),
   fetchSettingsMcpUpstreamConnections: vi.fn(),
+  fetchSettingsMcpInstanceDirectory: vi.fn(async () => ({
+    instance_record_id: 'instance-record-1',
+    groups: [],
+    bindings: []
+  })),
+  replaceSettingsMcpInstanceDirectory: vi.fn(),
   importSettingsMcpUpstreamTools: vi.fn(),
   saveSettingsMcpUpstreamConnectionCredentials: vi.fn(),
   testSettingsMcpUpstreamConnection: vi.fn(),
@@ -60,7 +66,15 @@ function renderTab(onImported = vi.fn()) {
 
 describe('ThirdPartyMcpTab', () => {
   beforeEach(() => {
-    useAuthStore.setState({ csrfToken: 'csrf-123', actor: { id: 'root-1', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace-1' } });
+    useAuthStore.setState({
+      csrfToken: 'csrf-123',
+      actor: {
+        id: 'root-1',
+        account: 'root',
+        effective_display_role: 'root',
+        current_workspace_id: 'workspace-1'
+      }
+    });
     vi.clearAllMocks();
     upstreamApi.fetchSettingsMcpUpstreamConnections.mockResolvedValue([
       connection
