@@ -62,6 +62,9 @@ pub struct EventSourceQueueSnapshot {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventSourceContext {
+    /// Finite discriminator metadata, not a copy of the business body.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub attributes: std::collections::BTreeMap<String, String>,
     pub registration_id: Uuid,
     pub scope: EventSourceScope,
     pub source_id: String,
@@ -73,6 +76,9 @@ pub struct EventSourceContext {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct EventSourceSelection {
+    /// Typed source attributes selected from backend-declared catalog leaves.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub filters: std::collections::BTreeMap<String, String>,
     pub source_id: String,
     pub scope: EventSourceScope,
 }
@@ -86,6 +92,8 @@ impl From<EventSourceDescriptor> for super::EventCatalogEntry {
     fn from(source: EventSourceDescriptor) -> Self {
         Self {
             id: None,
+            interface_event: None,
+            group_path: Vec::new(),
             scope: source.scope.clone(),
             enabled: None,
             owner_id: Some(source.owner_id),
@@ -97,6 +105,7 @@ impl From<EventSourceDescriptor> for super::EventCatalogEntry {
             supported_phases: source.supported_phases,
             source: Some(EventCatalogSource {
                 selection: EventSourceSelection {
+                    filters: Default::default(),
                     source_id: source.source_id,
                     scope: source.scope,
                 },

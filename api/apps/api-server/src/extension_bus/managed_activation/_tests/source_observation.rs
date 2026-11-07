@@ -154,6 +154,8 @@ impl Fixture {
                     consumer_id: Uuid::now_v7(),
                 },
                 EventSourceTarget {
+                    filters: Default::default(),
+
                     scope: self.scope(),
                     source_id: source.descriptor.source_id,
                     workflow_id: Uuid::now_v7(),

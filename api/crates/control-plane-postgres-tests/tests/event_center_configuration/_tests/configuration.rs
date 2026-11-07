@@ -152,6 +152,8 @@ async fn workflow_configuration_reloads_and_cannot_write_another_workspace_appli
     assert_eq!(reloaded.updated_by, owner.user_id);
     let mut revised = trigger();
     revised.source = Some(EventSourceSelection {
+        filters: Default::default(),
+
         source_id: "native.available-later".into(),
         scope: EventSourceScope::Workspace {
             workspace_id: workspace.id,

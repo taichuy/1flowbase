@@ -30,6 +30,8 @@ fn runtime(items: usize) -> (EventCenterRuntime, Arc<MemoryEventBus>) {
 fn definition() -> EventDefinitionRecord {
     let now = OffsetDateTime::now_utc();
     EventDefinitionRecord {
+        interface_event: None,
+
         id: Uuid::now_v7(),
         workspace_id: Uuid::now_v7(),
         contract_id: "custom.orders".into(),

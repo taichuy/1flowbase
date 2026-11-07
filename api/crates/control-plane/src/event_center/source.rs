@@ -29,7 +29,12 @@ pub(super) fn matches_source(membership: &Membership, signal: &EventCenterSignal
     match (&membership.source_target, &signal.source_context) {
         (None, None) => true,
         (Some(target), Some(context)) => {
-            target.scope == context.scope && target.source_id == context.source_id
+            target.scope == context.scope
+                && target.source_id == context.source_id
+                && target
+                    .filters
+                    .iter()
+                    .all(|(key, value)| context.attributes.get(key) == Some(value))
         }
         _ => false,
     }
@@ -280,6 +285,8 @@ impl SourceLease {
         }
         let published = matches!(&observation.fact, EventSourceFact::Published);
         let context = EventSourceContext {
+            attributes: observation.attributes.clone(),
+
             registration_id: self.id,
             scope: descriptor.scope.clone(),
             source_id: descriptor.source_id.clone(),

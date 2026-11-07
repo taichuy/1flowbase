@@ -30,6 +30,8 @@ async fn selective_event_and_application_configuration_roundtrip_without_cross_o
         .unwrap();
     let now = OffsetDateTime::now_utc();
     let mut definition = EventDefinitionRecord {
+        interface_event: None,
+
         id: Uuid::now_v7(),
         workspace_id: workspace.id,
         contract_id: "custom.backup.orders".into(),

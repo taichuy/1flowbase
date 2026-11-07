@@ -7,6 +7,8 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EventSourceObservation {
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub attributes: std::collections::BTreeMap<String, String>,
     pub original_event_id: Option<String>,
     pub producer_id: Option<String>,
     pub occurred_at_unix_ms: i64,
@@ -46,6 +48,7 @@ pub enum EventSourceObservationStatus {
 /// central registration and are never duplicated in an adapter-owned queue ledger.
 #[derive(Debug, Clone)]
 pub struct EventSourceQueueConsumption {
+    pub attributes: std::collections::BTreeMap<String, String>,
     pub original_event_id: String,
     pub producer_id: Option<String>,
     pub occurred_at_unix_ms: i64,

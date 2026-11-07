@@ -93,6 +93,20 @@ impl EventSourceCatalog {
         entries
             .into_values()
             .filter(|entry| !entry.supported_phases.is_empty())
+            .map(|mut entry| {
+                if entry.group_path.is_empty() {
+                    entry.group_path = if entry.contract_id.starts_with("runtime-event-") {
+                        vec!["runtime".into()]
+                    } else if entry.contract_id.starts_with("credit.") {
+                        vec!["credits".into()]
+                    } else if entry.contract_id.starts_with("model_definition.") {
+                        vec!["data_models".into()]
+                    } else {
+                        vec!["plugins".into(), entry.owner_id.clone().unwrap_or_default()]
+                    };
+                }
+                entry
+            })
             .collect()
     }
 }
@@ -110,12 +124,20 @@ fn unavailable(source: &mut EventSourceDescriptor) {
     source.coverage = EventSourceCoverage::Unavailable;
     source.supported_phases.clear();
 }
-type Key = (EventSourceScope, String);
+type Key = (EventSourceScope, String, BTreeMap<String, String>);
 fn insert(entries: &mut BTreeMap<Key, EventCatalogEntry>, entry: EventCatalogEntry) {
     if entry.scope == EventSourceScope::Unbound || entry.supported_phases.is_empty() {
         return;
     }
-    let key = (entry.scope.clone(), entry.contract_id.clone());
+    let key = (
+        entry.scope.clone(),
+        entry.contract_id.clone(),
+        entry
+            .source
+            .as_ref()
+            .map(|s| s.selection.filters.clone())
+            .unwrap_or_default(),
+    );
     if let Some(existing) = entries.get_mut(&key) {
         // Registration validates current schema and defining owner. Multiple runtime leases
         // contribute capability phases, rather than duplicate definition rows.

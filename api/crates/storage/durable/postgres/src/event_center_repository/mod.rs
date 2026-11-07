@@ -7,6 +7,11 @@ use uuid::Uuid;
 
 fn definition(row: PgRow) -> anyhow::Result<EventDefinitionRecord> {
     Ok(EventDefinitionRecord {
+        interface_event: row
+            .try_get::<Option<serde_json::Value>, _>("interface_event")?
+            .map(serde_json::from_value)
+            .transpose()?,
+
         id: row.try_get("id")?,
         workspace_id: row.try_get("workspace_id")?,
         contract_id: row.try_get("contract_id")?,
@@ -88,10 +93,10 @@ impl EventCenterRepository for PgControlPlaneStore {
             .transpose()
     }
     async fn create_event_definition(&self, record: &EventDefinitionRecord) -> anyhow::Result<()> {
-        sqlx::query("INSERT INTO event_definitions (id,workspace_id,contract_id,name,description,payload_schema,enabled,created_by,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)")
+        sqlx::query("INSERT INTO event_definitions (id,workspace_id,contract_id,name,description,payload_schema,enabled,created_by,created_at,updated_at,interface_event) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
             .bind(record.id).bind(record.workspace_id).bind(&record.contract_id)
             .bind(&record.name).bind(&record.description).bind(&record.payload_schema).bind(record.enabled)
-            .bind(record.created_by).bind(record.created_at).bind(record.updated_at)
+            .bind(record.created_by).bind(record.created_at).bind(record.updated_at).bind(record.interface_event.as_ref().map(serde_json::to_value).transpose()?)
             .execute(self.pool()).await.map_err(mutation_error)?;
         Ok(())
     }
@@ -99,9 +104,9 @@ impl EventCenterRepository for PgControlPlaneStore {
         &self,
         record: &EventDefinitionRecord,
     ) -> anyhow::Result<bool> {
-        let result = sqlx::query("UPDATE event_definitions SET name=$3,description=$4,payload_schema=$5,enabled=$6,updated_at=$7 WHERE workspace_id=$1 AND id=$2")
+        let result = sqlx::query("UPDATE event_definitions SET name=$3,description=$4,payload_schema=$5,enabled=$6,updated_at=$7,interface_event=$8 WHERE workspace_id=$1 AND id=$2")
             .bind(record.workspace_id).bind(record.id).bind(&record.name).bind(&record.description)
-            .bind(&record.payload_schema).bind(record.enabled).bind(record.updated_at).execute(self.pool()).await?;
+            .bind(&record.payload_schema).bind(record.enabled).bind(record.updated_at).bind(record.interface_event.as_ref().map(serde_json::to_value).transpose()?).execute(self.pool()).await?;
         Ok(result.rows_affected() == 1)
     }
     async fn get_workflow_event_trigger(

@@ -127,6 +127,8 @@ impl RuntimeEventSourceObservation {
         fact: EventSourceFact,
     ) -> EventSourceObservation {
         EventSourceObservation {
+            attributes: Default::default(),
+
             original_event_id: event.map(|event| event.event_id.clone()),
             producer_id: Some(self.inner.producer.clone()),
             occurred_at_unix_ms: now_ms(),
@@ -186,6 +188,8 @@ impl RuntimeEventQueueObservation {
     }
     pub fn consumed(&self, event: &RuntimeEventEnvelope) {
         let _ = self.queue.consumed(EventSourceQueueConsumption {
+            attributes: Default::default(),
+
             original_event_id: event.event_id.clone(),
             producer_id: Some(self.source.inner.producer.clone()),
             occurred_at_unix_ms: now_ms(),

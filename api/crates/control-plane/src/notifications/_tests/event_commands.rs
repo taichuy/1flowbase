@@ -16,6 +16,8 @@ fn binding() -> CommunicationEventCommandBinding {
 }
 fn event(workspace_id: Uuid) -> EventDefinitionRecord {
     EventDefinitionRecord {
+        interface_event: None,
+
         id: Uuid::now_v7(),
         workspace_id,
         contract_id: "custom.notify".into(),

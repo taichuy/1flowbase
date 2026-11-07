@@ -140,6 +140,8 @@ impl EventSourceQueueRegistration for QueueLease {
         };
         self.source.observe_fact(
             EventSourceObservation {
+                attributes: event.attributes.clone(),
+
                 original_event_id: Some(event.original_event_id),
                 producer_id: event.producer_id,
                 occurred_at_unix_ms: event.occurred_at_unix_ms,

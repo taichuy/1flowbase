@@ -158,6 +158,8 @@ pub struct EventRuntimeSnapshot {
 /// Explicit source binding on a workflow-owned queue. Native subscriber identity stays separate.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventSourceTarget {
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub filters: std::collections::BTreeMap<String, String>,
     pub scope: EventSourceScope,
     pub source_id: String,
     pub workflow_id: Uuid,

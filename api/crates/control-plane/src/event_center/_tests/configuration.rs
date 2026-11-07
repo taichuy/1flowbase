@@ -107,191 +107,128 @@ fn actor() -> ActorContext {
 }
 fn input() -> CreateEventDefinitionInput {
     CreateEventDefinitionInput {
-        contract_id: "custom.order.created".into(),
-        name: "Order created".into(),
+        name: "Order interface observed".into(),
         description: String::new(),
-        payload_schema: serde_json::json!({"type":"object", "properties":{"order_id":{"type":"string"}}, "required":["order_id"]}),
         enabled: true,
+        interface_event: InterfaceEventBinding {
+            interface_id: "orders.create".into(),
+            phase: InterfaceEventPhase::Before,
+            results: Vec::new(),
+        },
     }
 }
 fn trigger_input() -> WorkflowEventTriggerInput {
     WorkflowEventTriggerInput {
         source: None,
         enabled: true,
-        contract_id: "custom.order.created".into(),
+        contract_id: "custom.legacy".into(),
         trigger_phase: EventTriggerPhase::Consumed,
-        input_mapping: BTreeMap::from([("order".into(), "/payload/order_id".into())]),
+        input_mapping: BTreeMap::new(),
     }
 }
-#[tokio::test]
-async fn unavailable_source_does_not_prevent_disabling_its_subscription() {
-    let service = EventCenterConfigurationService::new(MemoryRepository::default());
-    let owner = actor();
-    let mut definition = input();
-    definition.enabled = false;
-    service.create_definition(&owner, definition).await.unwrap();
-    let mut trigger = trigger_input();
-    assert!(service
-        .validate_workflow_trigger(&owner, &trigger)
-        .await
-        .is_err());
-    trigger.enabled = false;
-    let saved = service
-        .save_workflow_trigger(&owner, Uuid::now_v7(), trigger)
-        .await
-        .unwrap();
-    assert!(!saved.configuration.enabled);
+fn declared_service(owner: &ActorContext) -> EventCenterConfigurationService<MemoryRepository> {
+    let mut entry = source_entry(
+        EventSourceScope::Workspace {
+            workspace_id: owner.current_workspace_id,
+        },
+        vec![EventTriggerPhase::Published],
+    );
+    entry.interface_event = Some(input().interface_event);
+    entry.payload_schema = interface_event_schema(
+        InterfaceEventPhase::Before,
+        serde_json::json!({"type":"object","properties":{"order_id":{"type":"string"}},"required":["order_id"],"additionalProperties":false}),
+        serde_json::json!({"type":"object"}),
+    );
+    EventCenterConfigurationService::with_registered_events(
+        MemoryRepository::default(),
+        owner.current_workspace_id,
+        vec![entry],
+    )
 }
-
 #[tokio::test]
-async fn definition_round_trip_and_workspace_isolation() {
-    let service = EventCenterConfigurationService::new(MemoryRepository::default());
+async fn rules_inherit_declared_schema_and_keep_workspace_identity() {
     let owner = actor();
     let outsider = actor();
+    let service = declared_service(&owner);
     let created = service.create_definition(&owner, input()).await.unwrap();
-    assert_eq!(created.workspace_id, owner.current_workspace_id);
-    assert_eq!(created.created_by, owner.user_id);
+    assert!(created.contract_id.starts_with("custom.interface."));
+    assert_eq!(created.interface_event, Some(input().interface_event));
     assert_eq!(
-        service.get_definition(&owner, created.id).await.unwrap(),
-        created
+        created.payload_schema["properties"]["input"]["properties"]["order_id"]["type"],
+        "string"
     );
-    assert!(service
-        .list_definitions(&outsider)
-        .await
-        .unwrap()
-        .is_empty());
     assert!(service.get_definition(&outsider, created.id).await.is_err());
-    let update = UpdateEventDefinitionInput {
-        name: "Renamed".into(),
-        description: String::new(),
-        payload_schema: serde_json::json!({"type":"object"}),
-        enabled: true,
-    };
-    assert!(service
-        .update_definition(&outsider, created.id, update.clone())
-        .await
-        .is_err());
     let updated = service
-        .update_definition(&owner, created.id, update)
-        .await
-        .unwrap();
-    assert_eq!(updated.name, "Renamed");
-    assert_eq!(updated.contract_id, created.contract_id);
-    assert!(service.create_definition(&owner, input()).await.is_err());
-    assert!(service.create_definition(&outsider, input()).await.is_ok());
-    let mut same_name = input();
-    same_name.contract_id = "custom.other-order".into();
-    assert!(service.create_definition(&owner, same_name).await.is_ok());
-}
-#[tokio::test]
-async fn rejects_owned_namespaces_invalid_schema_and_external_resolution() {
-    let service = EventCenterConfigurationService::new(MemoryRepository::default());
-    let owner = actor();
-    for id in [
-        "1flowbase.orders",
-        "acme.plugin.orders",
-        "custom.",
-        "custom..orders",
-    ] {
-        let mut value = input();
-        value.contract_id = id.into();
-        assert!(service.create_definition(&owner, value).await.is_err());
-    }
-    for schema in [
-        serde_json::json!({"type":"bogus"}),
-        serde_json::json!({"$ref":"https://example.com/schema"}),
-        serde_json::json!({"$ref":"file:///etc/passwd"}),
-    ] {
-        let mut value = input();
-        value.payload_schema = schema;
-        assert!(service.create_definition(&owner, value).await.is_err());
-    }
-    let mut value = input();
-    value.payload_schema =
-        serde_json::json!({"$defs":{"order":{"type":"object"}},"$ref":"#/$defs/order"});
-    assert!(service.create_definition(&owner, value).await.is_ok());
-}
-#[tokio::test]
-async fn triggers_require_visible_enabled_event_supported_phase_and_valid_pointers() {
-    let owner = actor();
-    let outsider = actor();
-    let service = EventCenterConfigurationService::new(MemoryRepository::default());
-    let created = service.create_definition(&owner, input()).await.unwrap();
-    assert!(service
-        .validate_workflow_trigger(&owner, &trigger_input())
-        .await
-        .is_ok());
-    assert!(service
-        .validate_workflow_trigger(&outsider, &trigger_input())
-        .await
-        .is_err());
-    let mut invalid = trigger_input();
-    invalid
-        .input_mapping
-        .insert("order".into(), "/bad~2".into());
-    assert!(service
-        .validate_workflow_trigger(&owner, &invalid)
-        .await
-        .is_err());
-    let application_id = Uuid::now_v7();
-    let saved = service
-        .save_workflow_trigger(&owner, application_id, trigger_input())
-        .await
-        .unwrap();
-    assert_eq!(
-        saved.configuration.trigger_phase,
-        EventTriggerPhase::Consumed
-    );
-    assert_eq!(saved.updated_by, owner.user_id);
-    assert!(service
-        .get_workflow_trigger(&outsider, application_id)
-        .await
-        .unwrap()
-        .is_none());
-    service
         .update_definition(
             &owner,
             created.id,
             UpdateEventDefinitionInput {
-                name: created.name,
-                description: created.description,
-                payload_schema: created.payload_schema,
+                name: "Renamed".into(),
+                description: String::new(),
+                interface_event: input().interface_event,
                 enabled: false,
             },
         )
         .await
         .unwrap();
+    assert_eq!(updated.contract_id, created.contract_id);
+    assert_eq!(updated.enabled, false);
+    assert_eq!(updated.payload_schema, created.payload_schema);
+    let mut trigger = trigger_input();
+    trigger.contract_id = created.contract_id;
     assert!(service
-        .validate_workflow_trigger(&owner, &trigger_input())
+        .validate_workflow_trigger(&owner, &trigger)
         .await
         .is_err());
-    let service = EventCenterConfigurationService::with_registered_events(
-        MemoryRepository::default(),
-        owner.current_workspace_id,
-        vec![EventCatalogEntry {
-            source: None,
-            id: None,
-            scope: EventSourceScope::Workspace {
-                workspace_id: owner.current_workspace_id,
-            },
-            enabled: None,
-            owner_id: Some("acme".into()),
-            contract_id: "acme.order".into(),
-            name: "Plugin order".into(),
-            description: String::new(),
-            payload_schema: serde_json::json!({}),
-            origin: EventDefinitionOrigin::Plugin,
-            supported_phases: vec![],
-        }],
-    );
-    let mut unsupported = trigger_input();
-    unsupported.contract_id = "acme.order".into();
+    trigger.enabled = false;
     assert!(service
-        .validate_workflow_trigger(&owner, &unsupported)
+        .save_workflow_trigger(&owner, Uuid::now_v7(), trigger)
         .await
-        .is_err());
+        .is_ok());
 }
-
+#[tokio::test]
+async fn absent_interface_and_invalid_before_result_filter_are_rejected() {
+    let owner = actor();
+    assert!(
+        EventCenterConfigurationService::new(MemoryRepository::default())
+            .create_definition(&owner, input())
+            .await
+            .is_err()
+    );
+    let service = declared_service(&owner);
+    let mut value = input();
+    value
+        .interface_event
+        .results
+        .push(InterfaceEventTerminal::Failed);
+    assert!(service.create_definition(&owner, value).await.is_err());
+    let mut value = input();
+    value.interface_event.interface_id = "undeclared".into();
+    assert!(service.create_definition(&owner, value).await.is_err());
+    let mut value = input();
+    value.name = "  ".into();
+    assert!(service.create_definition(&owner, value).await.is_err());
+}
+#[tokio::test]
+async fn rule_catalog_is_editable_only_for_user_configuration() {
+    let owner = actor();
+    let service = declared_service(&owner);
+    let created = service.create_definition(&owner, input()).await.unwrap();
+    let entries = service.catalog(&owner).await.unwrap();
+    let entry = entries
+        .into_iter()
+        .find(|e| e.id == Some(created.id))
+        .unwrap();
+    assert_eq!(entry.enabled, Some(true));
+    assert_eq!(entry.owner_id, None);
+    assert_eq!(
+        entry.scope,
+        EventSourceScope::Workspace {
+            workspace_id: owner.current_workspace_id
+        }
+    );
+    assert!(entry.interface_event.is_some());
+}
 fn source_entry(scope: EventSourceScope, phases: Vec<EventTriggerPhase>) -> EventCatalogEntry {
     EventSourceDescriptor {
         source_id: "native.same-contract".into(),
@@ -330,6 +267,8 @@ async fn source_selection_authorizes_scope_and_matches_identity_before_phase() {
     selected.contract_id = "native.fact".into();
     selected.trigger_phase = EventTriggerPhase::Published;
     selected.source = Some(EventSourceSelection {
+        filters: Default::default(),
+
         source_id: "native.same-contract".into(),
         scope: EventSourceScope::System,
     });
@@ -395,24 +334,4 @@ async fn source_selection_authorizes_scope_and_matches_identity_before_phase() {
         .validate_workflow_trigger(&owner, &selected)
         .await
         .is_ok());
-}
-
-#[tokio::test]
-async fn catalog_custom_definition_has_scope_switch_and_no_module_or_version() {
-    let owner = actor();
-    let service = EventCenterConfigurationService::new(MemoryRepository::default());
-    service.create_definition(&owner, input()).await.unwrap();
-    let entry = service.catalog(&owner).await.unwrap().remove(0);
-    assert_eq!(
-        entry.scope,
-        EventSourceScope::Workspace {
-            workspace_id: owner.current_workspace_id
-        }
-    );
-    assert_eq!(entry.enabled, Some(true));
-    assert_eq!(entry.owner_id, None);
-    assert!(serde_json::to_value(entry)
-        .unwrap()
-        .get("contract_version")
-        .is_none());
 }

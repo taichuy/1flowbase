@@ -187,6 +187,8 @@ async fn reconcile(
             Some(source) => state.event_center.subscribe_source(
                 spec,
                 EventSourceTarget {
+                    filters: source.filters.clone(),
+
                     source_id: source.source_id.clone(),
                     scope: source.scope.clone(),
                     workflow_id: trigger.application_id,

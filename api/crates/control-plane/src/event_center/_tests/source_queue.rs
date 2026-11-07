@@ -168,6 +168,8 @@ async fn runtime_adapter_pressure_rejects_metadata_without_rejecting_original_de
                 consumer_id: Uuid::now_v7(),
             },
             EventSourceTarget {
+                filters: Default::default(),
+
                 source_id: RUNTIME_EVENT_REQUIRED_CONTRACT_ID.into(),
                 scope: scope.clone(),
                 workflow_id: Uuid::now_v7(),

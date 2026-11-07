@@ -310,6 +310,8 @@ async fn native_source_string_identity_and_causal_metadata_survive_invocation_wi
     let mut selected = configuration();
     selected.contract_id = "native.fact".into();
     selected.source = Some(EventSourceSelection {
+        filters: Default::default(),
+
         source_id: "native.fact.source".into(),
         scope: scope.clone(),
     });
@@ -336,6 +338,8 @@ async fn native_source_string_identity_and_causal_metadata_survive_invocation_wi
     let signal = Uuid::now_v7();
     let ancestor = Uuid::now_v7();
     let source = EventSourceContext {
+        attributes: Default::default(),
+
         registration_id: Uuid::now_v7(),
         scope,
         source_id: "native.fact.source".into(),

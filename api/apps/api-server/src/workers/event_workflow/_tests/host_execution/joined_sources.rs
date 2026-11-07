@@ -269,7 +269,9 @@ async fn system_event_center_real_published_runtime_persister_triggers_workflow_
                 subscription_id: Uuid::now_v7(), workspace_id: fixture.actor.current_workspace_id,
                 contract_id: RUNTIME_EVENT_REQUIRED_CONTRACT_ID.into(), trigger_phase: EventTriggerPhase::Published, consumer_id: Uuid::now_v7(),
             },
-            EventSourceTarget { scope: scope(&fixture), source_id: RUNTIME_EVENT_REQUIRED_CONTRACT_ID.into(), workflow_id: Uuid::now_v7() },
+            EventSourceTarget {
+filters : Default::default(),
+ scope: scope(&fixture), source_id: RUNTIME_EVENT_REQUIRED_CONTRACT_ID.into(), workflow_id: Uuid::now_v7() },
         ).unwrap();
         // Use the published Start/End plan via the ordinary invocation and execution owners.
         let store = fixture.state.store.for_actor(fixture.actor.clone());

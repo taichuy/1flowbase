@@ -46,6 +46,8 @@ fn target(
                 consumer_id: Uuid::now_v7(),
             },
             EventSourceTarget {
+                filters: Default::default(),
+
                 scope: EventSourceScope::Workspace { workspace_id },
                 source_id: source.into(),
                 workflow_id,
@@ -560,6 +562,8 @@ async fn workspace_and_system_with_same_uuid_remain_distinct_delivery_scopes() {
                 consumer_id: Uuid::now_v7(),
             },
             EventSourceTarget {
+                filters: Default::default(),
+
                 scope: EventSourceScope::System,
                 source_id: RUNTIME_EVENT_REQUIRED_CONTRACT_ID.into(),
                 workflow_id: Uuid::now_v7(),

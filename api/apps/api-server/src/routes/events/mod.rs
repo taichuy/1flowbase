@@ -72,7 +72,7 @@ pub(crate) async fn catalog(
 }
 
 #[utoipa::path(post, path="/api/console/events", tag="Events", operation_id="events.definitions.create",
-    summary="Create a custom event definition", description="Creates a workspace-scoped custom event contract. Only configuration is persisted; this operation does not publish an event.",
+    summary="Create an interface event rule", description="Creates a workspace-scoped rule bound to a declared canonical interface and lifecycle phase. Schema is inherited from the interface owner; this operation does not publish an event.",
     request_body=Value, responses((status=200,body=Value)))]
 pub(crate) async fn create(
     State(state): State<Arc<ApiState>>,
@@ -90,7 +90,7 @@ pub(crate) async fn create(
 }
 
 #[utoipa::path(put, path="/api/console/events/{event_definition_id}", tag="Events", operation_id="events.definitions.update",
-    summary="Update a custom event definition", description="Updates the name, schema or enabled state of a custom event in the current workspace. The event identifier remains unchanged.",
+    summary="Update an interface event rule", description="Updates an interface event rule and enabled state in the current workspace. Schema is derived from the selected interface, and the rule identifier remains unchanged.",
     params(("event_definition_id"=Uuid,Path,description="Custom event definition identifier")), request_body=Value, responses((status=200,body=Value)))]
 pub(crate) async fn update(
     State(state): State<Arc<ApiState>>,

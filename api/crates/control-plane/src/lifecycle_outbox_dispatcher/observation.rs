@@ -281,6 +281,8 @@ impl LifecycleFactObserver for LifecycleSourceObserver {
         // Parsing is deliberately inside the callback: observing alone never reads/copies body.
         lease.observe_with_payload(
             EventSourceObservation {
+                attributes: Default::default(),
+
                 original_event_id: Some(input.event_id.to_string()),
                 producer_id: Some(context.producer_id.clone()),
                 occurred_at_unix_ms: (input.occurred_at.unix_timestamp_nanos() / 1_000_000) as i64,
@@ -300,6 +302,8 @@ impl LifecycleFactObserver for LifecycleSourceObserver {
             return;
         };
         lease.observe(EventSourceObservation {
+            attributes: Default::default(),
+
             original_event_id: Some(record.event_id.to_string()),
             producer_id: Some(context.producer_id.clone()),
             occurred_at_unix_ms: now_ms(),

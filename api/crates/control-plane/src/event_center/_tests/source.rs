@@ -39,6 +39,8 @@ fn descriptor(scope: EventSourceScope) -> EventSourceDescriptor {
 }
 fn observation(fact: EventSourceFact, ancestors: Vec<Uuid>) -> EventSourceObservation {
     EventSourceObservation {
+        attributes: Default::default(),
+
         original_event_id: Some("native:event:42".into()),
         producer_id: Some("native-producer".into()),
         occurred_at_unix_ms: 1234,
@@ -62,6 +64,8 @@ fn subscribe(
                 consumer_id: Uuid::now_v7(),
             },
             EventSourceTarget {
+                filters: Default::default(),
+
                 scope,
                 source_id: "runtime.required".into(),
                 workflow_id,
@@ -487,6 +491,8 @@ fn system_source_projects_to_authorized_workflow_workspace_without_losing_origin
                 consumer_id: workflow,
             },
             EventSourceTarget {
+                filters: Default::default(),
+
                 scope: EventSourceScope::System,
                 source_id: "runtime.required".into(),
                 workflow_id: workflow,
@@ -512,6 +518,8 @@ fn system_source_projects_to_authorized_workflow_workspace_without_losing_origin
                 consumer_id: Uuid::now_v7()
             },
             EventSourceTarget {
+                filters: Default::default(),
+
                 scope: same_uuid_workspace,
                 source_id: "runtime.required".into(),
                 workflow_id: Uuid::now_v7()

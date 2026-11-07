@@ -4,6 +4,8 @@ use domain::event_center::{EventSourceQueueSnapshot, EventSourceScope};
 #[test]
 fn native_identity_causation_and_unknown_queue_counts_round_trip() {
     let event = EventSourceObservation {
+        attributes: Default::default(),
+
         original_event_id: Some("non-uuid/native-id".into()),
         producer_id: Some("native-producer".into()),
         occurred_at_unix_ms: 42,

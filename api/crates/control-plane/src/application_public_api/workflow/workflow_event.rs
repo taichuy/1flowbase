@@ -374,7 +374,12 @@ fn validate_event_context(command: &InvokeWorkflowEventCommand) -> Result<()> {
     match (&command.trigger.configuration.source, &source_context) {
         (None, None) => {}
         (Some(selected), Some(source))
-            if selected.source_id == source.source_id && selected.scope == source.scope => {}
+            if selected.source_id == source.source_id
+                && selected.scope == source.scope
+                && selected
+                    .filters
+                    .iter()
+                    .all(|(key, value)| source.attributes.get(key) == Some(value)) => {}
         _ => return Err(ControlPlaneError::InvalidInput("event_source_context").into()),
     }
     let original = match command.trigger.configuration.trigger_phase {
