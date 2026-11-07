@@ -1,7 +1,7 @@
 name: Plugin record permissions acceptance
 on:
   push:
-    branches: ['codex/ssh-host-permissions-host-*']
+    branches: ['codex/ssh-host-permissions-host-*', 'codex/ssh-host-permissions-runtime-*']
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 100
     env:
+      RECORD_PERMISSION_TEST_SCOPE: ${{ startsWith(github.ref_name, 'codex/ssh-host-permissions-runtime-') && 'runtime' || 'full' }}
       DATABASE_URL: postgres://postgres:record-fixture@127.0.0.1:5432/record_permissions
       API_DATABASE_URL: postgres://postgres:record-fixture@127.0.0.1:5432/record_permissions
     services:
