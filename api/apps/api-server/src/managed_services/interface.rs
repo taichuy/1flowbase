@@ -193,7 +193,8 @@ impl Adapter {
                 &op.declaration,
                 &record_permissions,
                 &output,
-            )?;
+            )
+            .map_err(|error| error.0)?;
             if op.declaration.invalidates_streams {
                 super::stream::revoke_installation(self.registration.installation_id);
             }
