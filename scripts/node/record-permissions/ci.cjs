@@ -11,7 +11,7 @@ run('policy-service',[...base,'-p','control-plane','--lib','record_permissions::
 run('postgres-data',[...base,'-p','storage-durable-postgres','--lib','_tests::plugin::plugin_data_repository_tests::','--','--test-threads=1'],15);
 run('worker-context',[...base,'-p','runtime-extension-host','--lib','resource_replay_retains_worker_scope_without_restoring_recursive_callback_delegation'],1);
 if(run('runtime-fixture',['build','--locked','--manifest-path','api/Cargo.toml','-p','runtime-extension-sdk','--example','record_permission_worker']))env.RECORD_PERMISSION_WORKER_FIXTURE=path.resolve('api/target/debug/examples/record_permission_worker');
-run('record-migration',[...base,'-p','api-server','--lib','record_permission_migration'],2);
+run('record-migration',[...base,'-p','api-server','--test','api_private_contracts','record_permission_migration'],2);
 run('canonical-managed',[...base,'-p','api-server','--lib','managed_services::','--','--test-threads=1','--skip','record_permission_runtime'],1);
 run('record-runtime',[...base,'-p','api-server','--lib','record_permission_runtime','--','--include-ignored','--test-threads=1'],2);
 if(run('runtime-build',['build','--locked','--manifest-path','api/Cargo.toml','-p','api-server','--bin','api-server'])){const binary=path.join(out,'api-server'),r=spawnSync('strip',['-o',binary,'api/target/debug/api-server'],{encoding:'utf8'});if(r.status)throw Error(r.stderr);const hash=crypto.createHash('sha256'),fd=fs.openSync(binary,'r'),buf=Buffer.alloc(128*1024);try{let n;while((n=fs.readSync(fd,buf,0,buf.length,null))>0)hash.update(buf.subarray(0,n))}finally{fs.closeSync(fd)}fs.writeFileSync(path.join(out,'runtime-sha256.txt'),hash.digest('hex')+'\n')}
