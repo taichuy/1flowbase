@@ -371,6 +371,20 @@ impl InterfaceContract for MissingProjection {
     const CONTRACT_ID: &'static str = "terminal-test-missing-projection";
     const CONTRACT_VERSION: &'static str = "1";
 }
+// Only the managed projection is intentionally absent in this negative fixture.
+impl crate::event_center::api_projection::ApiEventInput for MissingProjection {
+    fn document_input_schema(
+        _: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Option<Value> {
+        Some(serde_json::json!({"type":"object","properties":{},"additionalProperties":false}))
+    }
+    fn project_document_input(
+        &self,
+        _: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<Value, Arc<str>> {
+        Ok(serde_json::json!({}))
+    }
+}
 struct MissingProjectionAdapter;
 impl ConsoleInterfacePort<MissingProjection, TerminalOutput> for MissingProjectionAdapter {
     fn execute<'a>(

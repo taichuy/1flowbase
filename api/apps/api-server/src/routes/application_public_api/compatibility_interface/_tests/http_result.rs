@@ -117,7 +117,7 @@ fn unary_protocol_projection_failures_keep_the_existing_http_error_and_no_succes
 
 #[test]
 fn all_compatibility_bindings_have_typed_documents_and_unary_protocol_schemas_are_explicit() {
-    let registry = super::super::compile_registry_for_test().unwrap();
+    let registry = fixture_registry();
     assert_eq!(registry.document_operations().count(), 17);
     for (interface, _, _, _, _) in super::super::bindings() {
         let schema = CompatibilityProtocolOutput::document_output_schema(&operation(interface))
@@ -161,17 +161,46 @@ impl CompatibilityBlockingPort for WaitingPort {
     }
 }
 
+struct FixtureModelsPort;
+impl super::super::models::CompatibilityModelsPort for FixtureModelsPort {
+    fn list<'a>(
+        &'a self,
+        _: &'a ApplicationPrincipal,
+        _: super::super::models::CompatibilityModelsInput,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        super::super::models::CompatibilityModelsOutput,
+                        CompatibilityBlockingTargetError,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async {
+            Err(CompatibilityBlockingTargetError(NativeApiError::new(
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "fixture_models_unavailable",
+                "model execution is outside compatibility document tests",
+            )))
+        })
+    }
+}
+
+fn fixture_registry() -> Arc<CompiledInterfaceRegistry> {
+    // Keep these ports in the public_api fixture group while exercising the real
+    // compiler and typed handlers. Model execution is outside these test cases.
+    super::super::compile_registry(Arc::new(WaitingPort), Arc::new(FixtureModelsPort)).unwrap()
+}
+
 #[tokio::test]
 async fn unary_protocol_projection_error_is_a_failed_kernel_completion_with_the_original_error() {
     use interface_runtime::{
         InterfaceInvocationKernel, InterfaceInvocationTerminal, InterfaceProtocol,
         InvocationEnvelope, InvocationId, InvocationLineage,
     };
-    let registry = super::super::compile_registry(
-        Arc::new(WaitingPort),
-        super::super::models::unavailable_port(),
-    )
-    .unwrap();
+    let registry = fixture_registry();
     let workspace = uuid::Uuid::now_v7();
     let principal = ApplicationPrincipal::new(
         uuid::Uuid::now_v7(),
