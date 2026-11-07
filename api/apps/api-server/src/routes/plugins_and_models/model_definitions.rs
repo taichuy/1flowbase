@@ -128,6 +128,7 @@ pub struct ConfirmationQuery {
 }
 
 #[derive(Debug, Deserialize, utoipa::IntoParams, Serialize)]
+#[into_params(parameter_in = Query)]
 pub struct ListModelsQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data_source_id: Option<String>,
