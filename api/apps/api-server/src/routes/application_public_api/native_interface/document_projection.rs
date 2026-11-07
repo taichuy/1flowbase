@@ -11,6 +11,9 @@ pub(crate) fn request_document(request: &NativeRunRequest) -> Result<Value, Arc<
         .as_object_mut()
         .expect("Native request is an object")
         .remove("client_protocol_envelope");
+    if let Some(tools) = value.pointer_mut("/inputs/tools") {
+        safe_mcp_tools(tools);
+    }
     Ok(value)
 }
 
@@ -44,12 +47,31 @@ pub(crate) fn response_document(
     {
         payload.remove("env");
         payload.remove(plugin_framework::provider_contract::CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY);
+        if let Some(tools) = payload
+            .get_mut(plugin_framework::provider_contract::NATIVE_MODEL_TOOL_CONTEXT_PAYLOAD_KEY)
+            .and_then(|context| context.get_mut("tools"))
+        {
+            safe_mcp_tools(tools);
+        }
         if let Some(sys) = payload.get_mut("sys").and_then(Value::as_object_mut) {
             sys.remove("native_inference_recovery");
             sys.remove("provider_session_identity");
         }
     }
     Ok(value)
+}
+
+pub(crate) fn safe_mcp_tools(value: &mut Value) {
+    if let Some(tools) = value.as_array_mut() {
+        for tool in tools {
+            if tool.get("type").and_then(Value::as_str) == Some("mcp") {
+                if let Some(fields) = tool.as_object_mut() {
+                    fields.remove("authorization");
+                    fields.remove("headers");
+                }
+            }
+        }
+    }
 }
 
 pub(crate) fn result_document(run: &NativeRunResult) -> Result<Value, Arc<str>> {

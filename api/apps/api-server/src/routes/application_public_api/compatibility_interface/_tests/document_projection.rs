@@ -74,3 +74,44 @@ fn compatibility_protocol_documents_preserve_wire_business_fields_nulls_and_long
         .unwrap()
         .is_valid(&value));
 }
+
+#[test]
+fn compatibility_models_keep_both_real_wire_variants_and_every_model() {
+    use super::super::models::{CompatibilityModelsInput, CompatibilityModelsOutput};
+    let operation = ApiEventOperationContext {
+        interface_id: "compat.openai.models.list".into(),
+        method: "GET".into(),
+        path: "/v1/models".into(),
+    };
+    let models=(0..45).map(|index| serde_json::from_value(json!({"id":format!("model-{index}"),"name":format!("Model {index}"),"context_window":128000,"max_context_window":256000,"max_output_tokens":8000,"auto_compact_token_limit":90000,
+        "capabilities":{"reasoning":true,"tool_call":true,"multimodal":true,"structured_output":true},"reasoning":{"default_effort":"high","supported_efforts":["low","high"]}})).unwrap()).collect::<Vec<control_plane::application_public_api::model_catalog::AgentModelDescriptor>>();
+    for codex in [false, true] {
+        let output = CompatibilityModelsOutput {
+            codex,
+            models: models.clone(),
+            publication_created_at: 123,
+        };
+        let value = output.project_document_output(&operation).unwrap();
+        let key = if codex { "models" } else { "data" };
+        assert_eq!(value[key].as_array().unwrap().len(), 45);
+        if codex {
+            assert_eq!(value[key][44]["slug"], "model-44");
+            assert_eq!(value[key][44]["limit"]["output"], 8000);
+        } else {
+            assert_eq!(value[key][44]["id"], "model-44");
+            assert_eq!(value[key][44]["created"], 123);
+        }
+        assert!(jsonschema::validator_for(
+            &CompatibilityModelsOutput::document_output_schema(&operation).unwrap()
+        )
+        .unwrap()
+        .is_valid(&value));
+    }
+    let input = CompatibilityModelsInput {
+        client_version: Some("1.0".into()),
+    };
+    assert_eq!(
+        input.project_document_input(&operation).unwrap(),
+        json!({"query":{"client_version":"1.0"}})
+    );
+}

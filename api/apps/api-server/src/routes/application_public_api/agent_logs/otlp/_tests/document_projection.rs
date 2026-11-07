@@ -57,3 +57,32 @@ fn otlp_document_uses_decoded_spans_for_json_protobuf_and_gzip_without_attribute
         }
     }
 }
+
+#[test]
+fn otlp_document_result_is_the_standard_ack_and_legacy_receipt_is_unchanged() {
+    let output = Output {
+        response: ExportTraceServiceResponse {
+            partial_success: Some(ExportTracePartialSuccess {
+                rejected_spans: 4,
+                error_message: "safe partial acknowledgement".into(),
+            }),
+        },
+        accepted_spans: 2,
+        receipt: AgentLogsReceipt {
+            accepted_events: 2,
+            duplicate_events: 1,
+            record_ids: vec![],
+        },
+    };
+    let value = output.project_document_output(&operation(ID)).unwrap();
+    assert_eq!(
+        value,
+        crate::event_center::api_projection::to_value(&output.response).unwrap()
+    );
+    assert!(value.get("accepted_events").is_none());
+    assert!(value.get("receipt").is_none());
+    let legacy = output.project_for_event().unwrap();
+    assert_eq!(legacy["accepted_events"], 2);
+    assert_eq!(legacy["accepted_spans"], 2);
+    assert_eq!(legacy["rejected_spans"], 4);
+}

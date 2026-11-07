@@ -1,0 +1,138 @@
+use super::*;
+use control_plane::application_public_api::native::{NativeRunStatus, NativeUsage};
+
+fn run() -> NativeRunResult {
+    NativeRunResult {
+        id: uuid::Uuid::now_v7(),
+        application_id: uuid::Uuid::now_v7(),
+        api_key_id: uuid::Uuid::now_v7(),
+        publication_version_id: uuid::Uuid::now_v7(),
+        status: NativeRunStatus::Succeeded,
+        node_input_payload: json!({}),
+        metadata: json!({}),
+        answer: Some("complete answer ".repeat(300)),
+        answer_segments: None,
+        required_action: None,
+        tool_calls: None,
+        usage: Some(NativeUsage {
+            prompt_tokens: Some(14),
+            completion_tokens: Some(9),
+            total_tokens: Some(23),
+            ..Default::default()
+        }),
+        error: None,
+        operation_terminal: None,
+        created_at: time::OffsetDateTime::now_utc(),
+    }
+}
+fn operation(id: &str) -> ApiEventOperationContext {
+    ApiEventOperationContext {
+        interface_id: id.into(),
+        method: "POST".into(),
+        path: "/v1/chat/completions".into(),
+    }
+}
+
+#[test]
+fn unary_chat_document_is_the_same_http_result_with_real_round_usage() {
+    let callback = uuid::Uuid::now_v7();
+    let baseline = openai::usage::ResponseUsageBaseline::Recorded(Some(NativeUsage {
+        prompt_tokens: Some(10),
+        completion_tokens: Some(4),
+        total_tokens: Some(14),
+        ..Default::default()
+    }));
+    let run = run();
+    let id = run.id;
+    let output = CompatibilityProtocolOutput::project(
+        run,
+        Some(openai::chat_protocol_projection(
+            "actual-model".into(),
+            Some(callback),
+            Some(baseline),
+        )),
+    );
+    let operation = operation("compat.openai.chat-completions.blocking");
+    let event = output.project_document_output(&operation).unwrap();
+    assert_eq!(event["model"], "actual-model");
+    assert_eq!(
+        event["choices"][0]["message"]["content"],
+        "complete answer ".repeat(300)
+    );
+    assert_eq!(event["usage"]["prompt_tokens"], 4);
+    assert_eq!(event["usage"]["completion_tokens"], 5);
+    assert_eq!(event["usage"]["total_tokens"], 9);
+    assert_eq!(event["id"],crate::routes::application_public_api::compat_sse::openai_chat_completion_id_from_callback_task(id,callback));
+    assert!(jsonschema::validator_for(
+        &CompatibilityProtocolOutput::document_output_schema(&operation).unwrap()
+    )
+    .unwrap()
+    .is_valid(&event));
+    let (actual_run, result) = output.into_parts();
+    let http = result.into_openai().unwrap();
+    assert_eq!(actual_run.id, id);
+    assert_eq!(http, event);
+}
+
+#[test]
+fn unary_anthropic_random_message_identity_is_frozen_once_for_event_and_http() {
+    let output = CompatibilityProtocolOutput::project(
+        run(),
+        Some(anthropic::message_protocol_projection(
+            "actual-claude".into(),
+        )),
+    );
+    let operation = operation("compat.anthropic.messages.blocking");
+    let first = output.project_document_output(&operation).unwrap();
+    let second = output.project_document_output(&operation).unwrap();
+    assert_eq!(first, second);
+    assert_eq!(first["model"], "actual-claude");
+    assert_eq!(first["content"][0]["text"], "complete answer ".repeat(300));
+    assert!(jsonschema::validator_for(
+        &CompatibilityProtocolOutput::document_output_schema(&operation).unwrap()
+    )
+    .unwrap()
+    .is_valid(&first));
+    let (_, result) = output.into_parts();
+    let http = result.into_anthropic().unwrap();
+    assert_eq!(http, first);
+}
+
+#[test]
+fn unary_protocol_projection_failures_keep_the_existing_http_error_and_no_success_value() {
+    let mut run = run();
+    run.status = NativeRunStatus::Waiting;
+    let output = CompatibilityProtocolOutput::project(
+        run,
+        Some(openai::chat_protocol_projection("model".into(), None, None)),
+    );
+    assert!(output
+        .project_document_output(&operation("compat.openai.chat-completions.blocking"))
+        .is_err());
+    assert!(matches!(
+        output.into_parts().1.into_openai(),
+        Err(openai::OpenAiRouteError::RequiredAction)
+    ));
+}
+
+#[test]
+fn all_compatibility_bindings_have_typed_documents_and_unary_protocol_schemas_are_explicit() {
+    let registry = super::super::compile_registry_for_test().unwrap();
+    assert_eq!(registry.document_operations().count(), 17);
+    for (interface, _, _, _, _) in super::super::bindings() {
+        let schema = CompatibilityProtocolOutput::document_output_schema(&operation(interface))
+            .expect("every unary declaration has an explicit protocol result schema");
+        assert!(schema.is_object());
+    }
+    let unary = CompatibilityProtocolOutput::document_output_schema(&operation(
+        "compat.openai.chat-completions.blocking",
+    ))
+    .unwrap();
+    let stream = CompatibilityBlockingOutput::document_output_schema(&operation(
+        "compat.openai.chat-completions.stream",
+    ))
+    .unwrap();
+    assert!(unary["properties"].get("choices").is_some());
+    assert!(stream["properties"].get("answer").is_some());
+    assert!(stream["properties"].get("api_key_id").is_none());
+}

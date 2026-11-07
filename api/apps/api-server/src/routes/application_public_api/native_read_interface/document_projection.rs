@@ -69,3 +69,8 @@ impl ApiEventOutput for NativeUploadFileOutput {
         ep::to_value(&self.0)
     }
 }
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
+#[cfg(test)]
+#[path = "_tests/document_projection.rs"]
+mod tests;

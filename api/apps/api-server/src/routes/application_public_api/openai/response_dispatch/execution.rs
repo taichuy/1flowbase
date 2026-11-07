@@ -97,6 +97,7 @@ async fn execute_generate(
             stream_binding_id,
             principal,
             compatibility_interface::CompatibilityBlockingInput {
+                response_projection: None,
                 document: document.clone(),
                 command: compatibility_interface::CompatibilityInvocationCommand::Start {
                     request,
@@ -146,6 +147,7 @@ async fn execute_generate(
             stream_binding_id,
             principal,
             compatibility_interface::CompatibilityBlockingInput {
+                response_projection: None,
                 document: document.clone(),
                 command: compatibility_interface::CompatibilityInvocationCommand::Start {
                     request,
@@ -170,6 +172,7 @@ async fn execute_generate(
         compatibility_interface::OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID,
         principal,
         compatibility_interface::CompatibilityBlockingInput {
+            response_projection: None,
             document: document.clone(),
             command: compatibility_interface::CompatibilityInvocationCommand::Start {
                 request,
@@ -231,11 +234,12 @@ async fn execute_compact(
             ProviderCompactProfile::ResponsesCompactionV2
         }
     };
-    let run = compatibility_interface::invoke_blocking_with_principal(
+    let (run, response) = compatibility_interface::invoke_blocking_with_principal(
         state,
         blocking_binding_id,
         principal,
         compatibility_interface::CompatibilityBlockingInput {
+            response_projection: Some(compact_protocol_projection(model.clone(), profile)),
             document: document.clone(),
             command: compatibility_interface::CompatibilityInvocationCommand::Start {
                 request,
@@ -247,14 +251,13 @@ async fn execute_compact(
             },
         },
     )
-    .await?;
+    .await?
+    .into_parts();
     if let Some(recorder) = recorder.as_ref() {
         recorder.bind_run(run.id, None);
     }
-    let result = match run.operation_terminal.as_ref() {
-        Some(NativeOperationTerminal::Compact(receipt)) => receipt.result().clone(),
-        _ => return Err(native::blocking_run_projection_error(&run).into()),
-    };
+
+    let response = response.into_openai()?;
 
     info!(
         route,
@@ -266,44 +269,14 @@ async fn execute_compact(
         "openai responses Compact request completed through a durable flow run"
     );
 
-    match (profile, result) {
-        (
-            ProviderCompactProfile::ResponsesCompact,
-            ProviderCompactResult::ResponseItems { response_items, .. },
-        ) => {
-            // The legacy Compact contract is exactly the provider's ResponseItem[]. It
-            // is intentionally neither wrapped in a Response object nor projected as a
-            // runtime SSE flow.
-            Ok(OpenAiResponseDispatch::Http(
-                Json(response_items).into_response(),
-            ))
-        }
-        (
-            ProviderCompactProfile::ResponsesCompactionV2,
-            ProviderCompactResult::CompletedOpaqueCompactionItem {
-                response_id,
-                compaction_item,
-                ..
-            },
-        ) => {
-            let response =
-                compact::completed_v2_compaction_response(model, response_id, compaction_item);
-            if response_mode.as_deref() == Some("streaming") {
-                let response = serde_json::to_value(response).map_err(|_| {
-                    OpenAiRouteError::Native(native::NativeApiError::new(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "openai_compact_response_serialization_failed",
-                        "could not serialize OpenAI Compact response",
-                    ))
-                })?;
-                return compat_sse::openai_compact_sse_response(response)
-                    .map(OpenAiResponseDispatch::Http)
-                    .map_err(Into::into);
-            }
-            Ok(OpenAiResponseDispatch::Http(Json(response).into_response()))
-        }
-        _ => Err(compact::unexpected_compact_result_error()),
+    if matches!(profile, ProviderCompactProfile::ResponsesCompactionV2)
+        && response_mode.as_deref() == Some("streaming")
+    {
+        return compat_sse::openai_compact_sse_response(response)
+            .map(OpenAiResponseDispatch::Http)
+            .map_err(Into::into);
     }
+    Ok(OpenAiResponseDispatch::Http(Json(response).into_response()))
 }
 
 async fn execute_resume(
@@ -334,6 +307,7 @@ async fn execute_resume(
     } = *plan;
     if response_mode.as_deref() == Some("streaming") {
         let input = compatibility_interface::CompatibilityBlockingInput {
+            response_projection: None,
             document: document.clone(),
             command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                 initial_run,
@@ -392,6 +366,7 @@ async fn execute_resume(
         stream_binding_id,
         principal,
         compatibility_interface::CompatibilityBlockingInput {
+            response_projection: None,
             document: document.clone(),
             command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                 initial_run,
@@ -411,4 +386,42 @@ async fn execute_resume(
     )
     .await?;
     Ok(OpenAiResponseDispatch::Http(Json(response).into_response()))
+}
+
+fn compact_protocol_projection(
+    model: String,
+    profile: ProviderCompactProfile,
+) -> compatibility_interface::http_result::Projection {
+    compatibility_interface::http_result::openai(move |run| {
+        let result = match run.operation_terminal.as_ref() {
+            Some(NativeOperationTerminal::Compact(receipt)) => receipt.result().clone(),
+            _ => return Err(native::blocking_run_projection_error(run).into()),
+        };
+        match (profile, result) {
+            (
+                ProviderCompactProfile::ResponsesCompact,
+                ProviderCompactResult::ResponseItems { response_items, .. },
+            ) => Ok(Value::Array(response_items)),
+            (
+                ProviderCompactProfile::ResponsesCompactionV2,
+                ProviderCompactResult::CompletedOpaqueCompactionItem {
+                    response_id,
+                    compaction_item,
+                    ..
+                },
+            ) => serde_json::to_value(compact::completed_v2_compaction_response(
+                model,
+                response_id,
+                compaction_item,
+            ))
+            .map_err(|_| {
+                OpenAiRouteError::Native(native::NativeApiError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "openai_compact_response_serialization_failed",
+                    "could not serialize OpenAI Compact response",
+                ))
+            }),
+            _ => Err(compact::unexpected_compact_result_error()),
+        }
+    })
 }

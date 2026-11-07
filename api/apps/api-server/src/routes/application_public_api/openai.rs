@@ -271,6 +271,7 @@ async fn dispatch_chat_completion(
                     resume_binding_id,
                     principal,
                     compatibility_interface::CompatibilityBlockingInput {
+                        response_projection: None,
                         document: document.clone(),
                         command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                             initial_run: plan.initial_run,
@@ -295,11 +296,16 @@ async fn dispatch_chat_completion(
                     "chat_usage_boundary_failed",
                 )
                 .await?;
-                let run = compatibility_interface::invoke_blocking_with_principal(
+                let (run, response) = compatibility_interface::invoke_blocking_with_principal(
                     state.clone(),
                     resume_binding_id,
                     principal,
                     compatibility_interface::CompatibilityBlockingInput {
+                        response_projection: Some(chat_protocol_projection(
+                            model.clone(),
+                            Some(callback_task_id),
+                            Some(usage_baseline.clone()),
+                        )),
                         document: document.clone(),
                         command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                             initial_run: plan.initial_run,
@@ -308,19 +314,10 @@ async fn dispatch_chat_completion(
                         },
                     },
                 )
-                .await?;
+                .await?
+                .into_parts();
                 correlate_blocking_chat_capture(&state, &recorder, run.id).await;
-                let completion_id = compat_sse::openai_chat_completion_id_from_callback_task(
-                    run.id,
-                    callback_task_id,
-                );
-                return Ok(Json(usage::to_chat_response_for_round(
-                    run,
-                    model,
-                    completion_id,
-                    &usage_baseline,
-                )?)
-                .into_response());
+                return Ok(Json(response.into_openai()?).into_response());
             }
             Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory { .. }) => {
                 // The callback delivery is complete; re-admit its full history as a new turn.
@@ -402,6 +399,7 @@ async fn dispatch_chat_completion(
             stream_binding_id,
             principal,
             compatibility_interface::CompatibilityBlockingInput {
+                response_projection: None,
                 document: document.clone(),
                 command: compatibility_interface::CompatibilityInvocationCommand::Start {
                     request,
@@ -416,11 +414,12 @@ async fn dispatch_chat_completion(
         .map_err(Into::into);
     }
 
-    let run = compatibility_interface::invoke_blocking_with_principal(
+    let (run, response) = compatibility_interface::invoke_blocking_with_principal(
         state.clone(),
         binding_id,
         principal,
         compatibility_interface::CompatibilityBlockingInput {
+            response_projection: Some(chat_protocol_projection(model.clone(), None, None)),
             document: document.clone(),
             command: compatibility_interface::CompatibilityInvocationCommand::Start {
                 request,
@@ -429,7 +428,8 @@ async fn dispatch_chat_completion(
             },
         },
     )
-    .await?;
+    .await?
+    .into_parts();
 
     correlate_blocking_chat_capture(&state, &recorder, run.id).await;
     info!(
@@ -443,8 +443,7 @@ async fn dispatch_chat_completion(
         "openai compatible chat completion accepted"
     );
 
-    let completion_id = compat_sse::openai_chat_completion_id_from_run_id(run.id);
-    Ok(Json(to_openai_response(run, model, completion_id)?).into_response())
+    Ok(Json(response.into_openai()?).into_response())
 }
 
 async fn load_callback_usage_baseline(
@@ -1046,6 +1045,92 @@ pub(crate) fn models_document(
     }
 }
 pub(crate) fn models_document_schema() -> Value {
-    serde_json::json!({"anyOf":[crate::event_center::api_projection::schema::<OpenAiModelListResponse>(),
-        {"type":"object","properties":{"models":{"type":"array","items":{"type":"object"}}},"required":["models"],"additionalProperties":false}]})
+    // This alternate public model-list wire shape is owned by model_list.rs.
+    // Every property is declared; it is not an opaque object placeholder.
+    fn object(fields: impl IntoIterator<Item = (&'static str, Value)>) -> Value {
+        let properties = fields
+            .into_iter()
+            .map(|(key, value)| (key.to_owned(), value))
+            .collect::<serde_json::Map<_, _>>();
+        json!({"type":"object","required":properties.keys().collect::<Vec<_>>(),"properties":properties,"additionalProperties":false})
+    }
+    let text = json!({"type":"string"});
+    let number = json!({"anyOf":[{"type":"integer","minimum":0},{"type":"null"}]});
+    let null = json!({"type":"null"});
+    let limit = object([
+        ("context", number.clone()),
+        ("input", number.clone()),
+        ("output", number.clone()),
+    ]);
+    let model = object([
+        ("slug", text.clone()),
+        ("display_name", text.clone()),
+        ("description", null.clone()),
+        (
+            "default_reasoning_level",
+            json!({"anyOf":[text,{"type":"null"}]}),
+        ),
+        (
+            "supported_reasoning_levels",
+            json!({"type":"array","items":object([("effort",json!({"type":"string"})),("description",json!({"type":"string"}))])}),
+        ),
+        ("shell_type", json!({"const":"shell_command"})),
+        ("visibility", json!({"const":"list"})),
+        ("supported_in_api", json!({"const":true})),
+        ("priority", json!({"const":0})),
+        ("availability_nux", null.clone()),
+        ("upgrade", null.clone()),
+        ("base_instructions", json!({"type":"string"})),
+        ("supports_reasoning_summaries", json!({"const":false})),
+        ("default_reasoning_summary", json!({"const":"auto"})),
+        ("support_verbosity", json!({"const":false})),
+        ("default_verbosity", null.clone()),
+        ("apply_patch_tool_type", null),
+        ("web_search_tool_type", json!({"const":"text"})),
+        (
+            "truncation_policy",
+            object([
+                ("mode", json!({"const":"bytes"})),
+                ("limit", json!({"const":10000})),
+            ]),
+        ),
+        ("supports_parallel_tool_calls", json!({"const":false})),
+        ("supports_image_detail_original", json!({"const":false})),
+        ("context_window", number.clone()),
+        ("max_context_window", number.clone()),
+        ("max_output_tokens", number.clone()),
+        ("auto_compact_token_limit", number),
+        ("effective_context_window_percent", json!({"const":95})),
+        ("limit", json!({"anyOf":[limit,{"type":"null"}]})),
+        (
+            "experimental_supported_tools",
+            json!({"type":"array","items":true}),
+        ),
+        (
+            "input_modalities",
+            json!({"type":"array","items":{"type":"string","enum":["text","image"]}}),
+        ),
+    ]);
+    json!({"anyOf":[crate::event_center::api_projection::schema::<OpenAiModelListResponse>(),object([("models",json!({"type":"array","items":model}))])]})
+}
+
+pub(super) fn chat_protocol_projection(
+    model: String,
+    callback_task_id: Option<Uuid>,
+    baseline: Option<usage::ResponseUsageBaseline>,
+) -> compatibility_interface::http_result::Projection {
+    compatibility_interface::http_result::openai(move |run| {
+        let completion_id = match callback_task_id {
+            Some(callback_task_id) => {
+                compat_sse::openai_chat_completion_id_from_callback_task(run.id, callback_task_id)
+            }
+            None => compat_sse::openai_chat_completion_id_from_run_id(run.id),
+        };
+        match baseline {
+            Some(baseline) => {
+                usage::to_chat_response_for_round(run.clone(), model, completion_id, &baseline)
+            }
+            None => to_openai_response(run.clone(), model, completion_id),
+        }
+    })
 }

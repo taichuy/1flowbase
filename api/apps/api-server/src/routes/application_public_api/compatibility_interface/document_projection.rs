@@ -137,15 +137,8 @@ fn decode<T: for<'de> Deserialize<'de>>(value: &Value) -> Result<T, Arc<str>> {
     T::deserialize(value).map_err(|_| Arc::from("invalid_safe_protocol_document"))
 }
 fn safe_mcp_tools(field: &mut Field) {
-    if let Field::Present(Value::Array(tools)) = field {
-        for tool in tools {
-            if tool.get("type").and_then(Value::as_str) == Some("mcp") {
-                if let Some(fields) = tool.as_object_mut() {
-                    fields.remove("authorization");
-                    fields.remove("headers");
-                }
-            }
-        }
+    if let Field::Present(value) = field {
+        native::safe_mcp_tools(value);
     }
 }
 impl ProtocolRequestDocument {

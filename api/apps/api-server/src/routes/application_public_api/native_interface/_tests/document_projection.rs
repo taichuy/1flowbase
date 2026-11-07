@@ -13,7 +13,8 @@ fn operation() -> ApiEventOperationContext {
 fn native_document_preserves_full_business_input_and_omits_protocol_transport() {
     let text = "complete business content ".repeat(300);
     let mut request: NativeRunRequest = serde_json::from_value(json!({
-        "query":text,"inputs":{"env":{"ordinary":"business"},"rows":(0..45).collect::<Vec<_>>()},
+        "query":text,"inputs":{"env":{"ordinary":"business"},"rows":(0..45).collect::<Vec<_>>(),
+            "tools":[{"type":"mcp","server_label":"business-server","authorization":"MCP_CREDENTIAL_CANARY","headers":{"Authorization":"MCP_HEADER_CANARY"}}]},
         "history":[{"role":"assistant","content":"earlier response"}],
         "attachments":[{"source":"url","value":"https://example.test/document","name":"document"}],
         "conversation":{"id":"conversation-1"},"metadata":{"trace_id":"trace-1"},
@@ -43,6 +44,11 @@ fn native_document_preserves_full_business_input_and_omits_protocol_transport() 
     assert_eq!(value["body"]["conversation"]["id"], "conversation-1");
     assert!(value["body"].get("client_protocol_envelope").is_none());
     assert!(!value.to_string().contains("CREDENTIAL_CANARY"));
+    assert!(!value.to_string().contains("MCP_HEADER_CANARY"));
+    assert_eq!(
+        value["body"]["inputs"]["tools"][0]["server_label"],
+        "business-server"
+    );
     assert!(value.get("protocol").is_none());
 }
 

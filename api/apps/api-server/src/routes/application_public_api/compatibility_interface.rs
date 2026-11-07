@@ -1,6 +1,8 @@
 use control_plane::client_trajectory::ClientTrajectoryRecorder;
 pub(crate) mod document_projection;
+pub(crate) mod http_result;
 mod managed_projection;
+pub(crate) use http_result::CompatibilityProtocolOutput;
 
 use std::{future::Future, pin::Pin, sync::Arc};
 
@@ -86,6 +88,7 @@ const AUTHENTICATION_ADAPTER: &str = "api-server.application-api-key";
 const AUTHORIZATION_ADAPTER: &str = "api-server.application-compatibility-run";
 
 pub(crate) struct CompatibilityBlockingInput {
+    pub(crate) response_projection: Option<http_result::Projection>,
     pub(crate) document: Result<document_projection::ProtocolRequestDocument, Arc<str>>,
     pub(crate) command: CompatibilityInvocationCommand,
 }
@@ -241,7 +244,7 @@ struct CompatibilityBlockingHandler {
 impl
     InterfaceHandler<
         CompatibilityBlockingInput,
-        CompatibilityBlockingOutput,
+        CompatibilityProtocolOutput,
         CompatibilityBlockingTargetError,
         ApplicationPrincipal,
     > for CompatibilityBlockingHandler
@@ -249,13 +252,15 @@ impl
     fn invoke(
         &self,
         context: InterfaceHandlerContext<ApplicationPrincipal>,
-        input: CompatibilityBlockingInput,
-    ) -> InterfaceHandlerFuture<CompatibilityBlockingOutput, CompatibilityBlockingTargetError> {
+        mut input: CompatibilityBlockingInput,
+    ) -> InterfaceHandlerFuture<CompatibilityProtocolOutput, CompatibilityBlockingTargetError> {
         let port = Arc::clone(&self.port);
         let consumer = self.consumer;
+        let projection = input.response_projection.take();
         Box::pin(async move {
             port.execute(context.principal(), input, consumer)
                 .await
+                .map(|output| CompatibilityProtocolOutput::project(output.0, projection))
                 .map_err(|error| InterfaceTargetFailure::new("compatibility_blocking", error))
         })
     }
@@ -938,7 +943,7 @@ pub(crate) async fn invoke_blocking(
     binding_id: &'static str,
     bearer_token: String,
     input: CompatibilityBlockingInput,
-) -> Result<NativeRunResult, NativeApiError> {
+) -> Result<CompatibilityProtocolOutput, NativeApiError> {
     let boot_snapshot = state.extension_boot_snapshot.as_ref().ok_or_else(|| {
         NativeApiError::new(
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -988,7 +993,7 @@ pub(crate) async fn invoke_blocking(
     ))
     .invoke_with_dispatch_target::<
         CompatibilityBlockingInput,
-        CompatibilityBlockingOutput,
+        CompatibilityProtocolOutput,
         CompatibilityBlockingTargetError,
     >(
         snapshot,
@@ -998,7 +1003,7 @@ pub(crate) async fn invoke_blocking(
     .await
     .map_err(|failure| invocation_error(failure.into_error()))?;
     let _receipt = outcome.receipt().clone().projected();
-    Ok(outcome.into_value().0)
+    Ok(outcome.into_value())
 }
 
 pub(crate) async fn invoke_blocking_with_principal(
@@ -1006,7 +1011,7 @@ pub(crate) async fn invoke_blocking_with_principal(
     binding_id: &'static str,
     principal: impl Into<ApplicationInvocationAuthentication>,
     input: CompatibilityBlockingInput,
-) -> Result<NativeRunResult, NativeApiError> {
+) -> Result<CompatibilityProtocolOutput, NativeApiError> {
     let release = match &input.command {
         CompatibilityInvocationCommand::Resume {
             reservation: Some(reservation),
@@ -1028,7 +1033,7 @@ async fn invoke_blocking_with_principal_inner(
     binding_id: &'static str,
     principal: impl Into<ApplicationInvocationAuthentication>,
     input: CompatibilityBlockingInput,
-) -> Result<NativeRunResult, NativeApiError> {
+) -> Result<CompatibilityProtocolOutput, NativeApiError> {
     let principal = principal.into();
     let snapshot = match principal.snapshot() {
         Some(snapshot) => snapshot,
@@ -1068,7 +1073,7 @@ async fn invoke_blocking_with_principal_inner(
     ))
     .invoke_with_dispatch_target::<
         CompatibilityBlockingInput,
-        CompatibilityBlockingOutput,
+        CompatibilityProtocolOutput,
         CompatibilityBlockingTargetError,
     >(
         snapshot,
@@ -1078,7 +1083,7 @@ async fn invoke_blocking_with_principal_inner(
     .await
     .map_err(|failure| invocation_error(failure.into_error()))?;
     let _receipt = outcome.receipt().clone().projected();
-    Ok(outcome.into_value().0)
+    Ok(outcome.into_value())
 }
 
 fn invocation_error(error: interface_runtime::InterfaceInvocationError) -> NativeApiError {

@@ -266,6 +266,7 @@ async fn dispatch_message(
                     resume_binding_id,
                     principal,
                     compatibility_interface::CompatibilityBlockingInput {
+                        response_projection: None,
                         document: document.clone(),
                         command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                             initial_run: plan.initial_run,
@@ -280,11 +281,12 @@ async fn dispatch_message(
                 .map_err(Into::into);
             }
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
-                let run = compatibility_interface::invoke_blocking_with_principal(
+                let (run, response) = compatibility_interface::invoke_blocking_with_principal(
                     state.clone(),
                     resume_binding_id,
                     principal,
                     compatibility_interface::CompatibilityBlockingInput {
+                        response_projection: Some(message_protocol_projection(model.clone())),
                         document: document.clone(),
                         command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                             initial_run: plan.initial_run,
@@ -293,9 +295,10 @@ async fn dispatch_message(
                         },
                     },
                 )
-                .await?;
+                .await?
+                .into_parts();
                 client_observer::correlate_blocking_capture(&state, &recorder, run.id).await;
-                return Ok(Json(to_anthropic_response(run, model)?).into_response());
+                return Ok(Json(response.into_anthropic()?).into_response());
             }
             Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory { .. }) => {
                 // The callback payload was already consumed, but its model continuation failed
@@ -360,6 +363,7 @@ async fn dispatch_message(
             compatibility_interface::ANTHROPIC_MESSAGES_STREAM_BINDING_ID,
             principal,
             compatibility_interface::CompatibilityBlockingInput {
+                response_projection: None,
                 document: document.clone(),
                 command: compatibility_interface::CompatibilityInvocationCommand::Start {
                     request,
@@ -374,11 +378,12 @@ async fn dispatch_message(
         .map_err(Into::into);
     }
 
-    let run = compatibility_interface::invoke_blocking_with_principal(
+    let (run, response) = compatibility_interface::invoke_blocking_with_principal(
         state.clone(),
         compatibility_interface::ANTHROPIC_MESSAGES_BINDING_ID,
         principal,
         compatibility_interface::CompatibilityBlockingInput {
+            response_projection: Some(message_protocol_projection(model.clone())),
             document: document.clone(),
             command: compatibility_interface::CompatibilityInvocationCommand::Start {
                 request,
@@ -387,9 +392,10 @@ async fn dispatch_message(
             },
         },
     )
-    .await?;
+    .await?
+    .into_parts();
     client_observer::correlate_blocking_capture(&state, &recorder, run.id).await;
-    Ok(Json(to_anthropic_response(run, model)?).into_response())
+    Ok(Json(response.into_anthropic()?).into_response())
 }
 
 #[utoipa::path(
@@ -435,7 +441,7 @@ async fn dispatch_count_message_tokens(
     uri: Uri,
     body: Bytes,
     recorder: ClientTrajectoryRecorder,
-) -> Result<Json<AnthropicCountTokensResponse>, AnthropicRouteError> {
+) -> Result<Json<Value>, AnthropicRouteError> {
     info!(
         route = "messages_count_tokens",
         phase = "received",
@@ -475,11 +481,12 @@ async fn dispatch_count_message_tokens(
         translation_decision_count = translation.report.decisions.len(),
         "anthropic count tokens request translated"
     );
-    let run = compatibility_interface::invoke_blocking(
+    let (run, response) = compatibility_interface::invoke_blocking(
         state.clone(),
         compatibility_interface::ANTHROPIC_COUNT_TOKENS_BINDING_ID,
         bearer_token,
         compatibility_interface::CompatibilityBlockingInput {
+            response_projection: Some(count_tokens_protocol_projection()),
             document: document.clone(),
             command: compatibility_interface::CompatibilityInvocationCommand::Start {
                 request: translation.request,
@@ -488,13 +495,10 @@ async fn dispatch_count_message_tokens(
             },
         },
     )
-    .await?;
+    .await?
+    .into_parts();
     client_observer::correlate_blocking_capture(&state, &recorder, run.id).await;
-    let input_tokens = match run.operation_terminal.as_ref() {
-        Some(NativeOperationTerminal::CountTokens(receipt)) => receipt.input_tokens(),
-        _ => return Err(native::blocking_run_projection_error(&run).into()),
-    };
-    Ok(Json(to_anthropic_count_tokens_response(input_tokens)))
+    Ok(Json(response.into_anthropic()?))
 }
 
 fn anthropic_token(headers: &HeaderMap) -> Result<String, native::NativeApiError> {
@@ -739,3 +743,21 @@ fn callback_task_id_from_required_action(run: &NativeRunResult) -> Option<Uuid> 
 #[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod tests;
+
+pub(super) fn message_protocol_projection(
+    model: String,
+) -> compatibility_interface::http_result::Projection {
+    compatibility_interface::http_result::anthropic(move |run| {
+        to_anthropic_response(run.clone(), model)
+    })
+}
+pub(super) fn count_tokens_protocol_projection() -> compatibility_interface::http_result::Projection
+{
+    compatibility_interface::http_result::anthropic(move |run| {
+        let input_tokens = match run.operation_terminal.as_ref() {
+            Some(NativeOperationTerminal::CountTokens(receipt)) => receipt.input_tokens(),
+            _ => return Err(native::blocking_run_projection_error(run).into()),
+        };
+        Ok(to_anthropic_count_tokens_response(input_tokens))
+    })
+}
