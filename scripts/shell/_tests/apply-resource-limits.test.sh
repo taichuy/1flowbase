@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Each test declares its own context; caller context must not mask default paths.
+unset ONEFLOWBASE_TASK_BUDGET_CGROUP ONEFLOWBASE_TASK_BUDGET_ID
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 test_root=$(mktemp -d)
@@ -94,6 +96,7 @@ grep -Fq 'default_cargo_job_limit=auto' "$bin_dir/cargo"
 grep -Fq '"cargoJobs": "auto"' "$repo_dir/.1flowbase.verify.local.json"
 grep -Fq '"cargoTestThreads": "auto"' "$repo_dir/.1flowbase.verify.local.json"
 test -x "$bin_dir/oneflowbase-resource-budget"
+test -r "$bin_dir/resource-budget-context.sh"
 grep -Fq 'set-property --runtime dev.slice MemoryHigh=infinity MemoryMax=infinity MemorySwapMax=infinity CPUQuota=' "$systemctl_log"
 grep -Fq "set-property --runtime dev-rust.slice MemoryHigh=$rust_high MemoryMax=$rust_max MemorySwapMax=1G CPUQuota=1000% IOWeight=10" \
   "$systemctl_log"
@@ -302,6 +305,7 @@ test ! -e "$bin_dir/dev-run"
 test ! -e "$bin_dir/pnpm"
 test ! -e "$bin_dir/dev-heavy-run"
 test ! -e "$bin_dir/oneflowbase-resource-budget"
+test ! -e "$bin_dir/resource-budget-context.sh"
 test ! -e "$systemd_dir/dev-frontend.slice"
 test ! -e "$repo_dir/.1flowbase.verify.local.json"
 grep -Fq 'set-property --runtime dev-rust.slice MemoryHigh=infinity MemoryMax=infinity MemorySwapMax=infinity CPUQuota= IOWeight=100' \

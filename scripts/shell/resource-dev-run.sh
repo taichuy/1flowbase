@@ -2,6 +2,14 @@
 set -euo pipefail
 
 # Installed as ~/.local/bin/dev-run. Children inherit the aggregate budget.
+source "$(dirname -- "${BASH_SOURCE[0]}")/resource-budget-context.sh"
+if oneflowbase_task_budget_context; then
+  budget_context_active=1
+else
+  budget_context_status=$?
+  [[ $budget_context_status == 1 ]] || exit "$budget_context_status"
+  budget_context_active=0
+fi
 slice=dev.slice
 if [[ ${1:-} == --frontend ]]; then
   slice=dev-frontend.slice
@@ -9,6 +17,9 @@ if [[ ${1:-} == --frontend ]]; then
 fi
 if (( $# == 0 )); then
   set -- "${SHELL:-/bin/bash}"
+fi
+if [[ $budget_context_active == 1 ]]; then
+  exec "$@"
 fi
 if ! systemctl --user is-active default.target >/dev/null 2>&1; then
   printf 'Development resource limits unavailable: user systemd manager is not active.\n' >&2

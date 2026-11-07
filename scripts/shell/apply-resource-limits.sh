@@ -45,6 +45,7 @@ cargo_wrapper="$user_bin_dir/cargo"
 project_config="$repo_root/.1flowbase.verify.local.json"
 budget_source="$script_dir/../node/testing/resources/budget.js"
 budget_helper="$user_bin_dir/oneflowbase-resource-budget"
+budget_context_helper="$user_bin_dir/resource-budget-context.sh"
 
 require_value() {
   local name=$1
@@ -162,6 +163,7 @@ MemoryHigh=$FRONTEND_MEMORY_HIGH
 MemoryMax=$FRONTEND_MEMORY_MAX
 EOF
 
+  install -m 0644 "$script_dir/resource-budget-context.sh" "$budget_context_helper"
   install -m 0755 "$script_dir/resource-dev-run.sh" "$dev_wrapper"
   install -m 0755 "$script_dir/resource-pnpm.sh" "$pnpm_wrapper"
   install -m 0755 "$script_dir/resource-heavy-run.py" "$user_bin_dir/dev-heavy-run"
@@ -224,6 +226,14 @@ set -- "\${capped_cargo_args[@]}"
 # Preserve any caller setting, including an explicitly empty value.
 if [[ ! \${MALLOC_CONF+x} ]]; then
   export MALLOC_CONF=dirty_decay_ms:0
+fi
+
+source "\$(dirname -- "\${BASH_SOURCE[0]}")/resource-budget-context.sh"
+if oneflowbase_task_budget_context; then
+  exec "\$real_cargo" "\$@"
+else
+  budget_context_status=\$?
+  [[ \$budget_context_status == 1 ]] || exit "\$budget_context_status"
 fi
 
 if [[ \${CARGO_MEMORY_BUDGET_ACTIVE:-} == 1 ]]; then
@@ -293,7 +303,7 @@ EOF
 
 write_unlimited_profile() {
   rm -f -- "$session_config" "$app_config" "$dev_config" "$rust_config" \
-    "$cargo_wrapper" "$project_config" "$frontend_config" "$dev_wrapper" "$pnpm_wrapper" "$user_bin_dir/dev-heavy-run" "$budget_helper"
+    "$cargo_wrapper" "$project_config" "$frontend_config" "$dev_wrapper" "$pnpm_wrapper" "$user_bin_dir/dev-heavy-run" "$budget_helper" "$budget_context_helper"
   rmdir --ignore-fail-on-non-empty -- "$(dirname -- "$session_config")" \
     "$(dirname -- "$app_config")" 2>/dev/null || true
 
