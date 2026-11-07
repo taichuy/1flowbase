@@ -497,7 +497,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
         '/',
       description_short: values.description_short,
       enabled: values.enabled,
-      sort_order: values.sort_order
+      sort_order: old?.sort_order ?? values.sort_order
     };
     if (
       !stage((snapshot) => ({
@@ -536,7 +536,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
         old?.group_path ?? normalizeMcpDirectoryPath(values.group_path),
       display_alias: old?.display_alias ?? null,
       visible: values.visible,
-      sort_order: values.sort_order
+      sort_order: old?.sort_order ?? values.sort_order
     };
     if (
       !stage((snapshot) => ({
