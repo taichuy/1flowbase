@@ -58,6 +58,7 @@ export function McpInstancesTab({
     groupForm,
     bindingForm,
     watchedGroupPath,
+    watchedToolId,
     parentGroupPath,
     setParentGroupPath,
     directoryEditorIntent,
@@ -130,6 +131,9 @@ export function McpInstancesTab({
     handleExportInstanceBundle,
     selectedDiscoveryPolicy
   } = useMcpInstanceActions(catalog, directory);
+  const selectedToolDescription = catalog.tools
+    .find((tool) => tool.tool_id === watchedToolId)
+    ?.short_description?.trim();
   return (
     <Space
       orientation="vertical"
@@ -785,6 +789,13 @@ export function McpInstancesTab({
                     name="tool_id"
                     label="tool_id"
                     rules={[{ required: true }]}
+                    extra={
+                      selectedToolDescription ? (
+                        <span className="mcp-management__tool-description">
+                          {selectedToolDescription}
+                        </span>
+                      ) : undefined
+                    }
                   >
                     <Select
                       disabled={Boolean(editingBinding)}

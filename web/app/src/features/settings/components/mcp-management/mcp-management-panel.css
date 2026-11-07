@@ -524,6 +524,12 @@
   min-height: 28px;
 }
 
+.mcp-management__tool-description {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .mcp-management__directory-create-actions {
   padding: 10px;
   border: 1px solid var(--ant-color-border-secondary);

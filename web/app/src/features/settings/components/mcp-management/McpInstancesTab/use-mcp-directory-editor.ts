@@ -611,6 +611,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     groupForm,
     bindingForm,
     watchedGroupPath,
+    watchedToolId,
     parentGroupPath,
     setParentGroupPath,
     directoryEditorIntent,
