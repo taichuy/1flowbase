@@ -643,6 +643,16 @@ pub(crate) fn production_interface_contributions(
             crate::routes::i18n_catalog::interface::compile_registry(console_i18n_catalog)?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.record-permissions",
+            &[
+                "roles.record_permissions.view",
+                "roles.record_permissions.replace",
+                "roles.record_capabilities.get",
+            ],
+            &["api-server.record-permissions"],
+            crate::managed_services::record_permissions::compile_registry(state)?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-role-access",
             &[
                 "roles.data_model_options.list",

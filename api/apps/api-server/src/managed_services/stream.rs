@@ -67,6 +67,7 @@ fn streams() -> &'static Mutex<StreamRegistry> {
     STREAMS.get_or_init(Mutex::default)
 }
 pub(crate) fn publish_generation(generation: String) {
+    super::record_acl::clear_handles();
     let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
     all.generation = Some(generation);
     for entry in all.installations.values_mut() {
@@ -169,6 +170,7 @@ impl ConsoleServerStreamPort<ManagedServiceInput, StreamEvent, ManagedServiceOut
                 let op = op.ok_or(Error::NotFound("managed_service_operation"))?;
                 let validator = jsonschema::validator_for(&op.input_schema)?;
                 if !validator.is_valid(&input.payload) { return Err(ApiError::from(Error::InvalidInput("managed_service_input"))); }
+                let record_permissions = super::record_acl::authorize(&state, &registration, principal.actor(), &op, &input.payload).await?;
                 let (publisher, stream) = interface_runtime::interface_stream_channel(16);
                 match input.stream.ok_or(Error::InvalidInput("managed_service_stream"))? {
                     StreamInput::Ticket { origin } => {
@@ -203,11 +205,11 @@ impl ConsoleServerStreamPort<ManagedServiceInput, StreamEvent, ManagedServiceOut
                         let caller = if needs_call_context || binding.descriptor.required_permissions.iter().any(|permission| matches!(permission.as_str(), "file.import.resource" | "file.read.content" | "application.logs.read" | "application.logs.import" | "network.http.request")) {
                             crate::resource_import::capture_caller(&state, &principal, &op.interface_id).await?
                         } else { None };
-                        if needs_call_context && caller.is_none() { return Err(Error::NotAuthenticated.into()); }
+                        if needs_call_context && caller.is_none() && record_permissions.is_none() { return Err(Error::NotAuthenticated.into()); }
                         tokio::spawn(async move {
                             let execution = runtime.execute_snapshot_duplex(snapshot, domain::SYSTEM_SCOPE_ID, &contribution,
                                 crate::extension_bus::ManagedExecutionInput {
-                                    principal: runtime_core::runtime_backend::RuntimeExecutionPrincipal { caller, workspace_id: domain::SYSTEM_SCOPE_ID.to_string(), actor_id: Some(principal.actor().user_id.to_string()), deadline_unix_ms: deadline },
+                                    principal: runtime_core::runtime_backend::RuntimeExecutionPrincipal { record_permissions, caller, workspace_id: domain::SYSTEM_SCOPE_ID.to_string(), actor_id: Some(principal.actor().user_id.to_string()), deadline_unix_ms: deadline },
                                     config_payload: json!({}), input_payload: input.payload, duplex: Some(duplex),
                                 });
                             tokio::pin!(execution);
@@ -290,6 +292,8 @@ async fn revalidate(
     headers: &HeaderMap,
     session: &str,
     operation: &plugin_framework::ManagedServiceOperation,
+    installation: uuid::Uuid,
+    payload: &Value,
 ) -> Result<(), ApiError> {
     let context = crate::middleware::require_session::require_session(state, headers).await?;
     if context.cookie_session()?.session_id != session {
@@ -313,6 +317,13 @@ async fn revalidate(
     ) {
         return Err(Error::PermissionDenied("console_operation_permission_denied").into());
     }
+    let registration = state
+        .console_surface_registry
+        .managed_services()
+        .iter()
+        .find(|r| r.installation_id == installation)
+        .ok_or(Error::Conflict("managed_service_inactive"))?;
+    super::record_acl::authorize(state, registration, &context.actor, operation, payload).await?;
     Ok(())
 }
 async fn upgrade(
@@ -347,7 +358,15 @@ async fn upgrade(
     if ticket.payload.get("path") != Some(&json!(path)) {
         return Err(Error::PermissionDenied("managed_service_ticket_route").into());
     }
-    revalidate(&state, &headers, &session, &operation).await?;
+    revalidate(
+        &state,
+        &headers,
+        &session,
+        &operation,
+        installation,
+        &ticket.payload,
+    )
+    .await?;
     let (lease, cancel) = register(installation, ticket.epoch, &ticket.generation)?;
     let (input, input_receiver) = mpsc::channel(64);
     let (unused_events, _) = mpsc::channel(1);
@@ -364,7 +383,7 @@ async fn upgrade(
         },
         ManagedServiceInput {
             interface_id: operation.interface_id.clone(),
-            payload: ticket.payload,
+            payload: ticket.payload.clone(),
             stream: Some(StreamInput::Run {
                 duplex: RuntimeManagedDuplex {
                     input: Arc::new(tokio::sync::Mutex::new(input_receiver)),
@@ -395,6 +414,8 @@ async fn upgrade(
                     operation,
                     headers,
                     session,
+                    installation,
+                    payload: ticket.payload,
                     input,
                     events,
                     terminal: terminal_rx,
@@ -410,6 +431,8 @@ struct SocketSession {
     operation: Arc<plugin_framework::ManagedServiceOperation>,
     headers: HeaderMap,
     session: String,
+    installation: uuid::Uuid,
+    payload: Value,
     input: mpsc::Sender<Value>,
     events: mpsc::Receiver<StreamEvent>,
     terminal: oneshot::Receiver<
@@ -431,6 +454,8 @@ async fn run_socket(socket: WebSocket, session: SocketSession) {
         operation,
         headers,
         session,
+        installation,
+        payload,
         input,
         mut events,
         mut terminal,
@@ -519,7 +544,7 @@ async fn run_socket(socket: WebSocket, session: SocketSession) {
                 _ = validation.tick() => {
                     let valid = tokio::select! {
                         _ = auth_cancel.changed() => break,
-                        result = revalidate(&state,&headers,&session,&operation) => result.is_ok(),
+                        result = revalidate(&state,&headers,&session,&operation,installation,&payload) => result.is_ok(),
                     };
                     if !valid { let _ = auth_stop.send(true); break; }
                 }

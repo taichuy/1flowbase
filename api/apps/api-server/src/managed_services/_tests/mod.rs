@@ -1,7 +1,7 @@
 use super::*;
 use serde_json::json;
-fn fixture() -> ManagedServiceRegistration {
-    ManagedServiceRegistration {
+pub(super) fn fixture() -> ManagedServiceRegistration {
+    ManagedServiceRegistration { publisher_namespace: "test".into(), data_models: Vec::new(),
         display_name: "Fixture plugin".into(), description: "Fixture plugin operations".into(),
         installation_id: uuid::Uuid::nil(), plugin_code:"fixture".into(), plugin_version:"1.0.0".into(),
         declaration:serde_json::from_value(json!({"scope":"system","feature":{"feature_id":"fixture.settings","label":"Fixture service","description":"Configure fixture service","route_id":"fixture","path":"/settings/fixture"},"operations":[{

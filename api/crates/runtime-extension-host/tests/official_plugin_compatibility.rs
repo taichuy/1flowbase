@@ -563,6 +563,7 @@ async fn drs_008_013_session_retry_executes_through_real_host_and_plugin_data() 
             target: RuntimeTargetId::new(plugin_id).unwrap(),
             invocation,
             principal: RuntimeExecutionPrincipal {
+                record_permissions: None,
                 caller: None,
                 workspace_id: "workspace-1".into(),
                 actor_id: None,

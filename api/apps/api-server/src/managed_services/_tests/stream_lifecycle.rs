@@ -89,6 +89,8 @@ async fn generation_managed_socket_session_retains_old_owner_until_session_drop(
         operation: Arc::new(operation),
         headers: HeaderMap::new(),
         session: String::new(),
+        installation: uuid::Uuid::now_v7(),
+        payload: json!({}),
         input,
         events,
         terminal,

@@ -43,6 +43,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
                     target: RuntimeTargetId::new(plugin_id)?,
                     invocation,
                     principal: runtime_core::runtime_backend::RuntimeExecutionPrincipal {
+                        record_permissions: None,
                         caller: None,
                         workspace_id: context.workspace_id.to_string(),
                         actor_id: context.actor_id.map(|id| id.to_string()),
@@ -492,6 +493,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             })
             .unwrap_or_default();
         let principal = runtime_core::runtime_backend::RuntimeExecutionPrincipal {
+            record_permissions: None,
             caller: None,
             workspace_id: context.workspace_id.to_string(),
             actor_id: context.actor_id.map(|value| value.to_string()),

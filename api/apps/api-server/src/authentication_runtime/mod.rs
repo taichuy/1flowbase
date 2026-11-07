@@ -306,6 +306,7 @@ impl AuthenticationProvider {
                 domain::SYSTEM_SCOPE_ID,
                 &self.descriptor.contribution_id,
                 RuntimeExecutionPrincipal {
+                    record_permissions: None,
                     caller: None,
                     workspace_id: domain::SYSTEM_SCOPE_ID.to_string(),
                     actor_id: None,
