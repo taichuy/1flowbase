@@ -84,7 +84,7 @@ impl From<EventDefinitionRecord> for EventCatalogEntry {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateEventDefinitionInput {
     pub name: String,
@@ -94,7 +94,7 @@ pub struct CreateEventDefinitionInput {
 }
 
 /// Event identity and creator are immutable; the payload schema is the current definition.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateEventDefinitionInput {
     pub name: String,

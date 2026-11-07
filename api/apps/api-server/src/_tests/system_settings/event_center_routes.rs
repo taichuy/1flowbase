@@ -86,6 +86,93 @@ fn definition() -> Value {
 }
 
 #[tokio::test]
+async fn event_center_mcp_rules_use_declared_dto_fields() {
+    let state = event_state().await;
+    let app = crate::app_with_state_and_config(state, &test_config());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let (status, catalog) = request(
+        &app,
+        "GET",
+        "/api/console/mcp/interface-capabilities?bindable_only=true",
+        &cookie,
+        "",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{catalog}");
+    let entries = catalog["data"].as_array().unwrap();
+    let mut definition_id = String::new();
+    for operation in ["events.definitions.create", "events.definitions.update"] {
+        let entry = entries
+            .iter()
+            .find(|entry| entry["interface_id"] == operation)
+            .unwrap();
+        let descriptors = entry["parameter_descriptors"].as_array().unwrap();
+        for name in ["name", "description", "enabled", "interface_event"] {
+            assert!(
+                descriptors.iter().any(|field| field["name"] == name),
+                "{operation} must expose the actual DTO field {name}: {entry}"
+            );
+        }
+        assert!(
+            !descriptors.iter().any(|field| field["name"] == "body"),
+            "an opaque body descriptor would create a second body object"
+        );
+        let binding =
+            &entry["parameter_schema"]["properties"]["body"]["properties"]["interface_event"];
+        assert_eq!(
+            binding["properties"]["phase"]["enum"],
+            json!(["before", "completion"])
+        );
+        assert_eq!(
+            binding["properties"]["results"]["items"]["enum"],
+            json!(["completed", "failed", "rejected", "cancelled"])
+        );
+        let mappings: Vec<_> = descriptors
+            .iter()
+            .map(|field| {
+                json!({
+                    "interface_param":field["name"], "mcp_param":field["name"],
+                    "required":field["required"]
+                })
+            })
+            .collect();
+        let mut arguments = definition();
+        if operation.ends_with("update") {
+            arguments["event_definition_id"] = json!(definition_id);
+            arguments["enabled"] = json!(false);
+        }
+        let (status, result) = request(
+            &app,
+            "POST",
+            "/api/console/mcp/debug/execute",
+            &cookie,
+            &csrf,
+            Some(json!({
+                "interface_id":operation,
+                "debug_response_mode":"tool_result",
+                "mcp_arguments":arguments,
+                "input_mapping":{"mappings":mappings},
+                "output_mapping":{}
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{operation}: {result}");
+        if operation.ends_with("create") {
+            definition_id = result["data"]["id"].as_str().unwrap().to_owned();
+            assert_eq!(result["data"]["enabled"], true);
+        } else {
+            assert_eq!(result["data"]["id"], definition_id);
+            assert_eq!(result["data"]["enabled"], false);
+        }
+        assert_eq!(
+            result["data"]["interface_event"]["interface_id"],
+            "applications.list"
+        );
+    }
+}
+
+#[tokio::test]
 async fn event_center_routes_keep_definition_configuration_separate_from_publication() {
     let state = event_state().await;
     let app = crate::app_with_state_and_config(state.clone(), &test_config());

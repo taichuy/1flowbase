@@ -13,7 +13,7 @@ on:
         description: Full acceptance or a scoped evidence supplement
         type: choice
         default: full
-        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish]
+        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp]
 
       reused_api_tree:
         description: Unchanged api tree hash from the prior green host evidence (finish scope only)
@@ -35,7 +35,7 @@ env:
 
 jobs:
   acceptance:
-    if: inputs.scope != 'event-business-finish' && inputs.scope != 'event-business-host' && inputs.scope != 'event-business' && inputs.scope != 'event-center' && inputs.scope != 'event-center-supplement' && inputs.scope != 'system-event-center' && inputs.scope != 'system-event-center-supplement' && inputs.scope != 'system-event-center-lineage'
+    if: inputs.scope != 'event-business-mcp' && inputs.scope != 'event-business-finish' && inputs.scope != 'event-business-host' && inputs.scope != 'event-business' && inputs.scope != 'event-center' && inputs.scope != 'event-center-supplement' && inputs.scope != 'system-event-center' && inputs.scope != 'system-event-center-supplement' && inputs.scope != 'system-event-center-lineage'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -162,7 +162,7 @@ jobs:
           path: tmp/test-governance/event-lifecycle/ci
 
   event-center-acceptance:
-    if: inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'event-center' || inputs.scope == 'event-center-supplement' || (inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
+    if: inputs.scope == 'event-business-mcp' || inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'event-center' || inputs.scope == 'event-center-supplement' || (inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     services:
@@ -281,7 +281,9 @@ jobs:
               failed=1
             fi
           }
-          if [ "$EVIDENCE_SCOPE" = event-business-finish ]; then
+          if [ "$EVIDENCE_SCOPE" = event-business-mcp ]; then
+            run_tests rules-mcp --test api_system_settings event_center
+          elif [ "$EVIDENCE_SCOPE" = event-business-finish ]; then
             [[ "$REUSED_API_TREE" =~ ^[0-9a-f]{40}$ ]]
             git rev-parse HEAD:api > "$evidence/api-tree-sha.txt"
             test "$(cat "$evidence/api-tree-sha.txt")" = "$REUSED_API_TREE"
@@ -381,12 +383,12 @@ jobs:
             run_tests command-workflow --lib communication_runtime::commands
             run_tests applications --test api_application workflow
           fi
-          if [ "$EVIDENCE_SCOPE" != event-business-finish ] && [ "$EVIDENCE_SCOPE" != event-business-host ] && [ "$EVIDENCE_SCOPE" != event-business ] && [ "$EVIDENCE_SCOPE" != system-event-center-supplement ] && [ "$EVIDENCE_SCOPE" != system-event-center-lineage ]; then
+          if [ "$EVIDENCE_SCOPE" != event-business-mcp ] && [ "$EVIDENCE_SCOPE" != event-business-finish ] && [ "$EVIDENCE_SCOPE" != event-business-host ] && [ "$EVIDENCE_SCOPE" != event-business ] && [ "$EVIDENCE_SCOPE" != system-event-center-supplement ] && [ "$EVIDENCE_SCOPE" != system-event-center-lineage ]; then
             run_tests communications --test api_private_routes routes::communications
           fi
           test "$failed" = 0
       - name: Build matching system-event local verification candidate
-        if: (inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
+        if: (inputs.scope == 'event-business-mcp' || inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage')
         shell: bash
         run: |
           set -euo pipefail
