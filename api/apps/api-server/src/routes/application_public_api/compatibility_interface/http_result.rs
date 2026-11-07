@@ -61,8 +61,8 @@ impl CompatibilityProtocolTargetError {
     }
 }
 impl InterfaceContract for CompatibilityProtocolTargetError {
-    const CONTRACT_ID: &'static str = CompatibilityBlockingTargetError::CONTRACT_ID;
-    const CONTRACT_VERSION: &'static str = CompatibilityBlockingTargetError::CONTRACT_VERSION;
+    const CONTRACT_ID: &'static str = "application-compatibility-protocol-error";
+    const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<Value> {
         CompatibilityBlockingTargetError::managed_projection_schema()
     }
@@ -146,10 +146,10 @@ impl CompatibilityProtocolOutput {
 }
 
 impl InterfaceContract for CompatibilityProtocolOutput {
-    // The prepared wire document is private adapter state. Preserve the existing
-    // canonical/managed contract identity and its exact legacy projection.
-    const CONTRACT_ID: &'static str = CompatibilityBlockingOutput::CONTRACT_ID;
-    const CONTRACT_VERSION: &'static str = CompatibilityBlockingOutput::CONTRACT_VERSION;
+    // Distinct Rust carriers need distinct contract identities. The safe managed
+    // fields remain the legacy run projection; the prepared HTTP JSON stays private.
+    const CONTRACT_ID: &'static str = "application-compatibility-protocol-output";
+    const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<Value> {
         CompatibilityBlockingOutput::managed_projection_schema()
     }

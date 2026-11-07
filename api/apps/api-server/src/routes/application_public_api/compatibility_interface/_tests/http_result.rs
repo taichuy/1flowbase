@@ -1,5 +1,8 @@
 use super::*;
 use control_plane::application_public_api::native::{NativeRunStatus, NativeUsage};
+use interface_runtime::{
+    ManagedInterfaceFreezeFuture, ManagedInterfaceFreezeRequest, ManagedInterfaceInvocationFactory,
+};
 
 fn run() -> NativeRunResult {
     NativeRunResult {
@@ -192,6 +195,93 @@ fn fixture_registry() -> Arc<CompiledInterfaceRegistry> {
     // Keep these ports in the public_api fixture group while exercising the real
     // compiler and typed handlers. Model execution is outside these test cases.
     super::super::compile_registry(Arc::new(WaitingPort), Arc::new(FixtureModelsPort)).unwrap()
+}
+
+struct RegistryOnlyManagedFactory;
+impl ManagedInterfaceInvocationFactory for RegistryOnlyManagedFactory {
+    fn freeze(&self, _: ManagedInterfaceFreezeRequest) -> ManagedInterfaceFreezeFuture<'_> {
+        panic!("managed registry publication must not invoke handlers")
+    }
+}
+
+fn assert_typed_managed_contract<T: InterfaceContract>(registry: &CompiledInterfaceRegistry) {
+    let descriptor = registry
+        .managed_contracts()
+        .find(|descriptor| {
+            descriptor.contract.contract_id() == T::CONTRACT_ID
+                && descriptor.contract.version() == T::CONTRACT_VERSION
+        })
+        .expect("the carrier has its own published managed descriptor");
+    assert_eq!(descriptor.rust_type, std::any::type_name::<T>());
+    assert_eq!(
+        descriptor.schema.as_deref(),
+        T::managed_projection_schema().as_ref()
+    );
+}
+
+#[test]
+fn compatibility_unary_and_stream_carriers_publish_distinct_typed_managed_contracts() {
+    let snapshot = fixture_registry();
+    let operations = snapshot
+        .definitions()
+        .map(|definition| definition.authorization_operation().clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    let owners = snapshot
+        .definitions()
+        .map(|definition| definition.owner().clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut compiler =
+        RegistryCompiler::new(snapshot.graph_fingerprint().clone(), operations, owners)
+            .with_managed_invocations(Arc::new(RegistryOnlyManagedFactory));
+    compiler.absorb_snapshot(&snapshot).unwrap();
+    // This is the production publication path that rejects equal contract
+    // identities backed by different Rust carriers, even if their schemas match.
+    let registry = compiler
+        .compile()
+        .expect("unary protocol carriers and streaming run carriers publish together");
+    assert_typed_managed_contract::<CompatibilityProtocolOutput>(&registry);
+    assert_typed_managed_contract::<CompatibilityProtocolTargetError>(&registry);
+    assert_typed_managed_contract::<CompatibilityBlockingOutput>(&registry);
+    assert_typed_managed_contract::<CompatibilityBlockingTargetError>(&registry);
+    assert_eq!(registry.document_operations().count(), 17);
+}
+
+#[test]
+fn distinct_protocol_contracts_preserve_legacy_safe_managed_fields() {
+    let run = run();
+    let output = CompatibilityProtocolOutput::project(
+        run.clone(),
+        Some(openai::chat_protocol_projection(
+            "actual-model".into(),
+            None,
+            None,
+        )),
+    )
+    .unwrap();
+    assert_eq!(
+        CompatibilityProtocolOutput::managed_projection_schema(),
+        CompatibilityBlockingOutput::managed_projection_schema()
+    );
+    assert_eq!(
+        output.project_for_managed_hook(),
+        CompatibilityBlockingOutput(run).project_for_managed_hook()
+    );
+    let native_error = || {
+        NativeApiError::new(
+            axum::http::StatusCode::CONFLICT,
+            "fixture_failure",
+            "actual failure message",
+        )
+    };
+    let error = CompatibilityProtocolTargetError::from(native_error());
+    assert_eq!(
+        CompatibilityProtocolTargetError::managed_projection_schema(),
+        CompatibilityBlockingTargetError::managed_projection_schema()
+    );
+    assert_eq!(
+        error.project_for_managed_hook(),
+        CompatibilityBlockingTargetError(native_error()).project_for_managed_hook()
+    );
 }
 
 #[tokio::test]
