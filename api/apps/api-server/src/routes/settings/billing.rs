@@ -31,6 +31,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use time::{OffsetDateTime, Time};
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
@@ -42,7 +43,110 @@ use crate::{
     },
 };
 
-#[derive(Debug, Deserialize)]
+/// Existing `time::OffsetDateTime` serde wire tuple, without an RFC3339 adapter.
+/// Slots: year, ordinal day, hour, minute, second, nanosecond, offset hours,
+/// offset minutes past the hour, and offset seconds past the minute.
+pub struct BillingOffsetDateTimeWire;
+impl utoipa::PartialSchema for BillingOffsetDateTimeWire {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        use utoipa::openapi::schema::{ArrayBuilder, ObjectBuilder, Type};
+        let slots = [
+            "Year",
+            "Ordinal day",
+            "Hour",
+            "Minute",
+            "Second",
+            "Nanosecond",
+            "Offset hours",
+            "Offset minutes past the hour",
+            "Offset seconds past the minute",
+        ];
+        ArrayBuilder::new()
+            .items(ObjectBuilder::new().schema_type(Type::Integer))
+            .prefix_items(slots.map(|slot| {
+                ObjectBuilder::new()
+                    .schema_type(Type::Integer)
+                    .description(Some(slot))
+                    .build()
+            }))
+            .min_items(Some(9))
+            .max_items(Some(9))
+            .build()
+            .into()
+    }
+}
+impl ToSchema for BillingOffsetDateTimeWire {}
+
+// Schema-only DTOs describe the exact existing external record/summary wire
+// fields. HTTP handlers keep serializing their original owner types unchanged.
+/// Wire fields of `control_plane::ports::CreditAccountRecord`.
+#[derive(ToSchema)]
+pub struct BillingCreditAccountResponse {
+    pub id: Uuid,
+    pub workspace_id: Uuid,
+    pub user_id: Uuid,
+    pub credit_unit: String,
+    pub charge_enabled: bool,
+    pub current_balance: String,
+    pub reserved_amount: String,
+    pub available_balance: String,
+    pub credit_insufficient: bool,
+    pub revision: i64,
+    pub created_at: BillingOffsetDateTimeWire,
+    pub updated_at: BillingOffsetDateTimeWire,
+}
+
+/// Wire fields of `control_plane::ports::CreditTransactionRecord`.
+#[derive(ToSchema)]
+pub struct BillingCreditTransactionResponse {
+    pub id: Uuid,
+    pub transaction_id: Uuid,
+    pub account_id: Uuid,
+    pub workspace_id: Uuid,
+    pub user_id: Uuid,
+    pub billing_session_id: Option<Uuid>,
+    pub actor_user_id: Option<Uuid>,
+    pub actor_plugin_id: Option<String>,
+    pub transaction_type: String,
+    pub amount: String,
+    pub balance_after: String,
+    pub reserved_after: String,
+    pub credit_unit: String,
+    pub reason: String,
+    pub source_type: Option<String>,
+    pub source_id: Option<String>,
+    pub idempotency_key: String,
+    pub status: String,
+    pub metadata: Value,
+    pub created_at: BillingOffsetDateTimeWire,
+}
+
+/// Existing delete acknowledgement emitted by the billing interface owner.
+#[derive(ToSchema)]
+pub struct BillingPricingRuleDeleteResponse {
+    pub deleted: bool,
+}
+
+/// Wire fields of `model_pricing_catalog::PricingRuleInstallSummary`.
+#[derive(ToSchema)]
+pub struct BillingPricingCatalogImportResponse {
+    pub inserted: usize,
+    pub skipped: usize,
+    pub updated: usize,
+    pub deleted: usize,
+}
+
+/// Wire fields of `control_plane::ports::PricingCatalogSyncSummary`.
+#[derive(ToSchema)]
+pub struct BillingPricingCatalogSyncResponse {
+    pub inserted: usize,
+    pub updated: usize,
+    pub unchanged: usize,
+    pub retired: usize,
+}
+
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 pub struct PricingRuleQuery {
     pub(crate) provider_code: Option<String>,
     pub(crate) upstream_model_id: Option<String>,
@@ -52,7 +156,7 @@ pub struct PricingRuleQuery {
     pub(crate) page_size: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PricingRulesPageResponse {
     pub(crate) items: Vec<PricingRuleResponse>,
     pub(crate) total_count: i64,
@@ -60,7 +164,8 @@ pub struct PricingRulesPageResponse {
     pub(crate) page_size: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 pub struct PricingCatalogQuery {
     /// Return counts without downloading pricing rule pages.
     pub(crate) metadata_only: Option<bool>,
@@ -70,7 +175,7 @@ pub struct PricingCatalogQuery {
     pub(crate) page_size: Option<usize>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PricingCatalogPageResponse {
     pub(crate) schema_version: &'static str,
     pub(crate) catalog_version: String,
@@ -81,7 +186,7 @@ pub struct PricingCatalogPageResponse {
     pub(crate) page_size: usize,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PricingRuleBody {
     pub id: Option<Uuid>,
@@ -96,8 +201,10 @@ pub struct PricingRuleBody {
     pub cache_write_token_unit_size: i64,
     pub cache_write_token_unit_price: String,
     pub currency_code: Option<String>,
+    #[schema(value_type = String, format = DateTime)]
     #[serde(with = "time::serde::rfc3339")]
     pub effective_from: OffsetDateTime,
+    #[schema(value_type = Option<String>, format = DateTime)]
     #[serde(with = "time::serde::rfc3339::option")]
     pub effective_to: Option<OffsetDateTime>,
     pub timezone: String,
@@ -114,7 +221,7 @@ pub struct PricingRuleBody {
     pub extensions: Option<Value>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PricingRuleResponse {
     pub id: Uuid,
     pub provider_code: String,
@@ -128,8 +235,10 @@ pub struct PricingRuleResponse {
     pub cache_write_token_unit_size: i64,
     pub cache_write_token_unit_price: String,
     pub currency_code: String,
+    #[schema(value_type = String, format = DateTime)]
     #[serde(with = "time::serde::rfc3339")]
     pub effective_from: OffsetDateTime,
+    #[schema(value_type = Option<String>, format = DateTime)]
     #[serde(with = "time::serde::rfc3339::option")]
     pub effective_to: Option<OffsetDateTime>,
     pub timezone: String,
@@ -145,7 +254,9 @@ pub struct PricingRuleResponse {
     pub source_checksum: Option<String>,
     pub extensions: Value,
     pub created_by: Option<Uuid>,
+    #[schema(value_type = BillingOffsetDateTimeWire)]
     pub created_at: OffsetDateTime,
+    #[schema(value_type = BillingOffsetDateTimeWire)]
     pub updated_at: OffsetDateTime,
 }
 
@@ -374,6 +485,15 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/console/settings/billing/pricing-rules",
+    operation_id = "billing.pricing_rules.list",
+    summary = "List billing pricing rules",
+    description = "List billing pricing rules in the system backend.",
+    params(PricingRuleQuery),
+    responses((status = 200, body = PricingRulesPageResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
 pub async fn list_pricing_rules(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -392,6 +512,15 @@ pub async fn list_pricing_rules(
     };
     Ok(Json(ApiSuccess::new(response)))
 }
+#[utoipa::path(
+    post,
+    path = "/api/console/settings/billing/pricing-rules",
+    operation_id = "billing.pricing_rules.create",
+    summary = "Create billing pricing rules",
+    description = "Create billing pricing rules in the system backend.",
+    request_body = PricingRuleBody,
+    responses((status = 200, body = PricingRuleResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
 pub async fn create_pricing_rule(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -410,6 +539,16 @@ pub async fn create_pricing_rule(
     };
     Ok(Json(ApiSuccess::new(response)))
 }
+#[utoipa::path(
+    patch,
+    path = "/api/console/settings/billing/pricing-rules/{id}",
+    operation_id = "billing.pricing_rules.update",
+    summary = "Update billing pricing rules",
+    description = "Update billing pricing rules in the system backend.",
+    params(("id" = Uuid, Path, description = "Pricing rule identifier")),
+    request_body = PricingRuleBody,
+    responses((status = 200, body = PricingRuleResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
 pub async fn update_pricing_rule(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -429,6 +568,15 @@ pub async fn update_pricing_rule(
     };
     Ok(Json(ApiSuccess::new(response)))
 }
+#[utoipa::path(
+    delete,
+    path = "/api/console/settings/billing/pricing-rules/{id}",
+    operation_id = "billing.pricing_rules.delete",
+    summary = "Delete billing pricing rules",
+    description = "Delete billing pricing rules in the system backend.",
+    params(("id" = Uuid, Path, description = "Pricing rule identifier")),
+    responses((status = 200, body = BillingPricingRuleDeleteResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
 pub async fn delete_pricing_rule(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -448,6 +596,15 @@ pub async fn delete_pricing_rule(
     Ok(Json(ApiSuccess::new(response)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/console/settings/billing/pricing-catalog",
+    operation_id = "billing.pricing_catalog.view",
+    summary = "View billing pricing catalog",
+    description = "View billing pricing catalog in the system backend.",
+    params(PricingCatalogQuery),
+    responses((status = 200, body = PricingCatalogPageResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
 pub async fn get_pricing_catalog(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -466,10 +623,19 @@ pub async fn get_pricing_catalog(
     };
     Ok(Json(ApiSuccess::new(response)))
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ImportCatalogBody {
     pub catalog_ids: Vec<Uuid>,
 }
+#[utoipa::path(
+    post,
+    path = "/api/console/settings/billing/pricing-catalog/import",
+    operation_id = "billing.pricing_catalog.import",
+    summary = "Import billing pricing catalog",
+    description = "Import billing pricing catalog in the system backend.",
+    request_body = ImportCatalogBody,
+    responses((status = 200, body = BillingPricingCatalogImportResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
 pub async fn import_pricing_catalog(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -489,6 +655,14 @@ pub async fn import_pricing_catalog(
     Ok(Json(ApiSuccess::new(response)))
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/console/settings/billing/pricing-catalog/sync",
+    operation_id = "billing.pricing_catalog.sync",
+    summary = "Synchronize all official model prices",
+    description = "Fetch the complete official catalog and atomically update official prices and conditional rules, insert new models, and retire duplicate official records while preserving manual rules and historical IDs.",
+    responses((status = 200, body = BillingPricingCatalogSyncResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
 pub async fn sync_pricing_catalog(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -507,14 +681,26 @@ pub async fn sync_pricing_catalog(
     Ok(Json(ApiSuccess::new(response)))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
 pub struct PageQuery {
     pub(crate) limit: Option<i64>,
     pub(crate) offset: Option<i64>,
     pub(crate) user_id: Option<Uuid>,
+    #[param(value_type = Option<BillingOffsetDateTimeWire>)]
+    #[schema(value_type = Option<BillingOffsetDateTimeWire>)]
     pub(crate) before_created_at: Option<OffsetDateTime>,
     pub(crate) before_id: Option<Uuid>,
 }
+#[utoipa::path(
+    get,
+    path = "/api/console/settings/billing/credit-accounts",
+    operation_id = "billing.credit_accounts.list",
+    summary = "List billing credit accounts",
+    description = "List billing credit accounts in the system backend.",
+    params(PageQuery),
+    responses((status = 200, body = Vec<BillingCreditAccountResponse>), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
 pub async fn list_credit_accounts(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -533,6 +719,15 @@ pub async fn list_credit_accounts(
     };
     Ok(Json(ApiSuccess::new(response)))
 }
+#[utoipa::path(
+    get,
+    path = "/api/console/settings/billing/credit-accounts/{user_id}",
+    operation_id = "billing.credit_accounts.view",
+    summary = "View billing credit accounts",
+    description = "View billing credit accounts in the system backend.",
+    params(("user_id" = Uuid, Path, description = "User whose credit account is returned")),
+    responses((status = 200, body = Option<BillingCreditAccountResponse>), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
 pub async fn get_credit_account(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -551,6 +746,15 @@ pub async fn get_credit_account(
     };
     Ok(Json(ApiSuccess::new(response)))
 }
+#[utoipa::path(
+    get,
+    path = "/api/console/settings/billing/credit-ledger",
+    operation_id = "billing.credit_ledger.list",
+    summary = "List billing credit ledger",
+    description = "List billing credit ledger in the system backend.",
+    params(PageQuery),
+    responses((status = 200, body = Vec<BillingCreditTransactionResponse>), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
 pub async fn list_credit_ledger(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -570,7 +774,7 @@ pub async fn list_credit_ledger(
     Ok(Json(ApiSuccess::new(response)))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreditCommandBody {
     pub(crate) amount: Option<String>,
     pub(crate) reason: String,
@@ -580,7 +784,17 @@ pub struct CreditCommandBody {
     pub(crate) metadata: Option<Value>,
 }
 macro_rules! credit_handler {
-    ($name:ident,$input:ident,$binding_id:literal) => {
+    ($name:ident,$input:ident,$binding_id:literal,$operation_id:literal,$path:literal,$summary:literal,$description:literal) => {
+        #[utoipa::path(
+            post,
+            path = $path,
+            operation_id = $operation_id,
+            summary = $summary,
+            description = $description,
+            params(("user_id" = Uuid, Path, description = "User whose credit account receives the command")),
+            request_body = CreditCommandBody,
+            responses((status = 200, body = BillingCreditTransactionResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+        )]
         pub async fn $name(
             State(state): State<Arc<ApiState>>,
             headers: HeaderMap,
@@ -605,32 +819,56 @@ macro_rules! credit_handler {
 credit_handler!(
     grant_credit,
     GrantCredit,
-    "http.console.settings.billing.credits.grant.v1"
+    "http.console.settings.billing.credits.grant.v1",
+    "billing.credit.grant",
+    "/api/console/settings/billing/credits/{user_id}/grant",
+    "Billing credit grant",
+    "Billing credit grant in the system backend."
 );
 credit_handler!(
     charge_credit,
     ChargeCredit,
-    "http.console.settings.billing.credits.charge.v1"
+    "http.console.settings.billing.credits.charge.v1",
+    "billing.credit.charge",
+    "/api/console/settings/billing/credits/{user_id}/charge",
+    "Billing credit charge",
+    "Billing credit charge in the system backend."
 );
 credit_handler!(
     adjust_credit,
     AdjustCredit,
-    "http.console.settings.billing.credits.adjust.v1"
+    "http.console.settings.billing.credits.adjust.v1",
+    "billing.credit.adjust",
+    "/api/console/settings/billing/credits/{user_id}/adjust",
+    "Billing credit adjust",
+    "Billing credit adjust in the system backend."
 );
 credit_handler!(
     enable_charge,
     EnableCharge,
-    "http.console.settings.billing.credits.enable.v1"
+    "http.console.settings.billing.credits.enable.v1",
+    "billing.credit.enable",
+    "/api/console/settings/billing/credits/{user_id}/enable",
+    "Enable billing credit",
+    "Enable billing credit in the system backend."
 );
 credit_handler!(
     disable_charge,
     DisableCharge,
-    "http.console.settings.billing.credits.disable.v1"
+    "http.console.settings.billing.credits.disable.v1",
+    "billing.credit.disable",
+    "/api/console/settings/billing/credits/{user_id}/disable",
+    "Disable billing credit",
+    "Disable billing credit in the system backend."
 );
 credit_handler!(
     refund_credit,
     RefundCredit,
-    "http.console.settings.billing.credits.refund.v1"
+    "http.console.settings.billing.credits.refund.v1",
+    "billing.credit.refund",
+    "/api/console/settings/billing/credits/{user_id}/refund",
+    "Billing credit refund",
+    "Billing credit refund in the system backend."
 );
 
 async fn invoke(
@@ -648,3 +886,8 @@ async fn invoke(
     };
     crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
 }
+
+#[cfg_attr(test, api_test_selection::group(public_api))]
+#[cfg(test)]
+#[path = "billing/_tests/openapi_contract.rs"]
+mod openapi_contract_tests;

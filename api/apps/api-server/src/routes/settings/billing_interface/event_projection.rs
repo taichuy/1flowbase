@@ -22,11 +22,7 @@ impl ApiEventInput for BillingInput {
             Self::ImportPricingCatalog(v) => json!({"body":{"catalog_ids":v.catalog_ids}}),
             Self::SyncPricingCatalog => json!({}),
             Self::ListCreditAccounts(v) | Self::ListCreditLedger(v) => {
-                let before_created_at = v
-                    .before_created_at
-                    .map(|value| value.format(&time::format_description::well_known::Rfc3339))
-                    .transpose()
-                    .map_err(|_| Arc::<str>::from("billing-query-date-invalid"))?;
+                let before_created_at = to_value(&v.before_created_at)?;
                 json!({"query":q(json!({"limit":v.limit,"offset":v.offset,"user_id":v.user_id,"before_created_at":before_created_at,"before_id":v.before_id}))})
             }
             Self::GetCreditAccount { user_id } => json!({"path":{"user_id":user_id}}),
