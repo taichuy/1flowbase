@@ -51,7 +51,7 @@ fn operation(
         op["record_permission"]["response_handle_pointer"] = json!("/session_id");
     }
     if handler == "stream" {
-        op["stream"] = json!({"input_schema":object(json!({"data":{"type":"string"}}),vec!["data"]),"event_schema":object(json!({"ready":{"type":"boolean"},"record_id":{"type":"string"}}),vec!["ready","record_id"])});
+        op["stream"] = json!({"input_schema":object(json!({"data":{"type":"string"}}),vec!["data"]),"event_schema":object(json!({"ready":{"type":"boolean"},"record_id":{"type":"string"},"stream_id":{"type":"string"}}),vec!["ready","record_id","stream_id"])});
     } else if handler != "unmapped" {
         op["mcp"] = json!({"name":handler,"description":format!("Run fixture {handler}")});
     }

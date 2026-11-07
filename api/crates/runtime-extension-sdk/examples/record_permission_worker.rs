@@ -14,7 +14,7 @@ use std::{
     rc::Rc,
 };
 
-struct Trace(&'static str);
+struct Trace(String);
 fn trace(event: &str) {
     if let Ok(exe) = std::env::current_exe() {
         if let Ok(mut file) = std::fs::OpenOptions::new()
@@ -22,13 +22,15 @@ fn trace(event: &str) {
             .append(true)
             .open(exe.with_extension("trace"))
         {
-            let _ = writeln!(file, "{event}");
+            // Each actor process shares this file. Format first so one append writes the
+            // complete record; writeln! otherwise writes the event and newline separately.
+            let _ = file.write_all(format!("{event}\n").as_bytes());
         }
     }
 }
 impl Drop for Trace {
     fn drop(&mut self) {
-        trace(self.0);
+        trace(&self.0);
     }
 }
 type Sessions = Rc<RefCell<BTreeMap<String, (String, MultiplexResourceLease)>>>;
@@ -210,9 +212,12 @@ async fn execute(
             Ok(json!({"record_id":record,"executed":true}))
         }
         "stream" => {
-            let _cleanup = Trace("stream_cleanup");
+            sequence.set(sequence.get() + 1);
+            let stream_id = format!("{}-{}", std::process::id(), sequence.get());
+            trace(&format!("stream_start:{stream_id}"));
+            let _cleanup = Trace(format!("stream_cleanup:{stream_id}"));
             emitter
-                .event(json!({"ready":true,"record_id":record}))
+                .event(json!({"ready":true,"record_id":record,"stream_id":stream_id}))
                 .await
                 .map_err(|_| "fixture_stream".to_owned())?;
             while input.recv().await.is_some() {}

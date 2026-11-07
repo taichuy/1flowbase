@@ -12,6 +12,7 @@ use interface_runtime::{
 use runtime_core::runtime_backend::{RuntimeManagedDuplex, RuntimeManagedDuplexEvent};
 use tokio::sync::{mpsc, watch};
 struct Active<L> {
+    stream_id: String,
     lease: L,
     cancellation: watch::Receiver<bool>,
     _input: mpsc::Sender<Value>,
@@ -74,12 +75,17 @@ async fn start(f: &Fixture, root: bool, record: &str) -> Active<stream::SocketLe
         .await
         .expect("finite worker ready event deadline")
         .expect("stream ended before the worker ready event");
-    assert_eq!(ready.event, json!({"ready":true,"record_id":record}));
+    let stream_id = ready.event["stream_id"].as_str().unwrap().to_owned();
+    assert_eq!(
+        ready.event,
+        json!({"ready":true,"record_id":record,"stream_id":stream_id})
+    );
     ready
         .consumed
         .send(())
         .expect("acknowledge actual worker credit");
     Active {
+        stream_id,
         lease,
         cancellation,
         _input: input,
@@ -104,6 +110,7 @@ async fn completed<L>(active: Active<L>) {
         _input,
         _events,
         completion,
+        ..
     } = active;
     if !*cancellation.borrow() {
         tokio::time::timeout(Duration::from_secs(5), cancellation.changed())
@@ -261,6 +268,11 @@ pub(super) async fn run(f: &Fixture) {
     let member = start(f, false, &f.alpha).await;
     let root = start(f, true, &f.alpha).await;
     let neighbor = start(f, false, &f.beta).await;
+    let mut expected_streams = vec![
+        member.stream_id.clone(),
+        root.stream_id.clone(),
+        neighbor.stream_id.clone(),
+    ];
     let epoch = stream::epoch(f.installation);
     // Saving a still-allowing grant must not interrupt that user's existing terminal.
     f.policy(&f.alpha, "restricted", &["open"]).await;
@@ -279,6 +291,7 @@ pub(super) async fn run(f: &Fixture) {
     assert!(!revalidate(f, false).await);
     assert!(revalidate(f, true).await);
     let reopened = start(f, true, &f.alpha).await;
+    expected_streams.push(reopened.stream_id.clone());
     f.policy(&f.beta, "restricted", &["open"]).await;
     f.policy(&f.alpha, "restricted", &[]).await;
     for cancellation in [
@@ -300,24 +313,64 @@ pub(super) async fn run(f: &Fixture) {
     completed(reopened).await;
     completed(neighbor).await;
     f.policy(&f.beta, "restricted", &[]).await;
+    let expected: std::collections::BTreeSet<_> = expected_streams.into_iter().collect();
+    assert_eq!(
+        expected.len(),
+        4,
+        "each ready stream must have a unique identity"
+    );
+    let trace_path = f.worker.with_extension("trace");
+    let bounded_trace = || {
+        let trace = std::fs::read_to_string(&trace_path)
+            .unwrap_or_else(|error| format!("trace read failed: {error}"));
+        trace
+            .chars()
+            .rev()
+            .take(4000)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<String>()
+    };
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {
-            let traces =
-                std::fs::read_to_string(f.worker.with_extension("trace")).unwrap_or_default();
+            let traces = std::fs::read_to_string(&trace_path).unwrap_or_default();
+            let starts = traces
+                .lines()
+                .filter_map(|line| line.strip_prefix("stream_start:"))
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            let start_ids: std::collections::BTreeSet<_> = starts.iter().cloned().collect();
             let cleanups = traces
                 .lines()
-                .filter(|line| *line == "stream_cleanup")
-                .count();
-            assert!(
-                cleanups <= 4,
-                "each of four real streams must clean up once"
+                .filter_map(|line| line.strip_prefix("stream_cleanup:"))
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            let cleanup_ids: std::collections::BTreeSet<_> = cleanups.iter().cloned().collect();
+            assert_eq!(
+                starts.len(), start_ids.len(),
+                "duplicate stream start; trace_tail={}", bounded_trace()
             );
-            if cleanups == 4 {
+            assert_eq!(
+                start_ids, expected,
+                "ready identities must match actual worker starts; path={}; trace_tail={}", trace_path.display(), bounded_trace()
+            );
+            assert_eq!(
+                cleanups.len(), cleanup_ids.len(),
+                "duplicate stream cleanup; trace_tail={}", bounded_trace()
+            );
+            assert!(
+                cleanup_ids.is_subset(&expected),
+                "unexpected cleanup identity; expected={expected:?}; trace_tail={}", bounded_trace()
+            );
+            if cleanup_ids == expected {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
     .await
-    .expect("cancelled real SDK streams must release their cleanup owners");
+    .unwrap_or_else(|error| panic!(
+        "cancelled real SDK streams must each release their cleanup owner once: {error:?}; expected={expected:?}; path={}; trace_tail={}", trace_path.display(), bounded_trace()
+    ));
 }
