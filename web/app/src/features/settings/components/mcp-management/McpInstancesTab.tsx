@@ -485,6 +485,7 @@ export function McpInstancesTab({
                     </>
                   ) : canEditNode ? (
                     <Button
+                      type="text"
                       aria-label={i18nText(
                         'settingsMcpManagement',
                         'auto.edit_node'
