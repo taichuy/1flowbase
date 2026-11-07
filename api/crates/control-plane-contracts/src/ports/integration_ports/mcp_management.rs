@@ -1,6 +1,16 @@
 use super::*;
 
 #[derive(Debug, Clone)]
+pub struct ReplaceMcpInstanceDirectoryInput {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub instance_id: String,
+    pub expected_snapshot: domain::mcp_management::McpInstanceDirectory,
+    pub groups: Vec<domain::mcp_management::McpDirectoryGroup>,
+    pub bindings: Vec<domain::mcp_management::McpDirectoryBinding>,
+}
+
+#[derive(Debug, Clone)]
 pub struct CreateMcpInstanceInput {
     pub id: Uuid,
     pub actor_user_id: Uuid,
@@ -213,6 +223,17 @@ pub struct UpsertMcpClientCredentialInput {
 
 #[async_trait]
 pub trait McpManagementRepository: Send + Sync {
+    async fn get_mcp_instance_directory(
+        &self,
+        workspace_id: Uuid,
+        instance_id: &str,
+    ) -> anyhow::Result<domain::mcp_management::McpInstanceDirectory>;
+
+    async fn replace_mcp_instance_directory_atomically(
+        &self,
+        input: &ReplaceMcpInstanceDirectoryInput,
+    ) -> anyhow::Result<domain::mcp_management::McpInstanceDirectory>;
+
     async fn record_mcp_extension_bundle_import(
         &self,
         workspace_id: Uuid,

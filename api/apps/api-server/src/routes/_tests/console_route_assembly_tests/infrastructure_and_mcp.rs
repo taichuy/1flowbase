@@ -115,6 +115,16 @@ fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
                 "mcp.client_credential.delete"
             ),
             (
+                "GET",
+                "/api/console/mcp/instances/:instance_id/directory",
+                "mcp.directory.view"
+            ),
+            (
+                "PUT",
+                "/api/console/mcp/instances/:instance_id/directory",
+                "mcp.directory.replace"
+            ),
+            (
                 "POST",
                 "/api/console/mcp/instances/:instance_id/groups",
                 "mcp.groups.upsert"

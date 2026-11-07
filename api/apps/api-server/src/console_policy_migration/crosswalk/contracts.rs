@@ -298,6 +298,8 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "mcp.debug.execute",
             "mcp.discovery_policy.update",
             "mcp.discovery_policy.view",
+            "mcp.directory.view",
+            "mcp.directory.replace",
             "mcp.groups.delete",
             "mcp.groups.move",
             "mcp.groups.upsert",
@@ -529,6 +531,8 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    "mcp.directory.view",
+    "mcp.directory.replace",
     // Event Center introduces independent authority; no historical feature grant covers it.
     "events.catalog.list",
     "events.definitions.create",

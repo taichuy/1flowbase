@@ -49,7 +49,7 @@ pub struct McpClientCredentialResponse {
     pub api_key: Option<String>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct McpGroupResponse {
     pub id: String,
     pub instance_record_id: String,
@@ -130,7 +130,7 @@ pub enum McpToolExecutionTargetDto {
     },
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct McpToolBindingResponse {
     pub id: String,
     pub instance_record_id: String,

@@ -1,6 +1,7 @@
 pub(crate) mod bundles;
 pub(crate) mod bundles_interface;
 pub(crate) mod debug_execute;
+pub(crate) mod directory;
 mod dto;
 pub(crate) mod interface_catalog;
 pub(crate) mod interface_catalog_routes;
@@ -202,6 +203,17 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             .delete(
                 delete_mcp_client_credential,
                 ConsoleOperation("mcp.client_credential.delete".to_string()),
+            ),
+        )
+        .route(
+            "/mcp/instances/:instance_id/directory",
+            console_get(
+                directory::get_instance_directory,
+                ConsoleOperation("mcp.directory.view".to_string()),
+            )
+            .put(
+                directory::replace_instance_directory,
+                ConsoleOperation("mcp.directory.replace".to_string()),
             ),
         )
         .route(

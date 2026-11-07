@@ -1,4 +1,6 @@
 import {
+  type ConsoleMcpInstanceDirectory,
+  type ReplaceConsoleMcpInstanceDirectoryBody,
   type ConsoleMcpInstance,
   type ConsoleMcpClientCredential,
   type ConsoleMcpGroup,
@@ -40,6 +42,31 @@ import {
   type ConsoleMcpProxyToolDebugResponse
 } from './mcp-management-types';
 import { apiFetch, apiFetchBlob, apiFetchVoid } from '../../transport';
+
+export function fetchConsoleMcpInstanceDirectory(
+  instanceId: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpInstanceDirectory>({
+    path: `/api/console/mcp/instances/${encodeURIComponent(instanceId)}/directory`,
+    baseUrl
+  });
+}
+
+export function replaceConsoleMcpInstanceDirectory(
+  instanceId: string,
+  body: ReplaceConsoleMcpInstanceDirectoryBody,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleMcpInstanceDirectory>({
+    path: `/api/console/mcp/instances/${encodeURIComponent(instanceId)}/directory`,
+    method: 'PUT',
+    body,
+    csrfToken,
+    baseUrl
+  });
+}
 
 export function fetchConsoleMcpCatalog(baseUrl?: string) {
   return apiFetch<ConsoleMcpCatalog>({
@@ -840,5 +867,7 @@ export {
   type ConsoleMcpUpstreamDiscoveryResult,
   type ImportConsoleMcpUpstreamToolsBody,
   type ExecuteConsoleMcpProxyToolDebugBody,
-  type ConsoleMcpProxyToolDebugResponse
+  type ConsoleMcpProxyToolDebugResponse,
+  type ConsoleMcpInstanceDirectory,
+  type ReplaceConsoleMcpInstanceDirectoryBody
 } from './mcp-management-types';

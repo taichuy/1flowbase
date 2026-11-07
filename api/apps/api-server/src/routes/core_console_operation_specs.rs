@@ -389,6 +389,8 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("mcp.debug.execute", "system.mcp-management"),
     settings("mcp.discovery_policy.update", "system.mcp-management"),
     settings("mcp.discovery_policy.view", "system.mcp-management"),
+    settings("mcp.directory.view", "system.mcp-management"),
+    settings("mcp.directory.replace", "system.mcp-management"),
     settings("mcp.groups.delete", "system.mcp-management"),
     settings("mcp.groups.move", "system.mcp-management"),
     settings("mcp.groups.upsert", "system.mcp-management"),
