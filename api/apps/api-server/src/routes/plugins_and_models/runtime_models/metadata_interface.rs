@@ -27,6 +27,15 @@ impl InterfaceContract for RuntimeModelMetadataInput {
     }
 }
 
+impl crate::event_center::api_projection::ApiEventInput for RuntimeModelMetadataInput {
+    fn project_document_input(
+        &self,
+        _: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<serde_json::Value, Arc<str>> {
+        Ok(serde_json::json!({"path":{"model_code":self.model_code}}))
+    }
+}
+
 struct Handler(Arc<dyn RuntimeModelOperationPort>);
 impl
     InterfaceHandler<
@@ -113,16 +122,21 @@ pub(super) fn register(
             PrincipalProfile::User,
         ),
     )?;
-    compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new(BINDING_ID).expect("static runtime metadata binding is valid"),
-            identity,
-            contracts,
-            ProtocolProjection::http(
-                RouteIdentity::new("GET", "/api/runtime/models/:model_code/metadata")
-                    .expect("static runtime metadata route is valid"),
-            ),
+    let binding = ProtocolBinding::new(
+        BindingId::new(BINDING_ID).expect("static runtime metadata binding is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::http(
+            RouteIdentity::new("GET", "/api/runtime/models/:model_code/metadata")
+                .expect("static runtime metadata route is valid"),
         ),
+    );
+    crate::event_center::api_projection::register_static_api_event::<
+        RuntimeModelMetadataInput,
+        RuntimeDataModelMetadata,
+    >(compiler, &binding, "runtime-model-metadata-document-v1")?;
+    compiler.register_binding(
+        binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
                 .expect("static runtime authentication adapter is valid"),

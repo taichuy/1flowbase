@@ -30,6 +30,7 @@ use runtime_core::runtime_engine::RuntimeEngine;
 use storage_durable_postgres::MainDurableStore;
 
 mod error_mapping;
+pub(crate) mod event_projection;
 mod interface;
 pub(crate) mod metadata;
 pub(crate) mod metadata_interface;
@@ -168,6 +169,28 @@ impl interface::RuntimeModelOperationPort for RuntimeModelOperationAdapter {
                 .map_err(interface::RuntimeModelOperationTargetError)
         })
     }
+    fn execute_document<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: interface::RuntimeModelOperationInput,
+        document: Option<interface_runtime::DocumentOperationSession>,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        interface::RuntimeModelOperationOutput,
+                        interface::RuntimeModelOperationTargetError,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            execute_runtime_model_operation_with_document(self, principal, input, document)
+                .await
+                .map_err(interface::RuntimeModelOperationTargetError)
+        })
+    }
 }
 
 async fn execute_runtime_model_operation(
@@ -175,6 +198,26 @@ async fn execute_runtime_model_operation(
     principal: &UserPrincipal,
     input: interface::RuntimeModelOperationInput,
 ) -> Result<interface::RuntimeModelOperationOutput, ApiError> {
+    execute_runtime_model_operation_with_document(adapter, principal, input, None).await
+}
+
+async fn execute_runtime_model_operation_with_document(
+    adapter: &RuntimeModelOperationAdapter,
+    principal: &UserPrincipal,
+    input: interface::RuntimeModelOperationInput,
+    document: Option<interface_runtime::DocumentOperationSession>,
+) -> Result<interface::RuntimeModelOperationOutput, ApiError> {
+    let frozen = RuntimeModelOperationAdapter {
+        store: adapter.store.clone(),
+        runtime_engine: Arc::new(
+            adapter
+                .runtime_engine
+                .freeze_model(&input.model_code, principal.actor().current_workspace_id)
+                .map_err(map_runtime_error)?,
+        ),
+        cache_store: Arc::clone(&adapter.cache_store),
+    };
+    let adapter = &frozen;
     let resolved = resolve_runtime_operation_for_dependencies(
         adapter,
         principal.actor(),
@@ -183,6 +226,33 @@ async fn execute_runtime_model_operation(
         &input.path,
     )
     .map_err(map_runtime_error)?;
+    let (_, grant) = runtime_authorization(
+        adapter,
+        RuntimeCredential::from_principal(principal),
+        &input.model_code,
+        &resolved,
+    )
+    .await?;
+    adapter
+        .runtime_engine
+        .authorize_model_action(
+            principal.actor(),
+            &input.model_code,
+            resolved.data_action,
+            grant.as_ref(),
+        )
+        .map_err(map_runtime_error)?;
+    if let Some(document) = document {
+        // Failure in observation cannot replace the established API operation result.
+        match event_projection::prepare(adapter, principal.actor(), &input, &resolved).await {
+            Ok(snapshot) => {
+                if document.select(snapshot).is_ok() {
+                    let _ = document.observe_before(&input).await;
+                }
+            }
+            Err(_) => tracing::warn!("runtime model document observation target unavailable"),
+        }
+    }
     let credential = RuntimeCredential::from_principal(principal);
     let record_id = match resolved.handler {
         ResolvedRuntimeOperationHandler::Core(

@@ -453,6 +453,35 @@ impl RuntimeEngine {
         )
     }
 
+    /// Freeze only the selected available model and template, retaining the existing ports.
+    /// All subsequent CRUD lookups on this execution use the same metadata and template.
+    pub fn freeze_model(&self, model_code: &str, workspace_id: Uuid) -> Result<Self> {
+        let model = self.load_runtime_model(model_code, workspace_id)?;
+        self.ensure_available(&model)?;
+        let template = self.resolve_template(&model.metadata)?;
+        let registry = RuntimeModelRegistry::default();
+        registry.rebuild(vec![model.metadata]);
+        let mut execution = self.clone();
+        execution.registry = registry;
+        execution.template_catalog =
+            crate::data_model_template_registry::DataModelTemplateCatalog::frozen(template);
+        Ok(execution)
+    }
+
+    /// The same model action and grant checks used by CRUD, before a caller observes input.
+    pub fn authorize_model_action(
+        &self,
+        actor: &domain::ActorContext,
+        model_code: &str,
+        action: RuntimeDataAction,
+        grant: Option<&RuntimeScopeGrant>,
+    ) -> Result<()> {
+        let metadata = self.load_available_metadata(model_code, actor.current_workspace_id)?;
+        ensure_runtime_record_action_allowed(&metadata, action)?;
+        resolve_access_scope(actor, action, metadata.model_id, grant)?;
+        Ok(())
+    }
+
     pub fn registry(&self) -> &RuntimeModelRegistry {
         &self.registry
     }

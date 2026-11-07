@@ -64,6 +64,15 @@ impl interface_runtime::InterfaceContract for RuntimeDataModelMetadata {
     }
 }
 
+impl crate::event_center::api_projection::ApiEventOutput for RuntimeDataModelMetadata {
+    fn project_document_output(
+        &self,
+        _: &crate::event_center::api_projection::ApiEventOperationContext,
+    ) -> Result<Value, Arc<str>> {
+        crate::event_center::api_projection::to_value(self)
+    }
+}
+
 pub(super) async fn load(
     adapter: &RuntimeModelOperationAdapter,
     actor: &domain::ActorContext,

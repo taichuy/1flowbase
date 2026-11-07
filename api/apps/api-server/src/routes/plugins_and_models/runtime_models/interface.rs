@@ -178,6 +178,15 @@ pub(crate) trait RuntimeModelOperationPort: Send + Sync + 'static {
         principal: &'a UserPrincipal,
         input: RuntimeModelOperationInput,
     ) -> RuntimeModelOperationFuture<'a>;
+
+    fn execute_document<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: RuntimeModelOperationInput,
+        _document: Option<interface_runtime::DocumentOperationSession>,
+    ) -> RuntimeModelOperationFuture<'a> {
+        self.execute(principal, input)
+    }
 }
 
 struct RuntimeModelOperationHandler {
@@ -199,9 +208,13 @@ impl
     ) -> InterfaceHandlerFuture<RuntimeModelOperationOutput, RuntimeModelOperationTargetError> {
         let port = Arc::clone(&self.port);
         Box::pin(async move {
-            port.execute(context.principal(), input)
-                .await
-                .map_err(|error| InterfaceTargetFailure::new("runtime_model_operation", error))
+            port.execute_document(
+                context.principal(),
+                input,
+                context.document_operation().cloned(),
+            )
+            .await
+            .map_err(|error| InterfaceTargetFailure::new("runtime_model_operation", error))
         })
     }
 }
@@ -319,6 +332,7 @@ pub(crate) fn compile_registry(
                 None,
             ),
         )?;
+        super::event_projection::register(&mut compiler, binding_id, &interface_id)?;
         compiler.bind_handler::<RuntimeModelOperationInput, RuntimeModelOperationOutput, RuntimeModelOperationTargetError, UserPrincipal>(
             &interface_id,
             handler,
@@ -416,7 +430,7 @@ pub(crate) async fn invoke(
     (status, Json(ApiSuccess::new(output.data))).into_response()
 }
 
-fn binding_declarations() -> [(Method, &'static str, &'static str); 5] {
+pub(super) fn binding_declarations() -> [(Method, &'static str, &'static str); 5] {
     [
         (Method::GET, "get", "http.runtime.models.dynamic.get.v1"),
         (Method::POST, "post", "http.runtime.models.dynamic.post.v1"),
