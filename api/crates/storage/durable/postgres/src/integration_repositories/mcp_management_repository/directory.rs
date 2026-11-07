@@ -133,7 +133,7 @@ impl PgControlPlaneStore {
         let now = time::OffsetDateTime::now_utc();
         for group in &input.groups {
             let old = group.id.and_then(|group_id| groups_by_id.get(&group_id));
-            sqlx::query("insert into mcp_groups (id,instance_record_id,path,display_name,description_short,enabled,sort_order,created_by,created_at,updated_by,updated_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
+            sqlx::query("insert into mcp_groups (id,instance_record_id,path,display_name,description_short,enabled,sort_order,created_by,created_at,updated_by,updated_at,scope_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,(select scope_id from mcp_instances where id=$2))")
                 .bind(group.id.unwrap_or_else(Uuid::now_v7)).bind(id).bind(&group.path)
                 .bind(&group.display_name).bind(&group.description_short).bind(group.enabled).bind(group.sort_order)
                 .bind(old.map_or(input.actor_user_id, |old| old.created_by))
@@ -144,7 +144,7 @@ impl PgControlPlaneStore {
             let old = binding
                 .id
                 .and_then(|binding_id| bindings_by_id.get(&binding_id));
-            sqlx::query("insert into mcp_tool_bindings (id,instance_record_id,tool_record_id,group_path,display_alias,visible,sort_order,created_by,created_at,updated_by,updated_at) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
+            sqlx::query("insert into mcp_tool_bindings (id,instance_record_id,tool_record_id,group_path,display_alias,visible,sort_order,created_by,created_at,updated_by,updated_at,scope_id) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,(select scope_id from mcp_instances where id=$2))")
                 .bind(binding.id.unwrap_or_else(Uuid::now_v7)).bind(id).bind(tool_record_id)
                 .bind(&binding.group_path).bind(&binding.display_alias).bind(binding.visible).bind(binding.sort_order)
                 .bind(old.map_or(input.actor_user_id, |old| old.created_by))

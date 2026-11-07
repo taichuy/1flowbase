@@ -168,7 +168,9 @@ async fn directory_operations_authorize_view_replace_independently_and_fail_clos
     );
     let policy_route = "/api/console/settings/roles/directory_editor/console-policy";
     for operation in [
-        "mcp.catalog.view",
+        "get_mcp_catalog",
+        "list_mcp_interface_capabilities",
+        "list_mcp_items",
         "mcp.directory.view",
         "mcp.directory.replace",
     ] {
