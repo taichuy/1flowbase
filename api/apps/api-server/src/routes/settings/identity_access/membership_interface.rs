@@ -991,3 +991,6 @@ mod tests {
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }
+
+#[path = "membership_interface/event_projection.rs"]
+mod event_projection;

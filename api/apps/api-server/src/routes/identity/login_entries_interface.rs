@@ -275,16 +275,25 @@ pub(crate) fn compile_registry(
             interface_runtime::PrincipalProfile::Public,
         ),
     )?;
-    compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new("http.public.auth.login-entries.v1").expect("static binding is valid"),
-            identity,
-            contracts,
-            ProtocolProjection::http(
-                RouteIdentity::new("GET", "/api/public/auth/login-entries")
-                    .expect("static route is valid"),
-            ),
+    let event_binding = ProtocolBinding::new(
+        BindingId::new("http.public.auth.login-entries.v1").expect("static binding is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::http(
+            RouteIdentity::new("GET", "/api/public/auth/login-entries")
+                .expect("static route is valid"),
         ),
+    );
+    crate::event_center::api_projection::register_static_api_event::<
+        PublicLoginEntriesInput,
+        PublicLoginEntriesOutput,
+    >(
+        &mut compiler,
+        &event_binding,
+        "graph:public-login-entries-v1",
+    )?;
+    compiler.register_binding(
+        event_binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new("api-server.public")
                 .expect("static adapter is valid"),
@@ -310,3 +319,6 @@ fn contract<T: InterfaceContract>() -> ContractIdentity {
     ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
         .expect("static interface contract is valid")
 }
+
+#[path = "login_entries_interface/event_projection.rs"]
+mod event_projection;

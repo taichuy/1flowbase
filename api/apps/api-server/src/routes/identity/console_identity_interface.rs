@@ -792,17 +792,22 @@ pub(crate) fn compile_registry(
             owner.clone(),
         ))?;
         register_authentication(&mut compiler, &interface_id)?;
-        compiler.register_binding(
-            ProtocolBinding::new(
-                BindingId::new(declaration.binding_id)
-                    .expect("static console identity binding is valid"),
-                identity,
-                contracts,
-                ProtocolProjection::http(
-                    RouteIdentity::new(declaration.method, declaration.path)
-                        .expect("static console identity route is valid"),
-                ),
+        let event_binding = ProtocolBinding::new(
+            BindingId::new(declaration.binding_id)
+                .expect("static console identity binding is valid"),
+            identity,
+            contracts,
+            ProtocolProjection::http(
+                RouteIdentity::new(declaration.method, declaration.path)
+                    .expect("static console identity route is valid"),
             ),
+        );
+        crate::event_center::api_projection::register_static_api_event::<
+            ConsoleIdentityInput,
+            ConsoleIdentityOutput,
+        >(&mut compiler, &event_binding, "graph:console-identity-v1")?;
+        compiler.register_binding(
+            event_binding,
             InvocationAdapterPlan::new(
                 AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
                     .expect("static console authentication adapter is valid"),
@@ -961,3 +966,6 @@ mod tests {
 
 #[path = "console_identity_interface/output_projection.rs"]
 mod output_projection;
+
+#[path = "console_identity_interface/event_projection.rs"]
+mod event_projection;

@@ -96,7 +96,7 @@ pub struct AuthCenterProviderTemplateResponse {
     pub display_name: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct CreateAuthCenterLoginEntryBody {
     pub auth_type: String,
     pub title: String,
@@ -105,18 +105,18 @@ pub struct CreateAuthCenterLoginEntryBody {
     pub sort_order: Option<i32>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct CopyAuthCenterLoginEntryBody {
     pub title: String,
     pub sort_order: Option<i32>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct ReorderAuthCenterLoginEntriesBody {
     pub ids: Vec<Uuid>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateAuthCenterLoginEntryEnabledBody {
     pub enabled: bool,
 }
@@ -130,7 +130,7 @@ pub struct UpdateAuthCenterLoginEntryConfigBody {
     pub extension_config: Option<Map<String, Value>>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateAuthCenterLoginEntryPublicUiBlockBody {
     pub public_ui_block: String,
 }

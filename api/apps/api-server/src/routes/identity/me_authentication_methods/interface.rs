@@ -229,3 +229,6 @@ pub(crate) fn compile_registry(
         }),
     )
 }
+
+#[path = "event_projection.rs"]
+mod event_projection;

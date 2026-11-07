@@ -472,13 +472,25 @@ pub(crate) fn compile_registry(
                 profile,
             ),
         )?;
+        let event_binding = ProtocolBinding::new(
+            BindingId::new(binding).expect("static binding"),
+            identity,
+            contracts,
+            ProtocolProjection::http(RouteIdentity::new(method, path).expect("static route")),
+        );
+        if console {
+            crate::event_center::api_projection::register_static_api_event::<
+                AuthorizeInput,
+                AuthorizeOutput,
+            >(&mut compiler, &event_binding, "graph:external-auth-v1")?;
+        } else {
+            crate::event_center::api_projection::register_static_api_event::<
+                PublicInput,
+                PublicOutput,
+            >(&mut compiler, &event_binding, "graph:external-auth-v1")?;
+        }
         compiler.register_binding(
-            ProtocolBinding::new(
-                BindingId::new(binding).expect("static binding"),
-                identity,
-                contracts,
-                ProtocolProjection::http(RouteIdentity::new(method, path).expect("static route")),
-            ),
+            event_binding,
             InvocationAdapterPlan::new(
                 AuthenticationAdapterReference::new(auth).expect("static adapter"),
                 AuthorizationAdapterReference::new(authorization).expect("static authorization"),
@@ -638,3 +650,6 @@ pub(super) async fn invoke_authorize(
     let _receipt = outcome.receipt().clone().projected();
     Ok(outcome.into_value())
 }
+
+#[path = "event_projection.rs"]
+mod event_projection;

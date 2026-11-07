@@ -1026,3 +1026,6 @@ mod tests {
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }
+
+#[path = "auth_center_interface/event_projection.rs"]
+mod event_projection;

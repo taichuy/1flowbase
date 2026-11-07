@@ -334,7 +334,10 @@ pub(crate) fn compile_registry(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn register<I: InterfaceContract, O: InterfaceContract>(
+fn register<
+    I: crate::event_center::api_projection::ApiEventInput,
+    O: crate::event_center::api_projection::ApiEventOutput,
+>(
     compiler: &mut RegistryCompiler,
     interface: &str,
     handler: &str,
@@ -402,15 +405,21 @@ fn register<I: InterfaceContract, O: InterfaceContract>(
             interface_runtime::PrincipalProfile::Public,
         ),
     )?;
-    compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new(binding).expect("static binding id is valid"),
-            identity,
-            contracts,
-            ProtocolProjection::http(
-                RouteIdentity::new(method, path).expect("static route identity is valid"),
-            ),
+    let event_binding = ProtocolBinding::new(
+        BindingId::new(binding).expect("static binding id is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::http(
+            RouteIdentity::new(method, path).expect("static route identity is valid"),
         ),
+    );
+    crate::event_center::api_projection::register_static_api_event::<I, O>(
+        compiler,
+        &event_binding,
+        "graph:public-auth-residual-v1",
+    )?;
+    compiler.register_binding(
+        event_binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new("api-server.public")
                 .expect("static authentication adapter reference is valid"),
@@ -425,3 +434,6 @@ fn contract<T: InterfaceContract>() -> ContractIdentity {
     ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
         .expect("static interface contract is valid")
 }
+
+#[path = "public_residual_interface/event_projection.rs"]
+mod event_projection;
