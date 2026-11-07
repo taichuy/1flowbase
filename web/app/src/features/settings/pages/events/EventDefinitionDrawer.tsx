@@ -1,8 +1,11 @@
-import type {
-  CreateEventDefinitionInput,
-  EventCatalogEntry,
-  InterfaceEventPhase,
-  InterfaceEventTerminal
+import {
+  getApiEventOperation,
+  listApiEventOperations,
+  type ApiEventUnavailableReason,
+  type CreateEventDefinitionInput,
+  type EventCatalogEntry,
+  type InterfaceEventPhase,
+  type InterfaceEventTerminal
 } from '@1flowbase/api-client';
 import {
   Alert,
@@ -15,12 +18,13 @@ import {
   Space,
   Switch
 } from 'antd';
+import { useQuery } from '@tanstack/react-query';
+import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useTranslation } from 'react-i18next';
 import { JsonPreviewBlock } from '../../../../shared/ui/json-preview/JsonPreviewBlock';
 
 export function EventDefinitionDrawer({
   entry,
-  catalog,
   saving,
   editable,
   error,
@@ -37,26 +41,63 @@ export function EventDefinitionDrawer({
 }) {
   const { t } = useTranslation('settingsEvents');
   const [form] = Form.useForm<CreateEventDefinitionInput>();
-  const interface_id = Form.useWatch(['interface_event', 'interface_id'], form);
+  const can = useConsoleOperationAccess();
+  const operation_id = Form.useWatch(
+    ['interface_event', 'operation_id'],
+    form
+  ) as string | undefined;
   const phase = Form.useWatch(['interface_event', 'phase'], form) as
     | InterfaceEventPhase
     | undefined;
-  const declarations = catalog.filter(
-    (item) =>
-      item.origin !== 'custom' &&
-      item.interface_event &&
-      item.payload_schema !== null &&
-      item.supported_phases.length > 0
-  );
-  const interfaces = [
-    ...new Map(
-      declarations.map((item) => [item.interface_event!.interface_id, item])
-    ).values()
-  ];
-  const phases = declarations.filter(
-    (item) => item.interface_event?.interface_id === interface_id
-  );
-  const selected = phases.find((item) => item.interface_event?.phase === phase);
+  const enabled = Form.useWatch('enabled', form) as boolean | undefined;
+  const legacy =
+    entry?.interface_event && 'interface_id' in entry.interface_event
+      ? entry.interface_event
+      : undefined;
+  const operations = useQuery({
+    queryKey: ['events', 'api-operations'],
+    queryFn: () => listApiEventOperations(),
+    enabled: editable && !legacy && can('events.api_operations.list')
+  });
+  const details = useQuery({
+    queryKey: ['events', 'api-operations', operation_id],
+    queryFn: () => getApiEventOperation(operation_id!),
+    enabled:
+      editable && !legacy && !!operation_id && can('events.api_operations.get')
+  });
+  const selected =
+    details.data?.operation_id === operation_id ? details.data : undefined;
+  const availability = phase && selected ? selected[phase] : undefined;
+  const selectedSchema = legacy
+    ? entry?.payload_schema
+    : phase === 'before'
+      ? selected?.before_schema
+      : phase === 'completion'
+        ? selected?.completion_schema
+        : undefined;
+  const hasSchema = selectedSchema !== undefined && selectedSchema !== null;
+  const binding = Form.useWatch('interface_event', form);
+  const unchangedDisabled =
+    enabled === false &&
+    entry?.interface_event !== undefined &&
+    JSON.stringify(binding) === JSON.stringify(entry.interface_event);
+  const canSave = legacy
+    ? !!entry
+    : (availability?.status === 'available' && hasSchema) || unchangedDisabled;
+  // Static references keep all backend reason translations visible to i18n hygiene.
+  const reasonLabels: Record<ApiEventUnavailableReason, string> = {
+    missing_openapi_contract: t('api_reason_missing_openapi_contract'),
+    missing_binding: t('api_reason_missing_binding'),
+    missing_typed_codec: t('api_reason_missing_typed_codec'),
+    no_workspace_principal: t('api_reason_no_workspace_principal'),
+    permission_denied: t('api_reason_permission_denied'),
+    target_unavailable: t('api_reason_target_unavailable'),
+    binary_request: t('api_reason_binary_request'),
+    binary_response: t('api_reason_binary_response'),
+    missing_streaming_terminal: t('api_reason_missing_streaming_terminal'),
+    credential_boundary: t('api_reason_credential_boundary'),
+    ambiguous_operation: t('api_reason_ambiguous_operation')
+  };
   const phaseLabels = { before: t('before'), completion: t('completion') };
   const resultLabels: Record<InterfaceEventTerminal, string> = {
     completed: t('completed'),
@@ -89,13 +130,16 @@ export function EventDefinitionDrawer({
               : { enabled: true, description: '' }
           }
           onFinish={({ name, description, enabled, interface_event }) => {
-            if (selected)
+            if (canSave)
               onSave({
                 name,
                 description: description ?? '',
                 enabled,
-                interface_event: {
-                  interface_id: interface_event.interface_id,
+                interface_event: legacy ?? {
+                  operation_id:
+                    'operation_id' in interface_event
+                      ? interface_event.operation_id
+                      : '',
                   phase: interface_event.phase,
                   ...(interface_event.phase === 'completion'
                     ? { results: interface_event.results ?? [] }
@@ -112,41 +156,79 @@ export function EventDefinitionDrawer({
           >
             <Input />
           </Form.Item>
-          <Form.Item
-            name={['interface_event', 'interface_id']}
-            label={t('interface_id')}
-            rules={[{ required: true }]}
-          >
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={interfaces.map((item) => ({
-                value: item.interface_event!.interface_id,
-                label: `${item.group_path?.join(' / ') || item.name} · ${item.interface_event!.interface_id}`
-              }))}
-              onChange={() => {
-                form.setFieldValue(['interface_event', 'phase'], undefined);
-                form.setFieldValue(['interface_event', 'results'], []);
-              }}
-              notFoundContent={t('no_interfaces')}
+          {legacy ? (
+            <Alert
+              type="info"
+              showIcon
+              title={t('legacy_rule')}
+              description={legacy.interface_id}
             />
-          </Form.Item>
-          <Form.Item
-            name={['interface_event', 'phase']}
-            label={t('interface_phase')}
-            rules={[{ required: true }]}
-          >
-            <Select
-              disabled={!interface_id || saving}
-              options={[
-                ...new Set(phases.map((item) => item.interface_event!.phase))
-              ].map((value) => ({ value, label: phaseLabels[value] }))}
-              onChange={() =>
-                form.setFieldValue(['interface_event', 'results'], [])
-              }
-            />
-          </Form.Item>
-          {phase === 'completion' && (
+          ) : (
+            <>
+              {(operations.isError || details.isError) && (
+                <Alert
+                  type="error"
+                  showIcon
+                  title={t('api_catalog_error')}
+                  action={
+                    <Button
+                      onClick={() => {
+                        void operations.refetch();
+                        if (operation_id) void details.refetch();
+                      }}
+                    >
+                      {t('refresh')}
+                    </Button>
+                  }
+                />
+              )}
+              <Form.Item
+                name={['interface_event', 'operation_id']}
+                label={t('interface_id')}
+                rules={[{ required: true }]}
+              >
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  loading={operations.isFetching}
+                  options={(operations.data ?? []).map((item) => ({
+                    value: item.operation_id,
+                    label: `${item.method.toUpperCase()} ${item.path} · ${item.name}`
+                  }))}
+                  onChange={() => {
+                    form.setFieldValue(['interface_event', 'phase'], undefined);
+                    form.setFieldValue(['interface_event', 'results'], []);
+                  }}
+                  notFoundContent={t('no_interfaces')}
+                />
+              </Form.Item>
+              <Form.Item
+                name={['interface_event', 'phase']}
+                label={t('interface_phase')}
+                rules={[{ required: true }]}
+              >
+                <Select
+                  disabled={!selected || saving}
+                  loading={details.isFetching}
+                  options={(['before', 'completion'] as const).map((value) => ({
+                    value,
+                    label: phaseLabels[value]
+                  }))}
+                  onChange={() =>
+                    form.setFieldValue(['interface_event', 'results'], [])
+                  }
+                />
+              </Form.Item>
+              {availability?.status === 'unavailable' && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  title={reasonLabels[availability.reason]}
+                />
+              )}
+            </>
+          )}
+          {!legacy && phase === 'completion' && (
             <Form.Item
               name={['interface_event', 'results']}
               label={t('results')}
@@ -171,10 +253,10 @@ export function EventDefinitionDrawer({
           >
             <Switch />
           </Form.Item>
-          {selected ? (
+          {hasSchema ? (
             <JsonPreviewBlock
               title={t('payload_schema')}
-              value={selected.payload_schema}
+              value={selectedSchema}
               maxAutoHeight={400}
             />
           ) : (
@@ -185,7 +267,7 @@ export function EventDefinitionDrawer({
               type="primary"
               htmlType="submit"
               loading={saving}
-              disabled={!selected}
+              disabled={!canSave || (legacy ? false : details.isFetching)}
             >
               {t('save')}
             </Button>
@@ -242,7 +324,10 @@ export function EventDefinitionDrawer({
                       {
                         key: 'interface_id',
                         label: t('interface_id'),
-                        children: entry.interface_event.interface_id
+                        children:
+                          'operation_id' in entry.interface_event
+                            ? entry.interface_event.operation_id
+                            : entry.interface_event.interface_id
                       },
                       {
                         key: 'interface_phase',

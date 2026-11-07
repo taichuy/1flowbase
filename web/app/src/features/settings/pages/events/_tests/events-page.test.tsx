@@ -1,5 +1,6 @@
 import '../../../../../test/fixtures/rc-util-unique-ids';
 import type {
+  ApiEventOperationDetails,
   EventCatalogEntry,
   EventRuntimeSnapshot
 } from '@1flowbase/api-client';
@@ -22,7 +23,9 @@ const api = vi.hoisted(() => ({
   listEventCatalog: vi.fn(),
   createEventDefinition: vi.fn(),
   updateEventDefinition: vi.fn(),
-  getEventRuntime: vi.fn()
+  getEventRuntime: vi.fn(),
+  listApiEventOperations: vi.fn(),
+  getApiEventOperation: vi.fn()
 }));
 const clipboard = vi.hoisted(() => ({ copy: vi.fn() }));
 vi.mock('../../../../../shared/ui/clipboard/use-clipboard-copy', () => ({
@@ -46,6 +49,8 @@ vi.mock('../../../../../shared/code-block/monaco-runtime', () => ({
 const access = vi.hoisted(() => ({
   operations: new Set([
     'events.catalog.list',
+    'events.api_operations.list',
+    'events.api_operations.get',
     'events.definitions.create',
     'events.definitions.update',
     'events.runtime.get'
@@ -110,6 +115,20 @@ const declarations: EventCatalogEntry[] = (
           }
   }
 }));
+const documented: ApiEventOperationDetails = {
+  operation_id: 'create_order',
+  method: 'POST',
+  path: '/api/console/orders',
+  name: 'Create order',
+  description: '',
+  scope: custom.scope,
+  before: { status: 'available' },
+  completion: { status: 'available' },
+  request_schema: schema,
+  result_schema: schema,
+  before_schema: declarations[0].payload_schema,
+  completion_schema: declarations[1].payload_schema
+};
 const snapshot: EventRuntimeSnapshot = {
   instance_id: 'host-instance',
   workspace_id: 'workspace',
@@ -203,11 +222,15 @@ beforeEach(async () => {
   await appI18n.changeLanguage('en_US');
   access.operations = new Set([
     'events.catalog.list',
+    'events.api_operations.list',
+    'events.api_operations.get',
     'events.definitions.create',
     'events.definitions.update',
     'events.runtime.get'
   ]);
   api.listEventCatalog.mockResolvedValue([custom]);
+  api.listApiEventOperations.mockResolvedValue([]);
+  api.getApiEventOperation.mockResolvedValue(documented);
   api.getEventRuntime.mockResolvedValue(withWorkspaceView(snapshot));
   api.createEventDefinition.mockResolvedValue({ id: 'new' });
   api.updateEventDefinition.mockResolvedValue({ id: 'definition' });
@@ -552,6 +575,7 @@ describe('event center configuration and observations', () => {
     'creates an interface rule for %s with inherited schema and no free-form contract',
     async (phase) => {
       api.listEventCatalog.mockResolvedValue([custom, ...declarations]);
+      api.listApiEventOperations.mockResolvedValue([documented]);
       renderPage();
       fireEvent.click(
         await screen.findByRole('button', { name: 'Create event' })
@@ -570,7 +594,7 @@ describe('event center configuration and observations', () => {
         within(drawer).getByRole('combobox', { name: 'Interface / operation' })
       );
       fireEvent.click(
-        await screen.findByText('interfaces / orders · orders.create')
+        await screen.findByText('POST /api/console/orders · Create order')
       );
       await waitFor(() =>
         expect(
@@ -582,7 +606,7 @@ describe('event center configuration and observations', () => {
       );
       fireEvent.click(
         await screen.findByText(
-          phase === 'before' ? 'Before execution' : 'After completion'
+          phase === 'before' ? 'Before request' : 'After completion'
         )
       );
       const editor = await within(drawer).findByTestId('schema-json-editor');
@@ -619,7 +643,7 @@ describe('event center configuration and observations', () => {
             description: '',
             enabled: false,
             interface_event: {
-              interface_id: 'orders.create',
+              operation_id: 'create_order',
               phase,
               ...(phase === 'completion'
                 ? { results: ['completed', 'failed', 'rejected', 'cancelled'] }
@@ -685,6 +709,87 @@ describe('event center configuration and observations', () => {
         {
           name: 'Changed order',
           description: 'New order',
+          enabled: false,
+          interface_event: custom.interface_event
+        },
+        'csrf'
+      )
+    );
+  });
+  test('complete API discovery supports method path and name search and shows genuine phase restrictions', async () => {
+    const restricted: ApiEventOperationDetails = {
+      ...documented,
+      operation_id: 'download_report',
+      method: 'GET',
+      path: '/api/console/reports/{id}',
+      name: 'Download report',
+      completion: { status: 'unavailable', reason: 'binary_response' },
+      completion_schema: null
+    };
+    api.listApiEventOperations.mockResolvedValue([documented, restricted]);
+    api.getApiEventOperation.mockImplementation(async (id: string) =>
+      id === restricted.operation_id ? restricted : documented
+    );
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Create event' })
+    );
+    const drawer = screen.getByRole('dialog');
+    const select = within(drawer).getByRole('combobox', {
+      name: 'Interface / operation'
+    });
+    fireEvent.mouseDown(select);
+    fireEvent.change(select, { target: { value: 'reports' } });
+    fireEvent.click(
+      await screen.findByText('GET /api/console/reports/{id} · Download report')
+    );
+    expect(
+      screen.queryByText('interfaces / api-server')
+    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        within(drawer).getByRole('combobox', { name: 'Interface phase' })
+      ).toBeEnabled()
+    );
+    fireEvent.mouseDown(
+      within(drawer).getByRole('combobox', { name: 'Interface phase' })
+    );
+    fireEvent.click(await screen.findByText('After completion'));
+    expect(
+      await within(drawer).findByText(
+        'This phase returns binary content without an event result contract.'
+      )
+    ).toBeInTheDocument();
+    expect(within(drawer).getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(api.createEventDefinition).not.toHaveBeenCalled();
+  });
+  test('existing legacy rules retain their stored schema even after the source catalog changes', async () => {
+    api.listEventCatalog.mockResolvedValue([custom]);
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    const drawer = screen.getByRole('dialog');
+    expect(
+      await within(drawer).findByText(
+        'This existing rule keeps its original interface binding and payload schema.'
+      )
+    ).toBeInTheDocument();
+    expect(
+      JSON.parse(
+        (await within(drawer).findByTestId('schema-json-editor')).textContent ??
+          ''
+      )
+    ).toEqual(custom.payload_schema);
+    expect(api.listApiEventOperations).not.toHaveBeenCalled();
+    fireEvent.change(within(drawer).getByLabelText('Name'), {
+      target: { value: 'Preserved legacy' }
+    });
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(api.updateEventDefinition).toHaveBeenCalledWith(
+        'definition',
+        {
+          name: 'Preserved legacy',
+          description: custom.description,
           enabled: false,
           interface_event: custom.interface_event
         },

@@ -5,6 +5,8 @@ import {
   eventCatalogIdentity,
   getEventRuntime,
   listEventCatalog,
+  listApiEventOperations,
+  getApiEventOperation,
   updateEventDefinition
 } from '../index';
 
@@ -162,4 +164,36 @@ test('catalog identity distinguishes typed filters and user rule IDs regardless 
   expect(eventCatalogIdentity({ ...leaf, id: 'rule-a' })).not.toBe(
     eventCatalogIdentity({ ...leaf, id: 'rule-b' })
   );
+});
+
+test('API event discovery is independent of MCP routes and preserves encoded operation identity', async () => {
+  const fetch = vi
+    .fn()
+    .mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ data: [], meta: null }), { status: 200 })
+    );
+  vi.stubGlobal('fetch', fetch);
+  await listApiEventOperations('https://example.test');
+  await getApiEventOperation(
+    'published_workflow_operation:app/a',
+    'https://example.test'
+  );
+  expect(fetch.mock.calls[0][0]).toBe(
+    'https://example.test/api/console/events/api-operations'
+  );
+  expect(fetch.mock.calls[1][0]).toBe(
+    'https://example.test/api/console/events/api-operations/published_workflow_operation%3Aapp%2Fa'
+  );
+  const input = {
+    name: 'New API rule',
+    description: '',
+    enabled: true,
+    interface_event: { operation_id: 'create_order', phase: 'before' as const }
+  };
+  await createEventDefinition(input, 'csrf', 'https://example.test');
+  expect(JSON.parse(fetch.mock.calls[2][1].body)).toEqual(input);
+  expect(
+    JSON.parse(fetch.mock.calls[2][1].body).interface_event
+  ).not.toHaveProperty('interface_id');
 });
