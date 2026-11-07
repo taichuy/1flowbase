@@ -96,8 +96,8 @@ async function expandMountAncestors(
     };
     const item = await waitFor(currentItem);
     if (item.getAttribute('aria-expanded') === 'false') {
-      const switcher = currentItem().querySelector<HTMLElement>(
-        ':scope > .ant-tree-switcher'
+      const switcher = Array.from(currentItem().children).find((child) =>
+        child.classList.contains('ant-tree-switcher')
       );
       expect(switcher).toBeInstanceOf(HTMLElement);
       await click(switcher!);
