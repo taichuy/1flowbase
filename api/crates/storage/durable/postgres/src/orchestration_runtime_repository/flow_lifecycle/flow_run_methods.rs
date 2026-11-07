@@ -103,6 +103,7 @@ impl PgControlPlaneStore {
             , raw_json_payloads) values ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, ($13::jsonb -> 0), $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, jsonb_strip_nulls(jsonb_build_object('input_payload', ($13::jsonb -> 1))) )
             returning
                 id,
+                scope_id,
                 application_id,
                 flow_id,
                 flow_draft_id,
@@ -159,7 +160,13 @@ impl PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
+        let workspace_id = row.try_get("scope_id")?;
         let flow_run = map_flow_run_record(row)?;
+        self.observe_application_lifecycle_fact(self.application_lifecycle_fact(
+            workspace_id,
+            &flow_run,
+            None,
+        ));
         if let Some(conversation_id) = input.assistant_conversation_id {
             sqlx::query(
                 "update assistant_conversations set updated_at = $2 where conversation_id = $1",
@@ -242,6 +249,7 @@ impl PgControlPlaneStore {
             on conflict {conflict_target} do nothing
             returning
                 id,
+                scope_id,
                 application_id,
                 flow_id,
                 flow_draft_id,
@@ -301,22 +309,35 @@ impl PgControlPlaneStore {
             .fetch_optional(&mut *tx)
             .await?;
 
+        let mut superseded_facts = Vec::new();
         let (flow_run, created) = if let Some(row) = inserted {
             {
+                let workspace_id = row.try_get("scope_id")?;
                 let run = map_flow_run_record(row)?;
                 if let Some(context) = &input.application_run_log_context {
                     Self::bind_application_run_log_context(&mut tx, &run, context).await?;
                     if supersede_callback_predecessors {
-                        Self::supersede_callback_predecessors_in_transaction(
+                        let superseded_ids = Self::supersede_callback_predecessors_in_transaction(
                             &mut tx,
                             &run,
                             context,
                             input.started_at,
                         )
                         .await?;
+                        superseded_facts = self
+                            .superseded_application_lifecycle_facts(&mut tx, &superseded_ids)
+                            .await?;
                     }
                 }
                 tx.commit().await?;
+                self.observe_application_lifecycle_fact(self.application_lifecycle_fact(
+                    workspace_id,
+                    &run,
+                    None,
+                ));
+                for fact in superseded_facts {
+                    self.observe_application_lifecycle_fact(Some(fact));
+                }
                 (run, true)
             }
         } else {
@@ -407,6 +428,7 @@ impl PgControlPlaneStore {
             , raw_json_payloads) values ( $1, $2, $3, $4, null, $5, $6, $7, $8, $9, $10, $11, ($12::jsonb -> 0), $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, jsonb_strip_nulls(jsonb_build_object('input_payload', ($12::jsonb -> 1))) )
             returning
                 id,
+                scope_id,
                 application_id,
                 flow_id,
                 flow_draft_id,
@@ -461,7 +483,13 @@ impl PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
+        let workspace_id = row.try_get("scope_id")?;
         let flow_run = map_flow_run_record(row)?;
+        self.observe_application_lifecycle_fact(self.application_lifecycle_fact(
+            workspace_id,
+            &flow_run,
+            None,
+        ));
         Ok(flow_run)
     }
 
@@ -488,6 +516,7 @@ impl PgControlPlaneStore {
               and compiled.document_hash = flow_runs.document_hash
             returning
                 flow_runs.id,
+                flow_runs.scope_id,
                 flow_runs.application_id,
                 flow_runs.flow_id,
                 flow_runs.flow_draft_id,
@@ -526,7 +555,13 @@ impl PgControlPlaneStore {
         .await?
         .ok_or_else(|| anyhow!("flow run compiled plan cannot be attached"))?;
 
+        let workspace_id = row.try_get("scope_id")?;
         let flow_run = map_flow_run_record(row)?;
+        self.observe_application_lifecycle_fact(self.application_lifecycle_fact(
+            workspace_id,
+            &flow_run,
+            Some(domain::FlowRunStatus::Queued),
+        ));
         Ok(flow_run)
     }
 
@@ -548,6 +583,7 @@ impl PgControlPlaneStore {
               and compiled_plan_id is null
             returning
                 id,
+                scope_id,
                 application_id,
                 flow_id,
                 flow_draft_id,
@@ -584,7 +620,18 @@ impl PgControlPlaneStore {
         .fetch_optional(self.pool())
         .await?;
 
-        let flow_run = row.map(map_flow_run_record).transpose()?;
+        let flow_run = row
+            .map(|row| -> Result<_> {
+                let workspace_id = row.try_get("scope_id")?;
+                let run = map_flow_run_record(row)?;
+                self.observe_application_lifecycle_fact(self.application_lifecycle_fact(
+                    workspace_id,
+                    &run,
+                    Some(domain::FlowRunStatus::Queued),
+                ));
+                Ok(run)
+            })
+            .transpose()?;
         if let Some(flow_run) = &flow_run {
             self.upsert_application_run_log_summary_for_flow_run(flow_run)
                 .await?;
@@ -658,6 +705,9 @@ impl PgControlPlaneStore {
     async fn update_flow_run(&self, input: &UpdateFlowRunInput) -> Result<domain::FlowRunRecord> {
         let mut tx = self.pool().begin().await?;
         lock_application_run_native_projection(&mut tx, input.flow_run_id).await?;
+        let previous = self
+            .application_lifecycle_previous_status(&mut tx, input.flow_run_id)
+            .await?;
         let row = sqlx::query(
             r#"
             update flow_runs
@@ -716,6 +766,10 @@ impl PgControlPlaneStore {
         Self::refresh_application_run_log_task_for_flow_run(&mut tx, flow_run.id).await?;
         tx.commit().await?;
 
+        self.observe_application_lifecycle_fact(previous.and_then(|(scope_id, status)| {
+            self.application_lifecycle_fact(scope_id, &flow_run, Some(status))
+        }));
+
         if is_terminal_application_run_log_status(flow_run.status) {
             self.upsert_application_conversation_messages_for_flow_run(&flow_run)
                 .await?;
@@ -731,6 +785,9 @@ impl PgControlPlaneStore {
     ) -> Result<Option<domain::FlowRunRecord>> {
         let mut tx = self.pool().begin().await?;
         lock_application_run_native_projection(&mut tx, input.flow_run_id).await?;
+        let previous = self
+            .application_lifecycle_previous_status(&mut tx, input.flow_run_id)
+            .await?;
         let row = sqlx::query(
             r#"
             update flow_runs
@@ -791,6 +848,9 @@ impl PgControlPlaneStore {
                 .await?;
             Self::refresh_application_run_log_task_for_flow_run(&mut tx, flow_run.id).await?;
             tx.commit().await?;
+            self.observe_application_lifecycle_fact(previous.and_then(|(scope_id, status)| {
+                self.application_lifecycle_fact(scope_id, &flow_run, Some(status))
+            }));
             if is_terminal_application_run_log_status(flow_run.status) {
                 self.upsert_application_conversation_messages_for_flow_run(&flow_run)
                     .await?;
@@ -1016,6 +1076,11 @@ impl PgControlPlaneStore {
         append_flow_run_recovery_state_in_transaction(&mut tx, &flow_run).await?;
 
         tx.commit().await?;
+        self.observe_application_lifecycle_fact(self.application_lifecycle_fact(
+            scope_id,
+            &flow_run,
+            Some(input.expected_status),
+        ));
         match self
             .upsert_application_conversation_messages_for_flow_run(&flow_run)
             .await
@@ -1091,3 +1156,6 @@ mod container;
 
 #[path = "flow_run_methods/container_observations.rs"]
 mod container_observations;
+
+#[path = "flow_run_methods/application_lifecycle.rs"]
+mod application_lifecycle;
