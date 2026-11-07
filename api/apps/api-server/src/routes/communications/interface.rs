@@ -1,3 +1,5 @@
+mod event_projection;
+
 use super::{provisioning, scope, FileQuery, PageQuery};
 use crate::{
     app_state::{ApiNotificationService, ApiState},
@@ -71,6 +73,12 @@ impl Input {
 }
 pub(crate) struct Output(pub Value);
 impl InterfaceContract for Input {
+    fn event_projection_schema() -> Option<Value> {
+        Some(event_projection::input_schema())
+    }
+    fn project_for_event(&self) -> Option<Value> {
+        event_projection::input(self)
+    }
     const CONTRACT_ID: &'static str = "console-communications-input";
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<Value> {
@@ -86,6 +94,12 @@ impl InterfaceContract for Input {
     }
 }
 impl InterfaceContract for Output {
+    fn event_projection_schema() -> Option<Value> {
+        Some(event_projection::output_schema())
+    }
+    fn project_for_event(&self) -> Option<Value> {
+        event_projection::output(self)
+    }
     const CONTRACT_ID: &'static str = "console-communications-output";
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<Value> {
@@ -355,11 +369,12 @@ pub(crate) fn compile_registry(
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {
-    console_interface::compile_registry(
+    console_interface::compile_registry_with_event_observation(
         "api-server.console-communications",
         "graph:console-communications-v1",
         DECLARATIONS,
         Arc::new(dependencies),
+        event_projection::OPERATIONS,
     )
 }
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[

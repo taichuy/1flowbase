@@ -236,12 +236,48 @@ where
     compile_registry_with_scope(owner, graph, declarations, port, InterfaceScope::Workspace)
 }
 
+pub(crate) fn compile_registry_with_event_observation<I, O>(
+    owner: &str,
+    graph: &str,
+    declarations: &[ConsoleInterfaceDeclaration],
+    port: Arc<dyn ConsoleInterfacePort<I, O>>,
+    event_operations: &[&str],
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
+where
+    I: InterfaceContract,
+    O: InterfaceContract,
+{
+    compile_registry_with_scope_and_events(
+        owner,
+        graph,
+        declarations,
+        port,
+        InterfaceScope::Workspace,
+        event_operations,
+    )
+}
+
 pub(crate) fn compile_registry_with_scope<I, O>(
     owner: &str,
     graph: &str,
     declarations: &[ConsoleInterfaceDeclaration],
     port: Arc<dyn ConsoleInterfacePort<I, O>>,
     scope: InterfaceScope,
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
+where
+    I: InterfaceContract,
+    O: InterfaceContract,
+{
+    compile_registry_with_scope_and_events(owner, graph, declarations, port, scope, &[])
+}
+
+fn compile_registry_with_scope_and_events<I, O>(
+    owner: &str,
+    graph: &str,
+    declarations: &[ConsoleInterfaceDeclaration],
+    port: Arc<dyn ConsoleInterfacePort<I, O>>,
+    scope: InterfaceScope,
+    event_operations: &[&str],
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
     I: InterfaceContract,
@@ -280,7 +316,7 @@ where
         );
         let handler = HandlerReference::new(format!("{}.handler", declaration.interface_id))
             .expect("static Console family handler is valid");
-        compiler.register_definition(InterfaceDefinition::new(
+        let definition = InterfaceDefinition::new(
             identity.clone(),
             contracts.clone(),
             InterfaceAccess::new(
@@ -303,7 +339,12 @@ where
             InterfaceErrorPolicy::TypedTarget,
             InterfaceLifecycle::BootSnapshot,
             owner.clone(),
-        ))?;
+        );
+        compiler.register_definition(if event_operations.contains(&declaration.interface_id) {
+            definition.with_event_observation()
+        } else {
+            definition
+        })?;
         register_authentication(&mut compiler, &interface_id)?;
         compiler.bind_handler::<I, O, ConsoleInterfaceTargetError, UserPrincipal>(
             &interface_id,
@@ -371,12 +412,57 @@ where
     )
 }
 
+pub(crate) fn compile_server_stream_registry_with_event_observation<I, S, O>(
+    owner: &str,
+    graph: &str,
+    declarations: &[ConsoleInterfaceDeclaration],
+    port: Arc<dyn ConsoleServerStreamPort<I, S, O>>,
+    event_operations: &[&str],
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
+where
+    I: InterfaceContract,
+    S: InterfaceContract,
+    O: InterfaceContract,
+{
+    compile_server_stream_registry_with_scope_and_events(
+        owner,
+        graph,
+        declarations,
+        port,
+        InterfaceScope::Workspace,
+        event_operations,
+    )
+}
+
 pub(crate) fn compile_server_stream_registry_with_scope<I, S, O>(
     owner: &str,
     graph: &str,
     declarations: &[ConsoleInterfaceDeclaration],
     port: Arc<dyn ConsoleServerStreamPort<I, S, O>>,
     scope: InterfaceScope,
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
+where
+    I: InterfaceContract,
+    S: InterfaceContract,
+    O: InterfaceContract,
+{
+    compile_server_stream_registry_with_scope_and_events(
+        owner,
+        graph,
+        declarations,
+        port,
+        scope,
+        &[],
+    )
+}
+
+fn compile_server_stream_registry_with_scope_and_events<I, S, O>(
+    owner: &str,
+    graph: &str,
+    declarations: &[ConsoleInterfaceDeclaration],
+    port: Arc<dyn ConsoleServerStreamPort<I, S, O>>,
+    scope: InterfaceScope,
+    event_operations: &[&str],
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
     I: InterfaceContract,
@@ -409,7 +495,7 @@ where
         );
         let handler = HandlerReference::new(format!("{}.handler", declaration.interface_id))
             .expect("static Console family handler is valid");
-        compiler.register_definition(InterfaceDefinition::new(
+        let definition = InterfaceDefinition::new(
             identity.clone(),
             contracts.clone(),
             InterfaceAccess::new(
@@ -432,7 +518,12 @@ where
             InterfaceErrorPolicy::TypedTarget,
             InterfaceLifecycle::BootSnapshot,
             owner.clone(),
-        ))?;
+        );
+        compiler.register_definition(if event_operations.contains(&declaration.interface_id) {
+            definition.with_event_observation()
+        } else {
+            definition
+        })?;
         register_authentication(&mut compiler, &interface_id)?;
         compiler.register_binding(
             ProtocolBinding::new(

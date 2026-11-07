@@ -4,6 +4,12 @@ use super::*;
 use crate::routes::application_runtime::managed_detail_projection;
 
 impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
+    fn event_projection_schema() -> Option<serde_json::Value> {
+        Some(super::event_projection::commands_output_schema())
+    }
+    fn project_for_event(&self) -> Option<serde_json::Value> {
+        Some(super::event_projection::commands_output(self))
+    }
     fn managed_projection_schema() -> Option<serde_json::Value> {
         schema::schema()
     }

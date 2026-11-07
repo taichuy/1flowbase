@@ -1,6 +1,12 @@
 use super::*;
 
 impl InterfaceContract for ApplicationRuntimeDebugStreamInput {
+    fn event_projection_schema() -> Option<serde_json::Value> {
+        Some(super::event_projection::stream_input_schema())
+    }
+    fn project_for_event(&self) -> Option<serde_json::Value> {
+        Some(super::event_projection::stream_input(self))
+    }
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![

@@ -5,3 +5,5 @@ mod application_runtime_debug_commands_output;
 mod application_runtime_debug_stream_event;
 mod application_runtime_debug_stream_input;
 mod application_runtime_debug_stream_output;
+
+mod event_projection;
