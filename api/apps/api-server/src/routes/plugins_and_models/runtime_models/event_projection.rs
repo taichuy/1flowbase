@@ -200,7 +200,11 @@ fn descriptor(
     let mut hash = Sha256::new();
     hash.update(serde_json::to_vec(model)?);
     hash.update(serde_json::to_vec(&spec)?);
-    let generation = hex::encode(hash.finalize());
+    let generation = hash
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     let scope_kind = match model.scope_kind {
         domain::DataModelScopeKind::Workspace => "workspace",
         domain::DataModelScopeKind::System => "system",
