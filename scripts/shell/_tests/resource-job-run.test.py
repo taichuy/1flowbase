@@ -410,10 +410,11 @@ class RealJobTests(unittest.TestCase):
         holder = self.start_process(self.fixture_argv('lock-holder'), 'holder')
         identity = self.wait_json(self.root / 'holder-ready.json')
         marker = self.root / 'must-not-start'
-        environment = dict(os.environ, XDG_RUNTIME_DIR=str(runtime))
-        environment.setdefault('DBUS_SESSION_BUS_ADDRESS', f'unix:path=/run/user/{os.getuid()}/bus')
+        environment = dict(os.environ)
         environment.pop('DEV_HEAVY_GATE_PID', None)
-        job = self.start_job([PYTHON, str(HEAVY), PYTHON, '-c',
+        # Isolate only the wrapper's lock; systemctl must keep its real runtime bus.
+        job = self.start_job(['/usr/bin/env', f'XDG_RUNTIME_DIR={runtime}',
+                              PYTHON, str(HEAVY), PYTHON, '-c',
                               f'from pathlib import Path;Path({str(marker)!r}).touch()'],
                              deadline=3, env=environment)
         # The actual wrapper must enter its real flock wait, not a mocked gate.
