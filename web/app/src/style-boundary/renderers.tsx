@@ -1,3 +1,4 @@
+import { ApplicationTemplateCatalogList } from '../features/settings/components/extension-center/ApplicationTemplateCatalogList';
 import { CommunicationChatStyleBoundaryScene } from './scene-fixtures/notifications/communications';
 import { seedStyleBoundaryCommunicationChatFetch } from './scene-fixtures/notifications/communications-fetch';
 import {
@@ -52,6 +53,35 @@ import {
 } from './scene-fixtures/common-fetch';
 import type { StyleBoundaryRuntimeScene } from './types';
 import './style-boundary-fixtures.css';
+
+function renderApplicationTemplateCatalogScene() {
+  return (
+    <div style={{ height: 600, display: 'flex', flexDirection: 'column' }}>
+      <ApplicationTemplateCatalogList
+        items={[
+          {
+            template_id: 'wiki',
+            catalog_id: 'official/wiki',
+            name: 'Wiki',
+            description: 'Knowledge workspace',
+            release_version: 1,
+            checksum: 'fixture',
+            installed_release_version: null,
+            installed_checksum: null,
+            source: 'official'
+          }
+        ]}
+        total={1}
+        loading={false}
+        failed={false}
+        hasMore={false}
+        canInstall
+        onLoadMore={async () => {}}
+        onInstall={() => {}}
+      />
+    </div>
+  );
+}
 
 function getAccountPopupChildren() {
   const items = createAccountMenuItems() ?? [];
@@ -454,6 +484,10 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
   },
   'page.embedded-apps': () =>
     renderShellScene('/embedded-apps', <EmbeddedAppsPage />),
+  'component.application-template-catalog.desktop':
+    renderApplicationTemplateCatalogScene,
+  'component.application-template-catalog.mobile':
+    renderApplicationTemplateCatalogScene,
   'page.settings-extension-center-agent-flow': () => {
     seedStyleBoundaryTemplateFetch();
     return renderRouterScene('/settings/extension-center/agent-flow');

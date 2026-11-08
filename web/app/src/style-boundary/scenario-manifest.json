@@ -3493,5 +3493,121 @@
         "containerSelector": ".communication-chat"
       }
     ]
+  },
+  {
+    "id": "component.application-template-catalog.desktop",
+    "kind": "component",
+    "title": "Application Template Catalog desktop",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/components/extension-center/ApplicationTemplateCatalogPanel.tsx",
+      "web/app/src/features/settings/components/extension-center/ApplicationTemplateCatalogList.tsx",
+      "web/app/src/features/settings/components/extension-center/application-template-catalog.css"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "header",
+        "selector": ".application-template-catalog__header",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      },
+      {
+        "id": "listy-root",
+        "selector": ".application-template-catalog__viewport .ant-listy",
+        "propertyAssertions": [
+          {
+            "property": "border-top-width",
+            "expected": "0px"
+          }
+        ]
+      },
+      {
+        "id": "listy-item",
+        "selector": ".application-template-catalog__viewport .ant-listy-item",
+        "propertyAssertions": [
+          {
+            "property": "padding-left",
+            "expected": "0px"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "list-in-viewport",
+        "type": "fully_visible",
+        "subjectSelector": ".application-template-catalog__viewport"
+      }
+    ]
+  },
+  {
+    "id": "component.application-template-catalog.mobile",
+    "kind": "component",
+    "title": "Application Template Catalog mobile",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/components/extension-center/ApplicationTemplateCatalogPanel.tsx",
+      "web/app/src/features/settings/components/extension-center/ApplicationTemplateCatalogList.tsx",
+      "web/app/src/features/settings/components/extension-center/application-template-catalog.css"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "mobile-row",
+        "selector": ".application-template-catalog__row",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      },
+      {
+        "id": "listy-root",
+        "selector": ".application-template-catalog__viewport .ant-listy",
+        "propertyAssertions": [
+          {
+            "property": "border-top-width",
+            "expected": "0px"
+          }
+        ]
+      },
+      {
+        "id": "listy-item",
+        "selector": ".application-template-catalog__viewport .ant-listy-item",
+        "propertyAssertions": [
+          {
+            "property": "padding-left",
+            "expected": "0px"
+          }
+        ]
+      },
+      {
+        "id": "mobile-label",
+        "selector": ".application-template-catalog__cell--2 .application-template-catalog__label",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "block"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "list-in-viewport",
+        "type": "fully_visible",
+        "subjectSelector": ".application-template-catalog__viewport"
+      }
+    ]
   }
 ]

@@ -4,15 +4,12 @@ import type {
   ApplicationTemplateReference
 } from '@1flowbase/api-client';
 import { useNavigate } from '@tanstack/react-router';
-import { Alert, Button, Empty, Flex, Input, Tabs, Typography } from 'antd';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { UploadOutlined } from '@ant-design/icons';
+import { Alert, Button, Flex, Input, Tabs } from 'antd';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../../state/auth-store';
-import {
-  DataTable,
-  type DataTableColumn
-} from '../../../../shared/ui/data-table/DataTable';
-import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
+import { ApplicationTemplateCatalogList } from './ApplicationTemplateCatalogList';
 import { useApplicationTemplateCatalog } from '../../api/system-templates/useSystemTemplates';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';
 import { SystemTemplateDialog } from '../system-templates/SystemTemplateDialog';
@@ -30,102 +27,44 @@ export function ApplicationTemplateCatalogPanel({
   const can = useConsoleOperationAccess();
   const canViewCatalog = can('system_templates.catalog');
   const canInstall = can('system_templates.install');
+  const canPreview = can('system_templates.preview');
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const catalog = useApplicationTemplateCatalog(canViewCatalog, { cursor, q });
+  const { isFetching, hasNextPage, fetchNextPage } = catalog;
   const [searchText, setSearchText] = useState(q ?? '');
   const [selected, setSelected] = useState<{
     name: string;
     body: ApplicationTemplateReference;
   }>();
-  const previousPagesRef = useRef<Map<string, { cursor?: string; page: number }> | null>(null);
-  if (previousPagesRef.current === null) previousPagesRef.current = new Map();
-  const previousPages = previousPagesRef.current;
-  useEffect(() => {
-    setSearchText(q ?? '');
-    previousPages.clear();
-  }, [q, previousPages]);
-  const currentPage = cursor
-    ? (previousPages.get(cursor)?.page ?? 2)
-    : 1;
+  const [file, setFile] = useState<File>();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const loadingMore = useRef(new Set<string>());
+  useEffect(() => setSearchText(q ?? ''), [q]);
+  const loadMore = useCallback(async () => {
+    const key = JSON.stringify([q, cursor]);
+    if (loadingMore.current.has(key) || isFetching || !hasNextPage) return;
+    loadingMore.current.add(key);
+    try {
+      await fetchNextPage({ cancelRefetch: false });
+    } finally {
+      loadingMore.current.delete(key);
+    }
+  }, [q, cursor, isFetching, hasNextPage, fetchNextPage]);
   const goTo = (nextCursor?: string, query = q) =>
     void navigate({
       to: '/settings/extension-center/$category',
       params: { category: 'application-templates' },
       search: { q: query || undefined, cursor: nextCursor }
     });
-  const columns = useMemo<
-    Array<DataTableColumn<ApplicationTemplateCatalogItem>>
-  >(
-    () => [
-      {
-        title: t('template_name'),
-        dataIndex: 'name',
-        key: 'name',
-        width: 220,
-        ellipsis: true
-      },
-      {
-        title: t('description'),
-        dataIndex: 'description',
-        key: 'description',
-        width: 320,
-        sizing: 'fill',
-        ellipsis: true
-      },
-      {
-        title: t('version'),
-        dataIndex: 'release_version',
-        key: 'release_version',
-        width: 100
-      },
-      {
-        title: t('installed_version'),
-        dataIndex: 'installed_release_version',
-        key: 'installed_release_version',
-        width: 150,
-        render: (_, item) =>
-          item.installed_release_version ?? t('not_installed')
-      },
-      {
-        title: t('source'),
-        dataIndex: 'source',
-        key: 'source',
-        width: 120,
-        render: (_, item) =>
-          item.source === 'builtin' ? t('source_builtin') : t('source_official')
-      },
-      {
-        title: t('action'),
-        key: 'action',
-        width: 180,
-        render: (_, item) => (
-          <Button
-            disabled={!csrfToken || !canInstall}
-            onClick={() =>
-              setSelected({
-                name: item.name,
-                body: {
-                  catalog_id: item.catalog_id,
-                  release_version: item.release_version
-                }
-              })
-            }
-          >
-            {t('install')}
-          </Button>
-        )
-      }
-    ],
-    [t, csrfToken, canInstall]
+  const items = useMemo(
+    () =>
+      catalog.data?.pages.flatMap((page) => page.application_templates) ?? [],
+    [catalog.data]
   );
-  const tableConfiguration = usePersistedDataTableConfiguration({
-    columns,
-    storageKey: 'settings.application_templates'
-  });
 
   return (
     <SettingsSectionSurface heightMode="fill">
-      <Flex vertical gap={16}>
+      <Flex vertical gap={16} className="application-template-catalog">
         <Tabs
           activeKey="application-templates"
           onChange={(category) =>
@@ -154,7 +93,6 @@ export function ApplicationTemplateCatalogPanel({
             }
           ]}
         />
-        <Typography.Title level={4}>{t('catalog_title')}</Typography.Title>
         {!canViewCatalog ? (
           <Alert type="warning" showIcon title={t('access_denied')} />
         ) : (
@@ -165,67 +103,92 @@ export function ApplicationTemplateCatalogPanel({
                 showIcon
                 title={t('catalog_load_failed')}
                 action={
-                  <Button onClick={() => void catalog.refetch()}>
+                  <Button
+                    onClick={() =>
+                      void (catalog.isFetchNextPageError
+                        ? loadMore()
+                        : catalog.refetch())
+                    }
+                  >
                     {t('catalog_retry')}
                   </Button>
                 }
               />
             )}
-            <DataTable<ApplicationTemplateCatalogItem>
-              rowKey="catalog_id"
-              columns={columns}
-              configuration={tableConfiguration}
+            <Flex
+              justify="flex-end"
+              gap={8}
+              wrap
+              className="application-template-catalog__toolbar"
+            >
+              <input
+                ref={fileInput}
+                type="file"
+                hidden
+                accept=".json,.zip,application/json,application/zip"
+                aria-label={t('upload')}
+                disabled={!csrfToken || !canPreview || !canInstall}
+                onChange={(event) => {
+                  const selectedFile = event.target.files?.[0];
+                  event.target.value = '';
+                  if (selectedFile && csrfToken && canPreview && canInstall) {
+                    setSelected(undefined);
+                    setFile(selectedFile);
+                  }
+                }}
+              />
+              <Button
+                icon={<UploadOutlined />}
+                aria-label={t('upload')}
+                disabled={!csrfToken || !canPreview || !canInstall}
+                onClick={() => fileInput.current?.click()}
+              >
+                {t('upload')}
+              </Button>
+              <Input.Search
+                allowClear
+                aria-label={t('catalog_search')}
+                placeholder={t('catalog_search')}
+                className="application-template-catalog__search"
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                onClear={() => goTo(undefined, '')}
+                onSearch={(value) => goTo(undefined, value.trim())}
+              />
+            </Flex>
+            <ApplicationTemplateCatalogList
+              key={JSON.stringify([q, cursor])}
+              items={items}
+              total={catalog.data?.pages[0]?.total ?? 0}
               loading={catalog.isFetching}
-              dataSource={catalog.data?.application_templates ?? []}
-              emptyText={<Empty description={t('catalog_empty')} />}
-              toolbar={
-                <Flex justify="flex-end" gap={8} wrap>
-                  <Input.Search
-                    allowClear
-                    aria-label={t('catalog_search')}
-                    placeholder={t('catalog_search')}
-                    style={{ width: 240 }}
-                    value={searchText}
-                    onChange={(event) => setSearchText(event.target.value)}
-                    onClear={() => goTo(undefined, '')}
-                    onSearch={(value) => goTo(undefined, value.trim())}
-                  />
-                </Flex>
-              }
-              cursorPagination={{
-                currentPage,
-                hasPreviousPage: Boolean(cursor) && !catalog.isFetching,
-                hasNextPage:
-                  Boolean(catalog.data?.next_cursor) && !catalog.isFetching,
-                previousLabel: settingsT('auto.previous_page'),
-                nextLabel: settingsT('auto.next_page'),
-                total: catalog.data?.total ?? 0,
-                onPreviousPage: () =>
-                  goTo(
-                    cursor
-                      ? previousPages.get(cursor)?.cursor
-                      : undefined
-                  ),
-                onNextPage: () => {
-                  const nextCursor = catalog.data?.next_cursor;
-                  if (!nextCursor) return;
-                  previousPages.set(nextCursor, {
-                    cursor,
-                    page: currentPage + 1
-                  });
-                  goTo(nextCursor);
-                }
+              failed={catalog.isError}
+              hasMore={catalog.hasNextPage}
+              onLoadMore={loadMore}
+              canInstall={canInstall && Boolean(csrfToken)}
+              onInstall={(item: ApplicationTemplateCatalogItem) => {
+                setFile(undefined);
+                setSelected({
+                  name: item.name,
+                  body: {
+                    catalog_id: item.catalog_id,
+                    release_version: item.release_version
+                  }
+                });
               }}
             />
           </>
         )}
       </Flex>
-      {selected && canViewCatalog && (
+      {(selected || file) && canViewCatalog && (
         <SystemTemplateDialog
           mode="import"
           template={selected}
+          file={file}
           canInstall={canInstall && Boolean(csrfToken)}
-          onClose={() => setSelected(undefined)}
+          onClose={() => {
+            setSelected(undefined);
+            setFile(undefined);
+          }}
         />
       )}
     </SettingsSectionSurface>
