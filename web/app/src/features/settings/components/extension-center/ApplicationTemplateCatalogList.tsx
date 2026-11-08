@@ -150,7 +150,8 @@ export function ApplicationTemplateCatalogList({
                       className="application-template-catalog__action"
                     >
                       <Button
-                        type="text"
+                        type="link"
+                        size="small"
                         disabled={!canInstall}
                         onClick={() => onInstall(item)}
                       >
