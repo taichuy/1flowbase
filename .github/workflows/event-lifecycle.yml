@@ -13,7 +13,7 @@ on:
         description: Full acceptance or a scoped evidence supplement
         type: choice
         default: full
-        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp, full-api-events-types, full-api-events, full-api-events-host, full-api-events-registration, full-api-events-publish, full-api-events-query, full-api-events-docs, full-api-events-integration, full-api-events-fixture-finish]
+        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp, full-api-events-types, full-api-events, full-api-events-host, full-api-events-registration, full-api-events-publish, full-api-events-query, full-api-events-docs, full-api-events-integration, full-api-events-fixture-finish, full-api-events-managed-control]
 
       reused_api_tree:
         description: Unchanged api tree hash from the prior green host evidence (finish scope only)
@@ -269,7 +269,7 @@ jobs:
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker > "$evidence/managed-worker-build.log" 2>&1 || { tail -c 7000 "$evidence/managed-worker-build.log"; exit 1; }
           echo "MANAGED_EVENT_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - name: Prepare managed record permissions runtime fixture
-        if: inputs.scope == 'full-api-events-integration' || inputs.scope == 'full-api-events-fixture-finish'
+        if: inputs.scope == 'full-api-events-integration' || inputs.scope == 'full-api-events-fixture-finish' || inputs.scope == 'full-api-events-managed-control'
         shell: bash
         run: |
           set -euo pipefail
@@ -327,7 +327,16 @@ jobs:
               failed=1
             fi
           }
-          if [ "$EVIDENCE_SCOPE" = full-api-events-fixture-finish ]; then
+          if [ "$EVIDENCE_SCOPE" = full-api-events-managed-control ]; then
+            if [ "$HOST_TYPES_OUTCOME" = success ]; then
+              run_tests api-catalog-observer --test api_private_contracts event_center
+              run_tests api-event-routes --test api_system_settings event_center
+              run_tests api-record-runtime --lib record_permission_runtime
+            else
+              echo 'Host scopes unverified: shared host test compilation failed; see host-types-check.log.' > "$evidence/host-scopes-unverified.txt"
+              failed=1
+            fi
+          elif [ "$EVIDENCE_SCOPE" = full-api-events-fixture-finish ]; then
             if [ "$HOST_TYPES_OUTCOME" = success ]; then
               run_tests api-doc-billing --test api_private_routes billing::openapi_contract_tests
               run_tests api-managed-record-integration --lib managed_services::
