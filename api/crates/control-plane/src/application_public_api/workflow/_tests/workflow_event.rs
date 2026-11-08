@@ -304,6 +304,9 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
             reason: "publication_changed"
         }
     ));
+    // The preceding republish intentionally used the default draft to prove stale rejection.
+    // Restore a valid event Start contract before testing a configuration revision.
+    repository.set_active_publication_document_snapshot(app.id, document());
     let mut changed = configuration();
     changed
         .input_mapping

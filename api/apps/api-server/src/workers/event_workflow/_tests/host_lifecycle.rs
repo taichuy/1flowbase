@@ -362,7 +362,7 @@ async fn publication_state_automatically_controls_listener_with_legacy_disabled_
         .bind(fixture.snapshot.trigger.id)
         .execute(fixture.state.store.pool())
         .await
-        .unwrap();
+        .unwrap_or_else(|_| panic!("publication state mutation must succeed"));
     let statuses = EventWorkflowStatuses::default();
     let port = interface_publication::port(
         fixture.state.store.clone(),
@@ -380,7 +380,7 @@ async fn publication_state_automatically_controls_listener_with_legacy_disabled_
             },
         )
         .await
-        .unwrap();
+        .unwrap_or_else(|_| panic!("publication state mutation must succeed"));
         loop {
             if statuses
                 .snapshot(fixture.actor.current_workspace_id)
@@ -403,7 +403,7 @@ async fn publication_state_automatically_controls_listener_with_legacy_disabled_
             },
         )
         .await
-        .unwrap();
+        .unwrap_or_else(|_| panic!("publication state mutation must succeed"));
         idle(&fixture, &statuses, fixture.snapshot.trigger.application_id).await;
         port.execute(
             &principal,
@@ -412,7 +412,7 @@ async fn publication_state_automatically_controls_listener_with_legacy_disabled_
             },
         )
         .await
-        .unwrap();
+        .unwrap_or_else(|_| panic!("publication state mutation must succeed"));
         loop {
             if statuses
                 .snapshot(fixture.actor.current_workspace_id)

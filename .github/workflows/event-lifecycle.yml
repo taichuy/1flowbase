@@ -13,7 +13,7 @@ on:
         description: Full acceptance or a scoped evidence supplement
         type: choice
         default: full
-        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp, full-api-events-types, full-api-events, full-api-events-host, full-api-events-registration, full-api-events-publish, full-api-events-query, full-api-events-docs, full-api-events-integration, full-api-events-fixture-finish, full-api-events-managed-control, full-api-events-reuse-proof, full-api-events-reuse, full-api-events-reuse-finish, full-api-events-listening]
+        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp, full-api-events-types, full-api-events, full-api-events-host, full-api-events-registration, full-api-events-publish, full-api-events-query, full-api-events-docs, full-api-events-integration, full-api-events-fixture-finish, full-api-events-managed-control, full-api-events-reuse-proof, full-api-events-reuse, full-api-events-reuse-finish, full-api-events-listening, full-api-events-listening-fix]
 
       reused_api_tree:
         description: Unchanged api tree hash from the prior accepted API evidence (finish scopes only)
@@ -261,7 +261,7 @@ jobs:
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker > "$evidence/managed-worker-build.log" 2>&1 || { tail -c 7000 "$evidence/managed-worker-build.log"; exit 1; }
           echo "MANAGED_EVENT_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - name: Prepare existing managed event worker for full API evidence
-        if: startsWith(inputs.scope, 'full-api-events') && inputs.scope != 'full-api-events-types' && inputs.scope != 'full-api-events-query' && inputs.scope != 'full-api-events-reuse-finish' && inputs.scope != 'full-api-events-listening'
+        if: startsWith(inputs.scope, 'full-api-events') && inputs.scope != 'full-api-events-types' && inputs.scope != 'full-api-events-query' && inputs.scope != 'full-api-events-reuse-finish' && inputs.scope != 'full-api-events-listening' && inputs.scope != 'full-api-events-listening-fix'
         shell: bash
         run: |
           set -euo pipefail
@@ -333,6 +333,18 @@ jobs:
               run_tests public-json-http-mcp-events --test api_system_settings event_center_public_json
             else
               echo 'Public JSON feasibility unverified: shared host test compilation failed.' > "$evidence/host-scopes-unverified.txt"
+              failed=1
+            fi
+          elif [ "$EVIDENCE_SCOPE" = full-api-events-listening-fix ]; then
+            # Only two fixture functions changed; retain 74 contracts, 3 PG and 11 dependency
+            # passes plus the six unchanged domain cases from the previous exact source.
+            run_crate_tests listening-domain-fix -p control-plane --lib event_invocation_freezes_publication_maps_context_and_deduplicates_signal
+            if [ "$HOST_TYPES_OUTCOME" = success ]; then
+              run_tests listening-body-contract --test api_private_contracts application_api::event_trigger::tests
+              run_tests listening-host --test api_private_contracts workers::event_workflow
+              run_tests listening-routes --test api_system_settings event_center
+            else
+              echo 'Listener host scopes unverified: shared test compilation failed.' > "$evidence/host-scopes-unverified.txt"
               failed=1
             fi
           elif [ "$EVIDENCE_SCOPE" = full-api-events-listening ]; then
