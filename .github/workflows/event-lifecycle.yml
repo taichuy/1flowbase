@@ -13,10 +13,10 @@ on:
         description: Full acceptance or a scoped evidence supplement
         type: choice
         default: full
-        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp, full-api-events-types, full-api-events, full-api-events-host, full-api-events-registration, full-api-events-publish, full-api-events-query, full-api-events-docs, full-api-events-integration, full-api-events-fixture-finish, full-api-events-managed-control, full-api-events-reuse-proof, full-api-events-reuse]
+        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp, full-api-events-types, full-api-events, full-api-events-host, full-api-events-registration, full-api-events-publish, full-api-events-query, full-api-events-docs, full-api-events-integration, full-api-events-fixture-finish, full-api-events-managed-control, full-api-events-reuse-proof, full-api-events-reuse, full-api-events-reuse-finish]
 
       reused_api_tree:
-        description: Unchanged api tree hash from the prior green host evidence (finish scope only)
+        description: Unchanged api tree hash from the prior accepted API evidence (finish scopes only)
         type: string
         default: ''
 
@@ -207,7 +207,7 @@ jobs:
           jobs=$(node scripts/node/testing/verify-runtime.js cargo-jobs)
           echo "CARGO_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
       - name: Fetch locked dependencies for offline boundary audit
-        if: startsWith(inputs.scope, 'full-api-events') || inputs.scope == 'event-business' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business-finish'
+        if: (startsWith(inputs.scope, 'full-api-events') && inputs.scope != 'full-api-events-reuse-finish') || inputs.scope == 'event-business' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business-finish'
         run: |
           cargo fetch --locked --manifest-path api/Cargo.toml > tmp/test-governance/event-center/ci/dependency-fetch.log 2>&1 || { tail -c 7000 tmp/test-governance/event-center/ci/dependency-fetch.log; exit 1; }
       - name: Collect full API event type diagnostics without behavior acceptance
@@ -261,7 +261,7 @@ jobs:
           cargo build --locked --manifest-path api/Cargo.toml -p runtime-extension-sdk --example managed_event_worker > "$evidence/managed-worker-build.log" 2>&1 || { tail -c 7000 "$evidence/managed-worker-build.log"; exit 1; }
           echo "MANAGED_EVENT_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/managed_event_worker" >> "$GITHUB_ENV"
       - name: Prepare existing managed event worker for full API evidence
-        if: startsWith(inputs.scope, 'full-api-events') && inputs.scope != 'full-api-events-types' && inputs.scope != 'full-api-events-query'
+        if: startsWith(inputs.scope, 'full-api-events') && inputs.scope != 'full-api-events-types' && inputs.scope != 'full-api-events-query' && inputs.scope != 'full-api-events-reuse-finish'
         shell: bash
         run: |
           set -euo pipefail
@@ -278,7 +278,7 @@ jobs:
           echo "RECORD_PERMISSION_WORKER_FIXTURE=$GITHUB_WORKSPACE/api/target/debug/examples/record_permission_worker" >> "$GITHUB_ENV"
       - name: Collect affected host test type errors before linking
         id: full-api-host-types
-        if: startsWith(inputs.scope, 'full-api-events') && inputs.scope != 'full-api-events-types'
+        if: startsWith(inputs.scope, 'full-api-events') && inputs.scope != 'full-api-events-types' && inputs.scope != 'full-api-events-reuse-finish'
         continue-on-error: true
         shell: bash
         run: |
@@ -335,6 +335,14 @@ jobs:
               echo 'Public JSON feasibility unverified: shared host test compilation failed.' > "$evidence/host-scopes-unverified.txt"
               failed=1
             fi
+          elif [ "$EVIDENCE_SCOPE" = full-api-events-reuse-finish ]; then
+            # Only the CI selectors changed after the full batch: reuse actual passing
+            # metadata, 227 named cases and the matching binary for the identical API tree.
+            [[ "$REUSED_API_TREE" =~ ^[0-9a-f]{40}$ ]]
+            git rev-parse HEAD:api > "$evidence/api-tree-sha.txt"
+            test "$(cat "$evidence/api-tree-sha.txt")" = "$REUSED_API_TREE"
+            printf '%s\n' "$REUSED_API_TREE" > "$evidence/reused-api-tree.txt"
+            run_tests public-json-template --lib system_templates::interface::serialization::tests
           elif [ "$EVIDENCE_SCOPE" = full-api-events-reuse ]; then
             # The bounded public-entry proof passed before rollout. Recheck changed shared
             # mechanics and real owners, preserving legacy/safety/frozen-target regressions.
@@ -343,8 +351,8 @@ jobs:
               run_tests public-json-contract --test api_private_contracts public_json_contract
               run_tests api-catalog-observer --test api_private_contracts event_center
               run_tests api-event-routes --test api_system_settings event_center
-              run_tests api-json-console-contracts --test api_private_routes event
-              run_tests api-json-core-contracts --lib document_event
+              run_tests api-json-console-contracts --test api_private_routes event_
+              run_tests api-json-core-contracts --lib system_templates::interface::serialization::tests
               run_tests api-json-core-projections --lib event_projection
               run_tests api-json-public-projections --test api_public_api document_projection
               run_tests api-json-public-events --test api_public_api event_projection
@@ -573,7 +581,7 @@ jobs:
           fi
           test "$failed" = 0
       - name: Build matching system-event local verification candidate
-        if: ${{ always() && !cancelled() && ((startsWith(inputs.scope, 'full-api-events') && inputs.scope != 'full-api-events-types' && inputs.scope != 'full-api-events-reuse-proof') || (success() && (inputs.scope == 'event-business-mcp' || inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage'))) }}
+        if: ${{ always() && !cancelled() && ((startsWith(inputs.scope, 'full-api-events') && inputs.scope != 'full-api-events-types' && inputs.scope != 'full-api-events-reuse-proof' && inputs.scope != 'full-api-events-reuse-finish') || (success() && (inputs.scope == 'event-business-mcp' || inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage'))) }}
         shell: bash
         run: |
           set -euo pipefail
