@@ -60,7 +60,7 @@ jobs:
 
         def snapshot(group):
             group = Path(group)
-            names = ['memory.max','memory.peak','memory.current','memory.events','memory.swap.max',
+            names = ['memory.max','memory.peak','memory.current','memory.events','memory.oom.group','memory.swap.max',
                      'memory.swap.current','memory.swap.peak','cgroup.events','cgroup.procs','cpu.stat']
             return {'at':now(),'path':str(group),'inode':group.stat().st_ino,
                     'fields':{name:(group/name).read_text().strip() for name in names}}
@@ -192,6 +192,8 @@ jobs:
                 if group.parent != parent or group.name != os.environ['CGU_UNIT']:
                     raise RuntimeError('BLOCKED: process is not inside the exact owned budget/service')
                 check_limits(value['own']); check_limits(value['parent'])
+                if value['own']['fields']['memory.oom.group'] != '1':
+                    raise RuntimeError('BLOCKED: OOMPolicy=kill did not set kernel memory.oom.group=1')
                 if not value['invocation_id'] or value['uid'] != int(os.environ['CGU_UID']):
                     raise RuntimeError('BLOCKED: unit invocation/user identity unavailable')
                 if mode == 'post' and set(map(int,value['own']['fields']['cgroup.procs'].split())) != {os.getpid()}:
@@ -244,7 +246,12 @@ jobs:
         def properties(unit):
             names = ['LoadState','ActiveState','SubState','Result','ControlGroup','InvocationID','MemoryMax','MemorySwapMax','MemoryPeak','CPUUsageNSec','ExecMainCode','ExecMainStatus']
             result = call(['sudo','-n','systemctl','show',unit,*['--property='+x for x in names]],allow_failure=True)
-            return dict(x.split('=',1) for x in result.stdout.splitlines() if '=' in x)
+            value = dict(x.split('=',1) for x in result.stdout.splitlines() if '=' in x)
+            if value.get('LoadState') == 'not-found':
+                value['RawDefaultResult'] = value.get('Result')
+                value['Result'] = None
+                value['ResultEvidence'] = 'unavailable: unit not created or already unloaded'
+            return value
 
         try:
             receipt['started_at'] = m.now()
@@ -277,9 +284,9 @@ jobs:
                 stage_env = {**safe,'CGU_UNIT':unit,'CGU_UID':str(os.getuid())}
                 row = {'stage':stage,'unit':unit,'started_at':m.now()}; receipt['stages'].append(row)
                 m.save(evidence,'receipt.json',receipt)
-                # Standard systemd services enforce both the parent and the per-stage limit.
+                # systemd 255 OOMPolicy=kill sets memory.oom.group; pre verifies the kernel value.
                 props = {'MemoryAccounting':'yes','CPUAccounting':'yes','MemoryMax':'8000000000','MemorySwapMax':'0',
-                    'OOMPolicy':'kill','MemoryOOMGroup':'yes','KillMode':'control-group','SendSIGKILL':'yes','Restart':'no',
+                    'OOMPolicy':'kill','KillMode':'control-group','SendSIGKILL':'yes','Restart':'no',
                     'RuntimeMaxSec':'30' if stage=='probe' else '2700','TimeoutStartSec':'120','TimeoutStopSec':'30',
                     'WorkingDirectory':str(root),
                     'ExecStartPre':'/usr/bin/python3 '+str(script)+' pre '+stage,
@@ -298,6 +305,7 @@ jobs:
                     (directory/'manager.stdout.log').write_text(result.stdout)
                     (directory/'manager.stderr.log').write_text(result.stderr)
                     row['systemd_run_returncode'] = result.returncode
+                    row['systemd_run_stderr_log'] = stage+'/manager.stderr.log'
                 except subprocess.TimeoutExpired:
                     row['outer_timeout'] = True
                     raise RuntimeError('systemd wait exceeded finite deadline')
@@ -306,7 +314,7 @@ jobs:
                     row['finished_at'] = m.now()
                     m.save(evidence,'receipt.json',receipt)
                 if not (directory/'pre.json').exists() or not (directory/'post.json').exists():
-                    raise RuntimeError('BLOCKED: pre/post kernel cgroup receipt missing')
+                    raise RuntimeError('BLOCKED: pre/post kernel cgroup receipt missing; systemd-run exit '+str(result.returncode)+'; stderr: '+result.stderr.strip()[-2000:])
                 pre = json.loads((directory/'pre.json').read_text())
                 post = json.loads((directory/'post.json').read_text())
                 if (directory/'pre-error.json').exists() or (directory/'post-error.json').exists():
