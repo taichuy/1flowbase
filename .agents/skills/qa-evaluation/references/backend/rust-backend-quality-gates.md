@@ -32,7 +32,7 @@
 
 ## Evidence Chain
 
-先按当前风险选择入口。`test-backend` 即使带 `--package / --lib / --filter`，也会先做全库 Rust static gate，再执行所选 Cargo 测试；无参数时测试整个 workspace。纯组件反馈可沿当前资源包装入口执行精确的原生 `cargo test -p <crate> --lib <filter>`，按仓库 runtime 配置传入 jobs / test threads；范围匹配时也可使用 `node scripts/node/verify.js backend test <shard>`，该入口不前置 static，只支持既有分片选择。
+先按当前风险选择入口。`test-backend` 即使带 `--package / --lib / --filter`，也会先做全库 Rust static gate，再执行所选 Cargo 测试；无参数时测试整个 workspace。纯组件反馈先确认用例所在的编译 target，再沿当前资源包装入口运行原生 Cargo，显式选择适用的 `--lib` 或 `--test <target>`；filter 只筛运行用例，`--lib` 仍可能编译整个宿主库测试。按仓库 runtime 配置传入 jobs / test threads；范围匹配时也可使用 `node scripts/node/verify.js backend test <shard>`，该入口不前置 static，只支持既有分片选择。
 
 全库 static 可独立结算；`test-backend` 和 `verify-backend all/static` 也会运行：
 
