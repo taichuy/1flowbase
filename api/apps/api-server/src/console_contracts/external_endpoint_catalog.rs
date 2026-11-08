@@ -1038,6 +1038,39 @@ pub(crate) struct ExternalEndpointCatalog {
 }
 
 impl ExternalEndpointCatalog {
+    /// The published generation owns both static controls and validated managed stream upgrades.
+    /// A canonical business variant at the same URL remains independently projected by its binding.
+    pub(crate) fn http_control_classification(
+        &self,
+        method: &str,
+        route_template: &str,
+    ) -> Option<ExternalEndpointClassification> {
+        let ExternalEndpointIdentity::Http {
+            method,
+            route_template,
+            ..
+        } = ExternalEndpointIdentity::http(method, route_template)
+        else {
+            unreachable!("HTTP constructor produces HTTP identity");
+        };
+        self.rows.values().find_map(|row| match &row.identity {
+            ExternalEndpointIdentity::Http {
+                method: candidate_method,
+                route_template: candidate_path,
+                ..
+            } if candidate_method == &method
+                && candidate_path == &route_template
+                && matches!(
+                    row.classification,
+                    ExternalEndpointClassification::OperationalControl
+                        | ExternalEndpointClassification::ProtocolControl
+                ) =>
+            {
+                Some(row.classification)
+            }
+            _ => None,
+        })
+    }
     pub(crate) fn rows(&self) -> impl ExactSizeIterator<Item = &ExternalEndpointRow> {
         self.rows.values()
     }

@@ -216,7 +216,7 @@ fn full_static_rows_remain_discoverable_independently_of_mcp_bindability_and_det
     assert_eq!(entries.len(), 2);
     for entry in entries {
         assert!(!entry.bindable);
-        let summary = project_entry(&entry, Some(&snapshot), &actor(), None, false);
+        let summary = project_entry(&entry, Some(&snapshot), &actor(), None, false, None);
         assert!(summary.operation.before.available() && summary.operation.completion.available());
         assert!(
             summary.before_schema.is_none()
@@ -438,7 +438,10 @@ fn health_and_upgrade_capabilities_use_the_existing_control_owner_without_busine
             ApiEventUnavailableReason::ProtocolControl,
         ),
     ] {
-        assert_eq!(unbound_control_reason(method, path, None), Some(reason));
+        assert_eq!(
+            unbound_control_reason(method, path, None, None),
+            Some(reason)
+        );
         let mut entry = entries(&docs()).remove(0);
         entry.interface.method = method.to_owned();
         entry.interface.path = path.to_owned();
@@ -449,7 +452,7 @@ fn health_and_upgrade_capabilities_use_the_existing_control_owner_without_busine
         assert!(detail.before_schema.is_none() && detail.completion_schema.is_none());
     }
     assert_eq!(
-        unbound_control_reason("POST", "/api/console/unknown", None),
+        unbound_control_reason("POST", "/api/console/unknown", None, None),
         None
     );
 }
@@ -471,7 +474,7 @@ fn canonical_business_http_binding_is_not_hidden_by_a_shared_sse_control_variant
     )
     .unwrap();
     assert_eq!(
-        unbound_control_reason("POST", "/api/agent/v1/runs", Some(&registry)),
+        unbound_control_reason("POST", "/api/agent/v1/runs", Some(&registry), None),
         None
     );
 }

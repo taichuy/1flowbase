@@ -225,8 +225,6 @@ impl ExtensionBootSnapshot {
             .get_or_init(|| Arc::new(catalog))
     }
 
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
     pub(crate) fn external_endpoint_catalog(
         &self,
     ) -> Option<&Arc<crate::external_endpoint_catalog::ExternalEndpointCatalog>> {

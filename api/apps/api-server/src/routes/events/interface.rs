@@ -104,6 +104,10 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
                     .as_ref()
                     .and_then(|boot| boot.interface_registry())
                     .map(|registry| registry.snapshot());
+                let external_catalog = _generation
+                    .as_ref()
+                    .and_then(|boot| boot.external_endpoint_catalog())
+                    .map(Arc::as_ref);
                 let entries = self.sources.registered_events_with_interfaces(
                     actor,
                     &self.runtime,
@@ -139,6 +143,7 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
                         &api_catalog,
                         actor,
                         operation_id,
+                        external_catalog,
                     )
                     .await?
                     .into_iter()
@@ -147,14 +152,19 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
                 }
                 match input {
                     Input::ApiOperations => Ok(serde_json::to_value(
-                        crate::event_center::api_catalog::summaries_with(&api_catalog, actor)
-                            .await?,
+                        crate::event_center::api_catalog::summaries_with(
+                            &api_catalog,
+                            actor,
+                            external_catalog,
+                        )
+                        .await?,
                     )?),
                     Input::ApiOperation(operation_id) => {
                         let details = crate::event_center::api_catalog::get_with(
                             &api_catalog,
                             actor,
                             &operation_id,
+                            external_catalog,
                         )
                         .await?
                         .ok_or(

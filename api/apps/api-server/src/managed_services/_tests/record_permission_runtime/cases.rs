@@ -65,7 +65,58 @@ async fn replay(
     )
     .await
 }
+async fn event_directory_uses_the_published_managed_stream_control_owner(f: &Fixture) {
+    let (status, response) = http(
+        &f.app,
+        &f.root,
+        "GET",
+        "/api/console/events/api-operations",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+    let rows = response["data"].as_array().unwrap();
+    let upgrade_id = "record_fixture.stream.stream-upgrade";
+    let upgrade = rows
+        .iter()
+        .find(|row| row["operation_id"] == upgrade_id)
+        .expect("installed managed upgrade must be in the complete directory");
+    assert_eq!(upgrade["method"], "GET");
+    assert_eq!(
+        upgrade["before"],
+        json!({"status":"unavailable","reason":"protocol_control"})
+    );
+    assert_eq!(upgrade["completion"], upgrade["before"]);
+    let business = rows
+        .iter()
+        .find(|row| row["operation_id"] == "record_fixture.stream")
+        .unwrap();
+    assert_eq!(business["method"], "POST");
+    assert_eq!(business["path"], upgrade["path"]);
+    assert_eq!(business["before"]["status"], "available");
+    assert_eq!(business["completion"]["status"], "available");
+    let (status, detail) = http(
+        &f.app,
+        &f.root,
+        "GET",
+        &format!("/api/console/events/api-operations/{upgrade_id}"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{detail}");
+    assert_eq!(detail["data"]["before"], upgrade["before"]);
+    assert_eq!(detail["data"]["completion"], upgrade["completion"]);
+    assert!(detail["data"]["before_schema"].is_null());
+    assert!(detail["data"]["completion_schema"].is_null());
+    for phase in ["before", "completion"] {
+        let (status, rejected) = http(&f.app, &f.root, "POST", "/api/console/events", Some(json!({"name":"Must reject managed upgrade control","description":"protocol control has no business event contract","enabled":true,"interface_event":{"operation_id":upgrade_id,"phase":phase}}))).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{rejected}");
+        assert_eq!(rejected["code"], "api_event_scope");
+    }
+}
+
 pub(super) async fn run(f: &Fixture) {
+    event_directory_uses_the_published_managed_stream_control_owner(f).await;
     // No policy header preserves all current operation eligibility in both protocols.
     let initial = expect(
         f,

@@ -2,6 +2,7 @@
 use super::api_projection::route_identity;
 use crate::{
     error_response::ApiError,
+    external_endpoint_catalog::ExternalEndpointCatalog,
     openapi_interface::{
         OpenApiCapabilityCatalogDependencies, OpenApiCapabilityCatalogEntry,
         OpenApiCapabilitySource,
@@ -15,6 +16,7 @@ use interface_runtime::{
 pub(crate) async fn summaries_with(
     dependencies: &OpenApiCapabilityCatalogDependencies,
     actor: &ActorContext,
+    external_catalog: Option<&ExternalEndpointCatalog>,
 ) -> Result<Vec<ApiEventOperationSummary>, ApiError> {
     let entries = crate::openapi_interface::build_openapi_capability_catalog_with(
         dependencies,
@@ -24,7 +26,7 @@ pub(crate) async fn summaries_with(
     let mut summaries = Vec::with_capacity(entries.len());
     for entry in &entries {
         summaries.push(
-            project_current_entry(dependencies, actor, entry, false)
+            project_current_entry(dependencies, actor, entry, false, external_catalog)
                 .await?
                 .operation,
         );
@@ -35,6 +37,7 @@ pub(crate) async fn get_with(
     dependencies: &OpenApiCapabilityCatalogDependencies,
     actor: &ActorContext,
     operation_id: &str,
+    external_catalog: Option<&ExternalEndpointCatalog>,
 ) -> Result<Option<ApiEventOperationDetails>, ApiError> {
     let entries = crate::openapi_interface::build_openapi_capability_catalog_with(
         dependencies,
@@ -47,7 +50,7 @@ pub(crate) async fn get_with(
     else {
         return Ok(None);
     };
-    project_current_entry(dependencies, actor, entry, true)
+    project_current_entry(dependencies, actor, entry, true, external_catalog)
         .await
         .map(Some)
 }
@@ -56,6 +59,7 @@ async fn project_current_entry(
     actor: &ActorContext,
     entry: &OpenApiCapabilityCatalogEntry,
     include_schemas: bool,
+    external_catalog: Option<&ExternalEndpointCatalog>,
 ) -> Result<ApiEventOperationDetails, ApiError> {
     let selected = match entry.source {
         OpenApiCapabilitySource::PublishedWorkflow => crate::routes::application_public_api::workflow_extension_interface::document_descriptor_for_entry(dependencies,actor,entry).await,
@@ -81,6 +85,7 @@ async fn project_current_entry(
                 actor,
                 None,
                 false,
+                external_catalog,
             );
             details.operation.scope = EventSourceScope::Workspace {
                 workspace_id: actor.current_workspace_id,
@@ -97,6 +102,7 @@ async fn project_current_entry(
         actor,
         descriptor.as_ref(),
         include_schemas,
+        external_catalog,
     ))
 }
 fn unavailable(reason: ApiEventUnavailableReason) -> ApiEventPhaseAvailability {
@@ -106,11 +112,16 @@ fn unbound_control_reason(
     method: &str,
     path: &str,
     registry: Option<&CompiledInterfaceRegistry>,
+    external_catalog: Option<&ExternalEndpointCatalog>,
 ) -> Option<ApiEventUnavailableReason> {
     use crate::external_endpoint_catalog::{
         approved_http_control_classification, ExternalEndpointClassification,
     };
-    let classification = approved_http_control_classification(method, path)?;
+    let classification = match external_catalog {
+        Some(catalog) => catalog.http_control_classification(method, path),
+        // Unpublished pure fixtures have no serving generation; reuse the static control owner.
+        None => approved_http_control_classification(method, path),
+    }?;
     if registry.is_some_and(|registry| {
         registry.bindings().any(|binding| {
             binding.projection().http_route().is_some_and(|route| {
@@ -153,7 +164,7 @@ pub(crate) fn details_for_entry(
     actor: &ActorContext,
     dynamic: Option<&DocumentOperationDescriptor>,
 ) -> ApiEventOperationDetails {
-    project_entry(entry, registry, actor, dynamic, true)
+    project_entry(entry, registry, actor, dynamic, true, None)
 }
 fn project_entry(
     entry: &OpenApiCapabilityCatalogEntry,
@@ -161,6 +172,7 @@ fn project_entry(
     actor: &ActorContext,
     dynamic: Option<&DocumentOperationDescriptor>,
     include_schemas: bool,
+    external_catalog: Option<&ExternalEndpointCatalog>,
 ) -> ApiEventOperationDetails {
     let api = &entry.interface;
     let mut summary = ApiEventOperationSummary {
@@ -176,7 +188,8 @@ fn project_entry(
     let mut request = None;
     let mut result = None;
     let mut rejected = Some(ApiEventUnavailableReason::MissingBinding);
-    if let Some(reason) = unbound_control_reason(&api.method, &api.path, registry) {
+    if let Some(reason) = unbound_control_reason(&api.method, &api.path, registry, external_catalog)
+    {
         rejected = Some(reason);
     } else if entry.disabled_reason == Some("missing_openapi_contract") {
         rejected = Some(ApiEventUnavailableReason::MissingOpenapiContract);
