@@ -43,6 +43,22 @@ pub(crate) trait ApiEventOutput: InterfaceContract {
         operation: &ApiEventOperationContext,
     ) -> Result<Value, Arc<str>>;
 }
+// Ordinary JSON is an interface contract; observation only invokes its shared conversion.
+impl<T: crate::openapi_interface::json_contract::JsonApiInput> ApiEventInput for T {
+    fn project_document_input(
+        &self,
+        operation: &ApiEventOperationContext,
+    ) -> Result<Value, Arc<str>> {
+        crate::openapi_interface::json_contract::request(self, &operation.path)
+    }
+}
+impl<T: crate::openapi_interface::json_contract::JsonApiOutput> ApiEventOutput for T {
+    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+        crate::openapi_interface::json_contract::result(self)
+            .map_err(|_| Arc::from("api-json-output-serialization"))
+    }
+}
+
 fn reason_code(reason: domain::event_center::ApiEventUnavailableReason) -> Arc<str> {
     let encoded = serde_json::to_value(reason).expect("owner reason serializes");
     Arc::from(encoded.as_str().expect("owner reason is a string"))

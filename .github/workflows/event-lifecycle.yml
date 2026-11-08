@@ -13,7 +13,7 @@ on:
         description: Full acceptance or a scoped evidence supplement
         type: choice
         default: full
-        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp, full-api-events-types, full-api-events, full-api-events-host, full-api-events-registration, full-api-events-publish, full-api-events-query, full-api-events-docs, full-api-events-integration, full-api-events-fixture-finish, full-api-events-managed-control]
+        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp, full-api-events-types, full-api-events, full-api-events-host, full-api-events-registration, full-api-events-publish, full-api-events-query, full-api-events-docs, full-api-events-integration, full-api-events-fixture-finish, full-api-events-managed-control, full-api-events-reuse-proof]
 
       reused_api_tree:
         description: Unchanged api tree hash from the prior green host evidence (finish scope only)
@@ -327,7 +327,15 @@ jobs:
               failed=1
             fi
           }
-          if [ "$EVIDENCE_SCOPE" = full-api-events-managed-control ]; then
+          if [ "$EVIDENCE_SCOPE" = full-api-events-reuse-proof ]; then
+            if [ "$HOST_TYPES_OUTCOME" = success ]; then
+              run_tests public-json-contract --test api_private_contracts public_json_contract
+              run_tests public-json-http-mcp-events --test api_system_settings event_center_public_json
+            else
+              echo 'Public JSON feasibility unverified: shared host test compilation failed.' > "$evidence/host-scopes-unverified.txt"
+              failed=1
+            fi
+          elif [ "$EVIDENCE_SCOPE" = full-api-events-managed-control ]; then
             if [ "$HOST_TYPES_OUTCOME" = success ]; then
               run_tests api-catalog-observer --test api_private_contracts event_center
               run_tests api-event-routes --test api_system_settings event_center
@@ -540,7 +548,7 @@ jobs:
           fi
           test "$failed" = 0
       - name: Build matching system-event local verification candidate
-        if: ${{ always() && !cancelled() && ((startsWith(inputs.scope, 'full-api-events') && inputs.scope != 'full-api-events-types') || (success() && (inputs.scope == 'event-business-mcp' || inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage'))) }}
+        if: ${{ always() && !cancelled() && ((startsWith(inputs.scope, 'full-api-events') && inputs.scope != 'full-api-events-types' && inputs.scope != 'full-api-events-reuse-proof') || (success() && (inputs.scope == 'event-business-mcp' || inputs.scope == 'event-business-finish' || inputs.scope == 'event-business-host' || inputs.scope == 'event-business' || inputs.scope == 'system-event-center' || inputs.scope == 'system-event-center-supplement' || inputs.scope == 'system-event-center-lineage'))) }}
         shell: bash
         run: |
           set -euo pipefail

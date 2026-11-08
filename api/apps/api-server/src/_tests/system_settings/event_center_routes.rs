@@ -713,3 +713,6 @@ async fn interface_rules_publish_actual_call_values_once_and_keep_result_and_wor
 
 #[path = "event_center_routes/api_operations.rs"]
 mod api_operations;
+
+#[path = "event_center_routes/json_contract.rs"]
+mod json_contract;

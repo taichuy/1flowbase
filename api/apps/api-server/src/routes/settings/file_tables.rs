@@ -1,5 +1,4 @@
-#[path = "file_tables/event_projection.rs"]
-mod event_projection;
+use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 use std::sync::Arc;
 
 use access_control::{
@@ -36,26 +35,34 @@ use crate::{
     },
 };
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreateFileTableBody {
     pub bound_storage_id: Option<Uuid>,
     pub code: String,
     pub title: String,
 }
 
+#[derive(Serialize)]
+#[serde(untagged)]
 enum FileTablesInput {
     List {
+        #[serde(skip_serializing)]
         locale: ConsoleLocaleHints,
     },
+    #[serde(serialize_with = "json_contract::body")]
     Create(CreateFileTableBody),
     Bind {
+        #[serde(rename = "id")]
         file_table_id: String,
         body: BindFileTableStorageBody,
     },
     Delete {
+        #[serde(rename = "id")]
         file_table_id: String,
     },
 }
+
+impl JsonApiInput for FileTablesInput {}
 
 impl InterfaceContract for FileTablesInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -145,11 +152,15 @@ impl InterfaceContract for FileTablesInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(Serialize)]
+#[serde(untagged)]
 enum FileTablesOutput {
     List(Vec<FileTableResponse>),
     Item(FileTableResponse),
     Deleted,
 }
+
+impl JsonApiOutput for FileTablesOutput {}
 
 impl InterfaceContract for FileTablesOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -440,7 +451,7 @@ impl ConsoleInterfacePort<FileTablesInput, FileTablesOutput> for FileTablesAdapt
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct BindFileTableStorageBody {
     pub bound_storage_id: Option<Uuid>,
 }
@@ -593,7 +604,7 @@ pub(crate) fn compile_registry(
 pub async fn list_file_tables(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-) -> Result<Json<ApiSuccess<Vec<FileTableResponse>>>, ApiError> {
+) -> Result<Json<ApiSuccess<serde_json::Value>>, ApiError> {
     let locale = ConsoleLocaleHints::from_headers(&headers);
     let output = console_interface::invoke(
         Arc::clone(&state),
@@ -602,10 +613,10 @@ pub async fn list_file_tables(
         FileTablesInput::List { locale },
     )
     .await?;
-    let FileTablesOutput::List(tables) = output else {
+    let FileTablesOutput::List(_) = &output else {
         unreachable!("file tables list binding returned a different output")
     };
-    Ok(Json(ApiSuccess::new(tables)))
+    json_contract::response(&output)
 }
 
 #[utoipa::path(
@@ -618,7 +629,7 @@ pub async fn create_file_table(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(body): Json<CreateFileTableBody>,
-) -> Result<(StatusCode, Json<ApiSuccess<FileTableResponse>>), ApiError> {
+) -> Result<(StatusCode, Json<ApiSuccess<serde_json::Value>>), ApiError> {
     let output = console_interface::invoke(
         Arc::clone(&state),
         "http.console.settings.file-tables.create.v1",
@@ -626,10 +637,10 @@ pub async fn create_file_table(
         FileTablesInput::Create(body),
     )
     .await?;
-    let FileTablesOutput::Item(created) = output else {
+    let FileTablesOutput::Item(_) = &output else {
         unreachable!("file table create binding returned a different output")
     };
-    Ok((StatusCode::CREATED, Json(ApiSuccess::new(created))))
+    Ok((StatusCode::CREATED, json_contract::response(&output)?))
 }
 
 #[utoipa::path(
@@ -644,7 +655,7 @@ pub async fn bind_file_table_storage(
     headers: HeaderMap,
     Path(file_table_id): Path<String>,
     Json(body): Json<BindFileTableStorageBody>,
-) -> Result<Json<ApiSuccess<FileTableResponse>>, ApiError> {
+) -> Result<Json<ApiSuccess<serde_json::Value>>, ApiError> {
     let output = console_interface::invoke(
         Arc::clone(&state),
         "http.console.settings.file-tables.storage.bind.v1",
@@ -655,10 +666,10 @@ pub async fn bind_file_table_storage(
         },
     )
     .await?;
-    let FileTablesOutput::Item(updated) = output else {
+    let FileTablesOutput::Item(_) = &output else {
         unreachable!("file table bind binding returned a different output")
     };
-    Ok(Json(ApiSuccess::new(updated)))
+    json_contract::response(&output)
 }
 
 #[utoipa::path(
