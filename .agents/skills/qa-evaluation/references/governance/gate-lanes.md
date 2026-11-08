@@ -19,7 +19,7 @@
 ## Dev Acceptance Gate
 
 - 目标是加快开发反馈，不用仓库级门禁惩罚局部开发。
-- Issue Tree 使用 batch mode：Root 下全部开发与 fixture Work Packet 装配到冻结 assembly SHA 后只执行一次；不为 Packet 或 Delivery 分别启动 reviewer、QA 或回归。
+- Issue Tree 使用 batch mode：全部开发与 fixture 装配冻结后只做一次独立集中验收；开发反馈遵循 `test-driven-development`，不为 Packet 或 Delivery 分别启动 reviewer、QA 或完整验收套件。
 - 优先复用仍有效的开发证据；按 `test-driven-development` 的执行成本与证据失效规则，只补当前变更相关且缺失的证据。换 agent 或进入收尾不使结果自动失效。
 - 选择覆盖当前风险的最小证据组合，不按命令数量限额；同一 contract 已被 targeted test 覆盖时，仅在真实环境差异仍待确认时补运行态取证。
 - 验证重点是当前任务结果、直接相关 API / 状态 / UI contract 和主路径；重型质量门禁判断标准见 `repo-quality-gates.md#heavy-gate-criteria`，默认留给 PR / Project Health lane。

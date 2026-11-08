@@ -31,7 +31,7 @@ description: Choose risk-proportionate tests and verification evidence for 1flow
 ## Development and Acceptance
 
 - 同一行为族批量实现与验证，不按每个字段或断言建立微循环。
-- 默认完成本次开发后集中 QA；开发中为具体装配风险允许廉价语法、类型、目标发现、fixture 挂载或定向反馈，无需事先列入 handoff；按实际成本判断，不升级成每 Packet 的完整 QA。
+- 开发中按当前改动风险选择最小编译、行为测试、必要红绿与相关回归，无需逐项预列 handoff；按实际成本和共享预算执行，不逐包启动 reviewer、QA 或完整验收套件。全部装配冻结后进行独立集中 QA。
 - Issue Tree 的 fixture、assembly 和集中 QA 边界遵循 [long-running-work.md](../problem-framing/references/long-running-work.md)。已有证据可复用，最终由冻结 assembly 的集中 QA 结算 AC，不逐 Packet 启动 QA。
 - 只补当前变更与直接风险需要的回归；既有测试债不自动纳入修复。
 
