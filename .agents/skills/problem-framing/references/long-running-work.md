@@ -109,6 +109,9 @@ Root 在任何产品修改前，把达到 Root candidate 所需的全部开发�
 - Scout 提供既有失败证据；缺少时在 Test Batch 标记需要 controlled negative / authenticity fixture。开发 Packet 只写产品代码与指定 fixture，不运行逐包 red、green 或回归。
 - 所有产品与 fixture Packet 完成后，Test Batch 对冻结 assembly SHA 一次执行 controlled negative、targeted green 与影响面回归；相同代码、fixture 和环境不重复执行同一证据。
 - 重型 tool process 可独立等待；整批 agent、worktree 与 wrapper 子进程共享用户 CPU / 内存预算，不按 Packet 重置或迁出预算。同一时刻最多一个 Cargo / build / 重型测试进程，沿用当前 Cargo 并发配置；资源失败后仅在入口、构建范围或资源条件实质变化时重试。QA agent 不因等待重新探索或扩大矩阵。
+- 对 Test Batch 中可能长时间等待的命令，使用 `python3 scripts/shell/resource-job-run.py --deadline-seconds <本次截止秒数> --output-dir tmp/test-governance/<本次新目录> -- <命令及参数>`。先让调用者处于已验证的任务预算 user slice 内；截止覆盖准入等待与执行，之后只允许有界清理。需要重任务准入时，把现有 `resource-heavy-run.py` 放在命令前，不新建第二套锁或改变全局并发。
+- 保存原 tool handle、原始日志和该目录的原子结束回执；分别判断命令退出、截止、取消、资源失败与清理结果，清理失败不能算成功。缺失或不确定回执时检查原任务和独占 unit，不重发原命令来补输出。
+- 控制器被 SIGKILL 或整个父预算 OOM 后可能没有结束回执；启动记录不代表完成，SIGKILL 本身也不是 OOM 证据。执行器只清理自己的独占子 cgroup，不停止共享预算或其他服务。
 
 ## Roles And Context
 
