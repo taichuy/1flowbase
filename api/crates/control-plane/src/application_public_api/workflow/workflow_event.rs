@@ -73,7 +73,7 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
         &self,
         actor_user_id: Uuid,
         application_id: Uuid,
-        configuration: WorkflowEventTriggerInput,
+        mut configuration: WorkflowEventTriggerInput,
     ) -> Result<WorkflowEventTriggerRecord>
     where
         R: ApplicationPublicationRepository + ApplicationCompiledPlanRepository,
@@ -89,6 +89,8 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
             .ok_or(ControlPlaneError::NotFound("application"))?;
         ensure_application_edit_permission(&self.repository, &actor, &application).await?;
         ensure_event_workflow(&application)?;
+        // Retain the persisted legacy field, but it is not an independent activation switch.
+        configuration.enabled = true;
         // A saved draft configuration does not activate a subscription. When a publication
         // exists the active immutable input contract, rather than the mutable draft, governs.
         if let Some(publication) = self
@@ -155,21 +157,21 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
             .ok_or(ControlPlaneError::NotFound("application"))?;
         ensure_event_workflow(&application)?;
         ensure_application_edit_permission(&self.repository, &actor, &application).await?;
-        if !trigger.configuration.enabled {
-            return Err(ControlPlaneError::InvalidInput("trigger_disabled").into());
-        }
         EventCenterConfigurationService::with_registered_events(
             self.repository.clone(),
             trigger.workspace_id,
             self.registered_events.clone(),
         )
-        .validate_workflow_trigger(&actor, &trigger.configuration)
+        .validate_workflow_trigger(&actor, &listening_configuration(&trigger.configuration))
         .await?;
         let publication = self
             .repository
             .load_active_application_publication(trigger.application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application_publication"))?;
+        if !publication.api_enabled {
+            return Err(ControlPlaneError::InvalidInput("application_disabled").into());
+        }
         if publication.workspace_id != trigger.workspace_id {
             return Err(ControlPlaneError::InvalidInput("workspace_id").into());
         }
@@ -210,7 +212,7 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
                 reason: "trigger_removed",
             });
         };
-        if !current.configuration.enabled || current != *snapshot {
+        if current != *snapshot {
             return Ok(WorkflowEventInvocationOutcome::Skipped {
                 reason: "trigger_changed",
             });
@@ -237,7 +239,7 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
             snapshot.workspace_id,
             self.registered_events.clone(),
         )
-        .validate_workflow_trigger(&actor, &snapshot.configuration)
+        .validate_workflow_trigger(&actor, &listening_configuration(&snapshot.configuration))
         .await?;
         let Some(active) = self
             .repository
@@ -248,6 +250,11 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
                 reason: "application_unpublished",
             });
         };
+        if !active.api_enabled {
+            return Ok(WorkflowEventInvocationOutcome::Skipped {
+                reason: "application_disabled",
+            });
+        }
         // The active publication is replaced in place and keeps its database ID.
         // Compare the frozen contents as well, including changes after host handoff validation.
         if active != command.publication
@@ -413,6 +420,14 @@ fn validate_event_context(command: &InvokeWorkflowEventCommand) -> Result<()> {
         return Err(ControlPlaneError::InvalidInput("event_context").into());
     }
     Ok(())
+}
+
+// Old archives may retain enabled=false. Validate the actual event capability regardless;
+// the published application's state owns whether a listener may be installed.
+fn listening_configuration(input: &WorkflowEventTriggerInput) -> WorkflowEventTriggerInput {
+    let mut configuration = input.clone();
+    configuration.enabled = true;
+    configuration
 }
 
 #[cfg(test)]

@@ -257,11 +257,15 @@ async fn workflow_configuration_reloads_and_cannot_write_another_workspace_appli
             .configuration,
         revised
     );
-    assert!(store
-        .list_enabled_workflow_event_triggers(workspace.id)
-        .await
-        .unwrap()
-        .is_empty());
+    assert_eq!(
+        store
+            .list_workflow_event_triggers(workspace.id)
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "legacy disabled configurations remain discoverable for publication-driven activation"
+    );
     assert!(store
         .list_workflow_event_trigger_workspaces()
         .await

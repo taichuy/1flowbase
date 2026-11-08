@@ -88,7 +88,7 @@ impl EventCenterRepository for MemoryRepository {
         self.triggers.lock().unwrap().push(row.clone());
         Ok(true)
     }
-    async fn list_enabled_workflow_event_triggers(
+    async fn list_workflow_event_triggers(
         &self,
         workspace: Uuid,
     ) -> anyhow::Result<Vec<WorkflowEventTriggerRecord>> {
@@ -97,7 +97,7 @@ impl EventCenterRepository for MemoryRepository {
             .lock()
             .unwrap()
             .iter()
-            .filter(|row| row.workspace_id == workspace && row.configuration.enabled)
+            .filter(|row| row.workspace_id == workspace)
             .cloned()
             .collect())
     }

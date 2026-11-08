@@ -272,7 +272,7 @@ describe('ApplicationFormModal create intent', () => {
       })
     );
     fireEvent.mouseDown(
-      await screen.findByRole('combobox', { name: '事件来源' })
+      await screen.findByRole('combobox', { name: '监听事件' })
     );
     fireEvent.click(
       await screen.findByText('Invoice', {
@@ -280,7 +280,7 @@ describe('ApplicationFormModal create intent', () => {
       })
     );
     fireEvent.mouseDown(
-      await screen.findByRole('combobox', { name: '触发阶段' })
+      await screen.findByRole('combobox', { name: '监听时机' })
     );
     fireEvent.click(
       await screen.findByText('消费时（出队）', {
@@ -295,7 +295,6 @@ describe('ApplicationFormModal create intent', () => {
       expect(applicationsApi.saveWorkflowEventTrigger).toHaveBeenCalledWith(
         'app-workflow',
         expect.objectContaining({
-          enabled: false,
           contract_id: 'custom.invoice',
           trigger_phase: 'consumed',
           input_mapping: {}

@@ -22,12 +22,20 @@ pub struct WorkflowEventTriggerBody {
     #[serde(default)]
     #[schema(value_type = Option<serde_json::Value>)]
     pub source: Option<domain::event_center::EventSourceSelection>,
+    /// Legacy compatibility field; listener activation follows the published application's
+    /// enabled state. Saving this field cannot independently start or stop listening.
+    // @field-contract-compat source=application_publication.api_enabled alias=enabled remove_by=2027-02-08
+    #[serde(default = "legacy_listener_configuration")]
     pub enabled: bool,
     pub contract_id: String,
     pub trigger_phase: WorkflowEventTriggerPhaseBody,
     /// Workflow Start input name to RFC6901 pointer into the lifecycle signal.
     pub input_mapping: std::collections::BTreeMap<String, String>,
 }
+fn legacy_listener_configuration() -> bool {
+    true
+}
+
 impl WorkflowEventTriggerBody {
     pub(super) fn into_domain(self) -> domain::event_center::WorkflowEventTriggerInput {
         domain::event_center::WorkflowEventTriggerInput {
@@ -124,4 +132,45 @@ pub async fn replace_workflow_event_trigger(
     )
     .await?;
     Ok(Json(ApiSuccess::new(output.into_required()?)))
+}
+
+#[cfg_attr(test, api_test_selection::group(contracts))]
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn listener_configuration_accepts_new_clients_without_a_subscription_switch() {
+        let body: WorkflowEventTriggerBody = serde_json::from_value(serde_json::json!({
+            "contract_id":"event.actual", "trigger_phase":"published", "input_mapping":{}
+        }))
+        .unwrap();
+        let config = body.into_domain();
+        assert!(config.enabled);
+        assert_eq!(
+            config.trigger_phase,
+            domain::event_center::EventTriggerPhase::Published
+        );
+        let schema = crate::openapi_interface::contract::schema::<WorkflowEventTriggerBody>();
+        assert!(!schema["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|field| field == "enabled"));
+    }
+
+    #[test]
+    fn legacy_listener_fields_retain_the_selected_phase_and_mapping() {
+        let body: WorkflowEventTriggerBody = serde_json::from_value(serde_json::json!({
+            "enabled":false,"contract_id":"event.actual", "trigger_phase":"consumed",
+            "input_mapping":{"invoice":"/payload/invoice"}
+        }))
+        .unwrap();
+        let config = body.into_domain();
+        assert_eq!(
+            config.trigger_phase,
+            domain::event_center::EventTriggerPhase::Consumed
+        );
+        assert_eq!(config.input_mapping["invoice"], "/payload/invoice");
+    }
 }

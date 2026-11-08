@@ -33,7 +33,7 @@ const stored = {
 beforeEach(() => vi.clearAllMocks());
 
 test.each(['disabled', 'missing', 'unsupported phase', 'interface capability'])(
-  'an unavailable %s source can be stopped without changing the stored target',
+  'an unavailable %s source cannot be bypassed by a legacy enabled value',
   async (reason) => {
     const capability = reason === 'interface capability';
     const target = capability
@@ -109,8 +109,7 @@ test.each(['disabled', 'missing', 'unsupported phase', 'interface capability'])(
       expect(api.fetchWorkflowEventCatalog).toHaveBeenCalled()
     );
     if (capability) await screen.findAllByText(/Interface capability/);
-    const enabled = screen.getByRole('switch', { name: '启用订阅' });
-    expect(enabled).toBeChecked();
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
     // Provide the newly required input so activation fails on source availability.
     fireEvent.change(
       screen.getByRole('combobox', { name: 'New input · string' }),
@@ -131,24 +130,7 @@ test.each(['disabled', 'missing', 'unsupported phase', 'interface capability'])(
       )
     ).toBe(true);
 
-    fireEvent.change(
-      screen.getByRole('combobox', { name: 'New input · string' }),
-      {
-        target: { value: '' }
-      }
-    );
-    fireEvent.click(enabled);
-    await waitFor(() => expect(enabled).not.toBeChecked());
-    fireEvent.click(screen.getByRole('button', { name: 'Save subscription' }));
-    await waitFor(() =>
-      expect(saved).toHaveBeenCalledWith({
-        event: {
-          ...target,
-          enabled: false,
-          input_mapping: { ...target.input_mapping, new_input: '' }
-        }
-      })
-    );
+    expect(saved).not.toHaveBeenCalled();
   }
 );
 
@@ -208,18 +190,21 @@ test('same-contract source scopes remain distinct and save canonical source with
     </AppProviders>
   );
   await waitFor(() => expect(api.fetchWorkflowEventCatalog).toHaveBeenCalled());
-  fireEvent.mouseDown(screen.getByRole('combobox', { name: '事件来源' }));
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '监听事件' }));
   fireEvent.click(await screen.findByText(/System source/));
   const selects = screen.getAllByRole('combobox');
   fireEvent.mouseDown(selects[1]);
   // Only the source adapter's published phase is offered.
   expect(screen.queryByText('消费时（出队）')).not.toBeInTheDocument();
-  fireEvent.click(await screen.findByText('发布时'));
+  fireEvent.click(
+    await screen.findByText('事件发布时', {
+      selector: '.ant-select-item-option-content'
+    })
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Save source' }));
   await waitFor(() =>
     expect(saved).toHaveBeenCalledWith({
       event: {
-        enabled: true,
         contract_id: 'runtime.event',
         source: system,
         trigger_phase: 'published',
@@ -229,7 +214,7 @@ test('same-contract source scopes remain distinct and save canonical source with
   );
 });
 
-test('an unavailable stored system registration is explained and can be disabled without losing its source identity', async () => {
+test('an unavailable stored system registration keeps its identity and cannot create a listener', async () => {
   const source = { source_id: 'native.source', scope: { kind: 'system' } };
   api.fetchWorkflowEventCatalog.mockResolvedValue([
     {
@@ -269,20 +254,15 @@ test('an unavailable stored system registration is explained and can be disabled
   await screen.findByText(/Native source/);
   fireEvent.click(screen.getByRole('button', { name: 'Save system source' }));
   await waitFor(() => expect(rejected).toHaveBeenCalled());
-  fireEvent.click(screen.getByRole('switch', { name: '启用订阅' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Save system source' }));
-  await waitFor(() =>
-    expect(saved).toHaveBeenCalledWith({
-      event: { ...stored, source, enabled: false }
-    })
-  );
+  expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+  expect(saved).not.toHaveBeenCalled();
 });
 
 test.each([
   { label: 'empty', input_mapping: {} },
   { label: 'historical', input_mapping: stored.input_mapping }
 ])(
-  'the application modal preserves $label mapping when disabling an unavailable source without Start inputs',
+  'the application modal rejects an unavailable source without erasing $label mapping',
   async ({ input_mapping }) => {
     const source = { source_id: 'native.source', scope: { kind: 'system' } };
     const event = { ...stored, source, input_mapping };
@@ -320,25 +300,18 @@ test.each([
         />
       </AppProviders>
     );
-    const enabled = await screen.findByRole('switch', { name: '启用订阅' });
-    await waitFor(() => expect(enabled).toBeChecked());
+    await waitFor(() =>
+      expect(api.fetchWorkflowEventTrigger).toHaveBeenCalled()
+    );
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
     const save = screen.getByRole('button', { name: '保存修改' });
     await waitFor(() => expect(save).toBeEnabled());
     fireEvent.click(save);
-    await screen.findAllByText('请选择可用的事件来源及其支持的阶段。');
+    await screen.findAllByText('请选择可用的监听事件及其支持的阶段。');
     expect(api.saveWorkflowEventTrigger).not.toHaveBeenCalled();
 
-    fireEvent.click(enabled);
-    await waitFor(() => expect(enabled).not.toBeChecked());
-    fireEvent.click(save);
-    await waitFor(() =>
-      expect(api.saveWorkflowEventTrigger).toHaveBeenCalledWith(
-        'event-application',
-        { ...event, enabled: false },
-        'test-csrf'
-      )
-    );
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(api.saveWorkflowEventTrigger).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   }
 );
 
@@ -395,15 +368,19 @@ test('same-contract subtype leaves save complete backend filters and discover es
     </AppProviders>
   );
   await waitFor(() => expect(api.fetchWorkflowEventCatalog).toHaveBeenCalled());
-  const sourceSelect = screen.getByRole('combobox', { name: '事件来源' });
+  const sourceSelect = screen.getByRole('combobox', { name: '监听事件' });
   fireEvent.mouseDown(sourceSelect);
   expect(
     await screen.findByText(/billing \/ credits \/ reserved/)
   ).toBeInTheDocument();
   fireEvent.click(await screen.findByText(/billing \/ credits \/ settled/));
-  const phaseSelect = screen.getByRole('combobox', { name: '触发阶段' });
+  const phaseSelect = screen.getByRole('combobox', { name: '监听时机' });
   fireEvent.mouseDown(phaseSelect);
-  fireEvent.click(await screen.findByText('发布时'));
+  fireEvent.click(
+    await screen.findByText('事件发布时', {
+      selector: '.ant-select-item-option-content'
+    })
+  );
   const mapping = screen.getByRole('combobox', { name: 'Amount · number' });
   fireEvent.focus(mapping);
   fireEvent.change(mapping, { target: { value: '/payload/amount' } });
@@ -416,7 +393,6 @@ test('same-contract subtype leaves save complete backend filters and discover es
   await waitFor(() =>
     expect(saved).toHaveBeenCalledWith({
       event: {
-        enabled: true,
         contract_id: 'business.fact',
         source: catalog[1].source.selection,
         trigger_phase: 'published',
@@ -424,4 +400,114 @@ test('same-contract subtype leaves save complete backend filters and discover es
       }
     })
   );
+});
+
+test('new listeners default to publication and retain every supported phase without advanced controls', async () => {
+  api.fetchWorkflowEventCatalog.mockResolvedValue([
+    {
+      contract_id: 'custom.invoice',
+      name: 'Invoice',
+      origin: 'custom',
+      enabled: true,
+      supported_phases: ['subscribed', 'published', 'consumed'],
+      payload_schema: { type: 'object' }
+    }
+  ]);
+  const saved = vi.fn();
+  function Editor() {
+    const [form] = Form.useForm();
+    return (
+      <Form
+        form={form}
+        initialValues={{ event: { input_mapping: {} } }}
+        onFinish={saved}
+      >
+        <WorkflowEventTriggerFields form={form} fields={[]} />
+        <Button htmlType="submit">Save listener</Button>
+      </Form>
+    );
+  }
+  render(
+    <AppProviders>
+      <Editor />
+    </AppProviders>
+  );
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '监听事件' }));
+  fireEvent.click(
+    await screen.findByText('Invoice', {
+      selector: '.ant-select-item-option-content'
+    })
+  );
+  expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+  expect(screen.queryByText('高级设置')).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(
+      screen.getByRole('combobox', { name: '监听时机' }).closest('.ant-select')
+    ).toHaveTextContent('事件发布时')
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Save listener' }));
+  await waitFor(() => expect(saved).toHaveBeenCalled());
+  expect(saved.mock.calls[0][0].event).toMatchObject({
+    contract_id: 'custom.invoice',
+    trigger_phase: 'published',
+    input_mapping: {}
+  });
+  expect(saved.mock.calls[0][0].event).not.toHaveProperty('enabled');
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '监听时机' }));
+  for (const label of ['监听生效时', '事件发布时', '消费时（出队）']) {
+    expect(
+      screen.getByText(label, { selector: '.ant-select-item-option-content' })
+    ).toBeInTheDocument();
+  }
+  fireEvent.click(
+    screen.getByText('消费时（出队）', {
+      selector: '.ant-select-item-option-content'
+    })
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Save listener' }));
+  await waitFor(() =>
+    expect(saved.mock.calls.at(-1)?.[0].event.trigger_phase).toBe('consumed')
+  );
+});
+
+test('editing preserves a consumed phase even with a legacy disabled configuration flag', async () => {
+  api.fetchWorkflowEventCatalog.mockResolvedValue([
+    {
+      contract_id: stored.contract_id,
+      name: 'Invoice',
+      origin: 'custom',
+      enabled: true,
+      supported_phases: ['subscribed', 'published', 'consumed'],
+      payload_schema: { type: 'object' }
+    }
+  ]);
+  const saved = vi.fn();
+  function Editor() {
+    const [form] = Form.useForm();
+    return (
+      <Form
+        form={form}
+        initialValues={{ event: { ...stored, enabled: false } }}
+        onFinish={saved}
+      >
+        <WorkflowEventTriggerFields form={form} fields={[]} />
+        <Button htmlType="submit">Save existing listener</Button>
+      </Form>
+    );
+  }
+  render(
+    <AppProviders>
+      <Editor />
+    </AppProviders>
+  );
+  await screen.findByText('Invoice', { exact: true });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Save existing listener' })
+  );
+  await waitFor(() => expect(saved).toHaveBeenCalled());
+  expect(saved.mock.calls[0][0].event).toMatchObject({
+    contract_id: stored.contract_id,
+    trigger_phase: 'consumed',
+    input_mapping: stored.input_mapping
+  });
 });

@@ -533,6 +533,7 @@ impl ConsoleInterfacePort<ApplicationPublicationInput, ApplicationPublicationOut
                                 api_enabled: body.api_enabled,
                             })
                             .await?;
+                        self.changes.notify_one();
                         ApplicationPublicationOutput::Status(ApplicationApiStatusResponse {
                             application_id,
                             api_enabled: body.api_enabled,

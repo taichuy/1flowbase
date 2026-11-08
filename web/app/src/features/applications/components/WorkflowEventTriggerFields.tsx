@@ -10,7 +10,6 @@ import {
   Form,
   Input,
   Select,
-  Switch,
   type FormInstance
 } from 'antd';
 import { eventSchemaPointers } from './workflow-event-schema';
@@ -39,12 +38,11 @@ export function WorkflowEventTriggerFields({
     queryFn: fetchWorkflowEventCatalog
   });
   const contract_id = Form.useWatch(['event', 'contract_id'], form);
-  const enabled = Form.useWatch(['event', 'enabled'], form);
   const trigger_phase = Form.useWatch(['event', 'trigger_phase'], form);
   const source = Form.useWatch(['event', 'source'], form) as
     | EventSourceSelection
     | undefined;
-  const identity = (entry: Pick<EventCatalogEntry, 'contract_id' | 'source'>) =>
+  const identity = (entry: Pick<Parameters<typeof eventCatalogIdentity>[0], 'contract_id' | 'source'>) =>
     eventCatalogIdentity({
       contract_id: entry.contract_id,
       source: entry.source
@@ -109,22 +107,18 @@ export function WorkflowEventTriggerFields({
   }
   return (
     <>
-      <Alert type="info" showIcon title={t('event.lifecycle_hint')} />
+      <Alert type="info" showIcon title={t('event.listening_hint')} />
+      {trigger_phase === 'consumed' && (
+        <Alert type="info" showIcon title={t('event.lifecycle_hint')} />
+      )}
       {catalog.isError && (
         <Alert type="error" title={t('auto.trigger_load_failed')} />
       )}
       <Form.Item
-        label={t('event.subscription_enabled')}
-        name={['event', 'enabled']}
-        valuePropName="checked"
-      >
-        <Switch />
-      </Form.Item>
-      <Form.Item
         label={t('event.source')}
         required
         validateStatus={
-          enabled && contract_id && !sourceAvailable && !catalog.isPending
+          contract_id && !sourceAvailable && !catalog.isPending
             ? 'error'
             : undefined
         }
@@ -144,7 +138,12 @@ export function WorkflowEventTriggerFields({
             if (!entry) return;
             form.setFieldValue(['event', 'contract_id'], entry.contract_id);
             form.setFieldValue(['event', 'source'], entry.source?.selection);
-            form.setFieldValue(['event', 'trigger_phase'], undefined);
+            form.setFieldValue(
+              ['event', 'trigger_phase'],
+              entry.supported_phases.includes('published')
+                ? 'published'
+                : undefined
+            );
             form.setFieldValue(['event', 'input_mapping'], {});
           }}
         />
@@ -152,12 +151,11 @@ export function WorkflowEventTriggerFields({
       <Form.Item
         name={['event', 'contract_id']}
         hidden
-        dependencies={[['event', 'enabled']]}
         rules={[
           { required: true },
           {
             validator: () =>
-              !form.getFieldValue(['event', 'enabled']) || sourceAvailable
+              sourceAvailable
                 ? Promise.resolve()
                 : Promise.reject(new Error(t('event.source_unavailable')))
           }
@@ -176,7 +174,6 @@ export function WorkflowEventTriggerFields({
         label={t('event.phase')}
         name={['event', 'trigger_phase']}
         dependencies={[
-          ['event', 'enabled'],
           ['event', 'contract_id'],
           ['event', 'source']
         ]}
@@ -184,8 +181,7 @@ export function WorkflowEventTriggerFields({
           { required: true },
           {
             validator: (_, value) =>
-              !form.getFieldValue(['event', 'enabled']) ||
-              (sourceAvailable && selected?.supported_phases.includes(value))
+              sourceAvailable && selected?.supported_phases.includes(value)
                 ? Promise.resolve()
                 : Promise.reject(new Error(t('event.source_unavailable')))
           }
@@ -213,8 +209,7 @@ export function WorkflowEventTriggerFields({
             name={['event', 'input_mapping', field.key]}
             rules={[
               {
-                required:
-                  enabled && field.required && field.defaultValue === undefined
+                required: field.required && field.defaultValue === undefined
               },
               {
                 pattern: /^(?:\/(?:[^~]|~[01])*)*$/,

@@ -132,11 +132,11 @@ impl EventCenterRepository for PgControlPlaneStore {
             .execute(self.pool()).await?;
         Ok(result.rows_affected() == 1)
     }
-    async fn list_enabled_workflow_event_triggers(
+    async fn list_workflow_event_triggers(
         &self,
         workspace_id: Uuid,
     ) -> anyhow::Result<Vec<WorkflowEventTriggerRecord>> {
-        sqlx::query("SELECT t.* FROM workflow_event_triggers t JOIN applications a ON a.id=t.application_id AND a.workspace_id=t.workspace_id WHERE t.workspace_id=$1 AND t.enabled ORDER BY t.application_id")
+        sqlx::query("SELECT t.* FROM workflow_event_triggers t JOIN applications a ON a.id=t.application_id AND a.workspace_id=t.workspace_id WHERE t.workspace_id=$1 ORDER BY t.application_id")
             .bind(workspace_id).fetch_all(self.pool()).await?.into_iter().map(trigger).collect()
     }
 }

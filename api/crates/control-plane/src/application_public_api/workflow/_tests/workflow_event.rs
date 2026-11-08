@@ -106,10 +106,16 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
         .unwrap();
     let service = WorkflowEventTriggerService::new(repository.clone());
     // Unpublished configuration is persisted without starting or manufacturing a run.
+    let mut legacy_request = configuration();
+    legacy_request.enabled = false;
     let draft_trigger = service
-        .replace_trigger(user_id, app.id, configuration())
+        .replace_trigger(user_id, app.id, legacy_request)
         .await
         .unwrap();
+    assert!(
+        draft_trigger.configuration.enabled,
+        "legacy client flags cannot disable a publication-owned listener"
+    );
     assert!(service.prepare_subscription(&draft_trigger).await.is_err());
     let unchanged = service
         .replace_trigger(user_id, app.id, configuration())
@@ -124,15 +130,32 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
             actor_user_id: user_id,
             application_id: app.id,
             mapping: ApplicationApiMappingConfig::default_native(),
-            api_enabled: false,
+            api_enabled: true,
         })
         .await
         .unwrap();
     repository.set_active_publication_document_snapshot(app.id, document());
+    // Legacy backups retain this field. It must no longer suppress a published listener.
+    let mut legacy = repository
+        .get_workflow_event_trigger(app.workspace_id, app.id)
+        .await
+        .unwrap()
+        .unwrap();
+    legacy.configuration.enabled = false;
+    repository
+        .save_workflow_event_trigger(&legacy)
+        .await
+        .unwrap();
+    assert!(repository
+        .list_workflow_event_triggers(app.workspace_id)
+        .await
+        .unwrap()
+        .iter()
+        .any(|row| row.id == legacy.id));
     let trigger = service.get_trigger(user_id, app.id).await.unwrap().unwrap();
     let publication = service.prepare_subscription(&trigger).await.unwrap();
     let signal_id = Uuid::now_v7();
-    let command = InvokeWorkflowEventCommand {
+    let mut command = InvokeWorkflowEventCommand {
         trigger,
         publication: publication.clone(),
         signal_id,
@@ -170,6 +193,74 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
     };
     assert!(!second.created);
     assert_eq!(first.flow_run.id, second.flow_run.id);
+    let publications = ApplicationPublicationService::new(repository.clone());
+    publications
+        .set_api_enabled(
+            crate::application_public_api::publications::SetApplicationApiEnabledCommand {
+                actor_user_id: user_id,
+                application_id: app.id,
+                api_enabled: false,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(service
+        .prepare_subscription(&command.trigger)
+        .await
+        .is_err());
+    assert!(matches!(
+        service.invoke_event(command.clone()).await.unwrap(),
+        WorkflowEventInvocationOutcome::Skipped {
+            reason: "application_disabled"
+        }
+    ));
+    publications
+        .set_api_enabled(
+            crate::application_public_api::publications::SetApplicationApiEnabledCommand {
+                actor_user_id: user_id,
+                application_id: app.id,
+                api_enabled: true,
+            },
+        )
+        .await
+        .unwrap();
+    command.publication = service
+        .prepare_subscription(&command.trigger)
+        .await
+        .unwrap();
+    publications
+        .unpublish(
+            crate::application_public_api::publications::UnpublishApplicationCommand {
+                actor_user_id: user_id,
+                application_id: app.id,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(service
+        .prepare_subscription(&command.trigger)
+        .await
+        .is_err());
+    assert!(matches!(
+        service.invoke_event(command.clone()).await.unwrap(),
+        WorkflowEventInvocationOutcome::Skipped {
+            reason: "application_unpublished"
+        }
+    ));
+    publications
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: user_id,
+            application_id: app.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    repository.set_active_publication_document_snapshot(app.id, document());
+    command.publication = service
+        .prepare_subscription(&command.trigger)
+        .await
+        .unwrap();
     definition.enabled = false;
     assert!(repository
         .update_event_definition(&definition)
@@ -193,7 +284,7 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
             actor_user_id: user_id,
             application_id: app.id,
             mapping: ApplicationApiMappingConfig::default_native(),
-            api_enabled: false,
+            api_enabled: true,
         })
         .await
         .unwrap();
@@ -214,7 +305,9 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
         }
     ));
     let mut changed = configuration();
-    changed.enabled = false;
+    changed
+        .input_mapping
+        .insert("invoice".into(), "/payload/revised".into());
     service
         .replace_trigger(user_id, app.id, changed)
         .await
@@ -324,7 +417,7 @@ async fn native_source_string_identity_and_causal_metadata_survive_invocation_wi
             actor_user_id: user,
             application_id: application.id,
             mapping: ApplicationApiMappingConfig::default_native(),
-            api_enabled: false,
+            api_enabled: true,
         })
         .await
         .unwrap();

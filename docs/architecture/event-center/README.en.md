@@ -143,3 +143,5 @@ The `full-api-events` scope in `event-lifecycle.yml` runs the assembled API-even
 Implementation evidence comes from event-service unit tests, the `event_center_configuration` PostgreSQL target, event routes in `api_system_settings`, event workflow/communication cases in `api_private_contracts`, frontend feature tests and page-debug evidence. Finite design models do not replace implementation tests.
 
 This mechanism does not promise replay, restart recovery, cross-host broadcast or exactly-once external effects. Those capabilities require a separate scope decision; observation logs must not silently become a recovery store.
+
+Workflow event listeners are active while the application has an enabled publication. The form has no separate listener switch. It retains every supported phase in the dropdown and defaults to event publication, without an advanced-settings layer. Existing configuration `enabled` fields remain for compatibility and do not independently control listener activation.

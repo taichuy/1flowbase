@@ -136,7 +136,7 @@ async fn workflow_snapshot(
             actor_user_id: user_id,
             application_id: application.id,
             mapping: ApplicationApiMappingConfig::default_native(),
-            api_enabled: false,
+            api_enabled: true,
         })
         .await
         .unwrap();
@@ -240,6 +240,7 @@ enum Invalidation {
     AuthorDisabled,
     TriggerChanged,
     PublicationChanged,
+    PublicationDisabled,
 }
 
 async fn invalidate(fixture: &Fixture, invalidation: Invalidation) {
@@ -259,6 +260,14 @@ async fn invalidate(fixture: &Fixture, invalidation: Invalidation) {
                 .execute(fixture.state.store.pool())
                 .await
                 .unwrap();
+        }
+        Invalidation::PublicationDisabled => {
+            ApplicationPublicationService::new(fixture.state.store.for_actor(fixture.actor.clone()))
+                .set_api_enabled(control_plane::application_public_api::publications::SetApplicationApiEnabledCommand {
+                    actor_user_id: fixture.actor.user_id,
+                    application_id: fixture.snapshot.trigger.application_id,
+                    api_enabled: false,
+                }).await.unwrap();
         }
         Invalidation::PublicationChanged => {
             let mut document = fixture.snapshot.publication.document_snapshot.clone();
@@ -281,7 +290,7 @@ async fn invalidate(fixture: &Fixture, invalidation: Invalidation) {
                 actor_user_id: fixture.actor.user_id,
                 application_id: fixture.snapshot.trigger.application_id,
                 mapping: ApplicationApiMappingConfig::default_native(),
-                api_enabled: false,
+                api_enabled: true,
             })
             .await
             .unwrap();
@@ -390,6 +399,7 @@ async fn rejects_before_handoff(invalidation: Invalidation, idle: bool) {
         Invalidation::AuthorDisabled => "subscription_author_disabled",
         Invalidation::TriggerChanged => "trigger_changed",
         Invalidation::PublicationChanged => "publication_changed",
+        Invalidation::PublicationDisabled => "application_disabled",
     };
     assert_eq!(status.reason.as_deref(), Some(expected));
     assert!(status.last_run_id.is_none());
@@ -449,3 +459,8 @@ mod lifecycle;
 
 #[path = "host_execution/joined_sources.rs"]
 mod joined_sources;
+
+#[tokio::test]
+async fn disabled_publication_rejects_queue_handoff_without_consuming() {
+    rejects_before_handoff(Invalidation::PublicationDisabled, false).await;
+}

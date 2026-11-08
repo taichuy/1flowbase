@@ -130,7 +130,11 @@ export function ApplicationFormModal({
     if (eventQuery.isSuccess)
       form.setFieldValue(
         'event',
-        eventQuery.data ?? { enabled: false, input_mapping: {} }
+        eventQuery.data ?? {
+          contract_id: '',
+          trigger_phase: 'published',
+          input_mapping: {}
+        }
       );
   }, [form, eventQuery.data, eventQuery.isSuccess]);
   const mappingQuery = useQuery({
@@ -170,7 +174,6 @@ export function ApplicationFormModal({
         extension_http_method: 'POST',
         extension_response_mode: 'sync',
         event: {
-          enabled: false,
           contract_id: '',
           trigger_phase: 'published',
           input_mapping: {}

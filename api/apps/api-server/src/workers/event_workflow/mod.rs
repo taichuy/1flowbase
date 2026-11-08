@@ -78,17 +78,13 @@ pub(crate) fn spawn_event_workflow_loop(
     }
 }
 
-async fn load_enabled_triggers(
+async fn load_configured_triggers(
     state: &ApiState,
     statuses: &EventWorkflowStatuses,
 ) -> anyhow::Result<BTreeMap<Uuid, WorkflowEventTriggerRecord>> {
     let mut triggers = BTreeMap::new();
     for workspace in state.store.list_workflow_event_trigger_workspaces().await? {
-        for trigger in state
-            .store
-            .list_enabled_workflow_event_triggers(workspace)
-            .await?
-        {
+        for trigger in state.store.list_workflow_event_triggers(workspace).await? {
             triggers.insert(trigger.application_id, trigger);
         }
     }
@@ -110,7 +106,7 @@ async fn reconcile(
     logical: &mut BTreeMap<Uuid, LogicalSubscription>,
     restoring: bool,
 ) -> anyhow::Result<()> {
-    let configured = load_enabled_triggers(state, statuses).await?;
+    let configured = load_configured_triggers(state, statuses).await?;
     for (id, receiver) in running.iter_mut() {
         if !configured.contains_key(id) {
             receiver.stop();
@@ -133,6 +129,20 @@ async fn reconcile(
         let publication = match prepared {
             Ok(publication) => publication,
             Err(error) => {
+                // Publication withdrawal/disable ends the logical listener. A later activation
+                // is a new subscription; ordinary refresh/source recovery does not replay it.
+                if matches!(
+                    error.downcast_ref::<control_plane::errors::ControlPlaneError>(),
+                    Some(
+                        control_plane::errors::ControlPlaneError::InvalidInput(
+                            "application_disabled"
+                        ) | control_plane::errors::ControlPlaneError::NotFound(
+                            "application_publication"
+                        )
+                    )
+                ) {
+                    logical.remove(id);
+                }
                 if error.downcast_ref::<sqlx::Error>().is_some() {
                     return Err(error);
                 }

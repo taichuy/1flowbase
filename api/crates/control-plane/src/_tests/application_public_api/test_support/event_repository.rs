@@ -98,7 +98,7 @@ impl EventCenterRepository for ApplicationPublicApiTestRepository {
             .insert(record.application_id, record.clone());
         Ok(true)
     }
-    async fn list_enabled_workflow_event_triggers(
+    async fn list_workflow_event_triggers(
         &self,
         workspace_id: Uuid,
     ) -> Result<Vec<WorkflowEventTriggerRecord>> {
@@ -108,7 +108,7 @@ impl EventCenterRepository for ApplicationPublicApiTestRepository {
             .unwrap()
             .workflow_event_triggers
             .values()
-            .filter(|row| row.workspace_id == workspace_id && row.configuration.enabled)
+            .filter(|row| row.workspace_id == workspace_id)
             .cloned()
             .collect())
     }

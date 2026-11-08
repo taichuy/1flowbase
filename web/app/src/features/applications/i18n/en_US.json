@@ -461,16 +461,16 @@
   },
   "event": {
     "lifecycle_hint": "Consumed means dequeued, not business success. Consumer failures are independent.",
-    "subscription_enabled": "Subscription enabled",
-    "source": "Event source",
+    "source": "Listen for event",
     "system_scope": "System",
     "unbound_scope": "Unbound",
     "source_unavailable": "Select an available event source and a supported phase.",
-    "phase": "Trigger stage",
-    "subscribed": "Subscribed",
-    "published": "Published",
+    "phase": "Listen when",
+    "subscribed": "When a listener becomes active",
+    "published": "When the event is published",
     "consumed": "Consumed (dequeued)",
     "pointer_invalid": "Enter a valid RFC6901 pointer.",
-    "pointer_hint": "Choose a declared payload field or enter an RFC6901 pointer. Consumption means dequeue and handoff, not workflow completion."
+    "pointer_hint": "Choose a declared payload field or enter an RFC6901 pointer. Consumption means dequeue and handoff, not workflow completion.",
+    "listening_hint": "The workflow listens automatically while its publication is enabled. Unpublish or disable the application to stop listening."
   }
 }
