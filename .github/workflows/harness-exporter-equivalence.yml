@@ -1,0 +1,264 @@
+name: Harness exporter profile equivalence
+
+on:
+  push:
+    branches: [ci/harness-exporter-eq-0535ae2b-20261108]
+    paths: [.github/workflows/harness-exporter-equivalence.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harness-exporter-eq-0535ae2b
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      SOURCE_SHA: 0535ae2b5e259047ad4446026f26e7b65f1daf98
+    steps:
+      - name: Initialize evidence before checkout or toolchain setup
+        shell: bash
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/harness-exporter-eq-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          printf 'EVIDENCE_DIR=%s\n' "$EVIDENCE_DIR" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ['EVIDENCE_DIR'])
+          path.mkdir(mode=0o700)
+          (path / 'receipt.json').write_text(json.dumps({'status':'FAIL_NOT_COMPLETED',
+              'source_sha':os.environ['SOURCE_SHA'], 'orchestrator_sha':os.environ['GITHUB_SHA'],
+              'run_id':os.environ['GITHUB_RUN_ID'], 'run_attempt':os.environ['GITHUB_RUN_ATTEMPT'],
+              'scope':'Independent GitHub dev/test semantic comparison; not local 8e9 performance'}, indent=2) + '\n')
+          PY
+      - name: Checkout the exact exporter source
+        id: source
+        uses: actions/checkout@v5
+        with:
+          ref: 0535ae2b5e259047ad4446026f26e7b65f1daf98
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Install the existing project compiler version
+        id: toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.0'
+      - name: Run two ordinary profiles and compare complete parsed JSON
+        id: compare
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, shutil, subprocess, sys
+          from datetime import datetime, timezone, timedelta
+          from pathlib import Path
+
+          EXPECTED = {'head': '0535ae2b5e259047ad4446026f26e7b65f1daf98', 'tree': 'ee864af99c55b447fd16015595a240f43d242567', 'sha256': {'api/Cargo.lock': '2b8864b70e59ed21080ef64441e73e0a0cbd12898f3ad945eb4fdc13b6880ac9', 'api/Cargo.toml': 'ffa68146d31e6176e35a467ebb7c9a666ba59c360b7ddbd7a0743629c5f2c2fd', 'api/rust-toolchain.toml': '9499564fd7988135e5d9c59a303274a930d1ebc25b42879b9eea38db76cb7230', 'api/apps/api-server/Cargo.toml': '93f182d7e43fdc68d27918a0e3f207305beb5deca70930565c0ce1a0b7243c9d', 'api/apps/api-server/src/bin/console_operation_inventory.rs': '7cae5237e71e6a27025a19519fadebaee92106982bcefeb895fb840826ab3676', 'api/apps/api-server/src/app_state.rs': 'd2bec08d19d50ac04a2831849a183ce297107398e439b6b9ba323d76f9e2672b', 'scripts/node/console-operation-registry-hygiene/compiled-inventory-generator.js': 'cc846b011461824b0464285740359e0ea4bddbce3756ff70a5dcdf4c797eb2a0'}}
+          root = Path.cwd()
+          evidence = Path(os.environ['EVIDENCE_DIR'])
+          target = Path(os.environ['RUNNER_TEMP']) / ('harness-exporter-target-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT'])
+          receipt = {'status': 'FAIL_NOT_COMPLETED', 'source_expected': EXPECTED, 'profiles': [],
+                     'scope': 'GitHub environment semantic equivalence only; not local 8e9 performance evidence'}
+
+          def now():
+              return datetime.now(timezone(timedelta(hours=8))).isoformat()
+
+          def save(name, value):
+              temporary = evidence / (name + '.tmp')
+              temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n')
+              temporary.replace(evidence / name)
+
+          def quick(argv, env=None):
+              result = subprocess.run(argv, cwd=root, env=env, stdin=subprocess.DEVNULL,
+                                      text=True, capture_output=True, timeout=20)
+              if result.returncode or len(result.stdout) > 100000:
+                  raise RuntimeError('metadata command failed: ' + repr(argv))
+              return result.stdout.strip()
+
+          def source_state():
+              result = {'head': quick(['git', 'rev-parse', 'HEAD']),
+                        'tree': quick(['git', 'rev-parse', 'HEAD^{tree}']),
+                        'sha256': {p: hashlib.sha256((root / p).read_bytes()).hexdigest() for p in EXPECTED['sha256']}}
+              if result != EXPECTED or quick(['git', 'status', '--porcelain=v1', '--untracked-files=all']):
+                  raise RuntimeError('frozen source/tree/lock/clean check failed')
+              return result
+
+          def resources():
+              mem = {}
+              for line in Path('/proc/meminfo').read_text().splitlines():
+                  key, value = line.split(':', 1)
+                  if key in ('MemTotal', 'MemAvailable', 'SwapTotal', 'SwapFree'):
+                      mem[key + '_bytes'] = int(value.split()[0]) * 1024
+              unified = next((line[3:] for line in Path('/proc/self/cgroup').read_text().splitlines() if line.startswith('0::')), None)
+              group = Path('/sys/fs/cgroup') / unified.lstrip('/') if unified else None
+              fields = {}
+              if group:
+                  for name in ('memory.max', 'memory.peak', 'memory.events', 'memory.swap.max', 'memory.swap.current', 'cpu.max'):
+                      try:
+                          fields[name] = (group / name).read_text().strip()
+                      except OSError:
+                          fields[name] = None
+              return {'at': now(), 'memory': mem, 'cpu_count': os.cpu_count(),
+                      'cpu_affinity_count': len(os.sched_getaffinity(0)), 'cgroup': unified,
+                      'cgroup_fields': fields, 'free_disk_bytes': shutil.disk_usage(evidence).free,
+                      'limit': 'runner/job snapshot; cgroup peak is not isolated exporter peak; swap is observed, never added'}
+
+          def canonical_inventory(value):
+              if not isinstance(value, dict) or not isinstance(value.get('compiled_inventory'), dict):
+                  raise ValueError('missing compiled inventory object')
+              compiled = value['compiled_inventory']
+              for key in ('interfaces', 'operations'):
+                  if not isinstance(compiled.get(key), list) or not compiled[key]:
+                      raise ValueError('empty or missing compiled ' + key)
+              if not isinstance(value.get('route_assembly'), list) or not value['route_assembly']:
+                  raise ValueError('empty or missing route assembly')
+              if not isinstance(value.get('locales'), dict) or any(not value['locales'].get(key) for key in ('zh_Hans', 'en_US')):
+                  raise ValueError('missing required locale evidence')
+              # Sort only object keys. Preserve array order, all fields, types and numeric values.
+              return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
+
+          def compare_values(dev, test):
+              if canonical_inventory(dev) != canonical_inventory(test):
+                  raise ValueError('complete parsed dev/test JSON differs')
+
+          def reject_constant(value):
+              raise ValueError('non-JSON numeric constant: ' + value)
+
+          try:
+              for program in ('cargo', 'rustc', 'timeout', '/usr/bin/time'):
+                  if not shutil.which(program):
+                      raise RuntimeError('required existing build tool unavailable: ' + program)
+              receipt['started_at'] = now()
+              receipt['source_before'] = source_state()
+              env = dict(os.environ)
+              removed = [key for key in env if key in {'RUSTFLAGS', 'CARGO_ENCODED_RUSTFLAGS', 'CARGO_BUILD_RUSTFLAGS',
+                         'CARGO_BUILD_TARGET', 'RUSTUP_TOOLCHAIN', 'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER'}
+                         or key.startswith(('CARGO_PROFILE_DEV_', 'CARGO_PROFILE_TEST_'))
+                         or (key.startswith('CARGO_TARGET_') and key.endswith('_RUSTFLAGS'))]
+              for key in removed:
+                  del env[key]
+              env.update(CARGO_BUILD_JOBS='1', CARGO_INCREMENTAL='0', CARGO_TARGET_DIR=str(target),
+                         CARGO_TERM_COLOR='never', RUSTUP_AUTO_INSTALL='0')
+              receipt['environment'] = {'removed_keys': sorted(removed), 'cargo_jobs': 1, 'incremental': False,
+                                        'features': 'repository defaults; no feature flags', 'profile_overrides': False,
+                                        'values_or_credentials_logged': False}
+              receipt['compiler'] = {'rustc': quick(['rustc', '+1.99.0', '-vV'], env),
+                                     'cargo': quick(['cargo', '+1.99.0', '-V'], env)}
+              receipt['runner'] = {key: os.environ.get(key) for key in ('RUNNER_OS', 'RUNNER_ARCH', 'ImageOS', 'ImageVersion')}
+              receipt['resources_before'] = resources()
+              limits = [receipt['resources_before']['memory']['MemTotal_bytes']]
+              maximum = receipt['resources_before']['cgroup_fields'].get('memory.max')
+              if maximum and maximum.isdigit():
+                  limits.append(int(maximum))
+              if min(limits) <= 8000000000:
+                  raise RuntimeError('external runner does not provide the planned memory above local 8e9')
+              if target.parent != Path(os.environ['RUNNER_TEMP']) or target.exists():
+                  raise RuntimeError('target must be a fresh job-owned runner-temp directory')
+              values, outputs = [], []
+              for profile in ('dev', 'test'):
+                  source_state()
+                  output = evidence / ('inventory-' + profile + '.json')
+                  if output.exists():
+                      raise RuntimeError('output must not already exist: ' + output.name)
+                  row = {'profile': profile, 'started_at': now(), 'source': source_state(), 'resources_before': resources()}
+                  receipt['profiles'].append(row)
+                  argv = ['cargo', '+1.99.0', 'run', '--locked', '--manifest-path', 'api/Cargo.toml',
+                          '--profile', profile, '-p', 'api-server', '--bin', 'console_operation_inventory',
+                          '--message-format=json', '--', str(output)]
+                  row['argv'] = argv
+                  save('receipt.json', receipt)
+                  with (evidence / (profile + '.stdout.log')).open('wb') as stdout, (evidence / (profile + '.stderr.log')).open('wb') as stderr:
+                      result = subprocess.run(['/usr/bin/time', '-v', '-o', str(evidence / (profile + '.time.log')),
+                          'timeout', '--signal=TERM', '--kill-after=10s', '45m', *argv], cwd=root, env=env,
+                          stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr)
+                  row.update(returncode=result.returncode, finished_at=now(), resources_after=resources())
+                  save('receipt.json', receipt)
+                  if result.returncode:
+                      raise RuntimeError(profile + ' exporter failed/timeout; no retry or profile/resource change')
+                  artifacts = []
+                  for line in (evidence / (profile + '.stdout.log')).read_text().splitlines():
+                      try:
+                          item = json.loads(line)
+                      except ValueError:
+                          continue
+                      if item.get('reason') == 'compiler-artifact' and item.get('target', {}).get('name') in ('api_server', 'console_operation_inventory'):
+                          artifacts.append(item)
+                  save(profile + '.compiler-artifacts.json', artifacts)
+                  if not artifacts or not any(item['target']['name'] == 'console_operation_inventory' for item in artifacts):
+                      raise RuntimeError('missing ordinary exporter compiler artifact evidence')
+                  if any(item['profile']['test'] or 'test-support' in item.get('features', []) for item in artifacts):
+                      raise RuntimeError('unexpected test harness or test-support feature')
+                  raw = output.read_bytes()
+                  value = json.loads(raw, parse_constant=reject_constant)
+                  canonical_inventory(value)
+                  if not raw:
+                      raise RuntimeError('empty exporter output')
+                  values.append(value)
+                  outputs.append({'file': output.name, 'bytes': len(raw), 'sha256': hashlib.sha256(raw).hexdigest(),
+                                  'interfaces': len(value['compiled_inventory']['interfaces']),
+                                  'operations': len(value['compiled_inventory']['operations']), 'routes': len(value['route_assembly']),
+                                  'locales': {key: len(data) for key, data in value['locales'].items()}})
+                  row['output'] = outputs[-1]
+                  if quick(['rustc', '+1.99.0', '-vV'], env) != receipt['compiler']['rustc']:
+                      raise RuntimeError('compiler changed between profiles')
+                  if profile == 'dev':
+                      # Only reclaim this job's fresh target, after preserving JSON and compiler evidence.
+                      shutil.rmtree(target)
+                      row['owned_target_reclaimed'] = True
+              compare_values(*values)
+              save('comparison.json', {'status': 'PASS_FULL_PARSED_JSON_EQUIVALENCE', 'outputs': outputs,
+                                       'normalization': 'object-key order only; arrays/all fields/types/numbers preserved'})
+              receipt['source_after'] = source_state()
+              receipt['status'] = 'PASS_FULL_PARSED_JSON_EQUIVALENCE'
+          except Exception as error:
+              receipt['status'] = 'FAIL'
+              receipt['error'] = str(error)
+          finally:
+              try:
+                  receipt['source_after'] = source_state()
+                  receipt['resources_after'] = resources()
+              except Exception as error:
+                  receipt['status'] = 'FAIL'
+                  receipt['final_evidence_error'] = str(error)
+              receipt['finished_at'] = now()
+              save('receipt.json', receipt)
+          if receipt['status'] != 'PASS_FULL_PARSED_JSON_EQUIVALENCE':
+              sys.exit(1)
+          PY
+      - name: Finalize outcome even after a failed setup or exporter
+        if: always() && env.EVIDENCE_DIR != ''
+        shell: bash
+        env:
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          TOOLCHAIN_OUTCOME: ${{ steps.toolchain.outcome }}
+          COMPARE_OUTCOME: ${{ steps.compare.outcome }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          from datetime import datetime, timezone, timedelta
+          path = Path(os.environ['EVIDENCE_DIR']) / 'receipt.json'
+          value = json.loads(path.read_text())
+          value['orchestrator_sha'] = os.environ['GITHUB_SHA']
+          value['run_id'] = os.environ['GITHUB_RUN_ID']
+          value['run_attempt'] = os.environ['GITHUB_RUN_ATTEMPT']
+          value['workflow_outcomes'] = {key:os.environ[key] for key in ('SOURCE_OUTCOME','TOOLCHAIN_OUTCOME','COMPARE_OUTCOME')}
+          if value.get('status') != 'PASS_FULL_PARSED_JSON_EQUIVALENCE' or any(x != 'success' for x in value['workflow_outcomes'].values()):
+              value['status'] = 'FAIL'
+          value['workflow_observed_at'] = datetime.now(timezone(timedelta(hours=8))).isoformat()
+          temporary = path.with_suffix('.tmp')
+          temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n')
+          temporary.replace(path)
+          PY
+      - name: Upload success or failure evidence
+        if: always() && env.EVIDENCE_DIR != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: harness-exporter-equivalence-0535ae2b-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.EVIDENCE_DIR }}/
+          retention-days: 14
+          if-no-files-found: error
