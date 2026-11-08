@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn temporary_access_key_is_omitted_from_safe_query_and_response_remains_binary() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: "public.files.temporary.read".into(),
         method: "GET".into(),
         path: "/api/public/files/content".into(),

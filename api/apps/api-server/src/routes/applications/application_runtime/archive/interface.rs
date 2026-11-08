@@ -1006,17 +1006,17 @@ pub(crate) fn compile_registry(
     )
 }
 
-impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeArchiveInput {
+impl crate::openapi_interface::contract::ApiInput for ApplicationRuntimeArchiveInput {
     // UploadChunk owns raw ZIP bytes and a checksum header, not a JSON body.
     fn document_input_unavailable(
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         (operation.interface_id == "applications.runtime.archive.upload-chunks.upsert")
             .then_some(domain::event_center::ApiEventUnavailableReason::BinaryRequest)
     }
     fn project_document_input(
         &self,
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Ok(match self {
             Self::ExportOne {
@@ -1036,7 +1036,7 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeAr
                 operation,
                 serde_json::json!({"application_id":application_id}),
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(body)?,
+                crate::openapi_interface::contract::to_value(body)?,
             ),
             Self::CreateUploadSession {
                 application_id,
@@ -1045,7 +1045,7 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeAr
                 operation,
                 serde_json::json!({"application_id":application_id}),
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(body)?,
+                crate::openapi_interface::contract::to_value(body)?,
             ),
             Self::UploadChunk { .. } => {
                 return Err(std::sync::Arc::from(
@@ -1074,9 +1074,9 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeAr
     }
 }
 
-impl crate::event_center::api_projection::ApiEventOutput for ApplicationRuntimeArchiveOutput {
+impl crate::openapi_interface::contract::ApiOutput for ApplicationRuntimeArchiveOutput {
     fn document_output_schema(
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<serde_json::Value> {
         (matches!(
             operation.interface_id.as_str(),
@@ -1090,7 +1090,7 @@ impl crate::event_center::api_projection::ApiEventOutput for ApplicationRuntimeA
     }
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         match self {
             Self::Download(value) => {
@@ -1098,9 +1098,9 @@ impl crate::event_center::api_projection::ApiEventOutput for ApplicationRuntimeA
                     &value.document,
                 )
             }
-            Self::UploadSession(value) => crate::event_center::api_projection::to_value(value),
-            Self::Chunk(value) => crate::event_center::api_projection::to_value(value),
-            Self::ImportJob(value) => crate::event_center::api_projection::to_value(value),
+            Self::UploadSession(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Chunk(value) => crate::openapi_interface::contract::to_value(value),
+            Self::ImportJob(value) => crate::openapi_interface::contract::to_value(value),
         }
     }
 }

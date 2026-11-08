@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::JsonApiOutput;
 use std::{collections::HashMap, sync::Arc};
 
 use control_plane::{
@@ -323,12 +324,16 @@ impl InterfaceContract for NetworkPluginInput {
     clippy::large_enum_variant,
     reason = "the typed plugin output is projected immediately into the console response"
 )]
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum NetworkPluginOutput {
     Official(NetworkEgressOfficialPluginCatalogResponse),
     Families(Vec<NetworkEgressPluginFamilyResponse>),
     Installed(InstallPluginResponse),
     Empty,
 }
+
+impl JsonApiOutput for NetworkPluginOutput {}
 
 impl InterfaceContract for NetworkPluginOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {

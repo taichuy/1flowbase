@@ -769,10 +769,10 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeReadsInput {
+impl crate::openapi_interface::contract::ApiInput for ApplicationRuntimeReadsInput {
     fn project_document_input(
         &self,
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Ok(match self {
             Self::CurrentContext { .. } => {
@@ -796,10 +796,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                     if operation.method == "POST" {
                         serde_json::json!({})
                     } else {
-                        crate::event_center::api_projection::to_value(query)?
+                        crate::openapi_interface::contract::to_value(query)?
                     },
                     if operation.method == "POST" {
-                        crate::event_center::api_projection::to_value(query)?
+                        crate::openapi_interface::contract::to_value(query)?
                     } else {
                         serde_json::Value::Null
                     },
@@ -825,10 +825,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -840,10 +840,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                     if operation.method == "POST" {
                         serde_json::json!({})
                     } else {
-                        crate::event_center::api_projection::to_value(query)?
+                        crate::openapi_interface::contract::to_value(query)?
                     },
                     if operation.method == "POST" {
-                        crate::event_center::api_projection::to_value(query)?
+                        crate::openapi_interface::contract::to_value(query)?
                     } else {
                         serde_json::Value::Null
                     },
@@ -859,10 +859,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -878,10 +878,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -896,10 +896,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -914,10 +914,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -941,10 +941,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -960,10 +960,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -1006,10 +1006,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -1025,10 +1025,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -1043,10 +1043,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -1072,10 +1072,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -1092,10 +1092,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -1109,10 +1109,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -1127,10 +1127,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -1145,10 +1145,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -1181,10 +1181,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -1226,10 +1226,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -1252,10 +1252,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeRe
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },

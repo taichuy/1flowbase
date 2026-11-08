@@ -15,9 +15,7 @@ use interface_runtime::{
     UserPrincipal,
 };
 
-use crate::event_center::api_projection::{
-    register_static_api_event, ApiEventInput, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{register_static_api_operation, ApiInput, ApiOutput};
 use crate::{app_state::ApiState, error_response::ApiError};
 
 #[derive(Clone)]
@@ -233,8 +231,8 @@ pub(crate) fn compile_registry<I, O>(
     port: Arc<dyn ConsoleInterfacePort<I, O>>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
-    I: ApiEventInput,
-    O: ApiEventOutput,
+    I: ApiInput,
+    O: ApiOutput,
 {
     compile_registry_with_scope(owner, graph, declarations, port, InterfaceScope::Workspace)
 }
@@ -247,8 +245,8 @@ pub(crate) fn compile_registry_with_event_observation<I, O>(
     event_operations: &[&str],
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
-    I: ApiEventInput,
-    O: ApiEventOutput,
+    I: ApiInput,
+    O: ApiOutput,
 {
     compile_registry_with_scope_and_events(
         owner,
@@ -268,8 +266,8 @@ pub(crate) fn compile_registry_with_scope<I, O>(
     scope: InterfaceScope,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
-    I: ApiEventInput,
-    O: ApiEventOutput,
+    I: ApiInput,
+    O: ApiOutput,
 {
     compile_registry_with_scope_and_events(owner, graph, declarations, port, scope, &[])
 }
@@ -283,8 +281,8 @@ fn compile_registry_with_scope_and_events<I, O>(
     event_operations: &[&str],
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
-    I: ApiEventInput,
-    O: ApiEventOutput,
+    I: ApiInput,
+    O: ApiOutput,
 {
     let owner = InterfaceOwner::new(owner).expect("static Console family owner is valid");
     let declaration_ids = declarations
@@ -378,7 +376,7 @@ where
                     .expect("static Console family route is valid"),
             ),
         );
-        register_static_api_event::<I, O>(&mut compiler, &event_binding, graph)?;
+        register_static_api_operation::<I, O>(&mut compiler, &event_binding, graph)?;
         compiler.register_binding(
             event_binding,
             InvocationAdapterPlan::new(
@@ -403,9 +401,9 @@ pub(crate) fn compile_server_stream_registry<I, S, O>(
     port: Arc<dyn ConsoleServerStreamPort<I, S, O>>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
-    I: ApiEventInput,
+    I: ApiInput,
     S: InterfaceContract,
-    O: ApiEventOutput,
+    O: ApiOutput,
 {
     compile_server_stream_registry_with_scope(
         owner,
@@ -424,9 +422,9 @@ pub(crate) fn compile_server_stream_registry_with_event_observation<I, S, O>(
     event_operations: &[&str],
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
-    I: ApiEventInput,
+    I: ApiInput,
     S: InterfaceContract,
-    O: ApiEventOutput,
+    O: ApiOutput,
 {
     compile_server_stream_registry_with_scope_and_events(
         owner,
@@ -446,9 +444,9 @@ pub(crate) fn compile_server_stream_registry_with_scope<I, S, O>(
     scope: InterfaceScope,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
-    I: ApiEventInput,
+    I: ApiInput,
     S: InterfaceContract,
-    O: ApiEventOutput,
+    O: ApiOutput,
 {
     compile_server_stream_registry_with_scope_and_events(
         owner,
@@ -469,9 +467,9 @@ fn compile_server_stream_registry_with_scope_and_events<I, S, O>(
     event_operations: &[&str],
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
 where
-    I: ApiEventInput,
+    I: ApiInput,
     S: InterfaceContract,
-    O: ApiEventOutput,
+    O: ApiOutput,
 {
     let owner = InterfaceOwner::new(owner).expect("static Console family owner is valid");
     let operations = declarations
@@ -538,7 +536,7 @@ where
                     .expect("static Console family route is valid"),
             ),
         );
-        register_static_api_event::<I, O>(&mut compiler, &event_binding, graph)?;
+        register_static_api_operation::<I, O>(&mut compiler, &event_binding, graph)?;
         compiler.register_binding(
             event_binding,
             InvocationAdapterPlan::new(

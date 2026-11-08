@@ -288,9 +288,9 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-impl crate::event_center::api_projection::ApiEventOutput for ApplicationRuntimeDebugCommandsOutput {
+impl crate::openapi_interface::contract::ApiOutput for ApplicationRuntimeDebugCommandsOutput {
     fn document_output_schema(
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<serde_json::Value> {
         Some(
             if operation.interface_id == "applications.runtime.nodes.debug-runs.create" {
@@ -306,7 +306,7 @@ impl crate::event_center::api_projection::ApiEventOutput for ApplicationRuntimeD
     }
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         match self {
             Self::Run(value) => {

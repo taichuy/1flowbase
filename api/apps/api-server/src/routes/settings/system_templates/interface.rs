@@ -1,5 +1,6 @@
-#[path = "interface/event_projection.rs"]
-mod event_projection;
+use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
+#[path = "interface/serialization.rs"]
+mod serialization;
 use super::plugins::TemplateDependencies;
 use crate::error_response::ApiError;
 use crate::routes::console_interface::{
@@ -17,23 +18,40 @@ use control_plane::ports::RuntimeRegistrySync;
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde_json::{json, Value};
 use std::sync::Arc;
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum TemplateInput {
     Catalog,
+    #[serde(serialize_with = "json_contract::query")]
     CatalogQuery(super::catalog::CatalogQuery),
+    #[serde(serialize_with = "serialization::export_query")]
     ExportQuery {
         selection: PortableTemplateSelection,
         format: Option<String>,
     },
+    #[serde(serialize_with = "json_contract::body")]
     Download(super::catalog::CatalogRequest),
+    #[serde(serialize_with = "json_contract::query")]
     Library(super::catalog::CatalogQuery),
+    #[serde(serialize_with = "serialization::export_archive")]
     ExportArchive(PortableTemplateSelection),
+    #[serde(serialize_with = "json_contract::body")]
     ResolvePreview(super::catalog::TemplateRequest),
+    #[serde(serialize_with = "json_contract::body")]
     ResolveInstall(super::catalog::TemplateRequest),
+    #[serde(serialize_with = "json_contract::body")]
     Export(PortableTemplateSelection),
+    #[serde(serialize_with = "json_contract::body")]
     Preview(PortableTemplatePackage),
+    #[serde(serialize_with = "json_contract::body")]
     Install(PortableTemplatePackage),
 }
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct TemplateOutput(pub Value);
+
+impl JsonApiInput for TemplateInput {}
+impl JsonApiOutput for TemplateOutput {}
 impl InterfaceContract for TemplateInput {
     const CONTRACT_ID: &'static str = "api-server.console-system-templates.input";
     const CONTRACT_VERSION: &'static str = "1";

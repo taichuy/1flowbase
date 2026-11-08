@@ -1,7 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -10,11 +8,11 @@ use std::sync::Arc;
 struct ToolEvent {
     is_error: bool,
 }
-impl ApiEventInput for WebMcpInput {
-    fn document_input_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for WebMcpInput {
+    fn document_input_schema(operation: &ApiOperationContext) -> Option<Value> {
         (operation.interface_id == "webmcp.tools.invoke").then(||json!({"type":"object","properties":{"path":{"type":"object","properties":{"instance_id":{"type":"string"},"operation":{"type":"string"}},"required":["instance_id","operation"],"additionalProperties":false}},"required":["path"],"additionalProperties":false}))
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::Registrations => json!({}),
             // The selected canonical target owns argument credential filtering.
@@ -28,11 +26,11 @@ impl ApiEventInput for WebMcpInput {
         })
     }
 }
-impl ApiEventOutput for WebMcpOutput {
-    fn document_output_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for WebMcpOutput {
+    fn document_output_schema(operation: &ApiOperationContext) -> Option<Value> {
         (operation.interface_id == "webmcp.tools.invoke").then(|| event::schema::<ToolEvent>())
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Registrations(value) => event::to_value(value),
             Self::Tool(value) => event::to_value(&ToolEvent {

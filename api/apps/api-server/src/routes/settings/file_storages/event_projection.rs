@@ -1,15 +1,15 @@
 use super::*;
-use crate::event_center::api_projection::{
-    schema, to_value, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
+use crate::openapi_interface::contract::{
+    schema, to_value, ApiInput, ApiOperationContext, ApiOutput,
 };
-use crate::routes::document_event as de;
+use crate::openapi_interface::schema_projection as de;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
 // Driver configuration and provider errors can contain credentials; the event owner excludes them.
 const HIDDEN: &[&str] = &["config_json", "last_health_error"];
-impl ApiEventInput for FileStoragesInput {
-    fn document_input_schema(c: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for FileStoragesInput {
+    fn document_input_schema(c: &ApiOperationContext) -> Option<Value> {
         match c.interface_id.as_str() {
             "file_storages.create" => Some(de::body_schema(de::without_fields(
                 schema::<CreateFileStorageBody>(),
@@ -22,7 +22,7 @@ impl ApiEventInput for FileStoragesInput {
             _ => None,
         }
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::List { .. } => json!({}),
             Self::Create(b) => {
@@ -38,8 +38,8 @@ impl ApiEventInput for FileStoragesInput {
         })
     }
 }
-impl ApiEventOutput for FileStoragesOutput {
-    fn document_output_schema(c: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for FileStoragesOutput {
+    fn document_output_schema(c: &ApiOperationContext) -> Option<Value> {
         match c.interface_id.as_str() {
             "file_storages.list" => Some(de::array_schema(de::without_fields(
                 schema::<FileStorageResponse>(),
@@ -51,7 +51,7 @@ impl ApiEventOutput for FileStoragesOutput {
             _ => None,
         }
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::List(v) => Value::Array(
                 v.iter()

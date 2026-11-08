@@ -71,18 +71,18 @@ fn one_console_operation_can_publish_multiple_static_bindings() {
     );
 }
 
-impl crate::event_center::api_projection::ApiEventInput for Input {
+impl crate::openapi_interface::contract::ApiInput for Input {
     fn project_document_input(
         &self,
-        _: &crate::event_center::api_projection::ApiEventOperationContext,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, Arc<str>> {
         Ok(serde_json::json!({}))
     }
 }
-impl crate::event_center::api_projection::ApiEventOutput for Output {
+impl crate::openapi_interface::contract::ApiOutput for Output {
     fn project_document_output(
         &self,
-        _: &crate::event_center::api_projection::ApiEventOperationContext,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, Arc<str>> {
         Ok(serde_json::json!({}))
     }

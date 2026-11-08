@@ -1,57 +1,15 @@
 use super::*;
-use crate::event_center::api_projection::{
-    to_value, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{to_value, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
 use domain::event_center::ApiEventUnavailableReason;
-impl ApiEventInput for UiManagementInput {
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
-        Ok(match self {
-            Self::PluginSettingsModuleAsset {
-                route_id,
-                applied_plugin_version,
-                sha256,
-            } => {
-                json!({"query":{"route_id":route_id,"applied_plugin_version":applied_plugin_version,"sha256":sha256}})
-            }
-            Self::PluginSettingsPage { route_id } => json!({"query":{"route_id":route_id}}),
-            Self::ListTemplates
-            | Self::ListComponents
-            | Self::CatalogIndex
-            | Self::CatalogUpdateStatus => json!({}),
-            Self::CreateTemplate(b) => json!({"body":to_value(b)?}),
-            Self::ResetDefaultTemplate(b) => json!({"body":to_value(b)?}),
-            Self::CreateComponent(b) => json!({"body":to_value(b)?}),
-            Self::UpdateTemplate { id, body } => json!({"path":{"id":id},"body":to_value(body)?}),
-            Self::PublishTemplate { id, body } => json!({"path":{"id":id},"body":to_value(body)?}),
-            Self::UpdateComponent { id, body } => json!({"path":{"id":id},"body":to_value(body)?}),
-            Self::SetDefaultTemplate { id }
-            | Self::DeleteTemplate { id }
-            | Self::GetComponent { id }
-            | Self::DeleteComponent { id } => json!({"path":{"id":id}}),
-            Self::CatalogPage { page } => json!({"path":{"page":page}}),
-            Self::CatalogSearch(v) => {
-                json!({"query":{"q":v.q,"page":v.page,"page_size":v.page_size}})
-            }
-            Self::CatalogDownload { component_code } => {
-                json!({"path":{"component_code":component_code}})
-            }
-            Self::CatalogSyncGroup { source, group } => {
-                json!({"path":{"source":source,"group":group}})
-            }
-        })
-    }
-}
-impl ApiEventOutput for UiManagementOutput {
-    fn document_output_unavailable(
-        c: &ApiEventOperationContext,
-    ) -> Option<ApiEventUnavailableReason> {
+impl ApiOutput for UiManagementOutput {
+    fn document_output_unavailable(c: &ApiOperationContext) -> Option<ApiEventUnavailableReason> {
         (c.interface_id == "ui_management.plugin_settings_module_asset.view")
             .then_some(ApiEventUnavailableReason::BinaryResponse)
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::PluginSettingsModuleAsset(_) => {
                 Err(Arc::from("retained-module-non-json-response"))

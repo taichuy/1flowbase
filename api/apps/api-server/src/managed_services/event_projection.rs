@@ -1,8 +1,6 @@
 //! Manifest-owned safe business JSON. Only explicit owner sensitivity markers
 //! remove fields; names of ordinary business properties do not imply credentials.
-use crate::event_center::api_projection::{
-    ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
 use interface_runtime::{CompiledInterfaceRegistry, RegistryCompiler};
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, sync::Arc};
@@ -36,13 +34,13 @@ impl OperationPolicy {
         }
     }
 
-    fn check(&self, operation: &ApiEventOperationContext) -> Result<(), Arc<str>> {
+    fn check(&self, operation: &ApiOperationContext) -> Result<(), Arc<str>> {
         if operation.interface_id != self.interface_id
             || operation.method != self.method
-            || crate::event_center::api_projection::route_identity(
+            || crate::openapi_interface::contract::route_identity(
                 &operation.method,
                 &operation.path,
-            ) != crate::event_center::api_projection::route_identity(&self.method, &self.path)
+            ) != crate::openapi_interface::contract::route_identity(&self.method, &self.path)
         {
             return Err(Arc::from("managed_service_event_policy_mismatch"));
         }
@@ -63,7 +61,7 @@ impl OperationPolicy {
 }
 
 fn request_schema_without_headers(schema: Value) -> Value {
-    let mut schema = crate::event_center::api_projection::safe_document_request_schema(schema);
+    let mut schema = crate::openapi_interface::contract::safe_document_request_schema(schema);
     // Logical branches at the request root still describe the same canonical
     // header carrier. Business body properties are not traversed by this rule.
     for keyword in ["allOf", "anyOf", "oneOf"] {
@@ -337,11 +335,8 @@ fn project(value: &Value, schema: &Value) -> Result<Value, Arc<str>> {
     Ok(value.clone())
 }
 
-impl ApiEventInput for super::interface::ManagedServiceInput {
-    fn project_document_input(
-        &self,
-        operation: &ApiEventOperationContext,
-    ) -> Result<Value, Arc<str>> {
+impl ApiInput for super::interface::ManagedServiceInput {
+    fn project_document_input(&self, operation: &ApiOperationContext) -> Result<Value, Arc<str>> {
         self.event_policy.check(operation)?;
         if self.interface_id != operation.interface_id {
             return Err(Arc::from("managed_service_event_input_mismatch"));
@@ -359,11 +354,8 @@ impl ApiEventInput for super::interface::ManagedServiceInput {
     }
 }
 
-impl ApiEventOutput for super::interface::ManagedServiceOutput {
-    fn project_document_output(
-        &self,
-        operation: &ApiEventOperationContext,
-    ) -> Result<Value, Arc<str>> {
+impl ApiOutput for super::interface::ManagedServiceOutput {
+    fn project_document_output(&self, operation: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match &self.1 {
             OutputPolicy::TicketIssued(policy) => {
                 policy.check(operation)?;
@@ -405,7 +397,7 @@ pub(super) fn refine_registry(
             .static_descriptor
             .expect("managed operation is static within its frozen generation")
             .clone();
-        let context = ApiEventOperationContext {
+        let context = ApiOperationContext {
             interface_id: policy.interface_id.clone(),
             method: route.method().into(),
             path: route.path().into(),

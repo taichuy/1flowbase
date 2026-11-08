@@ -67,11 +67,9 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-impl crate::event_center::api_projection::ApiEventOutput
-    for ApplicationRuntimeDebugArtifactsOutput
-{
+impl crate::openapi_interface::contract::ApiOutput for ApplicationRuntimeDebugArtifactsOutput {
     fn document_output_schema(
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<serde_json::Value> {
         match operation.interface_id.as_str() {
             "applications.runtime.debug-snapshot.get" => Some(
@@ -89,14 +87,14 @@ impl crate::event_center::api_projection::ApiEventOutput
     }
     // Content is arbitrary bytes; Resolve and Snapshot retain their actual JSON responses.
     fn document_output_unavailable(
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         (operation.interface_id == "applications.runtime.debug-artifact.get")
             .then_some(domain::event_center::ApiEventUnavailableReason::BinaryResponse)
     }
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         match self {
             Self::Content(_) => Err(std::sync::Arc::from(

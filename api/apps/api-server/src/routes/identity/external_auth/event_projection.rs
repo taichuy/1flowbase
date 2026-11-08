@@ -1,17 +1,15 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 
-impl ApiEventInput for PublicInput {
+impl ApiInput for PublicInput {
     fn document_input_unavailable(
-        operation: &ApiEventOperationContext,
+        operation: &ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         (operation.interface_id == OPERATIONS[1])
             .then_some(domain::event_center::ApiEventUnavailableReason::CredentialBoundary)
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Start { login_entry_id } => {
                 Ok(json!({"query":{"login_entry_id":login_entry_id}}))
@@ -22,14 +20,14 @@ impl ApiEventInput for PublicInput {
         }
     }
 }
-impl ApiEventOutput for PublicOutput {
+impl ApiOutput for PublicOutput {
     fn document_output_unavailable(
-        _: &ApiEventOperationContext,
+        _: &ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         // Browser redirects and issued cookies do not provide a JSON business result.
         Some(domain::event_center::ApiEventUnavailableReason::CredentialBoundary)
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Authorization(_) => Err(Arc::from("OAuth authorization redirect is host-only")),
             Self::Login(_) => Err(Arc::from(
@@ -42,18 +40,13 @@ impl ApiEventOutput for PublicOutput {
         }
     }
 }
-impl ApiEventInput for AuthorizeInput {
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
-        Ok(json!({"body":{"login_entry_id":self.0}}))
-    }
-}
-impl ApiEventOutput for AuthorizeOutput {
+impl ApiOutput for AuthorizeOutput {
     fn document_output_unavailable(
-        _: &ApiEventOperationContext,
+        _: &ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         Some(domain::event_center::ApiEventUnavailableReason::CredentialBoundary)
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Err(Arc::from(
             "authorization URL and cookie are host-only credentials",
         ))

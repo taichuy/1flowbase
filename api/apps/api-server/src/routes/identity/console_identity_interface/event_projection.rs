@@ -1,7 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 
 #[derive(serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
@@ -71,11 +69,11 @@ struct ApiKeysEvent<'a> {
     items: Vec<ApiKeyEvent<'a>>,
 }
 
-impl ApiEventInput for ConsoleIdentityInput {
-    fn document_input_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for ConsoleIdentityInput {
+    fn document_input_schema(operation: &ApiOperationContext) -> Option<Value> {
         (operation.interface_id == "console.identity.me.change-password").then(|| json!({"type":"object","properties":{"body":{"type":"object","properties":{},"additionalProperties":false}},"required":["body"],"additionalProperties":false}))
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::GetSession
             | Self::DeleteSession
@@ -93,8 +91,8 @@ impl ApiEventInput for ConsoleIdentityInput {
         })
     }
 }
-impl ApiEventOutput for ConsoleIdentityOutput {
-    fn document_output_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for ConsoleIdentityOutput {
+    fn document_output_schema(operation: &ApiOperationContext) -> Option<Value> {
         match operation.interface_id.as_str() {
             "console.identity.session.get"
             | "console.identity.session.switch-workspace"
@@ -108,7 +106,7 @@ impl ApiEventOutput for ConsoleIdentityOutput {
             _ => None,
         }
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Session(value) => event::to_value(&SessionEvent {
                 actor: serde_json::from_value(value.actor.clone())

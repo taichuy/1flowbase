@@ -122,7 +122,7 @@ pub struct UpdateScopeGrantBody {
     pub confirm_unsafe_external_source_system_all: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ConfirmationQuery {
     pub confirmed: Option<bool>,
 }

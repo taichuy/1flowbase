@@ -27,10 +27,10 @@ impl InterfaceContract for RuntimeModelMetadataInput {
     }
 }
 
-impl crate::event_center::api_projection::ApiEventInput for RuntimeModelMetadataInput {
+impl crate::openapi_interface::contract::ApiInput for RuntimeModelMetadataInput {
     fn project_document_input(
         &self,
-        _: &crate::event_center::api_projection::ApiEventOperationContext,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, Arc<str>> {
         Ok(serde_json::json!({"path":{"model_code":self.model_code}}))
     }
@@ -131,7 +131,7 @@ pub(super) fn register(
                 .expect("static runtime metadata route is valid"),
         ),
     );
-    crate::event_center::api_projection::register_static_api_event::<
+    crate::openapi_interface::contract::register_static_api_operation::<
         RuntimeModelMetadataInput,
         RuntimeDataModelMetadata,
     >(compiler, &binding, "runtime-model-metadata-document-v1")?;

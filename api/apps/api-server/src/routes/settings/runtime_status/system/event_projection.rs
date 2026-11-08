@@ -1,24 +1,13 @@
 use super::*;
-use crate::event_center::api_projection::{
-    schema, to_value, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
+use crate::openapi_interface::contract::{
+    schema, to_value, ApiInput, ApiOperationContext, ApiOutput,
 };
-use crate::routes::document_event::{self as de, query_fields as q};
+use crate::openapi_interface::schema_projection::{self as de, query_fields as q};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-impl ApiEventInput for SystemInterfaceInput {
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
-        Ok(match self {
-            Self::ReleaseStatus | Self::ProcessList => json!({}),
-            Self::RuntimeProfile { query_locale, .. } => {
-                json!({"query":q(json!({"locale":query_locale}))})
-            }
-            Self::TerminateProcess { pid } => json!({"path":{"pid":pid}}),
-        })
-    }
-}
-impl ApiEventOutput for SystemInterfaceOutput {
-    fn document_output_schema(c: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for SystemInterfaceOutput {
+    fn document_output_schema(c: &ApiOperationContext) -> Option<Value> {
         match c.interface_id.as_str() {
             "system.runtime_profile.view" => {
                 let mut s = schema::<SystemRuntimeProfileResponse>();
@@ -37,7 +26,7 @@ impl ApiEventOutput for SystemInterfaceOutput {
             _ => None,
         }
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::ReleaseStatus(v) => to_value(v),
             Self::ProcessTermination(v) => to_value(v),

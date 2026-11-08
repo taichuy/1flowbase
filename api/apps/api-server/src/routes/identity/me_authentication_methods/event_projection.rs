@@ -1,14 +1,12 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 
-impl ApiEventInput for Input {
-    fn document_input_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for Input {
+    fn document_input_schema(operation: &ApiOperationContext) -> Option<Value> {
         (operation.interface_id == OPERATIONS[3]).then(|| json!({"type":"object","properties":{"body":{"type":"object","properties":{},"additionalProperties":false}},"required":["body"],"additionalProperties":false}))
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::Read => json!({}),
             Self::Unlink(identity_id) => json!({"path":{"identity_id":identity_id}}),
@@ -19,14 +17,14 @@ impl ApiEventInput for Input {
         })
     }
 }
-impl ApiEventOutput for Output {
+impl ApiOutput for Output {
     fn document_output_unavailable(
-        operation: &ApiEventOperationContext,
+        operation: &ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         (operation.interface_id == OPERATIONS[2])
             .then_some(domain::event_center::ApiEventUnavailableReason::CredentialBoundary)
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Methods(value) => event::to_value(value),
             Self::Authorization(_, _) => Err(Arc::from(

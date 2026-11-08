@@ -1,4 +1,5 @@
 use super::*;
+use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 use crate::routes::console_interface::{
     self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
     ConsoleInterfaceTargetError,
@@ -10,11 +11,17 @@ pub(crate) struct McpDirectoryDependencies {
     pub(crate) store: storage_durable_postgres::MainDurableStore,
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum McpDirectoryInput {
+    #[serde(serialize_with = "json_contract::path")]
     Read(String),
+    #[serde(serialize_with = "json_contract::path_body")]
     Replace(String, ReplaceMcpInstanceDirectoryBody),
 }
 
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct McpDirectoryOutput(pub(super) McpInstanceDirectoryResponse);
 
 impl InterfaceContract for McpDirectoryInput {
@@ -136,5 +143,15 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[path = "event_projection.rs"]
-mod event_projection;
+impl JsonApiInput for McpDirectoryInput {}
+impl JsonApiOutput for McpDirectoryOutput {}
+
+#[cfg(test)]
+use serde_json::json;
+
+#[cfg(test)]
+use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "_tests/event_projection.rs"]
+mod event_tests;

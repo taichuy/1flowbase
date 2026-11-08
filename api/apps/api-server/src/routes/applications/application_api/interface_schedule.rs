@@ -369,10 +369,10 @@ pub(crate) fn compile_registry(
     )
 }
 
-impl crate::event_center::api_projection::ApiEventInput for WorkflowScheduleInput {
+impl crate::openapi_interface::contract::ApiInput for WorkflowScheduleInput {
     fn project_document_input(
         &self,
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Ok(match self {
             Self::Get { application_id } => {
@@ -390,20 +390,20 @@ impl crate::event_center::api_projection::ApiEventInput for WorkflowScheduleInpu
                 operation,
                 serde_json::json!({"application_id":application_id}),
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(body)?,
+                crate::openapi_interface::contract::to_value(body)?,
             ),
         })
     }
 }
 
-impl crate::event_center::api_projection::ApiEventOutput for WorkflowScheduleOutput {
+impl crate::openapi_interface::contract::ApiOutput for WorkflowScheduleOutput {
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         match self {
-            Self::Optional(value) => crate::event_center::api_projection::to_value(value),
-            Self::Required(value) => crate::event_center::api_projection::to_value(value),
+            Self::Optional(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Required(value) => crate::openapi_interface::contract::to_value(value),
         }
     }
 }

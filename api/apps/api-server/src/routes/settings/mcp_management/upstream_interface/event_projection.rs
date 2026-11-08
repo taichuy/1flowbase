@@ -1,7 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -115,8 +113,8 @@ struct DraftTestEvent<'a> {
     protocol_version: &'a Option<String>,
     tested_at: &'a str,
 }
-impl ApiEventInput for McpUpstreamInput {
-    fn document_input_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for McpUpstreamInput {
+    fn document_input_schema(operation: &ApiOperationContext) -> Option<Value> {
         if operation.interface_id == "mcp.upstream_credentials.update" {
             Some(
                 json!({"type":"object","properties":{"path":{"type":"object","properties":{"connection_id":{"type":"string"}},"required":["connection_id"]},"body":event::schema::<CredentialEvent<'static>>()},"required":["path","body"],"additionalProperties":false}),
@@ -129,7 +127,7 @@ impl ApiEventInput for McpUpstreamInput {
             None
         }
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::List => json!({}),
             Self::Create(body) => json!({"body":event::to_value(&connection_config(body)?)?}),
@@ -164,8 +162,8 @@ impl ApiEventInput for McpUpstreamInput {
         })
     }
 }
-impl ApiEventOutput for McpUpstreamOutput {
-    fn document_output_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for McpUpstreamOutput {
+    fn document_output_schema(operation: &ApiOperationContext) -> Option<Value> {
         match operation.interface_id.as_str() {
             "mcp.upstream_connections.view" => {
                 Some(event::schema::<Vec<ConnectionEvent<'static>>>())
@@ -182,7 +180,7 @@ impl ApiEventOutput for McpUpstreamOutput {
             _ => None,
         }
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Connections(values) => event::to_value(
                 &values

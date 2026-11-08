@@ -1,9 +1,16 @@
 use super::*;
-fn operation(id: &str) -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn operation(id: &str) -> ApiOperationContext {
+    let declaration = DECLARATIONS
+        .iter()
+        .chain(CONVERSATION_DECLARATIONS)
+        .chain(RUN_DECLARATIONS)
+        .chain(RUN_STREAM_DECLARATIONS)
+        .find(|declaration| declaration.interface_id == id)
+        .expect("declared Assistant operation");
+    ApiOperationContext {
         interface_id: id.into(),
         method: "POST".into(),
-        path: "/api/console/assistant/runs".into(),
+        path: declaration.path.into(),
     }
 }
 #[test]
@@ -95,6 +102,7 @@ fn assistant_conversation_query_preserves_documented_keys_and_omits_absent_optio
             application_id: Uuid::nil(),
         },
     };
+    let op = operation("assistant.conversations.messages.get");
     assert_eq!(
         input.project_document_input(&op).unwrap(),
         json!({"path":{"conversation_id":Uuid::nil()},"query":{"application_id":Uuid::nil()}})

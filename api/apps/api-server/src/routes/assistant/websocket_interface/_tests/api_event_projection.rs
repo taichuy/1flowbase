@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn post_upgrade_commands_are_not_projected_as_http_handshake_payloads() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: "assistant.runs.websocket.command".into(),
         method: "GET".into(),
         path: "/api/console/assistant/runs/websocket".into(),

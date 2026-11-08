@@ -161,7 +161,7 @@ impl InterfaceContributionCollector {
             compiler.absorb_snapshot(contribution.registry.as_ref())?;
         }
         if let Some(docs) = self.api_docs {
-            crate::event_center::api_projection::refine_static_api_events(
+            crate::openapi_interface::contract::refine_static_api_operations(
                 &mut compiler,
                 &docs,
                 &snapshots,

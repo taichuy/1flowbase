@@ -1,6 +1,6 @@
 use super::*;
-fn operation(id: &str) -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn operation(id: &str) -> ApiOperationContext {
+    ApiOperationContext {
         interface_id: id.into(),
         method: "GET".into(),
         path: "/api/console/settings/network-center/proxy-plugins/official-catalog".into(),

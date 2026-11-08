@@ -1055,7 +1055,7 @@ pub(crate) fn models_document(
     if codex {
         Ok(to_codex_model_list_response(models.to_vec()))
     } else {
-        crate::event_center::api_projection::to_value(&to_openai_model_list_response(
+        crate::openapi_interface::contract::to_value(&to_openai_model_list_response(
             models.to_vec(),
             created,
         ))
@@ -1128,7 +1128,7 @@ pub(crate) fn models_document_schema() -> Value {
             json!({"type":"array","items":{"type":"string","enum":["text","image"]}}),
         ),
     ]);
-    json!({"anyOf":[crate::event_center::api_projection::schema::<OpenAiModelListResponse>(),object([("models",json!({"type":"array","items":model}))])]})
+    json!({"anyOf":[crate::openapi_interface::contract::schema::<OpenAiModelListResponse>(),object([("models",json!({"type":"array","items":model}))])]})
 }
 
 pub(super) fn chat_protocol_projection(

@@ -1,8 +1,6 @@
 //! HTTP business documents; protocol envelopes and credential references stay private.
 use super::*;
-use crate::event_center::api_projection::{
-    self as ep, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as ep, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 
 pub(crate) fn request_document(request: &NativeRunRequest) -> Result<Value, Arc<str>> {
@@ -78,17 +76,17 @@ pub(crate) fn result_document(run: &NativeRunResult) -> Result<Value, Arc<str>> 
     response_document(&super::super::native::to_native_run_response(run.clone()))
 }
 
-impl ApiEventInput for ApplicationNativeRunInput {
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+impl ApiInput for ApplicationNativeRunInput {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(json!({"body": request_document(&self.request)?}))
     }
 }
 
-impl ApiEventOutput for ApplicationNativeRunOutput {
-    fn document_output_schema(_: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for ApplicationNativeRunOutput {
+    fn document_output_schema(_: &ApiOperationContext) -> Option<Value> {
         Some(result_schema())
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         result_document(&self.0)
     }
 }

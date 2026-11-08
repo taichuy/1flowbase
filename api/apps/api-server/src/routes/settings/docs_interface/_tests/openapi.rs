@@ -2,7 +2,7 @@ use super::*;
 use crate::openapi_docs::{build_api_docs_registry, paginate_category_operations};
 
 fn validate<T: utoipa::ToSchema>(wire: &Value) {
-    let schema = crate::event_center::api_projection::schema::<T>();
+    let schema = crate::openapi_interface::contract::schema::<T>();
     assert!(
         jsonschema::validator_for(&schema).unwrap().is_valid(wire),
         "actual owner document rejected: {wire}; schema: {schema}"
@@ -36,7 +36,7 @@ fn docs_openapi_schema_matches_actual_scoped_documents_and_reference_closure() {
     assert!(operation["components"]["schemas"].get("Result").is_some());
     let mut invalid = operation;
     invalid["paths"] = json!([]);
-    let schema = crate::event_center::api_projection::schema::<ConsoleOpenApiDocumentSchema>();
+    let schema = crate::openapi_interface::contract::schema::<ConsoleOpenApiDocumentSchema>();
     assert!(!jsonschema::validator_for(&schema)
         .unwrap()
         .is_valid(&invalid));

@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn forwarded_headers_and_downstream_credentials_stay_host_owned() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: "mcp.debug.execute".into(),
         method: "POST".into(),
         path: "/api/console/mcp/debug/execute".into(),

@@ -415,10 +415,10 @@ async fn invoke_job(
     Ok(Json(ApiSuccess::new(output)))
 }
 
-impl crate::event_center::api_projection::ApiEventInput for JobInput {
+impl crate::openapi_interface::contract::ApiInput for JobInput {
     fn project_document_input(
         &self,
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Ok(match self {
             Self::Create {
@@ -428,7 +428,7 @@ impl crate::event_center::api_projection::ApiEventInput for JobInput {
                 operation,
                 serde_json::json!({"application_id":application_id}),
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(input)?,
+                crate::openapi_interface::contract::to_value(input)?,
             ),
             Self::Get {
                 application_id,
@@ -460,20 +460,20 @@ impl crate::event_center::api_projection::ApiEventInput for JobInput {
     }
 }
 
-impl crate::event_center::api_projection::ApiEventOutput for JobOutput {
+impl crate::openapi_interface::contract::ApiOutput for JobOutput {
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
-        crate::event_center::api_projection::to_value(self)
+        crate::openapi_interface::contract::to_value(self)
     }
 }
 
-impl crate::event_center::api_projection::ApiEventOutput for PreviewOutput {
+impl crate::openapi_interface::contract::ApiOutput for PreviewOutput {
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
-        crate::event_center::api_projection::to_value(self)
+        crate::openapi_interface::contract::to_value(self)
     }
 }

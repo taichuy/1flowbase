@@ -30,7 +30,7 @@ pub(crate) mod interface;
 #[path = "docs_interface/openapi.rs"]
 pub mod openapi;
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Deserialize, Serialize, IntoParams)]
 pub struct DocsCategoryOperationsQuery {
     #[param(minimum = 0)]
     pub offset: Option<usize>,

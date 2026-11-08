@@ -16,7 +16,7 @@ pub(crate) fn payload_schema() -> Value {
 }
 
 pub(crate) fn document<T: serde::Serialize>(value: &T) -> Result<Value, Arc<str>> {
-    let mut value = crate::event_center::api_projection::to_value(value)?;
+    let mut value = crate::openapi_interface::contract::to_value(value)?;
     project(&mut value);
     Ok(value)
 }
@@ -57,13 +57,13 @@ pub(crate) fn project(value: &mut Value) {
 }
 
 pub(crate) fn schema<T: utoipa::ToSchema>() -> Value {
-    let mut schema = crate::event_center::api_projection::schema::<T>();
+    let mut schema = crate::openapi_interface::contract::schema::<T>();
     restrict_schema(&mut schema);
     schema
 }
 
 pub(crate) fn request_schema(
-    operation: &crate::event_center::api_projection::ApiEventOperationContext,
+    operation: &crate::openapi_interface::contract::ApiOperationContext,
     body: Value,
     query: Option<Value>,
 ) -> Value {

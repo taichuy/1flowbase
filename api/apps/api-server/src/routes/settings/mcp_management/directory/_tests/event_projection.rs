@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn directory_event_matches_real_http_snapshot_without_summary_limits() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: "mcp.directory.read".into(),
         method: "GET".into(),
         path: "/api/console/mcp/instances/:instance_id/directory".into(),

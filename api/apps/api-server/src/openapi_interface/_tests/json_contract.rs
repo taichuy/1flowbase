@@ -1,6 +1,6 @@
 use super::{body, query, request, response, result, JsonApiInput, JsonApiOutput};
 use crate::{
-    event_center::api_projection,
+    openapi_interface::contract as api_projection,
     routes::console_interface::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
         ConsoleInterfaceTargetError, ConsoleLocaleHints,
@@ -34,6 +34,20 @@ enum Input {
     },
     #[serde(serialize_with = "query")]
     Search(QueryDto),
+    #[serde(serialize_with = "super::path")]
+    AtPath(String),
+    #[serde(serialize_with = "super::path2")]
+    TwoPaths(String, String),
+    #[serde(serialize_with = "super::path_body")]
+    PathBody(String, BodyDto),
+    #[serde(serialize_with = "super::path_query")]
+    PathQuery(String, QueryDto),
+    #[serde(serialize_with = "super::path2_query_omit_nulls")]
+    Page(String, String, QueryDto),
+    #[serde(serialize_with = "super::query_with_nulls")]
+    RawQuery(QueryDto),
+    #[serde(serialize_with = "super::query_body")]
+    QueryBody(QueryDto, BodyDto),
 }
 #[derive(Serialize)]
 struct QueryDto {
@@ -110,6 +124,59 @@ fn public_json_contract_preserves_body_nulls_omits_query_nulls_and_excludes_opaq
     assert!(
         request(&input, "/fixture").is_err(),
         "unmapped root id must fail closed"
+    );
+}
+
+#[test]
+fn public_json_contract_transport_shapes_use_declared_routes_and_explicit_null_policy() {
+    let query = || QueryDto {
+        limit: 100,
+        cursor: None,
+        nested: json!({"still_null":null}),
+    };
+    let body = || BodyDto {
+        title: "actual".into(),
+        optional: None,
+    };
+    let route = "/instances/{instance_id}/messages/:message_id";
+    assert_eq!(
+        request(&Input::TwoPaths("instance".into(), "message".into()), route).unwrap(),
+        json!({"path":{"instance_id":"instance","message_id":"message"}})
+    );
+    assert!(request(&Input::AtPath("one".into()), route).is_err());
+    assert!(request(&Input::TwoPaths("one".into(), "two".into()), "/no-params").is_err());
+    assert_eq!(
+        request(&Input::AtPath("actual".into()), "/instances/{id}").unwrap(),
+        json!({"path":{"id":"actual"}})
+    );
+    assert_eq!(
+        request(&Input::PathBody("actual".into(), body()), "/instances/:id").unwrap(),
+        json!({"path":{"id":"actual"},"body":{"title":"actual","optional":null}})
+    );
+    let retained = serde_json::to_value(query()).unwrap();
+    assert_eq!(
+        request(
+            &Input::PathQuery("actual".into(), query()),
+            "/instances/:id"
+        )
+        .unwrap(),
+        json!({"path":{"id":"actual"},"query":retained})
+    );
+    assert_eq!(
+        request(&Input::RawQuery(query()), "/instances").unwrap(),
+        json!({"query":retained})
+    );
+    assert_eq!(
+        request(
+            &Input::Page("instance".into(), "message".into(), query()),
+            route
+        )
+        .unwrap(),
+        json!({"path":{"instance_id":"instance","message_id":"message"},"query":{"limit":100,"nested":{"still_null":null}}})
+    );
+    assert_eq!(
+        request(&Input::QueryBody(query(), body()), "/instances").unwrap(),
+        json!({"query":retained,"body":{"title":"actual","optional":null}})
     );
 }
 
@@ -262,7 +329,7 @@ async fn public_json_contract_blanket_codec_observes_the_typed_before_value_rece
             "responses":{"200":{"description":"Department DTO","content":{"application/json":{"schema":result_contract}}}}
         }}}
     })).unwrap();
-    api_projection::refine_static_api_events(&mut compiler, &docs, &[family]).unwrap();
+    api_projection::refine_static_api_operations(&mut compiler, &docs, &[family]).unwrap();
     let snapshot = compiler.compile().unwrap();
     let binding = BindingId::new("http.fixture.public-json.update").unwrap();
     let plan = snapshot.plan(&binding).unwrap();

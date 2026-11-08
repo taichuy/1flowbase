@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 mod event_projection;
 
 use super::{provisioning, scope, FileQuery, PageQuery};
@@ -46,18 +47,32 @@ impl Dependencies {
         }
     }
 }
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum Input {
+    #[serde(serialize_with = "json_contract::query")]
     ManagementConversations(domain::CommunicationManagementQuery),
+    #[serde(serialize_with = "json_contract::path_query_omit_nulls")]
     ManagementHistory(Uuid, PageQuery),
+    #[serde(serialize_with = "json_contract::query")]
     ManagementMessages(domain::CommunicationManagementQuery),
+    #[serde(serialize_with = "json_contract::path")]
     ManagementMessage(Uuid),
+    #[serde(serialize_with = "serialize_options")]
     Options(Option<Uuid>, Option<Uuid>),
+    #[serde(serialize_with = "json_contract::path")]
     Binding(Uuid),
+    #[serde(serialize_with = "json_contract::path_body")]
     SaveBinding(Uuid, domain::CommunicationBindingInput),
+    #[serde(serialize_with = "json_contract::path_query_omit_nulls")]
     Conversations(Uuid, PageQuery),
+    #[serde(serialize_with = "json_contract::path2_query_omit_nulls")]
     Messages(Uuid, Uuid, PageQuery),
+    #[serde(serialize_with = "json_contract::path2_query_omit_nulls")]
     Files(Uuid, Uuid, PageQuery),
+    #[serde(serialize_with = "json_contract::path2_query_omit_nulls")]
     File(Uuid, Uuid, FileQuery),
+    #[serde(serialize_with = "json_contract::path2")]
     Retry(Uuid, Uuid),
 }
 impl Input {
@@ -71,6 +86,8 @@ impl Input {
         }
     }
 }
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct Output(pub Value);
 impl InterfaceContract for Input {
     fn event_projection_schema() -> Option<Value> {
@@ -469,5 +486,26 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
 #[path = "_tests/management_scope.rs"]
 mod management_scope_tests;
 
-#[path = "interface/api_event_projection.rs"]
-mod api_event_projection;
+impl JsonApiInput for Input {}
+impl JsonApiOutput for Output {}
+
+fn serialize_options<S: serde::Serializer>(
+    application_id: &Option<Uuid>,
+    instance_id: &Option<Uuid>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    json_contract::query(
+        &super::OptionsQuery {
+            application_id: *application_id,
+            instance_id: *instance_id,
+        },
+        serializer,
+    )
+}
+
+#[cfg(test)]
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "interface/_tests/api_event_projection.rs"]
+mod api_event_tests;

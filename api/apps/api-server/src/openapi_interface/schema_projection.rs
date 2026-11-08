@@ -1,11 +1,7 @@
-//! Shared mechanics for explicit settings-owner API projections.
+//! Shared schema and JSON view mechanics; field-selection policy belongs to each API owner.
 use serde_json::Value;
-pub(crate) fn query_fields(mut value: Value) -> Value {
-    value
-        .as_object_mut()
-        .expect("typed query object")
-        .retain(|_, value| !value.is_null());
-    value
+pub(crate) fn query_fields(value: Value) -> Value {
+    super::json_contract::omit_query_nulls(value).expect("typed query object")
 }
 pub(crate) fn without_fields(mut schema: Value, fields: &[&str]) -> Value {
     if let Some(properties) = schema.get_mut("properties").and_then(Value::as_object_mut) {

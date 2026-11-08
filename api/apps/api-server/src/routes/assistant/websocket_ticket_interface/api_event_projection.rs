@@ -1,7 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -11,20 +9,11 @@ struct TicketEvent {
     protocol: &'static str,
     expires_in_seconds: i64,
 }
-impl ApiEventInput for AssistantWebSocketTicketInput {
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
-        match self {
-            Self::Create { body, origin: _ } => {
-                Ok(json!({"body":{"application_id":body.application_id}}))
-            }
-        }
-    }
-}
-impl ApiEventOutput for AssistantWebSocketTicketOutput {
-    fn document_output_schema(_: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for AssistantWebSocketTicketOutput {
+    fn document_output_schema(_: &ApiOperationContext) -> Option<Value> {
         Some(event::schema::<TicketEvent>())
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Ticket(value) => event::to_value(&TicketEvent {
                 protocol: value.protocol,

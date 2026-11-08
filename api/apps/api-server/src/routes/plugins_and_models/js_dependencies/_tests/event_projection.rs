@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn dependency_catalog_has_no_artificial_request_locations_and_preserves_all_entries() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: "js_dependencies.view".into(),
         method: "GET".into(),
         path: "/api/console/js-dependencies".into(),

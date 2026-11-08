@@ -1,5 +1,5 @@
 //! API event discovery consumes the complete shared API catalog, independently of MCP policy.
-use super::api_projection::route_identity;
+use crate::openapi_interface::contract::route_identity;
 use crate::{
     error_response::ApiError,
     external_endpoint_catalog::ExternalEndpointCatalog,

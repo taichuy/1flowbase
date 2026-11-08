@@ -1,7 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 
 // Arbitrary downstream arguments can contain a password or a credential-reveal
@@ -11,13 +9,13 @@ struct DebugEvent<'a> {
     interface_id: &'a str,
     debug_response_mode: &'static str,
 }
-impl ApiEventInput for McpDebugInput {
-    fn document_input_schema(_: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for McpDebugInput {
+    fn document_input_schema(_: &ApiOperationContext) -> Option<Value> {
         Some(
             json!({"type":"object","properties":{"body":event::schema::<DebugEvent<'static>>()},"required":["body"],"additionalProperties":false}),
         )
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         let debug_response_mode = match self.body.debug_response_mode {
             debug_execute::McpDebugResponseMode::ToolResult => "tool_result",
             debug_execute::McpDebugResponseMode::DebugDetails => "debug_details",
@@ -27,15 +25,15 @@ impl ApiEventInput for McpDebugInput {
         )
     }
 }
-impl ApiEventOutput for McpDebugOutput {
+impl ApiOutput for McpDebugOutput {
     fn document_output_unavailable(
-        _: &ApiEventOperationContext,
+        _: &ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         // The outer dispatcher does not carry the selected target's safe event
         // codec. Serializing arbitrary returned JSON could reveal credentials.
         Some(domain::event_center::ApiEventUnavailableReason::CredentialBoundary)
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Json(_) => Err(Arc::from(
                 "downstream API owns its safe event response projection",

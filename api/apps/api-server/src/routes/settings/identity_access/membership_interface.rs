@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::JsonApiOutput;
 use std::sync::Arc;
 
 use control_plane::{
@@ -327,6 +328,8 @@ impl InterfaceContract for MembershipInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum MembershipOutput {
     MemberRoleOptions(Vec<members::MemberRoleOptionResponse>),
     Members(Vec<members::MemberResponse>),
@@ -335,6 +338,8 @@ pub(crate) enum MembershipOutput {
     Workspaces(Vec<workspaces::WorkspaceSummaryResponse>),
     NoContent,
 }
+
+impl JsonApiOutput for MembershipOutput {}
 
 impl InterfaceContract for MembershipOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {

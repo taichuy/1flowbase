@@ -1,9 +1,13 @@
 use super::*;
-fn context(id: &str) -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn context(id: &str) -> ApiOperationContext {
+    let declaration = DECLARATIONS
+        .iter()
+        .find(|declaration| declaration.interface_id == id)
+        .expect("declared docs operation");
+    ApiOperationContext {
         interface_id: id.into(),
         method: "GET".into(),
-        path: "/fixture".into(),
+        path: declaration.path.into(),
     }
 }
 
@@ -21,7 +25,7 @@ fn document_catalog_keeps_actual_content_beyond_managed_limit() {
             .collect(),
     });
     let value = output
-        .project_document_output(&context("api_docs.catalog"))
+        .project_document_output(&context("docs.catalog.view"))
         .unwrap();
     assert_eq!(value["title"], "actual title");
     assert_eq!(value["categories"].as_array().unwrap().len(), 40);
@@ -40,7 +44,7 @@ fn document_query_omits_absent_parameters_without_replacing_path_names() {
     };
     assert_eq!(
         input
-            .project_document_input(&context("api_docs.catalog"))
+            .project_document_input(&context("docs.categories.operations.list"))
             .unwrap(),
         json!({"path":{"category_id":"core"},"query":{"limit":10,"q":"actual search"}})
     );

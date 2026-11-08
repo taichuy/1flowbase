@@ -99,7 +99,7 @@ where
                 .expect("static OTLP trace interface identity is valid"),
         ),
     );
-    crate::event_center::api_projection::register_static_api_event::<Input, Output>(
+    crate::openapi_interface::contract::register_static_api_operation::<Input, Output>(
         &mut compiler,
         &binding,
         "graph:application-agent-logs-otlp-v1",

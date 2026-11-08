@@ -1,5 +1,6 @@
 //! Generic settings API for plugin-declared record permissions.
 use super::{record_acl, ManagedServiceRegistration};
+use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
@@ -99,11 +100,18 @@ pub(crate) struct PolicyResponse {
     pub grants: Vec<domain::RecordPermissionGrant>,
     pub revision: i64,
 }
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum Input {
+    #[serde(serialize_with = "json_contract::query_with_nulls")]
     Get(RecordQuery),
+    #[serde(serialize_with = "json_contract::query_body")]
     Replace(RecordQuery, ReplaceBody),
+    #[serde(serialize_with = "json_contract::body")]
     Capabilities(CapabilitiesBody),
 }
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct Output(Value);
 macro_rules! safe_contract { ($type:ty, $id:literal) => { impl InterfaceContract for $type {
     const CONTRACT_ID: &'static str = $id;
@@ -389,5 +397,5 @@ pub(crate) fn metadata(interface_id: &str) -> Option<(String, String)> {
     Some((operation.summary?, operation.description?))
 }
 
-#[path = "record_permissions/event_projection.rs"]
-mod event_projection;
+impl JsonApiInput for Input {}
+impl JsonApiOutput for Output {}

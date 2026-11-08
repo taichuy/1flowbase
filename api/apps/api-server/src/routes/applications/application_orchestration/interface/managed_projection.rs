@@ -1154,10 +1154,10 @@ impl InterfaceContract for ApplicationOrchestrationOutput {
     const CONTRACT_VERSION: &'static str = "3";
 }
 
-impl crate::event_center::api_projection::ApiEventInput for ApplicationOrchestrationInput {
+impl crate::openapi_interface::contract::ApiInput for ApplicationOrchestrationInput {
     // The HTTP owner decoded multipart uploaded archives into an opaque package; it is not the documented upload body.
     fn document_input_unavailable(
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         (matches!(
             operation.interface_id.as_str(),
@@ -1167,7 +1167,7 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationOrchestra
     }
     fn project_document_input(
         &self,
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Ok(match self {
             Self::AnalyzeDraft {
@@ -1177,7 +1177,7 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationOrchestra
                 operation,
                 serde_json::json!({"application_id":application_id}),
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(body)?,
+                crate::openapi_interface::contract::to_value(body)?,
             ),
             Self::Get { application_id, .. } => {
                 crate::routes::applications_group::event_projection::request(
@@ -1195,7 +1195,7 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationOrchestra
                 operation,
                 serde_json::json!({"application_id":application_id}),
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(body)?,
+                crate::openapi_interface::contract::to_value(body)?,
             ),
             Self::RestoreVersion {
                 application_id,
@@ -1216,7 +1216,7 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationOrchestra
                 operation,
                 serde_json::json!({"application_id":application_id,"version_id":version_id}),
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(body)?,
+                crate::openapi_interface::contract::to_value(body)?,
             ),
             Self::PreviewUploadedArchive(_) => {
                 return Err(std::sync::Arc::from(
@@ -1233,7 +1233,7 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationOrchestra
                     operation,
                     serde_json::json!({}),
                     serde_json::json!({}),
-                    crate::event_center::api_projection::to_value(body)?,
+                    crate::openapi_interface::contract::to_value(body)?,
                 )
             }
             Self::PreviewInstalledArchive(installation_id) => {
@@ -1252,32 +1252,32 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationOrchestra
                 operation,
                 serde_json::json!({"installation_id":installation_id}),
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(body)?,
+                crate::openapi_interface::contract::to_value(body)?,
             ),
         })
     }
 }
 
-impl crate::event_center::api_projection::ApiEventOutput for ApplicationOrchestrationOutput {
+impl crate::openapi_interface::contract::ApiOutput for ApplicationOrchestrationOutput {
     // ExportedArchive is a ZIP response; document bytes are not event data.
     fn document_output_unavailable(
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         (operation.interface_id == "applications.archive.export")
             .then_some(domain::event_center::ApiEventUnavailableReason::BinaryResponse)
     }
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         match self {
-            Self::Analysis(value) => crate::event_center::api_projection::to_value(value),
-            Self::State(value) => crate::event_center::api_projection::to_value(value),
-            Self::ArchivePreview(value) => crate::event_center::api_projection::to_value(value),
-            Self::ArchiveImport(value) => crate::event_center::api_projection::to_value(value),
-            Self::ArchiveBatchImport(value) => crate::event_center::api_projection::to_value(value),
+            Self::Analysis(value) => crate::openapi_interface::contract::to_value(value),
+            Self::State(value) => crate::openapi_interface::contract::to_value(value),
+            Self::ArchivePreview(value) => crate::openapi_interface::contract::to_value(value),
+            Self::ArchiveImport(value) => crate::openapi_interface::contract::to_value(value),
+            Self::ArchiveBatchImport(value) => crate::openapi_interface::contract::to_value(value),
             Self::InstalledArchivePreview(value) => {
-                crate::event_center::api_projection::to_value(value)
+                crate::openapi_interface::contract::to_value(value)
             }
             Self::ExportedArchive(_) => Err(std::sync::Arc::from(
                 "application_archive_download_has_no_document_json_output",

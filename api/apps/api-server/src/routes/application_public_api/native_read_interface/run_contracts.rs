@@ -143,7 +143,13 @@ impl InterfaceContract for NativeGetRunOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct NativeCancelRunInput(pub(crate) Uuid);
+impl crate::openapi_interface::json_contract::JsonApiInput for NativeCancelRunInput {
+    const LOCATION: crate::openapi_interface::json_contract::JsonInputLocation =
+        crate::openapi_interface::json_contract::JsonInputLocation::Path;
+}
 
 impl InterfaceContract for NativeCancelRunInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {

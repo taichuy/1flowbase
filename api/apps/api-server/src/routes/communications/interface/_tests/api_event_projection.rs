@@ -1,6 +1,6 @@
 use super::*;
-fn operation(id: &str) -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn operation(id: &str) -> ApiOperationContext {
+    ApiOperationContext {
         interface_id: id.into(),
         method: "PUT".into(),
         path: "/api/console/communications/instances/:instance_id/binding".into(),
@@ -45,7 +45,11 @@ fn communication_binding_keeps_complete_command_configuration_and_real_path_body
 }
 #[test]
 fn communication_file_json_is_not_misclassified_as_raw_binary() {
-    let op = operation("communications.files.get");
+    let op = ApiOperationContext {
+        interface_id: "communications.files.get".into(),
+        method: "GET".into(),
+        path: "/api/console/communications/instances/:instance_id/files/:message_id".into(),
+    };
     let value = json!({"message":{"id":"message-a","text":"Description".repeat(200)},"data_base64":"YWJj".repeat(10000),"business_metadata":{"secret_label":"Public title","values":(0..90).collect::<Vec<_>>()},"url":"/api/console/files/table-a/records/record-a/content","preview_url":null});
     assert_eq!(
         Output(value.clone()).project_document_output(&op).unwrap(),

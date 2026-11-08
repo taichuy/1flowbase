@@ -23,7 +23,14 @@ use crate::{
     },
 };
 
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct ProviderIconInput(pub(crate) String);
+impl crate::openapi_interface::json_contract::JsonApiInput for ProviderIconInput {
+    const LOCATION: crate::openapi_interface::json_contract::JsonInputLocation =
+        crate::openapi_interface::json_contract::JsonInputLocation::Path;
+}
+
 impl InterfaceContract for ProviderIconInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;

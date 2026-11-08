@@ -296,11 +296,10 @@ pub(crate) fn compile_registry(
             contracts,
             ProtocolProjection::http(RouteIdentity::new(method, path).expect("static route")),
         );
-        crate::event_center::api_projection::register_static_api_event::<WebMcpInput, WebMcpOutput>(
-            &mut compiler,
-            &event_binding,
-            "graph:webmcp-v1",
-        )?;
+        crate::openapi_interface::contract::register_static_api_operation::<
+            WebMcpInput,
+            WebMcpOutput,
+        >(&mut compiler, &event_binding, "graph:webmcp-v1")?;
         compiler.register_binding(
             event_binding,
             InvocationAdapterPlan::new(

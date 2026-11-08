@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn credential_only_redirect_is_unavailable_and_never_projected_as_empty_business_result() {
-    let operation = ApiEventOperationContext {
+    let operation = ApiOperationContext {
         interface_id: OPERATIONS[2].into(),
         method: "POST".into(),
         path: "/api/console/me/external-identities/authorize".into(),
@@ -24,7 +24,7 @@ fn credential_only_redirect_is_unavailable_and_never_projected_as_empty_business
 }
 #[test]
 fn callback_credential_boundary_is_explicit_and_start_keeps_safe_query() {
-    let mut operation = ApiEventOperationContext {
+    let mut operation = ApiOperationContext {
         interface_id: OPERATIONS[1].into(),
         method: "GET".into(),
         path: "/api/public/auth/external/callback".into(),

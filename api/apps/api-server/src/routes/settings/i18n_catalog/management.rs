@@ -57,7 +57,7 @@ impl From<CatalogManagementOrigin> for CatalogManagementOriginDto {
     }
 }
 
-#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema, serde::Serialize)]
 pub struct ListCatalogEntriesQuery {
     pub key: Option<String>,
     pub locale: Option<String>,
@@ -67,13 +67,13 @@ pub struct ListCatalogEntriesQuery {
     pub limit: Option<u32>,
 }
 
-#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema, serde::Serialize)]
 pub struct GetCatalogEntryQuery {
     pub key: String,
     pub locale: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpsertCatalogTranslationBody {
     pub key: String,
     pub locale: String,
@@ -81,20 +81,20 @@ pub struct UpsertCatalogTranslationBody {
     pub expected_revision: i64,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct RestoreCatalogOverrideBody {
     pub key: String,
     pub locale: String,
     pub expected_revision: i64,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteCustomCatalogKeyBody {
     pub key: String,
     pub expected_revision: i64,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct RestoreCatalogOverridesBody {
     pub expected_revision: i64,
 }

@@ -34,7 +34,7 @@ pub struct I18nCatalogUpdateStatusResponse {
     pub latest_catalog_version: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ActivateI18nCatalogBody {
     pub expected_revision: i64,
 }
@@ -59,7 +59,7 @@ pub struct InstalledI18nCatalogPreviewResponse {
     pub required_integrity_override: Option<domain::ExtensionRiskChallenge>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ActivateInstalledI18nCatalogBody {
     pub expected_revision: i64,
     pub integrity_override: Option<crate::routes::plugins::PluginRiskOverrideBody>,

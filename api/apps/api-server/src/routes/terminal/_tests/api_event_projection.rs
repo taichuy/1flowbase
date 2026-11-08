@@ -1,6 +1,6 @@
 use super::*;
-fn operation() -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn operation() -> ApiOperationContext {
+    ApiOperationContext {
         interface_id: "terminal.files.read_text".into(),
         method: "POST".into(),
         path: "/api/console/terminal/files/read-text".into(),

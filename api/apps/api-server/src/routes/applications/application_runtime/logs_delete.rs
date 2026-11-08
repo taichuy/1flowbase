@@ -217,26 +217,26 @@ pub(crate) async fn delete_logs(
     Ok(Json(ApiSuccess::new(output)))
 }
 
-impl crate::event_center::api_projection::ApiEventInput for LogsDeleteInput {
+impl crate::openapi_interface::contract::ApiInput for LogsDeleteInput {
     fn project_document_input(
         &self,
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Ok(
             crate::routes::applications_group::event_projection::request(
                 operation,
                 serde_json::json!({"application_id":self.application_id}),
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(&self.scope)?,
+                crate::openapi_interface::contract::to_value(&self.scope)?,
             ),
         )
     }
 }
-impl crate::event_center::api_projection::ApiEventOutput for LogsDeleteOutput {
+impl crate::openapi_interface::contract::ApiOutput for LogsDeleteOutput {
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
-        crate::event_center::api_projection::to_value(self)
+        crate::openapi_interface::contract::to_value(self)
     }
 }

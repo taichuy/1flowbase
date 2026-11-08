@@ -1,7 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{
-    ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
 use crate::routes::console_interface::ConsoleLocaleHints;
 use crate::routes::frontstage::{
     block_tree::{
@@ -17,8 +15,8 @@ use crate::routes::frontstage::{
     FrontstagePageTabResponse,
 };
 
-fn operation(interface_id: &str, method: &str, path: &str) -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn operation(interface_id: &str, method: &str, path: &str) -> ApiOperationContext {
+    ApiOperationContext {
         interface_id: interface_id.into(),
         method: method.into(),
         path: path.into(),

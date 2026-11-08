@@ -22,17 +22,17 @@ pub(crate) mod provisioning;
 pub(crate) mod scope;
 use interface::{Input, Output};
 
-#[derive(Default, Deserialize)]
+#[derive(Default, Deserialize, serde::Serialize)]
 pub(crate) struct PageQuery {
     pub cursor: Option<Uuid>,
     pub limit: Option<u32>,
 }
-#[derive(Default, Deserialize)]
+#[derive(Default, Deserialize, serde::Serialize)]
 pub(crate) struct OptionsQuery {
     pub application_id: Option<Uuid>,
     pub instance_id: Option<Uuid>,
 }
-#[derive(Default, Deserialize)]
+#[derive(Default, Deserialize, serde::Serialize)]
 pub(crate) struct FileQuery {
     pub offset: Option<u64>,
     pub max_bytes: Option<u32>,

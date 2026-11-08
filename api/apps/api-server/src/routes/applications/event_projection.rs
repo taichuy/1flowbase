@@ -1,12 +1,12 @@
 //! Document-shaped event values owned by the application HTTP adapters.
-use crate::event_center::api_projection::ApiEventOperationContext;
+use crate::openapi_interface::contract::ApiOperationContext;
 use serde_json::{json, Value};
 
 pub(super) mod runtime;
 
 /// Route parameter spelling comes from the compiled declaration, never request data.
 pub(super) fn request(
-    operation: &ApiEventOperationContext,
+    operation: &ApiOperationContext,
     mut path: Value,
     mut query: Value,
     body: Value,
@@ -111,14 +111,14 @@ pub(super) fn environment_response(
         .collect()
 }
 
-pub(super) fn environment_input_schema(operation: &ApiEventOperationContext) -> Value {
+pub(super) fn environment_input_schema(operation: &ApiOperationContext) -> Value {
     application_body_schema(
         operation,
-        crate::event_center::api_projection::schema::<EnvironmentVariablesBody>(),
+        crate::openapi_interface::contract::schema::<EnvironmentVariablesBody>(),
     )
 }
 
-pub(super) fn application_body_schema(operation: &ApiEventOperationContext, body: Value) -> Value {
+pub(super) fn application_body_schema(operation: &ApiOperationContext, body: Value) -> Value {
     let key = if operation
         .path
         .split('/')

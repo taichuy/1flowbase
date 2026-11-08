@@ -1,13 +1,13 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PathInput {
     pub path: String,
     pub timeout_ms: u64,
 }
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ListInput {
     pub path: String,
@@ -15,7 +15,7 @@ pub struct ListInput {
     pub cursor: u64,
     pub limit: usize,
 }
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TextInput {
     pub path: String,
@@ -24,7 +24,7 @@ pub struct TextInput {
     pub max_bytes: usize,
     pub expected_version: Option<String>,
 }
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RangeInput {
     pub path: String,
@@ -33,7 +33,7 @@ pub struct RangeInput {
     pub length: usize,
     pub expected_version: Option<String>,
 }
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SearchInput {
     pub path: String,
@@ -44,14 +44,14 @@ pub struct SearchInput {
     pub max_depth: usize,
     pub max_line_bytes: usize,
 }
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MediaInput {
     pub path: String,
     pub timeout_ms: u64,
     pub max_file_bytes: u64,
 }
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ResourceInput {
     pub path: String,
@@ -61,13 +61,13 @@ pub struct ResourceInput {
     #[serde(default)]
     pub link_only: bool,
 }
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ImportInput {
     pub resource_uri: String,
     pub file_table_id: Uuid,
 }
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DownloadInput {
     pub file_table_id: Uuid,

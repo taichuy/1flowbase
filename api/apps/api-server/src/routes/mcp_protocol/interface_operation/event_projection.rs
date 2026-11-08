@@ -1,18 +1,16 @@
 use super::*;
-use crate::event_center::api_projection::{
-    ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::Value;
 
 // Native MCP initialization/list/call are protocol operations. Their canonical
 // downstream calls already own independent lifecycle observations and lineage.
-impl ApiEventInput for McpInvocationInput {
+impl ApiInput for McpInvocationInput {
     fn document_input_unavailable(
-        _: &ApiEventOperationContext,
+        _: &ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         Some(domain::event_center::ApiEventUnavailableReason::MissingOpenapiContract)
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Initialize { .. }
             | Self::InitializedNotification
@@ -23,13 +21,13 @@ impl ApiEventInput for McpInvocationInput {
         }
     }
 }
-impl ApiEventOutput for McpInvocationOutput {
+impl ApiOutput for McpInvocationOutput {
     fn document_output_unavailable(
-        _: &ApiEventOperationContext,
+        _: &ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         Some(domain::event_center::ApiEventUnavailableReason::MissingOpenapiContract)
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Initialized { .. }
             | Self::NotificationAccepted

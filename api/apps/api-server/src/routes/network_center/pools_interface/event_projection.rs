@@ -1,7 +1,7 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+#[cfg(test)]
+use crate::openapi_interface::contract::ApiOutput;
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext};
 use serde_json::{json, Value};
 
 #[derive(serde::Serialize, utoipa::ToSchema)]
@@ -48,8 +48,8 @@ fn proxy(body: &CreateNetworkEgressProxyBody) -> ProxyEvent<'_> {
         },
     }
 }
-impl ApiEventInput for NetworkPoolsInput {
-    fn document_input_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for NetworkPoolsInput {
+    fn document_input_schema(operation: &ApiOperationContext) -> Option<Value> {
         match operation.interface_id.as_str() {
             "network_egress_proxies.create" => Some(
                 json!({"type":"object","properties":{"body":event::schema::<ProxyEvent<'static>>()},"required":["body"],"additionalProperties":false}),
@@ -63,7 +63,7 @@ impl ApiEventInput for NetworkPoolsInput {
             _ => None,
         }
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::HttpNodeProxyOptions | Self::List => json!({}),
             Self::CreateProxy(body) => json!({"body":event::to_value(&proxy(body))?}),
@@ -105,22 +105,6 @@ impl ApiEventInput for NetworkPoolsInput {
                 json!({"path":{"pool_id":pool_id},"body":event::to_value(body)?})
             }
         })
-    }
-}
-impl ApiEventOutput for NetworkPoolsOutput {
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
-        match self {
-            Self::HttpNodeProxyOptions(value) => event::to_value(value),
-            // The proxy read owner already removes secret fields and separately
-            // returns their names. Keep its actual public config and form schema.
-            Self::Proxy(value) => event::to_value(value),
-            Self::Pools(value) => event::to_value(value),
-            Self::Pool(value) => event::to_value(value),
-            Self::Provider(value) => event::to_value(value),
-            Self::Member(value) => event::to_value(value),
-            Self::Members(value) => event::to_value(value),
-            Self::Deleted => Ok(Value::Null),
-        }
     }
 }
 

@@ -607,10 +607,10 @@ pub(crate) fn compile_registry(
     )
 }
 
-impl crate::event_center::api_projection::ApiEventInput for ApplicationPublicationInput {
+impl crate::openapi_interface::contract::ApiInput for ApplicationPublicationInput {
     fn project_document_input(
         &self,
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Ok(match self {
             Self::GetMapping { application_id } => {
@@ -628,7 +628,7 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationPublicati
                 operation,
                 serde_json::json!({"application_id":application_id}),
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(body)?,
+                crate::openapi_interface::contract::to_value(body)?,
             ),
             Self::GetPublication { application_id } => {
                 crate::routes::applications_group::event_projection::request(
@@ -645,7 +645,7 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationPublicati
                 operation,
                 serde_json::json!({"application_id":application_id}),
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(body)?,
+                crate::openapi_interface::contract::to_value(body)?,
             ),
             Self::Unpublish { application_id } => {
                 crate::routes::applications_group::event_projection::request(
@@ -662,21 +662,21 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationPublicati
                 operation,
                 serde_json::json!({"application_id":application_id}),
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(body)?,
+                crate::openapi_interface::contract::to_value(body)?,
             ),
         })
     }
 }
 
-impl crate::event_center::api_projection::ApiEventOutput for ApplicationPublicationOutput {
+impl crate::openapi_interface::contract::ApiOutput for ApplicationPublicationOutput {
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         match self {
-            Self::Mapping(value) => crate::event_center::api_projection::to_value(value),
-            Self::Publication(value) => crate::event_center::api_projection::to_value(value),
-            Self::Status(value) => crate::event_center::api_projection::to_value(value),
+            Self::Mapping(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Publication(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Status(value) => crate::openapi_interface::contract::to_value(value),
             Self::NoContent => Ok(serde_json::Value::Null),
         }
     }

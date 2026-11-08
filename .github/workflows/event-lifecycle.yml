@@ -13,7 +13,7 @@ on:
         description: Full acceptance or a scoped evidence supplement
         type: choice
         default: full
-        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp, full-api-events-types, full-api-events, full-api-events-host, full-api-events-registration, full-api-events-publish, full-api-events-query, full-api-events-docs, full-api-events-integration, full-api-events-fixture-finish, full-api-events-managed-control, full-api-events-reuse-proof]
+        options: [full, managed-resume, memory-governance-supplement, event-center, event-center-supplement, system-event-center, system-event-center-supplement, system-event-center-lineage, event-business, event-business-host, event-business-finish, event-business-mcp, full-api-events-types, full-api-events, full-api-events-host, full-api-events-registration, full-api-events-publish, full-api-events-query, full-api-events-docs, full-api-events-integration, full-api-events-fixture-finish, full-api-events-managed-control, full-api-events-reuse-proof, full-api-events-reuse]
 
       reused_api_tree:
         description: Unchanged api tree hash from the prior green host evidence (finish scope only)
@@ -333,6 +333,31 @@ jobs:
               run_tests public-json-http-mcp-events --test api_system_settings event_center_public_json
             else
               echo 'Public JSON feasibility unverified: shared host test compilation failed.' > "$evidence/host-scopes-unverified.txt"
+              failed=1
+            fi
+          elif [ "$EVIDENCE_SCOPE" = full-api-events-reuse ]; then
+            # The bounded public-entry proof passed before rollout. Recheck changed shared
+            # mechanics and real owners, preserving legacy/safety/frozen-target regressions.
+            # Kernel, durable queue, business lifecycle and GUI owners are unchanged.
+            if [ "$HOST_TYPES_OUTCOME" = success ]; then
+              run_tests public-json-contract --test api_private_contracts public_json_contract
+              run_tests api-catalog-observer --test api_private_contracts event_center
+              run_tests api-event-routes --test api_system_settings event_center
+              run_tests api-json-console-contracts --test api_private_routes event
+              run_tests api-json-core-contracts --lib document_event
+              run_tests api-json-core-projections --lib event_projection
+              run_tests api-json-public-projections --test api_public_api document_projection
+              run_tests api-json-public-events --test api_public_api event_projection
+              run_tests api-compatibility-http-result --test api_public_api compatibility_interface::http_result
+              run_tests api-json-billing --test api_private_routes billing::openapi_contract_tests
+              run_tests api-json-record-permissions --lib managed_services::record_permissions
+              run_tests api-workflow-events --test api_private_contracts document_event_observation
+              run_tests api-workflow-documents --test api_public_api workflow_extension_interface::document_observation
+              run_tests api-workflow-routes --test api_application workflow_extension
+              run_tests api-mcp-directory --test api_mcp_management interface_capabilities
+              run_tests api-operation-set --test api_private_routes complete_operation_specifications_match_the_production_route_set
+            else
+              echo 'Refactor scopes unverified: shared host test compilation failed.' > "$evidence/host-scopes-unverified.txt"
               failed=1
             fi
           elif [ "$EVIDENCE_SCOPE" = full-api-events-managed-control ]; then

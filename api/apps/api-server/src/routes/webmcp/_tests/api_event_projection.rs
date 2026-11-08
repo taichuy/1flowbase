@@ -2,7 +2,7 @@ use super::*;
 use crate::routes::webmcp::{WebMcpToolAnnotationsResponse, WebMcpToolResponse};
 #[test]
 fn webmcp_outer_metadata_excludes_opaque_downstream_credentials_without_changing_typed_carriers() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: "webmcp.tools.invoke".into(),
         method: "POST".into(),
         path: "/api/webmcp/:instance_id/tools/:operation".into(),
@@ -42,7 +42,7 @@ fn webmcp_outer_metadata_excludes_opaque_downstream_credentials_without_changing
 }
 #[test]
 fn public_registration_catalog_is_complete_with_long_descriptions_and_many_tools() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: "webmcp.registrations.list".into(),
         method: "GET".into(),
         path: "/api/webmcp/registrations".into(),

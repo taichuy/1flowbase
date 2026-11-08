@@ -493,10 +493,10 @@ pub(crate) fn compile_registry(
     )
 }
 
-impl crate::event_center::api_projection::ApiEventInput for ApplicationDocsInput {
+impl crate::openapi_interface::contract::ApiInput for ApplicationDocsInput {
     fn project_document_input(
         &self,
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Ok(match self {
             Self::Catalog {
@@ -520,10 +520,10 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationDocsInput
                 if operation.method == "POST" {
                     serde_json::json!({})
                 } else {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 },
                 if operation.method == "POST" {
-                    crate::event_center::api_projection::to_value(query)?
+                    crate::openapi_interface::contract::to_value(query)?
                 } else {
                     serde_json::Value::Null
                 },
@@ -554,15 +554,15 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationDocsInput
     }
 }
 
-impl crate::event_center::api_projection::ApiEventOutput for ApplicationDocsOutput {
+impl crate::openapi_interface::contract::ApiOutput for ApplicationDocsOutput {
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         match self {
-            Self::Catalog(value) => crate::event_center::api_projection::to_value(value),
-            Self::CategoryOperations(value) => crate::event_center::api_projection::to_value(value),
-            Self::OpenApi(value) => crate::event_center::api_projection::to_value(value),
+            Self::Catalog(value) => crate::openapi_interface::contract::to_value(value),
+            Self::CategoryOperations(value) => crate::openapi_interface::contract::to_value(value),
+            Self::OpenApi(value) => crate::openapi_interface::contract::to_value(value),
         }
     }
 }

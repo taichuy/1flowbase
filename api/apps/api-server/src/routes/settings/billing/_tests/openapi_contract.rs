@@ -1,5 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{self as ep, ApiEventInput, ApiEventOperationContext};
+use crate::openapi_interface::contract::{self as ep, ApiInput, ApiOperationContext};
 use serde_json::json;
 use utoipa::OpenApi;
 
@@ -244,7 +244,7 @@ fn billing_query_event_date_uses_the_real_serde_tuple_and_matches_its_document_s
         before_id: Some(Uuid::now_v7()),
     });
     let document = input
-        .project_document_input(&ApiEventOperationContext {
+        .project_document_input(&ApiOperationContext {
             interface_id: "billing.credit_ledger.list".into(),
             method: "GET".into(),
             path: "/api/console/settings/billing/credit-ledger".into(),

@@ -418,10 +418,10 @@ pub(crate) fn compile_registry(
     )
 }
 
-impl crate::event_center::api_projection::ApiEventInput for ApplicationApiKeyInput {
+impl crate::openapi_interface::contract::ApiInput for ApplicationApiKeyInput {
     fn project_document_input(
         &self,
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Ok(match self {
             Self::List { application_id } => {
@@ -439,7 +439,7 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationApiKeyInp
                 operation,
                 serde_json::json!({"application_id":application_id}),
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(body)?,
+                crate::openapi_interface::contract::to_value(body)?,
             ),
             Self::Revoke {
                 application_id,
@@ -454,13 +454,13 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationApiKeyInp
     }
 }
 
-impl crate::event_center::api_projection::ApiEventOutput for ApplicationApiKeyOutput {
+impl crate::openapi_interface::contract::ApiOutput for ApplicationApiKeyOutput {
     fn document_output_schema(
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<serde_json::Value> {
         (operation.interface_id == "applications.api-keys.create").then(|| {
             let mut schema =
-                crate::event_center::api_projection::schema::<super::ApplicationApiKeyResponse>();
+                crate::openapi_interface::contract::schema::<super::ApplicationApiKeyResponse>();
             if let Some(properties) = schema["properties"].as_object_mut() {
                 properties.remove("token_prefix");
             }
@@ -472,13 +472,13 @@ impl crate::event_center::api_projection::ApiEventOutput for ApplicationApiKeyOu
     }
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         match self {
-            Self::List(value) => crate::event_center::api_projection::to_value(value),
+            Self::List(value) => crate::openapi_interface::contract::to_value(value),
             Self::Created(value) => {
                 // Build the real DTO before selecting its credential-free event view.
-                let mut document = crate::event_center::api_projection::to_value(
+                let mut document = crate::openapi_interface::contract::to_value(
                     &super::ApplicationApiKeyResponse {
                         id: value.id,
                         name: value.name.clone(),

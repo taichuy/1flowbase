@@ -1,7 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext};
 use serde_json::{json, Value};
 
 // Passwords belong to the HTTP/authentication contract, never an event payload.
@@ -16,8 +14,8 @@ struct CreateMemberEvent<'a> {
     email_login_enabled: bool,
     phone_login_enabled: bool,
 }
-impl ApiEventInput for MembershipInput {
-    fn document_input_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for MembershipInput {
+    fn document_input_schema(operation: &ApiOperationContext) -> Option<Value> {
         match operation.interface_id.as_str() {
             "members.create" => Some(
                 json!({"type":"object","properties":{"body":event::schema::<CreateMemberEvent<'static>>()},"required":["body"],"additionalProperties":false}),
@@ -28,7 +26,7 @@ impl ApiEventInput for MembershipInput {
             _ => None,
         }
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::ListMemberRoleOptions | Self::GetWorkspace | Self::ListWorkspaces => json!({}),
             Self::ListMembers { department_id } => match department_id {
@@ -54,18 +52,6 @@ impl ApiEventInput for MembershipInput {
                 json!({"body":{"name":body.name,"logo_url":body.logo_url,"introduction":body.introduction}})
             }
         })
-    }
-}
-impl ApiEventOutput for MembershipOutput {
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
-        match self {
-            Self::MemberRoleOptions(value) => event::to_value(value),
-            Self::Members(value) => event::to_value(value),
-            Self::Member(value) => event::to_value(value),
-            Self::Workspace(value) => event::to_value(value),
-            Self::Workspaces(value) => event::to_value(value),
-            Self::NoContent => Ok(Value::Null),
-        }
     }
 }
 

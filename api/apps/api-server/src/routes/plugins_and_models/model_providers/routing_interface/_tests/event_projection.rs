@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn model_routing_parameters_preserve_typed_distribution_configuration_and_full_target_lists() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: "model_providers.main_instance.update".into(),
         method: "PUT".into(),
         path: "/api/console/settings/model-providers/providers/:provider_code/main-instance".into(),

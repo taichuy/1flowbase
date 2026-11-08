@@ -21,15 +21,15 @@ impl InterfaceContract for ApplicationRuntimeDebugStreamEvent {
 }
 
 // Stream frames are observations, never the server-stream terminal result.
-impl crate::event_center::api_projection::ApiEventOutput for ApplicationRuntimeDebugStreamEvent {
+impl crate::openapi_interface::contract::ApiOutput for ApplicationRuntimeDebugStreamEvent {
     fn document_output_unavailable(
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         Some(domain::event_center::ApiEventUnavailableReason::MissingStreamingTerminal)
     }
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Err(std::sync::Arc::from(
             "debug_stream_frame_is_not_the_terminal_result",

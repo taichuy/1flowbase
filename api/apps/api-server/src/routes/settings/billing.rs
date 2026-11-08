@@ -145,7 +145,7 @@ pub struct BillingPricingCatalogSyncResponse {
     pub retired: usize,
 }
 
-#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema, serde::Serialize)]
 #[into_params(parameter_in = Query)]
 pub struct PricingRuleQuery {
     pub(crate) provider_code: Option<String>,
@@ -164,7 +164,7 @@ pub struct PricingRulesPageResponse {
     pub(crate) page_size: i64,
 }
 
-#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema, serde::Serialize)]
 #[into_params(parameter_in = Query)]
 pub struct PricingCatalogQuery {
     /// Return counts without downloading pricing rule pages.
@@ -623,7 +623,7 @@ pub async fn get_pricing_catalog(
     };
     Ok(Json(ApiSuccess::new(response)))
 }
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ImportCatalogBody {
     pub catalog_ids: Vec<Uuid>,
 }
@@ -681,7 +681,7 @@ pub async fn sync_pricing_catalog(
     Ok(Json(ApiSuccess::new(response)))
 }
 
-#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema, serde::Serialize)]
 #[into_params(parameter_in = Query)]
 pub struct PageQuery {
     pub(crate) limit: Option<i64>,
@@ -774,7 +774,7 @@ pub async fn list_credit_ledger(
     Ok(Json(ApiSuccess::new(response)))
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreditCommandBody {
     pub(crate) amount: Option<String>,
     pub(crate) reason: String,

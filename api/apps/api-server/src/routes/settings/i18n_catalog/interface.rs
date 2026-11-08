@@ -1,5 +1,4 @@
-#[path = "interface/event_projection.rs"]
-mod event_projection;
+use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 mod managed_projection;
 
 use std::sync::Arc;
@@ -38,9 +37,12 @@ use crate::{
     },
 };
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum I18nCatalogInput {
     GetState,
     CheckUpdate,
+    #[serde(serialize_with = "json_contract::body")]
     ActivateOfficial(ActivateI18nCatalogBody),
     PreviewInstalled {
         installation_id: uuid::Uuid,
@@ -49,15 +51,24 @@ pub(crate) enum I18nCatalogInput {
         installation_id: uuid::Uuid,
         body: ActivateInstalledI18nCatalogBody,
     },
+    #[serde(serialize_with = "json_contract::query")]
     ListEntries(ListCatalogEntriesQuery),
+    #[serde(serialize_with = "json_contract::query_with_nulls")]
     GetEntry(GetCatalogEntryQuery),
+    #[serde(serialize_with = "json_contract::body")]
     UpsertOfficialOverride(UpsertCatalogTranslationBody),
+    #[serde(serialize_with = "json_contract::body")]
     RestoreOfficialOverride(RestoreCatalogOverrideBody),
+    #[serde(serialize_with = "json_contract::body")]
     UpsertCustomTranslation(UpsertCatalogTranslationBody),
+    #[serde(serialize_with = "json_contract::body")]
     DeleteCustomKey(DeleteCustomCatalogKeyBody),
+    #[serde(serialize_with = "json_contract::body")]
     RestoreAllOfficialOverrides(RestoreCatalogOverridesBody),
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum I18nCatalogOutput {
     State(I18nCatalogStateResponse),
     UpdateStatus(I18nCatalogUpdateStatusResponse),
@@ -639,3 +650,6 @@ mod tests {
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }
+
+impl JsonApiInput for I18nCatalogInput {}
+impl JsonApiOutput for I18nCatalogOutput {}

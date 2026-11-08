@@ -93,6 +93,21 @@ pub(super) enum PublicOutput {
     PasswordVerified,
 }
 pub(super) struct AuthorizeInput(pub Uuid);
+impl serde::Serialize for AuthorizeInput {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // The internal scalar is the complete public body DTO's single field.
+        serde::Serialize::serialize(
+            &super::AuthorizeBody {
+                login_entry_id: self.0,
+            },
+            serializer,
+        )
+    }
+}
+impl crate::openapi_interface::json_contract::JsonApiInput for AuthorizeInput {
+    const LOCATION: crate::openapi_interface::json_contract::JsonInputLocation =
+        crate::openapi_interface::json_contract::JsonInputLocation::Body;
+}
 pub(super) struct AuthorizeOutput {
     pub cookies: axum_extra::extract::cookie::CookieJar,
     pub authorization_url: String,
@@ -479,12 +494,12 @@ pub(crate) fn compile_registry(
             ProtocolProjection::http(RouteIdentity::new(method, path).expect("static route")),
         );
         if console {
-            crate::event_center::api_projection::register_static_api_event::<
+            crate::openapi_interface::contract::register_static_api_operation::<
                 AuthorizeInput,
                 AuthorizeOutput,
             >(&mut compiler, &event_binding, "graph:external-auth-v1")?;
         } else {
-            crate::event_center::api_projection::register_static_api_event::<
+            crate::openapi_interface::contract::register_static_api_operation::<
                 PublicInput,
                 PublicOutput,
             >(&mut compiler, &event_binding, "graph:external-auth-v1")?;

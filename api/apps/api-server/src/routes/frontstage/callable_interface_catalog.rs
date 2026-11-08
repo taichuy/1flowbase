@@ -420,10 +420,10 @@ mod tests {
     }
 }
 
-impl crate::event_center::api_projection::ApiEventInput for FrontstageCallableCatalogInput {
+impl crate::openapi_interface::contract::ApiInput for FrontstageCallableCatalogInput {
     fn project_document_input(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         use crate::routes::frontstage::event_projection as ep;
         use serde_json::json;
@@ -445,13 +445,13 @@ impl crate::event_center::api_projection::ApiEventInput for FrontstageCallableCa
         })
     }
 }
-impl crate::event_center::api_projection::ApiEventOutput for FrontstageCallableCatalogOutput {
+impl crate::openapi_interface::contract::ApiOutput for FrontstageCallableCatalogOutput {
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         use super::callable_interfaces::{entry_response, page_response};
-        use crate::event_center::api_projection::to_value;
+        use crate::openapi_interface::contract::to_value;
         match self {
             Self::Page(page) => to_value(&page_response(page.clone())),
             Self::Entry(entry) => to_value(&entry_response(entry.clone())),

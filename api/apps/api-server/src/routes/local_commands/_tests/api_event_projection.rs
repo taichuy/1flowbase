@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn local_command_before_keeps_actual_command_and_completed_spools_have_real_output_codec() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: "local_commands.execute".into(),
         method: "POST".into(),
         path: "/api/console/local-commands/execute".into(),

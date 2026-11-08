@@ -1,6 +1,8 @@
 use super::*;
 use crate::{
-    event_center::api_projection::{self, ApiEventInput, ApiEventOperationContext, ApiEventOutput},
+    openapi_interface::contract::{
+        self as api_projection, ApiInput, ApiOperationContext, ApiOutput,
+    },
     routes::console_interface::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
         ConsoleInterfaceTargetError,
@@ -19,8 +21,8 @@ impl InterfaceContract for Input {
     const CONTRACT_ID: &'static str = "api-event-fixture-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
-impl ApiEventInput for Input {
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+impl ApiInput for Input {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(json!({"path":{"record_id":self.record_id},"query":{"keyword":self.keyword}}))
     }
 }
@@ -30,8 +32,8 @@ impl InterfaceContract for Output {
     const CONTRACT_ID: &'static str = "api-event-fixture-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
-impl ApiEventOutput for Output {
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+impl ApiOutput for Output {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(json!({"answer":self.0}))
     }
 }
@@ -130,7 +132,7 @@ fn compiled(
     )
     .with_document_operation_observer(observer);
     compiler.absorb_snapshot(&family).unwrap();
-    api_projection::refine_static_api_events(&mut compiler, docs, &[family]).unwrap();
+    api_projection::refine_static_api_operations(&mut compiler, docs, &[family]).unwrap();
     compiler.compile().unwrap()
 }
 struct Authorization;
@@ -269,7 +271,7 @@ fn ambiguous_document_route_correspondence_rejects_publication() {
     let docs=crate::openapi_docs::build_api_docs_registry(json!({"openapi":"3.1.0","info":{"title":"ambiguous","version":"1"},"paths":{
         "/api/console/event-fixture/primary/{record_id}":{"get":{"operationId":"one","responses":{"200":{"description":"ok"}}}},
         "/api/console/event-fixture/primary/{other_id}":{"get":{"operationId":"two","responses":{"200":{"description":"ok"}}}}}})).unwrap();
-    assert!(api_projection::refine_static_api_events(&mut compiler, &docs, &[source]).is_err());
+    assert!(api_projection::refine_static_api_operations(&mut compiler, &docs, &[source]).is_err());
 }
 
 #[tokio::test]

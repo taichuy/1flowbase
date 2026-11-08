@@ -1,9 +1,7 @@
 //! Private safe views decoded from the already parsed protocol documents.
 //! These carriers never read source_request, headers, or provider transport.
 use super::*;
-use crate::event_center::api_projection::{
-    self as ep, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as ep, ApiInput, ApiOperationContext, ApiOutput};
 use crate::routes::application_public_api::native_interface::document_projection as native;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -166,8 +164,8 @@ impl ProtocolRequestDocument {
         Ok(Self::Anthropic(document))
     }
 }
-impl ApiEventInput for CompatibilityBlockingInput {
-    fn document_input_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for CompatibilityBlockingInput {
+    fn document_input_schema(operation: &ApiOperationContext) -> Option<Value> {
         if operation.method == "GET" {
             return Some(json!({"type":"object","properties":{},"additionalProperties":false}));
         }
@@ -188,10 +186,7 @@ impl ApiEventInput for CompatibilityBlockingInput {
             json!({"type":"object","properties":{"body":body},"required":["body"],"additionalProperties":false}),
         )
     }
-    fn project_document_input(
-        &self,
-        operation: &ApiEventOperationContext,
-    ) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, operation: &ApiOperationContext) -> Result<Value, Arc<str>> {
         // A WebSocket turn has no HTTP request body. Never mislabel a socket frame
         // or its transport context as a GET argument.
         if operation.method == "GET" {
@@ -200,11 +195,11 @@ impl ApiEventInput for CompatibilityBlockingInput {
         Ok(json!({"body":ep::to_value(self.document.as_ref().map_err(Arc::clone)?)?}))
     }
 }
-impl ApiEventOutput for CompatibilityBlockingOutput {
-    fn document_output_schema(_: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for CompatibilityBlockingOutput {
+    fn document_output_schema(_: &ApiOperationContext) -> Option<Value> {
         Some(native::result_schema())
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         // The typed run completion owns this business terminal. It is independent
         // from downstream SSE frames and socket-close or delivery receipts.
         native::result_document(&self.0)

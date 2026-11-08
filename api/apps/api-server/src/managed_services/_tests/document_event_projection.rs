@@ -27,8 +27,8 @@ fn operation(streaming: bool) -> plugin_framework::ManagedServiceOperation {
     })).unwrap()
 }
 
-fn context(operation: &plugin_framework::ManagedServiceOperation) -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn context(operation: &plugin_framework::ManagedServiceOperation) -> ApiOperationContext {
+    ApiOperationContext {
         interface_id: operation.interface_id.clone(),
         method: operation.method.clone(),
         path: operation.path.clone(),

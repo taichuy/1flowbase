@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LocalCommandBody {
     /// One shell command, executed in the API host's environment.
@@ -41,6 +41,11 @@ pub struct LocalCommandResponse {
 }
 
 pub(crate) struct LocalCommandExecution(CompletedCommand);
+
+impl crate::openapi_interface::json_contract::JsonApiInput for LocalCommandBody {
+    const LOCATION: crate::openapi_interface::json_contract::JsonInputLocation =
+        crate::openapi_interface::json_contract::JsonInputLocation::Body;
+}
 
 impl InterfaceContract for LocalCommandBody {
     const CONTRACT_ID: &'static str = "console-local-command-input";

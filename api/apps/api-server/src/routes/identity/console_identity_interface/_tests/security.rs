@@ -1,6 +1,6 @@
 use super::*;
-fn operation(id: &str) -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn operation(id: &str) -> ApiOperationContext {
+    ApiOperationContext {
         interface_id: id.into(),
         method: "POST".into(),
         path: "/api/console/user-api-keys".into(),

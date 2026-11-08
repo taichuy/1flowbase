@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn icon_has_real_path_input_and_explicit_binary_output_phase() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: "model_providers.icons.view".into(),
         method: "GET".into(),
         path: "/api/console/model-providers/providers/:provider_code/icon".into(),

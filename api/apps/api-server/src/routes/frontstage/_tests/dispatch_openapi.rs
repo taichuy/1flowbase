@@ -8,7 +8,7 @@ use super::*;
 use serde_json::json;
 
 fn validator<T: ToSchema>() -> jsonschema::Validator {
-    jsonschema::validator_for(&crate::event_center::api_projection::schema::<T>()).unwrap()
+    jsonschema::validator_for(&crate::openapi_interface::contract::schema::<T>()).unwrap()
 }
 
 #[test]

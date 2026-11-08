@@ -82,6 +82,28 @@ New rules store `interface_event: { operation_id, phase, results? }`. Before eve
 
 Existing rules retain `interface_id`, canonical matching, their saved schemas and workflow mappings. Renaming or toggling them does not migrate the binding. The two identities cannot be mixed. Dynamic models bind the actual model and operation; workflows bind the actual application. Authorization and execution share a frozen target snapshot and generation, so a generic CRUD or workflow binding cannot cross-trigger another target's rule. An unchanged rule can still be disabled after its target is withdrawn.
 
+## Shared API contracts and observation
+
+`openapi_docs::ApiDocsRegistry` and `openapi_interface` own the API catalog and schemas. The shared `contract` module owns typed conversion, schema inheritance and frozen registration. Event Center consumes kernel phases, matches rules and publishes events.
+
+```text
+GUI/API ─────────────────┐
+MCP argument mapping → same-generation Router
+                         └→ decode → authentication/authorization/admission → typed Before
+                                                                              ↓
+                                                shared typed input → Before observation
+                                                                              ↓
+                                                                   Handler → Completion
+                                                                              ↓
+                                                shared typed result → rule matching/publication
+```
+
+Ordinary JSON types explicitly opt into `json_contract` and reuse DTO serde representations. Body nulls remain intact; each interface retains its existing policy for absent top-level query values. Declared route templates name path fields, including positional tuples. Host context such as locale hints and headers is explicitly skipped. HTTP business DTO serialization, results returned through the MCP router, and event results share the same representation. HTTP status/envelopes and user-configured MCP result mappings remain protocol responsibilities.
+
+Explicit owner policies remain for credentials and safe views, binary content, spool/document materialization, logical stream completion and dynamic targets. Shared conversion does not serialize arbitrary `InterfaceContract` values, observe transport arguments before typed Before, or require MCP administration permissions. Existing kernel snapshots still freeze dynamic targets and generations.
+
+Both observation chains have real consumers. The legacy `InterfaceEvent` chain retains `interface_id` rules, their schemas and workflow mappings, and Agent Logs application-operation events. The document-operation chain serves `operation_id` rules. Both retain existing publication, broadcast, queue and consumption-handoff semantics; API Completion does not imply downstream workflow success.
+
 ## Host resource policy
 
 `API_EVENT_CENTER_POLICY` accepts an explicit JSON host policy. There is no guessed production capacity default. Without a policy, configuration remains available but the runtime is unavailable; the page reports that condition. Restart the host after changing the policy.

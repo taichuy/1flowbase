@@ -64,12 +64,12 @@ impl interface_runtime::InterfaceContract for RuntimeDataModelMetadata {
     }
 }
 
-impl crate::event_center::api_projection::ApiEventOutput for RuntimeDataModelMetadata {
+impl crate::openapi_interface::contract::ApiOutput for RuntimeDataModelMetadata {
     fn project_document_output(
         &self,
-        _: &crate::event_center::api_projection::ApiEventOperationContext,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<Value, Arc<str>> {
-        crate::event_center::api_projection::to_value(self)
+        crate::openapi_interface::contract::to_value(self)
     }
 }
 

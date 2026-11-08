@@ -956,10 +956,10 @@ pub(crate) fn compile_registry(
     )
 }
 
-impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeTraceExportsInput {
+impl crate::openapi_interface::contract::ApiInput for ApplicationRuntimeTraceExportsInput {
     fn project_document_input(
         &self,
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Ok(match self {
             Self::ExportRun {
@@ -984,9 +984,9 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeTr
     }
 }
 
-impl crate::event_center::api_projection::ApiEventOutput for ApplicationRuntimeTraceExportsOutput {
+impl crate::openapi_interface::contract::ApiOutput for ApplicationRuntimeTraceExportsOutput {
     fn document_output_schema(
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<serde_json::Value> {
         (operation.interface_id == "applications.runtime.trace-export.get").then(
             crate::routes::applications_group::event_projection::runtime::schema::<
@@ -996,14 +996,14 @@ impl crate::event_center::api_projection::ApiEventOutput for ApplicationRuntimeT
     }
     // The selected-runs route owns ZIP bytes; the single-run owner retains actual JSON.
     fn document_output_unavailable(
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         (operation.interface_id == "applications.runtime.trace-export.selected-runs")
             .then_some(domain::event_center::ApiEventUnavailableReason::BinaryResponse)
     }
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         match self {
             Self::Download(value) => {

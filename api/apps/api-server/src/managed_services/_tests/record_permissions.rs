@@ -98,9 +98,7 @@ async fn a_role_without_record_management_cannot_grant_itself_row_permissions() 
 
 #[test]
 fn record_permission_events_inherit_each_api_contract_and_preserve_actual_values() {
-    use crate::event_center::api_projection::{
-        ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-    };
+    use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
     use utoipa::OpenApi;
     #[derive(OpenApi)]
     #[openapi(paths(
@@ -159,7 +157,7 @@ fn record_permission_events_inherit_each_api_contract_and_preserve_actual_values
         let view = docs.operation_spec_view(declaration.interface_id).unwrap();
         let contract =
             crate::openapi_interface::catalog_entry_from_view(&operation, &view).unwrap();
-        let context = ApiEventOperationContext {
+        let context = ApiOperationContext {
             interface_id: declaration.interface_id.into(),
             method: declaration.method.into(),
             path: declaration.path.into(),

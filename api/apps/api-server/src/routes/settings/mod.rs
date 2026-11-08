@@ -41,5 +41,3 @@ pub mod workspace;
 pub mod workspaces;
 
 pub mod organization;
-
-pub(crate) mod document_event;

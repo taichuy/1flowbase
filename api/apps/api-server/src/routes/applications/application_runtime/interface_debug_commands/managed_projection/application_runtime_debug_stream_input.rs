@@ -128,9 +128,9 @@ impl InterfaceContract for ApplicationRuntimeDebugStreamInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeDebugStreamInput {
+impl crate::openapi_interface::contract::ApiInput for ApplicationRuntimeDebugStreamInput {
     fn document_input_schema(
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<serde_json::Value> {
         (operation.interface_id == "applications.runtime.debug-runs.stream.create").then(|| {
             crate::routes::applications_group::event_projection::runtime::request_schema(
@@ -138,7 +138,7 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeDe
                 crate::routes::applications_group::event_projection::runtime::schema::<
                     StartFlowDebugRunBody,
                 >(),
-                Some(crate::event_center::api_projection::schema::<
+                Some(crate::openapi_interface::contract::schema::<
                     crate::routes::application_runtime::DebugRunStreamQuery,
                 >()),
             )
@@ -146,7 +146,7 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeDe
     }
     fn project_document_input(
         &self,
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Ok(match self {
             Self::Start {
@@ -157,7 +157,7 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeDe
             } => crate::routes::applications_group::event_projection::request(
                 operation,
                 serde_json::json!({"application_id":application_id}),
-                crate::event_center::api_projection::to_value(stream_query)?,
+                crate::openapi_interface::contract::to_value(stream_query)?,
                 crate::routes::applications_group::event_projection::runtime::document(body)?,
             ),
             Self::Subscribe {

@@ -690,7 +690,7 @@ pub(super) fn compile_registry(
     );
     // Non-HTTP bindings are classified by the shared helper and retain their
     // existing protocol/downstream observers without a fabricated API operation.
-    crate::event_center::api_projection::register_static_api_event::<
+    crate::openapi_interface::contract::register_static_api_operation::<
         McpInvocationInput,
         McpInvocationOutput,
     >(&mut compiler, &event_binding, "graph:mcp-protocol-v1")?;

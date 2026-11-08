@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn role_permissions_keep_all_entries_and_real_path_body_shape() {
-    let operation = ApiEventOperationContext {
+    let operation = ApiOperationContext {
         interface_id: "roles.permissions.replace".into(),
         method: "PUT".into(),
         path: "/api/console/settings/roles/:id/permissions".into(),
@@ -23,7 +23,7 @@ fn role_permissions_keep_all_entries_and_real_path_body_shape() {
 }
 #[test]
 fn role_output_matches_http_business_response_without_enum_wrapper() {
-    let operation = ApiEventOperationContext {
+    let operation = ApiOperationContext {
         interface_id: "roles.list".into(),
         method: "GET".into(),
         path: "/api/console/settings/roles".into(),

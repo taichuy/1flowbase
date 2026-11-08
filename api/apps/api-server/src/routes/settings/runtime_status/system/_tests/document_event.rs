@@ -1,6 +1,6 @@
 use super::*;
-fn context(id: &str) -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn context(id: &str) -> ApiOperationContext {
+    ApiOperationContext {
         interface_id: id.into(),
         method: "GET".into(),
         path: "/fixture".into(),

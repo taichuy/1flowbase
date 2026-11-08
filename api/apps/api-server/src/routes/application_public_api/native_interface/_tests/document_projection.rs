@@ -1,8 +1,8 @@
 use super::*;
 use control_plane::application_public_api::native::NativeRunStatus;
 
-fn operation() -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn operation() -> ApiOperationContext {
+    ApiOperationContext {
         interface_id: BLOCKING_INTERFACE_ID.into(),
         method: "POST".into(),
         path: "/api/agent/v1/runs".into(),

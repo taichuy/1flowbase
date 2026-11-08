@@ -70,6 +70,27 @@
 
 既有规则仍保存 `interface_id`，继续匹配原 Canonical Interface，沿用原 Schema 和工作流映射。修改名称或启停不会自动切换到新规则。新旧身份不能混填。动态模型按实际 model 与 operation 区分，工作流按实际应用区分；执行前冻结已授权目标与代次，观察和执行使用同一快照。同一个通用 CRUD 或工作流 binding 不会让不同模型、应用的规则串线。停用目标撤回后保持绑定不变的规则仍可完成。
 
+## 公共接口契约与观察边界
+
+接口目录与 Schema 由 `openapi_docs::ApiDocsRegistry` 和 `openapi_interface` 提供。公共 `contract` 模块负责 typed 输入输出转换、Schema 继承和冻结注册；事件层只消费内核阶段、匹配规则并发布。
+
+```text
+GUI/API ────────────────┐
+MCP 参数映射 → 同代 Router ├→ 协议解码 → 认证/授权/准入 → typed Before
+                       ┘                                  ↓
+                                     公共 typed 输入转换 → Before 观察
+                                                          ↓
+                                                Handler → Completion
+                                                          ↓
+                                     公共 typed 结果转换 → 规则匹配/发布
+```
+
+普通 JSON 类型显式选择 `json_contract`，复用 DTO 的 serde 表示；body 保留 null，query 是否省略顶层 null 沿用该接口声明。path 的位置来自声明的路由模板，tuple 按路由顺序命名。请求中的 locale/headers 等宿主上下文显式跳过。HTTP 的业务 DTO 序列化、MCP 经 Router 得到的结果及事件结果共用同一表示；HTTP 状态、成功信封和 MCP 用户配置的结果映射仍各归协议 owner。
+
+凭据与安全视图、二进制、spool/文档 materialization、流式逻辑终态和动态目标继续使用显式 owner 策略。公共机制不会整体序列化任意 `InterfaceContract`，不会观察未经 typed Before 处理的运输参数，也不依赖 MCP 管理权限。动态目标与代次继续由原 Kernel 注册快照冻结。
+
+两条观察链均有真实消费者。旧 `InterfaceEvent` 链保留 `interface_id` 规则、旧 Schema/工作流映射，以及 Agent Logs 应用操作事件；文档操作链服务 `operation_id` 规则。两者沿用原发布/广播/队列/消费交接，不把接口 Completion 当成下游工作流成功。
+
 ## 使用路径
 
 1. 在事件目录新建接口事件规则：从完整 API 文档目录选择具体接口（名称、HTTP 方法与路径），再选“请求前”或“响应结束后”；响应结束可筛选全部或指定终态。填写名称，查看继承的只读 Schema。事件标识由后端生成，不再自由填写 `custom.*` 或 Schema。用户规则在有更新权限时可启停；系统与插件统一显示开启且禁用的开关。

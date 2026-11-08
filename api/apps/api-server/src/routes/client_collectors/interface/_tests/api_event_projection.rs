@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn collector_asset_has_real_path_metadata_and_binary_result_classification() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: INTERFACE_ID.into(),
         method: "GET".into(),
         path: "/api/public/client-collectors/:organization/:artifact_id/:version/assets/:asset"

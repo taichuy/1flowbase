@@ -1,7 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 
 #[derive(serde::Serialize, utoipa::ToSchema)]
@@ -85,11 +83,11 @@ struct OverviewEvent<'a> {
     login_entries: Vec<EntryEvent<'a>>,
     authentication_provider_templates: &'a [auth_center::AuthCenterProviderTemplateResponse],
 }
-impl ApiEventInput for AuthCenterInput {
-    fn document_input_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for AuthCenterInput {
+    fn document_input_schema(operation: &ApiOperationContext) -> Option<Value> {
         (operation.interface_id == "auth_center.login_entries.update.config").then(|| json!({"type":"object","properties":{"path":{"type":"object","properties":{"id":{"type":"string","format":"uuid"}},"required":["id"]},"body":event::schema::<UpdateConfigEvent<'static>>()},"required":["path","body"],"additionalProperties":false}))
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::Overview { locale: _ } => json!({}),
             Self::Create { locale: _, body } => json!({"body":event::to_value(body)?}),
@@ -120,8 +118,8 @@ impl ApiEventInput for AuthCenterInput {
         })
     }
 }
-impl ApiEventOutput for AuthCenterOutput {
-    fn document_output_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for AuthCenterOutput {
+    fn document_output_schema(operation: &ApiOperationContext) -> Option<Value> {
         match operation.interface_id.as_str() {
             "auth_center.overview.view" | "auth_center.login_entries.order" => {
                 Some(event::schema::<OverviewEvent<'static>>())
@@ -130,7 +128,7 @@ impl ApiEventOutput for AuthCenterOutput {
             _ => Some(event::schema::<EntryEvent<'static>>()),
         }
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Overview(value) => event::to_value(&OverviewEvent {
                 default_login_entry_id: value.default_login_entry_id,

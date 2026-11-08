@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn password_never_enters_sign_in_event_schema_or_value() {
-    let operation = ApiEventOperationContext {
+    let operation = ApiOperationContext {
         interface_id: "public.auth.sign-in".into(),
         method: "POST".into(),
         path: "/api/public/auth/sign-in".into(),

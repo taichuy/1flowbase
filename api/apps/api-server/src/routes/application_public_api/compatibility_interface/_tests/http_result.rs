@@ -28,8 +28,8 @@ fn run() -> NativeRunResult {
         created_at: time::OffsetDateTime::now_utc(),
     }
 }
-fn operation(id: &str) -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn operation(id: &str) -> ApiOperationContext {
+    ApiOperationContext {
         interface_id: id.into(),
         method: "POST".into(),
         path: "/v1/chat/completions".into(),

@@ -1,9 +1,13 @@
 use super::*;
-fn context(id: &str) -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn context(id: &str) -> ApiOperationContext {
+    let declaration = DECLARATIONS
+        .iter()
+        .find(|item| item.interface_id == id)
+        .unwrap();
+    ApiOperationContext {
         interface_id: id.into(),
-        method: "GET".into(),
-        path: "/fixture".into(),
+        method: declaration.method.into(),
+        path: declaration.path.into(),
     }
 }
 

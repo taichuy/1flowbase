@@ -208,7 +208,7 @@ pub struct ComponentRecordResponse {
     pub updated_at: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CatalogSearchQuery {
     pub q: String,
     #[serde(default = "default_catalog_page")]

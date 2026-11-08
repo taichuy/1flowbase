@@ -1,13 +1,13 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+#[cfg(test)]
+use crate::openapi_interface::contract::ApiOutput;
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-impl ApiEventInput for PluginInterfaceInput {
+impl ApiInput for PluginInterfaceInput {
     fn document_input_unavailable(
-        operation: &ApiEventOperationContext,
+        operation: &ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         matches!(
             operation.interface_id.as_str(),
@@ -15,7 +15,7 @@ impl ApiEventInput for PluginInterfaceInput {
         )
         .then_some(domain::event_center::ApiEventUnavailableReason::BinaryRequest)
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::ListCatalog { query, locale: _ }
             | Self::ListFamilies { query, locale: _ }
@@ -71,20 +71,6 @@ impl ApiEventInput for PluginInterfaceInput {
                 json!({"path":{"task_id":task_id}})
             }
         })
-    }
-}
-impl ApiEventOutput for PluginInterfaceOutput {
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
-        match self {
-            Self::Catalog(value) => event::to_value(value),
-            Self::Families(value) => event::to_value(value),
-            Self::Official(value) => event::to_value(value),
-            Self::Installed(value) => event::to_value(value),
-            Self::Projection(value) => event::to_value(value),
-            Self::Artifact(value) => event::to_value(value),
-            Self::Task(value) => event::to_value(value),
-            Self::Tasks(value) => event::to_value(value),
-        }
     }
 }
 

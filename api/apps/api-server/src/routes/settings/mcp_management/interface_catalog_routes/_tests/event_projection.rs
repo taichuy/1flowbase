@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn optional_query_omits_absent_properties_and_catalog_has_no_empty_locations() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: "mcp.interface_catalog.view".into(),
         method: "GET".into(),
         path: "/api/console/mcp/interface-capabilities".into(),
@@ -31,7 +31,7 @@ fn optional_query_omits_absent_properties_and_catalog_has_no_empty_locations() {
 }
 #[test]
 fn list_output_preserves_every_record_and_long_descriptions() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: "mcp.items.list".into(),
         method: "GET".into(),
         path: "/api/console/mcp/list".into(),

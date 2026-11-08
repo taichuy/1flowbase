@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 #[path = "role_access_interface/managed_projection.rs"]
 mod managed_projection;
 
@@ -24,55 +25,72 @@ use crate::{
     },
 };
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum RoleAccessInput {
     ListDataModelOptions,
     GetConsolePolicyCatalog {
+        #[serde(skip_serializing)]
         locale: ConsoleLocaleHints,
     },
     ReplaceConsoleSettingsOrder {
+        #[serde(skip_serializing)]
         locale: ConsoleLocaleHints,
         body: roles::ReplaceConsoleSettingsOrderBody,
     },
     GetRoleConsolePolicy {
+        #[serde(rename = "id")]
         role_code: String,
     },
     ReplaceRoleConsolePolicy {
+        #[serde(rename = "id")]
         role_code: String,
         body: roles::ReplaceRoleConsolePolicyBody,
     },
     ListRoles,
+    #[serde(serialize_with = "json_contract::body")]
     CreateRole(roles::CreateRoleBody),
     UpdateRole {
+        #[serde(rename = "id")]
         role_code: String,
         body: roles::UpdateRoleBody,
     },
     DeleteRole {
+        #[serde(rename = "id")]
         role_code: String,
     },
     GetRolePermissions {
+        #[serde(rename = "id")]
         role_code: String,
     },
     ReplaceRolePermissions {
+        #[serde(rename = "id")]
         role_code: String,
         body: roles::ReplaceRolePermissionsBody,
     },
     GetRoleFrontstageRoutes {
+        #[serde(rename = "id")]
         role_code: String,
     },
     ReplaceRoleFrontstageRoutes {
+        #[serde(rename = "id")]
         role_code: String,
         body: roles::ReplaceRoleFrontstageRoutesBody,
     },
     GetRoleDataPolicy {
+        #[serde(rename = "id")]
         role_code: String,
     },
     ReplaceRoleDataPolicy {
+        #[serde(rename = "id")]
         role_code: String,
         body: roles::ReplaceRoleDataPolicyBody,
     },
     ListPermissionOptions,
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum RoleAccessOutput {
     DataModelOptions(Vec<roles::RoleDataModelOptionResponse>),
     ConsolePolicyCatalog(roles::ConsolePolicyCatalogResponse),
@@ -577,3 +595,16 @@ mod tests {
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }
+
+impl JsonApiInput for RoleAccessInput {}
+impl JsonApiOutput for RoleAccessOutput {}
+
+#[cfg(test)]
+use serde_json::json;
+
+#[cfg(test)]
+use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "role_access_interface/_tests/security.rs"]
+mod event_tests;

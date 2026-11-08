@@ -802,7 +802,7 @@ pub(crate) fn compile_registry(
                     .expect("static console identity route is valid"),
             ),
         );
-        crate::event_center::api_projection::register_static_api_event::<
+        crate::openapi_interface::contract::register_static_api_operation::<
             ConsoleIdentityInput,
             ConsoleIdentityOutput,
         >(&mut compiler, &event_binding, "graph:console-identity-v1")?;

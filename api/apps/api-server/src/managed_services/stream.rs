@@ -807,15 +807,15 @@ fn parse_client_frame(text: &str, input: &jsonschema::Validator) -> Result<Clien
 mod lifecycle_tests;
 
 // Runtime frames and their consumed ACK owner are not a business terminal DTO.
-impl crate::event_center::api_projection::ApiEventOutput for StreamEvent {
+impl crate::openapi_interface::contract::ApiOutput for StreamEvent {
     fn document_output_unavailable(
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         Some(domain::event_center::ApiEventUnavailableReason::MissingStreamingTerminal)
     }
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<Value, Arc<str>> {
         Err(Arc::from("managed_service_frame_is_not_a_stream_terminal"))
     }

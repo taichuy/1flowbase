@@ -28,7 +28,7 @@ fn provider_icon_openapi_covers_actual_image_media_and_binary_fallback_without_j
         media
     );
     assert!(!content.contains_key("application/json"));
-    let schema = crate::event_center::api_projection::schema::<crate::openapi::OpenApiBinaryBody>();
+    let schema = crate::openapi_interface::contract::schema::<crate::openapi::OpenApiBinaryBody>();
     assert_eq!(schema["type"], "string");
     assert_eq!(schema["format"], "binary");
     for media in content.values() {

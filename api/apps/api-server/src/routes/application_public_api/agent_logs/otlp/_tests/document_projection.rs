@@ -1,9 +1,7 @@
 use super::*;
-use crate::event_center::api_projection::{
-    ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
-fn operation(id: &str) -> ApiEventOperationContext {
-    ApiEventOperationContext {
+use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
+fn operation(id: &str) -> ApiOperationContext {
+    ApiOperationContext {
         interface_id: id.into(),
         method: "POST".into(),
         path: "/api/logs/otlp/v1/traces".into(),
@@ -77,7 +75,7 @@ fn otlp_document_result_is_the_standard_ack_and_legacy_receipt_is_unchanged() {
     let value = output.project_document_output(&operation(ID)).unwrap();
     assert_eq!(
         value,
-        crate::event_center::api_projection::to_value(&output.response).unwrap()
+        crate::openapi_interface::contract::to_value(&output.response).unwrap()
     );
     assert!(value.get("accepted_events").is_none());
     assert!(value.get("receipt").is_none());

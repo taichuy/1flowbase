@@ -713,10 +713,10 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeTracePayloadsInput {
+impl crate::openapi_interface::contract::ApiInput for ApplicationRuntimeTracePayloadsInput {
     fn project_document_input(
         &self,
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Ok(match self {
             Self::NodeContent {
@@ -761,9 +761,9 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeTr
     }
 }
 
-impl crate::event_center::api_projection::ApiEventOutput for ApplicationRuntimeTracePayloadsOutput {
+impl crate::openapi_interface::contract::ApiOutput for ApplicationRuntimeTracePayloadsOutput {
     fn document_output_schema(
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<serde_json::Value> {
         match operation.interface_id.as_str() {
             "applications.runtime.trace-node.content.get" => Some(
@@ -786,7 +786,7 @@ impl crate::event_center::api_projection::ApiEventOutput for ApplicationRuntimeT
     }
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         match self {
             Self::NodeContent(value) => {

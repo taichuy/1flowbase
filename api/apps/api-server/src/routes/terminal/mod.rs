@@ -5,6 +5,7 @@ use super::{
     },
     console_route_assembly::{console_post, ConsoleRouteAssembly},
 };
+use crate::openapi_interface::json_contract::{JsonApiInput, JsonApiOutput, JsonInputLocation};
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
@@ -22,15 +23,15 @@ mod managed_projection;
 #[path = "../../local_terminal/transfer.rs"]
 mod transfer;
 pub use handlers::*;
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct InfoInput {}
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct JobInput {
     pub execution_id: Uuid,
 }
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct JobReadInput {
     pub execution_id: Uuid,
@@ -44,6 +45,8 @@ pub struct ImportOutput {
     pub storage_id: String,
     pub record: serde_json::Value,
 }
+#[derive(Serialize)]
+#[serde(untagged)]
 pub(crate) enum TerminalInput {
     Info(InfoInput),
     List(ListInput),
@@ -77,6 +80,11 @@ pub(crate) enum TerminalOutput {
     Job(JobSnapshot),
     Read(ReadOutput),
 }
+impl JsonApiInput for TerminalInput {
+    const LOCATION: JsonInputLocation = JsonInputLocation::Body;
+}
+impl JsonApiOutput for TerminalOutput {}
+
 impl InterfaceContract for TerminalInput {
     const CONTRACT_ID: &'static str = "console-terminal-input";
     const CONTRACT_VERSION: &'static str = "1";
@@ -528,5 +536,12 @@ fn file_error(error: local_terminal::FileError) -> ApiError {
     }
 }
 
-#[path = "api_event_projection.rs"]
-mod api_event_projection;
+#[cfg(test)]
+use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
+#[cfg(test)]
+use serde_json::json;
+
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "_tests/api_event_projection.rs"]
+mod api_event_tests;

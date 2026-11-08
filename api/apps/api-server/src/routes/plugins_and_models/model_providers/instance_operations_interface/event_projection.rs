@@ -1,7 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -61,8 +59,8 @@ struct PreviewEvent<'a> {
 struct SecretEvent<'a> {
     key: &'a str,
 }
-impl ApiEventInput for ProviderInstanceOperationsInput {
-    fn document_input_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for ProviderInstanceOperationsInput {
+    fn document_input_schema(operation: &ApiOperationContext) -> Option<Value> {
         match operation.interface_id.as_str() {
             "model_providers.instances.authenticate" => Some(
                 json!({"type":"object","properties":{"path":{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]},"body":event::schema::<AuthInputEvent>()},"required":["path","body"],"additionalProperties":false}),
@@ -73,7 +71,7 @@ impl ApiEventInput for ProviderInstanceOperationsInput {
             _ => None,
         }
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::Authenticate { id, body } => {
                 json!({"path":{"id":id},"body":event::to_value(&AuthInputEvent { operation:auth_operation(&body.operation)? })?})
@@ -91,8 +89,8 @@ impl ApiEventInput for ProviderInstanceOperationsInput {
         })
     }
 }
-impl ApiEventOutput for ProviderInstanceOperationsOutput {
-    fn document_output_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for ProviderInstanceOperationsOutput {
+    fn document_output_schema(operation: &ApiOperationContext) -> Option<Value> {
         match operation.interface_id.as_str() {
             "model_providers.instances.authenticate" => {
                 Some(event::schema::<AuthenticationEvent<'static>>())
@@ -104,7 +102,7 @@ impl ApiEventOutput for ProviderInstanceOperationsOutput {
             _ => None,
         }
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Authentication(value) => event::to_value(&AuthenticationEvent {
                 instance: &value.instance,

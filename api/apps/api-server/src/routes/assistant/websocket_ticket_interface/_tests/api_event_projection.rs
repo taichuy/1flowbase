@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn websocket_ticket_is_not_an_event_field_and_http_serialization_is_unchanged() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: "assistant.runs.websocket-ticket.create".into(),
         method: "POST".into(),
         path: "/api/console/assistant/runs/websocket-ticket".into(),

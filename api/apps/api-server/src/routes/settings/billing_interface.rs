@@ -1,5 +1,4 @@
-#[path = "billing_interface/event_projection.rs"]
-mod event_projection;
+use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 mod managed_projection;
 
 use std::{sync::Arc, time::Duration};
@@ -31,8 +30,12 @@ use crate::{
     },
 };
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum BillingInput {
+    #[serde(serialize_with = "json_contract::query")]
     ListPricingRules(PricingRuleQuery),
+    #[serde(serialize_with = "json_contract::body")]
     CreatePricingRule(PricingRuleBody),
     UpdatePricingRule {
         id: Uuid,
@@ -41,13 +44,17 @@ pub(crate) enum BillingInput {
     DeletePricingRule {
         id: Uuid,
     },
+    #[serde(serialize_with = "json_contract::query")]
     GetPricingCatalog(PricingCatalogQuery),
+    #[serde(serialize_with = "json_contract::body")]
     ImportPricingCatalog(ImportCatalogBody),
     SyncPricingCatalog,
+    #[serde(serialize_with = "json_contract::query")]
     ListCreditAccounts(PageQuery),
     GetCreditAccount {
         user_id: Uuid,
     },
+    #[serde(serialize_with = "json_contract::query")]
     ListCreditLedger(PageQuery),
     GrantCredit {
         user_id: Uuid,
@@ -75,6 +82,8 @@ pub(crate) enum BillingInput {
     },
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum BillingOutput {
     PricingRules(PricingRulesPageResponse),
     PricingRule(PricingRuleResponse),
@@ -549,3 +558,6 @@ mod tests {
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }
+
+impl JsonApiInput for BillingInput {}
+impl JsonApiOutput for BillingOutput {}

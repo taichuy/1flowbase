@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn model_discovery_preserves_complete_descriptors_and_provider_metadata() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: "model_providers.instances.models.view".into(),
         method: "GET".into(),
         path: "/api/console/settings/model-providers/instances/:id/models".into(),

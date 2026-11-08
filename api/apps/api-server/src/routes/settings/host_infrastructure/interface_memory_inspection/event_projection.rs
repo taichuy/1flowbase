@@ -1,8 +1,8 @@
 use super::*;
-use crate::event_center::api_projection::{
-    schema, to_value, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
+use crate::openapi_interface::contract::{
+    schema, to_value, ApiInput, ApiOperationContext, ApiOutput,
 };
-use crate::routes::document_event::{self as de, query_fields as q};
+use crate::openapi_interface::schema_projection::{self as de, query_fields as q};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -16,8 +16,8 @@ fn entry_schema() -> Value {
 fn entry_value(v: Value) -> Value {
     de::without_values(v, ENTRY_HIDDEN)
 }
-impl ApiEventInput for MemoryInspectionInput {
-    fn document_input_schema(c: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for MemoryInspectionInput {
+    fn document_input_schema(c: &ApiOperationContext) -> Option<Value> {
         if c.interface_id == "host_infrastructure.memory.entry.reveal" {
             Some(de::path_body_schema(
                 json!({"type":"object","properties":{"contract_code":{"type":"string"}},"required":["contract_code"]}),
@@ -27,7 +27,7 @@ impl ApiEventInput for MemoryInspectionInput {
             None
         }
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::Overview | Self::StatsOverview => json!({}),
             Self::Entries {
@@ -61,8 +61,8 @@ impl ApiEventInput for MemoryInspectionInput {
         })
     }
 }
-impl ApiEventOutput for MemoryInspectionOutput {
-    fn document_output_schema(c: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for MemoryInspectionOutput {
+    fn document_output_schema(c: &ApiOperationContext) -> Option<Value> {
         match c.interface_id.as_str() {
             "host_infrastructure.memory.entries.list"
             | "host_infrastructure.memory.entries.search" => Some(de::replace_property(
@@ -78,7 +78,7 @@ impl ApiEventOutput for MemoryInspectionOutput {
             _ => None,
         }
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Overview(v) => to_value(v),
             Self::StatsOverview(v) => to_value(v),

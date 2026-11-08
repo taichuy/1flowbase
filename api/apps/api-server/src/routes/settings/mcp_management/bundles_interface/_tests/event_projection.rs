@@ -1,6 +1,6 @@
 use super::*;
-fn operation(id: &str, method: &str, path: &str) -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn operation(id: &str, method: &str, path: &str) -> ApiOperationContext {
+    ApiOperationContext {
         interface_id: id.into(),
         method: method.into(),
         path: path.into(),

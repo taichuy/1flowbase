@@ -802,15 +802,15 @@ fn component_response(value: UiComponentRecord) -> Result<FrontstageComponentRes
     })
 }
 
-impl crate::event_center::api_projection::ApiEventInput for FrontstageComponentsInput {
+impl crate::openapi_interface::contract::ApiInput for FrontstageComponentsInput {
     fn project_document_input(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Ok(match self {
             Self::List(query) => crate::routes::frontstage::event_projection::request(
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(query)?,
+                crate::openapi_interface::contract::to_value(query)?,
                 None,
             ),
             Self::Get(component_id) => crate::routes::frontstage::event_projection::request(
@@ -827,9 +827,9 @@ impl crate::event_center::api_projection::ApiEventInput for FrontstageComponents
     }
 }
 
-impl crate::event_center::api_projection::ApiEventOutput for FrontstageComponentsOutput {
+impl crate::openapi_interface::contract::ApiOutput for FrontstageComponentsOutput {
     fn document_output_unavailable(
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         operation
             .path
@@ -839,11 +839,11 @@ impl crate::event_center::api_projection::ApiEventOutput for FrontstageComponent
     }
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         match self {
-            Self::Page(value) => crate::event_center::api_projection::to_value(value),
-            Self::Component(value) => crate::event_center::api_projection::to_value(value),
+            Self::Page(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Component(value) => crate::openapi_interface::contract::to_value(value),
             Self::Asset(_) => Err(std::sync::Arc::from(
                 "frontend_component_module_asset_is_not_json",
             )),

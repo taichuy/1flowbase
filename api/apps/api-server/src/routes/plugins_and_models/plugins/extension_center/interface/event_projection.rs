@@ -1,7 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -54,14 +52,14 @@ enum InstallEvent<'a> {
         risk_challenge: &'a ExtensionRiskChallengeResponse,
     },
 }
-impl ApiEventInput for ExtensionCenterInput {
+impl ApiInput for ExtensionCenterInput {
     fn document_input_unavailable(
-        operation: &ApiEventOperationContext,
+        operation: &ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         (operation.interface_id == "extension_center.install.upload")
             .then_some(domain::event_center::ApiEventUnavailableReason::BinaryRequest)
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::QueryManagedExecution(installation_id, cursor) => {
                 json!({"path":{"installation_id":installation_id},"query":cursor.as_ref().map(|cursor|json!({"cursor":cursor})).unwrap_or_else(||json!({}))})
@@ -101,8 +99,8 @@ impl ApiEventInput for ExtensionCenterInput {
         })
     }
 }
-impl ApiEventOutput for ExtensionCenterOutput {
-    fn document_output_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for ExtensionCenterOutput {
+    fn document_output_schema(operation: &ApiOperationContext) -> Option<Value> {
         match operation.interface_id.as_str() {
             "extension_center.managed_execution.view"
             | "extension_center.lifecycle_deliveries.resume"
@@ -115,7 +113,7 @@ impl ApiEventOutput for ExtensionCenterOutput {
             _ => None,
         }
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::ManagedExecution(value) => event::to_value(value),
             Self::ContributionAuthorizations(value) => event::to_value(value),

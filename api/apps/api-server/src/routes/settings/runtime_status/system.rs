@@ -38,11 +38,16 @@ pub struct SystemRuntimeProfileQuery {
     pub locale: Option<String>,
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum SystemInterfaceInput {
     ReleaseStatus,
     RuntimeProfile {
+        #[serde(rename = "query", serialize_with = "serialize_locale_query")]
         query_locale: Option<String>,
+        #[serde(skip)]
         explicit_header_locale: Option<String>,
+        #[serde(skip)]
         accept_language: Option<String>,
     },
     ProcessList,
@@ -50,6 +55,21 @@ pub(crate) enum SystemInterfaceInput {
         pid: u32,
     },
 }
+impl crate::openapi_interface::json_contract::JsonApiInput for SystemInterfaceInput {}
+
+// The input stores the query locale separately from opaque header resolution.
+fn serialize_locale_query<S: serde::Serializer>(
+    locale: &Option<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    #[derive(serde::Serialize)]
+    struct Query<'a> {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        locale: &'a Option<String>,
+    }
+    serde::Serialize::serialize(&Query { locale }, serializer)
+}
+
 impl InterfaceContract for SystemInterfaceInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;

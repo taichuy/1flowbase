@@ -594,24 +594,24 @@ mod tests {
     }
 }
 
-impl crate::event_center::api_projection::ApiEventInput for FrontstageCallableDispatchInput {
+impl crate::openapi_interface::contract::ApiInput for FrontstageCallableDispatchInput {
     fn document_input_schema(
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<Value> {
-        Some(crate::event_center::api_projection::schema::<
+        Some(crate::openapi_interface::contract::schema::<
             super::event_projection::CallableInput,
         >())
     }
     fn project_document_input(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<Value, Arc<str>> {
         use super::event_projection::{CallableInput, CallablePath, CallableTargetBody};
         // Reuse this owner's route validation. Invalid raw paths can contain
         // query-string credentials and must not become target metadata.
         let target = canonical_route_key(&self.body.method, &self.body.path)
             .map_err(|_| Arc::<str>::from("invalid_frontstage_callable_event_target"))?;
-        crate::event_center::api_projection::to_value(&CallableInput {
+        crate::openapi_interface::contract::to_value(&CallableInput {
             path: CallablePath {
                 page_id: self.page_id.clone(),
                 tab_id: self.tab_id.clone(),
@@ -624,17 +624,17 @@ impl crate::event_center::api_projection::ApiEventInput for FrontstageCallableDi
         })
     }
 }
-impl crate::event_center::api_projection::ApiEventOutput for FrontstageCallableDispatchOutput {
+impl crate::openapi_interface::contract::ApiOutput for FrontstageCallableDispatchOutput {
     fn document_output_schema(
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<Value> {
-        Some(crate::event_center::api_projection::schema::<
+        Some(crate::openapi_interface::contract::schema::<
             super::event_projection::CallableOutput,
         >())
     }
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<Value, Arc<str>> {
         // HTTP projection fixes Json to 200 and NoContent to 204; media and target
         // responses retain their actual status. This does not reinterpret the
@@ -644,7 +644,7 @@ impl crate::event_center::api_projection::ApiEventOutput for FrontstageCallableD
             Self::NoContent => 204,
             Self::Media(response) | Self::Target(response) => response.status,
         };
-        crate::event_center::api_projection::to_value(&super::event_projection::CallableOutput {
+        crate::openapi_interface::contract::to_value(&super::event_projection::CallableOutput {
             status,
         })
     }

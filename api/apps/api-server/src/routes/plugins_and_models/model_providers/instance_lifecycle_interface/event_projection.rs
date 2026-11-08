@@ -1,7 +1,7 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+#[cfg(test)]
+use crate::openapi_interface::contract::ApiOutput;
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -24,8 +24,8 @@ struct UpdateEvent<'a> {
     enabled_model_ids: &'a [String],
     included_in_main: bool,
 }
-impl ApiEventInput for ProviderInstanceLifecycleInput {
-    fn document_input_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for ProviderInstanceLifecycleInput {
+    fn document_input_schema(operation: &ApiOperationContext) -> Option<Value> {
         match operation.interface_id.as_str() {
             "model_providers.instances.create" => Some(
                 json!({"type":"object","properties":{"body":event::schema::<CreateEvent<'static>>()},"required":["body"],"additionalProperties":false}),
@@ -36,7 +36,7 @@ impl ApiEventInput for ProviderInstanceLifecycleInput {
             _ => None,
         }
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::List => json!({}),
             Self::Create(body) => {
@@ -47,17 +47,6 @@ impl ApiEventInput for ProviderInstanceLifecycleInput {
             }
             Self::Validate { id } | Self::Delete { id } => json!({"path":{"id":id}}),
         })
-    }
-}
-impl ApiEventOutput for ProviderInstanceLifecycleOutput {
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
-        match self {
-            Self::Instances(value) => event::to_value(value),
-            // instance.config_json is the service's persisted public config.
-            Self::Instance(value) => event::to_value(value),
-            Self::Validation(value) => event::to_value(value),
-            Self::Deleted(value) => event::to_value(value),
-        }
     }
 }
 

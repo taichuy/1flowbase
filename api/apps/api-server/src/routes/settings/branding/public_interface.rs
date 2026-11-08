@@ -196,11 +196,10 @@ pub(crate) fn compile_registry(
                 .expect("static route is valid"),
         ),
     );
-    crate::event_center::api_projection::register_static_api_event::<BrandingInput, BrandingOutput>(
-        &mut compiler,
-        &binding,
-        "graph:public-branding-v1",
-    )?;
+    crate::openapi_interface::contract::register_static_api_operation::<
+        BrandingInput,
+        BrandingOutput,
+    >(&mut compiler, &binding, "graph:public-branding-v1")?;
     compiler.register_binding(
         binding,
         InvocationAdapterPlan::new(

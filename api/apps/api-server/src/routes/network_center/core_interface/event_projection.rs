@@ -1,7 +1,7 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+#[cfg(test)]
+use crate::openapi_interface::contract::ApiOutput;
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext};
 use serde_json::{json, Value};
 
 // This input's config is explicitly encrypted as provider secret_json.
@@ -12,11 +12,11 @@ struct CreateProviderEvent<'a> {
     display_name: &'a str,
     description: &'a str,
 }
-impl ApiEventInput for NetworkCenterInput {
-    fn document_input_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for NetworkCenterInput {
+    fn document_input_schema(operation: &ApiOperationContext) -> Option<Value> {
         (operation.interface_id == "network_egress_providers.create").then(|| json!({"type":"object","properties":{"body":event::schema::<CreateProviderEvent<'static>>()},"required":["body"],"additionalProperties":false}))
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::ListProviders | Self::ListProviderTypes | Self::ListRoutes => json!({}),
             Self::CreateProvider(body) => {
@@ -32,18 +32,6 @@ impl ApiEventInput for NetworkCenterInput {
             }
             Self::DeleteRoute { route_id } => json!({"path":{"route_id":route_id}}),
         })
-    }
-}
-impl ApiEventOutput for NetworkCenterOutput {
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
-        match self {
-            Self::Providers(value) => event::to_value(value),
-            Self::ProviderTypes(value) => event::to_value(value),
-            Self::Provider(value) => event::to_value(value),
-            Self::Routes(value) => event::to_value(value),
-            Self::Route(value) => event::to_value(value),
-            Self::Deleted => Ok(Value::Null),
-        }
     }
 }
 

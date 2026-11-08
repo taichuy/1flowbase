@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn tool_event_keeps_schemas_mappings_enum_wire_shape_and_long_text() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: "mcp.tools.create".into(),
         method: "POST".into(),
         path: "/api/console/mcp/tools".into(),
@@ -40,6 +40,11 @@ fn tool_event_keeps_schemas_mappings_enum_wire_shape_and_long_text() {
     );
     assert!(value.get("path").is_none());
     assert!(value.get("query").is_none());
+    let op = ApiOperationContext {
+        interface_id: "mcp.tools.get".into(),
+        method: "GET".into(),
+        path: "/api/console/mcp/tools/:tool_id".into(),
+    };
     assert_eq!(
         McpToolsInput::Get("lookup".into())
             .project_document_input(&op)

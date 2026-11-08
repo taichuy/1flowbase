@@ -17,12 +17,18 @@ use crate::error_response::ApiError;
 pub(crate) const INTERFACE_ID: &str = "public.client-collectors.asset.download";
 const HANDLER_REFERENCE: &str = "api-server.client-collectors.assets";
 pub(crate) const BINDING_ID: &str = "http.public.client-collectors.assets.v1";
+#[derive(serde::Serialize)]
 pub(crate) struct CollectorAssetInput {
     pub organization: String,
     pub artifact_id: String,
     pub version: String,
     pub asset: String,
 }
+impl crate::openapi_interface::json_contract::JsonApiInput for CollectorAssetInput {
+    const LOCATION: crate::openapi_interface::json_contract::JsonInputLocation =
+        crate::openapi_interface::json_contract::JsonInputLocation::Path;
+}
+
 impl InterfaceContract for CollectorAssetInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
@@ -218,7 +224,7 @@ pub(crate) fn compile_registry(
             .expect("static route is valid"),
         ),
     );
-    crate::event_center::api_projection::register_static_api_event::<
+    crate::openapi_interface::contract::register_static_api_operation::<
         CollectorAssetInput,
         CollectorAssetOutput,
     >(

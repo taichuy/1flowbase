@@ -1,5 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{ApiEventInput, ApiEventOutput};
+use crate::openapi_interface::contract::{ApiInput, ApiOutput};
 use crate::routes::application_api::{
     interface_keys::ApplicationApiKeyOutput, CreatedApplicationApiKeyResponse,
 };
@@ -12,8 +12,8 @@ use crate::routes::applications::{
 };
 use uuid::Uuid;
 
-fn operation(interface_id: &str, method: &str, path: &str) -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn operation(interface_id: &str, method: &str, path: &str) -> ApiOperationContext {
+    ApiOperationContext {
         interface_id: interface_id.into(),
         method: method.into(),
         path: path.into(),

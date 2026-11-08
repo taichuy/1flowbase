@@ -78,7 +78,7 @@ fn compatibility_protocol_documents_preserve_wire_business_fields_nulls_and_long
 #[test]
 fn compatibility_models_keep_both_real_wire_variants_and_every_model() {
     use super::super::models::{CompatibilityModelsInput, CompatibilityModelsOutput};
-    let operation = ApiEventOperationContext {
+    let operation = ApiOperationContext {
         interface_id: "compat.openai.models.list".into(),
         method: "GET".into(),
         path: "/v1/models".into(),

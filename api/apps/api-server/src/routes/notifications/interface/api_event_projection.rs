@@ -1,7 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -71,8 +69,8 @@ fn safe<T: serde::de::DeserializeOwned + serde::Serialize>(
         .map_err(|_| Arc::<str>::from("invalid notification public event view"))?;
     event::to_value(&value)
 }
-impl ApiEventInput for NotificationInput {
-    fn document_input_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for NotificationInput {
+    fn document_input_schema(operation: &ApiOperationContext) -> Option<Value> {
         match operation.interface_id.as_str() {
             "notifications.instances.create" => Some(
                 json!({"type":"object","properties":{"body":event::schema::<CreateEvent<'static>>()},"required":["body"],"additionalProperties":false}),
@@ -83,7 +81,7 @@ impl ApiEventInput for NotificationInput {
             _ => None,
         }
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::Types | Self::UnreadCount | Self::ReadAll => json!({}),
             Self::List(value) => {
@@ -122,8 +120,8 @@ impl ApiEventInput for NotificationInput {
         })
     }
 }
-impl ApiEventOutput for NotificationOutput {
-    fn document_output_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for NotificationOutput {
+    fn document_output_schema(operation: &ApiOperationContext) -> Option<Value> {
         match operation.interface_id.as_str() {
             "notifications.instances.list" => Some(event::schema::<Vec<InstanceEvent>>()),
             "notifications.instances.get"
@@ -133,10 +131,7 @@ impl ApiEventOutput for NotificationOutput {
             _ => None,
         }
     }
-    fn project_document_output(
-        &self,
-        operation: &ApiEventOperationContext,
-    ) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, operation: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match operation.interface_id.as_str() {
             "notifications.instances.list" => safe::<Vec<InstanceEvent>>(&self.0),
             "notifications.instances.get"

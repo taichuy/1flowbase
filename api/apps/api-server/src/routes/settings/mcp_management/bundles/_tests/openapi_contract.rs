@@ -1,8 +1,6 @@
 use super::super::*;
 use super::*;
-use crate::event_center::api_projection::{
-    self as ep, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as ep, ApiInput, ApiOperationContext, ApiOutput};
 use crate::routes::mcp_management::{McpClientCredentialResponse, SaveMcpClientCredentialBody};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -286,7 +284,7 @@ fn mcp_credential_wire_schema_and_existing_event_safe_views_stay_separate() {
     let body_wire = json!({"api_key":CREDENTIAL});
     let body: SaveMcpClientCredentialBody = serde_json::from_value(body_wire.clone()).unwrap();
     assert_valid::<SaveMcpClientCredentialBody>(&body_wire);
-    let context = ApiEventOperationContext {
+    let context = ApiOperationContext {
         interface_id: "mcp.client_credential.save".into(),
         method: "PUT".into(),
         path: "/api/console/mcp/instances/{instance_id}/client-credential".into(),

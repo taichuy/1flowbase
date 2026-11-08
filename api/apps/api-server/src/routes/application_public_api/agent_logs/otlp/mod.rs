@@ -116,7 +116,7 @@ impl Input {
                     .map_err(|_| "agent_logs_otlp_payload")?;
             let (batches, counts) =
                 validated_batches(&request).map_err(|_| "agent_logs_otlp_payload")?;
-            let document = crate::event_center::api_projection::to_value(&request).and_then(|value| {
+            let document = crate::openapi_interface::contract::to_value(&request).and_then(|value| {
                 crate::routes::applications_group::application_runtime::log_exchange::event_projection::document(&value)
             });
             Ok(PreparedInput {

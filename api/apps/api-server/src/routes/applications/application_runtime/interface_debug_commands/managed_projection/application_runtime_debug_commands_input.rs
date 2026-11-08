@@ -200,9 +200,9 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeDebugCommandsInput {
+impl crate::openapi_interface::contract::ApiInput for ApplicationRuntimeDebugCommandsInput {
     fn document_input_schema(
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<serde_json::Value> {
         match operation.interface_id.as_str() {
             "applications.runtime.debug-runs.create" => Some(
@@ -237,7 +237,7 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeDe
     }
     fn project_document_input(
         &self,
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Ok(match self {
             Self::Start {

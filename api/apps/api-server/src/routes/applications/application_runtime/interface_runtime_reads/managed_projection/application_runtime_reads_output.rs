@@ -1031,9 +1031,9 @@ Self::WorkflowTrajectoryBody(value) => mp::object_value([("variant", serde_json:
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-impl crate::event_center::api_projection::ApiEventOutput for ApplicationRuntimeReadsOutput {
+impl crate::openapi_interface::contract::ApiOutput for ApplicationRuntimeReadsOutput {
     fn document_output_schema(
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<serde_json::Value> {
         match operation.interface_id.as_str() {
             "applications.runtime.run.payload.get" => {
@@ -1050,7 +1050,7 @@ impl crate::event_center::api_projection::ApiEventOutput for ApplicationRuntimeR
     }
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         match self {
             Self::CurrentContext(value) => {

@@ -1,20 +1,13 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
-impl ApiEventInput for RuntimeI18nInput {
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
-        Ok(json!({"query":{"locale":self.locale}}))
-    }
-}
-impl ApiEventOutput for RuntimeI18nOutput {
-    fn document_output_schema(_: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for RuntimeI18nOutput {
+    fn document_output_schema(_: &ApiOperationContext) -> Option<Value> {
         Some(json!({"anyOf":[event::schema::<RuntimeI18nCatalogResponse>(),{"type":"null"}]}))
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match &self.payload {
             Some(value) => event::to_value(value),
             None => Ok(Value::Null),

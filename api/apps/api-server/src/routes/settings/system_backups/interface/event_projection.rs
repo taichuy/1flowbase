@@ -1,8 +1,8 @@
 use super::*;
-use crate::event_center::api_projection::{
-    schema, to_value, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
+use crate::openapi_interface::contract::{
+    schema, to_value, ApiInput, ApiOperationContext, ApiOutput,
 };
-use crate::routes::document_event::{self as de, query_fields as q};
+use crate::openapi_interface::schema_projection::{self as de, query_fields as q};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -11,8 +11,8 @@ const CREDENTIALS: &[&str] = &["password", "backup_password", "challenge_token"]
 fn backup_path_schema() -> Value {
     json!({"type":"object","properties":{"backup_set_id":{"type":"string","format":"uuid"}},"required":["backup_set_id"]})
 }
-impl ApiEventInput for SystemBackupsInput {
-    fn document_input_schema(c: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for SystemBackupsInput {
+    fn document_input_schema(c: &ApiOperationContext) -> Option<Value> {
         match c.interface_id.as_str() {
             "system_backups.create" => Some(de::body_schema(de::without_fields(
                 schema::<crate::routes::system_backups::CreateBackupRequest>(),
@@ -29,13 +29,11 @@ impl ApiEventInput for SystemBackupsInput {
             _ => None,
         }
     }
-    fn document_input_unavailable(
-        c: &ApiEventOperationContext,
-    ) -> Option<ApiEventUnavailableReason> {
+    fn document_input_unavailable(c: &ApiOperationContext) -> Option<ApiEventUnavailableReason> {
         (c.interface_id == "system_backups.import")
             .then_some(ApiEventUnavailableReason::BinaryRequest)
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::Catalog | Self::List => json!({}),
             Self::Create { selection, .. } => {
@@ -65,18 +63,16 @@ impl ApiEventInput for SystemBackupsInput {
         })
     }
 }
-impl ApiEventOutput for SystemBackupsOutput {
-    fn document_output_schema(c: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for SystemBackupsOutput {
+    fn document_output_schema(c: &ApiOperationContext) -> Option<Value> {
         (c.interface_id == "system_backups.recovery.reauth")
             .then(|| de::without_fields(schema::<RecoveryReauthResponse>(), CREDENTIALS))
     }
-    fn document_output_unavailable(
-        c: &ApiEventOperationContext,
-    ) -> Option<ApiEventUnavailableReason> {
+    fn document_output_unavailable(c: &ApiOperationContext) -> Option<ApiEventUnavailableReason> {
         (c.interface_id == "system_backups.download")
             .then_some(ApiEventUnavailableReason::BinaryResponse)
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Catalog(v) => to_value(v),
             Self::Listed(v) => to_value(v),

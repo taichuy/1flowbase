@@ -1,11 +1,9 @@
 use super::*;
-use crate::event_center::api_projection::{
-    ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::json;
 
-fn operation(id: &str) -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn operation(id: &str) -> ApiOperationContext {
+    ApiOperationContext {
         interface_id: id.into(),
         method: "POST".into(),
         path: "/api/logs/v1/events".into(),

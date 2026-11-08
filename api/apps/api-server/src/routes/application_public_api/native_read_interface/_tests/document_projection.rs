@@ -1,6 +1,6 @@
 use super::*;
-fn operation() -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn operation() -> ApiOperationContext {
+    ApiOperationContext {
         interface_id: "application.native.runs.resume".into(),
         method: "POST".into(),
         path: "/api/agent/v1/runs/:run_id/resume".into(),

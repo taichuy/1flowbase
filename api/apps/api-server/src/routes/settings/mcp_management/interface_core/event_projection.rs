@@ -1,7 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -9,11 +7,11 @@ use std::sync::Arc;
 struct CredentialEvent {
     saved: bool,
 }
-impl ApiEventInput for McpCoreInput {
-    fn document_input_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for McpCoreInput {
+    fn document_input_schema(operation: &ApiOperationContext) -> Option<Value> {
         (operation.interface_id == "mcp.client_credential.save").then(|| json!({"type":"object","properties":{"path":{"type":"object","properties":{"instance_id":{"type":"string"}},"required":["instance_id"]},"body":{"type":"object","properties":{},"additionalProperties":false}},"required":["path","body"],"additionalProperties":false}))
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::GetCredential(instance_id)
             | Self::DeleteCredential(instance_id)
@@ -52,15 +50,15 @@ impl ApiEventInput for McpCoreInput {
         })
     }
 }
-impl ApiEventOutput for McpCoreOutput {
-    fn document_output_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for McpCoreOutput {
+    fn document_output_schema(operation: &ApiOperationContext) -> Option<Value> {
         matches!(
             operation.interface_id.as_str(),
             "mcp.client_credential.reveal" | "mcp.client_credential.save"
         )
         .then(|| event::schema::<CredentialEvent>())
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Credential(value) => event::to_value(&CredentialEvent { saved: value.saved }),
             Self::Instances(value) => event::to_value(value),

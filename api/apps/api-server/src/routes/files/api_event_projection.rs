@@ -1,7 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -23,17 +21,17 @@ struct ImportEvent<'a> {
 struct ShareLinkEvent<'a> {
     expires_at: &'a str,
 }
-impl ApiEventInput for BusinessFilesInput {
+impl ApiInput for BusinessFilesInput {
     fn document_input_unavailable(
-        operation: &ApiEventOperationContext,
+        operation: &ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         (operation.interface_id == "files.upload")
             .then_some(domain::event_center::ApiEventUnavailableReason::BinaryRequest)
     }
-    fn document_input_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+    fn document_input_schema(operation: &ApiOperationContext) -> Option<Value> {
         (operation.interface_id == "files.import_remote").then(||json!({"type":"object","properties":{"body":event::schema::<ImportEvent<'static>>()},"required":["body"],"additionalProperties":false}))
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::Upload { .. } => return Err(Arc::from("file upload has no JSON request view")),
             Self::ImportRemote {
@@ -59,18 +57,18 @@ impl ApiEventInput for BusinessFilesInput {
         })
     }
 }
-impl ApiEventOutput for BusinessFilesOutput {
-    fn document_output_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for BusinessFilesOutput {
+    fn document_output_schema(operation: &ApiOperationContext) -> Option<Value> {
         (operation.interface_id == "files.access_links.create")
             .then(|| event::schema::<ShareLinkEvent<'static>>())
     }
     fn document_output_unavailable(
-        operation: &ApiEventOperationContext,
+        operation: &ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         (operation.interface_id == "files.content.download")
             .then_some(domain::event_center::ApiEventUnavailableReason::BinaryResponse)
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Uploaded(value) => event::to_value(value),
             Self::Content(_) => Err(Arc::from("owned file stream is not a JSON event result")),

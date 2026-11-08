@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 #[path = "model_definitions_interface/managed_projection.rs"]
 mod managed_projection;
 
@@ -19,54 +20,73 @@ use crate::{
     },
 };
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum ModelDefinitionsInput {
     List {
         query: ListModelsQuery,
+        #[serde(skip_serializing)]
         locale: ConsoleLocaleHints,
     },
+    #[serde(serialize_with = "json_contract::query_with_nulls")]
     ListCompatibleTemplates(CompatibleTemplateCatalogQuery),
     ListAgentFlowOptions,
+    #[serde(serialize_with = "json_contract::body")]
     Create(CreateModelDefinitionBody),
     AdvisorFindings {
+        #[serde(rename = "id")]
         model_id: String,
     },
     ListScopeGrants {
+        #[serde(rename = "id")]
         model_id: String,
     },
     Update {
+        #[serde(rename = "id")]
         model_id: String,
         body: UpdateModelDefinitionBody,
     },
     Delete {
+        #[serde(rename = "id")]
         model_id: String,
+        #[serde(rename = "query", serialize_with = "serialize_confirmation_query")]
         confirmed: bool,
     },
+    #[serde(serialize_with = "json_contract::body")]
     BatchDelete(BatchDeleteModelDefinitionsBody),
     CreateField {
+        #[serde(rename = "id")]
         model_id: String,
         body: CreateModelFieldBody,
     },
     UpdateField {
+        #[serde(rename = "id")]
         model_id: String,
         field_id: String,
         body: UpdateModelFieldBody,
     },
     DeleteField {
+        #[serde(rename = "id")]
         model_id: String,
         field_id: String,
+        #[serde(rename = "query", serialize_with = "serialize_confirmation_query")]
         confirmed: bool,
     },
     CreateScopeGrant {
+        #[serde(rename = "id")]
         model_id: String,
         body: CreateScopeGrantBody,
     },
     UpdateScopeGrant {
+        #[serde(rename = "id")]
         model_id: String,
         grant_id: String,
         body: UpdateScopeGrantBody,
     },
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum ModelDefinitionsOutput {
     Models(Vec<ModelDefinitionResponse>),
     Templates(Vec<CompatibleTemplateCatalogEntryResponse>),
@@ -76,8 +96,28 @@ pub(crate) enum ModelDefinitionsOutput {
     ScopeGrants(Vec<ScopeGrantResponse>),
     ScopeGrant(ScopeGrantResponse),
     Field(ModelFieldResponse),
+    #[serde(serialize_with = "serialize_deleted")]
     Deleted,
     BatchDeleted(BatchDeletedResponse),
+}
+
+impl JsonApiInput for ModelDefinitionsInput {}
+impl JsonApiOutput for ModelDefinitionsOutput {}
+
+fn serialize_confirmation_query<S: serde::Serializer>(
+    confirmed: &bool,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serde::Serialize::serialize(
+        &ConfirmationQuery {
+            confirmed: Some(*confirmed),
+        },
+        serializer,
+    )
+}
+
+fn serialize_deleted<S: serde::Serializer>(serializer: S) -> Result<S::Ok, S::Error> {
+    serde::Serialize::serialize(&DeletedResponse { deleted: true }, serializer)
 }
 
 pub(crate) struct ModelDefinitionDependencies {
@@ -691,3 +731,13 @@ pub(crate) fn compile_registry(
     managed_hooks::bind(&mut compiler, graph)?;
     compiler.compile()
 }
+
+#[cfg(test)]
+use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
+#[cfg(test)]
+use serde_json::json;
+
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "model_definitions_interface/managed_projection/_tests/event_projection.rs"]
+mod event_tests;

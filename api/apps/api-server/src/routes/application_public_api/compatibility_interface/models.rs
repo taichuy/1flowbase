@@ -347,7 +347,7 @@ fn register_binding(
         contracts,
         ProtocolProjection::http(RouteIdentity::new("GET", path).expect("static route is valid")),
     );
-    crate::event_center::api_projection::register_static_api_event::<
+    crate::openapi_interface::contract::register_static_api_operation::<
         CompatibilityModelsInput,
         CompatibilityModelsOutput,
     >(
@@ -462,9 +462,9 @@ pub(super) fn unavailable_port() -> Arc<dyn CompatibilityModelsPort> {
     Arc::new(UnavailableCompatibilityModelsPort)
 }
 
-impl crate::event_center::api_projection::ApiEventInput for CompatibilityModelsInput {
+impl crate::openapi_interface::contract::ApiInput for CompatibilityModelsInput {
     fn document_input_schema(
-        _: &crate::event_center::api_projection::ApiEventOperationContext,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<serde_json::Value> {
         Some(
             serde_json::json!({"type":"object","properties":{"query":{"type":"object","properties":{"client_version":{"type":"string"}},"additionalProperties":false}},"additionalProperties":false}),
@@ -472,7 +472,7 @@ impl crate::event_center::api_projection::ApiEventInput for CompatibilityModelsI
     }
     fn project_document_input(
         &self,
-        _: &crate::event_center::api_projection::ApiEventOperationContext,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, Arc<str>> {
         Ok(match &self.client_version {
             Some(version) => serde_json::json!({"query":{"client_version":version}}),
@@ -480,15 +480,15 @@ impl crate::event_center::api_projection::ApiEventInput for CompatibilityModelsI
         })
     }
 }
-impl crate::event_center::api_projection::ApiEventOutput for CompatibilityModelsOutput {
+impl crate::openapi_interface::contract::ApiOutput for CompatibilityModelsOutput {
     fn document_output_schema(
-        _: &crate::event_center::api_projection::ApiEventOperationContext,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<serde_json::Value> {
         Some(super::super::openai::models_document_schema())
     }
     fn project_document_output(
         &self,
-        _: &crate::event_center::api_projection::ApiEventOperationContext,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, Arc<str>> {
         super::super::openai::models_document(&self.models, self.publication_created_at, self.codex)
     }

@@ -53,7 +53,7 @@ pub(super) fn register_stream_binding(
             "streaming",
         ),
     );
-    crate::event_center::api_projection::register_static_api_event::<
+    crate::openapi_interface::contract::register_static_api_operation::<
         CompatibilityBlockingInput,
         CompatibilityBlockingOutput,
     >(
@@ -128,7 +128,7 @@ pub(super) fn register_binding(
         contracts,
         ProtocolProjection::http(RouteIdentity::new(method, path).expect("static route is valid")),
     );
-    crate::event_center::api_projection::register_static_api_event::<
+    crate::openapi_interface::contract::register_static_api_operation::<
         CompatibilityBlockingInput,
         CompatibilityProtocolOutput,
     >(

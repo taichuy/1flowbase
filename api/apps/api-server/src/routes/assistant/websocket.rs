@@ -31,7 +31,7 @@ use crate::{
     middleware::require_session::require_session, response::ApiSuccess, routes::debug_run_stream,
 };
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct CreateAssistantWebSocketTicketBody {
     pub application_id: Uuid,
 }

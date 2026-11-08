@@ -1,8 +1,8 @@
 use super::*;
-use crate::event_center::api_projection::{
-    schema, to_value, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
+use crate::openapi_interface::contract::{
+    schema, to_value, ApiInput, ApiOperationContext, ApiOutput,
 };
-use crate::routes::document_event as de;
+use crate::openapi_interface::schema_projection as de;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -13,8 +13,8 @@ fn metadata_schema() -> Value {
 fn metadata_value(v: Value) -> Value {
     de::without_values(v, &["key"])
 }
-impl ApiEventInput for CacheInspectionInput {
-    fn document_input_schema(c: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for CacheInspectionInput {
+    fn document_input_schema(c: &ApiOperationContext) -> Option<Value> {
         if matches!(
             c.interface_id.as_str(),
             "host_infrastructure.cache.entry.reveal" | "host_infrastructure.cache.entry.clear"
@@ -27,7 +27,7 @@ impl ApiEventInput for CacheInspectionInput {
             None
         }
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::Overview => json!({}),
             Self::Entries { domain_code } | Self::ClearDomain { domain_code } => {
@@ -39,8 +39,8 @@ impl ApiEventInput for CacheInspectionInput {
         })
     }
 }
-impl ApiEventOutput for CacheInspectionOutput {
-    fn document_output_schema(c: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for CacheInspectionOutput {
+    fn document_output_schema(c: &ApiOperationContext) -> Option<Value> {
         match c.interface_id.as_str() {
             "host_infrastructure.cache.entries.list" => Some(de::replace_property(
                 schema::<CacheEntriesResponse>(),
@@ -55,7 +55,7 @@ impl ApiEventOutput for CacheInspectionOutput {
             _ => None,
         }
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::Overview(v) => to_value(v),
             Self::Entries(v) => {

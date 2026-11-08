@@ -568,6 +568,3 @@ impl InterfaceContract for RoleAccessInput {
 
 #[path = "managed_projection/output_projection.rs"]
 mod output_projection;
-
-#[path = "event_projection.rs"]
-mod event_projection;

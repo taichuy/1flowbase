@@ -497,7 +497,7 @@ pub(crate) fn compile_registry(
             contracts,
             projection,
         );
-        crate::event_center::api_projection::register_static_api_event::<
+        crate::openapi_interface::contract::register_static_api_operation::<
             ApplicationNativeRunInput,
             ApplicationNativeRunOutput,
         >(&mut compiler, &binding, "graph:application-native-run-v1")?;

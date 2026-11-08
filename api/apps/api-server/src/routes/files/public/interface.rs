@@ -198,7 +198,7 @@ pub(crate) fn compile_registry(
             RouteIdentity::new("GET", "/api/public/files/content").expect("static route is valid"),
         ),
     );
-    crate::event_center::api_projection::register_static_api_event::<
+    crate::openapi_interface::contract::register_static_api_operation::<
         TemporaryFileInput,
         TemporaryFileOutput,
     >(

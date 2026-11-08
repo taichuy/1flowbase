@@ -1,7 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -16,9 +14,9 @@ fn source_value(source: &McpBundleSourceBody) -> Result<Value, Arc<str>> {
         })),
     }
 }
-impl ApiEventInput for McpBundlesInput {
+impl ApiInput for McpBundlesInput {
     fn document_input_unavailable(
-        operation: &ApiEventOperationContext,
+        operation: &ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         // Match the compiled route: preview/import also have ordinary JSON bindings.
         matches!(
@@ -27,7 +25,7 @@ impl ApiEventInput for McpBundlesInput {
         )
         .then_some(domain::event_center::ApiEventUnavailableReason::BinaryRequest)
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::ListOfficial { locale: _ } | Self::ExportDefaults => json!({}),
             Self::PreviewOfficial(body) | Self::ImportOfficial(body) => {
@@ -80,9 +78,9 @@ impl ApiEventInput for McpBundlesInput {
         })
     }
 }
-impl ApiEventOutput for McpBundlesOutput {
+impl ApiOutput for McpBundlesOutput {
     fn document_output_unavailable(
-        operation: &ApiEventOperationContext,
+        operation: &ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         // Export defaults are JSON despite sharing the export interface identity.
         (operation.method == "POST"
@@ -90,7 +88,7 @@ impl ApiEventOutput for McpBundlesOutput {
                 || operation.path.ends_with("/bundles/export")))
         .then_some(domain::event_center::ApiEventUnavailableReason::BinaryResponse)
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::OfficialCatalog(value) => event::to_value(value),
             Self::PreviewOfficial(value) => event::to_value(value),

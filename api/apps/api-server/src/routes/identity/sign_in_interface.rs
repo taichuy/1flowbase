@@ -292,7 +292,7 @@ pub(crate) fn compile_registry(
             RouteIdentity::new("POST", "/api/public/auth/sign-in").expect("static route is valid"),
         ),
     );
-    crate::event_center::api_projection::register_static_api_event::<
+    crate::openapi_interface::contract::register_static_api_operation::<
         PublicSignInInput,
         PublicSignInOutput,
     >(&mut compiler, &event_binding, "graph:public-sign-in-v1")?;

@@ -93,10 +93,10 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeDebugArtifactsInput {
+impl crate::openapi_interface::contract::ApiInput for ApplicationRuntimeDebugArtifactsInput {
     fn project_document_input(
         &self,
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Ok(match self {
             Self::Get {
@@ -115,7 +115,7 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeDe
                 operation,
                 serde_json::json!({"application_id":application_id}),
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(body)?,
+                crate::openapi_interface::contract::to_value(body)?,
             ),
             Self::Snapshot {
                 application_id,

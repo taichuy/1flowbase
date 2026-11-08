@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::{JsonApiInput, JsonApiOutput};
 use std::{collections::BTreeMap, sync::Arc};
 
 use control_plane::ports::{BillingRepository, CacheStore, ListPricingRulesInput};
@@ -10,6 +11,8 @@ use crate::routes::console_interface::{
     ConsoleInterfaceTargetError,
 };
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum ProviderDiscoveryInput {
     Models {
         id: String,
@@ -19,10 +22,14 @@ pub(crate) enum ProviderDiscoveryInput {
     },
     Options {
         query: ModelProviderCatalogQuery,
+        #[serde(skip_serializing)]
         locale: catalog_logs_interface::ProviderLocaleHints,
+        #[serde(skip_serializing)]
         settings: bool,
     },
 }
+impl JsonApiInput for ProviderDiscoveryInput {}
+
 impl InterfaceContract for ProviderDiscoveryInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
@@ -87,10 +94,14 @@ impl InterfaceContract for ProviderDiscoveryInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum ProviderDiscoveryOutput {
     Models(ModelProviderModelCatalogResponse),
     Options(ModelProviderOptionsResponse),
 }
+impl JsonApiOutput for ProviderDiscoveryOutput {}
+
 impl InterfaceContract for ProviderDiscoveryOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
@@ -411,5 +422,12 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[path = "discovery_interface/event_projection.rs"]
-mod event_projection;
+#[cfg(test)]
+use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
+#[cfg(test)]
+use serde_json::json;
+
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "discovery_interface/_tests/event_projection.rs"]
+mod event_tests;

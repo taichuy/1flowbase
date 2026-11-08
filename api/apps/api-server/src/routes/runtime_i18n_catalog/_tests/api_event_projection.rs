@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn runtime_catalog_keeps_actual_messages_without_payload_wrapper_or_headers() {
-    let op = ApiEventOperationContext {
+    let op = ApiOperationContext {
         interface_id: "i18n.catalog.view".into(),
         method: "GET".into(),
         path: "/api/console/i18n/catalog".into(),

@@ -1,7 +1,5 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -82,8 +80,8 @@ struct ValidationEvent<'a> {
     data_source: SourceEvent<'a>,
     output: &'a Value,
 }
-impl ApiEventInput for DataSourcesInput {
-    fn document_input_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiInput for DataSourcesInput {
+    fn document_input_schema(operation: &ApiOperationContext) -> Option<Value> {
         match operation.interface_id.as_str() {
             "data_sources.create" => Some(
                 json!({"type":"object","properties":{"body":event::schema::<CreateEvent<'static>>()},"required":["body"],"additionalProperties":false}),
@@ -94,7 +92,7 @@ impl ApiEventInput for DataSourcesInput {
             _ => None,
         }
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::ListAgentFlowOptions | Self::ListCatalog | Self::List => json!({}),
             Self::Create(body) => {
@@ -124,8 +122,8 @@ impl ApiEventInput for DataSourcesInput {
         })
     }
 }
-impl ApiEventOutput for DataSourcesOutput {
-    fn document_output_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for DataSourcesOutput {
+    fn document_output_schema(operation: &ApiOperationContext) -> Option<Value> {
         match operation.interface_id.as_str() {
             "data_sources.list" => Some(event::schema::<Vec<SourceEvent<'static>>>()),
             "data_sources.create"
@@ -135,7 +133,7 @@ impl ApiEventOutput for DataSourcesOutput {
             _ => None,
         }
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
             Self::AgentFlowOptions(value) => event::to_value(value),
             Self::Catalog(value) => event::to_value(value),

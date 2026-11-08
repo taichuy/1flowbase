@@ -304,12 +304,12 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
 #[path = "_tests/interface.rs"]
 mod tests;
 
-impl crate::event_center::api_projection::ApiEventInput for Input {
+impl crate::openapi_interface::contract::ApiInput for Input {
     fn project_document_input(
         &self,
-        _: &crate::event_center::api_projection::ApiEventOperationContext,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<Value, Arc<str>> {
-        use crate::event_center::api_projection::to_value;
+        use crate::openapi_interface::contract::to_value;
         Ok(match self {
             Self::Catalog | Self::Runtime | Self::ApiOperations => json!({}),
             Self::ApiOperation(operation_id) => json!({"path":{"operation_id":operation_id}}),
@@ -320,10 +320,10 @@ impl crate::event_center::api_projection::ApiEventInput for Input {
         })
     }
 }
-impl crate::event_center::api_projection::ApiEventOutput for Output {
+impl crate::openapi_interface::contract::ApiOutput for Output {
     fn project_document_output(
         &self,
-        _: &crate::event_center::api_projection::ApiEventOperationContext,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<Value, Arc<str>> {
         Ok(self.0.clone())
     }

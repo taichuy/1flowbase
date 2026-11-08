@@ -88,32 +88,32 @@ impl InterfaceContract for TargetError {
     }
 }
 
-impl crate::event_center::api_projection::ApiEventInput for Input {
+impl crate::openapi_interface::contract::ApiInput for Input {
     fn document_input_schema(
-        _: &crate::event_center::api_projection::ApiEventOperationContext,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<Value> {
-        Some(ep::object_schema([("body", crate::event_center::api_projection::schema::<crate::routes::applications_group::application_runtime::log_exchange::event_projection::OtlpDocument>())]))
+        Some(ep::object_schema([("body", crate::openapi_interface::contract::schema::<crate::routes::applications_group::application_runtime::log_exchange::event_projection::OtlpDocument>())]))
     }
     fn project_document_input(
         &self,
-        _: &crate::event_center::api_projection::ApiEventOperationContext,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<Value, Arc<str>> {
         let prepared = self
             .prepared
             .as_ref()
             .map_err(|code| Arc::<str>::from(*code))?;
         let document = prepared.document.as_ref().map_err(Arc::clone)?;
-        Ok(json!({"body":crate::event_center::api_projection::to_value(document)?}))
+        Ok(json!({"body":crate::openapi_interface::contract::to_value(document)?}))
     }
 }
-impl crate::event_center::api_projection::ApiEventOutput for Output {
+impl crate::openapi_interface::contract::ApiOutput for Output {
     fn project_document_output(
         &self,
-        _: &crate::event_center::api_projection::ApiEventOperationContext,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<Value, Arc<str>> {
         // The standard OTLP acknowledgement is the actual HTTP result. The
         // semantic receipt remains separately owned by the existing producer.
-        crate::event_center::api_projection::to_value(&self.response)
+        crate::openapi_interface::contract::to_value(&self.response)
     }
 }
 

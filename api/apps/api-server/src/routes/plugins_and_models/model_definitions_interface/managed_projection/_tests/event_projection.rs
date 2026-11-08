@@ -1,9 +1,13 @@
 use super::*;
-fn operation(id: &str) -> ApiEventOperationContext {
-    ApiEventOperationContext {
+fn operation(id: &str) -> ApiOperationContext {
+    let declaration = DECLARATIONS
+        .iter()
+        .find(|item| item.interface_id == id)
+        .unwrap();
+    ApiOperationContext {
         interface_id: id.into(),
-        method: "POST".into(),
-        path: "/api/console/settings/data-models/model-definitions:batchDelete".into(),
+        method: declaration.method.into(),
+        path: declaration.path.into(),
     }
 }
 #[test]
@@ -31,12 +35,17 @@ fn model_field_business_json_is_exact_and_documented_wire_names_are_preserved() 
     let value = input.project_document_input(&op).unwrap();
     assert_eq!(value["path"], json!({"id":"model-a"}));
     assert_eq!(value["body"]["display_options"], metadata);
+    let batch_operation = ApiOperationContext {
+        method: "POST".into(),
+        path: "/api/console/settings/data-models/model-definitions:batchDelete".into(),
+        ..operation("model_definitions.delete")
+    };
     let batch = ModelDefinitionsInput::BatchDelete(BatchDeleteModelDefinitionsBody {
         filter_by_tk: Some(json!(["model-a"])),
         filter: None,
         confirmed: true,
     })
-    .project_document_input(&op)
+    .project_document_input(&batch_operation)
     .unwrap();
     assert_eq!(batch["body"]["filterByTk"], json!(["model-a"]));
     assert!(batch["body"].get("filter_by_tk").is_none());
@@ -58,7 +67,9 @@ fn model_delete_returns_real_deleted_json_and_optional_query_fields_are_absent()
         locale: ConsoleLocaleHints::from_headers(&axum::http::HeaderMap::new()),
     };
     assert_eq!(
-        input.project_document_input(&op).unwrap(),
+        input
+            .project_document_input(&operation("model_definitions.list"))
+            .unwrap(),
         json!({"query":{}})
     );
     assert_eq!(
@@ -67,7 +78,7 @@ fn model_delete_returns_real_deleted_json_and_optional_query_fields_are_absent()
             field_id: "field-a".into(),
             confirmed: true
         }
-        .project_document_input(&op)
+        .project_document_input(&operation("model_fields.delete"))
         .unwrap(),
         json!({"path":{"id":"model-a","field_id":"field-a"},"query":{"confirmed":true}})
     );

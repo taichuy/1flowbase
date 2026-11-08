@@ -1,7 +1,7 @@
 use super::*;
-use crate::event_center::api_projection::{
-    self as event, ApiEventInput, ApiEventOperationContext, ApiEventOutput,
-};
+#[cfg(test)]
+use crate::openapi_interface::contract::ApiOutput;
+use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext};
 use serde_json::{json, Value};
 
 fn official_query(query: &OfficialPluginCatalogQuery) -> Value {
@@ -23,14 +23,14 @@ fn official_query(query: &OfficialPluginCatalogQuery) -> Value {
     }
     Value::Object(value)
 }
-impl ApiEventInput for NetworkPluginInput {
+impl ApiInput for NetworkPluginInput {
     fn document_input_unavailable(
-        operation: &ApiEventOperationContext,
+        operation: &ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         (operation.interface_id == "network_egress_plugins.install.upload")
             .then_some(domain::event_center::ApiEventUnavailableReason::BinaryRequest)
     }
-    fn project_document_input(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(match self {
             Self::ListOfficial { query, locale: _ } => json!({"query":official_query(query)}),
             Self::ListFamilies { locale: _ } => json!({}),
@@ -57,16 +57,6 @@ impl ApiEventInput for NetworkPluginInput {
                 return Err(Arc::from("plugin archive has no JSON request event view"))
             }
         })
-    }
-}
-impl ApiEventOutput for NetworkPluginOutput {
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
-        match self {
-            Self::Official(value) => event::to_value(value),
-            Self::Families(value) => event::to_value(value),
-            Self::Installed(value) => event::to_value(value),
-            Self::Empty => Ok(Value::Null),
-        }
     }
 }
 

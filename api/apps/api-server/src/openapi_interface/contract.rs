@@ -1,4 +1,5 @@
-//! Explicit host-owned safe views over the actual typed API contracts.
+//! Public typed API conversion and schema registration, shared by protocol adapters and observers.
+//! Ordinary JSON borrows DTO serde; credential, binary and stream policies remain explicit.
 use interface_runtime::{
     DocumentOperationCodec, DocumentOperationDescriptor, DocumentOperationProjection,
     DocumentOperationRegistration, DocumentOperationSchemas, InterfaceContract, ProtocolBinding,
@@ -8,52 +9,43 @@ use serde_json::Value;
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
-pub(crate) struct ApiEventOperationContext {
+pub(crate) struct ApiOperationContext {
     pub interface_id: String,
     pub method: String,
     pub path: String,
 }
 
-pub(crate) trait ApiEventInput: InterfaceContract {
+pub(crate) trait ApiInput: InterfaceContract {
     /// None inherits the actual shared API document schema at serving composition.
-    fn document_input_schema(_operation: &ApiEventOperationContext) -> Option<Value> {
+    fn document_input_schema(_operation: &ApiOperationContext) -> Option<Value> {
         None
     }
     fn document_input_unavailable(
-        _operation: &ApiEventOperationContext,
+        _operation: &ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         None
     }
-    fn project_document_input(
-        &self,
-        operation: &ApiEventOperationContext,
-    ) -> Result<Value, Arc<str>>;
+    fn project_document_input(&self, operation: &ApiOperationContext) -> Result<Value, Arc<str>>;
 }
-pub(crate) trait ApiEventOutput: InterfaceContract {
-    fn document_output_schema(_operation: &ApiEventOperationContext) -> Option<Value> {
+pub(crate) trait ApiOutput: InterfaceContract {
+    fn document_output_schema(_operation: &ApiOperationContext) -> Option<Value> {
         None
     }
     fn document_output_unavailable(
-        _operation: &ApiEventOperationContext,
+        _operation: &ApiOperationContext,
     ) -> Option<domain::event_center::ApiEventUnavailableReason> {
         None
     }
-    fn project_document_output(
-        &self,
-        operation: &ApiEventOperationContext,
-    ) -> Result<Value, Arc<str>>;
+    fn project_document_output(&self, operation: &ApiOperationContext) -> Result<Value, Arc<str>>;
 }
 // Ordinary JSON is an interface contract; observation only invokes its shared conversion.
-impl<T: crate::openapi_interface::json_contract::JsonApiInput> ApiEventInput for T {
-    fn project_document_input(
-        &self,
-        operation: &ApiEventOperationContext,
-    ) -> Result<Value, Arc<str>> {
+impl<T: crate::openapi_interface::json_contract::JsonApiInput> ApiInput for T {
+    fn project_document_input(&self, operation: &ApiOperationContext) -> Result<Value, Arc<str>> {
         crate::openapi_interface::json_contract::request(self, &operation.path)
     }
 }
-impl<T: crate::openapi_interface::json_contract::JsonApiOutput> ApiEventOutput for T {
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+impl<T: crate::openapi_interface::json_contract::JsonApiOutput> ApiOutput for T {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         crate::openapi_interface::json_contract::result(self)
             .map_err(|_| Arc::from("api-json-output-serialization"))
     }
@@ -86,10 +78,10 @@ pub(crate) fn schema<T: utoipa::ToSchema>() -> Value {
 }
 
 struct Codec<I, O> {
-    operation: ApiEventOperationContext,
+    operation: ApiOperationContext,
     marker: std::marker::PhantomData<fn(I) -> O>,
 }
-impl<I: ApiEventInput, O: ApiEventOutput> DocumentOperationCodec<I, O> for Codec<I, O> {
+impl<I: ApiInput, O: ApiOutput> DocumentOperationCodec<I, O> for Codec<I, O> {
     fn project_input(&self, input: &I) -> Result<Value, Arc<str>> {
         input.project_document_input(&self.operation)
     }
@@ -99,7 +91,7 @@ impl<I: ApiEventInput, O: ApiEventOutput> DocumentOperationCodec<I, O> for Codec
 }
 /// Called by typed family registration. Final composition replaces only document metadata
 /// from the unique shared API-doc method/route correspondence before publishing the registry.
-pub(crate) fn register_static_api_event<I: ApiEventInput, O: ApiEventOutput>(
+pub(crate) fn register_static_api_operation<I: ApiInput, O: ApiOutput>(
     compiler: &mut RegistryCompiler,
     binding: &ProtocolBinding,
     generation: &str,
@@ -107,7 +99,7 @@ pub(crate) fn register_static_api_event<I: ApiEventInput, O: ApiEventOutput>(
     let Some(route) = binding.projection().http_route() else {
         return Ok(());
     };
-    let operation = ApiEventOperationContext {
+    let operation = ApiOperationContext {
         interface_id: binding
             .interface_identity()
             .interface_id()
@@ -161,7 +153,7 @@ pub(crate) fn register_static_api_event<I: ApiEventInput, O: ApiEventOutput>(
 }
 
 /// Refine only unpublished observation metadata using the sole static API document source.
-pub(crate) fn refine_static_api_events(
+pub(crate) fn refine_static_api_operations(
     compiler: &mut RegistryCompiler,
     docs: &crate::openapi_docs::ApiDocsRegistry,
     snapshots: &[Arc<interface_runtime::CompiledInterfaceRegistry>],

@@ -503,10 +503,10 @@ mod tests {
     }
 }
 
-impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeDebugVariablesInput {
+impl crate::openapi_interface::contract::ApiInput for ApplicationRuntimeDebugVariablesInput {
     fn project_document_input(
         &self,
-        operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         Ok(match self {
             Self::Snapshot { application_id } => {
@@ -524,7 +524,7 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeDe
                 operation,
                 serde_json::json!({"application_id":application_id}),
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(body)?,
+                crate::openapi_interface::contract::to_value(body)?,
             ),
             Self::Delete {
                 application_id,
@@ -533,21 +533,19 @@ impl crate::event_center::api_projection::ApiEventInput for ApplicationRuntimeDe
                 operation,
                 serde_json::json!({"application_id":application_id}),
                 serde_json::json!({}),
-                crate::event_center::api_projection::to_value(body)?,
+                crate::openapi_interface::contract::to_value(body)?,
             ),
         })
     }
 }
 
-impl crate::event_center::api_projection::ApiEventOutput
-    for ApplicationRuntimeDebugVariablesOutput
-{
+impl crate::openapi_interface::contract::ApiOutput for ApplicationRuntimeDebugVariablesOutput {
     fn project_document_output(
         &self,
-        _operation: &crate::event_center::api_projection::ApiEventOperationContext,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
         match self {
-            Self::Snapshot(value) => crate::event_center::api_projection::to_value(value),
+            Self::Snapshot(value) => crate::openapi_interface::contract::to_value(value),
             Self::Updated => Ok(serde_json::json!({"ok":true})),
         }
     }

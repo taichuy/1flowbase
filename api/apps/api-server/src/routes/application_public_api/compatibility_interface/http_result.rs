@@ -1,7 +1,7 @@
 //! A unary protocol result is generated once inside the typed handler, then
 //! consumed unchanged by the HTTP adapter and document observation.
 use super::*;
-use crate::event_center::api_projection::{self as ep, ApiEventOperationContext, ApiEventOutput};
+use crate::openapi_interface::contract::{self as ep, ApiOperationContext, ApiOutput};
 use crate::routes::application_public_api::{anthropic, openai};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -157,8 +157,8 @@ impl InterfaceContract for CompatibilityProtocolOutput {
         CompatibilityBlockingOutput(self.run.clone()).project_for_managed_hook()
     }
 }
-impl ApiEventOutput for CompatibilityProtocolOutput {
-    fn document_output_schema(operation: &ApiEventOperationContext) -> Option<Value> {
+impl ApiOutput for CompatibilityProtocolOutput {
+    fn document_output_schema(operation: &ApiOperationContext) -> Option<Value> {
         Some(match operation.interface_id.as_str() {
             "compat.openai.chat-completions.blocking"
             | "compat.openai.chat-completions-root.blocking" => {
@@ -179,7 +179,7 @@ impl ApiEventOutput for CompatibilityProtocolOutput {
             _ => return None,
         })
     }
-    fn project_document_output(&self, _: &ApiEventOperationContext) -> Result<Value, Arc<str>> {
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         Ok(self.result.clone())
     }
 }

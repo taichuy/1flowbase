@@ -1,7 +1,9 @@
 mod capability_catalog;
 mod catalog;
+pub(crate) mod contract;
 mod dispatcher;
 pub(crate) mod json_contract;
+pub(crate) mod schema_projection;
 
 pub use capability_catalog::{
     build_openapi_capability_catalog, get_openapi_capability, get_openapi_capability_by_route,
