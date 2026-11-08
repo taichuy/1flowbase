@@ -360,6 +360,16 @@ pub fn application_api_orchestration_runtime_routes_compile_exact_operations() {
             ),
             (
                 "GET",
+                "/api/console/applications/:application_id/workflow-event-trigger",
+                "applications.view",
+            ),
+            (
+                "PUT",
+                "/api/console/applications/:application_id/workflow-event-trigger",
+                "applications.update",
+            ),
+            (
+                "GET",
                 "/api/console/applications/:application_id/workflow-schedule-trigger",
                 "applications.view",
             ),
@@ -392,6 +402,11 @@ pub fn application_api_orchestration_runtime_routes_compile_exact_operations() {
                 "GET",
                 "/api/console/applications/:id/orchestration",
                 "applications.view",
+            ),
+            (
+                "POST",
+                "/api/console/applications/:id/orchestration/analysis",
+                "authenticated",
             ),
             (
                 "PUT",

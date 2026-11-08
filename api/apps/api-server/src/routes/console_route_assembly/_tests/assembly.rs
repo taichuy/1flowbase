@@ -58,6 +58,7 @@ pub fn migrated_assembly_contains_every_console_router_owner_assembly() {
         .merge(crate::routes::members::route_assembly())
         .merge(crate::routes::notifications::route_assembly())
         .merge(crate::routes::communications::route_assembly())
+        .merge(crate::routes::events::route_assembly())
         .merge(crate::routes::organization::route_assembly())
         .merge(crate::routes::model_definitions::route_assembly())
         .merge(crate::routes::model_providers::route_assembly())
