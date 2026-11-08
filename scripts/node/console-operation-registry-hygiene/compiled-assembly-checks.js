@@ -41,6 +41,8 @@ function buildCompiledAssemblyCommands({ repoRoot } = {}) {
       'test',
       '-p',
       'api-server',
+      '--test',
+      'api_private_routes',
       target.filter,
     ],
     cwd: path.join(repoRoot, 'api'),

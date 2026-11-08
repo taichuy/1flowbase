@@ -32,23 +32,21 @@
 
 ## Evidence Chain
 
-先选最小证据链，不为显得全面叠加无新增覆盖面的命令：
+先按当前风险选择入口。`test-backend` 即使带 `--package / --lib / --filter`，也会先做全库 Rust static gate，再执行所选 Cargo 测试；无参数时测试整个 workspace。纯组件反馈可沿当前资源包装入口执行精确的原生 `cargo test -p <crate> --lib <filter>`，按仓库 runtime 配置传入 jobs / test threads；范围匹配时也可使用 `node scripts/node/verify.js backend test <shard>`，该入口不前置 static，只支持既有分片选择。
 
-```bash
-node scripts/node/test-backend.js
-```
-
-`test-backend` 和 `verify-backend all/static` 会运行：
+全库 static 可独立结算；`test-backend` 和 `verify-backend all/static` 也会运行：
 
 ```bash
 node scripts/node/tooling.js check-rust-backend
 ```
 
-该静态门禁会硬拦新增的生产路径 `unwrap` / `panic` / `dbg` / `todo` / `unimplemented`、敏感字段序列化和敏感日志；阻塞 IO 等高误伤项先作为 warning 写入 `tmp/test-governance/rust-backend-static-gate.json`。历史债由 `scripts/node/check-rust-backend/baseline.json` 兜住；新增命中不应追加 baseline，除非明确登记为阶段性技术债。
+该静态门禁会硬拦未被有效 review 抑制的生产路径 `unwrap` / `panic` / `dbg` / `todo` / `unimplemented`、敏感字段序列化和敏感日志；阻塞 IO 等高误伤项先作为 warning 写入 `tmp/test-governance/rust-backend-static-gate.json`。`scripts/node/check-rust-backend/baseline.json` 只抑制已审核且源码 / 证据哈希有效的条目，不自动识别全部历史债；新增命中不应追加 baseline，除非明确登记为阶段性技术债。
+
+同一候选的源码、扫描器与 review 证据未变时，复用有效静态报告，不随每条组件测试重复扫描。历史未改命中单独归因，不把失败的整体门禁记为 PASS，也不自动修复旧业务；本次新增或触发的问题仍须验证，组件反馈不替代最终质量结论。
 
 静态规则只扫描 Rust 代码 token：注释、普通 / raw 字符串与字符常量不构成调用；测试豁免只覆盖确定依赖 `test` 的 attributed item。`any(test, feature = "prod")` 可能进入生产，不能整体豁免。规则反例覆盖 test-only raw / 多行 cfg、外置测试模块、条件字段与同一行相邻生产 item；敏感日志按完整 macro token tree 检查，Serialize derive 与命名字段按所属 struct 检查，不因换行或单行声明漏检；无条件 `serde(skip / skip_serializing)` 字段合法，条件 `skip_serializing_if` 不能证明凭据永不输出。静态日志文本、非 Serialize 内部记录不命中。已有私有持久化例外仍由窄 baseline 与消费者证据约束。这仍是有限静态扫描，不替代 Rust 编译器与行为测试。
 
-如果需要直接落到 Cargo，串行运行：
+需要仓库级 Cargo 证据时，按风险选择并串行运行：
 
 ```bash
 cargo fmt --all --check

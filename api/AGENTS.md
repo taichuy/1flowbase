@@ -48,7 +48,8 @@
 - 后台注册设置项是后端安全对象：稳定 `feature_id` 同时拥有 console surface 与 Settings API scope；前端只消费注册结果，不定义权限真值。
 - SettingsFeature 是后台设置分组；组内角色授权使用单接口 operation，不得恢复为整组 feature grant 或聚合 routes。
 - Settings API 未注册、重复归属或 owner inactive 时 fail closed；不得按前端 URL 推断、allow-by-default，或建立管理员可编辑的 route-to-permission 映射。
-- 新增或调整后台设置注册必须使用统一 CLI 与 compiled inventory。统一入口尚未落地时，只能在已批准的 registry foundation Issue 内建立它，不新增平行手写注册表。
+- 后台设置注册保持 canonical Rust registry、唯一 route ownership 与 compiled inventory 同源；优先复用已有且适用的编辑工具，工具缺失或不适用时直接对现有 canonical 源作最小修改并验证，不新增平行注册表。
+- 通用注册 CLI / 生成器及其 fixtures 仅在当前用户目标包含工具建设，或已获授权的独立交付需要时新增；工具缺失本身不扩大当前业务交付。
 - 后台设置授权只解决入口与操作资格；workspace / system、owner、row、field、secret 和状态约束继续由 `control-plane` 与 repository 执行。
 - controller / routes 不得直接导入具体 PostgreSQL adapter 或 `runtime-extension-host` 内部模块，通过 typed Handler 消费业务 service，协议适配器消费稳定调用 contract。
 - 主仓 durable 后端官方支持 PostgreSQL；外部数据库、SaaS、API 数据源走 runtime extension。

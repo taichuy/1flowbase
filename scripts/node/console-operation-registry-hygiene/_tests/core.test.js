@@ -385,12 +385,16 @@ test('compiled checks run serial cargo targets and fail when a target fails or e
     'test',
     '-p',
     'api-server',
+    '--test',
+    'api_private_routes',
     'migrated_assembly_contains_every_console_router_owner_assembly',
   ]);
   assert.deepEqual(calls[1].args, [
     'test',
     '-p',
     'api-server',
+    '--test',
+    'api_private_routes',
     'console_route_assembly',
   ]);
   assert.equal(calls[0].options.cwd, path.join('/repo-root', 'api'));
