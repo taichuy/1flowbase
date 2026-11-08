@@ -1,0 +1,398 @@
+name: Harness CGU256 hard-budget resource experiment
+'on':
+  push:
+    branches:
+    - ci/harness-cgu256-8gb-20261108
+    paths:
+    - .github/workflows/harness-cgu256-resource.yml
+permissions:
+  contents: read
+concurrency:
+  group: harness-cgu256-8gb
+  cancel-in-progress: false
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      SOURCE_SHA: 03685db36523554701c03f5b9f0f45227ef37f34
+    steps:
+    - name: Initialize failure evidence and fixed recorder
+      shell: bash
+      env:
+        EVIDENCE_DIR: ${{ runner.temp }}/harness-cgu256-${{ github.run_id }}-${{ github.run_attempt }}
+      run: |
+        printf 'EVIDENCE_DIR=%s\n' "$EVIDENCE_DIR" >> "$GITHUB_ENV"
+        python3 - <<'PY'
+        import json, os
+        from pathlib import Path
+        path = Path(os.environ['EVIDENCE_DIR']); path.mkdir(mode=0o700)
+        (path/'receipt.json').write_text(json.dumps({'status':'FAIL_NOT_COMPLETED','source_sha':os.environ['SOURCE_SHA'],
+            'orchestrator_sha':os.environ['GITHUB_SHA'],'scope':'CGU256 hard 8e9/swap0 experiment; NOT B performance'},indent=2)+'\n')
+        PY
+        cat > "$EVIDENCE_DIR/resource-stage.py" <<'PY_STAGE'
+        import hashlib, json, os, re, subprocess, sys
+        from pathlib import Path
+        from datetime import datetime, timezone, timedelta
+        EXPECTED = {'head': '03685db36523554701c03f5b9f0f45227ef37f34', 'tree': '69e9dead0d706b124798a0fec3df668ce5748ebb', 'sha256': {'api/Cargo.lock': '2b8864b70e59ed21080ef64441e73e0a0cbd12898f3ad945eb4fdc13b6880ac9', 'api/Cargo.toml': '1d4ead1d4c89915ca70271a02368ecdfb99b089c80865f1773fa93bc06919d57', 'api/rust-toolchain.toml': '9499564fd7988135e5d9c59a303274a930d1ebc25b42879b9eea38db76cb7230', 'api/apps/api-server/Cargo.toml': '93f182d7e43fdc68d27918a0e3f207305beb5deca70930565c0ce1a0b7243c9d', 'api/apps/api-server/src/bin/console_operation_inventory.rs': '7cae5237e71e6a27025a19519fadebaee92106982bcefeb895fb840826ab3676', 'scripts/node/console-operation-registry-hygiene/compiled-assembly-checks.js': '777e1a57babfbddcc73dcdec80ef13c56ceb12df1806cb32836ca11740b77b0a', 'api/apps/api-server/tests/console_core_registry_tests.rs': '65506395803782702d76adf3582fb0875121fb2120962c93414234bea1edfea0'}}
+        CASES = ['routes::_tests::console_route_assembly_tests::application_api_orchestration_runtime_routes_compile_exact_operations', 'routes::_tests::console_route_assembly_tests::applications_closed_set_rejects_duplicate_or_missing_binding', 'routes::_tests::console_route_assembly_tests::applications_routes_compile_exact_operations_and_resource_metadata', 'routes::_tests::console_route_assembly_tests::console_route_assembly_duplicate_ownership_fails_coverage', 'routes::_tests::console_route_assembly_tests::console_route_assembly_unclassified_route_fails_coverage', 'routes::_tests::console_route_assembly_tests::data_model_and_docs::data_model_docs_and_data_source_routes_compile_exact_operations', 'routes::_tests::console_route_assembly_tests::infrastructure_and_mcp::infrastructure_mcp_and_user_api_key_routes_compile_exact_operations', 'routes::_tests::console_route_assembly_tests::migrated_real_core_console_route_assembly_has_compiled_coverage', 'routes::_tests::console_route_assembly_tests::plugins_and_models::ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_ownership', 'routes::_tests::file_console_route_assembly_tests::file_owner_routes_compile_from_exact_assemblies', 'routes::_tests::file_console_route_assembly_tests::file_owner_routes_preserve_authenticated_data_acl_and_settings_operations', 'routes::_tests::file_console_route_assembly_tests::temporary_file_contracts_compile_without_projecting_credentials', 'routes::_tests::settings_owner_console_route_assembly_tests::ac_001_ui_management_route_bindings_are_explicit_and_granular', 'routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_auth_center_route_bindings_are_explicit_and_stable', 'routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_members_route_bindings_are_explicit_and_stable', 'routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_permissions_route_binding_is_explicit_and_stable', 'routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_roles_route_bindings_are_explicit_and_stable', 'routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_system_route_bindings_are_explicit_and_stable', 'routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_workspace_route_bindings_are_explicit_and_stable', 'routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_workspaces_route_binding_is_explicit_and_stable', 'routes::_tests::settings_owner_console_route_assembly_tests::organization_console_route_assembly_keeps_each_operation_independent', 'routes::console_route_assembly::tests::complete_operation_specifications_match_the_production_route_set', 'routes::console_route_assembly::tests::migrated_assembly_contains_every_console_router_owner_assembly', 'routes::console_route_assembly::tests::operation_specification_exact_set_reports_every_difference']
+        ORIGINAL_SHA = 'e95de46dd366f37ef21ec519dc13f96ce6ab88e0e5c503796d8e6c51e93d5473'
+        LIMIT = 8000000000
+
+        def now():
+            return datetime.now(timezone(timedelta(hours=8))).isoformat()
+
+        def save(directory, name, value):
+            path = Path(directory) / name
+            temporary = path.with_suffix(path.suffix + '.tmp')
+            temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n')
+            temporary.replace(path)
+
+        def source_state():
+            def git(*args):
+                return subprocess.check_output(['git', *args], env=dict(os.environ, GIT_OPTIONAL_LOCKS='0'), text=True, timeout=20).strip()
+            state = {'head': git('rev-parse', 'HEAD'), 'tree': git('rev-parse', 'HEAD^{tree}'),
+                     'sha256': {p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in EXPECTED['sha256']}}
+            if state != EXPECTED or git('status', '--porcelain=v1', '--untracked-files=all'):
+                raise RuntimeError('frozen source/tree/lock/clean mismatch')
+            return state
+
+        def snapshot(group):
+            group = Path(group)
+            names = ['memory.max','memory.peak','memory.current','memory.events','memory.swap.max',
+                     'memory.swap.current','memory.swap.peak','cgroup.events','cgroup.procs','cpu.stat']
+            return {'at':now(),'path':str(group),'inode':group.stat().st_ino,
+                    'fields':{name:(group/name).read_text().strip() for name in names}}
+
+        def check_limits(value):
+            f = value['fields']
+            if f['memory.max'] != str(LIMIT) or f['memory.swap.max'] != '0':
+                raise RuntimeError('BLOCKED: actual cgroup hard limits are not 8000000000/swap0')
+            if int(f['memory.swap.current']) or int(f['memory.swap.peak']):
+                raise RuntimeError('unexpected cgroup swap usage')
+
+        def strict_inventory(raw):
+            def invalid(value):
+                raise ValueError('non-JSON number ' + value)
+            value = json.loads(raw, parse_constant=invalid)
+            compiled = value['compiled_inventory']
+            if not compiled['interfaces'] or not compiled['operations'] or not value['route_assembly']:
+                raise ValueError('empty inventory sections')
+            if not value['locales'].get('zh_Hans') or not value['locales'].get('en_US'):
+                raise ValueError('missing locale evidence')
+            if len(raw) != 679502 or hashlib.sha256(raw).hexdigest() != ORIGINAL_SHA:
+                raise ValueError('entire output bytes differ from the verified original')
+            return {'bytes':len(raw),'sha256':ORIGINAL_SHA,'interfaces':len(compiled['interfaces']),
+                    'operations':len(compiled['operations']),'routes':len(value['route_assembly'])}
+
+        def executed_cases(output, expected):
+            summaries = re.findall(r'test result: (?:ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored;', output)
+            names = re.findall(r'^test (.+) \.\.\. ok\r?$', output, re.M)
+            if summaries != [(str(len(expected)), '0', '0')] or sorted(names) != sorted(expected):
+                raise ValueError('empty/failed/ignored/wrong-identity Cargo selection')
+            return names
+
+        def compiler_evidence(directory, logs, stage):
+            artifacts, invocations = [], []
+            wanted = ['api_server', 'console_operation_inventory'] if stage == 'exporter' else ['api_server','console_core_registry_tests']
+            for label in logs:
+                for line in (directory/(label+'.stdout.log')).read_text().splitlines():
+                    try:
+                        value = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(value,dict) and value.get('reason') == 'compiler-artifact' and value.get('target',{}).get('name') in wanted:
+                        artifacts.append(value)
+                for line in (directory/(label+'.stderr.log')).read_text().splitlines():
+                    if 'Running ' in line and 'rustc' in line and any('--crate-name '+name+' ' in line for name in wanted):
+                        invocations.append(line)
+            for name in wanted:
+                if not any('--crate-name '+name+' ' in line and re.search(r'-C\s*codegen-units=256\b',line) for line in invocations):
+                    raise ValueError('missing actual api-server CGU256 rustc invocation: '+name)
+            if stage == 'exporter' and (not artifacts or any(x['profile']['test'] or 'test-support' in x.get('features',[]) for x in artifacts)):
+                raise ValueError('exporter must be a normal default-feature binary')
+            save(directory,'compiler.json',{'artifacts':artifacts,'actual_rustc_invocations':invocations})
+
+        def run_stage(stage, directory):
+            result = {'stage':stage,'status':'FAIL_NOT_COMPLETED','started_at':now(),'source_before':source_state(),'commands':[]}
+            target = Path(os.environ['CARGO_TARGET_DIR'])
+            try:
+                if stage == 'probe':
+                    if subprocess.run(['/usr/bin/true']).returncode:
+                        raise RuntimeError('OS probe failed')
+                else:
+                    if os.environ.get('CARGO_BUILD_JOBS') != '1' or os.environ.get('CARGO_INCREMENTAL') != '0':
+                        raise RuntimeError('wrong compiler concurrency/incremental environment')
+                    result['compiler'] = {'rustc':subprocess.check_output(['rustc','+1.99.0','-vV'],text=True), 'cargo':subprocess.check_output(['cargo','+1.99.0','-V'],text=True)}
+                    result['cache'] = {'target':str(target),'exists_before':target.exists(),
+                        'condition':'fresh empty target; no target cache restore' if stage=='exporter' else 'reuse exporter target; feature graphs may rebuild; NOT fully cold'}
+                    if stage == 'exporter':
+                        if target.exists() or (directory/'inventory.json').exists():
+                            raise RuntimeError('exporter target/output must be fresh')
+                        selections = [('exporter',['cargo','+1.99.0','run','--locked','--manifest-path','api/Cargo.toml','--profile','test',
+                            '-p','api-server','--bin','console_operation_inventory','--jobs','1','--message-format=json','-vv','--',str(directory/'inventory.json')],None)]
+                    elif stage == 'assembly':
+                        if not target.is_dir():
+                            raise RuntimeError('missing exporter target for declared warm second stage')
+                        filters = [('owners','migrated_assembly_contains_every_console_router_owner_assembly',[x for x in CASES if x.endswith('::migrated_assembly_contains_every_console_router_owner_assembly')]),
+                                   ('assembly','console_route_assembly',CASES)]
+                        selections = [(label,['cargo','+1.99.0','test','--locked','--manifest-path','api/Cargo.toml','-p','api-server',
+                            '--test','console_core_registry_tests','--features','test-support','--jobs','1','--message-format=json','-vv',selector,'--','--test-threads=1'],expected) for label,selector,expected in filters]
+                    else:
+                        raise ValueError('unknown fixed experiment stage')
+                    logs, names = [], []
+                    for label,argv,expected in selections:
+                        row = {'label':label,'argv':argv,'started_at':now()}
+                        result['commands'].append(row)
+                        save(directory,'result.json',result)
+                        with (directory/(label+'.stdout.log')).open('wb') as stdout, (directory/(label+'.stderr.log')).open('wb') as stderr:
+                            code = subprocess.run(['/usr/bin/time','-v','-o',str(directory/(label+'.time.log')),*argv],stdin=subprocess.DEVNULL,stdout=stdout,stderr=stderr).returncode
+                        row.update(returncode=code,finished_at=now())
+                        if code:
+                            raise RuntimeError('real Cargo command failed; no retry')
+                        logs.append(label)
+                        if expected is not None:
+                            selected = executed_cases((directory/(label+'.stdout.log')).read_text(),expected)
+                            row['executed_cases'] = selected
+                            names += selected
+                    compiler_evidence(directory,logs,stage)
+                    if stage == 'exporter':
+                        result['inventory'] = strict_inventory((directory/'inventory.json').read_bytes())
+                    else:
+                        result['executions'] = len(names)
+                        result['unique_cases'] = sorted(set(names))
+                        if len(names) != 25 or sorted(set(names)) != sorted(CASES):
+                            raise ValueError('original 24 unique assembly assertions missing')
+                result['source_after'] = source_state()
+                result['status'] = 'PASS'
+            except Exception as error:
+                result['status'] = 'FAIL'
+                result['error'] = str(error)
+            finally:
+                result['finished_at'] = now()
+                save(directory,'result.json',result)
+            return result['status'] == 'PASS'
+
+        if __name__ == '__main__':
+            mode, stage = sys.argv[1:]
+            if stage not in ('probe','exporter','assembly'):
+                raise SystemExit('unknown fixed stage')
+            directory = Path(os.environ['EVIDENCE_DIR'])/stage
+            if mode == 'run':
+                raise SystemExit(0 if run_stage(stage,directory) else 1)
+            try:
+                own = next(x[3:] for x in Path('/proc/self/cgroup').read_text().splitlines() if x.startswith('0::'))
+                group = Path('/sys/fs/cgroup')/own.lstrip('/')
+                parent = Path(os.environ['BUDGET_CGROUP'])
+                value = {'mode':mode,'pid':os.getpid(),'uid':os.getuid(),'invocation_id':os.environ.get('INVOCATION_ID'),
+                         'service_result':os.environ.get('SERVICE_RESULT'),'exit_code':os.environ.get('EXIT_CODE'),
+                         'exit_status':os.environ.get('EXIT_STATUS'),'own':snapshot(group),'parent':snapshot(parent)}
+                save(directory,mode+'.json',value)
+                if group.parent != parent or group.name != os.environ['CGU_UNIT']:
+                    raise RuntimeError('BLOCKED: process is not inside the exact owned budget/service')
+                check_limits(value['own']); check_limits(value['parent'])
+                if not value['invocation_id'] or value['uid'] != int(os.environ['CGU_UID']):
+                    raise RuntimeError('BLOCKED: unit invocation/user identity unavailable')
+                if mode == 'post' and set(map(int,value['own']['fields']['cgroup.procs'].split())) != {os.getpid()}:
+                    raise RuntimeError('owned service children remain at stop-post')
+            except Exception as error:
+                save(directory,mode+'-error.json',{'status':'BLOCKED_HARD_LIMIT_EVIDENCE','error':str(error)})
+                raise
+        PY_STAGE
+    - name: Checkout exact CGU256 source
+      id: source
+      uses: actions/checkout@v5
+      with:
+        ref: 03685db36523554701c03f5b9f0f45227ef37f34
+        fetch-depth: 1
+        persist-credentials: false
+    - name: Install existing compiler version
+      id: toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: 1.99.0
+    - name: OS hard-limit probe then cold exporter and warm thin assertions
+      id: compare
+      shell: bash
+      run: |
+        python3 - <<'PY'
+        import importlib.util, json, os, shutil, subprocess, sys
+        from pathlib import Path
+        sys.dont_write_bytecode = True
+        root = Path.cwd()
+        evidence = Path(os.environ['EVIDENCE_DIR'])
+        script = evidence/'resource-stage.py'
+        spec = importlib.util.spec_from_file_location('fixed_cgu256_stage',script)
+        m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+        run = os.environ['GITHUB_RUN_ID']+'x'+os.environ['GITHUB_RUN_ATTEMPT']
+        if not run.replace('x','').isdigit(): raise RuntimeError('invalid run identity')
+        slice_name = 'harnesscgu256'+run+'.slice'
+        slice_file = evidence/slice_name
+        slice_link = Path('/run/systemd/system')/slice_name
+        target = Path(os.environ['RUNNER_TEMP'])/('harness-cgu256-target-'+run)
+        receipt = {'status':'FAIL_NOT_COMPLETED','source_expected':m.EXPECTED,'stages':[],
+                   'scope':'8e9/swap0 cgroup experiment; ordinary exporter cold, assembly target reused; not B performance'}
+        units, parent, linked = [], None, False
+
+        def call(args, timeout=30, allow_failure=False):
+            result = subprocess.run(args,text=True,capture_output=True,timeout=timeout)
+            if result.returncode and not allow_failure:
+                raise RuntimeError('BLOCKED: OS management command failed: '+repr(args[:4]))
+            return result
+
+        def properties(unit):
+            names = ['LoadState','ActiveState','SubState','Result','ControlGroup','InvocationID','MemoryMax','MemorySwapMax','MemoryPeak','CPUUsageNSec','ExecMainCode','ExecMainStatus']
+            result = call(['sudo','-n','systemctl','show',unit,*['--property='+x for x in names]],allow_failure=True)
+            return dict(x.split('=',1) for x in result.stdout.splitlines() if '=' in x)
+
+        try:
+            receipt['started_at'] = m.now()
+            receipt['source_before'] = m.source_state()
+            for name in ('sudo','systemctl','systemd-run','cargo','rustc','/usr/bin/time'):
+                if not shutil.which(name): raise RuntimeError('BLOCKED: required existing OS/build tool missing: '+name)
+            call(['sudo','-n','true'])
+            receipt['systemd_version'] = call(['systemd-run','--version']).stdout
+            receipt['runner'] = {key:os.environ.get(key) for key in ('RUNNER_OS','RUNNER_ARCH','ImageOS','ImageVersion')}
+            receipt['runner'].update(cpu_count=os.cpu_count(),kernel=os.uname().release,free_disk_bytes=shutil.disk_usage(evidence).free)
+            receipt['compiler'] = {'rustc':call(['rustc','+1.99.0','-vV']).stdout,'cargo':call(['cargo','+1.99.0','-V']).stdout}
+            if target.exists(): raise RuntimeError('target must be a new experiment-owned directory')
+            slice_file.write_text('[Unit]\nDescription=Fixed CGU256 experiment budget\n[Slice]\nMemoryAccounting=yes\nCPUAccounting=yes\nMemoryMax=8000000000\nMemorySwapMax=0\n')
+            call(['sudo','-n','systemctl','link','--runtime',str(slice_file)]); linked = True
+            call(['sudo','-n','systemctl','start',slice_name])
+            group = properties(slice_name).get('ControlGroup','')
+            if not group: raise RuntimeError('BLOCKED: no budget cgroup')
+            parent = Path('/sys/fs/cgroup')/group.lstrip('/')
+            receipt['budget_before'] = m.snapshot(parent); m.check_limits(receipt['budget_before'])
+            safe = {name:os.environ[name] for name in ('PATH','HOME','USER','LOGNAME','LANG','CARGO_HOME','RUSTUP_HOME') if name in os.environ}
+            safe.update(CARGO_BUILD_JOBS='1',CARGO_INCREMENTAL='0',RUST_TEST_THREADS='1',CARGO_TARGET_DIR=str(target),
+                CARGO_TERM_COLOR='never',CARGO_TERM_PROGRESS_WHEN='never',CARGO_NET_RETRY='0',RUSTUP_AUTO_INSTALL='0',
+                CI='true',GITHUB_ACTIONS='true',EVIDENCE_DIR=str(evidence),BUDGET_CGROUP=str(parent))
+            receipt['environment_keys'] = sorted(safe)
+            receipt['stages_target'] = str(target)
+            for stage in ('probe','exporter','assembly'):
+                m.source_state()
+                directory = evidence/stage; directory.mkdir()
+                unit = 'harnesscgu256'+run+'-'+stage+'.service'; units.append(unit)
+                stage_env = {**safe,'CGU_UNIT':unit,'CGU_UID':str(os.getuid())}
+                row = {'stage':stage,'unit':unit,'started_at':m.now()}; receipt['stages'].append(row)
+                m.save(evidence,'receipt.json',receipt)
+                # Standard systemd services enforce both the parent and the per-stage limit.
+                props = {'MemoryAccounting':'yes','CPUAccounting':'yes','MemoryMax':'8000000000','MemorySwapMax':'0',
+                    'OOMPolicy':'kill','MemoryOOMGroup':'yes','KillMode':'control-group','SendSIGKILL':'yes','Restart':'no',
+                    'RuntimeMaxSec':'30' if stage=='probe' else '2700','TimeoutStartSec':'120','TimeoutStopSec':'30',
+                    'WorkingDirectory':str(root),
+                    'ExecStartPre':'/usr/bin/python3 '+str(script)+' pre '+stage,
+                    'ExecStopPost':'/usr/bin/python3 '+str(script)+' post '+stage}
+                argv = ['sudo','-n','systemd-run','--unit='+unit,'--slice='+slice_name,'--service-type=exec','--wait','--pipe',
+                    '--uid='+str(os.getuid()),'--gid='+str(os.getgid()),'--expand-environment=no']
+                argv += ['--property='+k+'='+v for k,v in props.items()]
+                argv += ['--setenv='+k+'='+v for k,v in stage_env.items()]
+                argv += ['/usr/bin/python3',str(script),'run',stage]
+                # All arguments are fixed workflow data or runner paths, never arbitrary user commands.
+                if any(any(ch.isspace() for ch in str(p)) for p in (root,evidence,script)):
+                    raise RuntimeError('BLOCKED: unsupported whitespace in systemd command paths')
+                m.save(directory,'launch.json',{'argv':argv,'declared_memory_max':8000000000,'declared_swap_max':0})
+                try:
+                    result = call(argv,timeout=2850,allow_failure=True)
+                    (directory/'manager.stdout.log').write_text(result.stdout)
+                    (directory/'manager.stderr.log').write_text(result.stderr)
+                    row['systemd_run_returncode'] = result.returncode
+                except subprocess.TimeoutExpired:
+                    row['outer_timeout'] = True
+                    raise RuntimeError('systemd wait exceeded finite deadline')
+                finally:
+                    row['manager'] = properties(unit)
+                    row['finished_at'] = m.now()
+                    m.save(evidence,'receipt.json',receipt)
+                if not (directory/'pre.json').exists() or not (directory/'post.json').exists():
+                    raise RuntimeError('BLOCKED: pre/post kernel cgroup receipt missing')
+                pre = json.loads((directory/'pre.json').read_text())
+                post = json.loads((directory/'post.json').read_text())
+                if (directory/'pre-error.json').exists() or (directory/'post-error.json').exists():
+                    raise RuntimeError('BLOCKED: OS hard-limit evidence could not be validated')
+                for value in (pre,post): m.check_limits(value['own']); m.check_limits(value['parent'])
+                if pre['own']['inode'] != post['own']['inode'] or pre['invocation_id'] != post['invocation_id']:
+                    raise RuntimeError('BLOCKED: cgroup/unit identity changed')
+                for key in ('own','parent'):
+                    if pre[key]['path'] != post[key]['path'] or pre[key]['inode'] != post[key]['inode']:
+                        raise RuntimeError('BLOCKED: budget identity changed')
+                    events = dict(line.split() for line in post[key]['fields']['memory.events'].splitlines())
+                    if any(int(events.get(x,'0')) for x in ('oom','oom_kill','oom_group_kill')):
+                        raise RuntimeError('real cgroup OOM event; no retry')
+                row['pre'] = pre; row['post'] = post
+                child = json.loads((directory/'result.json').read_text())
+                row['result'] = child
+                if result.returncode or post.get('service_result')!='success' or post.get('exit_code')!='exited' or post.get('exit_status')!='0' or child.get('status')!='PASS':
+                    raise RuntimeError('real stage failed; later stages will not run')
+                cg = Path(post['own']['path'])
+                row['cleanup_empty'] = not cg.exists() or not (cg/'cgroup.procs').read_text().strip()
+                if not row['cleanup_empty']: raise RuntimeError('owned service cgroup not empty')
+                m.save(evidence,'receipt.json',receipt)
+            receipt['source_after'] = m.source_state()
+            receipt['status'] = 'PASS_CGU256_EXPORTER_AND_24_ASSERTIONS_UNDER_8E9_SWAP0'
+        except Exception as error:
+            receipt['status'] = 'BLOCKED_HARD_LIMIT_EVIDENCE' if 'BLOCKED:' in str(error) else 'FAIL'
+            receipt['error'] = str(error)
+        finally:
+            cleanup = {'complete':True,'units':{}}
+            for unit in reversed(units):
+                try:
+                    before = properties(unit)
+                    call(['sudo','-n','systemctl','stop',unit],allow_failure=True)
+                    group = before.get('ControlGroup','')
+                    path = Path('/sys/fs/cgroup')/group.lstrip('/') if group else None
+                    empty = not path or not path.exists() or not (path/'cgroup.procs').read_text().strip()
+                    cleanup['units'][unit] = {'empty':empty,'state':properties(unit)}
+                    if not empty: cleanup['complete'] = False
+                except Exception as error:
+                    cleanup['complete'] = False; cleanup['units'][unit] = {'error':str(error)}
+            try:
+                if parent and parent.exists():
+                    receipt['budget_after'] = m.snapshot(parent)
+                    if dict(line.split() for line in receipt['budget_after']['fields']['cgroup.events'].splitlines()).get('populated') != '0':
+                        raise RuntimeError('experiment budget still populated')
+                if linked:
+                    call(['sudo','-n','systemctl','stop',slice_name])
+                    if slice_link.is_symlink() and os.readlink(slice_link)==str(slice_file):
+                        call(['sudo','-n','rm','--',str(slice_link)])
+                        call(['sudo','-n','systemctl','daemon-reload'])
+                    else: raise RuntimeError('owned runtime slice link identity unavailable')
+                if parent and parent.exists() and (parent/'cgroup.procs').read_text().strip():
+                    raise RuntimeError('budget cleanup incomplete')
+                receipt['source_after'] = m.source_state()
+            except Exception as error:
+                cleanup['complete'] = False; cleanup['error'] = str(error)
+            receipt['cleanup'] = cleanup
+            if not cleanup['complete']: receipt['status']='FAIL_CLEANUP'
+            receipt['finished_at'] = m.now()
+            m.save(evidence,'receipt.json',receipt)
+        if not receipt['status'].startswith('PASS_'): sys.exit(1)
+        PY
+    - name: Finalize success or failure outcome
+      if: always() && env.EVIDENCE_DIR != ''
+      shell: bash
+      env:
+        SOURCE_OUTCOME: ${{ steps.source.outcome }}
+        TOOLCHAIN_OUTCOME: ${{ steps.toolchain.outcome }}
+        COMPARE_OUTCOME: ${{ steps.compare.outcome }}
+      run: |
+        python3 - <<'PY'
+        import json, os
+        from pathlib import Path
+        path=Path(os.environ['EVIDENCE_DIR'])/'receipt.json'
+        value=json.loads(path.read_text()); value['orchestrator_sha']=os.environ['GITHUB_SHA']
+        value['workflow_outcomes']={key:os.environ[key] for key in ('SOURCE_OUTCOME','TOOLCHAIN_OUTCOME','COMPARE_OUTCOME')}
+        if any(x!='success' for x in value['workflow_outcomes'].values()) or not value.get('status','').startswith('PASS_'):
+            if value.get('status','').startswith('PASS_') or value.get('status')=='FAIL_NOT_COMPLETED':
+                value['status']='FAIL_WORKFLOW'
+        path.write_text(json.dumps(value,ensure_ascii=False,indent=2)+'\n')
+        PY
+    - name: Upload all success or failure evidence
+      if: always() && env.EVIDENCE_DIR != ''
+      uses: actions/upload-artifact@v7
+      with:
+        name: harness-cgu256-8gb-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ env.EVIDENCE_DIR }}/
+        retention-days: 14
+        if-no-files-found: error
