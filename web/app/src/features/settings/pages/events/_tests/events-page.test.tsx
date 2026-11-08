@@ -337,13 +337,9 @@ describe('event center configuration and observations', () => {
     ]);
     renderPage();
     for (const name of ['reserved', 'settled', 'Order', 'Another rule'])
-      expect(
-        await screen.findByRole('button', { name, exact: true })
-      ).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name })).toBeInTheDocument();
     expect(screen.getAllByRole('row')).toHaveLength(5);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'settled', exact: true })
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'settled' }));
     expect(
       within(screen.getByRole('dialog')).getByText('settled', {
         selector: '.ant-descriptions-item-content'
@@ -495,7 +491,11 @@ describe('event center configuration and observations', () => {
   ])('opens and restores the %s tab from its URL', async (tab, label) => {
     window.history.replaceState({}, '', `/settings/events?tab=${tab}`);
     const view = renderPage();
-    expect(await screen.findByText('host-instance')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Observation details' })
+      ).toBeEnabled()
+    );
     expect(screen.getByRole('tab', { name: label })).toHaveAttribute(
       'aria-selected',
       'true'
@@ -503,7 +503,11 @@ describe('event center configuration and observations', () => {
     expect(api.listEventCatalog).not.toHaveBeenCalled();
     view.unmount();
     renderPage();
-    expect(await screen.findByText('host-instance')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Observation details' })
+      ).toBeEnabled()
+    );
     expect(screen.getByRole('tab', { name: label })).toHaveAttribute(
       'aria-selected',
       'true'
@@ -827,25 +831,40 @@ describe('event center configuration and observations', () => {
   test('shows queue facts separately from the activity window and exposes rejected admission without success metrics', async () => {
     renderPage();
     fireEvent.click(screen.getByRole('tab', { name: 'Current queues' }));
-    expect(await screen.findByText('host-instance')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Observation details' })
+      ).toBeEnabled()
+    );
     expect(
       screen.getByText(/Events are broadcast across subscriptions/)
     ).toHaveTextContent('consumers compete within that queue');
-    expect(screen.getByText('Dequeued deliveries')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'custom.order' }));
+    expect(
+      within(screen.getByRole('dialog')).getByText('Dequeued deliveries')
+    ).toBeInTheDocument();
     expect(
       screen.getByText(/does not indicate workflow success or failure/)
     ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Observation details' })
+    );
     expect(
       screen.getByText('Rejections retained in activity window')
     ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(
-      screen.queryByRole('button', { name: /consume/i })
+      screen.queryByRole('button', { name: /^consume(?: event)?$/i })
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Recent activity' }));
     expect(
       await screen.findByText('Resource budget exhausted')
     ).toBeInTheDocument();
-    expect(screen.getByText('source-event')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(
+      within(screen.getByRole('dialog')).getByText('source-event')
+    ).toBeInTheDocument();
   });
   test('keeps configuration usable when runtime resources are not configured', async () => {
     api.getEventRuntime.mockResolvedValue(
@@ -869,6 +888,14 @@ describe('event center configuration and observations', () => {
   test('shows scoped observation loss counts with their coverage window', async () => {
     renderPage();
     fireEvent.click(screen.getByRole('tab', { name: 'Recent activity' }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Observation details' })
+      ).toBeEnabled()
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Observation details' })
+    );
     expect(
       await screen.findByText('Records expired in window')
     ).toBeInTheDocument();
@@ -991,10 +1018,14 @@ describe('event center configuration and observations', () => {
       'hidden-execution-reason'
     ])
       expect(screen.queryByText(value)).not.toBeInTheDocument();
-    expect(screen.getByText('Dequeued deliveries')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'custom.order' }));
     expect(
-      screen.queryByRole('button', { name: /consume/i })
+      within(screen.getByRole('dialog')).getByText('Dequeued deliveries')
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^consume(?: event)?$/i })
     ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Recent activity' }));
     expect(screen.queryByText('inactive-subscription')).not.toBeInTheDocument();
   });
@@ -1131,11 +1162,18 @@ test('source scope keeps native identities and unknown original queue counts wit
   );
   renderPage();
   expect(await screen.findByText('native-queue')).toBeInTheDocument();
-  expect(screen.getAllByText('Unknown')).toHaveLength(4);
+  fireEvent.click(screen.getByRole('button', { name: 'native-queue' }));
+  expect(
+    within(screen.getByRole('dialog')).getAllByText('Unknown')
+  ).toHaveLength(4);
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Observation details' }));
   expect(screen.getByText('777')).toBeInTheDocument();
   expect(screen.queryByText('11')).not.toBeInTheDocument();
   expect(screen.getByText('987 / 2000')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   fireEvent.click(screen.getByRole('tab', { name: 'Recent activity' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Details' }));
   expect(await screen.findByText('native:event:non-uuid')).toBeInTheDocument();
   expect(screen.getByText('native-producer')).toBeInTheDocument();
   expect(screen.getByText('native-subscriber')).toBeInTheDocument();
@@ -1270,12 +1308,21 @@ test.each([
     }
     if (observedQueue) {
       expect(screen.getByText('observed-original-queue')).toBeInTheDocument();
-      expect(screen.getAllByText('Unknown')).toHaveLength(4);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'observed-original-queue' })
+      );
+      expect(
+        within(screen.getByRole('dialog')).getAllByText('Unknown')
+      ).toHaveLength(4);
+      expect(
+        within(screen.getByRole('dialog')).getByText('4')
+      ).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
       const queueRow = screen
         .getByText('observed-original-queue')
         .closest('tr');
       expect(queueRow).not.toBeNull();
-      expect(within(queueRow!).getByText('4')).toBeInTheDocument();
+      expect(within(queueRow!).getAllByText('Unknown')).toHaveLength(2);
     } else {
       expect(
         screen.queryByText('observed-original-queue')

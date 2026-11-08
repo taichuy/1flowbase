@@ -6,6 +6,16 @@ The Event Center lives at `/settings/events`. Custom definitions, workflow trigg
 
 Each tab has its own URL: `/settings/events?tab=catalog`, `/settings/events?tab=queues`, and `/settings/events?tab=activity`. Opening `/settings/events` selects the catalog. Reloading and browser back/forward preserve the tab identified by the URL. The page uses the same shared table toolbar and column settings as Application management, without a separate title panel.
 
+## Runtime view interactions
+
+Current queues starts with scope and source selection. The selected row and queue heading identify the source being inspected. Original owner queues and event-workflow queues remain separate. Default fields prioritize queued deliveries, retained resources, and consumers; details retain complete source, subscription, queue identities and cumulative counters with copy feedback. Incomplete observation remains explicit even when no queue metadata is visible.
+
+Recent activity defaults to newest observations first, with time, event, phase, admission result, and a details action. Names come from source descriptors in the same snapshot; otherwise the actual event identifier is retained rather than inventing a business name. Search, phase, and admission filters apply only to the fetched snapshot, not persistent event history. Small screens use the shared record list with the same column preferences and load further slices from this snapshot; desktop keeps pagination. Technical columns remain selectable, and existing explicit preferences are not reset.
+
+Runtime URLs retain tab, scope, source, filters, page/size, and open details across reload and back/forward navigation. Closing details returns to the list and restores focus. Complete identifiers can be copied with feedback. Refresh and the last successful retrieval time remain at the top. Failed requests explicitly mark retained snapshots as old; authorization rejection removes previously visible protected data. An unavailable requested scope does not silently fall back to the workspace.
+
+Observation details contain the host instance, budgets, full scope identity, and separate activity/loss accounting windows. Budget eviction/drop, incomplete observation, unavailable accounting, and snapshots older than their activity window remain visible above the list. These observation conditions do not establish business delivery or execution failure. Admission, loop prevention, and consumption keep their original meaning.
+
 ## System sources and original queues
 
 The catalog manages current event definitions. Within a scope, `contract_id` identifies an event and its current schema; Event Center does not use contract versions. Creation, subscriptions, communication event bindings and Event Center signals do not carry a version. `source.selection` identifies the stable source and explicit scope; `point_id` in technical details identifies its underlying extension point. Schemas come from typed owners or managed declarations. The shared JSON viewer displays objects, booleans, and `null` unchanged. Runtime streams advertise the actual `RuntimeEventEnvelope` schema rather than inventing a schema for each dynamic `event_type`.

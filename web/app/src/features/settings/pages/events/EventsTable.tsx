@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Flex } from 'antd';
+import { Flex, Grid, type TableProps } from 'antd';
 import { useTranslation } from 'react-i18next';
 import {
   DataTable,
@@ -8,6 +8,7 @@ import {
 } from '../../../../shared/ui/data-table/DataTable';
 import { DataTableLayout } from '../../../../shared/ui/data-table/DataTableLayout';
 import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
+import { navigateEventState, useEventParameter } from './event-navigation';
 
 export function EventsTable<T extends object>({
   columns,
@@ -15,7 +16,12 @@ export function EventsTable<T extends object>({
   rowKey,
   tableKey,
   loading = false,
-  toolbar
+  toolbar,
+  urlState = false,
+  emptyText,
+  onRow,
+  rowClassName,
+  mobileRecords
 }: {
   columns: DataTableColumn<T>[];
   rows: T[];
@@ -23,29 +29,74 @@ export function EventsTable<T extends object>({
   tableKey: string;
   loading?: boolean;
   toolbar?: ReactNode;
+  urlState?: boolean;
+  emptyText?: ReactNode;
+  onRow?: TableProps<T>['onRow'];
+  rowClassName?: (record: T, index: number) => string;
+  mobileRecords?: string;
 }) {
   const { t } = useTranslation('settingsEvents');
+  const screens = Grid.useBreakpoint();
+  const showRecords =
+    mobileRecords !== undefined &&
+    screens.md === false &&
+    (screens.xs === true || screens.sm === true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const requestedPage = Number(useEventParameter(`${tableKey}_page`));
+  const requestedSize = Number(useEventParameter(`${tableKey}_size`));
+  const effectiveSize =
+    urlState && [10, 20, 50, 100].includes(requestedSize)
+      ? requestedSize
+      : pageSize;
+  const effectivePage =
+    urlState && Number.isSafeInteger(requestedPage) && requestedPage > 0
+      ? requestedPage
+      : page;
   const configuration = usePersistedDataTableConfiguration({
     columns,
     storageKey: `settings.events.${tableKey}`
   });
   const currentPage = Math.min(
-    page,
-    Math.max(1, Math.ceil(rows.length / pageSize))
+    effectivePage,
+    Math.max(1, Math.ceil(rows.length / effectiveSize))
   );
+  const changePage = (next: number, size: number) => {
+    if (urlState)
+      navigateEventState({
+        [`${tableKey}_page`]: String(next),
+        [`${tableKey}_size`]: String(size)
+      });
+    else {
+      setPage(next);
+      setPageSize(size);
+    }
+  };
   return (
     <DataTableLayout>
       <DataTable
         columns={columns}
         configuration={configuration}
         dataSource={rows.slice(
-          (currentPage - 1) * pageSize,
-          currentPage * pageSize
+          showRecords ? 0 : (currentPage - 1) * effectiveSize,
+          currentPage * effectiveSize
         )}
         rowKey={rowKey}
         loading={loading}
+        onRow={onRow}
+        rowClassName={rowClassName}
+        mobileList={
+          showRecords
+            ? {
+                resetKey: mobileRecords,
+                hasMore: currentPage * effectiveSize < rows.length,
+                loading,
+                failed: false,
+                onLoadMore: async () =>
+                  changePage(currentPage + 1, effectiveSize)
+              }
+            : undefined
+        }
         toolbar={
           <Flex justify="flex-end" gap={8} wrap>
             {toolbar}
@@ -55,15 +106,12 @@ export function EventsTable<T extends object>({
             />
           </Flex>
         }
-        emptyText={t('empty')}
+        emptyText={emptyText ?? t('empty')}
         page={currentPage}
-        pageSize={pageSize}
+        pageSize={effectiveSize}
         pageSizeOptions={[10, 20, 50, 100]}
         total={rows.length}
-        onPageChange={(next, size) => {
-          setPage(next);
-          setPageSize(size);
-        }}
+        onPageChange={changePage}
       />
     </DataTableLayout>
   );

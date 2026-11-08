@@ -7,6 +7,35 @@ function subscribe(listener: () => void) {
   return () => window.removeEventListener('popstate', listener);
 }
 
+export function useEventParameter(key: string): string | null {
+  const search = useSyncExternalStore(
+    subscribe,
+    () => window.location.search,
+    () => ''
+  );
+  return new URLSearchParams(search).get(key);
+}
+
+export function navigateEventState(
+  values: Record<string, string | null>,
+  replace = false
+) {
+  const url = new URL(window.location.href);
+  for (const [key, value] of Object.entries(values)) {
+    if (value === null || value === '') url.searchParams.delete(key);
+    else url.searchParams.set(key, value);
+  }
+  const href = `${url.pathname}${url.search}${url.hash}`;
+  if (
+    href ===
+    `${window.location.pathname}${window.location.search}${window.location.hash}`
+  )
+    return;
+  if (replace) window.history.replaceState(window.history.state, '', href);
+  else window.history.pushState(window.history.state, '', href);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
+
 export function useEventTab(): EventTab {
   const search = useSyncExternalStore(
     subscribe,
@@ -40,12 +69,16 @@ export function useEventScope(): string | null {
   return new URLSearchParams(search).get('scope');
 }
 export function navigateEventScope(scope: string) {
-  const url = new URL(window.location.href);
-  url.searchParams.set('scope', scope);
-  window.history.pushState(
-    window.history.state,
-    '',
-    `${url.pathname}${url.search}${url.hash}`
-  );
-  window.dispatchEvent(new PopStateEvent('popstate'));
+  navigateEventState({
+    scope,
+    source: null,
+    queue: null,
+    record: null,
+    source_details: null,
+    workflow_queue: null,
+    sources_page: null,
+    'source-queues_page': null,
+    queues_page: null,
+    activity_page: null
+  });
 }
