@@ -46,8 +46,7 @@ where
         .collect()
 }
 
-#[test]
-fn console_route_assembly_unclassified_route_fails_coverage() {
+pub fn console_route_assembly_unclassified_route_fails_coverage() {
     let settings = access_control::SettingsFeatureRegistry::compile([]).unwrap();
     let registry = ConsoleOperationRegistry::compile(&settings, [], []).unwrap();
     let error = registry
@@ -63,8 +62,7 @@ fn console_route_assembly_unclassified_route_fails_coverage() {
         .contains("missing compiled ownership: GET /api/console/session"));
 }
 
-#[test]
-fn console_route_assembly_duplicate_ownership_fails_coverage() {
+pub fn console_route_assembly_duplicate_ownership_fails_coverage() {
     let settings = access_control::SettingsFeatureRegistry::compile([]).unwrap();
     let registry = ConsoleOperationRegistry::compile(&settings, [], []).unwrap();
     let error = registry
@@ -89,8 +87,7 @@ fn console_route_assembly_duplicate_ownership_fails_coverage() {
         .contains("duplicate assembled console route ownership"));
 }
 
-#[test]
-fn migrated_real_core_console_route_assembly_has_compiled_coverage() {
+pub fn migrated_real_core_console_route_assembly_has_compiled_coverage() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let runtime_assembly = migrated_core_console_route_assembly();
     let bindings = migrated_core_console_contract_bindings();
@@ -129,8 +126,7 @@ fn migrated_real_core_console_route_assembly_has_compiled_coverage() {
     }));
 }
 
-#[test]
-fn applications_routes_compile_exact_operations_and_resource_metadata() {
+pub fn applications_routes_compile_exact_operations_and_resource_metadata() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let assembly = migrated_core_console_route_assembly();
     let bindings = migrated_core_console_contract_bindings();
@@ -261,8 +257,7 @@ fn applications_routes_compile_exact_operations_and_resource_metadata() {
     );
 }
 
-#[test]
-fn applications_closed_set_rejects_duplicate_or_missing_binding() {
+pub fn applications_closed_set_rejects_duplicate_or_missing_binding() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let assembly = migrated_core_console_route_assembly();
     let contract_bindings = migrated_core_console_contract_bindings();
@@ -295,8 +290,7 @@ fn applications_closed_set_rejects_duplicate_or_missing_binding() {
     ));
 }
 
-#[test]
-fn application_api_orchestration_runtime_routes_compile_exact_operations() {
+pub fn application_api_orchestration_runtime_routes_compile_exact_operations() {
     let assembly = crate::routes::application_api::route_assembly()
         .merge(crate::routes::application_orchestration::route_assembly())
         .merge(crate::routes::application_runtime::route_assembly());
@@ -782,6 +776,9 @@ fn application_api_orchestration_runtime_routes_compile_exact_operations() {
     }
 }
 
-mod data_model_and_docs;
-mod infrastructure_and_mcp;
-mod plugins_and_models;
+#[path = "console_route_assembly_tests/data_model_and_docs.rs"]
+pub(crate) mod data_model_and_docs;
+#[path = "console_route_assembly_tests/infrastructure_and_mcp.rs"]
+pub(crate) mod infrastructure_and_mcp;
+#[path = "console_route_assembly_tests/plugins_and_models.rs"]
+pub(crate) mod plugins_and_models;

@@ -1,7 +1,6 @@
 use super::*;
 
-#[test]
-fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
+pub fn infrastructure_mcp_and_user_api_key_routes_compile_exact_operations() {
     let host = crate::routes::host_infrastructure::route_assembly();
     let mcp = crate::routes::mcp_management::route_assembly();
     let user_api_keys = crate::routes::user_api_keys::route_assembly();
