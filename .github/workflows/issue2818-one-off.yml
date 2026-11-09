@@ -1,4 +1,4 @@
-name: Issue 2818 native-bound seed owner
+name: Issue 2818 restored seed diagnostic
 
 on:
   push:
@@ -20,6 +20,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: issue2818-one-off-feasibility
@@ -41,10 +42,13 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version-file: web/.nvmrc
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Validate exact seed dependency graph and execute the database-free owner
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.99.1' 
+      - name: Restore retained source and target, diagnose ordinary lib for 600 seconds, then execute seed
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           CANDIDATE_REF: ${{ inputs.candidate_ref || 'refs/heads/opt/2818-global-20261109' }}
           CANDIDATE_SHA: ${{ inputs.candidate_sha || 'a9e85b53bb385349896a16eeaa32238093248626' }}
           CANDIDATE_WAIT: ${{ inputs.wait_seconds || '1200' }}
@@ -56,7 +60,7 @@ jobs:
           export XDG_RUNTIME_DIR="/run/user/$task_uid"
           export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
           task_cpu_percent=$(( $(getconf _NPROCESSORS_ONLN) * 60 ))
-          systemctl --user set-property --runtime issue2818.slice MemoryMax=8000000000 MemoryHigh=7200000000 MemorySwapMax=0 "CPUQuota=$task_cpu_percent%"
+          systemctl --user set-property --runtime issue2818.slice MemoryMax=8000000000 MemoryHigh=infinity MemorySwapMax=0 "CPUQuota=$task_cpu_percent%"
           systemctl --user start issue2818.slice
           task_group=$(systemctl --user show issue2818.slice --property=ControlGroup --value)
           task_inode=$(stat -c %i "/sys/fs/cgroup$task_group")
