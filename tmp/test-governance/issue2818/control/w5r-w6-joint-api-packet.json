@@ -1,0 +1,88 @@
+{
+  "id": "W5R-W6-joint-api-qualification",
+  "state": "AUTHORIZED_AFTER_IR_QUALIFICATION_RESULT",
+  "at": "2026-11-09T20:27:44.084513+00:00",
+  "candidate": "9f35e154b6908eb54b51d1ceb504552b0a4e0eba",
+  "owner": "ci_evidence",
+  "reason": "Current88 actual pass and Box event hypothesis confirmed; mixed latency remains UNSETTLED, not confirmed runtime regression or PASS. W6 actual schema qualification and amended W5 actual source verifier permit one joint API fact-closing batch. No IR tuning/retry.",
+  "model_inputs": [
+    "model/candidates/raw/static-runtime-reads-schema/api-qualification-decision.md",
+    "model/candidates/raw/compile-responsibility-w5/runtime-revision/implemented-verifier.json",
+    "ci-w5-revision-42689568321/minimal-result.json"
+  ],
+  "source_changes": "W5 runtime revision + W6 actual static schema relative to qualified7bb cache; this is a concrete source/type/codegen responsibility change, not a same-config OOM repeat.",
+  "cache": {
+    "artifact_id": 13682384755,
+    "archive_bytes": 1505695992,
+    "archive_sha256": "0acde5468f55e6b1939011ebd98802ccc1807f623710e1182fc30dab598341d6",
+    "source": "7bb249e47d29dce87a291677884bd42962aa2046",
+    "download_cloud_only": true,
+    "exact_paths": "/home/runner/work/_temp/issue2818/{seed-source,target-seed}",
+    "prefetch": "existing cargo fetch --locked bounded180, no offline/wrapper/flags during fetch; Cargo/lock unchanged verified"
+  },
+  "steps": [
+    {
+      "id": "A-ordinary-API",
+      "argv": [
+        "cargo",
+        "build",
+        "--profile",
+        "test",
+        "-p",
+        "api-server",
+        "--features",
+        "test-support",
+        "--lib",
+        "--jobs",
+        "1",
+        "--message-format=json"
+      ],
+      "seconds": 600,
+      "require": "Actual normal API lib non--test fresh=false/rlib+rmeta; legitimate changed IR production artifact fresh=false, all other dependency identities/profile/features same and Fresh. Reconcile actual graph not assume509Fresh.",
+      "diagnostics": "reuse existing exact API-root-only time-passes+format and mono-stats+json fourflags; bootstrap only matchingAPI exec, others transparent. No global RUSTFLAGS/workspace wrapper/new flags."
+    },
+    {
+      "id": "B-existing-private-contracts",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "api-server",
+        "--features",
+        "test-support",
+        "--test",
+        "api_private_contracts",
+        "--no-run",
+        "--jobs",
+        "1",
+        "--message-format=json"
+      ],
+      "seconds": 600,
+      "only_if": "A succeeds/clean/no resource stop",
+      "require": "Full original central root codegen+link executable; library dependency Fresh, legitimate existing test-only units separately accounted. No narrowed tree, exports, metadata-only or alternate target."
+    },
+    {
+      "id": "C-discovery-and-seed",
+      "only_if": "B succeeds/no resource stop",
+      "require": "Actual full contracts list and ignored identities; same frozen two seedfilters list/ignored/real nonzero execution via existing target-qualified commands, default real builder args/env, no PG. Verify same root/profile/features no unexpected Rust rebuild; stop if differs. No presumed static1+4 denominator.",
+      "filters": [
+        "ac_002_decodes_digest_verified_build_time_official_seed",
+        "dynamic_backend_consumer_inventory"
+      ],
+      "scope": "Two seedqueries already in frozen W1 workload. Do not run entire contracts suite or MCP/application/PG automatically."
+    }
+  ],
+  "budget": "hard8e9/high=max/swap0/CPU<=60%,jobs1/incremental0,one heavy stage,whole bounded30min plus existing bounded archival/cleanup. No local heavy/7600/7800/service changes.",
+  "resources": "Preserve scope+parent memory/events, process/treeRSS samples, mono source/hash, Cargo source/realargv/features/profile/fresh, cost and clean process tree. Type layout/assertions not physicalstack evidence. Normal lib above6.4 but within8 can pass qualification only; final resource target remains FAIL.",
+  "stop": "OOM/kill/deadline/compileerror/sourcegraph mismatch/no credibleFresh/unexpected recompilation/listzero/cleanup failure: stop chain, retain partial target, no same-source/config retry or duration/budget increase. Root decides whole W5 disposition with failure.",
+  "retain": "Always cloud source+target archive using existing mechanism, source identity and hashes, split smallresults+cache artifacts, stdout same-source conciseJSON, owner watch→automatic smallresults→minimal-result/first cause; no full local cache download.",
+  "not_accepted": [
+    "W5 runtime NDR/latency benefit",
+    "real API large enum retention/HTTP/physicalstack",
+    "6.4GB",
+    "AC006 current+2174",
+    "C01 frozen oldliteral/newalltargets pair",
+    "controlledW/realPR metrics",
+    "Root completion/beta merge"
+  ]
+}

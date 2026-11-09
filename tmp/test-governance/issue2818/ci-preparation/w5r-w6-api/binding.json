@@ -1,0 +1,68 @@
+{
+  "A": [
+    "cargo",
+    "build",
+    "--profile",
+    "test",
+    "-p",
+    "api-server",
+    "--features",
+    "test-support",
+    "--lib",
+    "--jobs",
+    "1",
+    "--message-format=json"
+  ],
+  "B": [
+    "cargo",
+    "test",
+    "-p",
+    "api-server",
+    "--features",
+    "test-support",
+    "--test",
+    "api_private_contracts",
+    "--no-run",
+    "--jobs",
+    "1",
+    "--message-format=json"
+  ],
+  "api_tree": "3b36d9703b56c9ef53cc6a2442f673ec799c4080",
+  "cache_source": "7bb249e47d29dce87a291677884bd42962aa2046",
+  "candidate": "9f35e154b6908eb54b51d1ceb504552b0a4e0eba",
+  "frozen_runtime": {
+    "backend": {
+      "cargoJobs": 1,
+      "cargoTestThreads": 1,
+      "incremental": false
+    },
+    "frontend": {
+      "turboConcurrency": 1,
+      "vitestMaxWorkers": 1
+    },
+    "locks": {
+      "pollIntervalMs": 5000,
+      "waitTimeoutMinutes": 30,
+      "waitTimeoutMs": 1800000
+    },
+    "scripts": {
+      "testConcurrency": 1
+    }
+  },
+  "packet": "tmp/test-governance/issue2818/control/w5r-w6-joint-api-packet.json",
+  "packet_sha256": "07359cbdd484a17a8e854fe3b8872c1c681a70126a6a017a07319e46fc199586",
+  "prefetch_contract": "tmp/test-governance/issue2818/ci-preparation/w5-runtime-cost/prefetch-source-contract.json",
+  "prefetch_contract_sha256": "cf434aa67bc6b89b68902564a3cf102d652a4d885a48be2c554d50471c5669ea",
+  "prior_api_units_sha256": "db5d1df9086bf6fb180002bb3d6bb245eb8d5782b53d39ea632b27319ab3a863",
+  "root_wrapper_sha256": "fed42c82a597c44cdc6dbed707b16202eb78edb5bbf13ae91c69d840876eccbc",
+  "shared_budget_helper_sha256": "77952af01b8bed3781782d09f5b028bb089ad5ccb68dce3f4454cf03a06df40e",
+  "source_hashes": {
+    "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads/managed_projection/application_runtime_reads_output.rs": "c090929208b00618e40787999d66611dd1c1994c69d61e926c401b18fa01c339",
+    "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads/managed_projection/application_runtime_reads_schema.rs": "ef9d0f27de58aea4e6c254aa8f0a9c5a067d2afea41b0217e6d2d2662fcaf987",
+    "api/crates/interface-runtime/src/_tests/invocation/runtime_revision_tests.rs": "3d6cefb1b7bdb3267a279e7c870c60f4f194c1e73c97c0091699a2f80d6d7a0d",
+    "api/crates/interface-runtime/src/_tests/invocation_tests.rs": "dfdd30ea4d4de89c93e9d977af699121cb940bfb7441313cd01b2a9e3f983695",
+    "api/crates/interface-runtime/src/invocation/unary.rs": "8f849e92b4c01ca4e659dab1aaafe03ad0a43fa63541d6ce1b4ad8ee3998aed1",
+    "api/crates/interface-runtime/src/invocation/unary/_tests/runtime_revision_tests.rs": "db7ec20c99bd08dc19c463c3b0256f4213183ecd254e0f054cd3d6fa851c44d8",
+    "api/crates/interface-runtime/src/invocation/unary/bridge.rs": "9f3fee015f3f540f5730b9c77d606d5ccebbe27f203751778f0a47e778459ee0"
+  }
+}

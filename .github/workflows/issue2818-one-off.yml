@@ -1,8 +1,22 @@
-name: Issue 2818 W5 cost environment recovery
+name: Issue 2818 joint revised IR and static schema API qualification
 
 on:
   push:
     branches: ['ci/2818-target-evidence-20261109']
+  workflow_dispatch:
+    inputs:
+      candidate_ref:
+        description: Branch fetched after the baseline completes
+        type: string
+        default: refs/heads/opt/2818-global-20261109
+      candidate_sha:
+        description: Exact candidate SHA (optional until Root pushes)
+        type: string
+        default: 9f35e154b6908eb54b51d1ceb504552b0a4e0eba
+      wait_seconds:
+        description: Bounded candidate availability wait
+        type: string
+        default: '1200'
 
 permissions:
   contents: read
@@ -20,7 +34,7 @@ env:
 jobs:
   first-pair:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v5
         with:
@@ -31,11 +45,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: '1.99.1' 
-      - name: Fetch locked sources, gate candidate legacy83 plus revision5, then run fixed IR costs
+      - name: Joint revised IR ordinary API then full contracts and existing seed queries
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          CANDIDATE_SHA: 9f35e154b6908eb54b51d1ceb504552b0a4e0eba
+          CANDIDATE_REF: ${{ inputs.candidate_ref || 'refs/heads/opt/2818-global-20261109' }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha || '9f35e154b6908eb54b51d1ceb504552b0a4e0eba' }}
+          CANDIDATE_WAIT: ${{ inputs.wait_seconds || '1200' }}
         run: |
           set -euo pipefail
           task_uid=$(id -u)
@@ -49,10 +65,10 @@ jobs:
           task_group=$(systemctl --user show issue2818.slice --property=ControlGroup --value)
           task_inode=$(stat -c %i "/sys/fs/cgroup$task_group")
           systemd-run --user --scope --quiet --unit=issue2818-orchestrator --slice=issue2818.slice \
-            --property=RuntimeMaxSec=1200s --property=TimeoutStopSec=5s --property=KillMode=control-group \
+            --property=RuntimeMaxSec=2160s --property=TimeoutStopSec=5s --property=KillMode=control-group \
             --working-directory="$GITHUB_WORKSPACE" \
             env "ONEFLOWBASE_TASK_BUDGET_CGROUP=$task_group" "ONEFLOWBASE_TASK_BUDGET_ID=$task_inode" \
-            python3 tmp/test-governance/issue2818/ci-preparation/w5-runtime-cost/entry.py --execute
+            python3 tmp/test-governance/issue2818/ci-preparation/w5r-w6-api/entry.py
       - name: Confirm owned slice is empty and preserve final limits
         if: always()
         shell: bash
@@ -77,24 +93,24 @@ jobs:
         if: always()
         timeout-minutes: 5
         with:
-          name: issue2818-w5-runtime-cost-results-${{ github.run_id }}-${{ github.run_attempt }}
+          name: issue2818-w5r-w6-api-results-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             tmp/test-governance/issue2818/ci-evidence/**
             tmp/test-governance/issue2818/ci-preparation/**
+            tmp/test-governance/issue2818/control/w5r-w6-joint-api-packet.json
             !tmp/test-governance/issue2818/ci-evidence/seed-target-and-source.tar.zst
-            !tmp/test-governance/issue2818/ci-evidence/test-binaries/**
-            tmp/test-governance/issue2818/development/w5-runtime-cost-probe/**
-            tmp/test-governance/issue2818/model/candidates/raw/w5-runtime-cost-probe/implemented-verifier.json
           if-no-files-found: error
           compression-level: 1
           retention-days: 3
-      - name: Upload four copied IR probe test binaries separately
+      - name: Upload retained source and target cache
         uses: actions/upload-artifact@v7
         if: always()
         timeout-minutes: 5
         with:
-          name: issue2818-w5-runtime-cost-binaries-${{ github.run_id }}-${{ github.run_attempt }}
-          path: tmp/test-governance/issue2818/ci-evidence/test-binaries/**
+          name: issue2818-w5r-w6-api-cache-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tmp/test-governance/issue2818/ci-evidence/seed-target-and-source.tar.zst
+            tmp/test-governance/issue2818/ci-evidence/seed-retention.json
           if-no-files-found: warn
-          compression-level: 1
+          compression-level: 0
           retention-days: 3
