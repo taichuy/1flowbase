@@ -318,31 +318,22 @@ where
         }
     }
 
+    pub(crate) fn failure_observers(&self) -> FailureObservers<'_> {
+        FailureObservers {
+            bindings: &self.bindings,
+            hooks: &self.failure,
+        }
+    }
+
     pub(crate) async fn run_failure(
         &self,
         budget: &mut InvocationFinalization,
         context: &InterfaceHookContext,
         classification: &str,
     ) {
-        for (plugin, hook) in self
-            .observer_plugins(InterfaceExtensionPoint::Failure)
-            .into_iter()
-            .zip(&self.failure)
-            .rev()
-        {
-            let observed = context.observer_context();
-            let record = budget
-                .observe(plugin, InterfaceExtensionPoint::Failure, || {
-                    hook.failed(observed.clone(), classification)
-                })
-                .await;
-            if observed
-                .observer_failed
-                .load(std::sync::atomic::Ordering::Relaxed)
-            {
-                budget.record_reported_failure(record);
-            }
-        }
+        self.failure_observers()
+            .run(budget, context, classification)
+            .await;
     }
 
     fn observer_plugins(&self, point: InterfaceExtensionPoint) -> Vec<&PluginIdentity> {
@@ -369,6 +360,42 @@ where
             let record = budget
                 .observe(plugin, InterfaceExtensionPoint::Completion, || {
                     hook.completed(observed.clone(), terminal)
+                })
+                .await;
+            if observed
+                .observer_failed
+                .load(std::sync::atomic::Ordering::Relaxed)
+            {
+                budget.record_reported_failure(record);
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct FailureObservers<'a> {
+    bindings: &'a [(PluginIdentity, InterfaceExtensionPoint)],
+    hooks: &'a [Arc<dyn InterfaceFailureHook>],
+}
+
+impl FailureObservers<'_> {
+    pub(crate) async fn run(
+        self,
+        budget: &mut InvocationFinalization,
+        context: &InterfaceHookContext,
+        classification: &str,
+    ) {
+        let plugins: Vec<_> = self
+            .bindings
+            .iter()
+            .filter(|(_, point)| *point == InterfaceExtensionPoint::Failure)
+            .map(|(plugin, _)| plugin)
+            .collect();
+        for (plugin, hook) in plugins.into_iter().zip(self.hooks).rev() {
+            let observed = context.observer_context();
+            let record = budget
+                .observe(plugin, InterfaceExtensionPoint::Failure, || {
+                    hook.failed(observed.clone(), classification)
                 })
                 .await;
             if observed

@@ -788,163 +788,31 @@ where
             }
         }
 
-        let authorization = await_in_flight(
-            &controls,
-            self.authorization
-                .authorize(InterfaceAuthorizationRequest::new(
-                    principal.clone(),
-                    definition.clone(),
-                    binding.clone(),
-                    protocol,
-                )),
-        )
-        .await;
-        let authorization = match authorization {
-            Ok(authorization) => authorization,
-            Err(interruption) => {
-                return Err(receipt
-                    .fail(
-                        interruption_error(interruption),
-                        InterfaceInvocationTerminal::Cancelled,
-                    )
-                    .await);
-            }
+        let authorization = self
+            .authorization
+            .authorize(InterfaceAuthorizationRequest::new(
+                principal.clone(),
+                definition.clone(),
+                binding.clone(),
+                protocol,
+            ));
+        let policy = policy::InvocationPolicy {
+            controls: &controls,
+            plan: &plan,
+            principal: principal.summary(),
+            context: &hook_context,
+            target_admission: self.target_admission.as_deref(),
+            authorization: plan
+                .authorization_plan::<I, O>()
+                .map(|plan| plan.contributions()),
+            admission: plan
+                .admission_plan::<I, O>()
+                .map(|plan| plan.contributions()),
+            failure: hook_plan.map(|plan| plan.failure_observers()),
         };
-        if let Err(error) = authorization {
-            run_failure_hooks(
-                &mut receipt.finalization,
-                hook_plan,
-                &hook_context,
-                error.classification(),
-            )
-            .await;
-            return Err(receipt
-                .fail(
-                    InterfaceInvocationError::AuthorizationRejected(error),
-                    InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
+        if let Err((error, terminal)) = policy.run(authorization, &mut receipt).await {
+            return Err(receipt.fail(error, terminal).await);
         }
-        if let Some(extensions) = plan.authorization_plan::<I, O>() {
-            let authorization = await_in_flight(
-                &controls,
-                extensions.run(InterfaceAuthorizationContributionRequest::new(
-                    principal.summary(),
-                    definition.clone(),
-                    binding.clone(),
-                    protocol,
-                    hook_context.clone(),
-                )),
-            )
-            .await;
-            match authorization {
-                Err(interruption) => {
-                    return Err(receipt
-                        .fail(
-                            interruption_error(interruption),
-                            InterfaceInvocationTerminal::Cancelled,
-                        )
-                        .await);
-                }
-                Ok(Err(error)) => {
-                    run_failure_hooks(
-                        &mut receipt.finalization,
-                        hook_plan,
-                        &hook_context,
-                        error.classification(),
-                    )
-                    .await;
-                    return Err(receipt
-                        .fail(
-                            InterfaceInvocationError::AuthorizationContributionRejected(error),
-                            InterfaceInvocationTerminal::Rejected,
-                        )
-                        .await);
-                }
-                Ok(Ok(())) => {}
-            }
-        }
-        let authorization_decision = authorization_decision_fingerprint(&plan);
-        receipt.authorized(authorization_decision.clone());
-        if let Some(target_admission) = &self.target_admission {
-            let admission = await_in_flight(
-                &controls,
-                target_admission.admit(InterfaceTargetAdmissionRequest::new(
-                    principal.summary(),
-                    definition.clone(),
-                    binding.clone(),
-                    protocol,
-                )),
-            )
-            .await;
-            let admission = match admission {
-                Ok(admission) => admission,
-                Err(interruption) => {
-                    return Err(receipt
-                        .fail(
-                            interruption_error(interruption),
-                            InterfaceInvocationTerminal::Cancelled,
-                        )
-                        .await);
-                }
-            };
-            if let Err(error) = admission {
-                run_failure_hooks(
-                    &mut receipt.finalization,
-                    hook_plan,
-                    &hook_context,
-                    error.classification(),
-                )
-                .await;
-                return Err(receipt
-                    .fail(
-                        InterfaceInvocationError::AdmissionRejected(error),
-                        InterfaceInvocationTerminal::Rejected,
-                    )
-                    .await);
-            }
-        }
-        if let Some(extensions) = plan.admission_plan::<I, O>() {
-            let admission = await_in_flight(
-                &controls,
-                extensions.run(InterfaceAdmissionContributionRequest::new(
-                    principal.summary(),
-                    definition.clone(),
-                    binding.clone(),
-                    protocol,
-                    authorization_decision,
-                    hook_context.clone(),
-                )),
-            )
-            .await;
-            match admission {
-                Err(interruption) => {
-                    return Err(receipt
-                        .fail(
-                            interruption_error(interruption),
-                            InterfaceInvocationTerminal::Cancelled,
-                        )
-                        .await);
-                }
-                Ok(Err(error)) => {
-                    run_failure_hooks(
-                        &mut receipt.finalization,
-                        hook_plan,
-                        &hook_context,
-                        error.classification(),
-                    )
-                    .await;
-                    return Err(receipt
-                        .fail(
-                            InterfaceInvocationError::AdmissionContributionRejected(error),
-                            InterfaceInvocationTerminal::Rejected,
-                        )
-                        .await);
-                }
-                Ok(Ok(())) => {}
-            }
-        }
-        receipt.stage(InterfaceInvocationStage::Admitted);
         if let Some(hook_plan) = hook_plan {
             let before =
                 await_in_flight(&controls, hook_plan.run_before(&hook_context, &mut input)).await;

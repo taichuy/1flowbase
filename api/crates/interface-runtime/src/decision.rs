@@ -236,19 +236,54 @@ typed_decision_plan!(
 );
 typed_decision_plan!(TypedInterfaceAdmissionPlan, InterfaceAdmissionContribution);
 
+#[derive(Clone, Copy)]
+pub(crate) struct AuthorizationContributions<'a>(
+    &'a [(PluginIdentity, Arc<dyn InterfaceAuthorizationContribution>)],
+);
+
+impl AuthorizationContributions<'_> {
+    pub(crate) async fn run(
+        self,
+        request: InterfaceAuthorizationContributionRequest,
+    ) -> Result<(), InterfaceAuthorizationContributionError> {
+        for (_, contribution) in self.0 {
+            contribution.authorize(request.clone()).await?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct AdmissionContributions<'a>(
+    &'a [(PluginIdentity, Arc<dyn InterfaceAdmissionContribution>)],
+);
+
+impl AdmissionContributions<'_> {
+    pub(crate) async fn run(
+        self,
+        request: InterfaceAdmissionContributionRequest,
+    ) -> Result<(), InterfaceAdmissionContributionError> {
+        for (_, contribution) in self.0 {
+            contribution.admit(request.clone()).await?;
+        }
+        Ok(())
+    }
+}
+
 impl<I, O> TypedInterfaceAuthorizationPlan<I, O>
 where
     I: InterfaceContract,
     O: InterfaceContract,
 {
+    pub(crate) fn contributions(&self) -> AuthorizationContributions<'_> {
+        AuthorizationContributions(&self.bindings)
+    }
+
     pub(crate) async fn run(
         &self,
         request: InterfaceAuthorizationContributionRequest,
     ) -> Result<(), InterfaceAuthorizationContributionError> {
-        for (_, contribution) in &self.bindings {
-            contribution.authorize(request.clone()).await?;
-        }
-        Ok(())
+        self.contributions().run(request).await
     }
 }
 
@@ -257,14 +292,15 @@ where
     I: InterfaceContract,
     O: InterfaceContract,
 {
+    pub(crate) fn contributions(&self) -> AdmissionContributions<'_> {
+        AdmissionContributions(&self.bindings)
+    }
+
     pub(crate) async fn run(
         &self,
         request: InterfaceAdmissionContributionRequest,
     ) -> Result<(), InterfaceAdmissionContributionError> {
-        for (_, contribution) in &self.bindings {
-            contribution.admit(request.clone()).await?;
-        }
-        Ok(())
+        self.contributions().run(request).await
     }
 }
 
