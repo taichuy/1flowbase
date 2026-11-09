@@ -13,12 +13,20 @@ import sys
 import time
 
 SEED_SHA = 'a9e85b53bb385349896a16eeaa32238093248626'
-PRIOR_RUN = '42568534500'
-PRIOR_NAME = 'issue2818-seed-owner-42568534500-1'
-PRIOR_ARTIFACT_ID = 13652328448
-ARCHIVE_SHA = '26bb9930154de09183a5270b23dae7b53a85437eebf9e62175742e02661516c4'
-ARCHIVE_BYTES = 679483365
+PRIOR_RUN = '42572052197'
+PRIOR_NAME = 'issue2818-seed-owner-42572052197-1'
+PRIOR_ARTIFACT_ID = 13654072605
+ARCHIVE_SHA = '83177736363129f08913e94fce5e2d050e9d772c7b1a634bcdbdcb26f93b6a05'
+ARCHIVE_BYTES = 680288609
 BASELINE = 'e3cdfefb7a5b85d1d7d9c2ef166e3b923c05de89'
+W2_CANDIDATE = 'e0a2790bb08ec3b4c914b27e1bed9938c293d1fe'
+W2_ALLOWED = ['.agents/skills/qa-evaluation/references/backend/console-settings-registration-gate.md', '.github/workflows/notification-subscription.yml', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/data_model_and_docs.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/infrastructure_and_mcp.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/plugins_and_models.rs', 'api/apps/api-server/src/routes/_tests/file_console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/_tests/mod.rs', 'api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/console_route_assembly.rs', 'api/apps/api-server/src/routes/console_route_assembly/_tests/assembly.rs', 'api/apps/api-server/src/routes/mod.rs', 'api/apps/api-server/src/test_support/mod.rs', 'api/apps/api-server/tests/README.md', 'api/apps/api-server/tests/console_core_registry_tests.rs', 'scripts/node/agent-logs-exchange/ci-api.cjs', 'scripts/node/console-operation-registry-hygiene/README.md', 'scripts/node/console-operation-registry-hygiene/_tests/core.test.js', 'scripts/node/console-operation-registry-hygiene/compiled-assembly-checks.js']
+W2_MAP = [{'assertion_source': 'api/apps/api-server/src/routes/console_route_assembly/_tests/assembly.rs', 'function': 'migrated_assembly_contains_every_console_router_owner_assembly', 'full_test_name': 'routes::console_route_assembly::tests::migrated_assembly_contains_every_console_router_owner_assembly', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/console_route_assembly/_tests/assembly.rs', 'function': 'complete_operation_specifications_match_the_production_route_set', 'full_test_name': 'routes::console_route_assembly::tests::complete_operation_specifications_match_the_production_route_set', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/console_route_assembly/_tests/assembly.rs', 'function': 'operation_specification_exact_set_reports_every_difference', 'full_test_name': 'routes::console_route_assembly::tests::operation_specification_exact_set_reports_every_difference', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests.rs', 'function': 'console_route_assembly_unclassified_route_fails_coverage', 'full_test_name': 'routes::_tests::console_route_assembly_tests::console_route_assembly_unclassified_route_fails_coverage', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests.rs', 'function': 'console_route_assembly_duplicate_ownership_fails_coverage', 'full_test_name': 'routes::_tests::console_route_assembly_tests::console_route_assembly_duplicate_ownership_fails_coverage', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests.rs', 'function': 'migrated_real_core_console_route_assembly_has_compiled_coverage', 'full_test_name': 'routes::_tests::console_route_assembly_tests::migrated_real_core_console_route_assembly_has_compiled_coverage', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests.rs', 'function': 'applications_routes_compile_exact_operations_and_resource_metadata', 'full_test_name': 'routes::_tests::console_route_assembly_tests::applications_routes_compile_exact_operations_and_resource_metadata', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests.rs', 'function': 'applications_closed_set_rejects_duplicate_or_missing_binding', 'full_test_name': 'routes::_tests::console_route_assembly_tests::applications_closed_set_rejects_duplicate_or_missing_binding', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests.rs', 'function': 'application_api_orchestration_runtime_routes_compile_exact_operations', 'full_test_name': 'routes::_tests::console_route_assembly_tests::application_api_orchestration_runtime_routes_compile_exact_operations', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/file_console_route_assembly_tests.rs', 'function': 'file_owner_routes_compile_from_exact_assemblies', 'full_test_name': 'routes::_tests::file_console_route_assembly_tests::file_owner_routes_compile_from_exact_assemblies', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/file_console_route_assembly_tests.rs', 'function': 'file_owner_routes_preserve_authenticated_data_acl_and_settings_operations', 'full_test_name': 'routes::_tests::file_console_route_assembly_tests::file_owner_routes_preserve_authenticated_data_acl_and_settings_operations', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/file_console_route_assembly_tests.rs', 'function': 'temporary_file_contracts_compile_without_projecting_credentials', 'full_test_name': 'routes::_tests::file_console_route_assembly_tests::temporary_file_contracts_compile_without_projecting_credentials', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs', 'function': 'ac_002_013_members_route_bindings_are_explicit_and_stable', 'full_test_name': 'routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_members_route_bindings_are_explicit_and_stable', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs', 'function': 'ac_002_013_permissions_route_binding_is_explicit_and_stable', 'full_test_name': 'routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_permissions_route_binding_is_explicit_and_stable', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs', 'function': 'ac_001_ui_management_route_bindings_are_explicit_and_granular', 'full_test_name': 'routes::_tests::settings_owner_console_route_assembly_tests::ac_001_ui_management_route_bindings_are_explicit_and_granular', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs', 'function': 'ac_002_013_roles_route_bindings_are_explicit_and_stable', 'full_test_name': 'routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_roles_route_bindings_are_explicit_and_stable', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs', 'function': 'ac_002_013_workspace_route_bindings_are_explicit_and_stable', 'full_test_name': 'routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_workspace_route_bindings_are_explicit_and_stable', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs', 'function': 'ac_002_013_workspaces_route_binding_is_explicit_and_stable', 'full_test_name': 'routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_workspaces_route_binding_is_explicit_and_stable', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs', 'function': 'ac_002_013_auth_center_route_bindings_are_explicit_and_stable', 'full_test_name': 'routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_auth_center_route_bindings_are_explicit_and_stable', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs', 'function': 'ac_002_013_system_route_bindings_are_explicit_and_stable', 'full_test_name': 'routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_system_route_bindings_are_explicit_and_stable', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs', 'function': 'organization_console_route_assembly_keeps_each_operation_independent', 'full_test_name': 'routes::_tests::settings_owner_console_route_assembly_tests::organization_console_route_assembly_keeps_each_operation_independent', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/data_model_and_docs.rs', 'function': 'data_model_docs_and_data_source_routes_compile_exact_operations', 'full_test_name': 'routes::_tests::console_route_assembly_tests::data_model_and_docs::data_model_docs_and_data_source_routes_compile_exact_operations', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/infrastructure_and_mcp.rs', 'function': 'infrastructure_mcp_and_user_api_key_routes_compile_exact_operations', 'full_test_name': 'routes::_tests::console_route_assembly_tests::infrastructure_and_mcp::infrastructure_mcp_and_user_api_key_routes_compile_exact_operations', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}, {'assertion_source': 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/plugins_and_models.rs', 'function': 'ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_ownership', 'full_test_name': 'routes::_tests::console_route_assembly_tests::plugins_and_models::ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_ownership', 'old_target': 'console_core_registry_tests', 'new_target': 'api_private_routes', 'old_wrapper_attributes': ['#[test]'], 'new_direct_attributes_required': ['#[test]'], 'ignored': False}]
+W2_NATIVE_SEVEN = ['ac_002_console_health_is_compiled_and_not_exposed_by_the_base_router', 'ac_003_unknown_core_operation_metadata_fails_instead_of_becoming_other', 'ac_003_every_console_route_is_owned_by_a_compiled_authorization_operation', 'ac_003_005_all_console_routes_have_distinct_static_english_interface_metadata', 'ac_009_core_compiled_catalog_resolves_every_active_display_reference_in_both_locales', 'ac_002_009_operation_semantics_are_explicit_before_legacy_mapping', 'ac_013_role_console_policy_workers_have_explicit_interface_metadata']
+W2_LEAVES = ['api/apps/api-server/src/routes/console_route_assembly/_tests/assembly.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/_tests/file_console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/data_model_and_docs.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/infrastructure_and_mcp.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/plugins_and_models.rs']
+W2_PROTECTED = [{'path': 'api/apps/api-server/src/provider_runtime/mod.rs', 'sha256': '289ba1e169aa53e32a99f7a13b37acccfc5dd74a01f2d4214c16b00e6dbfa153'}, {'path': 'api/apps/api-server/src/app_state.rs', 'sha256': '9bec87713ad9dfd2a2ff0d30642e62fa4c2ae224228c4379481e5b8d4bb66223'}, {'path': 'api/apps/api-server/src/private_routes_test.rs', 'sha256': '1cf5415646e510d6baa266421da5e3225b45e01a272307fadf0cbfc57411b6da'}, {'path': 'api/apps/api-server/src/lib_root.rs', 'sha256': '6ef50240a154e61ff80fa49a22a6297afedb83b58b43e9093c34e773bf1572a6'}, {'path': 'api/apps/api-server/src/private_contracts_test.rs', 'sha256': '6ef50240a154e61ff80fa49a22a6297afedb83b58b43e9093c34e773bf1572a6'}, {'path': 'api/crates/api-test-selection/src/lib.rs', 'sha256': '40de6d57e108ffd0d2e3ee9b8e30bae3c068db5fd9eb1e978fb43c53d75ad9d5'}, {'path': 'api/apps/api-server/Cargo.toml', 'sha256': '93f182d7e43fdc68d27918a0e3f207305beb5deca70930565c0ce1a0b7243c9d'}, {'path': 'api/Cargo.toml', 'sha256': '1d4ead1d4c89915ca70271a02368ecdfb99b089c80865f1773fa93bc06919d57'}, {'path': 'api/apps/api-server/src/_tests/application/application_runtime_routes.rs', 'sha256': 'b596a6459b57bf9ae11e608a6848beebca0e32fd31e1b50f1374ae6cdd904114', 'allowed_change': 'none'}, {'path': 'api/apps/api-server/src/test_support/resources.rs', 'sha256': 'd46f990f5b78f4105268588f56ce5879641f7adb1e207c0df2e9d7f0956ba9d8', 'allowed_change': 'none'}, {'path': 'api/apps/api-server/src/_tests/support/mod.rs', 'sha256': '904ac356af6314e492adc70e00efe8ea35e9bc99626c696c23d56ff5546faf66', 'allowed_change': 'none'}, {'path': 'api/apps/api-server/src/_tests/support/applications.rs', 'sha256': 'e278f690953fcda9beb2e9be50f5ce4f8c10f25cb61b029da1c516462e0c3643', 'allowed_change': 'none'}, {'path': 'api/apps/api-server/src/_tests/support/auth.rs', 'sha256': '31e908761f95c280ecdc456d1c389c542964b0de98817984a8526ef393d05e33', 'allowed_change': 'none'}, {'path': 'api/apps/api-server/src/_tests/support/packages.rs', 'sha256': '663995938f7e4b98b40c07bfe75c1b8c210d8175713e27208da53faa33ff7ee8', 'allowed_change': 'none'}, {'path': 'api/apps/api-server/src/_tests/support/plugins.rs', 'sha256': '5a66ed399f1a042adcc7cd7d5313b61c993f5928c3d33588ee18a2f2fb5cc921', 'allowed_change': 'none'}]
+W2_MAP_SHA = '85657d7abfb5c989dc6ee1245349a1b52891f96d2c838cfce80c0226133b0778'
+
 HOME_ROOT = Path(__file__).resolve().parents[4]
 SELF = Path(__file__).resolve()
 EVIDENCE = HOME_ROOT / 'tmp/test-governance/issue2818/ci-evidence'
@@ -201,6 +209,8 @@ def run(label, argv, cwd=HOME_ROOT, env=None, heavy=False, seconds=1200, expecte
         raise RuntimeError(f'{label}: incomplete owned-process cleanup')
     if receipt['classification'] != 'exit':
         raise RuntimeError(f'{label}: {receipt["classification"]}; no unchanged retry')
+    if expected == 'optional':
+        return row
     if expected == 'nonzero':
         if code == 0:
             raise RuntimeError(f'{label}: injected invalid source was accepted')
@@ -372,7 +382,7 @@ def cargo_fresh_summary():
             if not line.startswith('{'):
                 continue
             try:
-                row=json.loads(line)
+                row=json.loads(line.removeprefix('time: '))
             except json.JSONDecodeError:
                 continue
             if row.get('reason')=='compiler-artifact':
@@ -416,7 +426,7 @@ def download_retained():
     original_prebuild=old_build['argv']
     prebuild=[arg for arg in original_prebuild if not arg.startswith('--message-format=')]
     assert prebuild==['cargo','build','--profile','test','--package','api-server',
-        '--features','test-support','--lib','--jobs',str(prior_plan['runtime']['backend']['cargoJobs'])]
+        '--features','test-support','--lib','--jobs','1']
     assert prior_plan['runtime']['backend']['cargoJobs']==2, 'incoming source runtime must remain observed jobs=2'
     os.environ['ISSUE2818_FROZEN_RUNTIME']=json.dumps(prior_plan['runtime'])
     old_samples=evidence/Path(old_build['merged_log']).name.replace('.combined.log','.native-samples.jsonl')
@@ -425,9 +435,9 @@ def download_retained():
     save(EVIDENCE/'cache-resume.json',{'source_run':PRIOR_RUN,'artifact':PRIOR_NAME,
         'archive_sha256':ARCHIVE_SHA,'archive_bytes':ARCHIVE_BYTES,'source_sha':SEED_SHA,
         'runtime':prior_plan['runtime'],'original_prebuild_argv':original_prebuild,
-        'cache_state':'restored partial target from hard-cap OOM; not cold','memory_high':'max',
-        'incoming_jobs':2,'diagnostic_jobs':1,'compiler_stage_flags':'root-only temporary RUSTC_WRAPPER: -Ztime-passes -Ztime-passes-format=json',
-        'different_condition':'previous no-high/jobs2 failed; next authorized variable is jobs1; no performance claim'})
+        'cache_state':'restored partial a9 target from deadline with OOM evidence; not cold','memory_high':'max',
+        'incoming_jobs':1,'diagnostic_jobs':1,'compiler_stage_flags':'root-only temporary RUSTC_WRAPPER: -Ztime-passes -Ztime-passes-format=json',
+        'different_condition':'W2 19-file owner change; old archive remains a9; no cold or PR-topology performance claim'})
     return archive,evidence,prior_plan,prebuild
 
 def retain_seed_cache(source, target, metadata):
@@ -439,6 +449,7 @@ def retain_seed_cache(source, target, metadata):
     if not target.exists():
         save(out,{'status':'no-target-created'})
         return
+    metadata['actual_source_sha']=capture(['git','rev-parse','HEAD'],source)
     import resource
     cap=3_000_000_000
     command=[sys.executable,'-c',
@@ -451,14 +462,14 @@ def retain_seed_cache(source, target, metadata):
                 digest.update(chunk)
         save(out,{'status':'archived','archive':str(archive),'bytes':archive.stat().st_size,
                   'sha256':digest.hexdigest(),'compiler':capture(['rustc','-vV']),
-                  'source_sha':metadata['source_sha'],'root_paths':[str(source),str(target)],
+                  'source_sha':metadata.get('actual_source_sha',metadata['source_sha']),'root_paths':[str(source),str(target)],
                   'cache_level':metadata,'note':'partial or complete as recorded; restore must revalidate Cargo freshness; source mtimes retained and .git excluded',
                   'archive_cost_seconds':row['wall_seconds']})
     except Exception as failure:
         archive.unlink(missing_ok=True)
         save(out,{'status':'archive-unavailable','reason':str(failure),'bounded_bytes':cap,'bounded_seconds':300})
 
-ROOT_WRAPPER = "#!/usr/bin/env python3\nimport json,os,re,sys,time\nfrom pathlib import Path\nreal,args=sys.argv[1],sys.argv[2:]\ndef value(flag):\n    if flag in args:\n        return args[args.index(flag)+1]\n    return next((x.split('=',1)[1] for x in args if x.startswith(flag+'=')),None)\nmatch=(value('--crate-name')=='api_server' and value('--crate-type')=='lib'\n       and '--test' not in args and any(Path(x).name=='lib_root.rs' for x in args))\nenv=dict(os.environ)\neffective=list(args)\nif match:\n    mode=env.get('ISSUE2818_RUSTC_MODE','diagnostic')\n    if mode=='diagnostic':\n        effective+=['-Ztime-passes','-Ztime-passes-format=json']\n        env['RUSTC_BOOTSTRAP']='api_server'\n    auth=re.search(r'--jobserver-(?:auth|fds)=(\\d+),(\\d+)',env.get('CARGO_MAKEFLAGS',''))\n    fds={}\n    for fd in (map(int,auth.groups()) if auth else []):\n        try:\n            os.fstat(fd)\n            fds[str(fd)]='open'\n        except OSError:\n            fds[str(fd)]='closed'\n    row={'pid':os.getpid(),'monotonic':time.monotonic(),'mode':mode,'probe':'-Zhelp' in args,\n         'original_argv':[real,*args],'effective_argv':[real,*effective],\n         'bootstrap_for_this_exec':env.get('RUSTC_BOOTSTRAP'),'jobserver_fds':fds}\n    with open(env['ISSUE2818_ROOT_LOG'],'a') as log:\n        log.write(json.dumps(row)+'\\n')\n        log.flush()\n    if mode=='observe-only':\n        os._exit(86)\nos.execve(real,[real,*effective],env)\n"
+ROOT_WRAPPER = "#!/usr/bin/env python3\nimport json,os,re,sys,time\nfrom pathlib import Path\nreal,args=sys.argv[1],sys.argv[2:]\ndef value(flag):\n    if flag in args:\n        return args[args.index(flag)+1]\n    return next((x.split('=',1)[1] for x in args if x.startswith(flag+'=')),None)\nmatch=(value('--crate-name')=='api_server' and value('--crate-type')=='lib'\n       and '--test' not in args and any(Path(x).name=='lib_root.rs' for x in args))\nenv=dict(os.environ)\neffective=list(args)\nif match:\n    mode=env.get('ISSUE2818_RUSTC_MODE','diagnostic')\n    if mode=='diagnostic':\n        effective+=['-Ztime-passes','-Ztime-passes-format=json']\n        if env.get('ISSUE2818_MONO_STATS')=='1':\n            effective+=['-Zdump-mono-stats','-Zdump-mono-stats-format=json']\n        env['RUSTC_BOOTSTRAP']='api_server'\n    auth=re.search(r'--jobserver-(?:auth|fds)=(\\d+),(\\d+)',env.get('CARGO_MAKEFLAGS',''))\n    fds={}\n    for fd in (map(int,auth.groups()) if auth else []):\n        try:\n            os.fstat(fd)\n            fds[str(fd)]='open'\n        except OSError:\n            fds[str(fd)]='closed'\n    row={'pid':os.getpid(),'monotonic':time.monotonic(),'mode':mode,'probe':'-Zhelp' in args,\n         'original_argv':[real,*args],'effective_argv':[real,*effective],\n         'bootstrap_for_this_exec':env.get('RUSTC_BOOTSTRAP'),'jobserver_fds':fds}\n    with open(env['ISSUE2818_ROOT_LOG'],'a') as log:\n        log.write(json.dumps(row)+'\\n')\n        log.flush()\n    if mode=='observe-only':\n        os._exit(86)\nos.execve(real,[real,*effective],env)\n"
 
 def install_stage_wrapper(source,env):
     wrapper=TEMP/'seed-rustc-wrapper.py'
@@ -476,6 +487,19 @@ def install_stage_wrapper(source,env):
         cwd=source/'api',env=diagnostic,seconds=30)
     help_text=Path(help_row['stdout_log']).read_text()
     assert 'time-passes' in help_text and 'time-passes-format' in help_text
+    stats={'status':'skipped','reason':'1.99.1 help does not establish both mono-stat flags/format'}
+    format_help=next((line for line in help_text.splitlines() if 'dump-mono-stats-format' in line),'')
+    if 'dump-mono-stats' in help_text and 'json' in format_help:
+        probe=run('mono-stats-help',[str(wrapper),real,'--crate-name','api_server','--crate-type','lib',
+            str(source/'api/apps/api-server/src/lib_root.rs'),'-Zhelp'],
+            cwd=source/'api',env={**diagnostic,'ISSUE2818_MONO_STATS':'1'},seconds=30,expected='optional')
+        if probe['exit_code']==0:
+            diagnostic['ISSUE2818_MONO_STATS']='1'
+            stats={'status':'enabled-root-only','flags':['-Zdump-mono-stats','-Zdump-mono-stats-format=json'],
+                   'not_RSS_percentage_allocation':True}
+        else:
+            stats={'status':'skipped','reason':'optional format/flag probe rejected','exit_code':probe['exit_code']}
+    save(EVIDENCE/'mono-stats-probe.json',stats)
     return diagnostic
 
 def stage_summary():
@@ -485,7 +509,7 @@ def stage_summary():
     for log in EVIDENCE.glob('*seed-normal-lib-prebuild.combined.log'):
         for line in log.open(errors='replace'):
             try:
-                row=json.loads(line)
+                row=json.loads(line.removeprefix('time: '))
             except json.JSONDecodeError:
                 continue
             if isinstance(row,dict) and ('pass' in row or 'pass_name' in row):
@@ -501,6 +525,97 @@ def stage_summary():
         'last_completed_pass':data['last_completed_pass']}),flush=True)
     return data
 
+def promote_w2(source,candidate,prior_evidence):
+    changed=capture(['git','diff','--name-only',SEED_SHA,candidate],source).splitlines()
+    assert len(changed)==19 and set(changed)==set(W2_ALLOWED), 'candidate must change exactly the approved existing 19 files'
+    run('checkout-w2-candidate',['git','checkout','--detach',candidate],cwd=source,seconds=60)
+    assert capture(['git','rev-parse','HEAD'],source)==candidate
+    capture(['git','diff','--exit-code','HEAD','--'],source)
+    old=read(prior_evidence/'seed-source-source-hashes.json')
+    new=frozen(source)
+    assert old.keys()==new.keys()
+    assert all(new[p]==h for p,h in old.items() if p not in W2_ALLOWED), 'protected source/config/fixture changed'
+    for item in W2_PROTECTED:
+        assert hashlib.sha256((source/item['path']).read_bytes()).hexdigest()==item['sha256'], item['path']
+    for file in W2_LEAVES:
+        current=(source/file).read_text()
+        stripped=re.sub(r'(?m)^[ \t]*#\[test\]\n','',current)
+        original=subprocess.check_output(['git','show',SEED_SHA+':'+file],cwd=source).decode()
+        assert stripped==original, 'whitebox body/helper/signature differs: '+file
+    save(EVIDENCE/'w2-source-validation.json',{'source_sha':candidate,'archive_source_sha':SEED_SHA,
+        'allowed_and_actual_changes':changed,'protected_hashes_match':True,'leaf_bodies_unchanged_except_test_attrs':True,
+        'candidate_checkout_after_archive_restore':True})
+    save(EVIDENCE/'w2-expected-map.json',{'source_map_sha256':W2_MAP_SHA,'identity_mapping':W2_MAP,
+        'native_seven':W2_NATIVE_SEVEN,'old_runtime_evidence':'not available; no old PASS invented'})
+
+OWNER_BUILDER = r"""
+const path=require('node:path'),root=process.argv[1],owner=process.argv[2],filter=process.argv[3];
+const runtime=JSON.parse(process.env.ISSUE2818_FROZEN_RUNTIME);
+const commands=require(path.join(root,'scripts/node/verify/backend.js')).buildBackendTestCommands({
+  repoRoot:root,env:process.env,cargoJobs:1,cargoTestThreads:runtime.backend.cargoTestThreads,
+  incremental:runtime.backend.incremental,selection:{packages:['api-server'],
+  targetArgs:['--test',owner,'--features','test-support'],filter}});
+process.stdout.write(JSON.stringify(commands.find(c=>c.command==='cargo')));
+"""
+
+def execute_w2_owner(source,data,cargo_meta,target,diagnostic,owner,filter,names,label):
+    command=json.loads(capture(['node','-e',OWNER_BUILDER,str(source),owner,filter],source))
+    env={**command_env(data,command,target),'RUSTC_WRAPPER':diagnostic['RUSTC_WRAPPER'],
+        'ISSUE2818_RUSTC_MODE':'observe-only','ISSUE2818_ROOT_LOG':diagnostic['ISSUE2818_ROOT_LOG']}
+    argv=[command['command'],*command['args']]
+    roots=root_names(source,cargo_meta)
+    identities={v for v in roots.values() if '/test/'+owner+'/' in v}
+    assert len(identities)==1
+    identity=next(iter(identities))
+    listing=run(label+'-list',[*argv,'--list'],cwd=source/command['cwd'],env=env,heavy=True,seconds=600)
+    ignored=run(label+'-ignored',[*argv,'--list','--ignored'],cwd=source/command['cwd'],env=env,heavy=True,seconds=600)
+    listed=cases(listing['merged_log'],roots,'list')
+    assert Counter(map(tuple,listed))==Counter((identity,name,'test') for name in names), 'compiled owner/name list differs: '+label
+    assert not cases(ignored['merged_log'],roots,'list'), 'unexpected ignored case: '+label
+    execution=run(label+'-execute',argv,cwd=source/command['cwd'],env=env,heavy=True,seconds=600)
+    actual=cases(execution['merged_log'],roots,'run')
+    assert Counter(map(tuple,actual))==Counter((identity,name,'ok') for name in names)
+    save(EVIDENCE/(label+'-cases.json'),{'target':owner,'argv':argv,'listed':listed,'ignored':[],
+        'actual':actual,'count':len(actual),'executed_once':True})
+    return listed,actual
+
+def w2_cost_summary():
+    groups={'ordinary_lib':[],'private_owner_new_compile_and_24':[],'native_remaining_7':[],
+            'seed_queries_and_new_contracts_compile':[],'listing_and_other_preparation':[]}
+    for row in RESULTS:
+        label=row['label']
+        group=('ordinary_lib' if label=='seed-normal-lib-prebuild' else
+               'private_owner_new_compile_and_24' if label.startswith('w2-private') else
+               'native_remaining_7' if label.startswith('w2-native') else
+               'seed_queries_and_new_contracts_compile' if label.startswith('seed-query-') and 'unit-graph' not in label else
+               'listing_and_other_preparation')
+        groups[group].append({'label':label,'wall_seconds':row['wall_seconds'],
+                              'classification':row['classification'],'receipt':row['receipt']})
+    save(EVIDENCE/'w2-cost-summary.json',{'source_sha':os.environ.get('CANDIDATE_SHA'),
+        'serial_controlled_feasibility_not_PR_job_topology':True,'cost_groups':groups,
+        'total_measured_command_seconds':sum(r['wall_seconds'] for r in RESULTS),
+        'limits':'includes failures/new private/native/contracts work; no historical thin/private A/B or double-compilation removal claim; upload/setup costs remain workflow-level'})
+
+def collect_mono_files(source,target):
+    files=[]
+    for directory in [source/'api',target/'debug/deps']:
+        if not directory.exists():
+            continue
+        for path in directory.glob('*mono*'):
+            if not path.is_file() or path.suffix not in ('.json','.csv'):
+                continue
+            row={'path':str(path),'bytes':path.stat().st_size}
+            if path.stat().st_size<=64*1024*1024:
+                packed=EVIDENCE/(path.name+'.gz')
+                with path.open('rb') as incoming,gzip.open(packed,'wb',compresslevel=1) as outgoing:
+                    for chunk in iter(lambda:incoming.read(1024*1024),b''):
+                        outgoing.write(chunk)
+                row['gzip']=str(packed)
+            else:
+                row['retained_in_native_tar_only']=True
+            files.append(row)
+    save(EVIDENCE/'mono-stat-files.json',{'files':files,'meaning':'definition/instantiation attribution only; not RSS allocation percentages'})
+
 def main():
     # Lowest-cost next evidence: one real database-free seed owner, not another full W.
     EVIDENCE.mkdir(parents=True,exist_ok=False)
@@ -509,7 +624,7 @@ def main():
               'resumed_from_run':PRIOR_RUN,'cache_start':'restored-partial-target',
               'diagnostic_jobs':1,'default_ordinary_lib_fresh_verified':False,
               'root_only_diagnostics':['-Ztime-passes','-Ztime-passes-format=json']}
-    assert metadata['source_sha']==SEED_SHA
+    assert metadata['source_sha']==W2_CANDIDATE and W2_CANDIDATE!=SEED_SHA
     assert TEMP==Path('/home/runner/work/_temp/issue2818'), 'restore paths must stay exact'
     source=TEMP/'seed-source'
     target=TEMP/'target-seed'
@@ -522,13 +637,16 @@ def main():
     assert capture(['rustc','--version']).startswith('rustc 1.99.1 '), 'exact compiler pin required'
     save(EVIDENCE/'environment.json',{'rustc':capture(['rustc','-vV']),'cargo':capture(['cargo','-vV']),
          'host_cpu_count':os.cpu_count(),'source_sha':metadata['source_sha'],'postgres':False,
-         'phase':'jobs1 root-only API lib compiler-stage diagnosis from latest hard-OOM cache',
+         'phase':'W2 first candidate: ordinary lib plus private owner/native seven/seed total feasibility',
          'cache_start':'restored-partial, not cold','memory_high':'max','extra_G0_policy':False})
     try:
         archive,prior_evidence,prior_plan,prior_build=download_retained()
-        source,data,cargo_meta=prepare('seed-source',metadata['source_sha'],archive)
-        assert data==prior_plan, 'actual SHA-owned command argv/env/runtime changed after restore'
-        assert frozen(source)==read(prior_evidence/'seed-source-source-hashes.json'), 'restored source/config/fixture hash mismatch'
+        source,data,cargo_meta=prepare('seed-source',SEED_SHA,archive)
+        assert data==prior_plan, 'archive source command plan changed'
+        assert frozen(source)==read(prior_evidence/'seed-source-source-hashes.json'), 'restored a9 source/config/fixture hash mismatch'
+        promote_w2(source,metadata['source_sha'],prior_evidence)
+        data=plan(source)
+        assert data==prior_plan, 'unrelated seed/app commands changed in W2'
         save(EVIDENCE/'restored-source-validation.json',{'source_sha':metadata['source_sha'],
             'tracked_git_diff':'empty','source_hashes_match':True,'native_mtime_restore':True,
             'source_path':str(source),'target_path':str(target),'target_nonempty':True})
@@ -571,7 +689,7 @@ def main():
         default_artifacts=[]
         for line in Path(default['merged_log']).read_text().splitlines():
             try:
-                row=json.loads(line)
+                row=json.loads(line.removeprefix('time: '))
             except json.JSONDecodeError:
                 continue
             if row.get('reason')=='compiler-artifact' and row['target']['name']=='api_server' and row['target']['kind']==['lib']:
@@ -582,24 +700,40 @@ def main():
         save(EVIDENCE/'default-lib-freshness.json',{'cargo_reports_fresh':True,
             'root_compiler_was_not_invoked':True,'diagnostic_flags_not_reapplied':True,
             'not_a_blanket_cache_equivalence_or_performance_claim':True})
+        whitebox_names=[r['full_test_name'] for r in W2_MAP]
+        assert len(whitebox_names)==24 and len(set(whitebox_names))==24 and not any(r['ignored'] for r in W2_MAP)
+        private_list,private_actual=execute_w2_owner(source,data,cargo_meta,target,diagnostic,
+            'api_private_routes','console_route_assembly',whitebox_names,'w2-private')
+        membership=[]
+        for selector in ['migrated_assembly_contains_every_console_router_owner_assembly',
+                         'console_route_assembly','complete_operation_specifications_match_the_production_route_set']:
+            selected=[r for r in private_list if selector in r[1]]
+            assert selected and all(any(a[0]==r[0] and a[1]==r[1] and a[2]=='ok' for a in private_actual) for r in selected)
+            membership.append({'filter':selector,'target':'api_private_routes','compiled_list_members':selected,
+                               'nonzero_actual_source':'the single 24-case execution; no replay'})
+        save(EVIDENCE/'w2-historical-caller-membership.json',membership)
+        execute_w2_owner(source,data,cargo_meta,target,diagnostic,'console_core_registry_tests','',
+            W2_NATIVE_SEVEN,'w2-native')
         executions=[]
         for index,command in enumerate(seed_data['tests']):
             executions.append(run('seed-query-'+str(index),[command['command'],*command['args']],
                  cwd=source/command['cwd'],env={**command_env(data,command,target),
                      'RUSTC_WRAPPER':diagnostic['RUSTC_WRAPPER'],'ISSUE2818_RUSTC_MODE':'observe-only',
-                     'ISSUE2818_ROOT_LOG':diagnostic['ISSUE2818_ROOT_LOG']},heavy=True,seconds=2700))
+                     'ISSUE2818_ROOT_LOG':diagnostic['ISSUE2818_ROOT_LOG']},heavy=True,seconds=600))
         metadata['seed_queries_complete']=True
         # Listings use the same observe-only guard; no root flags or silent ordinary-lib rebuild.
         os.environ.update(RUSTC_WRAPPER=diagnostic['RUSTC_WRAPPER'],ISSUE2818_RUSTC_MODE='observe-only',
                           ISSUE2818_ROOT_LOG=diagnostic['ISSUE2818_ROOT_LOG'])
         discover('candidate-seed',source,seed_data,cargo_meta,target,executions)
-        save(EVIDENCE/'status.json',{'status':'SEED_OWNER_EXECUTED','source_sha':metadata['source_sha'],
-             'not_final_QA':True,'not_full_W_or_performance_PASS':True,'remaining':'old/new complete sets, MCP/application, known D, additional API check cost, job-boundary A/B'})
+        save(EVIDENCE/'status.json',{'status':'W2_MINIMAL_CANDIDATE_EXECUTED','source_sha':metadata['source_sha'],
+             'not_final_QA':True,'not_full_W_or_performance_PASS':True,'remaining':'valid old runtime comparison, MCP/application, known D, additional API all-targets check cost, formal job-boundary A/B; no Root AC PASS'})
         return 0
     finally:
         cargo_fresh_summary()
         stage_summary()
+        collect_mono_files(source,target)
         retain_seed_cache(source,target,metadata)
+        w2_cost_summary()
 
 if __name__=='__main__':
     if len(sys.argv)>1 and sys.argv[1]=='prior-summary':

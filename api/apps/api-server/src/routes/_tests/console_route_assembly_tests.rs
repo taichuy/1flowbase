@@ -46,6 +46,7 @@ where
         .collect()
 }
 
+#[test]
 pub fn console_route_assembly_unclassified_route_fails_coverage() {
     let settings = access_control::SettingsFeatureRegistry::compile([]).unwrap();
     let registry = ConsoleOperationRegistry::compile(&settings, [], []).unwrap();
@@ -62,6 +63,7 @@ pub fn console_route_assembly_unclassified_route_fails_coverage() {
         .contains("missing compiled ownership: GET /api/console/session"));
 }
 
+#[test]
 pub fn console_route_assembly_duplicate_ownership_fails_coverage() {
     let settings = access_control::SettingsFeatureRegistry::compile([]).unwrap();
     let registry = ConsoleOperationRegistry::compile(&settings, [], []).unwrap();
@@ -87,6 +89,7 @@ pub fn console_route_assembly_duplicate_ownership_fails_coverage() {
         .contains("duplicate assembled console route ownership"));
 }
 
+#[test]
 pub fn migrated_real_core_console_route_assembly_has_compiled_coverage() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let runtime_assembly = migrated_core_console_route_assembly();
@@ -126,6 +129,7 @@ pub fn migrated_real_core_console_route_assembly_has_compiled_coverage() {
     }));
 }
 
+#[test]
 pub fn applications_routes_compile_exact_operations_and_resource_metadata() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let assembly = migrated_core_console_route_assembly();
@@ -257,6 +261,7 @@ pub fn applications_routes_compile_exact_operations_and_resource_metadata() {
     );
 }
 
+#[test]
 pub fn applications_closed_set_rejects_duplicate_or_missing_binding() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let assembly = migrated_core_console_route_assembly();
@@ -290,6 +295,7 @@ pub fn applications_closed_set_rejects_duplicate_or_missing_binding() {
     ));
 }
 
+#[test]
 pub fn application_api_orchestration_runtime_routes_compile_exact_operations() {
     let assembly = crate::routes::application_api::route_assembly()
         .merge(crate::routes::application_orchestration::route_assembly())

@@ -42,7 +42,7 @@ function buildCompiledAssemblyCommands({ repoRoot } = {}) {
       '-p',
       'api-server',
       '--test',
-      'console_core_registry_tests',
+      'api_private_routes',
       '--features',
       'test-support',
       target.filter,
