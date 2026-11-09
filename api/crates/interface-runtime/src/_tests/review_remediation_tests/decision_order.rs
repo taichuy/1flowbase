@@ -978,7 +978,7 @@ async fn policy_boundary_checks_controls_after_core_construction_and_never_runs_
 }
 
 #[derive(Debug)]
-struct PolicyValue;
+struct PolicyValue(std::marker::PhantomPinned);
 impl InterfaceContract for PolicyValue {
     const CONTRACT_ID: &'static str = "review-policy-value";
     const CONTRACT_VERSION: &'static str = "1";
@@ -1071,21 +1071,27 @@ async fn policy_profile<P: crate::InvocationPrincipal>(
     let mut core = policy_core(Arc::clone(&events), DecisionBehavior::Allow);
     core.check = check;
     let expected = principal.summary();
-    let result = InterfaceInvocationKernel::<P>::new(Arc::new(core))
-        .invoke::<PolicyValue, PolicyValue, PolicyValue>(
-            snapshot,
-            InvocationEnvelope::with_principal(
-                InvocationLineage::root(InvocationId::now_v7()),
-                BindingId::new("http.review.policy-profile.v1").unwrap(),
-                InterfaceProtocol::Http,
-                AuthenticationAdapterReference::new("review.authn").unwrap(),
-                AuthenticationActivationIdentity::new("review.authn.activation.v1").unwrap(),
-                principal,
-                None,
-                PolicyValue,
-            ),
-        )
-        .await;
+    let kernel = InterfaceInvocationKernel::<P>::new(Arc::new(core));
+    let invocation = kernel.invoke::<PolicyValue, PolicyValue, PolicyValue>(
+        snapshot,
+        InvocationEnvelope::with_principal(
+            InvocationLineage::root(InvocationId::now_v7()),
+            BindingId::new("http.review.policy-profile.v1").unwrap(),
+            InterfaceProtocol::Http,
+            AuthenticationAdapterReference::new("review.authn").unwrap(),
+            AuthenticationActivationIdentity::new("review.authn.activation.v1").unwrap(),
+            principal,
+            None,
+            PolicyValue(std::marker::PhantomPinned),
+        ),
+    );
+    fn assert_send<T: Send>(_: &T) {}
+    assert_send(&invocation);
+    assert!(
+        events.lock().unwrap().is_empty(),
+        "unpolled unary construction is lazy"
+    );
+    let result = invocation.await;
     if managed {
         let failure = result.unwrap_err();
         assert!(
