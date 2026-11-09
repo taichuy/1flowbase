@@ -12,12 +12,12 @@ import subprocess
 import sys
 import time
 
-SEED_SHA = 'a9e85b53bb385349896a16eeaa32238093248626'
-PRIOR_RUN = '42572052197'
-PRIOR_NAME = 'issue2818-seed-owner-42572052197-1'
-PRIOR_ARTIFACT_ID = 13654072605
-ARCHIVE_SHA = '83177736363129f08913e94fce5e2d050e9d772c7b1a634bcdbdcb26f93b6a05'
-ARCHIVE_BYTES = 680288609
+SEED_SHA = 'e0a2790bb08ec3b4c914b27e1bed9938c293d1fe'
+PRIOR_RUN = '42578118647'
+PRIOR_NAME = 'issue2818-seed-owner-42578118647-1'
+PRIOR_ARTIFACT_ID = 13655309933
+ARCHIVE_SHA = 'e66f7868c73b0e4beb5ffb43719961547e1d16035592f3a81c2aa579a5cc7f70'
+ARCHIVE_BYTES = 680920194
 BASELINE = 'e3cdfefb7a5b85d1d7d9c2ef166e3b923c05de89'
 W2_CANDIDATE = 'e0a2790bb08ec3b4c914b27e1bed9938c293d1fe'
 W2_ALLOWED = ['.agents/skills/qa-evaluation/references/backend/console-settings-registration-gate.md', '.github/workflows/notification-subscription.yml', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/data_model_and_docs.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/infrastructure_and_mcp.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/plugins_and_models.rs', 'api/apps/api-server/src/routes/_tests/file_console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/_tests/mod.rs', 'api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/console_route_assembly.rs', 'api/apps/api-server/src/routes/console_route_assembly/_tests/assembly.rs', 'api/apps/api-server/src/routes/mod.rs', 'api/apps/api-server/src/test_support/mod.rs', 'api/apps/api-server/tests/README.md', 'api/apps/api-server/tests/console_core_registry_tests.rs', 'scripts/node/agent-logs-exchange/ci-api.cjs', 'scripts/node/console-operation-registry-hygiene/README.md', 'scripts/node/console-operation-registry-hygiene/_tests/core.test.js', 'scripts/node/console-operation-registry-hygiene/compiled-assembly-checks.js']
@@ -420,25 +420,11 @@ def download_retained():
         parts=Path(member).parts
         assert parts and parts[0] in ('seed-source','target-seed') and '..' not in parts
         assert '.git' not in parts, 'archive must not overwrite the new worktree identity'
-    prior_plan=read(evidence/'seed-source-plan.json')
-    commands=read(evidence/'commands.json')
-    old_build=next(c for c in commands if c['label']=='seed-normal-lib-prebuild')
-    original_prebuild=old_build['argv']
-    prebuild=[arg for arg in original_prebuild if not arg.startswith('--message-format=')]
-    assert prebuild==['cargo','build','--profile','test','--package','api-server',
-        '--features','test-support','--lib','--jobs','1']
-    assert prior_plan['runtime']['backend']['cargoJobs']==2, 'incoming source runtime must remain observed jobs=2'
-    os.environ['ISSUE2818_FROZEN_RUNTIME']=json.dumps(prior_plan['runtime'])
-    old_samples=evidence/Path(old_build['merged_log']).name.replace('.combined.log','.native-samples.jsonl')
-    run('summarize-prior-native',[sys.executable,str(SELF),'prior-summary',str(old_samples),
-        str(EVIDENCE/'prior-native-summary.json')],seconds=90)
     save(EVIDENCE/'cache-resume.json',{'source_run':PRIOR_RUN,'artifact':PRIOR_NAME,
-        'archive_sha256':ARCHIVE_SHA,'archive_bytes':ARCHIVE_BYTES,'source_sha':SEED_SHA,
-        'runtime':prior_plan['runtime'],'original_prebuild_argv':original_prebuild,
-        'cache_state':'restored partial a9 target from deadline with OOM evidence; not cold','memory_high':'max',
-        'incoming_jobs':1,'diagnostic_jobs':1,'compiler_stage_flags':'root-only temporary RUSTC_WRAPPER: -Ztime-passes -Ztime-passes-format=json',
-        'different_condition':'W2 19-file owner change; old archive remains a9; no cold or PR-topology performance claim'})
-    return archive,evidence,prior_plan,prebuild
+        'archive_sha256':ARCHIVE_SHA,'archive_bytes':ARCHIVE_BYTES,'archive_source_sha':SEED_SHA,
+        'cache_state':'retained W2 e0 source/mtime/partial target; no cold fallback',
+        'scope':'interface-runtime crate qualification only; no previous API compilation or phase replay'})
+    return archive,evidence
 
 def retain_seed_cache(source, target, metadata):
     # One fixed archive, using the existing budget runner; no persistent cache service.
@@ -616,124 +602,179 @@ def collect_mono_files(source,target):
             files.append(row)
     save(EVIDENCE/'mono-stat-files.json',{'files':files,'meaning':'definition/instantiation attribution only; not RSS allocation percentages'})
 
-def main():
-    # Lowest-cost next evidence: one real database-free seed owner, not another full W.
-    EVIDENCE.mkdir(parents=True,exist_ok=False)
-    TEMP.mkdir(parents=True,exist_ok=False)
-    metadata={'source_sha':os.environ['CANDIDATE_SHA'],'normal_lib_complete':False,'seed_queries_complete':False,
-              'resumed_from_run':PRIOR_RUN,'cache_start':'restored-partial-target',
-              'diagnostic_jobs':1,'default_ordinary_lib_fresh_verified':False,
-              'root_only_diagnostics':['-Ztime-passes','-Ztime-passes-format=json']}
-    assert metadata['source_sha']==W2_CANDIDATE and W2_CANDIDATE!=SEED_SHA
-    assert TEMP==Path('/home/runner/work/_temp/issue2818'), 'restore paths must stay exact'
-    source=TEMP/'seed-source'
-    target=TEMP/'target-seed'
-    initial=budget_snapshot()
-    save(EVIDENCE/'budget-before.json',initial)
-    assert int(initial['memory.max'])==8_000_000_000 and initial['memory.swap.max']=='0'
-    assert initial['memory.high']=='max', 'no extra MemoryHigh policy in this diagnostic window'
-    quota,period=map(int,initial['cpu.max'].split())
-    assert quota/period<=os.cpu_count()*.6+.001
-    assert capture(['rustc','--version']).startswith('rustc 1.99.1 '), 'exact compiler pin required'
-    save(EVIDENCE/'environment.json',{'rustc':capture(['rustc','-vV']),'cargo':capture(['cargo','-vV']),
-         'host_cpu_count':os.cpu_count(),'source_sha':metadata['source_sha'],'postgres':False,
-         'phase':'W2 first candidate: ordinary lib plus private owner/native seven/seed total feasibility',
-         'cache_start':'restored-partial, not cold','memory_high':'max','extra_G0_policy':False})
-    try:
-        archive,prior_evidence,prior_plan,prior_build=download_retained()
-        source,data,cargo_meta=prepare('seed-source',SEED_SHA,archive)
-        assert data==prior_plan, 'archive source command plan changed'
-        assert frozen(source)==read(prior_evidence/'seed-source-source-hashes.json'), 'restored a9 source/config/fixture hash mismatch'
-        promote_w2(source,metadata['source_sha'],prior_evidence)
-        data=plan(source)
-        assert data==prior_plan, 'unrelated seed/app commands changed in W2'
-        save(EVIDENCE/'restored-source-validation.json',{'source_sha':metadata['source_sha'],
-            'tracked_git_diff':'empty','source_hashes_match':True,'native_mtime_restore':True,
-            'source_path':str(source),'target_path':str(target),'target_nonempty':True})
-        seed_data={**data,'tests':data['tests'][:2],'checks':[]}
-        env=command_env(data,seed_data['tests'][0],target)
-        run('registry-prefetch',['cargo','fetch','--locked','--manifest-path','api/Cargo.toml'],cwd=source,seconds=900)
-        graph_env={**env,'RUSTC_BOOTSTRAP':'1'}
-        original=seed_data['tests'][0]['args'];stop=original.index('--') if '--' in original else len(original)
-        qgraph=run('seed-query-unit-graph',['cargo',*original[:stop],'-Z','unstable-options','--unit-graph','--no-run'],cwd=source/'api',env=graph_env,seconds=60)
-        build=list(prior_build)
-        build[build.index('--jobs')+1]='1'
-        bgraph=run('seed-lib-unit-graph',[*build,'-Z','unstable-options','--unit-graph'],cwd=source/'api',env={**graph_env,'CARGO_BUILD_JOBS':'1'},seconds=60)
-        q=json.loads(Path(qgraph['stdout_log']).read_text());b=json.loads(Path(bgraph['stdout_log']).read_text())
-        def sig(u):
-            return json.dumps({k:u[k] for k in ('pkg_id','target','profile','platform','mode','features')},sort_keys=True)
-        def closure(g,i):
-            seen=set();todo=[i]
-            while todo:
-                k=todo.pop()
-                if k in seen:continue
-                seen.add(k);todo.extend(d['index'] for d in g['units'][k]['dependencies'])
-            return {sig(g['units'][k]) for k in seen}
-        r=b['roots'][0];matches=[i for i,u in enumerate(q['units']) if sig(u)==sig(b['units'][r])]
-        assert len(matches)==1 and closure(q,matches[0])==closure(b,r), 'prebuild not exact seed dependency'
-        assert len(closure(b,r))==548, 'the frozen ordinary-lib dependency graph must remain 548 units'
-        save(EVIDENCE/'seed-prebuild-compatibility.json',{'exact_recursive_unit_equality':True,'units':len(closure(b,r)),
-             'compiler':capture(['rustc','--version']),'purpose':'same ordinary-lib build profile/features and 548 units; jobs2 incoming to jobs1 diagnostic; root-only stage flags are not a runtime equivalence proof'})
-        diagnostic=install_stage_wrapper(source,env)
-        run('seed-normal-lib-prebuild',[*build,'--message-format=json'],cwd=source/'api',env=diagnostic,heavy=True,seconds=600)
-        cargo_fresh_summary()
-        fresh=read(EVIDENCE/'restored-cargo-fresh.json')
-        assert fresh['fresh_artifacts']>=509, 'expected 509 cached dependency artifacts; no cold fallback'
-        assert not [r for r in fresh['artifacts'] if not r['fresh'] and r['target']!='api_server'], 'dependency rebuilt unexpectedly; stop before seed'
-        assert stage_summary()['diagnostic_root_execs']==1, 'expected exactly one ordinary API lib diagnostic compilation'
-        metadata['normal_lib_complete']=True
-        # Same temporary wrapper in observe-only mode refuses any hidden second ordinary-lib compile.
-        observe={**diagnostic,'ISSUE2818_RUSTC_MODE':'observe-only'}
-        default=run('default-lib-freshness-check',[*build,'--message-format=json'],
-            cwd=source/'api',env=observe,heavy=True,seconds=90)
-        default_artifacts=[]
-        for line in Path(default['merged_log']).read_text().splitlines():
+CRATE_CANDIDATE = 'd9636d6ed9fe7122d78c52ccc9fd93d0c96a2abe'
+CRATE_ALLOWED = ['api/crates/interface-runtime/src/_tests/finalization_driver_tests.rs', 'api/crates/interface-runtime/src/finalization.rs']
+
+def crate_artifacts(label=None):
+    rows=[]
+    for log in EVIDENCE.glob('*'+(label or 'interface-runtime-lib')+'.combined.log'):
+        for line in log.open(errors='replace'):
             try:
-                row=json.loads(line.removeprefix('time: '))
+                row=json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if row.get('reason')=='compiler-artifact' and row['target']['name']=='api_server' and row['target']['kind']==['lib']:
-                default_artifacts.append(row)
-        assert default_artifacts and all(r['fresh'] for r in default_artifacts), 'default API lib is not Cargo Fresh; no automatic recompile'
-        assert stage_summary()['default_root_recompile_blocked']==0
-        metadata['default_ordinary_lib_fresh_verified']=True
-        save(EVIDENCE/'default-lib-freshness.json',{'cargo_reports_fresh':True,
-            'root_compiler_was_not_invoked':True,'diagnostic_flags_not_reapplied':True,
-            'not_a_blanket_cache_equivalence_or_performance_claim':True})
-        whitebox_names=[r['full_test_name'] for r in W2_MAP]
-        assert len(whitebox_names)==24 and len(set(whitebox_names))==24 and not any(r['ignored'] for r in W2_MAP)
-        private_list,private_actual=execute_w2_owner(source,data,cargo_meta,target,diagnostic,
-            'api_private_routes','console_route_assembly',whitebox_names,'w2-private')
-        membership=[]
-        for selector in ['migrated_assembly_contains_every_console_router_owner_assembly',
-                         'console_route_assembly','complete_operation_specifications_match_the_production_route_set']:
-            selected=[r for r in private_list if selector in r[1]]
-            assert selected and all(any(a[0]==r[0] and a[1]==r[1] and a[2]=='ok' for a in private_actual) for r in selected)
-            membership.append({'filter':selector,'target':'api_private_routes','compiled_list_members':selected,
-                               'nonzero_actual_source':'the single 24-case execution; no replay'})
-        save(EVIDENCE/'w2-historical-caller-membership.json',membership)
-        execute_w2_owner(source,data,cargo_meta,target,diagnostic,'console_core_registry_tests','',
-            W2_NATIVE_SEVEN,'w2-native')
-        executions=[]
-        for index,command in enumerate(seed_data['tests']):
-            executions.append(run('seed-query-'+str(index),[command['command'],*command['args']],
-                 cwd=source/command['cwd'],env={**command_env(data,command,target),
-                     'RUSTC_WRAPPER':diagnostic['RUSTC_WRAPPER'],'ISSUE2818_RUSTC_MODE':'observe-only',
-                     'ISSUE2818_ROOT_LOG':diagnostic['ISSUE2818_ROOT_LOG']},heavy=True,seconds=600))
-        metadata['seed_queries_complete']=True
-        # Listings use the same observe-only guard; no root flags or silent ordinary-lib rebuild.
-        os.environ.update(RUSTC_WRAPPER=diagnostic['RUSTC_WRAPPER'],ISSUE2818_RUSTC_MODE='observe-only',
-                          ISSUE2818_ROOT_LOG=diagnostic['ISSUE2818_ROOT_LOG'])
-        discover('candidate-seed',source,seed_data,cargo_meta,target,executions)
-        save(EVIDENCE/'status.json',{'status':'W2_MINIMAL_CANDIDATE_EXECUTED','source_sha':metadata['source_sha'],
-             'not_final_QA':True,'not_full_W_or_performance_PASS':True,'remaining':'valid old runtime comparison, MCP/application, known D, additional API all-targets check cost, formal job-boundary A/B; no Root AC PASS'})
+            if row.get('reason')=='compiler-artifact':
+                rows.append({'package_id':row['package_id'],'target':row['target'],
+                    'profile':row['profile'],'fresh':row['fresh'],'executable':row.get('executable')})
+    save(EVIDENCE/((label+'-artifacts.json') if label else 'interface-runtime-artifacts.json'),{'artifacts':rows,
+        'fresh':sum(r['fresh'] for r in rows),'rebuilt':sum(not r['fresh'] for r in rows),
+        'note':'standalone crate test feature/profile graph; do not assume prior API 509 count'})
+    return rows
+
+CRATE_TEST_PATHS = ['api/crates/interface-runtime/src/_tests/finalization_driver_tests.rs']
+BASELINE_MOUNT_FILE = 'api/crates/interface-runtime/src/finalization.rs'
+BASELINE_CHILD_MOUNT = '\n#[cfg(test)]\n#[path = "_tests/finalization_driver_tests.rs"]\nmod driver_tests;\n'
+BASELINE_MOUNT_OFFSET = 3615
+BASELINE_ORIGINAL_SHA256 = '933fcb4f7648f14aaa8fde646f9d09792340423a387b3883a7d4cf6d8654b656'
+CRATE_FILE_SHA256 = {'api/crates/interface-runtime/src/finalization.rs': 'cf892d97b4fac76a510e9c62e6dd9fc63617f5f8e40e281d62325555be910ca4', 'api/crates/interface-runtime/src/_tests/finalization_driver_tests.rs': 'fc5469b9e28449070148d2cdd27269b78209b3c8d003aa5de52a693d8db5a747'}
+
+def qualify_interface_phase(side,source,target,env,argv,roots,identity,native):
+    label=side+'-interface-runtime-lib'
+    executed=run(label,argv,cwd=source/'api',env=env,heavy=True,seconds=600)
+    listed=run(side+'-interface-runtime-list',[*argv,'--list'],cwd=source/'api',env=env,heavy=True,seconds=120)
+    ignored=run(side+'-interface-runtime-ignored',[*argv,'--list','--ignored'],cwd=source/'api',env=env,heavy=True,seconds=120)
+    listing=cases(listed['merged_log'],roots,'list')
+    ignored_rows=cases(ignored['merged_log'],roots,'list')
+    ignored_cases=Counter(map(tuple,ignored_rows))
+    expected=Counter()
+    detailed=[]
+    for root,name,kind in listing:
+        key=(root,name,kind)
+        flag=ignored_cases[key]>0
+        detailed.append([root,name,kind,flag])
+        expected[(root,name,'ignored' if flag else 'ok')]+=1
+        if flag:ignored_cases[key]-=1
+    assert not +ignored_cases
+    actual=cases(executed['merged_log'],roots,'run')
+    assert expected==Counter(map(tuple,actual)) and any(row[2]=='ok' for row in actual), side+': incomplete/zero/failed actual crate tests'
+    artifacts=crate_artifacts(label)
+    assert any(r['target']['name']==native['name'] and r['profile']['test'] and r['executable'] for r in artifacts)
+    result={'side':side,'identity':identity,'argv':argv,'list_with_ignored':detailed,'actual':actual,
+        'passed':sum(r[2]=='ok' for r in actual),'failed':sum(r[2]=='FAILED' for r in actual)}
+    save(EVIDENCE/(side+'-crate-test-cases.json'),result)
+    return result
+
+def main():
+    # One correctness W: actual e0 observe + identical new tests, then the candidate.
+    candidate=os.environ['CANDIDATE_SHA']
+    assert re.fullmatch(r'[0-9a-f]{40}',CRATE_CANDIDATE or '') and candidate==CRATE_CANDIDATE
+    assert candidate!=SEED_SHA and CRATE_ALLOWED and CRATE_TEST_PATHS and BASELINE_CHILD_MOUNT
+    assert isinstance(BASELINE_MOUNT_OFFSET,int)
+    assert BASELINE_MOUNT_FILE in CRATE_ALLOWED and set(CRATE_TEST_PATHS)<=set(CRATE_ALLOWED)
+    EVIDENCE.mkdir(parents=True,exist_ok=False)
+    TEMP.mkdir(parents=True,exist_ok=False)
+    source,target=TEMP/'seed-source',TEMP/'target-seed'
+    metadata={'source_sha':candidate,'qualification':'baseline then candidate interface-runtime --lib only',
+        'cache_start':'restored e0 partial target shared across serial correctness phases',
+        'resumed_from_run':PRIOR_RUN,'baseline_passed':False,'candidate_started':False,'candidate_passed':False,
+        'source_state':'not-restored','active_phase':'prepare','no_API_or_seed_continuation':True}
+    initial=budget_snapshot()
+    save(EVIDENCE/'budget-before.json',initial)
+    assert int(initial['memory.max'])==8_000_000_000 and initial['memory.high']=='max' and initial['memory.swap.max']=='0'
+    quota,period=map(int,initial['cpu.max'].split())
+    assert quota/period<=os.cpu_count()*.6+.001
+    assert TEMP==Path('/home/runner/work/_temp/issue2818')
+    assert capture(['rustc','--version']).startswith('rustc 1.99.1 ')
+    forbidden=['RUSTC_WRAPPER','RUSTC_WORKSPACE_WRAPPER','RUSTC_BOOTSTRAP','RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS']
+    assert not any(os.environ.get(k) for k in forbidden)
+    save(EVIDENCE/'environment.json',{'candidate_sha':candidate,'baseline_sha':SEED_SHA,
+        'rustc':capture(['rustc','-vV']),'cargo':capture(['cargo','-vV']),'host_cpu_count':os.cpu_count(),
+        'phase':'same actual crate tests on original e0 observe and candidate','root_diagnostic_flags':False,
+        'scope_limit':'correctness qualification only; no same-cache performance A/B, API or eleven-caller PASS'})
+    try:
+        archive,prior_evidence=download_retained()
+        run('checkout-archive-source',['git','worktree','add','--detach',str(source),SEED_SHA],seconds=120)
+        run('restore-retained-source-target',['tar','-I','zstd -T1','-xf',str(archive),
+            '--no-same-owner','-C',str(TEMP)],seconds=180)
+        assert capture(['git','rev-parse','HEAD'],source)==SEED_SHA and (source/'.git').is_file()
+        capture(['git','diff','--exit-code','HEAD','--'],source)
+        assert target.is_dir() and any(target.rglob('*.rlib'))
+        before=frozen(source)
+        changed=capture(['git','diff','--name-only',SEED_SHA,candidate],source).splitlines()
+        assert set(changed)==set(CRATE_ALLOWED), 'candidate exceeds exact approved packet'
+        original=subprocess.check_output(['git','show',SEED_SHA+':'+BASELINE_MOUNT_FILE],cwd=source)
+        assert (source/BASELINE_MOUNT_FILE).read_bytes()==original
+        assert hashlib.sha256(original).hexdigest()==BASELINE_ORIGINAL_SHA256 and len(original)==3615
+        mount=BASELINE_CHILD_MOUNT.encode()
+        candidate_file=subprocess.check_output(['git','show',candidate+':'+BASELINE_MOUNT_FILE],cwd=source)
+        assert 0<=BASELINE_MOUNT_OFFSET<=len(original)
+        assert candidate_file.count(mount)==1, 'Root must freeze exact shared child mount'
+        assert hashlib.sha256(candidate_file).hexdigest()==CRATE_FILE_SHA256[BASELINE_MOUNT_FILE]
+        shared_tests={}
+        for path in CRATE_TEST_PATHS:
+            assert not (source/path).exists(), 'packet must identify the new test file, not overwrite existing baseline tests'
+            data=subprocess.check_output(['git','show',candidate+':'+path],cwd=source)
+            assert hashlib.sha256(data).hexdigest()==CRATE_FILE_SHA256[path]
+            (source/path).parent.mkdir(parents=True,exist_ok=True)
+            (source/path).write_bytes(data)
+            shared_tests[path]=hashlib.sha256(data).hexdigest()
+        baseline_bytes=original[:BASELINE_MOUNT_OFFSET]+mount+original[BASELINE_MOUNT_OFFSET:]
+        (source/BASELINE_MOUNT_FILE).write_bytes(baseline_bytes)
+        baseline_file=(source/BASELINE_MOUNT_FILE).read_bytes()
+        without_mount=baseline_file[:BASELINE_MOUNT_OFFSET]+baseline_file[BASELINE_MOUNT_OFFSET+len(mount):]
+        assert without_mount==original, 'all original production bytes, including observe, must remain exact'
+        save(EVIDENCE/'baseline-fixture-proof.json',{'baseline_head':SEED_SHA,
+            'production_file':BASELINE_MOUNT_FILE,'original_file_sha256':hashlib.sha256(original).hexdigest(),
+            'baseline_without_mount_sha256':hashlib.sha256(without_mount).hexdigest(),
+            'baseline_with_mount_sha256':hashlib.sha256(baseline_file).hexdigest(),
+            'child_mount_sha256':hashlib.sha256(mount).hexdigest(),'child_mount_offset':BASELINE_MOUNT_OFFSET,'shared_candidate_test_sha256':shared_tests,
+            'only_overlay':'one exact test child-mount insertion + exact new test bytes; all original production bytes retained; no copied/toy observe',
+            'not_model_mutants_or_Rust_D':True})
+        metadata['source_state']='e0 original production bytes plus exact shared test-only child mount/files'
+        run('registry-prefetch',['cargo','fetch','--locked','--manifest-path','api/Cargo.toml'],cwd=source,seconds=900)
+        meta=run('crate-metadata',['cargo','metadata','--no-deps','--format-version','1',
+            '--manifest-path','api/Cargo.toml'],cwd=source,seconds=60)
+        graph=json.loads(Path(meta['stdout_log']).read_text())
+        package=next(p for p in graph['packages'] if p['name']=='interface-runtime')
+        targets=[t for t in package['targets'] if t['kind']==['lib'] and t['test']]
+        assert len(targets)==1
+        native=targets[0]
+        identity='interface-runtime/lib/'+native['name']+'/'+str(Path(native['src_path']).relative_to(source))
+        roots={str(Path(native['src_path']).relative_to(base)):identity
+               for base in [source/'api',Path(package['manifest_path']).parent]}
+        save(EVIDENCE/'crate-target.json',{'package':package['name'],'package_id':package['id'],
+            'target':native,'identity':identity,'not_compile_only':True})
+        env={**os.environ,'CARGO_TARGET_DIR':str(target),'CARGO_BUILD_JOBS':'1','CARGO_INCREMENTAL':'0',
+            'CARGO_NET_OFFLINE':'true','CARGO_TERM_COLOR':'never','TERM':'dumb'}
+        argv=['cargo','test','-p','interface-runtime','--lib','--jobs','1','--message-format=json','--','--test-threads=1']
+        metadata['active_phase']='baseline'
+        baseline=qualify_interface_phase('baseline',source,target,env,argv,roots,identity,native)
+        metadata['baseline_passed']=True
+        # Remove only our known generated overlay before checking out the real candidate.
+        assert (source/BASELINE_MOUNT_FILE).read_bytes()==baseline_bytes
+        assert all(hashlib.sha256((source/p).read_bytes()).hexdigest()==h for p,h in shared_tests.items())
+        run('restore-baseline-mount-file',['git','restore','--source',SEED_SHA,'--worktree','--',BASELINE_MOUNT_FILE],cwd=source,seconds=60)
+        for path in CRATE_TEST_PATHS:
+            (source/path).unlink()
+        metadata['source_state']='e0 with our temporary overlay removed before candidate checkout'
+        run('checkout-crate-candidate',['git','checkout','--detach',candidate],cwd=source,seconds=60)
+        assert capture(['git','rev-parse','HEAD'],source)==candidate
+        capture(['git','diff','--exit-code','HEAD','--'],source)
+        after=frozen(source)
+        assert all(after.get(path)==digest for path,digest in before.items() if path not in CRATE_ALLOWED)
+        assert all(hashlib.sha256((source/p).read_bytes()).hexdigest()==h for p,h in shared_tests.items())
+        assert (source/BASELINE_MOUNT_FILE).read_bytes().count(mount)==1
+        save(EVIDENCE/'candidate-source-validation.json',{'actual_sha':candidate,'baseline_sha':SEED_SHA,
+            'exact_changed_paths':changed,'protected_hashes_match':True,'same_child_mount_and_test_bytes':True,
+            'shared_candidate_test_sha256':shared_tests})
+        metadata.update(source_state='clean candidate with identical shared tests',active_phase='candidate',candidate_started=True)
+        result=qualify_interface_phase('candidate',source,target,env,argv,roots,identity,native)
+        assert Counter(map(tuple,baseline['list_with_ignored']))==Counter(map(tuple,result['list_with_ignored']))
+        assert Counter(map(tuple,baseline['actual']))==Counter(map(tuple,result['actual']))
+        metadata['candidate_passed']=True
+        save(EVIDENCE/'status.json',{'status':'BASELINE_AND_CANDIDATE_CRATE_QUALIFIED','source_sha':candidate,
+            'same_compiled_case_and_ignored_multisets':True,'both_nonzero_actual_execution':True,
+            'not_final_QA':True,'not_API_or_eleven_caller_PASS':True,'not_Rust_D_or_performance_AB':True})
         return 0
     finally:
-        cargo_fresh_summary()
-        stage_summary()
-        collect_mono_files(source,target)
+        crate_artifacts()
+        save(EVIDENCE/'qualification-phase-state.json',metadata)
         retain_seed_cache(source,target,metadata)
-        w2_cost_summary()
+        save(EVIDENCE/'crate-cost-summary.json',{'commands':RESULTS,
+            'baseline_command_seconds':sum(r['wall_seconds'] for r in RESULTS if r['label'].startswith('baseline-')),
+            'candidate_command_seconds':sum(r['wall_seconds'] for r in RESULTS if r['label'].startswith('candidate-')),
+            'total_measured_command_seconds':sum(r['wall_seconds'] for r in RESULTS),
+            'scope':'serial correctness W with shared restored cache: baseline may build missing dependencies/new crate tests; candidate then reuses those dependencies and rebuilds the changed crate; not same-cache performance A/B or PR benefit; failures/retention included, setup/upload charged separately'})
 
 if __name__=='__main__':
     if len(sys.argv)>1 and sys.argv[1]=='prior-summary':

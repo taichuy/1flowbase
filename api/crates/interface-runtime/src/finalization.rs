@@ -4,6 +4,7 @@ use crate::{InterfaceExtensionPoint, PluginIdentity};
 use std::{
     future::{poll_fn, Future},
     panic::{catch_unwind, AssertUnwindSafe},
+    pin::Pin,
     time::Duration,
 };
 use tokio::time::Instant;
@@ -46,11 +47,29 @@ pub(crate) struct InvocationFinalization {
     pub(crate) records: Vec<InterfaceObserverRecord>,
 }
 impl InvocationFinalization {
-    pub(crate) async fn observe<F: Future<Output = ()>>(
+    pub(crate) async fn observe<'future, F: Future<Output = ()> + Send + 'future>(
         &mut self,
         plugin: &PluginIdentity,
         point: InterfaceExtensionPoint,
-        construct: impl FnOnce() -> F,
+        construct: impl FnOnce() -> F + Send,
+    ) -> ObserverRecordToken {
+        let mut construct = Some(construct);
+        let mut factory = || {
+            let construct = construct
+                .take()
+                .expect("the observer driver constructs at most once");
+            let future = catch_unwind(AssertUnwindSafe(construct)).map_err(|_| ())?;
+            Ok(Box::pin(future) as Pin<Box<dyn Future<Output = ()> + Send + 'future>>)
+        };
+        self.observe_driver(plugin, point, &mut factory).await
+    }
+
+    async fn observe_driver<'future>(
+        &mut self,
+        plugin: &PluginIdentity,
+        point: InterfaceExtensionPoint,
+        factory: &mut (dyn FnMut() -> Result<Pin<Box<dyn Future<Output = ()> + Send + 'future>>, ()>
+                  + Send),
     ) -> ObserverRecordToken {
         let deadline = *self
             .deadline
@@ -61,11 +80,9 @@ impl InvocationFinalization {
                 Some("finalization-budget-exhausted"),
             )
         } else {
-            // Catch construction as well as polling; no panic payload enters diagnostics.
-            match catch_unwind(AssertUnwindSafe(construct)) {
-                Err(_) => (InterfaceObserverStatus::Failed, Some("observer-panicked")),
-                Ok(future) => {
-                    let mut future = Box::pin(future);
+            match factory() {
+                Err(()) => (InterfaceObserverStatus::Failed, Some("observer-panicked")),
+                Ok(mut future) => {
                     let guarded = poll_fn(|cx| {
                         match catch_unwind(AssertUnwindSafe(|| future.as_mut().poll(cx))) {
                             Ok(poll) => poll.map(Ok),
@@ -102,3 +119,7 @@ impl InvocationFinalization {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "_tests/finalization_driver_tests.rs"]
+mod driver_tests;
