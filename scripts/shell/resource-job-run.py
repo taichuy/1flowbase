@@ -6,7 +6,9 @@ inside that slice. A scope cannot contain a manager-created child scope. This
 runner fails closed for that unsupported budget shape; it never relocates the
 controller or changes shared limits. Wrap resource-heavy-run.py in argv to use
 the existing admission gate. The deadline includes validation and admission;
-bounded cleanup is additional (term grace plus bounded management waits).
+bounded cleanup is additional (term grace plus bounded management waits). An
+optional memory stop watches the verified aggregate task budget and stops only
+this job before the shared memory.max is reached; it is not an OOM diagnosis.
 
 Receipts are not guaranteed after controller SIGKILL or whole-parent OOM. Native
 RuntimeMaxSec/TimeoutStopSec still bound the owned scope if its controller dies.
@@ -87,6 +89,37 @@ def positive_seconds(value):
     if not math.isfinite(number) or number <= 0:
         raise argparse.ArgumentTypeError('must be a finite positive number')
     return number
+
+
+def positive_bytes(value):
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError('must be a positive integer number of bytes') from None
+    if number <= 0:
+        raise argparse.ArgumentTypeError('must be a positive integer number of bytes')
+    return number
+
+
+def budget_memory_observation(budget, stop_bytes):
+    """Read only the already-validated ancestor, retaining its exact identity."""
+    group = CGROOT / budget['cgroup'].lstrip('/')
+    if group.stat().st_ino != budget['inode']:
+        raise RuntimeError('task budget inode changed before memory observation')
+    maximum = (group / 'memory.max').read_text().strip()
+    if not maximum.isdigit() or int(maximum) <= 0:
+        raise RuntimeError('task budget memory.max must remain finite and positive')
+    if stop_bytes >= int(maximum):
+        raise ValueError('memory-stop-bytes must be smaller than task budget memory.max')
+    current = int((group / 'memory.current').read_text().strip())
+    if current < 0:
+        raise RuntimeError('task budget memory.current must be nonnegative')
+    if group.stat().st_ino != budget['inode']:
+        raise RuntimeError('task budget inode changed during memory observation')
+    return {'source': 'verified task-budget memory.current', 'quality': 'measured',
+            'budget': dict(budget), 'current_bytes': current, 'stop_bytes': stop_bytes,
+            'memory_max_bytes': int(maximum), 'observed_at': utc(),
+            'observed_monotonic': time.monotonic()}
 
 
 def bounded_call(argv, log, timeout=MANAGEMENT_SECONDS):
@@ -221,12 +254,14 @@ class Job:
         self.resources = {'quality': 'unavailable', 'reason': 'owned cgroup not observed'}
         self.baseline_events = None
         self.oom_evidence = None
+        self.memory_stop_evidence = None
         self.launcher_files = []
         self.started = {'schema_version': 1, 'started_at': utc(),
                         'started_monotonic': self.start,
                         'deadline_monotonic': self.deadline,
                         'deadline_seconds': args.deadline_seconds,
                         'term_grace_seconds': args.term_grace_seconds,
+                        'memory_stop_bytes': args.memory_stop_bytes,
                         'argv': args.command, 'cwd': os.getcwd(),
                         'controller': process_identity(os.getpid()),
                         'controller_cgroup': current_cgroup(), 'unit': self.unit,
@@ -309,6 +344,14 @@ class Job:
         except FileNotFoundError:
             pass  # Preserve last observation, explicitly not a final counter.
 
+    def sample_memory_stop(self):
+        if self.args.memory_stop_bytes is None or self.memory_stop_evidence is not None:
+            return
+        observation = budget_memory_observation(self.budget, self.args.memory_stop_bytes)
+        if observation['current_bytes'] >= observation['stop_bytes']:
+            self.memory_stop_evidence = observation
+            atomic_json(self.output / 'memory-stop.json', observation)
+
     def empty(self):
         if not self.owner:
             return False
@@ -323,6 +366,9 @@ class Job:
 
     def start_scope(self):
         self.budget = validate_budget(self.log, self.remaining())
+        self.sample_memory_stop()  # Validate the threshold before creating any scope.
+        if self.memory_stop_evidence:
+            return
         budget_path = CGROOT / self.budget['cgroup'].lstrip('/')
         slice_name = budget_path.name
         if not slice_name.endswith('.slice'):
@@ -355,6 +401,9 @@ class Job:
                                          stdout=self.launcher_files[0], stderr=self.launcher_files[1],
                                          cwd=self.started['cwd'], start_new_session=True)
         while not self.cancel and time.monotonic() < self.deadline:
+            self.sample_memory_stop()
+            if self.memory_stop_evidence:
+                return
             ready = read_json(self.output / 'worker-ready.json')
             if ready:
                 self.acquire_owner(self.remaining())
@@ -365,7 +414,8 @@ class Job:
                     raise RuntimeError('worker readiness identity mismatch')
                 self.sample()
                 atomic_json(self.output / 'job.json', self.owner)
-                if not self.cancel and time.monotonic() < self.deadline:
+                self.sample_memory_stop()
+                if not self.cancel and not self.memory_stop_evidence and time.monotonic() < self.deadline:
                     atomic_json(self.output / 'go.json', ready)
                 return
             if self.launcher.poll() is not None:
@@ -375,15 +425,20 @@ class Job:
     def observe(self):
         while True:
             self.sample()
+            self.sample_memory_stop()
             outcome = read_json(self.output / 'command-finished.json')
             now = time.monotonic()
             # Event ordering is based on monotonic evidence, not numeric exits.
             finish = outcome['finished_monotonic'] if outcome else float('inf')
             cancel_time = self.cancel['observed_monotonic'] if self.cancel else float('inf')
-            if cancel_time < min(finish, self.deadline):
+            stop_time = (self.memory_stop_evidence['observed_monotonic']
+                         if self.memory_stop_evidence else float('inf'))
+            if cancel_time < min(finish, self.deadline, stop_time):
                 return 'cancel', 128 + self.cancel['signal']
-            if self.deadline <= min(finish, now):
+            if self.deadline <= min(finish, now, stop_time):
                 return 'deadline', 124
+            if stop_time < finish and stop_time <= now:
+                return 'resource_failure', 125
             if outcome:
                 if outcome['kind'] == 'spawn_failure':
                     return 'spawn_failure', 125
@@ -510,6 +565,7 @@ class Job:
                    'command': outcome or {'kind': 'unavailable',
                                           'reason': 'worker did not publish command completion'},
                    'resources': self.resources, 'oom_evidence': self.oom_evidence,
+                   'memory_stop_evidence': self.memory_stop_evidence,
                    'manager_last_observed': self.manager_receipt(), 'cleanup': cleanup}
         atomic_json(self.output / 'finished.json', receipt)
         print(f"{classification}: {self.output / 'finished.json'}", file=sys.stderr)
@@ -524,6 +580,9 @@ def main():
     parser.add_argument('--deadline-seconds', required=True, type=positive_seconds)
     parser.add_argument('--output-dir', required=True, help='exclusive NEW directory; parent must exist')
     parser.add_argument('--term-grace-seconds', default=2., type=positive_seconds)
+    parser.add_argument('--memory-stop-bytes', type=positive_bytes,
+                        help='stop this job when verified aggregate task-budget memory.current '
+                             'reaches this value; must be below its finite memory.max')
     parser.add_argument('command', nargs=argparse.REMAINDER,
                         help='-- COMMAND [ARGS...]; optional existing heavy-run wrapper goes here')
     args = parser.parse_args()
