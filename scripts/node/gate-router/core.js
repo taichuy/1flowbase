@@ -263,6 +263,7 @@ function isBackendConsistencyFile(filePath) {
   return isBackendFile(filePath)
     && (/^api\/crates\/(?:control-plane|orchestration-runtime|runtime-core|storage(?:\/|$))/u.test(filePath)
     || /^api\/apps\/api-server\/src\/routes\//u.test(filePath)
+    || /^api\/apps\/model-definitions-http\//u.test(filePath)
     || /(?:^|\/)migrations?(?:\/|$)/iu.test(filePath)
     || /(?:state|transition|repository|workspace|runtime|model_definition|orchestration|permission|acl|access-control)/iu.test(filePath));
 }

@@ -18,6 +18,7 @@
 
 | 目录 / crate | 唯一职责 | 允许的内部直接依赖 |
 | --- | --- | --- |
+| `../apps/model-definitions-http` | 数据建模定义 HTTP 请求 DTO 与具体 Axum 解码；仅由 API 宿主消费 | 无 |
 | `domain` | 领域对象、不变量、状态与作用域语义 | 无 |
 | `interface-runtime` | 协议无关的 Definition / Binding / compiled Plan、Registry snapshot、认证关联及 Invocation Kernel / Receipt / 有界收尾 | `domain` |
 | `extension-contracts` | Host / Runtime 稳定 wire type、Slot 与协议错误 | 无 |

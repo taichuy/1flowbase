@@ -93,6 +93,8 @@ test('verify-backend can build targeted shard commands for parallel CI', () => {
           'postgres-test-support',
           '--package',
           'api-test-selection',
+          '--package',
+          'model-definitions-http',
           '--all-targets',
           '--jobs',
           '4',

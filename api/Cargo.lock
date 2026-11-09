@@ -90,6 +90,7 @@ dependencies = [
  "interface-runtime",
  "jsonschema",
  "libc",
+ "model-definitions-http",
  "observability",
  "opentelemetry-proto",
  "orchestration-runtime",
@@ -2355,6 +2356,19 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "model-definitions-http"
+version = "0.6.3"
+dependencies = [
+ "axum",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "utoipa",
+ "uuid",
 ]
 
 [[package]]
