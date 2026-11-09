@@ -249,8 +249,10 @@ test('verify-backend can build targeted shard commands for parallel CI', () => {
         label: 'cargo-test-official-i18n-seed-integrity',
         args: [
           'test',
-          '-p',
+          '--package',
           'api-server',
+          '--test',
+          'api_private_contracts',
           '--jobs',
           '4',
           'ac_002_decodes_digest_verified_build_time_official_seed',
@@ -262,8 +264,10 @@ test('verify-backend can build targeted shard commands for parallel CI', () => {
         label: 'cargo-test-official-i18n-seed-consumer-provenance',
         args: [
           'test',
-          '-p',
+          '--package',
           'api-server',
+          '--test',
+          'api_private_contracts',
           '--jobs',
           '4',
           '_tests::dynamic_backend_consumer_inventory::',
@@ -273,6 +277,66 @@ test('verify-backend can build targeted shard commands for parallel CI', () => {
       },
     ]
   );
+});
+
+test('apps check retains ordinary package checks and adds one API all-targets owner', () => {
+  for (const incremental of [false, true]) {
+    const options = { cargoJobs: 3, cargoTestThreads: 2, incremental, repoRoot: '/repo-root', env: {} };
+    const commands = buildCommands({ ...options, target: 'check', shard: 'apps' });
+    assert.deepEqual(commands.map(({ label, args }) => ({ label, args })), [
+      {
+        label: 'cargo-check-apps',
+        args: ['check', '--package', 'control-plane', '--package', 'api-server', '--package', 'control-plane-postgres-tests', '--jobs', '3'],
+      },
+      {
+        label: 'cargo-check-api-server-all-targets',
+        args: ['check', '--package', 'api-server', '--all-targets', '--jobs', '3'],
+      },
+    ]);
+    for (const command of commands) {
+      assert.equal(command.command, 'cargo');
+      assert.equal(command.cwd, 'api');
+      assert.deepEqual(command.env, { CARGO_BUILD_JOBS: '3', CARGO_INCREMENTAL: incremental ? '1' : '0' });
+    }
+    for (const shard of [undefined, 'core-libs', 'runtime-storage']) {
+      const other = buildCommands({ ...options, target: 'check', shard });
+      assert.equal(other.length, 1, shard ?? 'workspace');
+      assert.equal(other[0].args.includes('--all-targets'), false, shard ?? 'workspace');
+    }
+    for (const target of ['clippy', 'test']) {
+      assert.equal(buildCommands({ ...options, target, shard: 'apps' }).length, 1, target);
+    }
+  }
+});
+
+test('apps check keeps its managed receipt identity and serial fail-fast exit codes', async () => {
+  for (const [exits, expected] of [[[0, 0], 0], [[7, 0], 7], [[0, 9], 9]]) {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'apps-check-'));
+    const invocations = [];
+    try {
+      const status = await main(['check', 'apps'], {
+        repoRoot, env: {}, runtimeConfig: { backend: { cargoJobs: 3, cargoTestThreads: 2 } },
+        writeStdout() {}, writeStderr() {},
+        managedRunnerImpl(options) {
+          assert.equal(options.scope, 'verify-backend-check-apps');
+          assert.equal(options.commandDisplay, 'node scripts/node/verify-backend.js check apps');
+          assert.equal(options.lockMode, 'heavy');
+          return options.runCommandSequenceImpl(options);
+        },
+        spawnSyncImpl(command, args) {
+          assert.equal(command, 'cargo');
+          invocations.push(args);
+          return { status: exits[invocations.length - 1], stdout: '', stderr: '' };
+        },
+      });
+      assert.equal(status, expected);
+      assert.equal(invocations.length, exits[0] === 0 ? 2 : 1);
+      assert.equal(invocations[0].includes('--all-targets'), false);
+      if (invocations.length === 2) {
+        assert.deepEqual(invocations[1], ['check', '--package', 'api-server', '--all-targets', '--jobs', '3']);
+      }
+    } finally { fs.rmSync(repoRoot, { recursive: true, force: true }); }
+  }
 });
 
 test('main routes backend verification through the heavy managed gate', async () => {
@@ -451,6 +515,7 @@ test('the actual backend CLI transfers runtime packages only when full CI owns t
 test('official Seed gate rejects zero or absent executed-test summaries', async () => {
   for (const stdout of [
     'test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 500 filtered out;\n',
+    'test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 500 filtered out;\n',
     '',
     'test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 500 filtered out;\n',
   ]) {

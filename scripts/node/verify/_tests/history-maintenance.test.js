@@ -20,7 +20,8 @@ test('complete backend acceptance includes seed and feature-gated maintenance ev
     assert.equal(all.some((entry) => entry.label === command.label), false);
     const evidence = workspace[0].requiredTestTargets.find((entry) => entry.label === command.label);
     assert.equal(evidence.packageName, command.args[2]);
-    assert.equal(evidence.filter, command.args[5]);
+    assert.equal(evidence.testTarget, command.args[command.args.indexOf('--test') + 1]);
+    assert.equal(evidence.filter, command.args[7]);
   }
   const commands = buildBackendCommands({ ...options, target: 'history-maintenance' });
   const tests = commands.filter((entry) => entry.args[0] === 'test');

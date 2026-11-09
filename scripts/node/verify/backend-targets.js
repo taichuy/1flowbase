@@ -219,11 +219,13 @@ const OFFICIAL_I18N_SEED_GATE_TARGETS = [
   {
     label: 'cargo-test-official-i18n-seed-integrity',
     packageName: 'api-server',
+    testTarget: 'api_private_contracts',
     filter: 'ac_002_decodes_digest_verified_build_time_official_seed',
   },
   {
     label: 'cargo-test-official-i18n-seed-consumer-provenance',
     packageName: 'api-server',
+    testTarget: 'api_private_contracts',
     filter: '_tests::dynamic_backend_consumer_inventory::',
   },
 ];

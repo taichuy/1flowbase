@@ -148,26 +148,33 @@ test('AC-002 keeps mcp_result outside the core operations and only adds continua
   const continuationPlan = buildFoundationPlan({
     changedFiles: ['api/apps/api-server/src/routes/mcp_protocol/result_delivery.rs'],
   });
-  assert.equal(
-    continuationPlan.packs['mcp-gateway'].fast.some((item) => item.id === 'mcp-result-continuation'),
-    true,
+  assert.deepEqual(
+    continuationPlan.packs['mcp-gateway'].fast.find((item) => item.id === 'mcp-result-continuation'),
+    {
+      id: 'mcp-result-continuation',
+      testRunner: 'cargo',
+      command: 'cargo',
+      args: ['test', '-p', 'storage-durable-postgres', 'mcp_result_receipt_repository_tests'],
+      cwd: 'api',
+    },
   );
 });
 
-test('mcp gateway fast pack uses Cargo default test parallelism', () => {
-  const plan = buildFoundationPlan({
-    changedFiles: ['api/apps/api-server/src/routes/mcp_protocol.rs'],
-  });
-  const command = plan.packs['mcp-gateway'].fast.find(
-    (item) => item.id === 'mcp-core-list-get-call'
-  );
-
-  assert.deepEqual(command.args, [
-    'test',
-    '-p',
-    'api-server',
-    'mcp_protocol_routes',
-  ]);
+test('API foundation fast packs select native owners and retain filters and Cargo default parallelism', () => {
+  for (const [foundation, id, target, filter] of [
+    ['mcp-gateway', 'mcp-core-list-get-call', 'api_private_contracts', 'mcp_protocol_routes'],
+    ['application-backend', 'application-backend-model-definition-api', 'api_application', 'model_definition_routes_'],
+  ]) {
+    const plan = buildFoundationPlan({ foundation });
+    const command = plan.packs[foundation].fast.find((item) => item.id === id);
+    assert.deepEqual(command, {
+      id,
+      testRunner: 'cargo',
+      command: 'cargo',
+      args: ['test', '-p', 'api-server', '--test', target, filter],
+      cwd: 'api',
+    });
+  }
 });
 
 test('AC-007/009 receipt requires candidate identity and warnings stay advisory', () => {

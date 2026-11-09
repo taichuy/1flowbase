@@ -65,6 +65,7 @@ function buildBackendCargoCommand({
   incremental = false,
   shard,
   testSelection,
+  allTargets = false,
 }) {
   const normalizedShard = normalizeBackendShard(shard);
   const labelSuffix = testSelection ? '-selected' : normalizedShard ? `-${normalizedShard.key}` : '';
@@ -135,7 +136,7 @@ function buildBackendCargoCommand({
     return {
       label: `cargo-check${labelSuffix}`,
       command: 'cargo',
-      args: ['check', ...packageArgs, '--jobs', String(cargoJobs)],
+      args: ['check', ...packageArgs, ...(allTargets ? ['--all-targets'] : []), '--jobs', String(cargoJobs)],
       cwd: 'api',
       env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
     };
@@ -179,20 +180,18 @@ function buildBackendTestCommands({
 
 function buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads, incremental = false }) {
   return OFFICIAL_I18N_SEED_GATE_TARGETS.map((target) => ({
+    ...buildBackendCargoCommand({
+      target: 'test',
+      cargoJobs,
+      cargoTestThreads,
+      incremental,
+      testSelection: {
+        packages: [target.packageName],
+        targetArgs: ['--test', target.testTarget],
+        filter: target.filter,
+      },
+    }),
     label: target.label,
-    command: 'cargo',
-    args: [
-      'test',
-      '-p',
-      target.packageName,
-      '--jobs',
-      String(cargoJobs),
-      target.filter,
-      '--',
-      `--test-threads=${cargoTestThreads}`,
-    ],
-    cwd: 'api',
-    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: true }),
   }));
 }
 
@@ -231,6 +230,17 @@ function buildBackendCommands({
       ? { ...normalizedShard, packages: normalizedShard.packages.filter((name) => !normalizedShard.coverageOwnedPackages.includes(name)) }
       : normalizedShard;
     const commands = [buildBackendCargoCommand({ target, cargoJobs, cargoTestThreads, incremental, shard: testShard })];
+    // Own API test-root type checks once without expanding the other app packages to test targets.
+    if (target === 'check' && normalizedShard?.key === 'apps') {
+      commands.push(buildBackendCargoCommand({
+        target,
+        cargoJobs,
+        cargoTestThreads,
+        incremental,
+        shard: { key: 'api-server-all-targets', packages: ['api-server'] },
+        allTargets: true,
+      }));
+    }
     // The SQL report needs PostgreSQL, not a private deployed page. Run once in
     // the database-backed batch, and keep it inside the candidate gate receipt.
     if (target === 'test' && normalizedShard?.key === 'storage-postgres-1-of-4') {
