@@ -24,7 +24,6 @@ fn assert_route_bindings<S>(
     assert_eq!(actual, expected);
 }
 
-#[test]
 pub fn ac_002_013_members_route_bindings_are_explicit_and_stable() {
     assert_route_bindings(
         &crate::routes::members::route_assembly(),
@@ -70,7 +69,6 @@ pub fn ac_002_013_members_route_bindings_are_explicit_and_stable() {
     );
 }
 
-#[test]
 pub fn ac_002_013_permissions_route_binding_is_explicit_and_stable() {
     assert_route_bindings(
         &crate::routes::permissions::route_assembly(),
@@ -82,7 +80,6 @@ pub fn ac_002_013_permissions_route_binding_is_explicit_and_stable() {
     );
 }
 
-#[test]
 pub fn ac_001_ui_management_route_bindings_are_explicit_and_granular() {
     assert_route_bindings(
         &crate::routes::ui_management::route_assembly(),
@@ -191,7 +188,6 @@ pub fn ac_001_ui_management_route_bindings_are_explicit_and_granular() {
     );
 }
 
-#[test]
 pub fn ac_002_013_roles_route_bindings_are_explicit_and_stable() {
     let assembly = crate::routes::roles::route_assembly();
     let keys = assembly
@@ -236,7 +232,6 @@ pub fn ac_002_013_roles_route_bindings_are_explicit_and_stable() {
     }
 }
 
-#[test]
 pub fn ac_002_013_workspace_route_bindings_are_explicit_and_stable() {
     assert_route_bindings(
         &crate::routes::workspace::route_assembly(),
@@ -247,7 +242,6 @@ pub fn ac_002_013_workspace_route_bindings_are_explicit_and_stable() {
     );
 }
 
-#[test]
 pub fn ac_002_013_workspaces_route_binding_is_explicit_and_stable() {
     assert_route_bindings(
         &crate::routes::workspaces::route_assembly(),
@@ -255,7 +249,6 @@ pub fn ac_002_013_workspaces_route_binding_is_explicit_and_stable() {
     );
 }
 
-#[test]
 pub fn ac_002_013_auth_center_route_bindings_are_explicit_and_stable() {
     assert_route_bindings(
         &crate::routes::auth_center::route_assembly(),
@@ -304,7 +297,6 @@ pub fn ac_002_013_auth_center_route_bindings_are_explicit_and_stable() {
     );
 }
 
-#[test]
 pub fn ac_002_013_system_route_bindings_are_explicit_and_stable() {
     assert_route_bindings(
         &crate::routes::system::route_assembly(),
@@ -333,7 +325,6 @@ pub fn ac_002_013_system_route_bindings_are_explicit_and_stable() {
     );
 }
 
-#[test]
 pub fn organization_console_route_assembly_keeps_each_operation_independent() {
     assert_route_bindings(
         &crate::routes::organization::route_assembly(),

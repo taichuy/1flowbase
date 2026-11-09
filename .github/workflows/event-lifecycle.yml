@@ -388,7 +388,7 @@ jobs:
               run_tests api-workflow-documents --test api_public_api workflow_extension_interface::document_observation
               run_tests api-workflow-routes --test api_application workflow_extension
               run_tests api-mcp-directory --test api_mcp_management interface_capabilities
-              run_tests api-operation-set --test api_private_routes complete_operation_specifications_match_the_production_route_set
+              run_tests api-operation-set --test console_core_registry_tests --features test-support complete_operation_specifications_match_the_production_route_set
             else
               echo 'Refactor scopes unverified: shared host test compilation failed.' > "$evidence/host-scopes-unverified.txt"
               failed=1
@@ -426,7 +426,7 @@ jobs:
                 run_tests api-managed-record-integration --lib managed_services::
                 run_tests api-record-runtime --lib record_permission_runtime
                 run_tests api-operation-metadata --test api_private_contracts console_interface_projection_inventory_is_key_only_and_exact
-                run_tests api-operation-set --test api_private_routes complete_operation_specifications_match_the_production_route_set
+                run_tests api-operation-set --test console_core_registry_tests --features test-support complete_operation_specifications_match_the_production_route_set
               fi
             else
               echo 'Host scopes unverified: shared host test compilation failed; see host-types-check.log.' > "$evidence/host-scopes-unverified.txt"
@@ -471,7 +471,7 @@ jobs:
               run_crate_tests api-pg-configuration -p control-plane-postgres-tests --test event_center_configuration
             fi
             if [ "$HOST_TYPES_OUTCOME" = success ]; then
-              run_tests api-operation-set --test api_private_routes complete_operation_specifications_match_the_production_route_set
+              run_tests api-operation-set --test console_core_registry_tests --features test-support complete_operation_specifications_match_the_production_route_set
               run_tests api-catalog-observer --test api_private_contracts event_center
               run_tests api-codecs-core --lib event_projection
               run_tests api-document-owner --lib openapi_docs::cache

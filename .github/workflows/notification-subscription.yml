@@ -216,7 +216,7 @@ jobs:
             cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib http_body_drop_detaches_unpolled_silent_and_partial_deliveries_without_cancelling_execution 2>&1 | tee tmp/test-governance/communications/ci/native-drop-lifetime.log || test_batch_status=$?
           fi
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_private_contracts notification_http_crud_send_inbox_and_operations_are_authorized 2>&1 | tee tmp/test-governance/communications/ci/inbox-http.log || test_batch_status=$?
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_private_routes --features test-support console_route_assembly 2>&1 | tee tmp/test-governance/communications/ci/route-ownership.log || test_batch_status=$?
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --test console_core_registry_tests --features test-support console_route_assembly 2>&1 | tee tmp/test-governance/communications/ci/route-ownership.log || test_batch_status=$?
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/communications/ci/route-ownership.log -- console_route_assembly || test_batch_status=$?
           cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_private_contracts console_policy_migration_tests 2>&1 | tee tmp/test-governance/communications/ci/management-registration.log || test_batch_status=$?
           exit "$test_batch_status"
