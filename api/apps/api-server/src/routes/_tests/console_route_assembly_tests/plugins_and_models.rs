@@ -1,6 +1,5 @@
 use super::*;
 
-#[test]
 pub fn ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_ownership() {
     let assembly = crate::routes::frontend_block_catalog::route_assembly()
         .merge(crate::routes::js_dependencies::route_assembly())
