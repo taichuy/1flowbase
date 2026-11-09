@@ -1,4 +1,4 @@
-name: Issue 2818 W3 baseline and candidate crate qualification
+name: Issue 2818 W3 ordinary API lib qualification
 
 on:
   push:
@@ -45,7 +45,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: '1.99.1' 
-      - name: Qualify real e0 plus shared tests first, then candidate with identical crate tests
+      - name: Restore qualified source and target and diagnose ordinary API lib for 600 seconds
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -89,14 +89,28 @@ jobs:
             fi
           fi
           systemctl --user stop issue2818.slice
-      - uses: actions/upload-artifact@v7
+      - name: Upload small results and raw logs
+        uses: actions/upload-artifact@v7
         if: always()
         timeout-minutes: 5
         with:
-          name: issue2818-seed-owner-${{ github.run_id }}-${{ github.run_attempt }}
+          name: issue2818-api-results-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             tmp/test-governance/issue2818/ci-evidence/**
             tmp/test-governance/issue2818/ci-preparation/**
+            !tmp/test-governance/issue2818/ci-evidence/seed-target-and-source.tar.zst
           if-no-files-found: error
+          compression-level: 1
+          retention-days: 3
+      - name: Upload retained source and target cache
+        uses: actions/upload-artifact@v7
+        if: always()
+        timeout-minutes: 5
+        with:
+          name: issue2818-api-cache-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tmp/test-governance/issue2818/ci-evidence/seed-target-and-source.tar.zst
+            tmp/test-governance/issue2818/ci-evidence/seed-retention.json
+          if-no-files-found: warn
           compression-level: 0
           retention-days: 3
