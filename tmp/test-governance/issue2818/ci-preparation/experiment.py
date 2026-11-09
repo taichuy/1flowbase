@@ -23,6 +23,7 @@ STOP = 7_200_000_000
 END = time.monotonic() + 80 * 60
 SERIAL = 0
 RESULTS = []
+PG_GROUP = None
 
 BUILDERS = r"""
 const root=process.argv[1], path=require('node:path');
@@ -47,24 +48,53 @@ def capture(argv, cwd=HOME_ROOT):
     return subprocess.check_output(argv, cwd=cwd, text=True, timeout=30).strip()
 
 def stream_exec(argv, merged):
-    """Preserve separate raw stdout/stderr and a chronological merged test log."""
-    child = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    selector = selectors.DefaultSelector()
-    selector.register(child.stdout, selectors.EVENT_READ, sys.stdout.buffer)
-    selector.register(child.stderr, selectors.EVENT_READ, sys.stderr.buffer)
+    # One kernel pipe preserves Cargo target headers before their child output.
+    child = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     with Path(merged).open('wb') as combined:
-        while selector.get_map():
-            for key, _ in selector.select(timeout=1):
-                chunk = os.read(key.fileobj.fileno(), 65536)
-                if not chunk:
-                    selector.unregister(key.fileobj)
-                    key.fileobj.close()
-                else:
-                    combined.write(chunk)
-                    combined.flush()
-                    key.data.write(chunk)
-                    key.data.flush()
+        while True:
+            chunk = child.stdout.read(65536)
+            if not chunk:
+                break
+            combined.write(chunk)
+            combined.flush()
+            sys.stdout.buffer.write(chunk)
+            sys.stdout.buffer.flush()
     return child.wait()
+
+def native_sample():
+    group = Path('/sys/fs/cgroup') / os.environ['ONEFLOWBASE_TASK_BUDGET_CGROUP'].lstrip('/')
+    stats = {k:int(v) for k,v in (line.split() for line in (group/'memory.stat').read_text().splitlines())}
+    processes = []
+    pids = set()
+    for file in group.rglob('cgroup.procs'):
+        try:
+            pids.update(int(x) for x in file.read_text().split())
+        except FileNotFoundError:
+            pass
+    for pid in pids:
+        try:
+            proc = Path('/proc') / str(pid)
+            status = dict(line.split(':',1) for line in (proc/'status').read_text().splitlines() if ':' in line)
+            row = {'pid':pid,'comm':status['Name'].strip(),
+                   'rss':int(status.get('VmRSS','0 kB').split()[0])*1024,
+                   'vm_hwm':int(status.get('VmHWM','0 kB').split()[0])*1024}
+            if row['comm'] in ('rustc','cargo'):
+                argv = (proc/'cmdline').read_bytes().split(b'\0')
+                def flag(key):
+                    key = key.encode()
+                    return argv[argv.index(key)+1].decode(errors='replace') if key in argv and argv.index(key)+1<len(argv) else None
+                row['crate_name'] = flag('--crate-name')
+                row['crate_type'] = flag('--crate-type')
+                row['is_test'] = b'--test' in argv
+            processes.append(row)
+        except (FileNotFoundError,ProcessLookupError):
+            pass
+    current = int((group/'memory.current').read_text())
+    pg = int((PG_GROUP/'memory.current').read_text()) if PG_GROUP else 0
+    return {'monotonic':time.monotonic(),'memory_current':current,'pg_memory_current':pg,
+            'aggregate_current':current+pg,'memory_stat':stats,'processes':processes,
+            'tree_rss_sample':sum(r['rss'] for r in processes),
+            'max_process_vm_hwm':max((r['vm_hwm'] for r in processes),default=0)}
 
 def run(label, argv, cwd=HOME_ROOT, env=None, heavy=False, seconds=1200, expected=0):
     global SERIAL
@@ -79,7 +109,20 @@ def run(label, argv, cwd=HOME_ROOT, env=None, heavy=False, seconds=1200, expecte
     wrapper = [sys.executable, str(RUNNER), '--memory-stop-bytes', str(STOP),
                '--deadline-seconds', str(limit), '--output-dir', str(folder), '--', *actual]
     started = time.monotonic()
-    code = subprocess.call(wrapper, cwd=cwd, env=env)
+    child = subprocess.Popen(wrapper, cwd=cwd, env=env)
+    peaks = {'tree_rss_sample':0,'max_process_vm_hwm':0,'aggregate_current':0}
+    count = 0
+    with (EVIDENCE/f'{SERIAL:03d}-{label}.native-samples.jsonl').open('w') as samples:
+        while child.poll() is None:
+            sample = native_sample()
+            samples.write(json.dumps(sample)+'\n')
+            count += 1
+            for key in peaks:
+                peaks[key] = max(peaks[key], sample[key])
+            time.sleep(.1)
+    code = child.wait()
+    save(EVIDENCE/f'{SERIAL:03d}-{label}.sample-peaks.json',
+         {'quality':'100ms samples; not exact simultaneous kernel peak','samples':count,**peaks})
     receipt = read(folder/'finished.json')
     row = {'label':label,'argv':argv,'cwd':str(cwd),'exit_code':code,
            'wall_seconds':time.monotonic()-started,'receipt':str(folder/'finished.json'),
@@ -292,6 +335,16 @@ def main():
          'node':capture(['node','--version']),'uname':capture(['uname','-a']),
          'profile_overrides':{k:v for k,v in os.environ.items() if k.startswith(('CARGO_','RUST_'))},
          'measurement_limit':'Controlled serial W, not natural PR job P50/P95. wait4 maxrss is not tree RSS.'})
+    global PG_GROUP
+    pgid=os.environ['ISSUE2818_PG_CONTAINER']
+    pgpid=capture(['docker','inspect','--format','{{.State.Pid}}',pgid])
+    pgpath=next(line[3:] for line in Path('/proc/'+pgpid+'/cgroup').read_text().splitlines() if line.startswith('0::'))
+    PG_GROUP=Path('/sys/fs/cgroup')/pgpath.lstrip('/')
+    pg_limits={name:(PG_GROUP/name).read_text().strip() for name in ('memory.max','memory.swap.max','cpu.max')}
+    assert int(pg_limits['memory.max'])<=400_000_000 and pg_limits['memory.swap.max']=='0'
+    pgq,pgp=map(int,pg_limits['cpu.max'].split())
+    assert pgq/pgp<=.5
+    save(EVIDENCE/'pg-budget.json',{'path':str(PG_GROUP),'inode':PG_GROUP.stat().st_ino,**pg_limits})
     initial=budget_snapshot()
     save(EVIDENCE/'budget-before.json',initial)
     assert int(initial['inode'])==int(os.environ['ONEFLOWBASE_TASK_BUDGET_ID'])
@@ -308,8 +361,6 @@ def main():
     # Fetch registry/git inputs once, without a target cache; both W sides are offline.
     run('registry-prefetch',['cargo','fetch','--locked','--manifest-path','api/Cargo.toml'],
         cwd=root,heavy=True,seconds=900)
-    bt,bw=work('baseline',root,b)
-    bc=discover('baseline',root,b,meta,bt,bw)
     candidate_sha=wait_candidate(args)
     aroot,a,ameta=prepare('candidate',candidate_sha)
     assert frozen(root)==frozen(aroot), 'source/config/fixture changed outside frozen W1 selector scope'
@@ -326,13 +377,15 @@ def main():
         assert command['args'][pos+1]==owner
     at,aw=work('candidate',aroot,a)
     ac=discover('candidate',aroot,a,ameta,at,aw)
+    bt,bw=work('baseline',root,b)
+    bc=discover('baseline',root,b,meta,bt,bw)
     for old,new in zip(bc,ac):
         for key in ['list','actual']:
             assert Counter(tuple(x) for x in old[key])==Counter(tuple(x) for x in new[key]), key+' multiplicity mismatch'
     before=sum(x['wall_seconds'] for x in bw)
     after=sum(x['wall_seconds'] for x in aw)
     save(EVIDENCE/'paired-feasibility.json',{'baseline_sha':BASELINE,'candidate_sha':candidate_sha,
-         'pairs':1,'W_definition':'official seed 2 original filters, MCP mcp_protocol_routes, application model_definition_routes_, apps normal three-package check; candidate adds API-only all-targets check',
+         'pairs':1,'order':'candidate first after prior baseline resource stop; memory.high=6GB on both sides','W_definition':'official seed 2 original filters, MCP mcp_protocol_routes, application model_definition_routes_, apps normal three-package check; candidate adds API-only all-targets check',
          'baseline_seconds':before,'candidate_seconds':after,'saved_seconds':before-after,
          'saving_fraction':(before-after)/before,'extra_experiment_seconds':sum(x['wall_seconds'] for x in RESULTS)-before-after,
          'sampling':'first pair feasibility only; no P95 claim; Root decides three pairs only after benefit',
