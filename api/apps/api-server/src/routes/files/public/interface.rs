@@ -190,16 +190,24 @@ pub(crate) fn compile_registry(
             interface_runtime::PrincipalProfile::Public,
         ),
     )?;
-    compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new("http.public.files.temporary.read.v1").expect("static binding is valid"),
-            identity,
-            contracts,
-            ProtocolProjection::http(
-                RouteIdentity::new("GET", "/api/public/files/content")
-                    .expect("static route is valid"),
-            ),
+    let event_binding = ProtocolBinding::new(
+        BindingId::new("http.public.files.temporary.read.v1").expect("static binding is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::http(
+            RouteIdentity::new("GET", "/api/public/files/content").expect("static route is valid"),
         ),
+    );
+    crate::openapi_interface::contract::register_static_api_operation::<
+        TemporaryFileInput,
+        TemporaryFileOutput,
+    >(
+        &mut compiler,
+        &event_binding,
+        "graph:public-temporary-file-access-v1",
+    )?;
+    compiler.register_binding(
+        event_binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new("api-server.public")
                 .expect("static adapter is valid"),
@@ -225,3 +233,6 @@ fn contract<T: InterfaceContract>() -> ContractIdentity {
     ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
         .expect("static interface contract is valid")
 }
+
+#[path = "api_event_projection.rs"]
+mod api_event_projection;

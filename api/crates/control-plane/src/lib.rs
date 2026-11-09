@@ -100,3 +100,6 @@ pub mod notifications;
 pub use application_public_api::compat::openai::history::migration as responses_history_migration;
 
 pub mod event_center;
+
+#[path = "extension_services/record_permissions/mod.rs"]
+pub mod record_permissions;

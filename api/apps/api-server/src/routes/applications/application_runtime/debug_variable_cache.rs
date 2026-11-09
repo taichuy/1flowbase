@@ -11,20 +11,20 @@ use uuid::Uuid;
 
 use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpsertDebugVariableCacheEntryBody {
     pub node_id: String,
     pub variable_key: String,
     pub value: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DebugVariableCacheKeyBody {
     pub node_id: String,
     pub variable_key: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteDebugVariableCacheEntriesBody {
     pub keys: Option<Vec<DebugVariableCacheKeyBody>>,
 }

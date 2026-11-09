@@ -8,6 +8,71 @@ struct ParameterMapping<'a> {
     has_default: bool,
 }
 
+/// Interface dispatch materializes a required empty JSON body without a caller argument.
+/// This transport-only container is not a parameter on an explicitly unmapped wrapper.
+pub(super) fn tool_mapped_schema(
+    target: &domain::McpToolExecutionTarget,
+    parameter_schema: &Value,
+    input_mapping: &Value,
+) -> Value {
+    if matches!(
+        target,
+        domain::McpToolExecutionTarget::InterfaceWrapper { .. }
+    ) && input_mapping
+        .get("mappings")
+        .and_then(Value::as_array)
+        .is_some_and(Vec::is_empty)
+        && required_empty_body(parameter_schema)
+    {
+        return object_schema();
+    }
+    mapped_schema(parameter_schema, input_mapping)
+}
+
+fn required_empty_body(schema: &Value) -> bool {
+    // Keep arbitrary schema constraints on the raw projection path. Recognize only the
+    // simple closed-object transport shape, with harmless schema annotations allowed.
+    fn closed_object(schema: &Value) -> bool {
+        schema["type"] == "object"
+            && schema["additionalProperties"] == false
+            && schema.as_object().is_some_and(|object| {
+                object.keys().all(|key| {
+                    matches!(
+                        key.as_str(),
+                        "type"
+                            | "properties"
+                            | "additionalProperties"
+                            | "required"
+                            | "title"
+                            | "description"
+                            | "$schema"
+                            | "default"
+                            | "examples"
+                    )
+                })
+            })
+    }
+    let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
+        return false;
+    };
+    let Some(body) = properties.get("body") else {
+        return false;
+    };
+    closed_object(schema)
+        && properties.len() == 1
+        && schema
+            .get("required")
+            .and_then(Value::as_array)
+            .is_some_and(|required| required.len() == 1 && required[0] == "body")
+        && closed_object(body)
+        && body
+            .get("properties")
+            .is_none_or(|properties| properties.as_object().is_some_and(Map::is_empty))
+        && body
+            .get("required")
+            .is_none_or(|required| required.as_array().is_some_and(Vec::is_empty))
+}
+
 pub(super) fn mapped_schema(parameter_schema: &Value, input_mapping: &Value) -> Value {
     let configured_mappings = input_mapping.get("mappings").and_then(Value::as_array);
     let mappings = configured_mappings
@@ -134,14 +199,9 @@ fn source_field_schema(
     interface_param: &str,
     mcp_param: &str,
 ) -> Value {
-    let mut candidates = vec![mcp_param.to_owned()];
-    if let Some(location) = mcp_param
-        .split('.')
-        .next()
-        .filter(|location| matches!(*location, "path" | "query" | "body"))
-    {
-        push_candidate(&mut candidates, format!("{location}.{interface_param}"));
-    }
+    // Transport location belongs to the interface, while mcp_param is only an
+    // Agent-facing name. A body field named `path` must not inherit the URL container.
+    let mut candidates = Vec::new();
     match interface_parameter_type(input_mapping, interface_param) {
         Some("json_body" | "form") => {
             push_candidate(&mut candidates, format!("body.{interface_param}"));
@@ -151,6 +211,14 @@ fn source_field_schema(
             push_candidate(&mut candidates, format!("query.{interface_param}"));
         }
         _ => {}
+    }
+    push_candidate(&mut candidates, mcp_param.to_owned());
+    if let Some(location) = mcp_param
+        .split('.')
+        .next()
+        .filter(|location| matches!(*location, "path" | "query" | "body"))
+    {
+        push_candidate(&mut candidates, format!("{location}.{interface_param}"));
     }
     for location in ["path", "query", "body"] {
         push_candidate(&mut candidates, format!("{location}.{interface_param}"));
@@ -352,3 +420,8 @@ mod tests {
 #[cfg(test)]
 #[path = "_tests/input_defaults.rs"]
 mod input_defaults_tests;
+
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "_tests/empty_body_schema.rs"]
+mod empty_body_tests;

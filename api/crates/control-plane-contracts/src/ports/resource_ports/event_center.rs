@@ -28,7 +28,8 @@ pub trait EventCenterRepository: Send + Sync {
         &self,
         record: &WorkflowEventTriggerRecord,
     ) -> anyhow::Result<bool>;
-    async fn list_enabled_workflow_event_triggers(
+    /// Configuration inventory, including legacy disabled rows. Publication state owns activation.
+    async fn list_workflow_event_triggers(
         &self,
         workspace_id: Uuid,
     ) -> anyhow::Result<Vec<WorkflowEventTriggerRecord>>;

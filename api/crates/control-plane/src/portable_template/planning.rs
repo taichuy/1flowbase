@@ -184,7 +184,6 @@ pub fn validate_portable_template(package: &PortableTemplatePackage) -> Vec<Stri
         if let Some(configuration) = &app.event_trigger {
             if app.workflow_trigger_type != Some(domain::WorkflowTriggerType::Event)
                 || configuration.contract_id.trim().is_empty()
-                || configuration.contract_version.trim().is_empty()
                 || configuration
                     .input_mapping
                     .values()

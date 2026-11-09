@@ -32,7 +32,7 @@ pub struct CreateMemberBody {
     pub phone_login_enabled: bool,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateMemberBody {
     pub email: String,
     pub phone: Option<String>,
@@ -46,7 +46,7 @@ pub struct ResetMemberPasswordBody {
     pub new_password: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct ReplaceMemberRolesBody {
     pub role_codes: Vec<String>,
 }

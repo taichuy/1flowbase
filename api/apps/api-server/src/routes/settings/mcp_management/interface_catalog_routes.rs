@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 use std::sync::Arc;
 
 use control_plane::mcp_management::McpListItemsQuery;
@@ -9,9 +10,13 @@ use crate::routes::console_interface::{
     ConsoleInterfaceTargetError,
 };
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum McpCatalogInput {
     Catalog,
+    #[serde(serialize_with = "json_contract::query_with_nulls")]
     Interfaces(McpInterfaceCatalogQuery),
+    #[serde(serialize_with = "json_contract::query_with_nulls")]
     List(McpListQuery),
     Export,
 }
@@ -157,6 +162,8 @@ impl InterfaceContract for McpCatalogInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum McpCatalogOutput {
     Catalog(McpCatalogResponse),
     Interfaces(Vec<McpInterfaceCatalogEntryResponse>),
@@ -1105,3 +1112,16 @@ pub(crate) fn compile_registry(
         Arc::new(McpCatalogAdapter(dependencies)),
     )
 }
+
+impl JsonApiInput for McpCatalogInput {}
+impl JsonApiOutput for McpCatalogOutput {}
+
+#[cfg(test)]
+use serde_json::json;
+
+#[cfg(test)]
+use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "interface_catalog_routes/_tests/event_projection.rs"]
+mod event_tests;

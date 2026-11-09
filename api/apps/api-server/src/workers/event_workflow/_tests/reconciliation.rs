@@ -8,9 +8,9 @@ fn trigger() -> WorkflowEventTriggerRecord {
         workspace_id: Uuid::now_v7(),
         application_id: Uuid::now_v7(),
         configuration: WorkflowEventTriggerInput {
+            source: None,
             enabled: true,
             contract_id: "custom.invoice".into(),
-            contract_version: "1".into(),
             trigger_phase: EventTriggerPhase::Published,
             input_mapping: BTreeMap::new(),
         },
@@ -118,7 +118,6 @@ async fn activation_decision_controls_real_subscribed_signal_and_restoration_doe
         subscription_id: trigger.id,
         workspace_id: trigger.workspace_id,
         contract_id: trigger.configuration.contract_id.clone(),
-        contract_version: "1".into(),
         trigger_phase: EventTriggerPhase::Subscribed,
         consumer_id: id,
     };
@@ -156,8 +155,8 @@ async fn activation_decision_controls_real_subscribed_signal_and_restoration_doe
     assert_eq!(
         delivery.signal().body,
         EventCenterSignalBody::Subscribed {
-            subscription_id: trigger.id,
-            consumer_id: id,
+            subscription_id: trigger.id.to_string(),
+            consumer_id: id.to_string(),
         }
     );
     assert_eq!(

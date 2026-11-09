@@ -20,7 +20,7 @@ use crate::{
     },
 };
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct CreateRoleBody {
     pub code: String,
     pub name: String,
@@ -29,7 +29,7 @@ pub struct CreateRoleBody {
     pub is_default_member_role: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateRoleBody {
     pub name: String,
     pub introduction: String,
@@ -37,12 +37,12 @@ pub struct UpdateRoleBody {
     pub is_default_member_role: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct ReplaceRolePermissionsBody {
     pub permission_codes: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct ReplaceRoleDataPolicyBody {
     pub default_policy: RoleDataPolicyBody,
     pub model_policies: Vec<RoleDataModelPolicyBody>,
@@ -87,7 +87,7 @@ pub struct RolePermissionsResponse {
     pub permission_codes: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct ReplaceRoleFrontstageRoutesBody {
     pub page_ids: Vec<Uuid>,
     pub tab_ids: Vec<Uuid>,
@@ -177,12 +177,12 @@ impl ConsolePolicyRowScopeBody {
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct ReplaceRoleConsolePolicyBody {
     pub groups: Vec<ConsoleRoleConsolePolicyGroupBody>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct ConsoleRoleConsolePolicyGroupBody {
     pub kind: ConsolePolicyGroupKindBody,
     pub group_id: String,
@@ -191,7 +191,7 @@ pub struct ConsoleRoleConsolePolicyGroupBody {
     pub operations: Vec<ConsoleRoleConsolePolicyOperationBody>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ConsoleRoleConsolePolicyOperationBody {
     Simple {
@@ -214,7 +214,7 @@ pub struct ConsolePolicyCatalogResponse {
     pub resources: Vec<ConsolePolicyCatalogResourceResponse>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct ReplaceConsoleSettingsOrderBody {
     pub expected_revision: i64,
     pub group_ids: Vec<String>,
@@ -340,6 +340,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
     ConsoleRouteAssembly::new()
+        .merge(crate::managed_services::record_permissions::route_assembly())
         .route(
             "/settings/roles",
             console_get(list_roles, ConsoleOperation("roles.list".to_string()))

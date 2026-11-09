@@ -3,14 +3,17 @@ use crate::{agent_logs_protocol, app_state::ApiState, error_response::ApiError};
 use axum::{body::Bytes, http::StatusCode};
 use control_plane::{
     errors::ControlPlaneError,
-    ports::{AgentLogsBatch, BillingRepository, OrchestrationRuntimeRepository},
+    ports::{AgentLogsBatch, AgentLogsReceipt, BillingRepository, OrchestrationRuntimeRepository},
 };
 use interface_runtime::*;
 use opentelemetry_proto::tonic::{
     collector::trace::v1::{ExportTracePartialSuccess, ExportTraceServiceResponse},
     trace::v1::{ResourceSpans, ScopeSpans},
 };
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 mod interface;
 mod projection;
@@ -21,7 +24,7 @@ pub(crate) use transport::route_assembly;
 pub use transport::{__path_ingest_traces, ingest_traces};
 
 pub(crate) const BINDING: &str = "http.application.logs.otlp.traces.ingest.v1";
-const ID: &str = "application.logs.otlp.traces.ingest";
+pub(crate) const ID: &str = "application.logs.otlp.traces.ingest";
 const OWNER: &str = "api-server.application-agent-logs-otlp";
 const ROUTE: &str = "/api/logs/otlp/v1/traces";
 
@@ -91,11 +94,49 @@ impl ContentEncoding {
 struct Input {
     format: WireFormat,
     encoding: ContentEncoding,
-    body: Bytes,
+    byte_count: usize,
+    prepared: Result<PreparedInput, &'static str>,
+}
+struct PreparedInput {
+    batches: Vec<AgentLogsBatch>,
+    counts: SourceSpanCounts,
+    document: Result<crate::routes::applications_group::application_runtime::log_exchange::event_projection::OtlpDocument, Arc<str>>,
+}
+impl Input {
+    fn new(format: WireFormat, encoding: ContentEncoding, body: Bytes) -> Self {
+        let prepared = (|| {
+            if matches!(format, WireFormat::Unsupported) {
+                return Err("agent_logs_otlp_content_type");
+            }
+            if matches!(encoding, ContentEncoding::Unsupported) {
+                return Err("agent_logs_otlp_content_encoding");
+            }
+            let request =
+                agent_logs_protocol::decode(format.content_type(), Some(encoding.tag()), &body)
+                    .map_err(|_| "agent_logs_otlp_payload")?;
+            let (batches, counts) =
+                validated_batches(&request).map_err(|_| "agent_logs_otlp_payload")?;
+            let document = crate::openapi_interface::contract::to_value(&request).and_then(|value| {
+                crate::routes::applications_group::application_runtime::log_exchange::event_projection::document(&value)
+            });
+            Ok(PreparedInput {
+                batches,
+                counts,
+                document,
+            })
+        })();
+        Self {
+            format,
+            encoding,
+            byte_count: body.len(),
+            prepared,
+        }
+    }
 }
 struct Output {
     response: ExportTraceServiceResponse,
     accepted_spans: usize,
+    receipt: AgentLogsReceipt,
 }
 struct TargetError(ApiError);
 
@@ -111,62 +152,63 @@ where
     ) -> InterfaceHandlerFuture<Output, TargetError> {
         let store = self.0.clone();
         Box::pin(async move {
-            if matches!(input.format, WireFormat::Unsupported) {
-                return Err(failure(
-                    ControlPlaneError::InvalidInput("agent_logs_otlp_content_type").into(),
-                ));
-            }
-            if matches!(input.encoding, ContentEncoding::Unsupported) {
-                return Err(failure(
-                    ControlPlaneError::InvalidInput("agent_logs_otlp_content_encoding").into(),
-                ));
-            }
-            let request = agent_logs_protocol::decode(
-                input.format.content_type(),
-                Some(input.encoding.tag()),
-                &input.body,
-            )
-            .map_err(|_| {
-                failure(ControlPlaneError::InvalidInput("agent_logs_otlp_payload").into())
-            })?;
             // Validate the entire request before the first batch can write anything.
-            let (batches, counts) = validated_batches(&request).map_err(|_| {
-                failure(ControlPlaneError::InvalidInput("agent_logs_otlp_payload").into())
-            })?;
+            let PreparedInput {
+                batches, counts, ..
+            } = input
+                .prepared
+                .map_err(|code| failure(ControlPlaneError::InvalidInput(code).into()))?;
             let principal = context.principal();
             let service = control_plane::agent_logs::AgentLogsService::new(store);
             let mut accepted_spans = 0;
             let mut remaining_spans = counts.values().sum::<usize>();
+            let mut receipt = AgentLogsReceipt {
+                accepted_events: 0,
+                duplicate_events: 0,
+                record_ids: vec![],
+            };
+            let mut record_ids = BTreeSet::new();
             for batch in batches {
                 let count = counts[&(batch.source_id.clone(), batch.source_client.clone())];
-                if let Err(error) = service
+                let result = service
                     .ingest(
                         principal.application_id(),
                         principal.workspace_id(),
                         principal.api_key_id(),
                         batch,
                     )
-                    .await
-                {
-                    if accepted_spans == 0 {
-                        return Err(failure(error.into()));
+                    .await;
+                match result {
+                    Ok(batch_receipt) => {
+                        receipt.accepted_events += batch_receipt.accepted_events;
+                        receipt.duplicate_events += batch_receipt.duplicate_events;
+                        record_ids.extend(batch_receipt.record_ids);
                     }
-                    // Batch transactions cannot roll back earlier sources. Count input
-                    // spans, not derived Agent Log events, and stop without attempting
-                    // the later sources. OTLP partial ACKs must not be retried.
-                    let rejected_spans = remaining_spans;
-                    let rejected_spans = i64::try_from(rejected_spans).map_err(|_| {
-                        failure(
-                            ControlPlaneError::InvalidInput("agent_logs_otlp_span_count").into(),
-                        )
-                    })?;
-                    return Ok(Output { accepted_spans, response: ExportTraceServiceResponse { partial_success: Some(ExportTracePartialSuccess { rejected_spans, error_message: "Some source batches were not accepted; earlier source batches were persisted. Do not retry a partial acknowledgement.".into() }) } });
+                    Err(error) => {
+                        if accepted_spans == 0 {
+                            return Err(failure(error.into()));
+                        }
+                        // Batch transactions cannot roll back earlier sources. Count input
+                        // spans, not derived Agent Log events, and stop without attempting
+                        // the later sources. OTLP partial ACKs must not be retried.
+                        let rejected_spans = remaining_spans;
+                        let rejected_spans = i64::try_from(rejected_spans).map_err(|_| {
+                            failure(
+                                ControlPlaneError::InvalidInput("agent_logs_otlp_span_count")
+                                    .into(),
+                            )
+                        })?;
+                        receipt.record_ids = record_ids.into_iter().collect();
+                        return Ok(Output { accepted_spans, receipt, response: ExportTraceServiceResponse { partial_success: Some(ExportTracePartialSuccess { rejected_spans, error_message: "Some source batches were not accepted; earlier source batches were persisted. Do not retry a partial acknowledgement.".into() }) } });
+                    }
                 }
                 accepted_spans += count;
                 remaining_spans -= count;
             }
+            receipt.record_ids = record_ids.into_iter().collect();
             Ok(Output {
                 accepted_spans,
+                receipt,
                 response: ExportTraceServiceResponse {
                     partial_success: None,
                 },

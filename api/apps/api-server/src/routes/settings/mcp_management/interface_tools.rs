@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 use std::{collections::HashMap, sync::Arc};
 
 use interface_runtime::{InterfaceContract, UserPrincipal};
@@ -8,13 +9,21 @@ use crate::routes::console_interface::{
     ConsoleInterfaceTargetError,
 };
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum McpToolsInput {
     List,
+    #[serde(serialize_with = "json_contract::body")]
     Create(CreateMcpToolBody),
+    #[serde(serialize_with = "json_contract::path")]
     Get(String),
+    #[serde(serialize_with = "json_contract::path_body")]
     Update(String, UpdateMcpToolBody),
+    #[serde(serialize_with = "json_contract::path")]
     Delete(String),
+    #[serde(serialize_with = "json_contract::path")]
     RefreshDescription(String),
+    #[serde(serialize_with = "json_contract::path_body")]
     CheckDescription(String, McpDescriptionCheckBody),
 }
 
@@ -197,6 +206,8 @@ impl InterfaceContract for McpToolsInput {
     clippy::large_enum_variant,
     reason = "the typed MCP tool output is projected immediately into the console response"
 )]
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum McpToolsOutput {
     Tools(Vec<McpToolResponse>),
     Tool(McpToolResponse),
@@ -585,3 +596,16 @@ pub(crate) fn compile_registry(
         Arc::new(McpToolsAdapter(dependencies)),
     )
 }
+
+impl JsonApiInput for McpToolsInput {}
+impl JsonApiOutput for McpToolsOutput {}
+
+#[cfg(test)]
+use serde_json::json;
+
+#[cfg(test)]
+use crate::openapi_interface::contract::{ApiInput, ApiOperationContext};
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "interface_tools/_tests/event_projection.rs"]
+mod event_tests;

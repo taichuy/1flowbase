@@ -106,6 +106,7 @@ fn request(
         handle,
         input: input.into(),
         principal: RuntimeExecutionPrincipal {
+            record_permissions: None,
             caller: None,
             workspace_id: "workspace-1".into(),
             actor_id: Some("actor-1".into()),

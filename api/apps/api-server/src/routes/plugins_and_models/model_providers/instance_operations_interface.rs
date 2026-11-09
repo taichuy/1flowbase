@@ -1007,3 +1007,6 @@ pub(crate) fn compile_registry(
         Arc::new(ProviderInstanceOperationsAdapter(dependencies)),
     )
 }
+
+#[path = "instance_operations_interface/event_projection.rs"]
+mod event_projection;

@@ -39,6 +39,5 @@ pub struct CommunicationEventCommandBinding {
     pub description: String,
     pub enabled: bool,
     pub contract_id: String,
-    pub contract_version: String,
     pub input_mapping: std::collections::BTreeMap<String, String>,
 }

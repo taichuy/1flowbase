@@ -107,7 +107,7 @@ pub(crate) fn console_route_assembly(
     )
 }
 
-#[derive(Deserialize, utoipa::ToSchema)]
+#[derive(Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AuthorizeBody {
     pub login_entry_id: Uuid,

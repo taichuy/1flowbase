@@ -7,6 +7,8 @@ use regex::Regex;
 use uuid::Uuid;
 
 mod commands;
+mod directory;
+pub use directory::ReplaceMcpInstanceDirectoryCommand;
 mod description_check;
 mod llm_registration;
 mod upstream_contract;

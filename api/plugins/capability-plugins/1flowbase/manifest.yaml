@@ -60,3 +60,49 @@ block_contributions:
       storage: none
       secrets: none
     ui_capabilities: [responsive, configurable, theming, data_binding]
+  - contribution_code: frontstage.table-block
+    title: 表格区块
+    runtime: native_react
+    entry: index.js
+    code_template: |
+      import { TableBlock } from '@1flowbase/data-blocks';
+      import type { BlockComponentProps } from '@1flowbase/block-sdk';
+
+      export default function Table({ ctx }: BlockComponentProps) {
+        return <TableBlock ctx={ctx} />;
+      }
+    code_template_version: 1.0.0
+    code_template_language: tsx
+    context_contract:
+      primitives: [text, link, button, data_record]
+      input_schema:
+        type: object
+        additionalProperties: true
+    permissions:
+      network: none
+      storage: none
+      secrets: none
+    ui_capabilities: [responsive, configurable, theming, data_binding]
+  - contribution_code: frontstage.form-block
+    title: 表单区块
+    runtime: native_react
+    entry: index.js
+    code_template: |
+      import { FormBlock } from '@1flowbase/data-blocks';
+      import type { BlockComponentProps } from '@1flowbase/block-sdk';
+
+      export default function Form({ ctx }: BlockComponentProps) {
+        return <FormBlock ctx={ctx} />;
+      }
+    code_template_version: 1.0.0
+    code_template_language: tsx
+    context_contract:
+      primitives: [text, link, button, data_record]
+      input_schema:
+        type: object
+        additionalProperties: true
+    permissions:
+      network: none
+      storage: none
+      secrets: none
+    ui_capabilities: [responsive, configurable, theming, data_binding]

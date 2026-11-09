@@ -25,9 +25,9 @@ use crate::{
     extension_bus::RuntimeModelAuthenticationCredential, response::ApiSuccess,
 };
 
-const AUTHENTICATION_ADAPTER: &str = "api-server.runtime-user";
-const AUTHORIZATION_ADAPTER: &str = "api-server.runtime-model-authorization";
-const ACTIVATION: &str = "api-server.runtime-user.activation.v1";
+pub(super) const AUTHENTICATION_ADAPTER: &str = "api-server.runtime-user";
+pub(super) const AUTHORIZATION_ADAPTER: &str = "api-server.runtime-model-authorization";
+pub(super) const ACTIVATION: &str = "api-server.runtime-user.activation.v1";
 const ROUTE: &str = "/api/runtime/models/:model_code/*operation_path";
 
 pub(crate) struct RuntimeModelOperationInput {
@@ -154,12 +154,39 @@ type RuntimeModelOperationFuture<'a> = Pin<
     >,
 >;
 
+pub(crate) type RuntimeModelMetadataFuture<'a> = Pin<
+    Box<
+        dyn Future<
+                Output = Result<
+                    super::metadata::RuntimeDataModelMetadata,
+                    RuntimeModelOperationTargetError,
+                >,
+            > + Send
+            + 'a,
+    >,
+>;
+
 pub(crate) trait RuntimeModelOperationPort: Send + Sync + 'static {
+    fn metadata<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        model_code: String,
+    ) -> RuntimeModelMetadataFuture<'a>;
+
     fn execute<'a>(
         &'a self,
         principal: &'a UserPrincipal,
         input: RuntimeModelOperationInput,
     ) -> RuntimeModelOperationFuture<'a>;
+
+    fn execute_document<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: RuntimeModelOperationInput,
+        _document: Option<interface_runtime::DocumentOperationSession>,
+    ) -> RuntimeModelOperationFuture<'a> {
+        self.execute(principal, input)
+    }
 }
 
 struct RuntimeModelOperationHandler {
@@ -181,9 +208,13 @@ impl
     ) -> InterfaceHandlerFuture<RuntimeModelOperationOutput, RuntimeModelOperationTargetError> {
         let port = Arc::clone(&self.port);
         Box::pin(async move {
-            port.execute(context.principal(), input)
-                .await
-                .map_err(|error| InterfaceTargetFailure::new("runtime_model_operation", error))
+            port.execute_document(
+                context.principal(),
+                input,
+                context.document_operation().cloned(),
+            )
+            .await
+            .map_err(|error| InterfaceTargetFailure::new("runtime_model_operation", error))
         })
     }
 }
@@ -301,6 +332,7 @@ pub(crate) fn compile_registry(
                 None,
             ),
         )?;
+        super::event_projection::register(&mut compiler, binding_id, &interface_id)?;
         compiler.bind_handler::<RuntimeModelOperationInput, RuntimeModelOperationOutput, RuntimeModelOperationTargetError, UserPrincipal>(
             &interface_id,
             handler,
@@ -309,6 +341,7 @@ pub(crate) fn compile_registry(
             }),
         )?;
     }
+    super::metadata_interface::register(&mut compiler, port, &owner, &operation)?;
     compiler.compile()
 }
 
@@ -397,7 +430,7 @@ pub(crate) async fn invoke(
     (status, Json(ApiSuccess::new(output.data))).into_response()
 }
 
-fn binding_declarations() -> [(Method, &'static str, &'static str); 5] {
+pub(super) fn binding_declarations() -> [(Method, &'static str, &'static str); 5] {
     [
         (Method::GET, "get", "http.runtime.models.dynamic.get.v1"),
         (Method::POST, "post", "http.runtime.models.dynamic.post.v1"),
@@ -415,7 +448,7 @@ fn binding_declarations() -> [(Method, &'static str, &'static str); 5] {
     ]
 }
 
-fn contract<T: InterfaceContract>() -> ContractIdentity {
+pub(super) fn contract<T: InterfaceContract>() -> ContractIdentity {
     ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
         .expect("static runtime model contract is valid")
 }
@@ -427,6 +460,20 @@ struct UnavailableRuntimeModelOperationPort;
 #[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 impl RuntimeModelOperationPort for UnavailableRuntimeModelOperationPort {
+    fn metadata<'a>(
+        &'a self,
+        _principal: &'a UserPrincipal,
+        _model_code: String,
+    ) -> RuntimeModelMetadataFuture<'a> {
+        Box::pin(async {
+            Err(RuntimeModelOperationTargetError(ApiError::from(
+                control_plane::errors::ControlPlaneError::Conflict(
+                    "runtime_model_test_port_unavailable",
+                ),
+            )))
+        })
+    }
+
     fn execute<'a>(
         &'a self,
         _principal: &'a UserPrincipal,

@@ -1,6 +1,12 @@
 use super::*;
 
 impl InterfaceContract for ApplicationRuntimeDebugStreamInput {
+    fn event_projection_schema() -> Option<serde_json::Value> {
+        Some(super::event_projection::stream_input_schema())
+    }
+    fn project_for_event(&self) -> Option<serde_json::Value> {
+        Some(super::event_projection::stream_input(self))
+    }
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
@@ -120,4 +126,50 @@ impl InterfaceContract for ApplicationRuntimeDebugStreamInput {
 
     const CONTRACT_ID: &'static str = "console-application-runtime-debug-stream-input";
     const CONTRACT_VERSION: &'static str = "1";
+}
+
+impl crate::openapi_interface::contract::ApiInput for ApplicationRuntimeDebugStreamInput {
+    fn document_input_schema(
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Option<serde_json::Value> {
+        (operation.interface_id == "applications.runtime.debug-runs.stream.create").then(|| {
+            crate::routes::applications_group::event_projection::runtime::request_schema(
+                operation,
+                crate::routes::applications_group::event_projection::runtime::schema::<
+                    StartFlowDebugRunBody,
+                >(),
+                Some(crate::openapi_interface::contract::schema::<
+                    crate::routes::application_runtime::DebugRunStreamQuery,
+                >()),
+            )
+        })
+    }
+    fn project_document_input(
+        &self,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::Start {
+                application_id,
+                body,
+                stream_query,
+                ..
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                crate::openapi_interface::contract::to_value(stream_query)?,
+                crate::routes::applications_group::event_projection::runtime::document(body)?,
+            ),
+            Self::Subscribe {
+                application_id,
+                run_id,
+                from_sequence,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                serde_json::json!({"from_sequence":from_sequence}),
+                serde_json::Value::Null,
+            ),
+        })
+    }
 }

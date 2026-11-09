@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::{JsonApiInput, JsonApiOutput};
 use std::sync::Arc;
 
 use axum::{extract::Query, extract::State, http::HeaderMap, Json, Router};
@@ -26,11 +27,16 @@ use crate::{
     routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ApplicationManagementQueryParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub filter: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub page: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub page_size: Option<i64>,
 }
 
@@ -345,6 +351,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 #[utoipa::path(
     get,
     path = "/api/console/settings/applications",
+    params(ApplicationManagementQueryParams),
     responses(
         (status = 200, body = ApplicationManagementPageResponse),
         (status = 400, body = crate::error_response::ErrorBody),
@@ -451,3 +458,9 @@ impl TryFrom<ApplicationManagementPage> for ApplicationManagementPageResponse {
         })
     }
 }
+
+impl JsonApiInput for ApplicationManagementQueryParams {
+    const LOCATION: crate::openapi_interface::json_contract::JsonInputLocation =
+        crate::openapi_interface::json_contract::JsonInputLocation::Query;
+}
+impl JsonApiOutput for ApplicationManagementPageResponse {}

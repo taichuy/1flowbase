@@ -85,7 +85,11 @@ fn target_file_field(tool: &domain::McpToolRecord) -> Option<&str> {
     if name.is_empty() || name.contains('.') {
         return None;
     }
-    let mapped = input_schema::mapped_schema(&tool.parameter_schema, &tool.input_mapping);
+    let mapped = input_schema::tool_mapped_schema(
+        &tool.execution_target,
+        &tool.parameter_schema,
+        &tool.input_mapping,
+    );
     let field = mapped.get("properties")?.get(name)?;
     if field.get("type")?.as_str() != Some("object") {
         return None;

@@ -1,3 +1,5 @@
+mod event_projection;
+
 use crate::{
     app_state::ApiNotificationService,
     error_response::ApiError,
@@ -38,6 +40,12 @@ pub(crate) enum NotificationInput {
     MarkUnread(Uuid),
 }
 impl InterfaceContract for NotificationInput {
+    fn event_projection_schema() -> Option<Value> {
+        Some(event_projection::input_schema())
+    }
+    fn project_for_event(&self) -> Option<Value> {
+        event_projection::input(self)
+    }
     const CONTRACT_ID: &'static str = "console-notifications-input";
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<Value> {
@@ -54,6 +62,12 @@ impl InterfaceContract for NotificationInput {
 }
 pub(crate) struct NotificationOutput(pub Value);
 impl InterfaceContract for NotificationOutput {
+    fn event_projection_schema() -> Option<Value> {
+        Some(event_projection::output_schema())
+    }
+    fn project_for_event(&self) -> Option<Value> {
+        event_projection::output(self)
+    }
     const CONTRACT_ID: &'static str = "console-notifications-output";
     const CONTRACT_VERSION: &'static str = "1";
     fn managed_projection_schema() -> Option<Value> {
@@ -160,7 +174,7 @@ pub(crate) fn compile_registry(
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {
-    console_interface::compile_registry(
+    console_interface::compile_registry_with_event_observation(
         "api-server.console-notifications",
         "graph:console-notifications-v1",
         DECLARATIONS,
@@ -168,6 +182,7 @@ pub(crate) fn compile_registry(
             service,
             communication,
         }),
+        &["notifications.instances.send"],
     )
 }
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
@@ -291,3 +306,6 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: true,
     },
 ];
+
+#[path = "interface/api_event_projection.rs"]
+mod api_event_projection;

@@ -419,3 +419,42 @@ mod tests {
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }
+
+impl crate::openapi_interface::contract::ApiInput for FrontstageCallableCatalogInput {
+    fn project_document_input(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        use crate::routes::frontstage::event_projection as ep;
+        use serde_json::json;
+        Ok(match self {
+            // The HTTP query parameter is a comma-separated string. Its typed
+            // decoder already canonicalized the set; do not expose an enum tuple.
+            Self::List(query) => ep::request(
+                json!({}),
+                json!({
+                    "path_prefixes":query.path_prefixes.join(","),
+                    "path_query":query.path_query,"adapter_id":query.adapter_id,
+                    "method":query.method,"offset":query.offset,"limit":query.limit,
+                }),
+                None,
+            ),
+            Self::Get { interface_id } => {
+                ep::request(json!({"interface_id":interface_id}), json!({}), None)
+            }
+        })
+    }
+}
+impl crate::openapi_interface::contract::ApiOutput for FrontstageCallableCatalogOutput {
+    fn project_document_output(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        use super::callable_interfaces::{entry_response, page_response};
+        use crate::openapi_interface::contract::to_value;
+        match self {
+            Self::Page(page) => to_value(&page_response(page.clone())),
+            Self::Entry(entry) => to_value(&entry_response(entry.clone())),
+        }
+    }
+}

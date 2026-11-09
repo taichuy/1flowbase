@@ -230,3 +230,6 @@ mod tests {
         assert_eq!(route.path(), declaration.path);
     }
 }
+
+#[path = "interface_debug/event_projection.rs"]
+mod event_projection;

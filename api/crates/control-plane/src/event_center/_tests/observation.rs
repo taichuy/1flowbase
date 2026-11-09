@@ -19,10 +19,12 @@ fn policy(max_bytes: u64) -> EventCenterRuntimePolicy {
 
 fn activity(workspace_id: Uuid) -> EventRuntimeActivity {
     EventRuntimeActivity {
+        source_context: None,
+        original_subscriber_id: None,
+        original_consumer_id: None,
         event_id: Uuid::now_v7(),
         workspace_id,
         contract_id: "custom.example".into(),
-        contract_version: "1".into(),
         phase: EventTriggerPhase::Published,
         source_event_id: None,
         subscription_id: None,

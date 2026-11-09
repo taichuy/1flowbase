@@ -177,6 +177,8 @@ impl NativeTurnBridge {
             compatibility_interface::NATIVE_WEBSOCKET_STREAM_BINDING_ID,
             self.authorization.principal.clone(),
             compatibility_interface::CompatibilityBlockingInput {
+                response_projection: None,
+                document: Err(std::sync::Arc::from("websocket_frame_has_no_http_body")),
                 command: compatibility_interface::CompatibilityInvocationCommand::Start {
                     request: translated.request,
                     protocol: TranslationProtocol::Native,
@@ -231,6 +233,8 @@ impl NativeTurnBridge {
             compatibility_interface::NATIVE_WEBSOCKET_STREAM_BINDING_ID,
             self.authorization.principal.clone(),
             compatibility_interface::CompatibilityBlockingInput {
+                response_projection: None,
+                document: Err(std::sync::Arc::from("websocket_frame_has_no_http_body")),
                 command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                     initial_run: plan.initial_run,
                     command: plan.command,

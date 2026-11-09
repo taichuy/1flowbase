@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::{JsonApiInput, JsonApiOutput};
 use std::{collections::BTreeMap, sync::Arc};
 
 use control_plane::ports::RoleRepository;
@@ -14,9 +15,13 @@ use crate::{
     },
 };
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum ConsoleNavigationInput {
     Get,
 }
+
+impl JsonApiInput for ConsoleNavigationInput {}
 
 impl InterfaceContract for ConsoleNavigationInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -39,9 +44,13 @@ impl InterfaceContract for ConsoleNavigationInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum ConsoleNavigationOutput {
     Navigation(ConsoleNavigationResponse),
 }
+
+impl JsonApiOutput for ConsoleNavigationOutput {}
 
 impl InterfaceContract for ConsoleNavigationOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {

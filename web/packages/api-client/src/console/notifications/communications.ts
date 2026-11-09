@@ -22,7 +22,6 @@ export interface CommunicationEventCommandBinding {
   description: string;
   enabled: boolean;
   contract_id: string;
-  contract_version: string;
   input_mapping: Record<string, string>;
 }
 export interface CommunicationBindingInput {

@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::JsonApiOutput;
 mod managed_projection;
 
 use std::sync::Arc;
@@ -114,6 +115,8 @@ pub(crate) enum PluginInterfaceInput {
     clippy::large_enum_variant,
     reason = "the typed plugin output is projected immediately into the console response"
 )]
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum PluginInterfaceOutput {
     Catalog(PluginCatalogResponse),
     Families(PluginFamilyCatalogResponse),
@@ -883,3 +886,5 @@ pub(crate) fn compile_registry(
         Arc::new(PluginInterfaceAdapter(dependencies)),
     )
 }
+
+impl JsonApiOutput for PluginInterfaceOutput {}

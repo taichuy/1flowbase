@@ -12,3 +12,5 @@ mod runtime_persistence_contract_tests;
 mod workflow_trajectory_contract;
 
 mod agent_logs_contract_tests;
+
+mod mcp_directory_contract_tests;

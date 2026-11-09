@@ -140,8 +140,12 @@ async fn test_state_with_runtime_profile_state(
     process_started_at: OffsetDateTime,
     api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
     runtime_host_system: Arc<dyn RuntimeHostSystemPort>,
+    pool_capacity: Option<std::num::NonZeroU32>,
 ) -> (Arc<ApiState>, String) {
     let mut config = default_test_config();
+    if let Some(capacity) = pool_capacity {
+        config.database_pool_max_connections = capacity.get();
+    }
     let database = isolated_database(&config.database_url).await;
     config.database_url = database.database_url().to_owned();
     config.business_file_local_root = std::env::temp_dir()
@@ -290,14 +294,13 @@ async fn test_state_with_runtime_profile_state(
     )
     .expect("test extension graph input should assemble");
     let extension_boot_snapshot = Arc::new(
-        crate::extension_bus::ExtensionBootSnapshot::compile(
+        crate::extension_bus::compile_extension_boot_snapshot(
             Arc::new(
                 extension_assembly
                     .compile_graph()
                     .expect("test extension graph should compile"),
             ),
-            extension_assembly.interface_operations(),
-            Vec::new(),
+            &extension_assembly,
         )
         .expect("test extension boot snapshot should compile"),
     );
@@ -361,6 +364,7 @@ async fn test_state_with_runtime_profile_state(
         console_operation_registry,
         infrastructure,
         event_center,
+        event_sources: Arc::default(),
         event_workflow_changes: Arc::default(),
         event_workflow_statuses: Default::default(),
         extension_boot_snapshot: Some(Arc::clone(&extension_boot_snapshot)),
@@ -368,6 +372,7 @@ async fn test_state_with_runtime_profile_state(
         file_storage_registry,
         runtime_engine,
         provider_runtime,
+        terminal_jobs: Default::default(),
         process_started_at,
         communication_activity: Default::default(),
         runtime_activity: Arc::new(
@@ -423,6 +428,7 @@ async fn test_app_with_runtime_profile_state(
         process_started_at,
         api_runtime_profile,
         runtime_host_system,
+        None,
     )
     .await;
     let config = default_test_config();
@@ -465,12 +471,25 @@ pub async fn test_app_with_official_extension_source(
 }
 
 pub async fn test_api_state_with_database_url() -> (Arc<ApiState>, String) {
+    test_api_state_with_database_pool_capacity(
+        std::num::NonZeroU32::new(default_test_config().database_pool_max_connections)
+            .expect("default test pool capacity is positive"),
+    )
+    .await
+}
+
+/// Explicit resource capacity for tests whose real services retain concurrent transactions.
+/// The default helpers keep their existing one-connection budget and isolated database owner.
+pub async fn test_api_state_with_database_pool_capacity(
+    pool_capacity: std::num::NonZeroU32,
+) -> (Arc<ApiState>, String) {
     test_state_with_runtime_profile_state(
         OffsetDateTime::now_utc(),
         Arc::new(HostApiRuntimeProfileCollector::new(OffsetDateTime::now_utc()).unwrap()),
         Arc::new(StubRuntimeHostSystemClient {
             result: Ok(sample_runner_profile("host_api_server")),
         }),
+        Some(pool_capacity),
     )
     .await
 }
@@ -517,18 +536,18 @@ pub async fn login_and_capture_cookie(
         .await
         .unwrap();
 
+    let status = response.status();
     let cookie = response
         .headers()
         .get("set-cookie")
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
+        .and_then(|value| value.to_str().ok())
+        .map(ToOwned::to_owned);
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
+    assert_eq!(status, StatusCode::OK, "sign-in failed: {payload}");
     (
-        cookie,
+        cookie.unwrap_or_else(|| panic!("sign-in response omitted Set-Cookie: {payload}")),
         payload["data"]["csrf_token"].as_str().unwrap().to_string(),
     )
 }

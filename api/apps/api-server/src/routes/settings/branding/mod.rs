@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 use crate::routes::{
     console_interface::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
@@ -14,11 +15,18 @@ use std::sync::Arc;
 
 pub(crate) mod public_interface;
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum BrandingInput {
     Read,
+    #[serde(serialize_with = "json_contract::body")]
     Save(SystemBranding),
 }
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct BrandingOutput(pub SystemBranding);
+impl JsonApiInput for BrandingInput {}
+
 impl InterfaceContract for BrandingInput {
     const CONTRACT_ID: &'static str = "system-branding-input";
     const CONTRACT_VERSION: &'static str = "1";
@@ -33,6 +41,8 @@ impl InterfaceContract for BrandingInput {
         )
     }
 }
+impl JsonApiOutput for BrandingOutput {}
+
 impl InterfaceContract for BrandingOutput {
     const CONTRACT_ID: &'static str = "system-branding-output";
     const CONTRACT_VERSION: &'static str = "1";

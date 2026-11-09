@@ -149,6 +149,9 @@ async fn process(
             control_plane::notifications::NotificationService::new(
                 state.store.clone(),
                 state.provider_secret_master_key.clone(),
+            )
+            .with_communication_lifecycle_observer(
+                crate::event_center::business::BusinessSourceObserver::new(&state.event_center),
             ),
             input.claim.clone(),
             preparer,

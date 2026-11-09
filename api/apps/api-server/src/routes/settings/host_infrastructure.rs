@@ -215,7 +215,8 @@ pub struct MemoryTreeResponse {
     pub truncated_by_byte_limit: bool,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct MemoryPageQuery {
     pub path: Option<String>,
     pub cursor: Option<String>,
@@ -223,12 +224,14 @@ pub struct MemoryPageQuery {
     pub byte_limit: Option<usize>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct MemoryPathQuery {
     pub path: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct MemorySearchQuery {
     pub q: String,
     pub path: Option<String>,
@@ -402,7 +405,7 @@ pub async fn get_host_infrastructure_memory_stats_overview(
 #[utoipa::path(
     get,
     path = "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/entries",
-    params(("contract_code" = String, Path)),
+    params(("contract_code" = String, Path), MemoryPageQuery),
     responses((status = 200, body = MemoryEntriesResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
 pub async fn list_host_infrastructure_memory_entries(
@@ -430,7 +433,7 @@ pub async fn list_host_infrastructure_memory_entries(
 #[utoipa::path(
     get,
     path = "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/stats",
-    params(("contract_code" = String, Path)),
+    params(("contract_code" = String, Path), MemoryPathQuery),
     responses((status = 200, body = MemoryStatsResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
 pub async fn get_host_infrastructure_memory_stats(
@@ -458,7 +461,7 @@ pub async fn get_host_infrastructure_memory_stats(
 #[utoipa::path(
     get,
     path = "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/tree",
-    params(("contract_code" = String, Path)),
+    params(("contract_code" = String, Path), MemoryPageQuery),
     responses((status = 200, body = MemoryTreeResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
 pub async fn list_host_infrastructure_memory_tree(
@@ -486,7 +489,7 @@ pub async fn list_host_infrastructure_memory_tree(
 #[utoipa::path(
     get,
     path = "/api/console/settings/host-infrastructure/memory/contracts/{contract_code}/entries/search",
-    params(("contract_code" = String, Path)),
+    params(("contract_code" = String, Path), MemorySearchQuery),
     responses((status = 200, body = MemoryEntriesResponse), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
 pub async fn search_host_infrastructure_memory_entries(

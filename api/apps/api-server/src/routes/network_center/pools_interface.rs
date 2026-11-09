@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::JsonApiOutput;
 mod projection;
 
 use std::sync::Arc;
@@ -79,8 +80,12 @@ pub(crate) enum NetworkPoolsInput {
     },
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum NetworkPoolsOutput {
     HttpNodeProxyOptions(Vec<HttpNodeProxyOptionResponse>),
+    // The proxy read owner already removes secret fields and separately
+    // returns their names. Keep its actual public config and form schema.
     Proxy(NetworkEgressProxyResponse),
     Pools(Vec<NetworkEgressPoolResponse>),
     Pool(NetworkEgressPoolResponse),
@@ -471,3 +476,5 @@ pub(crate) fn compile_registry(
         Arc::new(NetworkPoolsAdapter(dependencies)),
     )
 }
+
+impl JsonApiOutput for NetworkPoolsOutput {}

@@ -26,7 +26,7 @@ pub(crate) fn compile_registry(
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {
-    console_interface::compile_registry(
+    console_interface::compile_registry_with_event_observation(
         "api-server.console-application-log-exchange",
         "graph:console-application-log-exchange-v1",
         DECLARATIONS,
@@ -34,5 +34,6 @@ pub(crate) fn compile_registry(
             store: state.store.clone(),
             files: state.file_storage_registry.clone(),
         }),
+        &[crate::routes::application_public_api::agent_logs::event_projection::CONSOLE_IMPORT_OPERATION],
     )
 }

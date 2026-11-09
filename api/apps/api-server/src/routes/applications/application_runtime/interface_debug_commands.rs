@@ -104,7 +104,10 @@ pub(crate) enum ApplicationRuntimeDebugStreamInput {
 
 pub(crate) struct ApplicationRuntimeDebugStreamEvent(pub(crate) Result<Event, Infallible>);
 
-pub(crate) struct ApplicationRuntimeDebugStreamOutput;
+pub(crate) struct ApplicationRuntimeDebugStreamOutput {
+    pub(crate) application_id: Uuid,
+    pub(crate) run_id: Uuid,
+}
 
 pub(crate) trait RuntimeDebugMcpFactory: Send + Sync + 'static {
     fn for_actor<'a>(
@@ -768,7 +771,10 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             }
             let _ = publisher
                 .finish(interface_runtime::InterfaceStreamTerminal::Completed(
-                    ApplicationRuntimeDebugStreamOutput,
+                    ApplicationRuntimeDebugStreamOutput {
+                        application_id,
+                        run_id,
+                    },
                 ))
                 .await;
         });
@@ -831,7 +837,11 @@ impl ApplicationRuntimeDebugCommandsAdapter {
 
         self.dependencies
             .runtime_event_stream
-            .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+            .open_run_scoped(
+                run_id,
+                RuntimeEventStreamPolicy::debug_default(),
+                control_plane::ports::RuntimeEventSourceBinding::workspace(workspace_id),
+            )
             .await
             .map_err(ApiError::from)
             .map_err(ConsoleInterfaceTargetError)
@@ -1160,11 +1170,18 @@ pub(crate) fn compile_registry(
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {
-    console_interface::compile_registry(
+    console_interface::compile_registry_with_event_observation(
         "api-server.console-application-runtime-debug-commands",
         "graph:console-application-runtime-debug-commands-v1",
         DECLARATIONS,
         port(dependencies),
+        &[
+            "applications.runtime.debug-runs.create",
+            "applications.runtime.runs.resume",
+            "applications.runtime.runs.cancel",
+            "applications.runtime.callback-tasks.complete",
+            "applications.runtime.nodes.debug-runs.create",
+        ],
     )
 }
 
@@ -1174,11 +1191,15 @@ pub(crate) fn compile_stream_registry(
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {
-    console_interface::compile_server_stream_registry(
+    console_interface::compile_server_stream_registry_with_event_observation(
         "api-server.console-application-runtime-debug-streams",
         "graph:console-application-runtime-debug-streams-v1",
         STREAM_DECLARATIONS,
         stream_port(dependencies),
+        &[
+            "applications.runtime.debug-runs.stream.create",
+            "applications.runtime.debug-runs.stream.subscribe",
+        ],
     )
 }
 

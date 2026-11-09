@@ -4,7 +4,7 @@ use control_plane::ports::{
     ProviderTrajectoryBody, ProviderTrajectoryPage, ProviderTrajectoryView,
 };
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, serde::Serialize)]
 pub struct ProviderTrajectoryQuery {
     pub request_id: Option<Uuid>,
     pub focus_event_id: Option<Uuid>,
@@ -136,7 +136,7 @@ pub async fn get_run_payload(
     Ok(Json(ApiSuccess::new(payload)))
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, serde::Serialize)]
 pub struct ClientTrajectoryQuery {
     pub index_only: Option<bool>,
     pub category: Option<String>,
@@ -211,7 +211,7 @@ pub async fn get_client_trajectory_section(
     Ok(Json(ApiSuccess::new(section)))
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RecordConversationQuery {
     pub before: Option<Uuid>,
@@ -271,7 +271,7 @@ pub async fn get_log_record(
     };
     Ok(Json(ApiSuccess::new(record)))
 }
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, serde::Serialize)]
 pub struct RecordClientTrajectoryQuery {
     pub cursor: Option<String>,
     pub limit: Option<i64>,

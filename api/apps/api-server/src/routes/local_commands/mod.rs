@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-#[derive(Deserialize, ToSchema)]
+#[derive(Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LocalCommandBody {
     /// One shell command, executed in the API host's environment.
@@ -41,6 +41,11 @@ pub struct LocalCommandResponse {
 }
 
 pub(crate) struct LocalCommandExecution(CompletedCommand);
+
+impl crate::openapi_interface::json_contract::JsonApiInput for LocalCommandBody {
+    const LOCATION: crate::openapi_interface::json_contract::JsonInputLocation =
+        crate::openapi_interface::json_contract::JsonInputLocation::Body;
+}
 
 impl InterfaceContract for LocalCommandBody {
     const CONTRACT_ID: &'static str = "console-local-command-input";
@@ -140,9 +145,13 @@ pub async fn execute_local_command(
     headers: HeaderMap,
     Json(body): Json<LocalCommandBody>,
 ) -> Result<Response, ApiError> {
-    // Disconnecting HTTP does not abandon the Kernel's completion/audit owner.
-    let output = tokio::spawn(async move {
-        console_interface::invoke::<_, LocalCommandExecution>(
+    let owner = crate::generation_dispatch::GenerationDispatch::acquire(&state)?;
+    // Trusted in-process delegation is task-local, unlike HTTP credentials. Capture it
+    // before spawning; keep authentication, CSRF admission and authorization in the Kernel path.
+    let delegated = crate::middleware::require_session::server_delegated_request_context();
+    // Disconnecting HTTP does not abandon the Kernel's completion/audit or generation owner.
+    let output = crate::generation_dispatch::spawn_with_lease(owner, async move {
+        let invocation = console_interface::invoke::<_, LocalCommandExecution>(
             Arc::clone(&state),
             "http.console.local-commands.execute.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -150,8 +159,16 @@ pub async fn execute_local_command(
                 headers,
             },
             body,
-        )
-        .await
+        );
+        match delegated {
+            Some(context) => {
+                crate::middleware::require_session::with_server_delegated_request_context(
+                    context, invocation,
+                )
+                .await
+            }
+            None => invocation.await,
+        }
     })
     .await
     .map_err(anyhow::Error::from)??;
@@ -162,3 +179,6 @@ pub async fn execute_local_command(
 #[cfg(test)]
 #[path = "_tests/mod.rs"]
 mod tests;
+
+#[path = "api_event_projection.rs"]
+mod api_event_projection;

@@ -1,4 +1,4 @@
-//! Durable event configuration. Event instances, deliveries and observations are ephemeral.
+//! Event configuration and source-owned ephemeral observation contracts.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -23,10 +23,11 @@ pub enum EventDefinitionOrigin {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EventDefinitionRecord {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interface_event: Option<InterfaceEventBinding>,
     pub id: Uuid,
     pub workspace_id: Uuid,
     pub contract_id: String,
-    pub contract_version: String,
     pub name: String,
     pub description: String,
     pub payload_schema: Value,
@@ -39,11 +40,17 @@ pub struct EventDefinitionRecord {
 /// Read-only projection of registered sources. Empty phases mean no source adapter is available.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EventCatalogEntry {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interface_event: Option<InterfaceEventBinding>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub group_path: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<EventCatalogSource>,
     pub id: Option<Uuid>,
-    pub enabled: bool,
-    pub owner_id: String,
+    pub scope: EventSourceScope,
+    pub enabled: Option<bool>,
+    pub owner_id: Option<String>,
     pub contract_id: String,
-    pub contract_version: String,
     pub name: String,
     pub description: String,
     pub payload_schema: Value,
@@ -54,11 +61,16 @@ pub struct EventCatalogEntry {
 impl From<EventDefinitionRecord> for EventCatalogEntry {
     fn from(value: EventDefinitionRecord) -> Self {
         Self {
+            source: None,
+            interface_event: value.interface_event,
+            group_path: vec!["interface_events".into()],
             id: Some(value.id),
-            enabled: value.enabled,
-            owner_id: value.workspace_id.to_string(),
+            scope: EventSourceScope::Workspace {
+                workspace_id: value.workspace_id,
+            },
+            enabled: Some(value.enabled),
+            owner_id: None,
             contract_id: value.contract_id,
-            contract_version: value.contract_version,
             name: value.name,
             description: value.description,
             payload_schema: value.payload_schema,
@@ -72,33 +84,32 @@ impl From<EventDefinitionRecord> for EventCatalogEntry {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateEventDefinitionInput {
-    pub contract_id: String,
-    pub contract_version: String,
     pub name: String,
     pub description: String,
-    pub payload_schema: Value,
+    pub interface_event: InterfaceEventBinding,
     pub enabled: bool,
 }
 
-/// Contract identity and creator are immutable; create another definition for a new version.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Event identity and creator are immutable; the payload schema is the current definition.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateEventDefinitionInput {
     pub name: String,
     pub description: String,
-    pub payload_schema: Value,
+    pub interface_event: InterfaceEventBinding,
     pub enabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowEventTriggerInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<EventSourceSelection>,
     pub enabled: bool,
     pub contract_id: String,
-    pub contract_version: String,
     pub trigger_phase: EventTriggerPhase,
     /// Workflow input name -> RFC6901 pointer into the lifecycle signal.
     pub input_mapping: BTreeMap<String, String>,
@@ -135,3 +146,12 @@ pub fn is_json_pointer(value: &str) -> bool {
 #[cfg(test)]
 #[path = "_tests/configuration.rs"]
 mod tests;
+
+mod source;
+pub use source::*;
+
+mod interface;
+pub use interface::*;
+
+mod api;
+pub use api::*;

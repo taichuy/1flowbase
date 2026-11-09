@@ -43,25 +43,28 @@ where
         [operation.clone()],
         [owner.clone()],
     );
-    compiler.register_definition(InterfaceDefinition::new(
-        identity.clone(),
-        contracts.clone(),
-        InterfaceAccess::new(
-            PrincipalProfile::Application,
-            InterfaceAuthenticationPolicy::Authenticated,
-            operation,
-            InterfaceScope::Workspace,
-        ),
-        InterfaceExecution::new(
-            InterfaceExecutionMode::Unary,
-            handler.clone(),
-            TargetReference::new(OWNER).expect("static OTLP trace interface identity is valid"),
-        ),
-        InterfaceAuditPolicy::Mutating,
-        InterfaceErrorPolicy::TypedTarget,
-        InterfaceLifecycle::BootSnapshot,
-        owner,
-    ))?;
+    compiler.register_definition(
+        InterfaceDefinition::new(
+            identity.clone(),
+            contracts.clone(),
+            InterfaceAccess::new(
+                PrincipalProfile::Application,
+                InterfaceAuthenticationPolicy::Authenticated,
+                operation,
+                InterfaceScope::Workspace,
+            ),
+            InterfaceExecution::new(
+                InterfaceExecutionMode::Unary,
+                handler.clone(),
+                TargetReference::new(OWNER).expect("static OTLP trace interface identity is valid"),
+            ),
+            InterfaceAuditPolicy::Mutating,
+            InterfaceErrorPolicy::TypedTarget,
+            InterfaceLifecycle::BootSnapshot,
+            owner,
+        )
+        .with_event_observation(),
+    )?;
     compiler.register_authentication_adapter(
         &id,
         1,
@@ -87,16 +90,22 @@ where
             PrincipalProfile::Application,
         ),
     )?;
-    compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new(BINDING).expect("static OTLP trace interface identity is valid"),
-            identity,
-            contracts,
-            ProtocolProjection::http(
-                RouteIdentity::new("POST", ROUTE)
-                    .expect("static OTLP trace interface identity is valid"),
-            ),
+    let binding = ProtocolBinding::new(
+        BindingId::new(BINDING).expect("static OTLP trace interface identity is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::http(
+            RouteIdentity::new("POST", ROUTE)
+                .expect("static OTLP trace interface identity is valid"),
         ),
+    );
+    crate::openapi_interface::contract::register_static_api_operation::<Input, Output>(
+        &mut compiler,
+        &binding,
+        "graph:application-agent-logs-otlp-v1",
+    )?;
+    compiler.register_binding(
+        binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new("api-server.application-api-key")
                 .expect("static OTLP trace interface identity is valid"),

@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 use std::sync::Arc;
 
 use axum::{
@@ -21,7 +22,7 @@ use crate::{
     routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
-#[derive(Debug, Deserialize, IntoParams, Clone, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, IntoParams, Clone, ToSchema)]
 pub struct NodeContributionQuery {
     /// Target Application. Its persisted application_type selects the boundary-node family.
     pub application_id: Uuid,
@@ -310,7 +311,13 @@ pub async fn list_node_contributions(
     Ok(Json(ApiSuccess::new(output.0)))
 }
 
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct NodeContributionsInput(NodeContributionQuery);
+impl JsonApiInput for NodeContributionsInput {
+    const LOCATION: json_contract::JsonInputLocation = json_contract::JsonInputLocation::Query;
+}
+
 impl InterfaceContract for NodeContributionsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
@@ -334,7 +341,11 @@ impl InterfaceContract for NodeContributionsInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct NodeContributionsOutput(ApplicationNodeCatalogResponse);
+impl JsonApiOutput for NodeContributionsOutput {}
+
 impl InterfaceContract for NodeContributionsOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;

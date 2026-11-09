@@ -23,6 +23,8 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("POST", "/api/console/events"),
                 ("PUT", "/api/console/events/{event_definition_id}"),
                 ("GET", "/api/console/events/runtime"),
+                ("GET", "/api/console/events/api-operations"),
+                ("GET", "/api/console/events/api-operations/{operation_id}"),
             ]),
         },
         SettingsFeatureRegistration {
@@ -782,6 +784,8 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("GET", "/api/console/mcp/export"),
                 ("GET", "/api/console/mcp/instances"),
                 ("POST", "/api/console/mcp/instances"),
+                ("GET", "/api/console/mcp/instances/{instance_id}/directory"),
+                ("PUT", "/api/console/mcp/instances/{instance_id}/directory"),
                 (
                     "POST",
                     "/api/console/mcp/instances/{instance_id}/copy",

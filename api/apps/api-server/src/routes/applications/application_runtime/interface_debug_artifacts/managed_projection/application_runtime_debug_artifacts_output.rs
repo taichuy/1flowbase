@@ -66,3 +66,46 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
     const CONTRACT_ID: &'static str = "console-application-runtime-debug-artifacts-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
+
+impl crate::openapi_interface::contract::ApiOutput for ApplicationRuntimeDebugArtifactsOutput {
+    fn document_output_schema(
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Option<serde_json::Value> {
+        match operation.interface_id.as_str() {
+            "applications.runtime.debug-snapshot.get" => Some(
+                crate::routes::applications_group::event_projection::runtime::schema::<
+                    ApplicationRunDetailResponse,
+                >(),
+            ),
+            "applications.runtime.debug-artifacts.resolve" => Some(
+                crate::routes::applications_group::event_projection::runtime::schema::<
+                    ResolveRuntimeDebugArtifactsResponse,
+                >(),
+            ),
+            _ => None,
+        }
+    }
+    // Content is arbitrary bytes; Resolve and Snapshot retain their actual JSON responses.
+    fn document_output_unavailable(
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Option<domain::event_center::ApiEventUnavailableReason> {
+        (operation.interface_id == "applications.runtime.debug-artifact.get")
+            .then_some(domain::event_center::ApiEventUnavailableReason::BinaryResponse)
+    }
+    fn project_document_output(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::Content(_) => Err(std::sync::Arc::from(
+                "artifact_content_is_binary_without_document_json_output",
+            )),
+            Self::Resolved(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::Snapshot(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+        }
+    }
+}

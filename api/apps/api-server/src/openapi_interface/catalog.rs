@@ -432,3 +432,7 @@ fn field_type(schema: &Value) -> String {
         .unwrap_or("object")
         .to_string()
 }
+
+pub(crate) fn close_api_event_schema(source: &Value, schema: &Value) -> Value {
+    resolve_schema(&CatalogSpec::Full(source), schema)
+}

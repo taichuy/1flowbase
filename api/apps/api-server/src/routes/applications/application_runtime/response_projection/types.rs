@@ -1,11 +1,11 @@
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct StartNodeDebugPreviewBody {
     pub input_payload: serde_json::Value,
     pub document: Option<serde_json::Value>,
     pub debug_session_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct StartFlowDebugRunBody {
     pub input_payload: serde_json::Value,
     pub document: Option<serde_json::Value>,
@@ -14,19 +14,19 @@ pub struct StartFlowDebugRunBody {
     pub mcp_instance_ids: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DebugRunStreamQuery {
     pub from_sequence: Option<i64>,
     pub last_event_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct RuntimeDebugStreamQuery {
     pub from_sequence: Option<i64>,
     pub limit: Option<i64>,
 }
 
-#[derive(Debug, Deserialize, Default, ToSchema)]
+#[derive(Debug, Deserialize, Default, ToSchema, serde::Serialize)]
 pub struct ApplicationRunsQuery {
     pub page: Option<i64>,
     pub page_size: Option<i64>,
@@ -36,18 +36,18 @@ pub struct ApplicationRunsQuery {
     pub cache_mode: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ResumeFlowRunBody {
     pub checkpoint_id: String,
     pub input_payload: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CompleteCallbackTaskBody {
     pub response_payload: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ResolveRuntimeDebugArtifactsBody {
     pub artifact_refs: Vec<Uuid>,
 }
@@ -57,7 +57,7 @@ pub struct ApplicationRunSelectedExportBody {
     pub run_ids: Vec<Uuid>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct RunArchiveUploadSessionCreateBody {
     pub filename: Option<String>,
     pub total_size_bytes: i64,
@@ -191,7 +191,7 @@ pub struct ApplicationRunArchiveQuery {
     pub archive_version: Option<i32>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ApplicationRunArchiveBody {
     pub run_ids: Vec<Uuid>,
     pub archive_version: Option<i32>,
@@ -315,7 +315,7 @@ pub struct FlowRunMetadataResponse {
     pub updated_at: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ApplicationConversationMessagesQuery {
     pub around_run_id: Option<Uuid>,
     pub before: Option<String>,
@@ -656,7 +656,7 @@ pub struct ApplicationRunSelectedExportManifestResponse {
     pub entries: Vec<ApplicationRunSelectedExportManifestRunResponse>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ApplicationRunTraceNodeChildrenQuery {
     pub parent_trace_node_id: String,
     pub page_size: Option<i64>,

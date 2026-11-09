@@ -16,6 +16,8 @@ import {
 } from '@1flowbase/api-client';
 
 export {
+  fetchConsoleMcpInstanceDirectory as fetchSettingsMcpInstanceDirectory,
+  replaceConsoleMcpInstanceDirectory as replaceSettingsMcpInstanceDirectory,
   createConsoleMcpUpstreamConnection as createSettingsMcpUpstreamConnection,
   updateConsoleMcpUpstreamConnection as updateSettingsMcpUpstreamConnection,
   deleteConsoleMcpUpstreamConnection as deleteSettingsMcpUpstreamConnection,
@@ -60,6 +62,10 @@ export {
 } from '@1flowbase/api-client';
 
 export type {
+  ConsoleMcpInstanceDirectory,
+  ReplaceConsoleMcpInstanceDirectoryBody,
+  ConsoleMcpInstanceDirectory as SettingsMcpInstanceDirectory,
+  ReplaceConsoleMcpInstanceDirectoryBody as ReplaceSettingsMcpInstanceDirectoryBody,
   ConsoleMcpBundleImportReport as SettingsMcpBundleImportReport,
   ConsoleMcpBundlePreview as SettingsMcpBundlePreview,
   ExportConsoleMcpBundleBody as ExportSettingsMcpBundleBody,

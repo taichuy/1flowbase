@@ -1,5 +1,6 @@
 import type { EventWorkflowStatus } from '@1flowbase/api-client';
 import { Typography } from 'antd';
+import { RuntimeIdentity } from './runtime/RuntimeIdentity';
 import { useTranslation } from 'react-i18next';
 import type { DataTableColumn } from '../../../../shared/ui/data-table/DataTable';
 import { EventsTable } from './EventsTable';
@@ -41,6 +42,8 @@ export function EventWorkflowSubscriptions({
         return t('reason_compiled_plan');
       case 'workflow_trigger_type':
         return t('reason_trigger_type');
+      case 'application_disabled':
+        return t('reason_application_disabled');
       case 'trigger_disabled':
         return t('reason_trigger_disabled');
       case 'permission_denied':
@@ -91,14 +94,24 @@ export function EventWorkflowSubscriptions({
     {
       key: 'subscription_id',
       title: t('subscription_id'),
-      dataIndex: 'subscription_id',
+      render: (_, row) => (
+        <RuntimeIdentity
+          value={row.subscription_id}
+          label={t('subscription_id')}
+        />
+      ),
       width: 240,
       mobileRole: 'title'
     },
     {
       key: 'application_id',
       title: t('application_id'),
-      dataIndex: 'application_id',
+      render: (_, row) => (
+        <RuntimeIdentity
+          value={row.application_id}
+          label={t('application_id')}
+        />
+      ),
       width: 240
     },
     {

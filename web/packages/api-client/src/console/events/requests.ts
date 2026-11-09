@@ -1,5 +1,7 @@
 import { apiFetch } from '../../transport';
 import type {
+  ApiEventOperationDetails,
+  ApiEventOperationSummary,
   CreateEventDefinitionInput,
   UpdateEventDefinitionInput,
   EventCatalogEntry,
@@ -35,5 +37,16 @@ export const updateEventDefinition = (
     method: 'PUT',
     body,
     csrfToken,
+    baseUrl
+  });
+
+export const listApiEventOperations = (baseUrl?: string) =>
+  apiFetch<ApiEventOperationSummary[]>({
+    path: `${BASE_PATH}/api-operations`,
+    baseUrl
+  });
+export const getApiEventOperation = (operation_id: string, baseUrl?: string) =>
+  apiFetch<ApiEventOperationDetails>({
+    path: `${BASE_PATH}/api-operations/${encodeURIComponent(operation_id)}`,
     baseUrl
   });

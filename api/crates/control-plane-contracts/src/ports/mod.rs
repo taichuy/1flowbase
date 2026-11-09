@@ -1,3 +1,9 @@
+#[path = "resource_ports/application_lifecycle.rs"]
+pub mod application_lifecycle;
+pub use application_lifecycle::*;
+#[path = "integration_ports/communication_lifecycle.rs"]
+pub mod communication_lifecycle;
+pub use communication_lifecycle::*;
 #[path = "extension_ports/managed_service.rs"]
 mod managed_service;
 pub use managed_service::*;
@@ -115,3 +121,7 @@ pub use communication_commands::*;
 #[path = "resource_ports/event_center.rs"]
 pub mod event_center;
 pub use event_center::*;
+
+#[path = "extension_ports/record_permissions.rs"]
+pub mod record_permissions;
+pub use record_permissions::*;

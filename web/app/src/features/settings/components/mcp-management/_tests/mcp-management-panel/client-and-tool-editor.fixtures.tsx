@@ -1,3 +1,5 @@
+import { installDirectorySnapshotApi } from './fixtures/directory-snapshot';
+import type { ConsoleMcpCatalog } from '@1flowbase/api-client';
 import {
   act,
   fireEvent,
@@ -56,6 +58,8 @@ const mcpManagementApi = vi.hoisted(() => ({
   exportSettingsMcpBundle: vi.fn(),
   exportSettingsMcpInstanceBundle: vi.fn(),
   exportSettingsMcpCatalog: vi.fn(),
+  fetchSettingsMcpInstanceDirectory: vi.fn(),
+  replaceSettingsMcpInstanceDirectory: vi.fn(),
   fetchSettingsMcpBundleExportDefaults: vi.fn(),
   fetchSettingsMcpTemplateLibrary: vi.fn(),
   fetchSettingsMcpClientCredential: vi.fn(
@@ -304,135 +308,137 @@ async function renderPanelWithMountedTool({
   proxy?: boolean;
   fullDescription?: string;
 } = {}) {
+  const catalog: ConsoleMcpCatalog = {
+    instances: [
+      {
+        id: 'instance-record-1',
+        workspace_id: 'workspace-1',
+        instance_id: 'ops_mcp',
+        name: 'Ops MCP',
+        description_short: null,
+        status: 'enabled',
+        default_entry_path: '/',
+        webmcp_exposure: 'disabled',
+        managed_by: null,
+        created_by: 'user-1',
+        updated_by: 'user-1',
+        created_at: '2026-07-06T00:00:00Z',
+        updated_at: '2026-07-06T00:00:00Z',
+        llm_tool_registration: {
+          prefix: 'ops_mcp',
+          tools: [
+            { operation: 'list', name: 'ops_mcp_mcp_list' },
+            { operation: 'get', name: 'ops_mcp_mcp_get' },
+            { operation: 'result', name: 'ops_mcp_mcp_result' },
+            { operation: 'call', name: 'ops_mcp_mcp_call' }
+          ]
+        }
+      }
+    ],
+    groups: includeGroup
+      ? [
+          {
+            id: 'group-1',
+            instance_record_id: 'instance-record-1',
+            path: '/ops',
+            display_name: 'ops',
+            description_short: null,
+            enabled: true,
+            sort_order: 0
+          }
+        ]
+      : [],
+    tools: [
+      {
+        id: 'tool-record-1',
+        workspace_id: 'workspace-1',
+        tool_id: 'search_customer',
+        name: 'Search customer',
+        short_description: 'Find matching customers',
+        full_description: fullDescription,
+        managed_by: null,
+        execution_target: proxy
+          ? {
+              kind: 'mcp_proxy' as const,
+              upstream_connection_id: '019b-connection',
+              remote_tool_name: 'search_documents',
+              source_schema_hash: 'sha256:source'
+            }
+          : {
+              kind: 'interface_wrapper' as const,
+              interface_id: 'create_app'
+            },
+        operation,
+        parameter_schema: {},
+        result_schema: {},
+        max_inline_chars: null,
+        response_fields: null,
+        input_mapping: proxy
+          ? {
+              mappings: [
+                {
+                  local_path: 'request.query',
+                  remote_path: 'query.text',
+                  required: true
+                }
+              ]
+            }
+          : {},
+        output_mapping: proxy
+          ? {
+              mappings: [
+                {
+                  remote_path: 'document.title',
+                  local_path: 'result.title',
+                  required: true
+                }
+              ]
+            }
+          : {},
+        permission_code: null,
+        risk_level: 'low',
+        des_id: 'des-1',
+        des_id_required: false,
+        status: 'enabled',
+        availability_status: 'available',
+        availability_reason: null,
+        revision: 1
+      }
+    ],
+    bindings: includeBinding
+      ? [
+          {
+            id: 'binding-1',
+            instance_record_id: 'instance-record-1',
+            tool_record_id: 'tool-record-1',
+            group_path: '/ops/customer',
+            tool_id: 'search_customer',
+            display_alias: null,
+            visible: true,
+            sort_order: 0
+          }
+        ]
+      : [],
+    discovery_policies: [
+      {
+        id: 'policy-1',
+        workspace_id: 'workspace-1',
+        instance_record_id: 'instance-record-1',
+        instance_id: 'ops_mcp',
+        list_default_limit: 20,
+        list_max_depth: 3,
+        list_regex_enabled: false,
+        list_regex_max_length: 120,
+        list_return_fields: []
+      }
+    ]
+  };
+  installDirectorySnapshotApi(mcpManagementApi, catalog);
   return await renderSettled(
     <AppProviders>
       <McpManagementPanel
         canManage
-        catalog={{
-          instances: [
-            {
-              id: 'instance-record-1',
-              workspace_id: 'workspace-1',
-              instance_id: 'ops_mcp',
-              name: 'Ops MCP',
-              description_short: null,
-              status: 'enabled',
-              default_entry_path: '/',
-              webmcp_exposure: 'disabled',
-              managed_by: null,
-              created_by: 'user-1',
-              updated_by: 'user-1',
-              created_at: '2026-07-06T00:00:00Z',
-              updated_at: '2026-07-06T00:00:00Z',
-              llm_tool_registration: {
-                prefix: 'ops_mcp',
-                tools: [
-                  { operation: 'list', name: 'ops_mcp_mcp_list' },
-                  { operation: 'get', name: 'ops_mcp_mcp_get' },
-                  { operation: 'result', name: 'ops_mcp_mcp_result' },
-                  { operation: 'call', name: 'ops_mcp_mcp_call' }
-                ]
-              }
-            }
-          ],
-          groups: includeGroup
-            ? [
-                {
-                  id: 'group-1',
-                  instance_record_id: 'instance-record-1',
-                  path: '/ops',
-                  display_name: 'ops',
-                  description_short: null,
-                  enabled: true,
-                  sort_order: 0
-                }
-              ]
-            : [],
-          tools: [
-            {
-              id: 'tool-record-1',
-              workspace_id: 'workspace-1',
-              tool_id: 'search_customer',
-              name: 'Search customer',
-              short_description: 'Find matching customers',
-              full_description: fullDescription,
-              managed_by: null,
-              execution_target: proxy
-                ? {
-                    kind: 'mcp_proxy' as const,
-                    upstream_connection_id: '019b-connection',
-                    remote_tool_name: 'search_documents',
-                    source_schema_hash: 'sha256:source'
-                  }
-                : {
-                    kind: 'interface_wrapper' as const,
-                    interface_id: 'create_app'
-                  },
-              operation,
-              parameter_schema: {},
-              result_schema: {},
-              max_inline_chars: null,
-              response_fields: null,
-              input_mapping: proxy
-                ? {
-                    mappings: [
-                      {
-                        local_path: 'request.query',
-                        remote_path: 'query.text',
-                        required: true
-                      }
-                    ]
-                  }
-                : {},
-              output_mapping: proxy
-                ? {
-                    mappings: [
-                      {
-                        remote_path: 'document.title',
-                        local_path: 'result.title',
-                        required: true
-                      }
-                    ]
-                  }
-                : {},
-              permission_code: null,
-              risk_level: 'low',
-              des_id: 'des-1',
-              des_id_required: false,
-              status: 'enabled',
-              availability_status: 'available',
-              availability_reason: null,
-              revision: 1
-            }
-          ],
-          bindings: includeBinding
-            ? [
-                {
-                  id: 'binding-1',
-                  instance_record_id: 'instance-record-1',
-                  tool_record_id: 'tool-record-1',
-                  group_path: '/ops/customer',
-                  tool_id: 'search_customer',
-                  display_alias: null,
-                  visible: true,
-                  sort_order: 0
-                }
-              ]
-            : [],
-          discovery_policies: [
-            {
-              id: 'policy-1',
-              workspace_id: 'workspace-1',
-              instance_record_id: 'instance-record-1',
-              instance_id: 'ops_mcp',
-              list_default_limit: 20,
-              list_max_depth: 3,
-              list_regex_enabled: false,
-              list_regex_max_length: 120,
-              list_return_fields: []
-            }
-          ]
-        }}
+        catalog={catalog}
         interfaceCapabilities={interfaceCapabilities}
       />
     </AppProviders>

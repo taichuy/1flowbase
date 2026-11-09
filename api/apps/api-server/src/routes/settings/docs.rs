@@ -27,8 +27,10 @@ use crate::{
 pub(crate) mod data_model_openapi_interface;
 #[path = "docs_interface.rs"]
 pub(crate) mod interface;
+#[path = "docs_interface/openapi.rs"]
+pub mod openapi;
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Deserialize, Serialize, IntoParams)]
 pub struct DocsCategoryOperationsQuery {
     #[param(minimum = 0)]
     pub offset: Option<usize>,
@@ -122,6 +124,14 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/console/docs/catalog",
+    operation_id = "get_console_docs_catalog",
+    summary = "Get console docs catalog",
+    description = "Get console docs catalog in the system backend.",
+    responses((status = 200, body = DocsCatalog))
+)]
 pub async fn get_docs_catalog(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -139,6 +149,15 @@ pub async fn get_docs_catalog(
     Ok(Json(ApiSuccess::new(catalog)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/console/docs/categories/{category_id}/operations",
+    operation_id = "list_console_docs_category_operations",
+    summary = "List console docs category operations",
+    description = "List console docs category operations in the system backend.",
+    params(("category_id" = String, Path),DocsCategoryOperationsQuery),
+    responses((status = 200, body = DocsCatalogCategoryOperationsPage))
+)]
 pub async fn get_category_operations(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -158,6 +177,15 @@ pub async fn get_category_operations(
     Ok(Json(ApiSuccess::new(page)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/console/docs/categories/{category_id}/openapi.json",
+    operation_id = "get_console_docs_category_openapi",
+    summary = "Get console docs category openapi",
+    description = "Get console docs category openapi in the system backend.",
+    params(("category_id" = String, Path)),
+    responses((status = 200, body = openapi::ConsoleOpenApiDocumentSchema))
+)]
 pub async fn get_category_openapi(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -176,6 +204,15 @@ pub async fn get_category_openapi(
     Ok(spec)
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/console/docs/operations/{operation_id}/openapi.json",
+    operation_id = "get_console_docs_operation_openapi",
+    summary = "Get console docs operation openapi",
+    description = "Get console docs operation openapi in the system backend.",
+    params(("operation_id" = String, Path)),
+    responses((status = 200, body = openapi::ConsoleOpenApiDocumentSchema))
+)]
 pub async fn get_operation_openapi(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,

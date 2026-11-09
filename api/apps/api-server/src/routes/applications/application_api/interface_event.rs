@@ -10,7 +10,7 @@ use crate::{
 };
 use control_plane::application_public_api::workflow_event::WorkflowEventTriggerService;
 use interface_runtime::{InterfaceContract, UserPrincipal};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
@@ -83,16 +83,21 @@ struct WorkflowEventAdapter {
     store: MainDurableStore,
     changes: Arc<tokio::sync::Notify>,
     statuses: crate::workers::event_workflow::EventWorkflowStatuses,
+    sources: Arc<crate::event_center::catalog::EventSourceCatalog>,
+    runtime: control_plane::event_center::EventCenterRuntime,
+    // The registry owns this adapter, so the generation is borrowed, never retained.
+    boot: Option<Weak<crate::extension_bus::ExtensionBootSnapshot>>,
 }
 pub(crate) fn port(
-    store: MainDurableStore,
-    changes: Arc<tokio::sync::Notify>,
-    statuses: crate::workers::event_workflow::EventWorkflowStatuses,
+    state: &crate::app_state::ApiState,
 ) -> Arc<dyn ConsoleInterfacePort<WorkflowEventInput, WorkflowEventOutput>> {
     Arc::new(WorkflowEventAdapter {
-        store,
-        changes,
-        statuses,
+        store: state.store.clone(),
+        changes: state.event_workflow_changes.clone(),
+        statuses: state.event_workflow_statuses.clone(),
+        sources: state.event_sources.clone(),
+        runtime: state.event_center.clone(),
+        boot: state.extension_boot_snapshot.as_ref().map(Arc::downgrade),
     })
 }
 impl ConsoleInterfacePort<WorkflowEventInput, WorkflowEventOutput> for WorkflowEventAdapter {
@@ -104,7 +109,12 @@ impl ConsoleInterfacePort<WorkflowEventInput, WorkflowEventOutput> for WorkflowE
         Box::pin(async move {
             let result: Result<WorkflowEventOutput, ApiError> = async {
                 let actor = principal.actor();
-                let service = WorkflowEventTriggerService::new(self.store.for_actor(actor.clone()));
+                let _generation = self.boot.as_ref().map(|boot| {
+                    boot.upgrade().ok_or_else(crate::generation_dispatch::unavailable)
+                }).transpose()?;
+                let registry = _generation.as_ref().and_then(|boot| boot.interface_registry()).map(|registry| registry.snapshot());
+                let entries = self.sources.registered_events_with_interfaces(actor, &self.runtime, registry.as_deref());
+                let service = WorkflowEventTriggerService::new(self.store.for_actor(actor.clone())).with_registered_events(entries);
                 Ok(match input {
                     WorkflowEventInput::Get { application_id } => WorkflowEventOutput::Optional(
                         service
@@ -164,4 +174,48 @@ pub(crate) fn compile_registry(
         DECLARATIONS,
         port,
     )
+}
+
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "_tests/workflow_event_ownership.rs"]
+mod ownership_tests;
+
+impl crate::openapi_interface::contract::ApiInput for WorkflowEventInput {
+    fn project_document_input(
+        &self,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::Get { application_id } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({"application_id":application_id}),
+                    serde_json::json!({}),
+                    serde_json::Value::Null,
+                )
+            }
+            Self::Replace {
+                application_id,
+                body,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::openapi_interface::contract::to_value(body)?,
+            ),
+        })
+    }
+}
+
+impl crate::openapi_interface::contract::ApiOutput for WorkflowEventOutput {
+    fn project_document_output(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::Optional(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Required(value) => crate::openapi_interface::contract::to_value(value),
+        }
+    }
 }

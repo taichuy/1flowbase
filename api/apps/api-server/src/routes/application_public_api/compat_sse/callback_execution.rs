@@ -96,6 +96,7 @@ pub(super) async fn open_compatible_turn_with_invoker(
     initial_run: NativeRunResult,
     mut action: CompatibleTurnAction,
     provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
+    source_binding: Option<control_plane::ports::RuntimeEventSourceBinding>,
     mcp_runtime_invoker: Arc<
         dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
     >,
@@ -106,6 +107,16 @@ pub(super) async fn open_compatible_turn_with_invoker(
             callback_task_id: callback_task_id_from_resume_command(command),
         },
     };
+    let source_binding = match &action {
+        CompatibleTurnAction::ResumeForActor { actor, .. } => Some(
+            control_plane::ports::RuntimeEventSourceBinding::workspace(actor.workspace_id),
+        ),
+        _ => source_binding,
+    }
+    .unwrap_or(control_plane::ports::RuntimeEventSourceBinding {
+        scope: domain::event_center::EventSourceScope::Unbound,
+        workflow_ancestor_ids: Vec::new(),
+    });
     let turn_action = action.name();
     // Retain the invoker's generation through recovery/terminal writes after business return.
     let execution_invoker = mcp_runtime_invoker.clone();
@@ -196,9 +207,10 @@ pub(super) async fn open_compatible_turn_with_invoker(
         if let Err(error) = dependencies
             .native
             .runtime_event_stream
-            .open_run(
+            .open_run_scoped(
                 initial_run.id,
                 control_plane::ports::RuntimeEventStreamPolicy::debug_default(),
+                source_binding,
             )
             .await
         {
@@ -400,7 +412,7 @@ pub(super) async fn open_compatible_no_execution_replay(
         _ => {
             return Err(service_error(anyhow::anyhow!(
                 "settled callback round terminal identity missing"
-            )))
+            )));
         }
     };
     let subscription = terminal_compatible_round_subscription(&replay);

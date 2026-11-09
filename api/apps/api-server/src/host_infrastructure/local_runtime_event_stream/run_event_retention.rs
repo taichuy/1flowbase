@@ -44,6 +44,32 @@ impl RetainedRuntimeEvents {
 }
 
 impl LocalRunEventStream {
+    pub(super) fn with_sources(
+        mut self,
+        observer: Option<&dyn EventSourceObserver>,
+        binding: RuntimeEventSourceBinding,
+        run_id: Uuid,
+    ) -> Self {
+        if let Some(observer) = observer {
+            for (index, descriptor) in runtime_event_source_descriptors(
+                binding.scope.clone(),
+                domain::event_center::EventSourceBinding::Active,
+            )
+            .into_iter()
+            .enumerate()
+            {
+                self.source_observations[index] = RuntimeEventSourceObservation::register(
+                    observer,
+                    descriptor,
+                    binding.clone(),
+                    run_id,
+                    self.generation_id,
+                );
+            }
+        }
+        self
+    }
+
     pub(super) fn close(&self, reason: RuntimeEventCloseReason) {
         let _ring = self.ring.lock().expect("runtime event ring lock poisoned");
         if !self.is_closed() {
@@ -110,6 +136,9 @@ impl LocalRunEventStream {
                     .lock()
                     .expect("runtime event last event lock poisoned") = envelope.occurred_at;
                 ring.push(retained);
+                if let Some(observation) = &run.source_observations[0] {
+                    observation.published(&envelope);
+                }
                 (
                     AppendTerminalIfMissingAndCloseOutcome::Appended,
                     incoming_reason,
@@ -141,6 +170,7 @@ impl LocalRunEventStream {
         let now = OffsetDateTime::now_utc();
         Self {
             generation_id: Uuid::now_v7(),
+            source_observations: [None, None, None],
             recoverable_retention,
             next_sequence: AtomicI64::new(1),
             ring: Mutex::new(RetainedRuntimeEvents::default()),

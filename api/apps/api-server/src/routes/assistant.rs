@@ -195,7 +195,7 @@ impl AssistantPageReferenceBody {
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct StartAssistantRunBody {
     pub application_id: Uuid,
     #[serde(default)]
@@ -218,7 +218,7 @@ pub struct AssistantRunResponse {
     pub error_payload: Option<Value>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct CreateAssistantConversationBody {
     pub application_id: Uuid,
     #[serde(default)]
@@ -233,10 +233,12 @@ pub struct AssistantConversationResponse {
     pub updated_at: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ListAssistantConversationsQuery {
     pub application_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub page: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub page_size: Option<i64>,
 }
 
@@ -248,7 +250,7 @@ pub struct AssistantConversationPageResponse {
     pub page_size: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct AssistantConversationMessagesQuery {
     pub application_id: Uuid,
 }
@@ -264,10 +266,12 @@ pub struct AssistantConversationMessageResponse {
     pub created_at: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct AssistantRunActivityQuery {
     pub application_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub after_sequence: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub page_size: Option<usize>,
 }
 

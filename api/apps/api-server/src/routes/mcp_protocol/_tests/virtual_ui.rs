@@ -698,6 +698,8 @@ fn managed_mcp_get_uses_flat_body_path_query_body_fields_and_retains_existing_co
         }]
     })).unwrap();
     let service = crate::managed_services::ManagedServiceRegistration {
+        publisher_namespace: "test".into(),
+        data_models: Vec::new(),
         display_name: "Fixture plugin".into(),
         description: "Fixture plugin operations".into(),
         installation_id: uuid::Uuid::nil(),
@@ -1173,4 +1175,172 @@ async fn mcp_call_file_param_reaches_existing_interface_dispatch() {
     .await
     .unwrap();
     assert!(matches!(result, VirtualToolOutcome::Success(_)));
+}
+
+struct LinkOnlyFixtureDispatch {
+    calls: std::sync::Mutex<Vec<Value>>,
+}
+#[async_trait::async_trait]
+impl McpInterfaceDispatchPort for LinkOnlyFixtureDispatch {
+    async fn execute(
+        &self,
+        _: HeaderMap,
+        _: domain::McpInterfaceCatalogEntry,
+        body: McpDebugExecuteBody,
+        _: McpServerBoundInputs,
+    ) -> Result<Value, debug_execute::McpDebugExecuteError> {
+        let link_only = body.mcp_arguments["link_only"] == true;
+        self.calls.lock().unwrap().push(body.mcp_arguments);
+        Ok(
+            json!({"uri":"urn:file:a","name":"a","mime":"application/octet-stream",
+            "blob":if link_only { Value::Null } else { json!("YWJjAA==") },"metadata":{"size":4}}),
+        )
+    }
+}
+
+#[tokio::test]
+async fn link_only_and_template_reads_use_canonical_dispatch_with_public_replay_overrides() {
+    let mut catalog = readable_resource_catalog();
+    catalog.tools[0].output_mapping["resource_read_arguments"] = json!({"link_only":false});
+    catalog.tools[0].output_mapping["mcp_content"][1]["skip_if_null"] = json!(true);
+    catalog.tools[0].output_mapping["resources"] =
+        json!([{"name":"a","uri":"urn:file:a","arguments":{"query":"a","link_only":true}}]);
+    let dispatch_port = LinkOnlyFixtureDispatch {
+        calls: Default::default(),
+    };
+    let (_state, dependencies) = resource_dispatch_fixture().await;
+    let interfaces = media_fixture_interfaces();
+    let actor =
+        domain::ActorContext::root(uuid::Uuid::from_u128(10), uuid::Uuid::from_u128(10), "root");
+    let scope = VirtualMcpScope::single("selected".into());
+    let headers = HeaderMap::new();
+    let invoke = |name, args| {
+        dispatch(
+            &dependencies,
+            &interfaces,
+            &dispatch_port,
+            &headers,
+            &actor,
+            &catalog,
+            &scope,
+            name,
+            args,
+            None,
+        )
+    };
+    let VirtualToolOutcome::Success(first) = invoke(
+        MCP_CALL,
+        json!({"tool_id":"lookup","arguments":{"query":"a","link_only":true}}),
+    )
+    .await
+    .unwrap() else {
+        panic!("initial call");
+    };
+    let blocks = first["content"].as_array().unwrap();
+    assert!(!blocks.iter().any(|block| block["type"] == "resource"));
+    let link_uri = blocks
+        .iter()
+        .find(|block| block["type"] == "resource_link")
+        .unwrap()["uri"]
+        .as_str()
+        .unwrap();
+    let VirtualToolOutcome::Success(list) = invoke(resources::LIST_TOOL, json!({})).await.unwrap()
+    else {
+        panic!("list");
+    };
+    let listed_uri = list["resources"][0]["uri"].as_str().unwrap();
+    let VirtualToolOutcome::Success(templates) =
+        invoke(resources::TEMPLATES_TOOL, json!({})).await.unwrap()
+    else {
+        panic!("templates");
+    };
+    assert_eq!(
+        dispatch_port.calls.lock().unwrap().len(),
+        1,
+        "discovery executes no source tool"
+    );
+    let template = templates["resourceTemplates"][0]["uriTemplate"]
+        .as_str()
+        .unwrap();
+    let encode = |s: &str| {
+        percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string()
+    };
+    let expanded = template
+        .replace("{arguments}", &encode(r#"{"query":"a","link_only":true}"#))
+        .replace("{resource_uri}", &encode("urn:file:a"));
+    for uri in [link_uri, listed_uri, expanded.as_str()] {
+        let VirtualToolOutcome::Success(read) = invoke(resources::READ_TOOL, json!({"uri":uri}))
+            .await
+            .unwrap()
+        else {
+            panic!("read");
+        };
+        assert_eq!(
+            read,
+            json!({"contents":[{"uri":uri,"mimeType":"application/octet-stream","blob":"YWJjAA=="}]})
+        );
+    }
+    let calls = dispatch_port.calls.lock().unwrap();
+    assert_eq!(calls.len(), 4);
+    assert_eq!(calls[0]["link_only"], true);
+    assert!(calls[1..]
+        .iter()
+        .all(|args| args["link_only"] == false && args["query"] == "a"));
+}
+
+#[test]
+fn mcp_get_omits_materialized_empty_body_for_explicitly_unmapped_interface() {
+    let mut catalog = catalog_with_server_bound_workspace();
+    catalog.tools[0].parameter_schema = json!({"type":"object","properties":{"body":{"type":"object","additionalProperties":false}},"required":["body"],"additionalProperties":false});
+    catalog.tools[0].input_mapping = json!({"interface_parameters":[],"mappings":[]});
+    let scope = VirtualMcpScope::selected(&catalog, &["selected".to_string()]);
+    let VirtualToolOutcome::Success(result) =
+        get(&catalog, &scope, &json!({"tool_id":"lookup"}), false)
+    else {
+        panic!("visible tool");
+    };
+    assert_eq!(
+        result["structuredContent"]["input_schema"],
+        json!({"type":"object","properties":{},"additionalProperties":false})
+    );
+    catalog.tools[0].input_mapping = json!({});
+    let VirtualToolOutcome::Success(raw) =
+        get(&catalog, &scope, &json!({"tool_id":"lookup"}), false)
+    else {
+        panic!("visible tool");
+    };
+    assert_eq!(
+        raw["structuredContent"]["input_schema"],
+        catalog.tools[0].parameter_schema
+    );
+}
+#[path = "virtual_ui/causal_lineage.rs"]
+mod causal_lineage;
+
+#[test]
+fn mcp_get_advertises_a_string_file_path_beside_url_host_parameters() {
+    let mut catalog = catalog_with_server_bound_workspace();
+    catalog.tools[0].parameter_schema = json!({"type":"object","properties":{
+        "path":{"type":"object","properties":{"host_id":{"type":"string","minLength":1}},"required":["host_id"],"additionalProperties":false},
+        "body":{"type":"object","properties":{"path":{"type":"string","minLength":1}},"required":["path"],"additionalProperties":false}
+    },"required":["path","body"],"additionalProperties":false});
+    catalog.tools[0].input_mapping = json!({
+        "interface_parameters":[{"name":"host_id","parameter_type":"url"},{"name":"path","parameter_type":"json_body"}],
+        "mappings":[
+            {"interface_param":"host_id","mcp_param":"host_id","required":true},
+            {"interface_param":"path","mcp_param":"path","required":true}
+        ]
+    });
+    let scope = VirtualMcpScope::single("selected".into());
+    let VirtualToolOutcome::Success(result) =
+        get(&catalog, &scope, &json!({"tool_id":"lookup"}), false)
+    else {
+        panic!("visible tool");
+    };
+    let schema = &result["structuredContent"]["input_schema"];
+    assert_eq!(schema["properties"]["path"]["type"], "string");
+    let validator = jsonschema::validator_for(schema).unwrap();
+    assert!(validator.is_valid(&json!({"host_id":"saved-host","path":"/tmp/file.txt"})));
+    assert!(!validator.is_valid(&json!({"host_id":"saved-host","path":{"host_id":"saved-host"}})));
+    assert!(!validator.is_valid(&json!({"host_id":"saved-host","path":""})));
 }

@@ -92,3 +92,40 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsInput {
     const CONTRACT_ID: &'static str = "console-application-runtime-debug-artifacts-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
+
+impl crate::openapi_interface::contract::ApiInput for ApplicationRuntimeDebugArtifactsInput {
+    fn project_document_input(
+        &self,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::Get {
+                application_id,
+                artifact_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"artifact_id":artifact_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::Resolve {
+                application_id,
+                body,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::openapi_interface::contract::to_value(body)?,
+            ),
+            Self::Snapshot {
+                application_id,
+                run_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+        })
+    }
+}

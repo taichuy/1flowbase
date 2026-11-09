@@ -342,13 +342,17 @@ export function createConsoleApplicationTag(
 }
 
 export interface ReplaceConsoleWorkflowEventTriggerInput {
-  enabled: boolean;
+  source?: import('./events').EventSourceSelection;
+  /** @deprecated Listener activation is owned by application publication/enabled state. */
+  // @field-contract-compat source=application_publication.api_enabled alias=enabled remove_by=2027-02-08
+  enabled?: boolean;
   contract_id: string;
-  contract_version: string;
   trigger_phase: import('./events').EventTriggerPhase;
   input_mapping: Record<string, string>;
 }
 export interface ConsoleWorkflowEventTrigger extends ReplaceConsoleWorkflowEventTriggerInput {
+  /** Legacy configuration flag, not effective listening state. */
+  enabled: boolean;
   id: string;
   workspace_id: string;
   application_id: string;

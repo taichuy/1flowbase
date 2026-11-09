@@ -7,9 +7,9 @@ use std::collections::BTreeMap;
 
 fn configuration() -> WorkflowEventTriggerInput {
     WorkflowEventTriggerInput {
+        source: None,
         enabled: true,
         contract_id: "custom.invoice".into(),
-        contract_version: "1".into(),
         trigger_phase: domain::event_center::EventTriggerPhase::Published,
         input_mapping: BTreeMap::from([("invoice".into(), "/payload/invoice~1id".into())]),
     }
@@ -85,26 +85,37 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
         .load_actor_context_for_user(user_id)
         .await
         .unwrap();
-    let definition = EventCenterConfigurationService::new(repository.clone())
-        .create_definition(
-            &actor,
-            domain::event_center::CreateEventDefinitionInput {
-                contract_id: "custom.invoice".into(),
-                contract_version: "1".into(),
-                name: "Invoice".into(),
-                description: String::new(),
-                payload_schema: json!({"type":"object"}),
-                enabled: true,
-            },
-        )
+    // Preserve the pre-interface-rule consumer contract using a persisted legacy record.
+    let now = time::OffsetDateTime::now_utc();
+    let mut definition = domain::event_center::EventDefinitionRecord {
+        interface_event: None,
+        id: Uuid::now_v7(),
+        workspace_id: actor.current_workspace_id,
+        contract_id: configuration().contract_id,
+        name: "Invoice".into(),
+        description: String::new(),
+        payload_schema: json!({"type":"object"}),
+        enabled: true,
+        created_by: actor.user_id,
+        created_at: now,
+        updated_at: now,
+    };
+    repository
+        .create_event_definition(&definition)
         .await
         .unwrap();
     let service = WorkflowEventTriggerService::new(repository.clone());
     // Unpublished configuration is persisted without starting or manufacturing a run.
+    let mut legacy_request = configuration();
+    legacy_request.enabled = false;
     let draft_trigger = service
-        .replace_trigger(user_id, app.id, configuration())
+        .replace_trigger(user_id, app.id, legacy_request)
         .await
         .unwrap();
+    assert!(
+        draft_trigger.configuration.enabled,
+        "legacy client flags cannot disable a publication-owned listener"
+    );
     assert!(service.prepare_subscription(&draft_trigger).await.is_err());
     let unchanged = service
         .replace_trigger(user_id, app.id, configuration())
@@ -119,21 +130,38 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
             actor_user_id: user_id,
             application_id: app.id,
             mapping: ApplicationApiMappingConfig::default_native(),
-            api_enabled: false,
+            api_enabled: true,
         })
         .await
         .unwrap();
     repository.set_active_publication_document_snapshot(app.id, document());
+    // Legacy backups retain this field. It must no longer suppress a published listener.
+    let mut legacy = repository
+        .get_workflow_event_trigger(app.workspace_id, app.id)
+        .await
+        .unwrap()
+        .unwrap();
+    legacy.configuration.enabled = false;
+    repository
+        .save_workflow_event_trigger(&legacy)
+        .await
+        .unwrap();
+    assert!(repository
+        .list_workflow_event_triggers(app.workspace_id)
+        .await
+        .unwrap()
+        .iter()
+        .any(|row| row.id == legacy.id));
     let trigger = service.get_trigger(user_id, app.id).await.unwrap().unwrap();
     let publication = service.prepare_subscription(&trigger).await.unwrap();
     let signal_id = Uuid::now_v7();
-    let command = InvokeWorkflowEventCommand {
+    let mut command = InvokeWorkflowEventCommand {
         trigger,
         publication: publication.clone(),
         signal_id,
-        event_id: Some(signal_id),
+        event_id: Some(signal_id.to_string()),
         subscription_id: Uuid::now_v7(),
-        context: json!({"workspace_id":app.workspace_id,"event_id":signal_id,"contract_id":"custom.invoice","contract_version":"1","phase":"published","payload":{"invoice/id":"A-001"}}),
+        context: json!({"workspace_id":app.workspace_id,"event_id":signal_id,"contract_id":"custom.invoice","phase":"published","payload":{"invoice/id":"A-001"}}),
     };
     let WorkflowEventInvocationOutcome::Invoked(first) =
         service.invoke_event(command.clone()).await.unwrap()
@@ -165,27 +193,89 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
     };
     assert!(!second.created);
     assert_eq!(first.flow_run.id, second.flow_run.id);
-    let definitions = EventCenterConfigurationService::new(repository.clone());
-    let mut definition_update = domain::event_center::UpdateEventDefinitionInput {
-        name: definition.name.clone(),
-        description: definition.description.clone(),
-        payload_schema: definition.payload_schema.clone(),
-        enabled: false,
-    };
-    definitions
-        .update_definition(&actor, definition.id, definition_update.clone())
+    let publications = ApplicationPublicationService::new(repository.clone());
+    publications
+        .set_api_enabled(
+            crate::application_public_api::publications::SetApplicationApiEnabledCommand {
+                actor_user_id: user_id,
+                application_id: app.id,
+                api_enabled: false,
+            },
+        )
         .await
         .unwrap();
     assert!(service
         .prepare_subscription(&command.trigger)
         .await
         .is_err());
-    assert!(service.invoke_event(command.clone()).await.is_err());
-    definition_update.enabled = true;
-    definitions
-        .update_definition(&actor, definition.id, definition_update)
+    assert!(matches!(
+        service.invoke_event(command.clone()).await.unwrap(),
+        WorkflowEventInvocationOutcome::Skipped {
+            reason: "application_disabled"
+        }
+    ));
+    publications
+        .set_api_enabled(
+            crate::application_public_api::publications::SetApplicationApiEnabledCommand {
+                actor_user_id: user_id,
+                application_id: app.id,
+                api_enabled: true,
+            },
+        )
         .await
         .unwrap();
+    command.publication = service
+        .prepare_subscription(&command.trigger)
+        .await
+        .unwrap();
+    publications
+        .unpublish(
+            crate::application_public_api::publications::UnpublishApplicationCommand {
+                actor_user_id: user_id,
+                application_id: app.id,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(service
+        .prepare_subscription(&command.trigger)
+        .await
+        .is_err());
+    assert!(matches!(
+        service.invoke_event(command.clone()).await.unwrap(),
+        WorkflowEventInvocationOutcome::Skipped {
+            reason: "application_unpublished"
+        }
+    ));
+    publications
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: user_id,
+            application_id: app.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    repository.set_active_publication_document_snapshot(app.id, document());
+    command.publication = service
+        .prepare_subscription(&command.trigger)
+        .await
+        .unwrap();
+    definition.enabled = false;
+    assert!(repository
+        .update_event_definition(&definition)
+        .await
+        .unwrap());
+    assert!(service
+        .prepare_subscription(&command.trigger)
+        .await
+        .is_err());
+    assert!(service.invoke_event(command.clone()).await.is_err());
+    definition.enabled = true;
+    assert!(repository
+        .update_event_definition(&definition)
+        .await
+        .unwrap());
     let mut invalid_workspace = command.clone();
     invalid_workspace.context["workspace_id"] = json!(Uuid::now_v7());
     assert!(service.invoke_event(invalid_workspace).await.is_err());
@@ -194,7 +284,7 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
             actor_user_id: user_id,
             application_id: app.id,
             mapping: ApplicationApiMappingConfig::default_native(),
-            api_enabled: false,
+            api_enabled: true,
         })
         .await
         .unwrap();
@@ -204,15 +294,23 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
         .unwrap()
         .unwrap();
     assert_eq!(republished.id, command.publication.id);
-    assert_ne!(republished.document_snapshot, command.publication.document_snapshot);
+    assert_ne!(
+        republished.document_snapshot,
+        command.publication.document_snapshot
+    );
     assert!(matches!(
         service.invoke_event(command.clone()).await.unwrap(),
         WorkflowEventInvocationOutcome::Skipped {
             reason: "publication_changed"
         }
     ));
+    // The preceding republish intentionally used the default draft to prove stale rejection.
+    // Restore a valid event Start contract before testing a configuration revision.
+    repository.set_active_publication_document_snapshot(app.id, document());
     let mut changed = configuration();
-    changed.enabled = false;
+    changed
+        .input_mapping
+        .insert("invoice".into(), "/payload/revised".into());
     service
         .replace_trigger(user_id, app.id, changed)
         .await
@@ -270,4 +368,128 @@ fn event_mapping_rejects_objects_for_scalar_start_fields_without_stringifying() 
         &json!({"payload":{"invoice":"A"}})
     )
     .is_err());
+}
+
+#[tokio::test]
+async fn native_source_string_identity_and_causal_metadata_survive_invocation_without_body_archive()
+{
+    use crate::application_public_api::{
+        mapping::ApplicationApiMappingConfig,
+        publications::{ApplicationPublicationService, PublishApplicationCommand},
+        ApplicationPublicApiTestHarness,
+    };
+    use domain::event_center::*;
+    let user = Uuid::from_u128(0x11111111111111111111111111111111);
+    let harness = ApplicationPublicApiTestHarness::new();
+    let application = harness.seed_workflow_application(user, "Native source workflow");
+    harness.set_workflow_trigger_type(application.id, domain::WorkflowTriggerType::Event);
+    let repository = harness.repository();
+    let scope = EventSourceScope::Workspace {
+        workspace_id: application.workspace_id,
+    };
+    let descriptor = EventSourceDescriptor {
+        source_id: "native.fact.source".into(),
+        owner_id: "native".into(),
+        point_id: "native.point".into(),
+        contract_id: "native.fact".into(),
+        name: "Fact".into(),
+        description: String::new(),
+        payload_schema: json!({"type":"object"}),
+        origin: EventDefinitionOrigin::Core,
+        scope: scope.clone(),
+        binding: EventSourceBinding::Active,
+        coverage: EventSourceCoverage::Live,
+        supported_phases: vec![EventTriggerPhase::Published],
+    };
+    let service = WorkflowEventTriggerService::new(repository.clone())
+        .with_registered_events(vec![descriptor.into()]);
+    let mut selected = configuration();
+    selected.contract_id = "native.fact".into();
+    selected.source = Some(EventSourceSelection {
+        filters: Default::default(),
+
+        source_id: "native.fact.source".into(),
+        scope: scope.clone(),
+    });
+    service
+        .replace_trigger(user, application.id, selected)
+        .await
+        .unwrap();
+    ApplicationPublicationService::new(repository.clone())
+        .publish_active_version(PublishApplicationCommand {
+            actor_user_id: user,
+            application_id: application.id,
+            mapping: ApplicationApiMappingConfig::default_native(),
+            api_enabled: true,
+        })
+        .await
+        .unwrap();
+    repository.set_active_publication_document_snapshot(application.id, document());
+    let trigger = service
+        .get_trigger(user, application.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let publication = service.prepare_subscription(&trigger).await.unwrap();
+    let signal = Uuid::now_v7();
+    let ancestor = Uuid::now_v7();
+    let source = EventSourceContext {
+        attributes: Default::default(),
+
+        registration_id: Uuid::now_v7(),
+        scope,
+        source_id: "native.fact.source".into(),
+        point_id: "native.point".into(),
+        original_event_id: Some("native:not-a-uuid:42".into()),
+        producer_id: Some("real-producer".into()),
+    };
+    let command = InvokeWorkflowEventCommand {
+        subscription_id: trigger.id,
+        trigger,
+        publication,
+        signal_id: signal,
+        event_id: source.original_event_id.clone(),
+        context: json!({"workspace_id":application.workspace_id,"event_id":signal,"contract_id":"native.fact","phase":"published","source_context":source,"workflow_ancestor_ids":[ancestor,application.id],"payload":{"invoice/id":"native-invoice","secret":"never-store-source-body-in-trigger-metadata"}}),
+    };
+    let WorkflowEventInvocationOutcome::Invoked(invoked) =
+        service.invoke_event(command.clone()).await.unwrap()
+    else {
+        panic!("native source must invoke");
+    };
+    let metadata = &invoked.flow_run.input_payload["trigger"];
+    assert_eq!(metadata["event_id"], "native:not-a-uuid:42");
+    assert_eq!(
+        metadata["source_context"]["original_event_id"],
+        "native:not-a-uuid:42"
+    );
+    assert_eq!(
+        metadata["workflow_ancestor_ids"],
+        json!([ancestor, application.id])
+    );
+    assert_eq!(
+        invoked.flow_run.input_payload["event-start"]["invoice"],
+        "native-invoice"
+    );
+    assert!(!serde_json::to_string(metadata)
+        .unwrap()
+        .contains("never-store-source-body"));
+    let mut mismatched = command.clone();
+    mismatched.context["source_context"]["scope"] = json!({"kind":"system"});
+    assert!(service.invoke_event(mismatched).await.is_err());
+    let mut missing = command;
+    missing.context["source_context"]["original_event_id"] = Value::Null;
+    assert!(service.invoke_event(missing).await.is_err());
+    assert!(
+        WorkflowEventTriggerService::new(repository)
+            .prepare_subscription(
+                &service
+                    .get_trigger(user, application.id)
+                    .await
+                    .unwrap()
+                    .unwrap()
+            )
+            .await
+            .is_err(),
+        "restored receivers revalidate source availability"
+    );
 }

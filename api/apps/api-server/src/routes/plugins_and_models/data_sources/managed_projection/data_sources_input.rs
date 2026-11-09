@@ -267,3 +267,6 @@ impl InterfaceContract for DataSourcesInput {
     const CONTRACT_ID: &'static str = "console-data-sources-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
+
+#[path = "event_projection.rs"]
+mod event_projection;

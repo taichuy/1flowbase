@@ -26,12 +26,16 @@ pub(super) const ASSISTANT_WEBSOCKET_PROTOCOL: &str = "1flowbase.assistant.v1";
 pub(super) const ASSISTANT_WEBSOCKET_TICKET_PREFIX: &str = "1flowbase.assistant.ticket.";
 pub(super) const ASSISTANT_WEBSOCKET_TICKET_TTL_SECONDS: i64 = 60;
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum AssistantWebSocketTicketInput {
     Create {
         body: CreateAssistantWebSocketTicketBody,
+        #[serde(skip)]
         origin: Option<String>,
     },
 }
+impl crate::openapi_interface::json_contract::JsonApiInput for AssistantWebSocketTicketInput {}
 
 impl InterfaceContract for AssistantWebSocketTicketInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -297,3 +301,6 @@ mod tests {
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }
+
+#[path = "websocket_ticket_interface/api_event_projection.rs"]
+mod api_event_projection;

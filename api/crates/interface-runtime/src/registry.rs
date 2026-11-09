@@ -28,6 +28,16 @@ pub trait InterfaceContract: Send + Sync + 'static {
     const CONTRACT_ID: &'static str;
     const CONTRACT_VERSION: &'static str;
 
+    /// Host-only business event projection. Independent of managed plugin visibility.
+    /// A missing declaration cannot be inferred from a runtime sample.
+    fn event_projection_schema() -> Option<serde_json::Value> {
+        None
+    }
+
+    fn project_for_event(&self) -> Option<serde_json::Value> {
+        None
+    }
+
     /// Explicit safe-view schema, separate from HTTP DTO serialization and credential handling.
     /// None is not an empty schema: managed admission must reject an unregistered projection.
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -291,6 +301,7 @@ impl InterfaceExecution {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InterfaceDefinition {
+    event_observation: bool,
     identity: InterfaceIdentity,
     contracts: InterfaceContracts,
     access: InterfaceAccess,
@@ -317,6 +328,7 @@ impl InterfaceDefinition {
         owner: InterfaceOwner,
     ) -> Self {
         Self {
+            event_observation: false,
             identity,
             contracts,
             access,
@@ -326,6 +338,16 @@ impl InterfaceDefinition {
             lifecycle,
             owner,
         }
+    }
+
+    /// Explicitly opt this operation into the trusted host event capability.
+    pub fn with_event_observation(mut self) -> Self {
+        self.event_observation = true;
+        self
+    }
+
+    pub fn event_observation_enabled(&self) -> bool {
+        self.event_observation
     }
 
     pub fn identity(&self) -> &InterfaceIdentity {
@@ -566,6 +588,10 @@ impl InvocationAdapterPlan {
 
 #[derive(Clone)]
 pub struct CompiledInvocationPlan {
+    pub(crate) document_observer: Option<Arc<dyn crate::DocumentOperationObserver>>,
+    pub(crate) document_operation:
+        Option<Arc<dyn crate::event_observation::document::ErasedDocumentOperationRegistration>>,
+    pub(crate) event_observer: Option<Arc<dyn crate::InterfaceEventObserver>>,
     definition: InterfaceDefinition,
     binding: ProtocolBinding,
     binding_fingerprint: BindingFingerprint,
@@ -683,6 +709,7 @@ where
     invocation_id: InvocationId,
     graph_fingerprint: GraphFingerprint,
     registry_fingerprint: RegistryFingerprint,
+    pub(crate) document_operation: Option<crate::DocumentOperationSession>,
 }
 
 impl<P> InterfaceHandlerContext<P>
@@ -697,6 +724,7 @@ where
         registry_fingerprint: RegistryFingerprint,
     ) -> Self {
         Self {
+            document_operation: None,
             principal_summary: principal.summary(),
             principal,
             attempt,
@@ -704,6 +732,10 @@ where
             graph_fingerprint,
             registry_fingerprint,
         }
+    }
+
+    pub fn document_operation(&self) -> Option<&crate::DocumentOperationSession> {
+        self.document_operation.as_ref()
     }
 
     pub fn principal(&self) -> &P {
@@ -783,6 +815,8 @@ where
 }
 
 trait ErasedInterfaceBinding: Send + Sync {
+    fn document_contract_types(&self) -> (std::any::TypeId, std::any::TypeId);
+    fn event_schemas(&self) -> Option<(serde_json::Value, serde_json::Value)>;
     fn managed_contracts(&self) -> Vec<ManagedContractSchema>;
     fn install_managed(
         &self,
@@ -835,6 +869,13 @@ where
     E: InterfaceContract,
     P: InvocationPrincipal,
 {
+    fn document_contract_types(&self) -> (std::any::TypeId, std::any::TypeId) {
+        (std::any::TypeId::of::<I>(), std::any::TypeId::of::<O>())
+    }
+    fn event_schemas(&self) -> Option<(serde_json::Value, serde_json::Value)> {
+        Some((I::event_projection_schema()?, O::event_projection_schema()?))
+    }
+
     fn managed_contracts(&self) -> Vec<ManagedContractSchema> {
         vec![
             managed_contract_schema::<I>(),
@@ -875,6 +916,13 @@ where
     E: InterfaceContract,
     P: InvocationPrincipal,
 {
+    fn document_contract_types(&self) -> (std::any::TypeId, std::any::TypeId) {
+        (std::any::TypeId::of::<I>(), std::any::TypeId::of::<O>())
+    }
+    fn event_schemas(&self) -> Option<(serde_json::Value, serde_json::Value)> {
+        Some((I::event_projection_schema()?, O::event_projection_schema()?))
+    }
+
     fn managed_contracts(&self) -> Vec<ManagedContractSchema> {
         vec![
             managed_contract_schema::<I>(),
@@ -909,6 +957,10 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum RegistryCompilationError {
+    #[error("document operation registration does not match binding {0}")]
+    DocumentOperationMismatch(BindingId),
+    #[error("event projection schema is absent for opted-in interface {0}")]
+    EventProjectionMismatch(InterfaceId),
     #[error("managed projection is absent or inconsistent for interface {0}")]
     ManagedProjectionMismatch(InterfaceId),
     #[error("duplicate interface identity {0}")]
@@ -976,6 +1028,13 @@ pub enum RegistryCompilationError {
 }
 
 pub struct RegistryCompiler {
+    pub(crate) document_observer: Option<Arc<dyn crate::DocumentOperationObserver>>,
+    document_operation_observers: BTreeMap<BindingId, Arc<dyn crate::DocumentOperationObserver>>,
+    pub(crate) document_operations: BTreeMap<
+        BindingId,
+        Arc<dyn crate::event_observation::document::ErasedDocumentOperationRegistration>,
+    >,
+    event_observer: Option<Arc<dyn crate::InterfaceEventObserver>>,
     managed_factory: Option<Arc<dyn crate::ManagedInterfaceInvocationFactory>>,
     graph_fingerprint: GraphFingerprint,
     known_operations: BTreeSet<AuthorizationOperation>,
@@ -1001,6 +1060,7 @@ pub struct RegistryCompiler {
 }
 
 pub struct CompiledInterfaceRegistry {
+    event_capabilities: BTreeMap<InterfaceId, crate::InterfaceEventCapability>,
     managed_contracts: BTreeMap<ContractIdentity, ManagedContractSchema>,
     graph_fingerprint: GraphFingerprint,
     fingerprint: RegistryFingerprint,
@@ -1024,6 +1084,51 @@ impl std::fmt::Debug for CompiledInterfaceRegistry {
 }
 
 impl CompiledInterfaceRegistry {
+    pub fn document_operations(
+        &self,
+    ) -> impl Iterator<Item = crate::DocumentOperationCapability<'_>> {
+        self.plans.values().filter_map(|plan| {
+            let registration = plan.document_operation.as_ref()?;
+            Some(crate::DocumentOperationCapability {
+                binding_id: plan.binding().binding_id(),
+                interface_identity: plan.binding().interface_identity(),
+                registration_generation: registration.generation(),
+                dynamic: registration.static_descriptor().is_none(),
+                observer_enabled: plan.document_observer.is_some(),
+                static_descriptor: registration.static_descriptor(),
+            })
+        })
+    }
+
+    pub fn document_operation(
+        &self,
+        binding_id: &BindingId,
+    ) -> Option<crate::DocumentOperationCapability<'_>> {
+        let plan = self.plans.get(binding_id)?;
+        let registration = plan.document_operation.as_ref()?;
+        Some(crate::DocumentOperationCapability {
+            binding_id: plan.binding().binding_id(),
+            interface_identity: plan.binding().interface_identity(),
+            registration_generation: registration.generation(),
+            dynamic: registration.static_descriptor().is_none(),
+            observer_enabled: plan.document_observer.is_some(),
+            static_descriptor: registration.static_descriptor(),
+        })
+    }
+
+    pub fn event_capabilities(
+        &self,
+    ) -> impl ExactSizeIterator<Item = &crate::InterfaceEventCapability> {
+        self.event_capabilities.values()
+    }
+
+    pub fn event_capability(
+        &self,
+        interface_id: &InterfaceId,
+    ) -> Option<&crate::InterfaceEventCapability> {
+        self.event_capabilities.get(interface_id)
+    }
+
     pub fn managed_contracts(&self) -> impl Iterator<Item = &ManagedContractSchema> {
         self.managed_contracts.values()
     }

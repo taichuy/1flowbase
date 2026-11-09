@@ -1242,7 +1242,7 @@
       },
       {
         "id": "events-name-button",
-        "selector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"]",
+        "selector": ".settings-section-surface .data-table tr[data-row-key='[\"1flowbase.communication.command.requested\",{\"kind\":\"workspace\",\"workspace_id\":\"workspace-1\"}]'] button[title=\"1flowbase.communication.command.requested\"]",
         "propertyAssertions": [
           {
             "property": "max-width",
@@ -1252,7 +1252,7 @@
       },
       {
         "id": "events-name-text-slot",
-        "selector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"] > span",
+        "selector": ".settings-section-surface .data-table tr[data-row-key='[\"1flowbase.communication.command.requested\",{\"kind\":\"workspace\",\"workspace_id\":\"workspace-1\"}]'] button[title=\"1flowbase.communication.command.requested\"] > span",
         "propertyAssertions": [
           {
             "property": "min-width",
@@ -1283,20 +1283,20 @@
       {
         "id": "events-name-button-within-name-cell",
         "type": "within_container",
-        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"]",
-        "containerSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] td:nth-child(1)"
+        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key='[\"1flowbase.communication.command.requested\",{\"kind\":\"workspace\",\"workspace_id\":\"workspace-1\"}]'] button[title=\"1flowbase.communication.command.requested\"]",
+        "containerSelector": ".settings-section-surface .data-table tr[data-row-key='[\"1flowbase.communication.command.requested\",{\"kind\":\"workspace\",\"workspace_id\":\"workspace-1\"}]'] td:nth-child(1)"
       },
       {
         "id": "events-name-text-within-button",
         "type": "within_container",
-        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"] > span",
-        "containerSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"]"
+        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key='[\"1flowbase.communication.command.requested\",{\"kind\":\"workspace\",\"workspace_id\":\"workspace-1\"}]'] button[title=\"1flowbase.communication.command.requested\"] > span",
+        "containerSelector": ".settings-section-surface .data-table tr[data-row-key='[\"1flowbase.communication.command.requested\",{\"kind\":\"workspace\",\"workspace_id\":\"workspace-1\"}]'] button[title=\"1flowbase.communication.command.requested\"]"
       },
       {
         "id": "events-name-no-overlap-contract-cell",
         "type": "no_overlap",
-        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"]",
-        "referenceSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] td:nth-child(2)"
+        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key='[\"1flowbase.communication.command.requested\",{\"kind\":\"workspace\",\"workspace_id\":\"workspace-1\"}]'] button[title=\"1flowbase.communication.command.requested\"]",
+        "referenceSelector": ".settings-section-surface .data-table tr[data-row-key='[\"1flowbase.communication.command.requested\",{\"kind\":\"workspace\",\"workspace_id\":\"workspace-1\"}]'] td:nth-child(2)"
       },
       {
         "id": "events-table-toolbar-no-overlap-rows",
@@ -1347,7 +1347,7 @@
       },
       {
         "id": "events-name-button",
-        "selector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"]",
+        "selector": ".settings-section-surface .data-table tr[data-row-key='[\"1flowbase.communication.command.requested\",{\"kind\":\"workspace\",\"workspace_id\":\"workspace-1\"}]'] button[title=\"1flowbase.communication.command.requested\"]",
         "propertyAssertions": [
           {
             "property": "max-width",
@@ -1357,7 +1357,7 @@
       },
       {
         "id": "events-name-text-slot",
-        "selector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"] > span",
+        "selector": ".settings-section-surface .data-table tr[data-row-key='[\"1flowbase.communication.command.requested\",{\"kind\":\"workspace\",\"workspace_id\":\"workspace-1\"}]'] button[title=\"1flowbase.communication.command.requested\"] > span",
         "propertyAssertions": [
           {
             "property": "min-width",
@@ -1388,20 +1388,20 @@
       {
         "id": "events-name-button-within-name-cell",
         "type": "within_container",
-        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"]",
-        "containerSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] td:nth-child(1)"
+        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key='[\"1flowbase.communication.command.requested\",{\"kind\":\"workspace\",\"workspace_id\":\"workspace-1\"}]'] button[title=\"1flowbase.communication.command.requested\"]",
+        "containerSelector": ".settings-section-surface .data-table tr[data-row-key='[\"1flowbase.communication.command.requested\",{\"kind\":\"workspace\",\"workspace_id\":\"workspace-1\"}]'] td:nth-child(1)"
       },
       {
         "id": "events-name-text-within-button",
         "type": "within_container",
-        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"] > span",
-        "containerSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"]"
+        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key='[\"1flowbase.communication.command.requested\",{\"kind\":\"workspace\",\"workspace_id\":\"workspace-1\"}]'] button[title=\"1flowbase.communication.command.requested\"] > span",
+        "containerSelector": ".settings-section-surface .data-table tr[data-row-key='[\"1flowbase.communication.command.requested\",{\"kind\":\"workspace\",\"workspace_id\":\"workspace-1\"}]'] button[title=\"1flowbase.communication.command.requested\"]"
       },
       {
         "id": "events-name-no-overlap-contract-cell",
         "type": "no_overlap",
-        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] button[title=\"1flowbase.communication.command.requested\"]",
-        "referenceSelector": ".settings-section-surface .data-table tr[data-row-key=\"1flowbase.boot-core:1flowbase.communication.command.requested:1\"] td:nth-child(2)"
+        "subjectSelector": ".settings-section-surface .data-table tr[data-row-key='[\"1flowbase.communication.command.requested\",{\"kind\":\"workspace\",\"workspace_id\":\"workspace-1\"}]'] button[title=\"1flowbase.communication.command.requested\"]",
+        "referenceSelector": ".settings-section-surface .data-table tr[data-row-key='[\"1flowbase.communication.command.requested\",{\"kind\":\"workspace\",\"workspace_id\":\"workspace-1\"}]'] td:nth-child(2)"
       },
       {
         "id": "events-table-toolbar-no-overlap-rows",
@@ -3491,6 +3491,122 @@
         "type": "within_container",
         "subjectSelector": ".communication-chat .application-run-detail__model-summary",
         "containerSelector": ".communication-chat"
+      }
+    ]
+  },
+  {
+    "id": "component.application-template-catalog.desktop",
+    "kind": "component",
+    "title": "Application Template Catalog desktop",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/components/extension-center/ApplicationTemplateCatalogPanel.tsx",
+      "web/app/src/features/settings/components/extension-center/ApplicationTemplateCatalogList.tsx",
+      "web/app/src/features/settings/components/extension-center/application-template-catalog.css"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "header",
+        "selector": ".application-template-catalog__header",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      },
+      {
+        "id": "listy-root",
+        "selector": ".application-template-catalog__viewport .ant-listy",
+        "propertyAssertions": [
+          {
+            "property": "border-top-width",
+            "expected": "0px"
+          }
+        ]
+      },
+      {
+        "id": "listy-item",
+        "selector": ".application-template-catalog__viewport .ant-listy-item",
+        "propertyAssertions": [
+          {
+            "property": "padding-left",
+            "expected": "0px"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "list-in-viewport",
+        "type": "fully_visible",
+        "subjectSelector": ".application-template-catalog__viewport"
+      }
+    ]
+  },
+  {
+    "id": "component.application-template-catalog.mobile",
+    "kind": "component",
+    "title": "Application Template Catalog mobile",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/components/extension-center/ApplicationTemplateCatalogPanel.tsx",
+      "web/app/src/features/settings/components/extension-center/ApplicationTemplateCatalogList.tsx",
+      "web/app/src/features/settings/components/extension-center/application-template-catalog.css"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "mobile-row",
+        "selector": ".application-template-catalog__row",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      },
+      {
+        "id": "listy-root",
+        "selector": ".application-template-catalog__viewport .ant-listy",
+        "propertyAssertions": [
+          {
+            "property": "border-top-width",
+            "expected": "0px"
+          }
+        ]
+      },
+      {
+        "id": "listy-item",
+        "selector": ".application-template-catalog__viewport .ant-listy-item",
+        "propertyAssertions": [
+          {
+            "property": "padding-left",
+            "expected": "0px"
+          }
+        ]
+      },
+      {
+        "id": "mobile-label",
+        "selector": ".application-template-catalog__cell--2 .application-template-catalog__label",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "block"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "list-in-viewport",
+        "type": "fully_visible",
+        "subjectSelector": ".application-template-catalog__viewport"
       }
     ]
   }

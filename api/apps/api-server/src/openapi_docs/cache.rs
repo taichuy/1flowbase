@@ -114,6 +114,11 @@ impl From<Arc<EncodedApiDocument>> for SharedApiDocument {
 }
 
 impl SharedApiDocument {
+    /// Explicit projection of this typed immutable JSON document, independent of HTTP response
+    /// construction. The owner retains encoded JSON, so decode only when observation needs it.
+    pub(crate) fn document_value(&self) -> Result<Value, serde_json::Error> {
+        serde_json::from_slice(&self.0.body)
+    }
     pub(crate) fn managed_projection(&self) -> Value {
         self.0.managed_projection.clone()
     }

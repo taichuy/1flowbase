@@ -58,7 +58,6 @@ impl EventCenterSubscription {
             .map_err(|_| EventBusError::InvalidBody)?;
         if signal.workspace_id != self.spec.workspace_id
             || signal.contract_id != self.spec.contract_id
-            || signal.contract_version != self.spec.contract_version
             || signal.phase() != self.spec.trigger_phase
         {
             return Err(EventBusError::InvalidBody.into());
@@ -74,15 +73,16 @@ impl EventCenterSubscription {
         }
         // Lifecycle observers do not recursively generate consumed-of-consumed signals.
         // The business dequeue is recorded before attempting any observer admission.
-        if signal.phase() == EventTriggerPhase::Published {
-            let consumed = self.inner.signal(
+        if signal.phase() == EventTriggerPhase::Published && signal.source_context.is_none() {
+            let mut consumed = self.inner.signal(
                 &self.spec,
                 EventCenterSignalBody::Consumed {
-                    source_event_id: signal.event_id,
-                    subscription_id: self.spec.subscription_id,
-                    consumer_id: self.spec.consumer_id,
+                    source_event_id: signal.event_id.to_string(),
+                    subscription_id: self.spec.subscription_id.to_string(),
+                    consumer_id: self.spec.consumer_id.to_string(),
                 },
             );
+            consumed.workflow_ancestor_ids = signal.workflow_ancestor_ids.clone();
             state.observation.record(activity(&consumed, None));
             let _ = self.inner.dispatch(&mut state, &consumed);
         }

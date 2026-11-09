@@ -33,6 +33,7 @@ pub fn migrated_assembly_contains_every_console_router_owner_assembly() {
         .merge(console_health_route_assembly())
         .merge(crate::routes::session::route_assembly())
         .merge(crate::routes::local_commands::route_assembly())
+        .merge(crate::routes::terminal::route_assembly())
         .merge(crate::routes::me::route_assembly())
         .merge(crate::routes::external_auth::console_route_assembly())
         .merge(crate::routes::me_authentication_methods::route_assembly())

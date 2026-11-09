@@ -53,7 +53,9 @@ pub(crate) fn freeze_run_input_environment(
 pub(crate) enum WorkflowRunTriggerContext<'a> {
     Event {
         signal_id: Uuid,
-        event_id: Option<Uuid>,
+        event_id: Option<&'a str>,
+        source_context: Option<&'a domain::event_center::EventSourceContext>,
+        workflow_ancestor_ids: &'a [Uuid],
         subscription_id: Uuid,
         trigger_phase: domain::event_center::EventTriggerPhase,
     },
@@ -83,12 +85,20 @@ pub(crate) fn freeze_workflow_run_input_environment(
         WorkflowRunTriggerContext::Event {
             signal_id,
             event_id,
+            source_context,
+            workflow_ancestor_ids,
             subscription_id,
             trigger_phase,
-        } => json!({
-            "type": "event", "signal_id": signal_id, "event_id": event_id,
-            "subscription_id": subscription_id, "trigger_phase": trigger_phase,
-        }),
+        } => {
+            let mut metadata = json!({"type":"event", "signal_id":signal_id, "event_id":event_id, "subscription_id":subscription_id, "trigger_phase":trigger_phase});
+            if let Some(source) = source_context {
+                metadata["source_context"] = json!(source);
+            }
+            if !workflow_ancestor_ids.is_empty() {
+                metadata["workflow_ancestor_ids"] = json!(workflow_ancestor_ids);
+            }
+            metadata
+        }
         WorkflowRunTriggerContext::Extension => json!({ "type": "extension" }),
         WorkflowRunTriggerContext::Schedule {
             scheduled_at,

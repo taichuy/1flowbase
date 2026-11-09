@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "_tests/application_lifecycle.rs"]
+mod application_lifecycle;
+
 #[tokio::test]
 async fn creates_flow_run_shell_and_attaches_compiled_plan() {
     let pool = isolated_database().await.connect().await.unwrap();

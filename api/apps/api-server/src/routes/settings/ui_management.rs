@@ -65,7 +65,7 @@ pub struct PluginSettingsPageResponse {
     pub code_modules: Vec<plugin_framework::FrontendBlockCodeModuleManifest>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct TemplateBody {
     #[serde(default = "default_template_provider_code")]
     #[schema(default = default_template_provider_code)]
@@ -87,7 +87,7 @@ fn default_template_contribution_code() -> String {
     control_plane::ui_management::DEFAULT_UI_TEMPLATE_CONTRIBUTION_CODE.to_owned()
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateTemplateBody {
     pub name: String,
     pub source: String,
@@ -95,12 +95,12 @@ pub struct UpdateTemplateBody {
     pub language: UiCodeTemplateLanguage,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct PublishTemplateBody {
     pub revision: i32,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct ResetDefaultTemplateBody {
     pub provider_code: String,
     pub contribution_code: String,
@@ -112,7 +112,7 @@ pub struct ComponentUpstreamBody {
     pub version: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct CreateComponentBody {
     pub component_code: String,
     pub name: String,
@@ -126,7 +126,7 @@ pub struct CreateComponentBody {
     pub keywords: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateComponentBody {
     pub name: String,
     pub description: String,
@@ -208,7 +208,7 @@ pub struct ComponentRecordResponse {
     pub updated_at: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CatalogSearchQuery {
     pub q: String,
     #[serde(default = "default_catalog_page")]
@@ -420,7 +420,7 @@ pub async fn plugin_settings_page(
     Ok(Json(ApiSuccess::new(page)))
 }
 
-#[utoipa::path(get, path = "/api/console/settings/ui-management/plugin-settings-module-asset", summary = "Read a declared settings page module asset", description = "Returns retained bytes after registered settings page authorization, applied version and digest membership checks.", params(("route_id" = String, Query), ("applied_plugin_version" = String, Query), ("sha256" = String, Query)), responses((status = 200, description = "Verified module asset"), (status = 403, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(get, path = "/api/console/settings/ui-management/plugin-settings-module-asset", summary = "Read a declared settings page module asset", description = "Returns retained bytes after registered settings page authorization, applied version and digest membership checks.", params(("route_id" = String, Query), ("applied_plugin_version" = String, Query), ("sha256" = String, Query)), responses((status = 200, description = "Verified retained bytes with the registered asset media type", body = crate::openapi::OpenApiBinaryBody, content_type = "*/*"), (status = 403, body = crate::error_response::ErrorBody)))]
 pub async fn plugin_settings_module_asset(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,

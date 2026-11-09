@@ -898,4 +898,5 @@ pub fn compare_system_versions(source: &str, current: &str) -> domain::McpBundle
 #[path = "mcp_bundle/bundle_preview.rs"]
 mod bundle_preview;
 
+pub(crate) use bundle_preview::validate_package;
 use bundle_preview::*;

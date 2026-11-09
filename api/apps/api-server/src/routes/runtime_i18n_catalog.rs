@@ -47,10 +47,17 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     )
 }
 
+#[derive(serde::Serialize)]
 pub(crate) struct RuntimeI18nInput {
     locale: String,
+    #[serde(skip)]
     if_none_match: Option<String>,
 }
+impl crate::openapi_interface::json_contract::JsonApiInput for RuntimeI18nInput {
+    const LOCATION: crate::openapi_interface::json_contract::JsonInputLocation =
+        crate::openapi_interface::json_contract::JsonInputLocation::Query;
+}
+
 impl InterfaceContract for RuntimeI18nInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
@@ -228,3 +235,6 @@ pub async fn get_runtime_i18n_catalog(
     );
     Ok(response.body(Body::from(serde_json::to_vec(&payload)?))?)
 }
+
+#[path = "runtime_i18n_catalog/api_event_projection.rs"]
+mod api_event_projection;

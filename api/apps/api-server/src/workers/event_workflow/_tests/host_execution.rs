@@ -6,14 +6,12 @@ use control_plane::{
         mapping::ApplicationApiMappingConfig,
         publications::{ApplicationPublicationService, PublishApplicationCommand},
     },
-    event_center::{EventCenterConfigurationService, EventCenterRuntime, EventCenterRuntimePolicy},
+    event_center::{EventCenterRuntime, EventCenterRuntimePolicy},
     flow::{FlowService, SaveFlowDraftCommand},
     ports::AuthRepository,
 };
-use control_plane_contracts::ports::EventBusLimits;
-use domain::event_center::{
-    CreateEventDefinitionInput, EventTriggerPhase, WorkflowEventTriggerInput,
-};
+use control_plane_contracts::ports::{EventBusLimits, EventCenterRepository};
+use domain::event_center::{EventDefinitionRecord, EventTriggerPhase, WorkflowEventTriggerInput};
 use serde_json::json;
 use storage_ephemeral::MemoryEventBus;
 
@@ -55,10 +53,26 @@ async fn fixture_for_phase(phase: EventTriggerPhase, pointer: &str) -> Fixture {
     let actor = AuthRepository::load_actor_context_for_user(&state.store, user_id)
         .await
         .unwrap();
-    let definition = EventCenterConfigurationService::new(state.store.for_actor(actor.clone())).create_definition(&actor, CreateEventDefinitionInput {
-        contract_id: "custom.worker.invoice".into(), contract_version: "1".into(), name: "Invoice".into(), description: String::new(), enabled: true,
+    // This fixture exercises legacy custom publication/consumption, not rule creation.
+    let now = time::OffsetDateTime::now_utc();
+    let definition = EventDefinitionRecord {
+        interface_event: None,
+        id: Uuid::now_v7(),
+        workspace_id: actor.current_workspace_id,
+        contract_id: "custom.worker.invoice".into(),
+        name: "Invoice".into(),
+        description: String::new(),
+        enabled: true,
         payload_schema: json!({"type":"object","properties":{"invoice":{"type":"string"}},"required":["invoice"]}),
-    }).await.unwrap();
+        created_by: actor.user_id,
+        created_at: now,
+        updated_at: now,
+    };
+    state
+        .store
+        .create_event_definition(&definition)
+        .await
+        .unwrap();
     let snapshot = workflow_snapshot(&state, &actor, &definition, phase, pointer).await;
     Fixture {
         state,
@@ -122,7 +136,7 @@ async fn workflow_snapshot(
             actor_user_id: user_id,
             application_id: application.id,
             mapping: ApplicationApiMappingConfig::default_native(),
-            api_enabled: false,
+            api_enabled: true,
         })
         .await
         .unwrap();
@@ -131,9 +145,9 @@ async fn workflow_snapshot(
             user_id,
             application.id,
             WorkflowEventTriggerInput {
+                source: None,
                 enabled: true,
                 contract_id: definition.contract_id.clone(),
-                contract_version: "1".into(),
                 trigger_phase: phase,
                 input_mapping: BTreeMap::from([("invoice".into(), pointer.into())]),
             },
@@ -226,6 +240,7 @@ enum Invalidation {
     AuthorDisabled,
     TriggerChanged,
     PublicationChanged,
+    PublicationDisabled,
 }
 
 async fn invalidate(fixture: &Fixture, invalidation: Invalidation) {
@@ -245,6 +260,14 @@ async fn invalidate(fixture: &Fixture, invalidation: Invalidation) {
                 .execute(fixture.state.store.pool())
                 .await
                 .unwrap();
+        }
+        Invalidation::PublicationDisabled => {
+            ApplicationPublicationService::new(fixture.state.store.for_actor(fixture.actor.clone()))
+                .set_api_enabled(control_plane::application_public_api::publications::SetApplicationApiEnabledCommand {
+                    actor_user_id: fixture.actor.user_id,
+                    application_id: fixture.snapshot.trigger.application_id,
+                    api_enabled: false,
+                }).await.unwrap();
         }
         Invalidation::PublicationChanged => {
             let mut document = fixture.snapshot.publication.document_snapshot.clone();
@@ -267,7 +290,7 @@ async fn invalidate(fixture: &Fixture, invalidation: Invalidation) {
                 actor_user_id: fixture.actor.user_id,
                 application_id: fixture.snapshot.trigger.application_id,
                 mapping: ApplicationApiMappingConfig::default_native(),
-                api_enabled: false,
+                api_enabled: true,
             })
             .await
             .unwrap();
@@ -294,7 +317,6 @@ async fn rejects_before_handoff(invalidation: Invalidation, idle: bool) {
                     subscription_id: trigger.id,
                     workspace_id: trigger.workspace_id,
                     contract_id: trigger.configuration.contract_id.clone(),
-                    contract_version: trigger.configuration.contract_version.clone(),
                     trigger_phase: trigger.configuration.trigger_phase,
                     consumer_id: trigger.application_id,
                 },
@@ -377,6 +399,7 @@ async fn rejects_before_handoff(invalidation: Invalidation, idle: bool) {
         Invalidation::AuthorDisabled => "subscription_author_disabled",
         Invalidation::TriggerChanged => "trigger_changed",
         Invalidation::PublicationChanged => "publication_changed",
+        Invalidation::PublicationDisabled => "application_disabled",
     };
     assert_eq!(status.reason.as_deref(), Some(expected));
     assert!(status.last_run_id.is_none());
@@ -433,3 +456,11 @@ async fn current_publication_must_match_before_handoff() {
 
 #[path = "host_lifecycle.rs"]
 mod lifecycle;
+
+#[path = "host_execution/joined_sources.rs"]
+mod joined_sources;
+
+#[tokio::test]
+async fn disabled_publication_rejects_queue_handoff_without_consuming() {
+    rejects_before_handoff(Invalidation::PublicationDisabled, false).await;
+}

@@ -741,6 +741,7 @@
     "mcp_export_ready": "MCP 配置导出已生成",
     "mcp_get_interface_parameters": "获取接口参数",
     "mcp_get_interface_result": "获取返回结构",
+    "mcp_debug_no_arguments": "无需填写业务参数，可直接运行。",
     "mcp_mapping_overwrite_confirm_title": "覆盖当前 mapping？",
     "mcp_mapping_overwrite_confirm_content": "当前 mapping 已有内容，继续会用接口 schema 覆盖现有编辑内容。",
     "mcp_input_interface_layer": "接口层",

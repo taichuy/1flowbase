@@ -1,6 +1,17 @@
 use super::*;
 
 impl RegistryCompiler {
+    /// Internal read-only view for validating observation metadata. Registration ownership
+    /// and mutation remain inside the compiler.
+    pub(crate) fn registered_protocol_binding(
+        &self,
+        binding_id: &BindingId,
+    ) -> Option<&ProtocolBinding> {
+        self.protocol_bindings
+            .get(binding_id)
+            .map(|(binding, _)| binding)
+    }
+
     fn has_interface_input(&self, interface_id: &InterfaceId) -> bool {
         self.definitions.contains_key(interface_id)
             || self
@@ -15,6 +26,10 @@ impl RegistryCompiler {
         active_owners: impl IntoIterator<Item = InterfaceOwner>,
     ) -> Self {
         Self {
+            document_observer: None,
+            document_operation_observers: BTreeMap::new(),
+            document_operations: BTreeMap::new(),
+            event_observer: None,
             managed_factory: None,
             graph_fingerprint,
             known_operations: known_operations.into_iter().collect(),
@@ -141,6 +156,25 @@ impl RegistryCompiler {
                 .adapter_plan()
                 .clone();
             self.register_binding(binding.clone(), adapter_plan)?;
+            let source_plan = snapshot
+                .plans
+                .get(binding_id)
+                .expect("compiled binding owns a plan");
+            if let Some(registration) = &source_plan.document_operation {
+                if self
+                    .document_operations
+                    .insert(binding_id.clone(), registration.clone())
+                    .is_some()
+                {
+                    return Err(RegistryCompilationError::DocumentOperationMismatch(
+                        binding_id.clone(),
+                    ));
+                }
+                if let Some(observer) = &source_plan.document_observer {
+                    self.document_operation_observers
+                        .insert(binding_id.clone(), observer.clone());
+                }
+            }
             let authentication = snapshot
                 .plans
                 .get(binding_id)
@@ -742,6 +776,23 @@ impl RegistryCompiler {
             effective_handler_bindings.insert(interface_id.clone(), binding);
         }
 
+        let mut event_capabilities = BTreeMap::new();
+        for (id, binding) in &effective_handler_bindings {
+            let definition = &self.definitions[id];
+            if definition.event_observation_enabled() {
+                let (input_schema, output_schema) = binding
+                    .event_schemas()
+                    .ok_or_else(|| RegistryCompilationError::EventProjectionMismatch(id.clone()))?;
+                event_capabilities.insert(
+                    id.clone(),
+                    crate::InterfaceEventCapability::new(
+                        definition.clone(),
+                        input_schema,
+                        output_schema,
+                    ),
+                );
+            }
+        }
         let mut managed_contracts = BTreeMap::new();
         // Exact original bytes preserve insertion order in registry fingerprints.
         // This assembly-only index releases its keys after publication.
@@ -895,6 +946,33 @@ impl RegistryCompiler {
                 &self.graph_fingerprint,
             )?;
         }
+        for (id, registration) in &self.document_operations {
+            let Some((binding, _)) = self.protocol_bindings.get(id) else {
+                return Err(RegistryCompilationError::DocumentOperationMismatch(
+                    id.clone(),
+                ));
+            };
+            let (input, output) = registration.contracts();
+            let typed_handler =
+                effective_handler_bindings.get(binding.interface_identity().interface_id());
+            if typed_handler.is_none_or(|handler| {
+                handler.document_contract_types() != registration.contract_types()
+            }) || registration.generation().trim().is_empty()
+                || &input != binding.input_contract()
+                || &output != binding.output_contract()
+                || registration.static_projection().is_some_and(|p| {
+                    !crate::event_observation::document::validate_descriptor(
+                        &p.descriptor,
+                        binding,
+                        registration.generation(),
+                    )
+                })
+            {
+                return Err(RegistryCompilationError::DocumentOperationMismatch(
+                    id.clone(),
+                ));
+            }
+        }
         let mut plans = BTreeMap::new();
         for (binding, adapter_plan) in self.protocol_bindings.values() {
             let Some(definition) = self
@@ -946,6 +1024,17 @@ impl RegistryCompiler {
             plans.insert(
                 binding.binding_id().clone(),
                 CompiledInvocationPlan {
+                    document_observer: self.document_observer.clone().or_else(|| {
+                        self.document_operation_observers
+                            .get(binding.binding_id())
+                            .cloned()
+                    }),
+                    document_operation: self.document_operations.get(binding.binding_id()).cloned(),
+                    event_observer: if definition.event_observation_enabled() {
+                        self.event_observer.clone()
+                    } else {
+                        None
+                    },
                     definition: definition.clone(),
                     binding: binding.clone(),
                     binding_fingerprint,
@@ -991,6 +1080,25 @@ impl RegistryCompiler {
             .collect::<Vec<_>>();
         let mut digest = Sha256::new();
         digest.update(fingerprint.as_str().as_bytes());
+        for (id, registration) in &self.document_operations {
+            digest.update([0]);
+            digest.update(id.as_str().as_bytes());
+            digest.update(registration.fingerprint());
+            digest.update([u8::from(
+                self.document_observer.is_some()
+                    || self.document_operation_observers.contains_key(id),
+            )]);
+        }
+        for capability in event_capabilities.values() {
+            digest.update([0]);
+            digest.update(capability.definition().interface_id().as_str().as_bytes());
+            digest.update(
+                serde_json::to_vec(capability.input_schema()).expect("declared schema serializes"),
+            );
+            digest.update(
+                serde_json::to_vec(capability.output_schema()).expect("declared schema serializes"),
+            );
+        }
         digest.update(
             serde_json::to_vec(&schema_identity).expect("static projection schemas serialize"),
         );
@@ -1000,6 +1108,7 @@ impl RegistryCompiler {
         ))
         .expect("schema fingerprint has a valid identity");
         Ok(Arc::new(CompiledInterfaceRegistry {
+            event_capabilities,
             managed_contracts,
             graph_fingerprint: self.graph_fingerprint,
             fingerprint,
@@ -1018,6 +1127,11 @@ impl RegistryCompiler {
 }
 
 impl RegistryCompiler {
+    pub fn with_event_observer(mut self, observer: Arc<dyn crate::InterfaceEventObserver>) -> Self {
+        self.event_observer = Some(observer);
+        self
+    }
+
     pub fn with_managed_invocations(
         mut self,
         factory: Arc<dyn crate::ManagedInterfaceInvocationFactory>,

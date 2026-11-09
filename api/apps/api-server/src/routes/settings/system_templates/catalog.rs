@@ -7,34 +7,37 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use control_plane::portable_template::{
     PortableTemplateIdentityRepository, PortableTemplatePackage,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 const CATEGORY: &str = "applications-demo";
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Serialize, utoipa::IntoParams)]
 #[serde(deny_unknown_fields)]
+#[into_params(parameter_in = Query)]
 pub struct CatalogQuery {
     pub category: Option<String>,
     pub cursor: Option<String>,
     pub q: Option<String>,
 }
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Serialize, utoipa::IntoParams)]
 #[serde(deny_unknown_fields)]
+#[into_params(parameter_in = Query)]
 pub struct ExportQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<String>,
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum TemplateRequest {
     Archive(ArchiveRequest),
     Package(Box<PortableTemplatePackage>),
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CatalogRequest {
     pub catalog_id: String,
     pub release_version: u64,
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ArchiveRequest {
     pub archive_base64: String,

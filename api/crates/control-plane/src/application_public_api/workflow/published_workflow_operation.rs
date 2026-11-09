@@ -73,6 +73,46 @@ impl PublishedWorkflowOperation {
         })
     }
 
+    /// Resolve/coerce request fields against this immutable owner contract; no repository lookup.
+    pub fn prepare_input(
+        &self,
+        parameters: &super::workflow_extension::WorkflowExtensionRequestParameters,
+        request_path: &str,
+    ) -> Result<Value, super::workflow_extension::WorkflowExtensionRunError> {
+        use super::{
+            workflow_extension::WorkflowExtensionRunError as Error,
+            workflow_start_http_inputs::build_workflow_start_resolved_node_input_payload,
+        };
+        let path = self
+            .match_path(request_path)
+            .ok_or(Error::ExtensionNotFound)?;
+        let contract = parse_workflow_start_http_inputs(&self.publication.document_snapshot)
+            .map_err(|_| Error::InvalidMapping)?;
+        build_workflow_start_resolved_node_input_payload(&contract, parameters, &path)
+            .map_err(|_| Error::InvalidMapping)
+    }
+
+    /// Publication rows retain their UUID across republish. Freeze the actual owner snapshot,
+    /// rather than treating that logical row identity as an immutable publication generation.
+    pub fn snapshot_generation(&self) -> String {
+        use sha2::{Digest, Sha256};
+        let publication = &self.publication;
+        let frozen = serde_json::json!({
+            "id":publication.id,"application_id":publication.application_id,"workspace_id":publication.workspace_id,
+            "flow_id":publication.flow_id,"flow_version_id":publication.flow_version_id,"compiled_plan_id":publication.compiled_plan_id,
+            "mapping":publication.mapping_snapshot,"document_hash":publication.document_hash,"document":publication.document_snapshot,
+            "runtime_profile":publication.runtime_profile_snapshot,"output_selector":publication.output_selector,
+            "dependencies":publication.dependency_snapshot,"created_at":publication.created_at.unix_timestamp_nanos(),
+            "active":publication.active,"api_enabled":publication.api_enabled,
+        });
+        format!(
+            "sha256:{}",
+            base16ct::HexDisplay(&Sha256::digest(
+                serde_json::to_vec(&frozen).expect("publication snapshot serializes")
+            ))
+        )
+    }
+
     pub fn public_path(&self) -> String {
         format!("/api/ex/{}", self.route_template)
     }

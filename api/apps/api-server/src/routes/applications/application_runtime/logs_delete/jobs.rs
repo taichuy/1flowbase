@@ -414,3 +414,66 @@ async fn invoke_job(
     let output = console_interface::invoke(state, binding, credential, input).await?;
     Ok(Json(ApiSuccess::new(output)))
 }
+
+impl crate::openapi_interface::contract::ApiInput for JobInput {
+    fn project_document_input(
+        &self,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::Create {
+                application_id,
+                input,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::openapi_interface::contract::to_value(input)?,
+            ),
+            Self::Get {
+                application_id,
+                job_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"job_id":job_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::Latest { application_id } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({"application_id":application_id}),
+                    serde_json::json!({}),
+                    serde_json::Value::Null,
+                )
+            }
+            Self::Stop {
+                application_id,
+                job_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"job_id":job_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+        })
+    }
+}
+
+impl crate::openapi_interface::contract::ApiOutput for JobOutput {
+    fn project_document_output(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        crate::openapi_interface::contract::to_value(self)
+    }
+}
+
+impl crate::openapi_interface::contract::ApiOutput for PreviewOutput {
+    fn project_document_output(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        crate::openapi_interface::contract::to_value(self)
+    }
+}

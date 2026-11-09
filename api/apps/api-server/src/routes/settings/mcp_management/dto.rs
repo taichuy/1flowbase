@@ -49,7 +49,7 @@ pub struct McpClientCredentialResponse {
     pub api_key: Option<String>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct McpGroupResponse {
     pub id: String,
     pub instance_record_id: String,
@@ -130,7 +130,7 @@ pub enum McpToolExecutionTargetDto {
     },
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct McpToolBindingResponse {
     pub id: String,
     pub instance_record_id: String,
@@ -226,7 +226,7 @@ pub struct McpExportPackageResponse {
     pub discovery_policies: Vec<McpInstanceDiscoveryPolicyResponse>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct CreateMcpInstanceBody {
     pub instance_id: String,
     pub name: String,
@@ -241,13 +241,13 @@ fn default_webmcp_exposure() -> String {
     "disabled".to_string()
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct CopyMcpInstanceBody {
     pub instance_id: String,
     pub name: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpsertMcpGroupBody {
     pub path: String,
     pub display_name: Option<String>,
@@ -256,19 +256,19 @@ pub struct UpsertMcpGroupBody {
     pub sort_order: i32,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct MoveMcpGroupBody {
     pub source_path: String,
     pub target_parent_path: String,
     pub sort_order: i32,
 }
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Deserialize, IntoParams, Serialize)]
 pub struct DeleteMcpGroupQuery {
     pub path: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct CreateMcpToolBody {
     pub tool_id: String,
     pub des_id: Option<String>,
@@ -291,7 +291,7 @@ pub struct CreateMcpToolBody {
     pub status: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateMcpToolBody {
     pub name: String,
     pub des_id: Option<String>,
@@ -313,7 +313,7 @@ pub struct UpdateMcpToolBody {
     pub status: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct CreateMcpToolBindingBody {
     pub group_path: String,
     pub tool_id: String,
@@ -322,7 +322,7 @@ pub struct CreateMcpToolBindingBody {
     pub sort_order: i32,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateMcpToolBindingBody {
     pub group_path: String,
     pub display_alias: Option<String>,
@@ -330,7 +330,7 @@ pub struct UpdateMcpToolBindingBody {
     pub sort_order: i32,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateMcpInstanceDiscoveryPolicyBody {
     pub list_default_limit: i32,
     pub list_max_depth: i32,
@@ -340,22 +340,29 @@ pub struct UpdateMcpInstanceDiscoveryPolicyBody {
     pub list_return_fields: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct McpDescriptionCheckBody {
     pub des_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Deserialize, IntoParams, Serialize)]
 pub struct McpInterfaceCatalogQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bindable_only: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Deserialize, IntoParams, Serialize)]
 pub struct McpListQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub instance_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub keywords: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub depth: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub path_regex: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
 }

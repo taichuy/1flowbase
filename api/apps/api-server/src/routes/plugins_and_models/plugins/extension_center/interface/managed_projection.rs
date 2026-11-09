@@ -904,3 +904,6 @@ impl InterfaceContract for ExtensionCenterOutput {
     const CONTRACT_ID: &'static str = "console-extension-center-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
+
+#[path = "event_projection.rs"]
+mod event_projection;

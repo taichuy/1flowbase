@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { ConfigProvider } from 'antd';
+import { ConfigProvider, Grid } from 'antd';
 import enUS from 'antd/locale/en_US';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { EventsTable } from '../EventsTable';
 
 const rows = Array.from({ length: 53 }, (_, index) => ({
@@ -48,4 +48,74 @@ describe('event table shared pagination', () => {
     expect(screen.getByText('Event 50')).toBeInTheDocument();
     expect(screen.queryByText('Event 51')).not.toBeInTheDocument();
   });
+});
+
+test('runtime pagination is restored from and written to the URL without changing the original tab or scope', async () => {
+  window.history.replaceState(
+    {},
+    '',
+    '/settings/events?tab=activity&scope=system&activity_page=2&activity_size=20'
+  );
+  const view = render(
+    <ConfigProvider locale={enUS}>
+      <EventsTable
+        urlState
+        columns={columns}
+        rows={rows}
+        rowKey="id"
+        tableKey="activity"
+      />
+    </ConfigProvider>
+  );
+  expect(screen.getByText('Event 21')).toBeInTheDocument();
+  fireEvent.click(screen.getByTitle('3'));
+  expect(window.location.search).toContain('activity_page=3');
+  expect(window.location.search).toContain('scope=system');
+  view.unmount();
+  render(
+    <ConfigProvider locale={enUS}>
+      <EventsTable
+        urlState
+        columns={columns}
+        rows={rows}
+        rowKey="id"
+        tableKey="activity"
+      />
+    </ConfigProvider>
+  );
+  expect(screen.getByText('Event 41')).toBeInTheDocument();
+  expect(screen.queryByText('Event 21')).not.toBeInTheDocument();
+});
+
+test('small-screen activity reuses shared records and loads the next slice from the same snapshot', async () => {
+  const breakpoint = vi
+    .spyOn(Grid, 'useBreakpoint')
+    .mockReturnValue({ xs: true, sm: false, md: false });
+  try {
+    window.history.replaceState(
+      {},
+      '',
+      '/settings/events?tab=activity&activity_size=10'
+    );
+    render(
+      <ConfigProvider locale={enUS}>
+        <EventsTable
+          urlState
+          mobileRecords="activity"
+          columns={[{ ...columns[0], mobileRole: 'title' }]}
+          rows={rows}
+          rowKey="id"
+          tableKey="activity"
+        />
+      </ConfigProvider>
+    );
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(document.querySelector('.data-table-mobile__record')).not.toBeNull();
+    expect(screen.getByText('Event 1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Load more|加载更多/ }));
+    expect(window.location.search).toContain('activity_page=2');
+    expect(screen.getByText('Event 1')).toBeInTheDocument();
+  } finally {
+    breakpoint.mockRestore();
+  }
 });

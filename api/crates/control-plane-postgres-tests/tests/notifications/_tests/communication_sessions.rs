@@ -8,6 +8,9 @@ use uuid::Uuid;
 
 type Service = NotificationService<PgControlPlaneStore>;
 
+#[path = "communication_sessions/_tests/lifecycle.rs"]
+mod lifecycle;
+
 async fn fixture() -> (
     PgControlPlaneStore,
     Service,

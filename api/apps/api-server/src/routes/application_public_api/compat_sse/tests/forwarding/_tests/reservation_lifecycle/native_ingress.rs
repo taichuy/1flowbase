@@ -86,6 +86,8 @@ async fn invoke_plan(
         principal,
         None,
         binding::CompatibilityBlockingInput {
+            response_projection: None,
+            document: Err(std::sync::Arc::from("websocket_frame_has_no_http_body")),
             command: binding::CompatibilityInvocationCommand::Resume {
                 initial_run: plan.initial_run,
                 command: plan.command,

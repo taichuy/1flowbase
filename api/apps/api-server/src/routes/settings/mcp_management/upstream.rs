@@ -113,12 +113,12 @@ pub(crate) struct McpUpstreamDiscoverResponse {
     pub(crate) items: Vec<McpUpstreamToolResponse>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub(crate) struct ImportMcpUpstreamToolsBody {
     pub(crate) remote_tool_names: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub(crate) struct DebugMcpProxyToolBody {
     #[schema(value_type = Object)]
     pub(crate) arguments: serde_json::Value,

@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 use std::sync::Arc;
 
 use control_plane::ports::CacheStore;
@@ -49,15 +50,25 @@ impl ProviderLocaleHints {
     }
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum ProviderCatalogLogsInput {
     Catalog {
         query: ModelProviderCatalogQuery,
+        #[serde(skip_serializing)]
         locale: ProviderLocaleHints,
     },
+    #[serde(serialize_with = "json_contract::query_with_nulls")]
     ListLogs(ModelProviderRequestLogsQuery),
+    #[serde(serialize_with = "json_contract::body")]
     DeleteLogs(DeleteModelProviderRequestLogsBody),
+    // This is a workspace-bound pagination cursor; authentication and
+    // delete authorization are independent of the continuation proof.
+    #[serde(serialize_with = "json_contract::body")]
     ClearLogs(serde_json::Value),
 }
+
+impl JsonApiInput for ProviderCatalogLogsInput {}
 
 impl InterfaceContract for ProviderCatalogLogsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -280,12 +291,16 @@ impl InterfaceContract for ProviderCatalogLogsInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum ProviderCatalogLogsOutput {
     Catalog(ModelProviderCatalogResponse),
     Logs(ModelProviderRequestLogsPageResponse),
     Deleted(DeleteModelProviderRequestLogsResponse),
     Cleared(ClearModelProviderRequestLogsResponse),
 }
+
+impl JsonApiOutput for ProviderCatalogLogsOutput {}
 
 impl InterfaceContract for ProviderCatalogLogsOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {

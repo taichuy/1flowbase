@@ -52,17 +52,17 @@ pub async fn list_http_node_proxy_options(
     Ok(Json(ApiSuccess::new(options)))
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct CreateNetworkEgressPoolBody {
     pub display_name: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateNetworkEgressPoolBody {
     pub display_name: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct CreateNetworkEgressPoolMemberBody {
     pub provider_id: String,
     pub provider_egress_key: String,
@@ -92,20 +92,20 @@ pub struct CreateNetworkEgressProxyBody {
     pub config: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct AddProviderEgressesToPoolBody {
     pub provider_id: String,
     pub enabled: bool,
     pub sequence: i32,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateNetworkEgressPoolMemberBody {
     pub enabled: bool,
     pub sequence: i32,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 #[serde(tag = "selection", rename_all = "snake_case")]
 pub enum DeleteNetworkEgressPoolMembersBody {
     Selected { member_ids: Vec<String> },

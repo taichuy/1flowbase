@@ -64,7 +64,6 @@ fn references_follow_actual_tool_arguments_transport_budget() {
 
 #[test]
 fn resources_rpc_projects_through_tool_call_and_preserves_standard_result_shapes() {
-    assert_eq!(list_result(), json!({"resources":[]}));
     assert_eq!(capabilities(), json!({"tools":{},"resources":{}}));
     let params = json!({"uri":"urn:test:a","_meta":{"ignored":true}});
     let (name, arguments) = super::super::protocol_call("resources/read", &params).unwrap();
@@ -74,6 +73,12 @@ fn resources_rpc_projects_through_tool_call_and_preserves_standard_result_shapes
     let (name, arguments) = super::super::protocol_call("resources/list", &list_params).unwrap();
     assert_eq!(name, LIST_TOOL);
     assert_eq!(arguments, json!({}));
+    let params = json!({"cursor":"next-page"});
+    let (name, arguments) =
+        super::super::protocol_call("resources/templates/list", &params).unwrap();
+    assert_eq!(name, TEMPLATES_TOOL);
+    assert_eq!(arguments, params);
+    assert!(super::super::protocol_call("resources/list", &json!({"cursor":42})).is_err());
     assert!(super::super::protocol_call("resources/read", &json!({"uri":1})).is_err());
     let result = json!({"content":[
         {"type":"resource","resource":{"uri":"urn:test:a","mimeType":"application/octet-stream","blob":"YQ=="}},
@@ -118,7 +123,7 @@ fn host_reference_is_a_valid_uri_and_preserves_final_binary_budget() {
     }
 }
 
-fn catalog_with_server_bound_workspace() -> domain::McpCatalogSnapshot {
+pub(super) fn catalog_with_server_bound_workspace() -> domain::McpCatalogSnapshot {
     let now = time::OffsetDateTime::UNIX_EPOCH;
     let workspace_id = uuid::Uuid::from_u128(10);
     let instance_id = uuid::Uuid::from_u128(11);
@@ -296,4 +301,43 @@ fn same_installation_serialized_source_is_rejected_before_lock_reentry_but_paral
         "other-source",
         true
     ));
+}
+
+#[test]
+fn independent_link_is_wrapped_and_replay_overrides_only_public_arguments() {
+    let mut catalog = catalog_with_server_bound_workspace();
+    catalog.tools[0].output_mapping = json!({"structured_content_path":"/metadata","resource_read":true,
+        "resource_read_arguments":{"link_only":false},
+        "mcp_content":[{"type":"resource_link","uri_path":"/uri","name_path":"/name"},{"type":"resource","uri_path":"/uri","blob_path":"/blob","skip_if_null":true}]});
+    let actor = domain::ActorContext::root(
+        uuid::Uuid::from_u128(1),
+        catalog.instances[0].workspace_id,
+        "root",
+    );
+    let mut content = json!([{"type":"resource_link","uri":"urn:file:a","name":"a"}]);
+    wrap_content(
+        &mut content,
+        &actor,
+        &catalog.instances[0],
+        &catalog.tools[0],
+        &json!({"link_only":true,"path":"/a"}),
+    )
+    .unwrap();
+    let uri = content[0]["uri"].as_str().unwrap();
+    let locator = ResourceReference::decode(uri).unwrap();
+    let scope = virtual_ui::VirtualMcpScope::single("selected".into());
+    assert!(authorize_reference(&locator, &actor, &catalog, &scope).is_ok());
+    assert_eq!(locator.arguments["link_only"], true);
+    let replay = replay_arguments(&locator, &catalog.tools[0]).unwrap();
+    assert_eq!(
+        replay,
+        json!({"tool_id":"lookup","arguments":{"path":"/a","link_only":false}})
+    );
+    assert_eq!(locator.user_id, actor.user_id);
+    assert!(
+        read_result(&json!({"content":content}), "urn:file:a", uri).is_err(),
+        "replay requires bytes/text, a link alone is insufficient"
+    );
+    let duplicate = json!({"content":[{"type":"resource","resource":{"uri":"urn:file:a","blob":"YQ=="}},{"type":"resource","resource":{"uri":"urn:file:a","blob":"Yg=="}}]});
+    assert!(read_result(&duplicate, "urn:file:a", uri).is_err());
 }

@@ -1,5 +1,6 @@
 import {
   createEventDefinition,
+  eventCatalogIdentity,
   listEventCatalog,
   updateEventDefinition,
   type CreateEventDefinitionInput,
@@ -8,7 +9,7 @@ import {
 } from '@1flowbase/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
-import { Alert, Button, Flex, Tabs, Tag } from 'antd';
+import { Alert, Button, Flex, Switch, Tabs, Tag, TreeSelect } from 'antd';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../../state/auth-store';
@@ -24,6 +25,7 @@ import {
   useEventTab,
   type EventTab
 } from './event-navigation';
+import { eventGroupTree } from './event-groups';
 
 export function EventsPage() {
   const { t } = useTranslation('settingsEvents');
@@ -33,7 +35,9 @@ export function EventsPage() {
   const requestedTab = useEventTab();
   const [drawer, setDrawer] = useState<{
     entry: EventCatalogEntry | null;
+    mode: 'view' | 'edit';
   } | null>(null);
+  const [group, setGroup] = useState<string>();
   const canList = can('events.catalog.list');
   const canObserve = can('events.runtime.get');
   const tab = canObserve ? requestedTab : 'catalog';
@@ -42,24 +46,26 @@ export function EventsPage() {
       navigateEventTab('catalog', true);
   }, [canObserve, requestedTab]);
   const catalog = useQuery({
-    queryKey: ['settings', 'events', 'catalog'],
+    queryKey: ['events', 'catalog'],
     queryFn: () => listEventCatalog(),
     enabled: canList && tab === 'catalog'
   });
-  const editable = drawer?.entry
-    ? drawer.entry.origin === 'custom' &&
-      drawer.entry.id !== null &&
-      drawer.entry.payload_schema !== null &&
-      can('events.definitions.update')
-    : can('events.definitions.create');
+  const editable =
+    drawer?.mode === 'edit' &&
+    (drawer.entry
+      ? drawer.entry.origin === 'custom' &&
+        drawer.entry.id !== null &&
+        !!drawer.entry.interface_event &&
+        can('events.definitions.update')
+      : can('events.definitions.create'));
   const save = useMutation({
     mutationFn: async (values: CreateEventDefinitionInput) => {
       if (!csrfToken || !editable) throw new Error('operation not permitted');
       if (drawer?.entry?.id) {
-        const { name, description, payload_schema, enabled } = values;
+        const { name, description, interface_event, enabled } = values;
         return updateEventDefinition(
           drawer.entry.id,
-          { name, description, payload_schema, enabled },
+          { name, description, interface_event, enabled },
           csrfToken
         );
       }
@@ -68,13 +74,49 @@ export function EventsPage() {
     onSuccess: async () => {
       setDrawer(null);
       await queryClient.invalidateQueries({
-        queryKey: ['settings', 'events', 'catalog']
+        queryKey: ['events', 'catalog']
       });
     }
   });
-  const open = (entry: EventCatalogEntry | null) => {
+  const toggleEnabled = useMutation({
+    mutationFn: async ({
+      entry,
+      enabled
+    }: {
+      entry: EventCatalogEntry;
+      enabled: boolean;
+    }) => {
+      if (
+        !csrfToken ||
+        entry.origin !== 'custom' ||
+        !entry.id ||
+        !entry.interface_event ||
+        !can('events.definitions.update')
+      )
+        throw new Error('operation not permitted');
+      return updateEventDefinition(
+        entry.id,
+        {
+          name: entry.name,
+          description: entry.description,
+          interface_event: entry.interface_event,
+          enabled
+        },
+        csrfToken
+      );
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['events', 'catalog']
+      });
+    }
+  });
+  const open = (
+    entry: EventCatalogEntry | null,
+    mode: 'view' | 'edit' = 'view'
+  ) => {
     save.reset();
-    setDrawer({ entry });
+    setDrawer({ entry, mode });
   };
   const phase = (value: EventTriggerPhase) =>
     ({
@@ -108,16 +150,16 @@ export function EventsPage() {
       )
     },
     {
+      key: 'group_path',
+      title: t('group_path'),
+      width: 220,
+      render: (_, row) => row.group_path?.join(' / ') || '—'
+    },
+    {
       key: 'contract_id',
       title: t('contract_id'),
       dataIndex: 'contract_id',
       width: 240
-    },
-    {
-      key: 'contract_version',
-      title: t('contract_version'),
-      dataIndex: 'contract_version',
-      width: 110
     },
     {
       key: 'origin',
@@ -134,16 +176,37 @@ export function EventsPage() {
       )
     },
     {
-      key: 'owner_id',
-      title: t('owner_id'),
-      dataIndex: 'owner_id',
-      width: 220
+      key: 'scope',
+      title: t('scope'),
+      width: 220,
+      render: (_, row) =>
+        row.scope.kind === 'workspace'
+          ? `${t('workspace_scope')} · ${row.scope.workspace_id}`
+          : t(row.scope.kind)
     },
     {
       key: 'enabled',
       title: t('enabled'),
       width: 120,
-      render: (_, row) => (row.enabled ? t('enabled') : t('disabled'))
+      render: (_, row) => (
+        <Switch
+          aria-label={t('enabled')}
+          checked={row.origin !== 'custom' || row.enabled === true}
+          disabled={
+            row.origin !== 'custom' ||
+            !row.id ||
+            !row.interface_event ||
+            !csrfToken ||
+            !can('events.definitions.update') ||
+            toggleEnabled.isPending
+          }
+          loading={
+            toggleEnabled.isPending &&
+            toggleEnabled.variables.entry.id === row.id
+          }
+          onChange={(enabled) => toggleEnabled.mutate({ entry: row, enabled })}
+        />
+      )
     },
     {
       key: 'supported_phases',
@@ -164,10 +227,16 @@ export function EventsPage() {
           moreAriaLabel={t('actions')}
           actions={[
             ...(row.origin === 'custom' &&
-            row.payload_schema !== null &&
+            row.interface_event &&
             row.id &&
             can('events.definitions.update')
-              ? [{ key: 'edit', label: t('edit'), onClick: () => open(row) }]
+              ? [
+                  {
+                    key: 'edit',
+                    label: t('edit'),
+                    onClick: () => open(row, 'edit')
+                  }
+                ]
               : []),
             { key: 'view', label: t('view'), onClick: () => open(row) }
           ]}
@@ -197,22 +266,43 @@ export function EventsPage() {
               {catalog.isError && (
                 <Alert type="error" showIcon title={t('catalog_error')} />
               )}
+              {toggleEnabled.isError && (
+                <Alert type="error" showIcon title={t('save_error')} />
+              )}
               <EventsTable
                 columns={columns}
-                rows={catalog.data ?? []}
+                rows={(catalog.data ?? []).filter(
+                  (row) =>
+                    !group ||
+                    JSON.stringify(
+                      row.group_path?.slice(
+                        0,
+                        (JSON.parse(group) as string[]).length
+                      )
+                    ) === group
+                )}
                 rowKey={(row) =>
-                  `${row.owner_id}:${row.contract_id}:${row.contract_version}`
+                  JSON.stringify([eventCatalogIdentity(row), row.scope])
                 }
                 tableKey="catalog"
                 loading={catalog.isPending}
                 toolbar={
                   <>
+                    <TreeSelect
+                      aria-label={t('group_path')}
+                      placeholder={t('all_groups')}
+                      allowClear
+                      value={group}
+                      onChange={setGroup}
+                      treeData={eventGroupTree(catalog.data ?? [])}
+                      style={{ minWidth: 220 }}
+                    />
                     {can('events.definitions.create') && (
                       <Button
                         type="primary"
                         aria-label={t('create')}
                         icon={<PlusOutlined />}
-                        onClick={() => open(null)}
+                        onClick={() => open(null, 'edit')}
                       >
                         {t('create')}
                       </Button>
@@ -236,7 +326,7 @@ export function EventsPage() {
       </Flex>
       {drawer && (
         <EventDefinitionDrawer
-          key={drawer.entry?.id ?? drawer.entry?.contract_id ?? 'create'}
+          key={drawer.entry ? eventCatalogIdentity(drawer.entry) : 'create'}
           entry={drawer.entry}
           editable={editable}
           saving={save.isPending}

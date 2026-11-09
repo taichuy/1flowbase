@@ -4,6 +4,12 @@ use super::*;
 use crate::routes::application_runtime::managed_detail_projection;
 
 impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
+    fn event_projection_schema() -> Option<serde_json::Value> {
+        Some(super::event_projection::commands_output_schema())
+    }
+    fn project_for_event(&self) -> Option<serde_json::Value> {
+        Some(super::event_projection::commands_output(self))
+    }
     fn managed_projection_schema() -> Option<serde_json::Value> {
         schema::schema()
     }
@@ -280,4 +286,35 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsOutput {
 
     const CONTRACT_ID: &'static str = "console-application-runtime-debug-commands-output";
     const CONTRACT_VERSION: &'static str = "1";
+}
+
+impl crate::openapi_interface::contract::ApiOutput for ApplicationRuntimeDebugCommandsOutput {
+    fn document_output_schema(
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Option<serde_json::Value> {
+        Some(
+            if operation.interface_id == "applications.runtime.nodes.debug-runs.create" {
+                crate::routes::applications_group::event_projection::runtime::schema::<
+                    NodeLastRunResponse,
+                >()
+            } else {
+                crate::routes::applications_group::event_projection::runtime::schema::<
+                    ApplicationRunDetailResponse,
+                >()
+            },
+        )
+    }
+    fn project_document_output(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::Run(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::Node(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+        }
+    }
 }

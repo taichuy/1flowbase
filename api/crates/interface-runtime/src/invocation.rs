@@ -541,6 +541,15 @@ pub struct ResolvedInvocationPin {
 }
 
 impl ResolvedInvocationPin {
+    pub(crate) fn from_plan(plan: &crate::CompiledInvocationPlan) -> Self {
+        Self {
+            interface_version: plan.definition().version().clone(),
+            binding_id: plan.binding().binding_id().clone(),
+            binding_fingerprint: plan.binding_fingerprint().clone(),
+            plan_fingerprint: plan.fingerprint().clone(),
+        }
+    }
+
     pub fn interface_version(&self) -> &crate::InterfaceVersion {
         &self.interface_version
     }
@@ -693,6 +702,31 @@ pub enum InterfaceInvocationError {
     DeadlineElapsed,
     #[error("interface invocation was cancelled")]
     Cancelled,
+}
+
+impl InterfaceInvocationError {
+    /// Stable primary classification, retained for trusted completion observers.
+    pub fn classification(&self) -> &str {
+        match self {
+            Self::UnknownBinding => "unknown-binding",
+            Self::ProtocolBindingMismatch => "protocol-binding-mismatch",
+            Self::AuthenticationAdapterMismatch => "authentication-adapter-mismatch",
+            Self::AuthenticationActivationMismatch => "authentication-activation-mismatch",
+            Self::AuthorizationAdapterMismatch => "authorization-adapter-mismatch",
+            Self::AdmissionAdapterMismatch => "admission-adapter-mismatch",
+            Self::ContractMismatch => "contract-mismatch",
+            Self::PrincipalProfileMismatch => "principal-profile-mismatch",
+            Self::HookPlanFingerprintMismatch => "hook-plan-fingerprint-mismatch",
+            Self::AuthorizationRejected(error) => error.classification(),
+            Self::AuthorizationContributionRejected(error) => error.classification(),
+            Self::AdmissionRejected(error) => error.classification(),
+            Self::AdmissionContributionRejected(error) => error.classification(),
+            Self::BeforeHookRejected(error) => error.classification(),
+            Self::TargetFailed(error) => error.classification(),
+            Self::DeadlineElapsed => "deadline-elapsed",
+            Self::Cancelled => "cancelled",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -917,6 +951,11 @@ async fn run_failure_hooks<I, O>(
 }
 
 struct ReceiptBuilder {
+    document_operation: Option<crate::DocumentOperationSession>,
+    event_principal: Option<crate::InterfaceEventPrincipal>,
+    event_observer_context: Option<crate::hook::InvocationExtensionContext>,
+    event_input: Option<serde_json::Value>,
+    event_output: Option<serde_json::Value>,
     managed_invocation: Option<crate::hook::ManagedInvocationContext>,
     extension_context: Option<crate::hook::InvocationExtensionContext>,
     finalization: InvocationFinalization,
@@ -945,6 +984,11 @@ impl ReceiptBuilder {
         controls: &InvocationControls,
     ) -> Self {
         Self {
+            document_operation: None,
+            event_principal: None,
+            event_observer_context: None,
+            event_input: None,
+            event_output: None,
             managed_invocation: None,
             extension_context: None,
             finalization: InvocationFinalization::default(),
@@ -980,23 +1024,56 @@ impl ReceiptBuilder {
     }
 
     fn resolve(&mut self, plan: &crate::CompiledInvocationPlan) {
+        if self.frozen_plan.is_none() {
+            self.event_observer_context = plan.event_observer.as_ref().and_then(|observer| {
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    observer.capture_context()
+                }))
+                .ok()
+                .flatten()
+                .map(crate::hook::InvocationExtensionContext)
+            });
+        }
+        if self.frozen_plan.is_none() {
+            if let (Some(registration), Some(observer)) =
+                (&plan.document_operation, &plan.document_observer)
+            {
+                let context = crate::InterfaceEventContext {
+                    principal: self.event_principal.clone(),
+                    definition: plan.definition().clone(),
+                    binding: plan.binding().clone(),
+                    resolved: ResolvedInvocationPin::from_plan(plan),
+                    invocation_id: self.invocation_id,
+                    parent_invocation_id: self.parent_invocation_id,
+                    graph_fingerprint: self.graph_fingerprint.clone(),
+                    registry_fingerprint: self.registry_fingerprint.clone(),
+                    attempt: self.attempt.clone(),
+                    extension_context: self.extension_context.clone(),
+                    observer_context: None,
+                };
+                self.document_operation = Some(crate::DocumentOperationSession::new(
+                    registration.clone(),
+                    observer.clone(),
+                    context,
+                ));
+            }
+        }
         self.frozen_plan = Some(plan.clone());
         self.interface_id = Some(plan.definition().interface_id().clone());
-        self.resolved = Some(ResolvedInvocationPin {
-            interface_version: plan.definition().version().clone(),
-            binding_id: plan.binding().binding_id().clone(),
-            binding_fingerprint: plan.binding_fingerprint().clone(),
-            plan_fingerprint: plan.fingerprint().clone(),
-        });
+        self.resolved = Some(ResolvedInvocationPin::from_plan(plan));
     }
 
     fn dispatch(&mut self, attempt: ExecutionAttempt) {
+        if let Some(session) = &self.document_operation {
+            session.update_attempt(Some(attempt.clone()));
+        }
         self.attempt = Some(attempt);
         self.stage(InterfaceInvocationStage::Dispatched);
     }
 
     async fn complete(mut self) -> InterfaceInvocationReceipt {
-        self.finalize(InterfaceInvocationTerminal::Completed).await;
+        self.finalize(InterfaceInvocationTerminal::Completed, None)
+            .await;
         self.receipt(InterfaceInvocationTerminal::Completed)
     }
 
@@ -1009,7 +1086,8 @@ impl ReceiptBuilder {
         // Keep their finalization state out of its poll frame, including when
         // preparation is reached through a same-task MCP callable invocation.
         Box::pin(async move {
-            self.finalize(terminal).await;
+            self.finalize(terminal, Some(Arc::from(error.classification())))
+                .await;
             InterfaceInvocationFailure {
                 error: Box::new(error),
                 receipt: Box::new(self.receipt(terminal)),
@@ -1017,7 +1095,13 @@ impl ReceiptBuilder {
         })
     }
 
-    async fn finalize(&mut self, terminal: InterfaceInvocationTerminal) {
+    async fn finalize(
+        &mut self,
+        terminal: InterfaceInvocationTerminal,
+        classification: Option<Arc<str>>,
+    ) {
+        self.observe_event_completion(terminal, classification.clone())
+            .await;
         if let Some(hooks) = self
             .frozen_plan
             .as_ref()
@@ -1033,6 +1117,11 @@ impl ReceiptBuilder {
             context.managed_invocation = self.managed_invocation.clone();
             hooks
                 .run_completion(&mut self.finalization, &context, terminal)
+                .await;
+        }
+        if let Some(session) = self.document_operation.take() {
+            session
+                .complete(terminal, classification, &mut self.finalization)
                 .await;
         }
     }
@@ -1092,6 +1181,9 @@ fn interruption_error(interruption: InvocationInterruption) -> InterfaceInvocati
 }
 
 mod kernel;
+
+#[path = "invocation/event_observation.rs"]
+mod event_observation;
 
 #[path = "invocation/invocation_envelope.rs"]
 mod invocation_envelope;

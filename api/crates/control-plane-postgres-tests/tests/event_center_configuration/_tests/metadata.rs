@@ -30,14 +30,28 @@ async fn metadata_seed_is_protected_and_replay_preserves_user_presentation_and_g
         assert!(!capabilities.record.can_update);
         assert!(!capabilities.record.can_delete);
         assert_eq!(model.fields.len(), contract.system_field_codes.len());
+        assert!(model
+            .fields
+            .iter()
+            .all(|field| field.code != "contract_version"));
         for field in &model.fields {
             let capabilities = data_model_field_capabilities(&model, field);
             let field_contract = contract.field_contract(&field.code).unwrap();
             assert!(!capabilities.can_update_physical_metadata);
             assert!(!capabilities.can_delete);
             assert_eq!(field.field_kind, field_contract.field_kind);
+            assert_eq!(field.is_required, field_contract.is_required);
             assert!(field.is_system);
             assert!(!field.is_writable);
+        }
+        if code == "workflow_event_triggers" {
+            let source = model
+                .fields
+                .iter()
+                .find(|field| field.code == "source")
+                .unwrap();
+            assert_eq!(source.field_kind, domain::ModelFieldKind::Json);
+            assert!(!source.is_required);
         }
         let initial_grants: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM scope_data_model_grants WHERE data_model_id=$1",
@@ -74,12 +88,14 @@ async fn metadata_seed_is_protected_and_replay_preserves_user_presentation_and_g
         .await
         .unwrap();
         // A missing metadata seed is restored, while existing rows remain byte-for-byte unchanged.
-        sqlx::query("DELETE FROM model_fields WHERE data_model_id=$1 AND code='enabled'")
-            .bind(id)
-            .execute(store.pool())
-            .await
-            .unwrap();
-        sqlx::raw_sql(include_str!("../../../../storage/durable/postgres/migrations/20261106030000_event_center_configuration_metadata.sql")).execute(store.pool()).await.unwrap();
+        sqlx::query(
+            "DELETE FROM model_fields WHERE data_model_id=$1 AND code IN ('enabled','source')",
+        )
+        .bind(id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+        sqlx::raw_sql(include_str!("../../../../storage/durable/postgres/migrations/20261107020000_event_center_current_metadata.sql")).execute(store.pool()).await.unwrap();
         let model_after: Value =
             sqlx::query_scalar("SELECT to_jsonb(m) FROM model_definitions m WHERE id=$1")
                 .bind(id)

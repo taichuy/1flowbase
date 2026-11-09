@@ -274,6 +274,7 @@ pub(crate) fn migrated_core_console_route_assembly_with_interface_operations_and
         .merge(console_health_route_assembly())
         .merge(super::session::route_assembly())
         .merge(super::local_commands::route_assembly())
+        .merge(super::terminal::route_assembly())
         .merge(super::me::route_assembly())
         .merge(super::external_auth::console_route_assembly())
         .merge(super::me_authentication_methods::route_assembly())

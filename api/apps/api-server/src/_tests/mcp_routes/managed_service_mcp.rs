@@ -1,7 +1,7 @@
 use super::*;
 use domain::{RoleConsoleGroupPolicy, RoleConsolePolicy};
 fn registration() -> ManagedServiceRegistration {
-    ManagedServiceRegistration {
+    ManagedServiceRegistration { publisher_namespace: "test".into(), data_models: Vec::new(),
         display_name: "Fixture plugin".into(), description: "Fixture plugin operations".into(),
         installation_id: Uuid::from_u128(99), plugin_code:"ssh".into(),plugin_version:"1.0.0".into(),pages:vec![],
         declaration:serde_json::from_value(json!({
@@ -441,6 +441,8 @@ fn dedicated_templates_use_persisted_graph_and_never_synthetic_append() {
         instance_id: "ssh_tools".into(),
         name: "SSH tools".into(),
         description: "SSH tools".into(),
+        template: None,
+        reset_on_activation: false,
     });
     let mut catalog = base_catalog();
     let instance = catalog.instances[0].clone();
@@ -494,6 +496,8 @@ fn persisted_managed_wrappers_keep_edits_but_follow_current_activation_and_role(
         instance_id: "ssh_tools".into(),
         name: "SSH".into(),
         description: "SSH".into(),
+        template: None,
+        reset_on_activation: false,
     });
     let installed = installation(&service);
     let interfaces =

@@ -4,7 +4,8 @@ use std::{
 };
 
 pub(super) struct Spool {
-    file: File,
+    file: Option<File>,
+    observer: Option<std::sync::Arc<dyn super::RawOutput>>,
     pub encoding_lossy: bool,
 }
 impl Spool {
@@ -37,20 +38,65 @@ impl Spool {
         #[cfg(unix)]
         std::fs::remove_file(&path)?;
         Ok(Self {
-            file,
+            file: Some(file),
+            observer: None,
             encoding_lossy: false,
         })
     }
+    pub fn observed(observer: std::sync::Arc<dyn super::RawOutput>) -> Self {
+        Self {
+            file: None,
+            observer: Some(observer),
+            encoding_lossy: false,
+        }
+    }
+    /// Decode the exact JSON string fragment without changing the owned file cursor.
+    pub(super) fn text(&self) -> io::Result<String> {
+        let file = self
+            .file
+            .as_ref()
+            .ok_or_else(|| io::Error::other("raw collector has no JSON carrier"))?;
+        let mut encoded = vec![b'"'];
+        let mut offset = 0u64;
+        let mut chunk = [0u8; 16 * 1024];
+        loop {
+            #[cfg(unix)]
+            let read = std::os::unix::fs::FileExt::read_at(file, &mut chunk, offset);
+            #[cfg(windows)]
+            let read = std::os::windows::fs::FileExt::seek_read(file, &mut chunk, offset);
+            let count = match read {
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                result => result?,
+            };
+            if count == 0 {
+                break;
+            }
+            encoded.extend_from_slice(&chunk[..count]);
+            offset = offset
+                .checked_add(count as u64)
+                .ok_or_else(|| io::Error::other("spool position overflow"))?;
+        }
+        encoded.push(b'"');
+        serde_json::from_slice(&encoded).map_err(io::Error::other)
+    }
+
     pub fn into_file(mut self) -> io::Result<File> {
-        self.file.seek(SeekFrom::Start(0))?;
-        Ok(self.file)
+        let mut file = self
+            .file
+            .take()
+            .ok_or_else(|| io::Error::other("raw collector has no JSON carrier"))?;
+        file.seek(SeekFrom::Start(0))?;
+        Ok(file)
     }
     fn append(&mut self, bytes: &[u8]) -> io::Result<()> {
         let text = String::from_utf8_lossy(bytes);
         self.encoding_lossy |= matches!(text, std::borrow::Cow::Owned(_));
         // At most one I/O chunk is decoded/escaped, never the complete result.
         let json = serde_json::to_vec(text.as_ref())?;
-        self.file.write_all(&json[1..json.len() - 1])
+        self.file
+            .as_mut()
+            .expect("JSON collector owns its carrier")
+            .write_all(&json[1..json.len() - 1])
     }
 }
 
@@ -64,6 +110,10 @@ pub(super) fn capture(mut reader: impl Read, mut spool: Spool) -> io::Result<Spo
         };
         if n == 0 {
             break;
+        }
+        if let Some(observer) = &spool.observer {
+            observer.append(&chunk[..n])?;
+            continue;
         }
         pending.extend_from_slice(&chunk[..n]);
         let mut cursor = 0;
@@ -85,8 +135,14 @@ pub(super) fn capture(mut reader: impl Read, mut spool: Spool) -> io::Result<Spo
         spool.append(&pending[..complete])?;
         pending.drain(..complete);
     }
-    spool.append(&pending)?;
-    spool.file.flush()?;
+    if spool.observer.is_none() {
+        spool.append(&pending)?;
+        spool
+            .file
+            .as_mut()
+            .expect("JSON collector owns its carrier")
+            .flush()?;
+    }
     Ok(spool)
 }
 
@@ -94,3 +150,8 @@ pub(super) fn capture(mut reader: impl Read, mut spool: Spool) -> io::Result<Spo
 #[cfg(test)]
 #[path = "_tests/spool.rs"]
 mod tests;
+
+#[cfg_attr(test, api_test_selection::group(core, routes))]
+#[cfg(test)]
+#[path = "_tests/spool_event.rs"]
+mod event_tests;

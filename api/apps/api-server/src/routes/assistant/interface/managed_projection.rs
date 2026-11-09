@@ -1098,3 +1098,6 @@ impl InterfaceContract for AssistantRunStreamOutput {
     const CONTRACT_ID: &'static str = "console-assistant-run-stream-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
+
+#[path = "api_event_projection.rs"]
+mod api_event_projection;

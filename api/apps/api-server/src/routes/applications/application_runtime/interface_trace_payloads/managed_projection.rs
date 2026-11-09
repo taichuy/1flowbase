@@ -712,3 +712,92 @@ impl InterfaceContract for ApplicationRuntimeTracePayloadsOutput {
     const CONTRACT_ID: &'static str = "console-application-runtime-trace-payloads-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
+
+impl crate::openapi_interface::contract::ApiInput for ApplicationRuntimeTracePayloadsInput {
+    fn project_document_input(
+        &self,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::NodeContent {
+                application_id,
+                run_id,
+                trace_node_id,
+                raw_query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id,"trace_node_id":trace_node_id}),
+                crate::routes::applications_group::event_projection::preview_query(
+                    raw_query.as_deref(),
+                ),
+                serde_json::Value::Null,
+            ),
+            Self::NodeDetail {
+                application_id,
+                run_id,
+                trace_node_id,
+                detail_ref_id,
+                raw_query,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id,"trace_node_id":trace_node_id,"detail_ref_id":detail_ref_id}),
+                crate::routes::applications_group::event_projection::preview_query(
+                    raw_query.as_deref(),
+                ),
+                serde_json::Value::Null,
+            ),
+            Self::ToolCallbackContent {
+                application_id,
+                run_id,
+                trace_node_id,
+                tool_call_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id,"trace_node_id":trace_node_id,"tool_call_id":tool_call_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+        })
+    }
+}
+
+impl crate::openapi_interface::contract::ApiOutput for ApplicationRuntimeTracePayloadsOutput {
+    fn document_output_schema(
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Option<serde_json::Value> {
+        match operation.interface_id.as_str() {
+            "applications.runtime.trace-node.content.get" => Some(
+                crate::routes::applications_group::event_projection::runtime::schema::<
+                    ApplicationRunTraceNodeContentResponse,
+                >(),
+            ),
+            "applications.runtime.trace-node.detail.get" => Some(
+                crate::routes::applications_group::event_projection::runtime::schema::<
+                    ApplicationRunTraceNodeDetailResponse,
+                >(),
+            ),
+            "applications.runtime.trace-tool-callback.content.get" => Some(
+                crate::routes::applications_group::event_projection::runtime::schema::<
+                    ApplicationRunTraceToolCallbackContentResponse,
+                >(),
+            ),
+            _ => None,
+        }
+    }
+    fn project_document_output(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::NodeContent(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::NodeDetail(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::ToolCallbackContent(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+        }
+    }
+}

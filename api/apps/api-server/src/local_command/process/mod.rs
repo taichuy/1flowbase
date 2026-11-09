@@ -52,6 +52,12 @@ pub enum ResponsePart {
     File(File),
 }
 impl CompletedCommand {
+    /// Read the already completed owned output, preserving HTTP spool ownership and position.
+    /// Called only by an interested typed event codec; execution never materializes this view.
+    pub fn output_text(&self) -> io::Result<(String, String)> {
+        Ok((self.stdout.text()?, self.stderr.text()?))
+    }
+
     /// Same ordinary JSON envelope as other console APIs, without materializing stdout/stderr.
     pub fn into_json_parts(self) -> io::Result<Vec<ResponsePart>> {
         let metadata = serde_json::to_vec(&self.metadata)?;
@@ -116,6 +122,50 @@ pub fn execute(command: &str, cancellation: &Cancellation) -> io::Result<Complet
     })
 }
 
+/// A raw sink replaces the JSON spool for detached jobs; no second output copy is written.
+pub trait RawOutput: Send + Sync {
+    fn append(&self, bytes: &[u8]) -> io::Result<()>;
+}
+
+pub fn private_output_file() -> io::Result<File> {
+    Spool::new()?.into_file()
+}
+
+pub fn execute_observed(
+    command: &str,
+    cancellation: &Cancellation,
+    stdout: Arc<dyn RawOutput>,
+    stderr: Arc<dyn RawOutput>,
+) -> io::Result<ExecutionMetadata> {
+    if command.trim().is_empty() || command.contains('\0') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid local command",
+        ));
+    }
+    if cancellation.is_cancelled() {
+        return Err(io::ErrorKind::Interrupted.into());
+    }
+    let start = Instant::now();
+    let stdout = Spool::observed(stdout);
+    let stderr = Spool::observed(stderr);
+    #[cfg(unix)]
+    let result = unix::run(command, stdout, stderr, cancellation)?;
+    #[cfg(windows)]
+    let result = windows::run(command, stdout, stderr, cancellation)?;
+    Ok(ExecutionMetadata {
+        exit_code: result.exit_code,
+        signal: result.signal,
+        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+        timed_out: false,
+        truncated: false,
+        discarded_bytes: 0,
+        encoding_lossy: false,
+        output_complete: true,
+        cleanup_complete: result.cleanup_complete,
+    })
+}
+
 fn collect<R: Read + Send, E: Read + Send>(
     stdout: R,
     stderr: E,
@@ -170,3 +220,8 @@ fn collect<R: Read + Send, E: Read + Send>(
 #[cfg(test)]
 #[path = "_tests/mod.rs"]
 mod tests;
+
+#[cfg_attr(test, api_test_selection::group(core, routes))]
+#[cfg(test)]
+#[path = "_tests/event_projection.rs"]
+mod event_projection_tests;

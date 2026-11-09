@@ -38,7 +38,7 @@ use crate::{
 #[path = "model_definitions_interface.rs"]
 pub(crate) mod interface;
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateModelDefinitionBody {
     pub bound_storage_id: Option<Uuid>,
@@ -52,7 +52,7 @@ pub struct CreateModelDefinitionBody {
     pub status: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateModelDefinitionBody {
     pub title: Option<String>,
@@ -65,7 +65,7 @@ pub struct UpdateModelDefinitionBody {
     pub external_table_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct CreateModelFieldBody {
     pub code: String,
     pub title: String,
@@ -86,7 +86,7 @@ pub struct CreateModelFieldBody {
     pub relation_options: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateModelFieldBody {
     pub title: String,
     pub description: Option<String>,
@@ -103,7 +103,7 @@ pub struct UpdateModelFieldBody {
     pub relation_options: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct CreateScopeGrantBody {
     pub scope_kind: String,
     pub scope_id: Uuid,
@@ -114,7 +114,7 @@ pub struct CreateScopeGrantBody {
     pub confirm_unsafe_external_source_system_all: bool,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateScopeGrantBody {
     pub enabled: Option<bool>,
     pub permission_profile: Option<String>,
@@ -122,20 +122,24 @@ pub struct UpdateScopeGrantBody {
     pub confirm_unsafe_external_source_system_all: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ConfirmationQuery {
     pub confirmed: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[derive(Debug, Deserialize, utoipa::IntoParams, Serialize)]
+#[into_params(parameter_in = Query)]
 pub struct ListModelsQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub data_source_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub filter: Option<String>,
 }
 
-#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[derive(Debug, Deserialize, utoipa::IntoParams, Serialize)]
 pub struct CompatibleTemplateCatalogQuery {
     pub data_source_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub resource_key: Option<String>,
 }
 
@@ -211,7 +215,7 @@ fn compatible_template_response(
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct BatchDeleteModelDefinitionsBody {
     #[serde(rename = "filterByTk")]
     #[schema(value_type = Object)]
@@ -633,6 +637,7 @@ fn parse_field_kind(raw: &str) -> Result<domain::ModelFieldKind, ApiError> {
 #[utoipa::path(
     get,
     path = "/api/console/settings/data-models/model-definitions",
+    params(ListModelsQuery),
     responses((status = 200, body = [ModelDefinitionResponse]), (status = 401, body = crate::error_response::ErrorBody))
 )]
 pub async fn list_models(

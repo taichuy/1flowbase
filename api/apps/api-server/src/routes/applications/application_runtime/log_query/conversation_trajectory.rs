@@ -2,7 +2,7 @@
 use super::*;
 use control_plane::ports::{ClientTrajectorySection, ConversationClientTrajectoryQueryPage};
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationTrajectoryQuery {
     /// Predicates on original event fields and source provenance; see query-fields.
@@ -20,7 +20,7 @@ pub struct ConversationTrajectoryQuery {
     pub index_only: Option<bool>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationTrajectorySectionQuery {
     pub section: Option<String>,

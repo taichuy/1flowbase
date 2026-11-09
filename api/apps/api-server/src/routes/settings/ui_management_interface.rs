@@ -1,3 +1,5 @@
+#[path = "ui_management_interface/event_projection.rs"]
+mod event_projection;
 mod managed_projection;
 
 use std::sync::Arc;
@@ -32,16 +34,21 @@ use crate::{
     ui_component_catalog_source::ApiUiComponentCatalogSource,
 };
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum UiManagementInput {
+    #[serde(serialize_with = "serialize_module_asset_query")]
     PluginSettingsModuleAsset {
         route_id: String,
         applied_plugin_version: String,
         sha256: String,
     },
+    #[serde(serialize_with = "serialize_settings_page_query")]
     PluginSettingsPage {
         route_id: String,
     },
     ListTemplates,
+    #[serde(serialize_with = "crate::openapi_interface::json_contract::body")]
     CreateTemplate(TemplateBody),
     UpdateTemplate {
         id: String,
@@ -54,6 +61,7 @@ pub(crate) enum UiManagementInput {
     SetDefaultTemplate {
         id: String,
     },
+    #[serde(serialize_with = "crate::openapi_interface::json_contract::body")]
     ResetDefaultTemplate(ResetDefaultTemplateBody),
     DeleteTemplate {
         id: String,
@@ -62,6 +70,7 @@ pub(crate) enum UiManagementInput {
     GetComponent {
         id: String,
     },
+    #[serde(serialize_with = "crate::openapi_interface::json_contract::body")]
     CreateComponent(CreateComponentBody),
     UpdateComponent {
         id: String,
@@ -74,6 +83,7 @@ pub(crate) enum UiManagementInput {
     CatalogPage {
         page: u32,
     },
+    #[serde(serialize_with = "crate::openapi_interface::json_contract::query_with_nulls")]
     CatalogSearch(CatalogSearchQuery),
     CatalogUpdateStatus,
     CatalogDownload {
@@ -83,6 +93,41 @@ pub(crate) enum UiManagementInput {
         source: String,
         group: String,
     },
+}
+impl crate::openapi_interface::json_contract::JsonApiInput for UiManagementInput {}
+
+// These variants hold flat internal fields rather than a query DTO. Borrow their
+// public query view without copying strings or serializing host context.
+fn serialize_module_asset_query<S: serde::Serializer>(
+    route_id: &str,
+    applied_plugin_version: &str,
+    sha256: &str,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    #[derive(serde::Serialize)]
+    struct Query<'a> {
+        route_id: &'a str,
+        applied_plugin_version: &'a str,
+        sha256: &'a str,
+    }
+    crate::openapi_interface::json_contract::query_with_nulls(
+        &Query {
+            route_id,
+            applied_plugin_version,
+            sha256,
+        },
+        serializer,
+    )
+}
+fn serialize_settings_page_query<S: serde::Serializer>(
+    route_id: &str,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    #[derive(serde::Serialize)]
+    struct Query<'a> {
+        route_id: &'a str,
+    }
+    crate::openapi_interface::json_contract::query_with_nulls(&Query { route_id }, serializer)
 }
 
 pub(crate) enum UiManagementOutput {

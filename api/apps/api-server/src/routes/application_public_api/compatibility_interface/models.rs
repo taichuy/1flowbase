@@ -27,7 +27,9 @@ use crate::{
     routes::application_public_api::native::{self, NativeApiError},
 };
 
-pub(crate) struct CompatibilityModelsInput;
+pub(crate) struct CompatibilityModelsInput {
+    pub(crate) client_version: Option<String>,
+}
 
 impl InterfaceContract for CompatibilityModelsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -50,6 +52,7 @@ impl InterfaceContract for CompatibilityModelsInput {
 }
 
 pub(crate) struct CompatibilityModelsOutput {
+    pub(crate) codex: bool,
     pub(crate) models: Vec<AgentModelDescriptor>,
     pub(crate) publication_created_at: i64,
 }
@@ -196,7 +199,7 @@ impl CompatibilityModelsPort for CompatibilityModelsAdapter {
     fn list<'a>(
         &'a self,
         principal: &'a ApplicationPrincipal,
-        _input: CompatibilityModelsInput,
+        input: CompatibilityModelsInput,
     ) -> CompatibilityModelsFuture<'a> {
         Box::pin(async move {
             let publication = ApplicationPublicationService::new(self.store.clone())
@@ -211,6 +214,10 @@ impl CompatibilityModelsPort for CompatibilityModelsAdapter {
                 })
                 .map_err(CompatibilityBlockingTargetError)?;
             Ok(CompatibilityModelsOutput {
+                codex: input
+                    .client_version
+                    .as_deref()
+                    .is_some_and(|version| !version.trim().is_empty()),
                 models: extract_agent_model_catalog_from_start_node(&publication.document_snapshot),
                 publication_created_at: publication.created_at.unix_timestamp(),
             })
@@ -334,15 +341,22 @@ fn register_binding(
         owner.clone(),
     ))?;
     register_authentication(compiler, &interface_id)?;
+    let binding = ProtocolBinding::new(
+        BindingId::new(binding_id).expect("static binding is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::http(RouteIdentity::new("GET", path).expect("static route is valid")),
+    );
+    crate::openapi_interface::contract::register_static_api_operation::<
+        CompatibilityModelsInput,
+        CompatibilityModelsOutput,
+    >(
+        compiler,
+        &binding,
+        "graph:application-compatibility-blocking-v1",
+    )?;
     compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new(binding_id).expect("static binding is valid"),
-            identity,
-            contracts,
-            ProtocolProjection::http(
-                RouteIdentity::new("GET", path).expect("static route is valid"),
-            ),
-        ),
+        binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
                 .expect("static adapter is valid"),
@@ -363,6 +377,7 @@ pub(crate) async fn invoke_models(
     state: Arc<ApiState>,
     binding_id: &'static str,
     bearer_token: String,
+    client_version: Option<String>,
 ) -> Result<CompatibilityModelsOutput, NativeApiError> {
     let boot_snapshot = state.extension_boot_snapshot.as_ref().ok_or_else(|| {
         NativeApiError::new(
@@ -406,7 +421,7 @@ pub(crate) async fn invoke_models(
     ))
     .invoke::<CompatibilityModelsInput, CompatibilityModelsOutput, CompatibilityBlockingTargetError>(
         snapshot,
-        authenticated.into_envelope(CompatibilityModelsInput),
+        authenticated.into_envelope(CompatibilityModelsInput { client_version }),
     )
     .await
     .map_err(|failure| invocation_error(failure.into_error()))?;
@@ -445,4 +460,36 @@ impl CompatibilityModelsPort for UnavailableCompatibilityModelsPort {
 #[cfg(test)]
 pub(super) fn unavailable_port() -> Arc<dyn CompatibilityModelsPort> {
     Arc::new(UnavailableCompatibilityModelsPort)
+}
+
+impl crate::openapi_interface::contract::ApiInput for CompatibilityModelsInput {
+    fn document_input_schema(
+        _: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Option<serde_json::Value> {
+        Some(
+            serde_json::json!({"type":"object","properties":{"query":{"type":"object","properties":{"client_version":{"type":"string"}},"additionalProperties":false}},"additionalProperties":false}),
+        )
+    }
+    fn project_document_input(
+        &self,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, Arc<str>> {
+        Ok(match &self.client_version {
+            Some(version) => serde_json::json!({"query":{"client_version":version}}),
+            None => serde_json::json!({}),
+        })
+    }
+}
+impl crate::openapi_interface::contract::ApiOutput for CompatibilityModelsOutput {
+    fn document_output_schema(
+        _: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Option<serde_json::Value> {
+        Some(super::super::openai::models_document_schema())
+    }
+    fn project_document_output(
+        &self,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, Arc<str>> {
+        super::super::openai::models_document(&self.models, self.publication_created_at, self.codex)
+    }
 }

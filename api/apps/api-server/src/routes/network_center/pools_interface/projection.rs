@@ -889,3 +889,6 @@ impl InterfaceContract for NetworkPoolsOutput {
     const CONTRACT_ID: &'static str = "console-network-pools-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
+
+#[path = "event_projection.rs"]
+mod event_projection;

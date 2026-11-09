@@ -23,6 +23,7 @@ where
     pub(in crate::orchestration_runtime) async fn begin_communication_events(
         &self,
         run: &domain::FlowRunRecord,
+        workspace_id: Option<Uuid>,
     ) -> Result<Option<CommunicationRuntimeEvents>> {
         if run.compatibility_mode.as_deref() != Some("communication") {
             return Ok(None);
@@ -30,8 +31,20 @@ where
         let Some(stream) = &self.runtime_event_stream else {
             return Ok(None);
         };
+        let binding = self
+            .runtime_event_source_binding
+            .clone()
+            .or_else(|| workspace_id.map(crate::ports::RuntimeEventSourceBinding::workspace))
+            .unwrap_or(crate::ports::RuntimeEventSourceBinding {
+                scope: domain::event_center::EventSourceScope::Unbound,
+                workflow_ancestor_ids: Vec::new(),
+            });
         stream
-            .open_run(run.id, RuntimeEventStreamPolicy::debug_default())
+            .open_run_scoped(
+                run.id,
+                RuntimeEventStreamPolicy::debug_default(),
+                binding.clone(),
+            )
             .await?;
         let mut writer = stream.terminal_writer(run.id).await?;
         if writer.durable_replay_boundary().is_some() || writer.closure().is_some() {
@@ -47,7 +60,7 @@ where
             .await
             .map_err(|_| anyhow::anyhow!("communication_previous_event_generation_still_open"))??;
             stream
-                .open_run(run.id, RuntimeEventStreamPolicy::debug_default())
+                .open_run_scoped(run.id, RuntimeEventStreamPolicy::debug_default(), binding)
                 .await?;
             writer = stream.terminal_writer(run.id).await?;
         }

@@ -42,14 +42,14 @@ pub struct ChangePasswordBody {
     pub new_password: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 #[serde(untagged)]
 pub enum PreferredLocalePatch {
     Value(String),
     Null,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct PatchMeBody {
     pub name: String,
     pub nickname: String,
@@ -60,7 +60,7 @@ pub struct PatchMeBody {
     pub preferred_locale: PreferredLocalePatch,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct PatchMeMetaBody {
     pub meta: serde_json::Value,
 }

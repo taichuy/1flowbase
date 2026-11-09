@@ -248,3 +248,7 @@ pub use notifications::*;
 
 pub mod event_center;
 pub use event_center::*;
+
+#[path = "extension_models/record_permissions.rs"]
+pub mod record_permissions;
+pub use record_permissions::*;

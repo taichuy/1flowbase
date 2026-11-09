@@ -1,4 +1,7 @@
+#[path = "lifecycle_outbox/observation.rs"]
+mod observation;
 use super::*;
+pub use observation::*;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,18 +22,31 @@ pub struct LifecyclePublicationPlan {
 pub struct FrozenLifecyclePublication {
     pub plan: LifecyclePublicationPlan,
     _lifetime: Option<Box<dyn Send + Sync>>,
+    after_commit: Option<Box<dyn FnOnce() + Send + Sync>>,
 }
 impl FrozenLifecyclePublication {
     pub fn native(plan: LifecyclePublicationPlan) -> Self {
         Self {
             plan,
             _lifetime: None,
+            after_commit: None,
         }
     }
     pub fn managed(plan: LifecyclePublicationPlan, lifetime: Box<dyn Send + Sync>) -> Self {
         Self {
             plan,
             _lifetime: Some(lifetime),
+            after_commit: None,
+        }
+    }
+    /// Dropping on rollback never observes a publication.
+    pub fn after_commit(mut self, callback: impl FnOnce() + Send + Sync + 'static) -> Self {
+        self.after_commit = Some(Box::new(callback));
+        self
+    }
+    pub fn committed(mut self) {
+        if let Some(callback) = self.after_commit.take() {
+            callback();
         }
     }
 }
@@ -140,6 +156,7 @@ pub enum LifecycleOutboxStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordLifecycleFactInput {
+    pub observation_context: Option<LifecycleObservationContext>,
     pub event_id: Uuid,
     pub transaction_id: Uuid,
     pub contract_id: String,
@@ -151,6 +168,7 @@ pub struct RecordLifecycleFactInput {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LifecycleOutboxRecord {
+    pub observation_context: Option<LifecycleObservationContext>,
     pub event_id: Uuid,
     pub transaction_id: Uuid,
     pub contract_id: String,
@@ -175,6 +193,14 @@ pub struct LifecycleOutboxRecord {
 
 #[async_trait]
 pub trait LifecycleOutboxRepository: Send + Sync {
+    /// Read-only original queue facts; no claim/ACK and no canonical payload projection.
+    /// Empty means unavailable for adapters without a durable queue projection.
+    async fn lifecycle_source_queue_snapshots(
+        &self,
+    ) -> anyhow::Result<Vec<LifecycleSourceQueueFacts>> {
+        Ok(Vec::new())
+    }
+
     async fn record_lifecycle_fact(
         &self,
         input: &RecordLifecycleFactInput,

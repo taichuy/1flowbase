@@ -267,7 +267,6 @@ test('E8 serializes custom event commands independently from builtin settings', 
       description: 'Invoice',
       enabled: true,
       contract_id: 'custom.invoice',
-      contract_version: '1',
       input_mapping: { invoice: '/arguments', channel: '/instance_id' }
     }
   ];

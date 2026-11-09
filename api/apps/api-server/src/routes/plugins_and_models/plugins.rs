@@ -34,12 +34,12 @@ use crate::{
 const DEFAULT_OFFICIAL_PLUGIN_CATALOG_LIMIT: usize = 20;
 const MAX_OFFICIAL_PLUGIN_CATALOG_LIMIT: usize = 50;
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct InstallPluginBody {
     pub package_root: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct InstallOfficialPluginBody {
     pub plugin_id: String,
     pub compatibility_override: Option<PluginCompatibilityOverrideBody>,
@@ -66,31 +66,38 @@ pub struct PluginRiskOverrideBody {
     pub acknowledged_warnings: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpgradeLatestPluginFamilyBody {
     pub compatibility_override: Option<PluginCompatibilityOverrideBody>,
     pub risk_override: Option<PluginRiskOverrideBody>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct SwitchPluginVersionBody {
     pub installation_id: String,
 }
 
-#[derive(Debug, Deserialize, IntoParams, Clone)]
+#[derive(Debug, Deserialize, IntoParams, Clone, Serialize)]
 pub struct PluginCatalogQuery {
     /// Optional plugin kind filter for catalog views.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub locale: Option<String>,
 }
 
-#[derive(Debug, Deserialize, IntoParams, Clone)]
+#[derive(Debug, Deserialize, IntoParams, Clone, Serialize)]
 pub struct OfficialPluginCatalogQuery {
     /// Optional plugin kind filter for official catalog views.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub locale: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub q: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
 }
 
@@ -826,7 +833,7 @@ pub async fn refresh_catalog_projection(
 #[utoipa::path(
     post,
     path = "/api/console/plugins/{installation_id}/artifact/refresh",
-    operation_id = "plugin_refresh_current_node_artifact",
+    operation_id = "plugins.artifact.refresh",
     responses((status = 200, body = PluginArtifactInstanceResponse), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
 pub async fn refresh_current_node_artifact(
@@ -851,7 +858,7 @@ pub async fn refresh_current_node_artifact(
 #[utoipa::path(
     post,
     path = "/api/console/plugins/{installation_id}/artifact/install-current-node",
-    operation_id = "plugin_install_current_node_artifact",
+    operation_id = "plugins.artifact.install",
     responses((status = 200, body = PluginArtifactInstanceResponse), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
 )]
 pub async fn install_current_node_artifact(

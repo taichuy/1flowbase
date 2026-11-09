@@ -20,9 +20,12 @@ use crate::error_response::ApiError;
 pub(crate) const PROVIDERS_BINDING_ID: &str = "http.public.auth.providers.v1";
 pub(crate) const SIGN_UP_BINDING_ID: &str = "http.public.auth.sign-up.v1";
 
+#[derive(serde::Serialize)]
 pub(crate) struct PublicProvidersInput {
+    #[serde(skip)]
     pub(crate) locale: domain::CatalogLocale,
 }
+impl crate::openapi_interface::json_contract::JsonApiInput for PublicProvidersInput {}
 
 impl InterfaceContract for PublicProvidersInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -41,7 +44,10 @@ impl InterfaceContract for PublicProvidersInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct PublicProvidersOutput(pub(crate) Vec<AuthProviderResponse>);
+impl crate::openapi_interface::json_contract::JsonApiOutput for PublicProvidersOutput {}
 
 impl InterfaceContract for PublicProvidersOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -334,7 +340,10 @@ pub(crate) fn compile_registry(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn register<I: InterfaceContract, O: InterfaceContract>(
+fn register<
+    I: crate::openapi_interface::contract::ApiInput,
+    O: crate::openapi_interface::contract::ApiOutput,
+>(
     compiler: &mut RegistryCompiler,
     interface: &str,
     handler: &str,
@@ -402,15 +411,21 @@ fn register<I: InterfaceContract, O: InterfaceContract>(
             interface_runtime::PrincipalProfile::Public,
         ),
     )?;
-    compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new(binding).expect("static binding id is valid"),
-            identity,
-            contracts,
-            ProtocolProjection::http(
-                RouteIdentity::new(method, path).expect("static route identity is valid"),
-            ),
+    let event_binding = ProtocolBinding::new(
+        BindingId::new(binding).expect("static binding id is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::http(
+            RouteIdentity::new(method, path).expect("static route identity is valid"),
         ),
+    );
+    crate::openapi_interface::contract::register_static_api_operation::<I, O>(
+        compiler,
+        &event_binding,
+        "graph:public-auth-residual-v1",
+    )?;
+    compiler.register_binding(
+        event_binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new("api-server.public")
                 .expect("static authentication adapter reference is valid"),
@@ -425,3 +440,6 @@ fn contract<T: InterfaceContract>() -> ContractIdentity {
     ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
         .expect("static interface contract is valid")
 }
+
+#[path = "public_residual_interface/event_projection.rs"]
+mod event_projection;

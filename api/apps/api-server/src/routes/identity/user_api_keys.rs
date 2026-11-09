@@ -18,7 +18,7 @@ use crate::{
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct CreateUserApiKeyRequest {
     pub name: String,
     pub role_code: Option<String>,

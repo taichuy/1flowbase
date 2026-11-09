@@ -34,7 +34,14 @@ pub(in super::super) async fn claim(
         sqlx::query("UPDATE communication_reply_turns SET send_status='unknown',failure_code='send_interrupted',claim_id=NULL,claim_expires_at=NULL WHERE id=$1")
             .bind(turn_id).execute(&mut *tx).await?;
         project_progress(&mut tx, turn_id).await?;
+        let recovered = if store.communication_lifecycle_observer.is_some() {
+            Some((row.try_get("anchor_input_id")?, Some(turn_id)))
+        } else {
+            None
+        };
         tx.commit().await?;
+        super::super::processing::observe_interrupted(store, w, i, recovered.into_iter().collect())
+            .await;
         return Ok(None);
     }
     let claim_id = Uuid::now_v7();

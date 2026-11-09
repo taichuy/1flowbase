@@ -180,6 +180,19 @@ impl control_plane::lifecycle_outbox_dispatcher::LifecycleFactDeliveryPort
         owner.terminate_command_delivery(fact, termination).await
     }
     async fn deliver(&self, fact: &LifecycleOutboxRecord) -> Result<()> {
+        control_plane_contracts::ports::with_lifecycle_workflow_ancestors(
+            fact.observation_context
+                .as_ref()
+                .map(|context| context.workflow_ancestor_ids.clone())
+                .unwrap_or_default(),
+            self.deliver_owned(fact),
+        )
+        .await
+    }
+}
+
+impl ApiLifecycleFactDelivery {
+    async fn deliver_owned(&self, fact: &LifecycleOutboxRecord) -> Result<()> {
         if let Some(owner) = &self.managed {
             let owner = owner.upgrade().ok_or({
                 LifecycleDeliveryBlocked(LifecycleDeliveryPauseReason::FrozenGraphUnavailable)
@@ -330,6 +343,7 @@ mod tests {
         );
         let subscriber = &plan.subscribers()[0];
         let record = LifecycleOutboxRecord {
+            observation_context: None,
             event_id,
             transaction_id,
             contract_id: subscriber.fact_contract_id.clone(),
@@ -574,4 +588,167 @@ mod tests {
             .unwrap();
         assembly
     }
+    #[test]
+    fn native_definition_projection_has_no_unbound_phases_or_system_credit_source() {
+        use domain::event_center::*;
+        use extension_contracts::LifecycleContract;
+        let assembly = independent_plugin_fixture_assembly();
+        let graph = assembly.compile_graph().unwrap();
+        let plan = assembly.compile_lifecycle_subscriber_plan(&graph).unwrap();
+        let declarations = native_lifecycle_source_descriptors(&plan, EventSourceScope::Unbound);
+        assert_eq!(declarations.len(), 3);
+        assert!(declarations
+            .iter()
+            .all(|d| d.binding == EventSourceBinding::Declaration
+                && d.coverage == EventSourceCoverage::Unavailable
+                && d.supported_phases.is_empty()));
+        let system = native_lifecycle_source_descriptors(&plan, EventSourceScope::System);
+        assert_eq!(system.len(), 2);
+        assert!(system.iter().all(|d| d.contract_id
+            != control_plane_contracts::ports::CreditNotificationFact::CONTRACT_ID));
+    }
+    #[test]
+    fn credit_catalog_leaves_select_the_same_original_source_without_extra_publication() {
+        use control_plane_contracts::ports::{CreditNotificationEventType, CreditNotificationFact};
+        use domain::event_center::*;
+        use extension_contracts::LifecycleContract;
+        let assembly = independent_plugin_fixture_assembly();
+        let graph = assembly.compile_graph().unwrap();
+        let plan = assembly.compile_lifecycle_subscriber_plan(&graph).unwrap();
+        let scope = EventSourceScope::Workspace {
+            workspace_id: uuid::Uuid::now_v7(),
+        };
+        let entries = native_lifecycle_catalog_entries(&plan, scope);
+        let credit = entries
+            .iter()
+            .filter(|e| e.contract_id == CreditNotificationFact::CONTRACT_ID)
+            .collect::<Vec<_>>();
+        assert_eq!(credit.len(), 10);
+        let parent = credit
+            .iter()
+            .find(|e| e.source.as_ref().unwrap().selection.filters.is_empty())
+            .unwrap();
+        for kind in CreditNotificationEventType::ALL {
+            let leaf = credit.iter().find(|e| e.name == kind.wire_name()).unwrap();
+            let selection = &leaf.source.as_ref().unwrap().selection;
+            assert_eq!(
+                selection.scope,
+                parent.source.as_ref().unwrap().selection.scope
+            );
+            assert_eq!(
+                selection.source_id,
+                parent.source.as_ref().unwrap().selection.source_id
+            );
+            assert_eq!(selection.filters.len(), 1);
+            assert_eq!(selection.filters["/payload/event_type"], kind.wire_name());
+            assert_eq!(
+                leaf.payload_schema["properties"]["payload"]["properties"]["event_type"]["const"],
+                kind.wire_name()
+            );
+            assert_eq!(leaf.supported_phases, parent.supported_phases);
+        }
+        assert!(
+            native_lifecycle_catalog_entries(&plan, EventSourceScope::System)
+                .iter()
+                .all(|e| e.contract_id != CreditNotificationFact::CONTRACT_ID)
+        );
+    }
+}
+
+/// Pure typed definition projection. It does not create a lease or a subscriber queue.
+pub(crate) fn native_lifecycle_source_descriptors(
+    _plan: &EffectiveLifecycleSubscriberPlan,
+    scope: domain::event_center::EventSourceScope,
+) -> Vec<domain::event_center::EventSourceDescriptor> {
+    use control_plane::lifecycle_outbox_dispatcher::lifecycle_source_id;
+    use control_plane_contracts::ports::{CreditNotificationFact, ModelDefinitionCommittedFact};
+    use domain::event_center::*;
+    use extension_contracts::LifecycleContract;
+    [
+        (ModelDefinitionCommittedFact::CONTRACT_ID, ModelDefinitionCommittedFact::event_source_schema(), extension_contracts::MANAGED_CREATE_EVENT_POINT),
+        (CreditNotificationFact::CONTRACT_ID, CreditNotificationFact::event_source_schema(), "1flowbase.credit.integration-notification"),
+        (ModelDefinitionIntegrationNotification::CONTRACT_ID, ModelDefinitionIntegrationNotification::event_source_schema(), "1flowbase.model-definition.integration-notification"),
+    ].into_iter().filter(|(contract, _, _)| scope != EventSourceScope::System || *contract != CreditNotificationFact::CONTRACT_ID)
+    .map(|(contract, schema, point)| EventSourceDescriptor {
+        source_id: lifecycle_source_id(&scope, contract), owner_id: "control-plane.lifecycle".into(),
+        point_id: point.into(), contract_id: contract.into(),
+        name: contract.into(),
+        description: "Native committed lifecycle fact. Scoped queue counts cover trusted metadata only; historical unbound deliveries are listed separately and cannot be assigned to a workspace.".into(),
+        payload_schema: schema, origin: EventDefinitionOrigin::Core, scope: scope.clone(),
+        binding: if scope == EventSourceScope::Unbound { EventSourceBinding::Declaration } else { EventSourceBinding::Active },
+        coverage: if scope == EventSourceScope::Unbound { EventSourceCoverage::Unavailable } else { EventSourceCoverage::Live },
+        supported_phases: if scope == EventSourceScope::Unbound { Vec::new() } else { vec![EventTriggerPhase::Published, EventTriggerPhase::Consumed] },
+    }).collect()
+}
+
+/// Install native templates once at boot; never instantiate every possible workspace/queue.
+/// The scope argument filters the definition family only. Actual leases are activated from
+/// trusted publication/consumption context or from existing scoped durable queue rows.
+pub(crate) fn register_native_lifecycle_sources(
+    observer: &control_plane::lifecycle_outbox_dispatcher::LifecycleSourceObserver,
+    plan: &EffectiveLifecycleSubscriberPlan,
+    scope: domain::event_center::EventSourceScope,
+) {
+    use control_plane::lifecycle_outbox_dispatcher::lifecycle_source_id;
+    use domain::event_center::*;
+    for mut descriptor in native_lifecycle_source_descriptors(plan, scope) {
+        descriptor.scope = EventSourceScope::Unbound;
+        descriptor.source_id = lifecycle_source_id(&descriptor.scope, &descriptor.contract_id);
+        descriptor.binding = EventSourceBinding::Declaration;
+        descriptor.coverage = EventSourceCoverage::Unavailable;
+        descriptor.supported_phases.clear();
+        use control_plane_contracts::ports::{
+            CreditNotificationFact, ModelDefinitionCommittedFact,
+        };
+        use extension_contracts::LifecycleContract;
+        let version = match descriptor.contract_id.as_str() {
+            ModelDefinitionCommittedFact::CONTRACT_ID => {
+                ModelDefinitionCommittedFact::CONTRACT_VERSION
+            }
+            CreditNotificationFact::CONTRACT_ID => CreditNotificationFact::CONTRACT_VERSION,
+            ModelDefinitionIntegrationNotification::CONTRACT_ID => {
+                ModelDefinitionIntegrationNotification::CONTRACT_VERSION
+            }
+            _ => continue,
+        };
+        let contract = descriptor.contract_id.clone();
+        observer.register(descriptor, (&contract, version), false, &[]);
+    }
+}
+
+/// Logical subtype leaves select one existing fact; they do not create publications or leases.
+pub(crate) fn native_lifecycle_catalog_entries(
+    plan: &EffectiveLifecycleSubscriberPlan,
+    scope: domain::event_center::EventSourceScope,
+) -> Vec<domain::event_center::EventCatalogEntry> {
+    use control_plane_contracts::ports::{CreditNotificationEventType, CreditNotificationFact};
+    use domain::event_center::EventCatalogEntry;
+    use extension_contracts::LifecycleContract;
+    let mut entries = Vec::new();
+    for descriptor in native_lifecycle_source_descriptors(plan, scope) {
+        let entry: EventCatalogEntry = descriptor.into();
+        if entry.contract_id == CreditNotificationFact::CONTRACT_ID {
+            let mut parent = entry.clone();
+            parent.group_path = vec!["credits".into()];
+            entries.push(parent);
+            for kind in CreditNotificationEventType::ALL {
+                let mut leaf = entry.clone();
+                leaf.group_path =
+                    vec!["credits".into(), CreditNotificationFact::CONTRACT_ID.into()];
+                leaf.name = kind.wire_name().into();
+                leaf.source
+                    .as_mut()
+                    .expect("source projection")
+                    .selection
+                    .filters
+                    .insert("/payload/event_type".into(), kind.wire_name().into());
+                leaf.payload_schema["properties"]["payload"]["properties"]["event_type"] =
+                    serde_json::json!({"type":"string","const":kind.wire_name()});
+                entries.push(leaf);
+            }
+        } else {
+            entries.push(entry);
+        }
+    }
+    entries
 }

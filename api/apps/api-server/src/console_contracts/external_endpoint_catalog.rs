@@ -484,6 +484,35 @@ pub(crate) fn is_approved_external_control_http(method: &str, route_template: &s
         .any(|control| control.identity == identity)
 }
 
+/// Project the existing control owner for a documented HTTP carrier. Callers must
+/// first exclude a canonical business binding: SSE/frame controls can share its URL.
+pub(crate) fn approved_http_control_classification(
+    method: &str,
+    route_template: &str,
+) -> Option<ExternalEndpointClassification> {
+    let ExternalEndpointIdentity::Http {
+        method,
+        route_template,
+        ..
+    } = ExternalEndpointIdentity::http(method, route_template)
+    else {
+        unreachable!("HTTP identity constructor always returns HTTP")
+    };
+    ApprovedExternalControl::ALL
+        .into_iter()
+        .map(ApprovedExternalControl::contribution)
+        .find_map(|control| match control.identity {
+            ExternalEndpointIdentity::Http {
+                method: candidate_method,
+                route_template: candidate_route,
+                ..
+            } if method == candidate_method && route_template == candidate_route => {
+                Some(control.classification)
+            }
+            _ => None,
+        })
+}
+
 #[derive(Default)]
 pub(crate) struct ExternalEndpointCatalogCompiler {
     managed_stream_controls: BTreeSet<ExternalEndpointIdentity>,
@@ -1009,6 +1038,39 @@ pub(crate) struct ExternalEndpointCatalog {
 }
 
 impl ExternalEndpointCatalog {
+    /// The published generation owns both static controls and validated managed stream upgrades.
+    /// A canonical business variant at the same URL remains independently projected by its binding.
+    pub(crate) fn http_control_classification(
+        &self,
+        method: &str,
+        route_template: &str,
+    ) -> Option<ExternalEndpointClassification> {
+        let ExternalEndpointIdentity::Http {
+            method,
+            route_template,
+            ..
+        } = ExternalEndpointIdentity::http(method, route_template)
+        else {
+            unreachable!("HTTP constructor produces HTTP identity");
+        };
+        self.rows.values().find_map(|row| match &row.identity {
+            ExternalEndpointIdentity::Http {
+                method: candidate_method,
+                route_template: candidate_path,
+                ..
+            } if candidate_method == &method
+                && candidate_path == &route_template
+                && matches!(
+                    row.classification,
+                    ExternalEndpointClassification::OperationalControl
+                        | ExternalEndpointClassification::ProtocolControl
+                ) =>
+            {
+                Some(row.classification)
+            }
+            _ => None,
+        })
+    }
     pub(crate) fn rows(&self) -> impl ExactSizeIterator<Item = &ExternalEndpointRow> {
         self.rows.values()
     }

@@ -86,7 +86,7 @@ impl WorkflowTriggerTypeDto {
 }
 
 /// Creates exactly one Agent Flow or Workflow Application.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateApplicationBody {
     /// Closed Application family. Agent Flow and Workflow have different boundary nodes and API
     /// publication semantics.
@@ -104,7 +104,7 @@ pub struct CreateApplicationBody {
     pub icon_background: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateWorkflowTriggerConfigBody {
     /// Required for schedule triggers; standard cron expression.
@@ -121,7 +121,7 @@ pub struct CreateWorkflowTriggerConfigBody {
     pub response_mode: Option<WorkflowExtensionResponseModeBody>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PatchApplicationBody {
     pub name: String,
     pub description: String,
@@ -132,7 +132,7 @@ pub struct PatchApplicationBody {
     pub icon_background: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateApplicationTagBody {
     pub name: String,
 }
@@ -150,7 +150,7 @@ pub struct ReplaceApplicationEnvironmentVariablesBody {
     pub variables: Vec<ApplicationEnvironmentVariableBody>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ReplaceApplicationJsDependencySelectionBody {
     pub installation_id: String,
     pub alias: String,

@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::{JsonApiInput, JsonApiOutput};
 use std::sync::Arc;
 
 use axum::{extract::State, http::HeaderMap, Json, Router};
@@ -95,7 +96,10 @@ pub async fn list_js_dependencies(
     Ok(Json(ApiSuccess::new(output.0)))
 }
 
+#[derive(serde::Serialize)]
 pub(crate) struct JsDependenciesInput;
+
+impl JsonApiInput for JsDependenciesInput {}
 
 impl InterfaceContract for JsDependenciesInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -117,7 +121,11 @@ impl InterfaceContract for JsDependenciesInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct JsDependenciesOutput(Vec<JsDependencyCatalogEntryResponse>);
+
+impl JsonApiOutput for JsDependenciesOutput {}
 
 impl InterfaceContract for JsDependenciesOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -265,3 +273,13 @@ pub(crate) fn compile_registry(
         Arc::new(JsDependenciesAdapter(store)),
     )
 }
+
+#[cfg(test)]
+use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
+#[cfg(test)]
+use serde_json::json;
+
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "js_dependencies/_tests/event_projection.rs"]
+mod event_tests;

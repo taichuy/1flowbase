@@ -169,7 +169,7 @@ async fn invoke(app: &Router, bearer: &str, instance: &str) -> axum::response::R
                 .header("content-type", "application/json")
                 .header("authorization", format!("Bearer {bearer}"))
                 .body(Body::from(
-                    json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}).to_string(),
+                    json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}).to_string(),
                 ))
                 .unwrap(),
         )

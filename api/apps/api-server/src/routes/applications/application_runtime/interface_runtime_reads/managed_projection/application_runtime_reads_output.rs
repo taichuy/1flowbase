@@ -1030,3 +1030,121 @@ Self::WorkflowTrajectoryBody(value) => mp::object_value([("variant", serde_json:
     const CONTRACT_ID: &'static str = "console-application-runtime-reads-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
+
+impl crate::openapi_interface::contract::ApiOutput for ApplicationRuntimeReadsOutput {
+    fn document_output_schema(
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Option<serde_json::Value> {
+        match operation.interface_id.as_str() {
+            "applications.runtime.run.payload.get" => {
+                Some(crate::routes::applications_group::event_projection::runtime::payload_schema())
+            }
+            "applications.runtime.run-node-last-run.get"
+            | "applications.runtime.node-last-run.get" => Some(
+                crate::routes::applications_group::event_projection::runtime::schema::<
+                    Option<NodeLastRunResponse>,
+                >(),
+            ),
+            _ => None,
+        }
+    }
+    fn project_document_output(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::CurrentContext(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::QueryFields(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::Conversations(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::RecordTraceTree(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::RecordTraceChildren(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::Records(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::RecordTrajectoryQuery(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::ConversationTrajectoryQuery(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::RecordClientTrajectoryPage(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::Record(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::RecordConversationPage(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::WorkflowTrajectoryPage(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::WorkflowTrajectoryBody(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::ClientTrajectoryPage(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::ClientTrajectorySection(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::RunPayload(value) => Ok(
+                crate::routes::applications_group::event_projection::runtime::payload(
+                    value.clone(),
+                ),
+            ),
+            Self::TrajectoryPage(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::TrajectoryBody(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::Runs(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::ConversationMessages(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::RunOverview(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::TraceTree(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::TraceChildren(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::ResumeTimeline(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::ResumeTimelineSummary(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::RunNodeLastRun(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::MonitoringReport(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::RuntimeActivity(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::RuntimeDebugStream(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+            Self::NodeLastRun(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(value)
+            }
+        }
+    }
+}

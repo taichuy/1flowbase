@@ -1,6 +1,6 @@
 use super::{
     core_authenticated_other, core_row_settings, core_simple_other, core_simple_settings,
-    ExpectedOperationGroup,
+    settings_features::ROLE_RECORD_PERMISSION_NEW_OPERATIONS, ExpectedOperationGroup,
 };
 
 // This is intentionally an immutable audit ledger rather than a policy-group expansion. A new
@@ -10,6 +10,8 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         "system.events",
         &[
             "events.catalog.list",
+            "events.api_operations.list",
+            "events.api_operations.get",
             "events.definitions.create",
             "events.definitions.update",
             "events.runtime.get",
@@ -19,7 +21,10 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         "system.branding",
         &["system.branding.get", "system.branding.save"],
     ),
-    core_authenticated_other("core.authenticated", &["core.authenticated"]),
+    core_authenticated_other(
+        "core.authenticated",
+        &["core.authenticated", "roles.record_capabilities.get"],
+    ),
     core_simple_other(
         "other.personal-account",
         &[
@@ -31,7 +36,27 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "notifications.messages.read_all",
         ],
     ),
-    core_simple_other("other.local-commands", &["local_commands.execute"]),
+    core_simple_other(
+        "other.local-commands",
+        &[
+            "local_commands.execute",
+            "terminal.info",
+            "terminal.files.list",
+            "terminal.files.stat",
+            "terminal.files.read_text",
+            "terminal.files.read_range",
+            "terminal.files.search",
+            "terminal.files.read_image",
+            "terminal.files.read_audio",
+            "terminal.files.read_resource",
+            "terminal.files.import_resource",
+            "terminal.files.download_file",
+            "terminal.jobs.start",
+            "terminal.jobs.get",
+            "terminal.jobs.read",
+            "terminal.jobs.cancel",
+        ],
+    ),
     core_authenticated_other(
         "core.authenticated",
         &[
@@ -278,6 +303,8 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "mcp.debug.execute",
             "mcp.discovery_policy.update",
             "mcp.discovery_policy.view",
+            "mcp.directory.view",
+            "mcp.directory.replace",
             "mcp.groups.delete",
             "mcp.groups.move",
             "mcp.groups.upsert",
@@ -442,6 +469,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "roles.update",
         ],
     ),
+    core_simple_settings("system.roles", ROLE_RECORD_PERMISSION_NEW_OPERATIONS),
     core_simple_settings(
         "system.system-runtime",
         &[
@@ -509,8 +537,12 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    "mcp.directory.view",
+    "mcp.directory.replace",
     // Event Center introduces independent authority; no historical feature grant covers it.
     "events.catalog.list",
+    "events.api_operations.list",
+    "events.api_operations.get",
     "events.definitions.create",
     "events.definitions.update",
     "events.runtime.get",
@@ -526,6 +558,22 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "files.access_links.create",
     // Previously root-only; historic role grants must not acquire host command access.
     "local_commands.execute",
+    // Terminal filesystem and retained-job authority is new; no historic role grant covers it.
+    "terminal.info",
+    "terminal.files.list",
+    "terminal.files.stat",
+    "terminal.files.read_text",
+    "terminal.files.read_range",
+    "terminal.files.search",
+    "terminal.files.read_image",
+    "terminal.files.read_audio",
+    "terminal.files.read_resource",
+    "terminal.files.import_resource",
+    "terminal.files.download_file",
+    "terminal.jobs.start",
+    "terminal.jobs.get",
+    "terminal.jobs.read",
+    "terminal.jobs.cancel",
     // Proxy discovery is a new authoring grant, independent of secret-management access.
     "agent_flow.http_node_proxy_options.list",
     // Installation branding did not exist in the audited historic permission baseline.
@@ -617,6 +665,9 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "roles.console_policy.view",
     "roles.console_policy_catalog.view",
     "roles.console_settings_order.replace",
+    // Existing roles-feature grants must not acquire per-record permission management.
+    "roles.record_permissions.replace",
+    "roles.record_permissions.view",
     "system_backups.catalog",
     "system_templates.catalog",
     "system_templates.export",

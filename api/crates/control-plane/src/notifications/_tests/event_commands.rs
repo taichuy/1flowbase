@@ -8,7 +8,6 @@ fn binding() -> CommunicationEventCommandBinding {
         description: "Publish request".into(),
         enabled: true,
         contract_id: "custom.notify".into(),
-        contract_version: "1".into(),
         input_mapping: std::collections::BTreeMap::from([
             ("message".into(), "/arguments".into()),
             ("input".into(), "/input_id".into()),
@@ -17,10 +16,11 @@ fn binding() -> CommunicationEventCommandBinding {
 }
 fn event(workspace_id: Uuid) -> EventDefinitionRecord {
     EventDefinitionRecord {
+        interface_event: None,
+
         id: Uuid::now_v7(),
         workspace_id,
         contract_id: "custom.notify".into(),
-        contract_version: "1".into(),
         name: "Notify".into(),
         description: String::new(),
         enabled: true,
@@ -76,7 +76,7 @@ fn custom_command_identity_names_and_pointers_are_owned_and_unambiguous() {
     }
 }
 #[test]
-fn workspace_and_version_lookup_never_crosses_scopes_or_uses_disabled_definitions() {
+fn workspace_and_identity_lookup_never_crosses_scopes_or_uses_disabled_definitions() {
     let workspace = Uuid::now_v7();
     let mut target = event(workspace);
     let command = binding();
@@ -85,7 +85,7 @@ fn workspace_and_version_lookup_never_crosses_scopes_or_uses_disabled_definition
     target.enabled = false;
     assert!(definition(&command, &[target.clone()], workspace).is_none());
     target.enabled = true;
-    target.contract_version = "2".into();
+    target.contract_id = "custom.other".into();
     assert!(definition(&command, &[target], workspace).is_none());
 }
 #[test]
@@ -131,4 +131,32 @@ fn mapping_shape_validation_rejects_missing_required_fields_and_nonstring_proper
         validate_target_mapping(&command, &target).is_ok(),
         "saving must not invent caller arguments for enum/pattern validation"
     );
+}
+
+#[test]
+fn event_command_current_target_has_no_version_and_rejects_removed_input() {
+    let encoded = serde_json::to_value(binding()).unwrap();
+    assert!(encoded.get("contract_version").is_none());
+    let mut old = encoded;
+    old["contract_version"] = json!("1");
+    assert!(serde_json::from_value::<CommunicationEventCommandBinding>(old).is_err());
+}
+
+#[test]
+fn communication_command_cannot_fabricate_an_interface_invocation_fact() {
+    use domain::event_center::{InterfaceEventBinding, InterfaceEventPhase};
+    let workspace = Uuid::now_v7();
+    let command = binding();
+    let mut target = event(workspace);
+    target.interface_event = Some(InterfaceEventBinding::legacy(
+        "applications.list",
+        InterfaceEventPhase::Before,
+    ));
+    assert!(definition(&command, &[target.clone()], workspace).is_none());
+    assert!(communication_event_payload(
+        &command,
+        &json!({"arguments":"hello","input_id":"host"}),
+        &target
+    )
+    .is_err());
 }

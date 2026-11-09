@@ -8,7 +8,7 @@ use control_plane::{
         publications::ApplicationPublicationVersionRecord,
         workflow_event::WorkflowEventTriggerService,
     },
-    event_center::{EventCenterSubscription, EventRuntimeSubscription},
+    event_center::{EventCenterSubscription, EventRuntimeSubscription, EventSourceTarget},
     system_recovery::SystemWriteOwner,
 };
 use control_plane_contracts::ports::EventCenterRepository;
@@ -78,17 +78,13 @@ pub(crate) fn spawn_event_workflow_loop(
     }
 }
 
-async fn load_enabled_triggers(
+async fn load_configured_triggers(
     state: &ApiState,
     statuses: &EventWorkflowStatuses,
 ) -> anyhow::Result<BTreeMap<Uuid, WorkflowEventTriggerRecord>> {
     let mut triggers = BTreeMap::new();
     for workspace in state.store.list_workflow_event_trigger_workspaces().await? {
-        for trigger in state
-            .store
-            .list_enabled_workflow_event_triggers(workspace)
-            .await?
-        {
+        for trigger in state.store.list_workflow_event_triggers(workspace).await? {
             triggers.insert(trigger.application_id, trigger);
         }
     }
@@ -110,7 +106,7 @@ async fn reconcile(
     logical: &mut BTreeMap<Uuid, LogicalSubscription>,
     restoring: bool,
 ) -> anyhow::Result<()> {
-    let configured = load_enabled_triggers(state, statuses).await?;
+    let configured = load_configured_triggers(state, statuses).await?;
     for (id, receiver) in running.iter_mut() {
         if !configured.contains_key(id) {
             receiver.stop();
@@ -120,7 +116,12 @@ async fn reconcile(
     for (id, trigger) in &configured {
         let prepared = async {
             let actor = authorized_actor(state, trigger).await?;
-            WorkflowEventTriggerService::new(state.store.for_actor(actor))
+            WorkflowEventTriggerService::new(state.store.for_actor(actor.clone()))
+                .with_registered_events(
+                    state
+                        .event_sources
+                        .registered_events(&actor, &state.event_center),
+                )
                 .prepare_subscription(trigger)
                 .await
         }
@@ -128,6 +129,20 @@ async fn reconcile(
         let publication = match prepared {
             Ok(publication) => publication,
             Err(error) => {
+                // Publication withdrawal/disable ends the logical listener. A later activation
+                // is a new subscription; ordinary refresh/source recovery does not replay it.
+                if matches!(
+                    error.downcast_ref::<control_plane::errors::ControlPlaneError>(),
+                    Some(
+                        control_plane::errors::ControlPlaneError::InvalidInput(
+                            "application_disabled"
+                        ) | control_plane::errors::ControlPlaneError::NotFound(
+                            "application_publication"
+                        )
+                    )
+                ) {
+                    logical.remove(id);
+                }
                 if error.downcast_ref::<sqlx::Error>().is_some() {
                     return Err(error);
                 }
@@ -171,17 +186,31 @@ async fn reconcile(
             .get(id)
             .is_some_and(|logical| logical.emit_on_activation)
             || activation.is_some();
-        let subscription = match state.event_center.subscribe(
-            EventRuntimeSubscription {
-                subscription_id: trigger.id,
-                workspace_id: trigger.workspace_id,
-                contract_id: trigger.configuration.contract_id.clone(),
-                contract_version: trigger.configuration.contract_version.clone(),
-                trigger_phase: trigger.configuration.trigger_phase,
-                consumer_id: trigger.application_id,
-            },
-            emit_subscribed,
-        ) {
+        let spec = EventRuntimeSubscription {
+            subscription_id: trigger.id,
+            workspace_id: trigger.workspace_id,
+            contract_id: trigger.configuration.contract_id.clone(),
+            trigger_phase: trigger.configuration.trigger_phase,
+            consumer_id: trigger.application_id,
+        };
+        let opened = match &trigger.configuration.source {
+            Some(source) => state.event_center.subscribe_source(
+                spec,
+                EventSourceTarget {
+                    filters: source.filters.clone(),
+
+                    source_id: source.source_id.clone(),
+                    scope: source.scope.clone(),
+                    workflow_id: trigger.application_id,
+                },
+            ),
+            None => {
+                state
+                    .event_center
+                    .subscribe_workflow(spec, emit_subscribed, trigger.application_id)
+            }
+        };
+        let subscription = match opened {
             Ok(subscription) => Arc::new(subscription),
             Err(error) => {
                 statuses.activation(
@@ -262,8 +291,8 @@ fn same_identity(left: &WorkflowEventTriggerRecord, right: &WorkflowEventTrigger
     left.id == right.id
         && left.workspace_id == right.workspace_id
         && left.configuration.contract_id == right.configuration.contract_id
-        && left.configuration.contract_version == right.configuration.contract_version
         && left.configuration.trigger_phase == right.configuration.trigger_phase
+        && left.configuration.source == right.configuration.source
 }
 
 async fn run(

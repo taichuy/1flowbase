@@ -73,7 +73,7 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
         &self,
         actor_user_id: Uuid,
         application_id: Uuid,
-        configuration: WorkflowEventTriggerInput,
+        mut configuration: WorkflowEventTriggerInput,
     ) -> Result<WorkflowEventTriggerRecord>
     where
         R: ApplicationPublicationRepository + ApplicationCompiledPlanRepository,
@@ -89,6 +89,8 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
             .ok_or(ControlPlaneError::NotFound("application"))?;
         ensure_application_edit_permission(&self.repository, &actor, &application).await?;
         ensure_event_workflow(&application)?;
+        // Retain the persisted legacy field, but it is not an independent activation switch.
+        configuration.enabled = true;
         // A saved draft configuration does not activate a subscription. When a publication
         // exists the active immutable input contract, rather than the mutable draft, governs.
         if let Some(publication) = self
@@ -155,21 +157,21 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
             .ok_or(ControlPlaneError::NotFound("application"))?;
         ensure_event_workflow(&application)?;
         ensure_application_edit_permission(&self.repository, &actor, &application).await?;
-        if !trigger.configuration.enabled {
-            return Err(ControlPlaneError::InvalidInput("trigger_disabled").into());
-        }
         EventCenterConfigurationService::with_registered_events(
             self.repository.clone(),
             trigger.workspace_id,
             self.registered_events.clone(),
         )
-        .validate_workflow_trigger(&actor, &trigger.configuration)
+        .validate_workflow_trigger(&actor, &listening_configuration(&trigger.configuration))
         .await?;
         let publication = self
             .repository
             .load_active_application_publication(trigger.application_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("application_publication"))?;
+        if !publication.api_enabled {
+            return Err(ControlPlaneError::InvalidInput("application_disabled").into());
+        }
         if publication.workspace_id != trigger.workspace_id {
             return Err(ControlPlaneError::InvalidInput("workspace_id").into());
         }
@@ -210,7 +212,7 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
                 reason: "trigger_removed",
             });
         };
-        if !current.configuration.enabled || current != *snapshot {
+        if current != *snapshot {
             return Ok(WorkflowEventInvocationOutcome::Skipped {
                 reason: "trigger_changed",
             });
@@ -237,7 +239,7 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
             snapshot.workspace_id,
             self.registered_events.clone(),
         )
-        .validate_workflow_trigger(&actor, &snapshot.configuration)
+        .validate_workflow_trigger(&actor, &listening_configuration(&snapshot.configuration))
         .await?;
         let Some(active) = self
             .repository
@@ -248,6 +250,11 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
                 reason: "application_unpublished",
             });
         };
+        if !active.api_enabled {
+            return Ok(WorkflowEventInvocationOutcome::Skipped {
+                reason: "application_disabled",
+            });
+        }
         // The active publication is replaced in place and keeps its database ID.
         // Compare the frozen contents as well, including changes after host handoff validation.
         if active != command.publication
@@ -277,6 +284,19 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
                     trigger: WorkflowInvocationTrigger::Event {
                         signal_id: command.signal_id,
                         event_id: command.event_id,
+                        source_context: command
+                            .context
+                            .get("source_context")
+                            .cloned()
+                            .map(serde_json::from_value)
+                            .transpose()?,
+                        workflow_ancestor_ids: command
+                            .context
+                            .get("workflow_ancestor_ids")
+                            .cloned()
+                            .map(serde_json::from_value)
+                            .transpose()?
+                            .unwrap_or_default(),
                         subscription_id: command.subscription_id,
                         trigger_phase: snapshot.configuration.trigger_phase,
                         idempotency_key: key,
@@ -295,7 +315,7 @@ pub struct InvokeWorkflowEventCommand {
     /// Unique identity of this lifecycle signal, including subscribed/consumed signals.
     pub signal_id: Uuid,
     /// Original published event identity, absent for subscription establishment.
-    pub event_id: Option<Uuid>,
+    pub event_id: Option<String>,
     pub subscription_id: Uuid,
     /// Canonical serialized lifecycle signal, with phase-specific metadata and payload.
     pub context: Value,
@@ -352,18 +372,47 @@ fn validate_event_context(command: &InvokeWorkflowEventCommand) -> Result<()> {
             .and_then(Value::as_str)
             .and_then(|id| Uuid::parse_str(id).ok())
     };
+    let source_context: Option<domain::event_center::EventSourceContext> = context
+        .get("source_context")
+        .cloned()
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|_| ControlPlaneError::InvalidInput("event_context"))?;
+    match (&command.trigger.configuration.source, &source_context) {
+        (None, None) => {}
+        (Some(selected), Some(source))
+            if selected.source_id == source.source_id
+                && selected.scope == source.scope
+                && selected
+                    .filters
+                    .iter()
+                    .all(|(key, value)| source.attributes.get(key) == Some(value)) => {}
+        _ => return Err(ControlPlaneError::InvalidInput("event_source_context").into()),
+    }
     let original = match command.trigger.configuration.trigger_phase {
         EventTriggerPhase::Subscribed => None,
-        EventTriggerPhase::Published => Some(command.signal_id),
-        EventTriggerPhase::Consumed => uuid_at("source_event_id"),
+        EventTriggerPhase::Published => match &source_context {
+            Some(source) => source.original_event_id.clone(),
+            None => Some(command.signal_id.to_string()),
+        },
+        EventTriggerPhase::Consumed => context
+            .get("source_event_id")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
     };
+    if let Some(source) = &source_context {
+        if command.trigger.configuration.trigger_phase != EventTriggerPhase::Subscribed
+            && (source.original_event_id != original
+                || original.as_ref().is_none_or(|id| id.trim().is_empty()))
+        {
+            return Err(ControlPlaneError::InvalidInput("event_source_context").into());
+        }
+    }
     if uuid_at("workspace_id") != Some(command.trigger.workspace_id)
         || uuid_at("event_id") != Some(command.signal_id)
         || context.get("phase").and_then(Value::as_str) != Some(phase)
         || context.get("contract_id").and_then(Value::as_str)
             != Some(command.trigger.configuration.contract_id.as_str())
-        || context.get("contract_version").and_then(Value::as_str)
-            != Some(command.trigger.configuration.contract_version.as_str())
         || original != command.event_id
         || (command.trigger.configuration.trigger_phase == EventTriggerPhase::Consumed
             && original.is_none())
@@ -371,6 +420,14 @@ fn validate_event_context(command: &InvokeWorkflowEventCommand) -> Result<()> {
         return Err(ControlPlaneError::InvalidInput("event_context").into());
     }
     Ok(())
+}
+
+// Old archives may retain enabled=false. Validate the actual event capability regardless;
+// the published application's state owns whether a listener may be installed.
+fn listening_configuration(input: &WorkflowEventTriggerInput) -> WorkflowEventTriggerInput {
+    let mut configuration = input.clone();
+    configuration.enabled = true;
+    configuration
 }
 
 #[cfg(test)]

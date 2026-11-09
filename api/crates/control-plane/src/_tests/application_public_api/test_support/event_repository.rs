@@ -45,9 +45,7 @@ impl EventCenterRepository for ApplicationPublicApiTestRepository {
     async fn create_event_definition(&self, record: &EventDefinitionRecord) -> Result<()> {
         let mut inner = self.inner.lock().unwrap();
         if inner.event_definitions.values().any(|row| {
-            row.workspace_id == record.workspace_id
-                && row.contract_id == record.contract_id
-                && row.contract_version == record.contract_version
+            row.workspace_id == record.workspace_id && row.contract_id == record.contract_id
         }) {
             return Err(ControlPlaneError::Conflict("event_identity").into());
         }
@@ -100,7 +98,7 @@ impl EventCenterRepository for ApplicationPublicApiTestRepository {
             .insert(record.application_id, record.clone());
         Ok(true)
     }
-    async fn list_enabled_workflow_event_triggers(
+    async fn list_workflow_event_triggers(
         &self,
         workspace_id: Uuid,
     ) -> Result<Vec<WorkflowEventTriggerRecord>> {
@@ -110,7 +108,7 @@ impl EventCenterRepository for ApplicationPublicApiTestRepository {
             .unwrap()
             .workflow_event_triggers
             .values()
-            .filter(|row| row.workspace_id == workspace_id && row.configuration.enabled)
+            .filter(|row| row.workspace_id == workspace_id)
             .cloned()
             .collect())
     }

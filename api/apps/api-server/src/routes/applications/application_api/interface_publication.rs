@@ -533,6 +533,7 @@ impl ConsoleInterfacePort<ApplicationPublicationInput, ApplicationPublicationOut
                                 api_enabled: body.api_enabled,
                             })
                             .await?;
+                        self.changes.notify_one();
                         ApplicationPublicationOutput::Status(ApplicationApiStatusResponse {
                             application_id,
                             api_enabled: body.api_enabled,
@@ -605,4 +606,79 @@ pub(crate) fn compile_registry(
         DECLARATIONS,
         port,
     )
+}
+
+impl crate::openapi_interface::contract::ApiInput for ApplicationPublicationInput {
+    fn project_document_input(
+        &self,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::GetMapping { application_id } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({"application_id":application_id}),
+                    serde_json::json!({}),
+                    serde_json::Value::Null,
+                )
+            }
+            Self::ReplaceMapping {
+                application_id,
+                body,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::openapi_interface::contract::to_value(body)?,
+            ),
+            Self::GetPublication { application_id } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({"application_id":application_id}),
+                    serde_json::json!({}),
+                    serde_json::Value::Null,
+                )
+            }
+            Self::Publish {
+                application_id,
+                body,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::openapi_interface::contract::to_value(body)?,
+            ),
+            Self::Unpublish { application_id } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({"application_id":application_id}),
+                    serde_json::json!({}),
+                    serde_json::Value::Null,
+                )
+            }
+            Self::SetEnabled {
+                application_id,
+                body,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::openapi_interface::contract::to_value(body)?,
+            ),
+        })
+    }
+}
+
+impl crate::openapi_interface::contract::ApiOutput for ApplicationPublicationOutput {
+    fn project_document_output(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::Mapping(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Publication(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Status(value) => crate::openapi_interface::contract::to_value(value),
+            Self::NoContent => Ok(serde_json::Value::Null),
+        }
+    }
 }

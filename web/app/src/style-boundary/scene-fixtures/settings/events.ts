@@ -14,22 +14,36 @@ import {
 const events: EventCatalogEntry[] = [
   {
     id: null,
-    enabled: true,
+    group_path: ['communications', 'commands'],
+    enabled: null,
+    scope: { kind: 'workspace', workspace_id: 'workspace-1' },
     owner_id: '1flowbase.boot-core',
     contract_id: '1flowbase.communication.command.requested',
-    contract_version: '1',
     name: '1flowbase.communication.command.requested',
     description: 'Communication command requested.',
     payload_schema: null,
     origin: 'core',
-    supported_phases: []
+    source: {
+      selection: {
+        source_id: 'communication.command',
+        scope: { kind: 'workspace', workspace_id: 'workspace-1' }
+      },
+      point_id: 'communication.command.requested'
+    },
+    supported_phases: ['published', 'consumed']
   },
   {
     id: '019e3b42-0000-7000-8000-000000000001',
     enabled: true,
-    owner_id: 'workspace-1',
+    group_path: ['interface_events'],
+    interface_event: {
+      interface_id: 'orders.fulfill',
+      phase: 'completion',
+      results: ['completed']
+    },
+    owner_id: null,
+    scope: { kind: 'workspace', workspace_id: 'workspace-1' },
     contract_id: 'custom.order.fulfillment.completed',
-    contract_version: '1.0.0',
     name: 'Order fulfillment completed',
     description: 'Published after an order is fulfilled.',
     payload_schema: {
@@ -40,7 +54,68 @@ const events: EventCatalogEntry[] = [
     },
     origin: 'custom',
     supported_phases: ['published', 'consumed']
-  }
+  },
+  ...(['before', 'completion'] as const).map(
+    (phase): EventCatalogEntry => ({
+      id: null,
+      enabled: null,
+      owner_id: 'orders',
+      origin: 'core',
+      scope: { kind: 'workspace', workspace_id: 'workspace-1' },
+      contract_id: `interface.orders.fulfill.${phase}`,
+      name: `Fulfill order · ${phase}`,
+      description: 'Declared order operation event.',
+      group_path: ['interfaces', 'orders'],
+      interface_event: { interface_id: 'orders.fulfill', phase },
+      payload_schema: {
+        type: 'object',
+        properties:
+          phase === 'before'
+            ? {
+                input: {
+                  type: 'object',
+                  properties: { order_id: { type: 'string' } }
+                }
+              }
+            : {
+                terminal: {
+                  enum: ['completed', 'failed', 'rejected', 'cancelled']
+                },
+                output: {
+                  type: 'object',
+                  properties: { order_id: { type: 'string' } }
+                }
+              }
+      },
+      supported_phases: ['published', 'consumed']
+    })
+  ),
+  ...['reserved', 'settled'].map(
+    (kind): EventCatalogEntry => ({
+      id: null,
+      enabled: null,
+      owner_id: 'billing',
+      origin: 'plugin',
+      scope: { kind: 'workspace', workspace_id: 'workspace-1' },
+      contract_id: 'billing.credit.fact',
+      name: `Credit ${kind}`,
+      description: 'Declared billing fact.',
+      group_path: ['billing', 'credits'],
+      payload_schema: {
+        type: 'object',
+        properties: { kind: { const: kind }, amount: { type: 'number' } }
+      },
+      source: {
+        selection: {
+          source_id: 'billing.credit',
+          scope: { kind: 'workspace', workspace_id: 'workspace-1' },
+          filters: { kind }
+        },
+        point_id: 'billing.credit.fact'
+      },
+      supported_phases: ['published', 'consumed']
+    })
+  )
 ];
 
 /** Apply after renderRouterScene, which seeds common fetch and auth again. */

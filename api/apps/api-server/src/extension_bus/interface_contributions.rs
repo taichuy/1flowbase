@@ -73,7 +73,10 @@ impl InterfaceRegistryContribution {
 }
 
 pub(crate) struct InterfaceContributionCollector {
+    api_docs: Option<Arc<crate::openapi_docs::ApiDocsRegistry>>,
+    document_observer: Option<Arc<dyn interface_runtime::DocumentOperationObserver>>,
     managed_factory: Option<Arc<dyn interface_runtime::ManagedInterfaceInvocationFactory>>,
+    event_observer: Option<Arc<dyn interface_runtime::InterfaceEventObserver>>,
     graph_fingerprint: GraphFingerprint,
     contributions: Vec<InterfaceRegistryContribution>,
     contribution_ids: BTreeSet<String>,
@@ -82,11 +85,32 @@ pub(crate) struct InterfaceContributionCollector {
 impl InterfaceContributionCollector {
     pub(crate) fn new(graph_fingerprint: GraphFingerprint) -> Self {
         Self {
+            api_docs: None,
+            document_observer: None,
             managed_factory: None,
+            event_observer: None,
             graph_fingerprint,
             contributions: Vec::new(),
             contribution_ids: BTreeSet::new(),
         }
+    }
+
+    pub(crate) fn with_api_event_observation(
+        mut self,
+        docs: Arc<crate::openapi_docs::ApiDocsRegistry>,
+        observer: Arc<dyn interface_runtime::DocumentOperationObserver>,
+    ) -> Self {
+        self.api_docs = Some(docs);
+        self.document_observer = Some(observer);
+        self
+    }
+
+    pub(crate) fn with_event_observer(
+        mut self,
+        observer: Arc<dyn interface_runtime::InterfaceEventObserver>,
+    ) -> Self {
+        self.event_observer = Some(observer);
+        self
     }
 
     pub(crate) fn add(
@@ -122,8 +146,26 @@ impl InterfaceContributionCollector {
         if let Some(factory) = self.managed_factory {
             compiler = compiler.with_managed_invocations(factory);
         }
+        if let Some(observer) = self.event_observer {
+            compiler = compiler.with_event_observer(observer);
+        }
+        if let Some(observer) = self.document_observer {
+            compiler = compiler.with_document_operation_observer(observer);
+        }
+        let snapshots = self
+            .contributions
+            .iter()
+            .map(|contribution| contribution.registry.clone())
+            .collect::<Vec<_>>();
         for contribution in self.contributions {
             compiler.absorb_snapshot(contribution.registry.as_ref())?;
+        }
+        if let Some(docs) = self.api_docs {
+            crate::openapi_interface::contract::refine_static_api_operations(
+                &mut compiler,
+                &docs,
+                &snapshots,
+            )?;
         }
         Ok(compiler.compile()?)
     }
@@ -630,6 +672,16 @@ pub(crate) fn production_interface_contributions(
             crate::routes::i18n_catalog::interface::compile_registry(console_i18n_catalog)?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.record-permissions",
+            &[
+                "roles.record_permissions.view",
+                "roles.record_permissions.replace",
+                "roles.record_capabilities.get",
+            ],
+            &["api-server.record-permissions"],
+            crate::managed_services::record_permissions::compile_registry(state)?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-role-access",
             &[
                 "roles.data_model_options.list",
@@ -754,6 +806,8 @@ pub(crate) fn production_interface_contributions(
         InterfaceRegistryContribution::new(
             "api-server.console-events",
             &[
+                "events.api_operations.list",
+                "events.api_operations.get",
                 "events.catalog.list",
                 "events.definitions.create",
                 "events.definitions.update",
@@ -772,11 +826,7 @@ pub(crate) fn production_interface_contributions(
             ],
             &["api-server.console-workflow-event"],
             crate::routes::application_api::interface_event::compile_registry(
-                crate::routes::application_api::interface_event::port(
-                    state.store.clone(),
-                    state.event_workflow_changes.clone(),
-                    state.event_workflow_statuses.clone(),
-                ),
+                crate::routes::application_api::interface_event::port(state),
             )?,
         ),
         InterfaceRegistryContribution::new(

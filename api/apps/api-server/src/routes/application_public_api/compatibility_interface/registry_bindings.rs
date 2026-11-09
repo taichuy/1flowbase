@@ -44,16 +44,25 @@ pub(super) fn register_stream_binding(
         owner.clone(),
     ))?;
     register_authentication(compiler, &interface_id)?;
-    compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new(binding_id).expect("static binding is valid"),
-            identity,
-            contracts,
-            ProtocolProjection::http_variant(
-                RouteIdentity::new(method, path).expect("static route is valid"),
-                "streaming",
-            ),
+    let binding = ProtocolBinding::new(
+        BindingId::new(binding_id).expect("static binding is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::http_variant(
+            RouteIdentity::new(method, path).expect("static route is valid"),
+            "streaming",
         ),
+    );
+    crate::openapi_interface::contract::register_static_api_operation::<
+        CompatibilityBlockingInput,
+        CompatibilityBlockingOutput,
+    >(
+        compiler,
+        &binding,
+        "graph:application-compatibility-blocking-v1",
+    )?;
+    compiler.register_binding(
+        binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
                 .expect("static adapter is valid"),
@@ -85,8 +94,8 @@ pub(super) fn register_binding(
     let interface_id = InterfaceId::new(interface_id).expect("static interface id is valid");
     let contracts = InterfaceContracts::unary(
         contract::<CompatibilityBlockingInput>(),
-        contract::<CompatibilityBlockingOutput>(),
-        contract::<CompatibilityBlockingTargetError>(),
+        contract::<CompatibilityProtocolOutput>(),
+        contract::<CompatibilityProtocolTargetError>(),
     );
     let identity = InterfaceIdentity::new(
         interface_id.clone(),
@@ -113,15 +122,22 @@ pub(super) fn register_binding(
         owner.clone(),
     ))?;
     register_authentication(compiler, &interface_id)?;
+    let binding = ProtocolBinding::new(
+        BindingId::new(binding_id).expect("static binding is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::http(RouteIdentity::new(method, path).expect("static route is valid")),
+    );
+    crate::openapi_interface::contract::register_static_api_operation::<
+        CompatibilityBlockingInput,
+        CompatibilityProtocolOutput,
+    >(
+        compiler,
+        &binding,
+        "graph:application-compatibility-blocking-v1",
+    )?;
     compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new(binding_id).expect("static binding is valid"),
-            identity,
-            contracts,
-            ProtocolProjection::http(
-                RouteIdentity::new(method, path).expect("static route is valid"),
-            ),
-        ),
+        binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
                 .expect("static adapter is valid"),
@@ -130,7 +146,7 @@ pub(super) fn register_binding(
             None,
         ),
     )?;
-    compiler.bind_handler::<CompatibilityBlockingInput, CompatibilityBlockingOutput, CompatibilityBlockingTargetError, ApplicationPrincipal>(
+    compiler.bind_handler::<CompatibilityBlockingInput, CompatibilityProtocolOutput, CompatibilityProtocolTargetError, ApplicationPrincipal>(
         &interface_id,
         handler,
         Arc::new(CompatibilityBlockingHandler { port, consumer:super::super::compat_sse::CompatibleResumeConsumer::for_binding(binding_id) }),

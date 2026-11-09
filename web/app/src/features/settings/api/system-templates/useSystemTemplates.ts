@@ -10,7 +10,12 @@ import {
   type PortableTemplatePackage,
   type PortableTemplateSelection
 } from '@1flowbase/api-client';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient
+} from '@tanstack/react-query';
 import { useAuthStore } from '../../../../state/auth-store';
 
 const queryKey = ['settings', 'system-templates', 'catalog'] as const;
@@ -18,9 +23,12 @@ export function useApplicationTemplateCatalog(
   enabled: boolean,
   query: ApplicationTemplateCatalogQuery
 ) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: [...queryKey, 'applications-demo', query],
-    queryFn: () => getApplicationTemplateCatalog(query),
+    initialPageParam: query.cursor,
+    queryFn: ({ pageParam }) =>
+      getApplicationTemplateCatalog({ q: query.q, cursor: pageParam }),
+    getNextPageParam: (page) => page.next_cursor ?? undefined,
     enabled
   });
 }

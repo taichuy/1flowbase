@@ -11,7 +11,7 @@ use control_plane::{
     application_public_api::{
         mapping::{WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode},
         workflow_extension::{
-            CreateWorkflowExtensionRunCommand, WorkflowExtensionRequestParameters,
+            AuthorizedPublishedWorkflowOperation, WorkflowExtensionRequestParameters,
             WorkflowExtensionRunError, WorkflowExtensionRunService, WorkflowHttpPrincipal,
         },
     },
@@ -30,8 +30,8 @@ use crate::{
     provider_runtime::ApiProviderRuntime,
     routes::application_public_api::native::{service_error, NativeApiError},
     routes::application_public_api::workflow_extension_interface::{
-        self, WorkflowExtensionFuture, WorkflowExtensionInput, WorkflowExtensionOutput,
-        WorkflowExtensionPort, WorkflowExtensionTargetError,
+        self, WorkflowExtensionAuthorizeFuture, WorkflowExtensionFuture, WorkflowExtensionInput,
+        WorkflowExtensionOutput, WorkflowExtensionPort, WorkflowExtensionTargetError,
     },
     runtime_activity::{
         scope_application_activity, ApplicationActivityKind, ApplicationRuntimeActivityTracker,
@@ -141,24 +141,45 @@ struct WorkflowExtensionAdapter {
 }
 
 impl WorkflowExtensionPort for WorkflowExtensionAdapter {
-    fn invoke<'a>(
+    fn authorize<'a>(
         &'a self,
         actor: &'a domain::ActorContext,
+        input: &'a WorkflowExtensionInput,
+    ) -> WorkflowExtensionAuthorizeFuture<'a> {
+        let store = self.store.clone();
+        Box::pin(async move {
+            WorkflowExtensionRunService::new(store)
+                .authorize_operation(actor, input.method, &input.request_path)
+                .await
+                .map_err(workflow_extension_error)
+                .map_err(WorkflowExtensionTargetError)
+        })
+    }
+    fn invoke_authorized<'a>(
+        &'a self,
+        authorized: AuthorizedPublishedWorkflowOperation,
         principal: WorkflowHttpPrincipal,
         input: WorkflowExtensionInput,
+        observation: Option<interface_runtime::DocumentOperationSession>,
     ) -> WorkflowExtensionFuture<'a> {
         let dependencies = self.clone();
-        let actor = actor.clone();
         Box::pin(async move {
-            let run = WorkflowExtensionRunService::new(dependencies.store.clone())
-                .with_published_plan_cache(dependencies.published_plan_cache.clone())
-                .create_run(CreateWorkflowExtensionRunCommand {
-                    actor,
+            let service = WorkflowExtensionRunService::new(dependencies.store.clone())
+                .with_published_plan_cache(dependencies.published_plan_cache.clone());
+            let prepared = service
+                .prepare_authorized_run(
+                    authorized,
                     principal,
-                    request_path: input.request_path,
-                    method: input.method,
-                    parameters: input.parameters,
-                })
+                    &input.parameters,
+                    &input.request_path,
+                )
+                .map_err(workflow_extension_error)
+                .map_err(WorkflowExtensionTargetError)?;
+            if let Some(session) = observation {
+                let _ = session.observe_before(&input).await;
+            }
+            let run = service
+                .create_prepared_run(prepared)
                 .await
                 .map_err(workflow_extension_error)
                 .map_err(WorkflowExtensionTargetError)?;
@@ -486,14 +507,25 @@ fn workflow_extension_invocation_error(
 fn project_workflow_extension_output(
     output: WorkflowExtensionOutput,
 ) -> Result<Response, NativeApiError> {
-    match output {
+    match normalize_workflow_extension_output(output)? {
         WorkflowExtensionOutput::Accepted { run_id, status } => {
             Ok(accepted_response(run_id, status))
         }
+        WorkflowExtensionOutput::Completed(detail) => {
+            Ok((StatusCode::OK, Json(detail.flow_run.output_payload)).into_response())
+        }
+    }
+}
+
+pub(super) fn normalize_workflow_extension_output(
+    output: WorkflowExtensionOutput,
+) -> Result<WorkflowExtensionOutput, NativeApiError> {
+    match output {
+        WorkflowExtensionOutput::Accepted { run_id, status } => {
+            Ok(WorkflowExtensionOutput::Accepted { run_id, status })
+        }
         WorkflowExtensionOutput::Completed(detail) => match detail.flow_run.status {
-            domain::FlowRunStatus::Succeeded => {
-                Ok((StatusCode::OK, Json(detail.flow_run.output_payload)).into_response())
-            }
+            domain::FlowRunStatus::Succeeded => Ok(WorkflowExtensionOutput::Completed(detail)),
             domain::FlowRunStatus::Incomplete => Err(NativeApiError::new(
                 StatusCode::CONFLICT,
                 "workflow_incomplete",
@@ -503,10 +535,10 @@ fn project_workflow_extension_output(
             | domain::FlowRunStatus::Running
             | domain::FlowRunStatus::WaitingCallback
             | domain::FlowRunStatus::WaitingHuman
-            | domain::FlowRunStatus::Paused => Ok(accepted_response(
-                detail.flow_run.id,
-                detail.flow_run.status,
-            )),
+            | domain::FlowRunStatus::Paused => Ok(WorkflowExtensionOutput::Accepted {
+                run_id: detail.flow_run.id,
+                status: detail.flow_run.status,
+            }),
             domain::FlowRunStatus::Failed => Err(NativeApiError::new(
                 StatusCode::CONFLICT,
                 "workflow_failed",

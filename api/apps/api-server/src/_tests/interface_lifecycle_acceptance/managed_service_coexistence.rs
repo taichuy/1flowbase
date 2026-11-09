@@ -40,7 +40,7 @@ async fn hot_generation_new_service_freezes_against_older_workspace_snapshot() {
             .as_str()
             == point_id));
     }
-    let registration = ManagedServiceRegistration {
+    let registration = ManagedServiceRegistration { publisher_namespace: "test".into(), data_models: Vec::new(),
         display_name: "Fixture plugin".into(), description: "Fixture plugin operations".into(),
         installation_id: uuid::Uuid::now_v7(),
         plugin_code: "coexistence".into(),

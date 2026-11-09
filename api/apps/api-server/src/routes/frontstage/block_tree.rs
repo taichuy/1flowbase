@@ -63,7 +63,7 @@ pub enum FrontstageBlockPresentationDto {
     Inline,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateFrontstageBlockNodeBody {
     pub tab_id: Option<String>,
@@ -81,7 +81,7 @@ pub struct CreateFrontstageBlockNodeBody {
     pub runtime_descriptor: Option<Value>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateFrontstageBlockNodeBody {
     pub title: Option<String>,
     pub description: Option<String>,
@@ -91,38 +91,38 @@ pub struct UpdateFrontstageBlockNodeBody {
     pub runtime_descriptor: Option<Value>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct FrontstageBlockDescriptorUpdateBody {
     pub block_id: String,
     #[schema(value_type = Object)]
     pub runtime_descriptor: Value,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateFrontstageBlockDescriptorsBody {
     pub updates: Vec<FrontstageBlockDescriptorUpdateBody>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct MoveFrontstageBlockNodeBody {
     pub parent_block_id: Option<String>,
     pub before_block_id: Option<String>,
     pub after_block_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteFrontstageBlockSubtreeBody {
     pub expected_affected_count: u64,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SaveFrontstageBlockNodeCodeBody {
     pub expected_source_revision: Option<String>,
     pub source_code: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FrontstageSourceEditBody {
     pub start_line: u32,
@@ -132,14 +132,14 @@ pub struct FrontstageSourceEditBody {
     pub replacement: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PatchFrontstageBlockNodeCodeBody {
     pub expected_source_revision: String,
     pub edits: Vec<FrontstageSourceEditBody>,
 }
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Deserialize, IntoParams, serde::Serialize)]
 pub struct FrontstageBlockCodeFragmentQuery {
     #[serde(default = "default_source_start_line")]
     pub start_line: u32,
@@ -151,20 +151,20 @@ pub struct FrontstageBlockCodeFragmentQuery {
     pub max_chars: u32,
 }
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Deserialize, IntoParams, serde::Serialize)]
 pub struct FrontstageBlockListQuery {
     #[serde(default = "default_result_limit")]
     pub limit: u32,
 }
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Deserialize, IntoParams, serde::Serialize)]
 pub struct FrontstageBlockRootListQuery {
     pub tab_id: String,
     #[serde(default = "default_result_limit")]
     pub limit: u32,
 }
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Deserialize, IntoParams, serde::Serialize)]
 pub struct FrontstageBlockSearchQuery {
     pub tab_id: String,
     pub query: String,
@@ -172,7 +172,7 @@ pub struct FrontstageBlockSearchQuery {
     pub limit: u32,
 }
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Deserialize, IntoParams, serde::Serialize)]
 pub struct FrontstageBlockDescendantsQuery {
     #[serde(default = "default_max_depth")]
     pub max_depth: u32,

@@ -1,5 +1,18 @@
+import {
+  eventCatalogIdentity,
+  type EventCatalogEntry,
+  type EventSourceSelection
+} from '@1flowbase/api-client';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Form, Input, Select, Switch, type FormInstance } from 'antd';
+import {
+  Alert,
+  AutoComplete,
+  Form,
+  Input,
+  Select,
+  type FormInstance
+} from 'antd';
+import { eventSchemaPointers } from './workflow-event-schema';
 import { useTranslation } from 'react-i18next';
 import {
   fetchWorkflowEventCatalog,
@@ -25,31 +38,53 @@ export function WorkflowEventTriggerFields({
     queryFn: fetchWorkflowEventCatalog
   });
   const contract_id = Form.useWatch(['event', 'contract_id'], form);
-  const contract_version = Form.useWatch(['event', 'contract_version'], form);
-  const enabled = Form.useWatch(['event', 'enabled'], form);
   const trigger_phase = Form.useWatch(['event', 'trigger_phase'], form);
-  const available =
-    catalog.data?.filter(
-      (entry) => entry.origin === 'custom' && entry.enabled
-    ) ?? [];
+  const source = Form.useWatch(['event', 'source'], form) as
+    | EventSourceSelection
+    | undefined;
+  const identity = (entry: Pick<Parameters<typeof eventCatalogIdentity>[0], 'contract_id' | 'source'>) =>
+    eventCatalogIdentity({
+      contract_id: entry.contract_id,
+      source: entry.source
+    });
+  const currentIdentity = identity({
+    contract_id,
+    source: source ? { selection: source } : undefined
+  });
+  const eligible = (entry: EventCatalogEntry) =>
+    (entry.origin === 'custom'
+      ? entry.enabled !== false
+      : Boolean(entry.source)) && entry.supported_phases.length > 0;
+  const scopeLabels = {
+    system: t('event.system_scope'),
+    unbound: t('event.unbound_scope')
+  };
+  const sourceLabel = (entry: EventCatalogEntry) =>
+    `${entry.group_path?.length ? `${entry.group_path.join(' / ')} / ` : ''}${entry.name}${
+      entry.source
+        ? ` · ${entry.source.selection.scope.kind === 'workspace' ? entry.source.selection.scope.workspace_id : scopeLabels[entry.source.selection.scope.kind]} · ${entry.source.selection.source_id}`
+        : ''
+    }`;
+  const available = catalog.data?.filter(eligible) ?? [];
   const selected = catalog.data?.find(
-    (entry) =>
-      entry.contract_id === contract_id &&
-      entry.contract_version === contract_version
+    (entry) => identity(entry) === currentIdentity
   );
-  const sourceAvailable = selected?.origin === 'custom' && selected.enabled;
+  const sourceAvailable = selected ? eligible(selected) : false;
   const sourceOptions = available.map((entry) => ({
-    value: JSON.stringify([entry.contract_id, entry.contract_version]),
-    label: `${entry.name} · ${entry.contract_version}`,
+    value: identity(entry),
+    label: sourceLabel(entry),
     disabled: false
   }));
   if (contract_id && !sourceAvailable) {
     sourceOptions.push({
-      value: JSON.stringify([contract_id, contract_version]),
-      label: `${selected?.name ?? contract_id} · ${contract_version} · ${t('event.source_unavailable')}`,
+      value: currentIdentity,
+      label: `${selected ? sourceLabel(selected) : contract_id} · ${t('event.source_unavailable')}`,
       disabled: true
     });
   }
+  const pointerOptions = eventSchemaPointers(selected?.payload_schema).map(
+    (value) => ({ value })
+  );
   const phaseLabels = {
     subscribed: t('event.subscribed'),
     published: t('event.published'),
@@ -72,22 +107,18 @@ export function WorkflowEventTriggerFields({
   }
   return (
     <>
-      <Alert type="info" showIcon title={t('event.lifecycle_hint')} />
+      <Alert type="info" showIcon title={t('event.listening_hint')} />
+      {trigger_phase === 'consumed' && (
+        <Alert type="info" showIcon title={t('event.lifecycle_hint')} />
+      )}
       {catalog.isError && (
         <Alert type="error" title={t('auto.trigger_load_failed')} />
       )}
       <Form.Item
-        label={t('event.subscription_enabled')}
-        name={['event', 'enabled']}
-        valuePropName="checked"
-      >
-        <Switch />
-      </Form.Item>
-      <Form.Item
         label={t('event.source')}
         required
         validateStatus={
-          enabled && contract_id && !sourceAvailable && !catalog.isPending
+          contract_id && !sourceAvailable && !catalog.isPending
             ? 'error'
             : undefined
         }
@@ -100,19 +131,19 @@ export function WorkflowEventTriggerFields({
         <Select
           aria-label={t('event.source')}
           loading={catalog.isPending}
-          value={
-            contract_id
-              ? JSON.stringify([contract_id, contract_version])
-              : undefined
-          }
+          value={contract_id ? currentIdentity : undefined}
           options={sourceOptions}
           onChange={(value) => {
-            const [contract_id, contract_version] = JSON.parse(
-              value
-            ) as string[];
-            form.setFieldValue(['event', 'contract_id'], contract_id);
-            form.setFieldValue(['event', 'contract_version'], contract_version);
-            form.setFieldValue(['event', 'trigger_phase'], undefined);
+            const entry = available.find((entry) => identity(entry) === value);
+            if (!entry) return;
+            form.setFieldValue(['event', 'contract_id'], entry.contract_id);
+            form.setFieldValue(['event', 'source'], entry.source?.selection);
+            form.setFieldValue(
+              ['event', 'trigger_phase'],
+              entry.supported_phases.includes('published')
+                ? 'published'
+                : undefined
+            );
             form.setFieldValue(['event', 'input_mapping'], {});
           }}
         />
@@ -120,12 +151,11 @@ export function WorkflowEventTriggerFields({
       <Form.Item
         name={['event', 'contract_id']}
         hidden
-        dependencies={[['event', 'enabled']]}
         rules={[
           { required: true },
           {
             validator: () =>
-              !form.getFieldValue(['event', 'enabled']) || sourceAvailable
+              sourceAvailable
                 ? Promise.resolve()
                 : Promise.reject(new Error(t('event.source_unavailable')))
           }
@@ -134,9 +164,9 @@ export function WorkflowEventTriggerFields({
         <Input />
       </Form.Item>
       <Form.Item
-        name={['event', 'contract_version']}
+        name={['event', 'source']}
         hidden
-        rules={[{ required: true }]}
+        getValueProps={() => ({ value: '' })}
       >
         <Input />
       </Form.Item>
@@ -144,22 +174,29 @@ export function WorkflowEventTriggerFields({
         label={t('event.phase')}
         name={['event', 'trigger_phase']}
         dependencies={[
-          ['event', 'enabled'],
           ['event', 'contract_id'],
-          ['event', 'contract_version']
+          ['event', 'source']
         ]}
         rules={[
           { required: true },
           {
             validator: (_, value) =>
-              !form.getFieldValue(['event', 'enabled']) ||
-              (sourceAvailable && selected?.supported_phases.includes(value))
+              sourceAvailable && selected?.supported_phases.includes(value)
                 ? Promise.resolve()
                 : Promise.reject(new Error(t('event.source_unavailable')))
           }
         ]}
       >
         <Select options={phaseOptions} />
+      </Form.Item>
+      {/* Register the whole mapping even when no Start input controls exist.
+          Disabling a stored source must retain mappings for historical inputs. */}
+      <Form.Item
+        name={['event', 'input_mapping']}
+        hidden
+        getValueProps={() => ({ value: '' })}
+      >
+        <Input />
       </Form.Item>
       {fields
         .filter((field) =>
@@ -172,8 +209,7 @@ export function WorkflowEventTriggerFields({
             name={['event', 'input_mapping', field.key]}
             rules={[
               {
-                required:
-                  enabled && field.required && field.defaultValue === undefined
+                required: field.required && field.defaultValue === undefined
               },
               {
                 pattern: /^(?:\/(?:[^~]|~[01])*)*$/,
@@ -182,7 +218,12 @@ export function WorkflowEventTriggerFields({
             ]}
             extra={t('event.pointer_hint')}
           >
-            <Input />
+            <AutoComplete
+              options={pointerOptions}
+              filterOption={(input, option) =>
+                !!option?.value.toLowerCase().includes(input.toLowerCase())
+              }
+            />
           </Form.Item>
         ))}
     </>

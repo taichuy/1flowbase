@@ -1,7 +1,10 @@
-//! Compile a verified plugin's initial, subsequently user-owned MCP configuration.
+//! Compile the legacy seed or a verified packaged native MCP template.
+mod native;
 use super::mcp_projection::{input_mapping, media_result_schema, parameter_schema};
 use crate::ports::{CreateMcpToolInput, McpBundleSeedKind, SeedMcpBundleGraphInput};
 use anyhow::Result;
+pub(super) use native::load_managed_mcp_bundle;
+pub use native::prepare_managed_mcp_bundle_template;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -17,6 +20,12 @@ pub fn prepare_managed_mcp_template(
     let Some(instance) = &service.mcp_instance else {
         return Ok(None);
     };
+    if instance.template.is_some() {
+        return Err(crate::errors::ControlPlaneError::InvalidInput(
+            "managed_mcp_template_asset_required",
+        )
+        .into());
+    }
     let plugin_code = manifest.plugin_code()?;
     let tools: Vec<_> = service
         .operations

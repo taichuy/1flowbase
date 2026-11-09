@@ -10,6 +10,8 @@ pub struct EventCenterConfigurationService<R> {
     repository: R,
     registered_events: Vec<EventCatalogEntry>,
     registered_workspace_id: Option<Uuid>,
+    api_operations: Vec<ApiEventOperationDetails>,
+    api_workspace_id: Option<Uuid>,
 }
 
 impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
@@ -18,6 +20,8 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
             repository,
             registered_events: Vec::new(),
             registered_workspace_id: None,
+            api_operations: Vec::new(),
+            api_workspace_id: None,
         }
     }
 
@@ -32,7 +36,21 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
             repository,
             registered_events,
             registered_workspace_id: Some(workspace_id),
+            api_operations: Vec::new(),
+            api_workspace_id: None,
         }
+    }
+
+    /// Host supplies authorized details for the selected documented operation. The operation
+    /// catalog and its typed codecs remain owned by the host; this service owns saved rules.
+    pub fn with_api_operations(
+        mut self,
+        workspace_id: Uuid,
+        operations: Vec<ApiEventOperationDetails>,
+    ) -> Self {
+        self.api_workspace_id = Some(workspace_id);
+        self.api_operations = operations;
+        self
     }
 
     pub async fn list_definitions(
@@ -57,7 +75,16 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
 
     pub async fn catalog(&self, actor: &ActorContext) -> anyhow::Result<Vec<EventCatalogEntry>> {
         let mut entries = if self.registered_workspace_id == Some(actor.current_workspace_id) {
-            self.registered_events.clone()
+            self.registered_events
+                .iter()
+                .filter(|entry| {
+                    entry
+                        .source
+                        .as_ref()
+                        .is_none_or(|source| source_visible(actor, &source.selection.scope))
+                })
+                .cloned()
+                .collect()
         } else {
             Vec::new()
         };
@@ -75,24 +102,18 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
         actor: &ActorContext,
         input: CreateEventDefinitionInput,
     ) -> anyhow::Result<EventDefinitionRecord> {
-        validate_identity(&input.contract_id, &input.contract_version)?;
-        validate_fields(&input.name, &input.payload_schema)?;
-        if self
-            .registered_events
-            .iter()
-            .any(|entry| entry.contract_id == input.contract_id)
-        {
-            return Err(Error::Conflict("registered_event_identity").into());
-        }
+        let payload_schema = self.interface_schema(actor, &input.interface_event)?;
+        validate_fields(&input.name, &payload_schema)?;
         let now = OffsetDateTime::now_utc();
         let record = EventDefinitionRecord {
+            interface_event: Some(input.interface_event),
+
             id: Uuid::now_v7(),
             workspace_id: actor.current_workspace_id,
-            contract_id: input.contract_id,
-            contract_version: input.contract_version,
+            contract_id: format!("custom.interface.{}", Uuid::now_v7().simple()),
             name: input.name,
             description: input.description,
-            payload_schema: input.payload_schema,
+            payload_schema,
             enabled: input.enabled,
             created_by: actor.user_id,
             created_at: now,
@@ -108,18 +129,84 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
         id: Uuid,
         input: UpdateEventDefinitionInput,
     ) -> anyhow::Result<EventDefinitionRecord> {
-        validate_fields(&input.name, &input.payload_schema)?;
         let mut record = self.get_definition(actor, id).await?;
-        validate_identity(&record.contract_id, &record.contract_version)?;
+        // Stopping an unchanged rule stays possible when its interface is unavailable.
+        let unchanged_legacy_target = record.interface_event.as_ref().is_some_and(|previous| {
+            previous.legacy_interface_id().is_some() && previous.same_target(&input.interface_event)
+        });
+        let payload_schema =
+            if !input.enabled && record.interface_event.as_ref() == Some(&input.interface_event) {
+                record.payload_schema.clone()
+            } else if unchanged_legacy_target {
+                // Validate activation against the current owner without rewriting existing
+                // typed payloads or the Workflow mappings which consume those payloads.
+                self.interface_schema(actor, &input.interface_event)?;
+                record.payload_schema.clone()
+            } else {
+                self.interface_schema(actor, &input.interface_event)?
+            };
+        validate_fields(&input.name, &payload_schema)?;
+        validate_identity(&record.contract_id)?;
         record.name = input.name;
         record.description = input.description;
-        record.payload_schema = input.payload_schema;
+        record.payload_schema = payload_schema;
+        record.interface_event = Some(input.interface_event);
         record.enabled = input.enabled;
         record.updated_at = OffsetDateTime::now_utc();
         if !self.repository.update_event_definition(&record).await? {
             return Err(Error::NotFound("event_definition").into());
         }
         Ok(record)
+    }
+
+    fn interface_schema(
+        &self,
+        actor: &ActorContext,
+        binding: &InterfaceEventBinding,
+    ) -> anyhow::Result<Value> {
+        if binding.target_id().trim().is_empty()
+            || (binding.phase() == InterfaceEventPhase::Before && !binding.results().is_empty())
+        {
+            return Err(Error::InvalidInput("invalid_interface_event_binding").into());
+        }
+        if let Some(operation_id) = binding.operation_id() {
+            if self.api_workspace_id != Some(actor.current_workspace_id) {
+                return Err(Error::InvalidInput("api_event_unavailable").into());
+            }
+            let operation = self
+                .api_operations
+                .iter()
+                .find(|entry| entry.operation.operation_id == operation_id)
+                .ok_or(Error::InvalidInput("api_event_unavailable"))?;
+            if operation.operation.scope == EventSourceScope::Unbound
+                || !source_visible(actor, &operation.operation.scope)
+            {
+                return Err(Error::PermissionDenied("api_event_scope").into());
+            }
+            return operation
+                .phase_schema(binding.phase())
+                .filter(|schema| schema.is_object() || schema.is_boolean())
+                .cloned()
+                .ok_or_else(|| Error::InvalidInput("api_event_phase_unavailable").into());
+        }
+        if self.registered_workspace_id != Some(actor.current_workspace_id) {
+            return Err(Error::InvalidInput("interface_event_unavailable").into());
+        }
+        let declared = self
+            .registered_events
+            .iter()
+            .find(|entry| {
+                entry.origin != EventDefinitionOrigin::Custom
+                    && source_visible(actor, &entry.scope)
+                    && entry
+                        .interface_event
+                        .as_ref()
+                        .is_some_and(|source| source.same_target(binding))
+                    && entry.payload_schema != Value::Null
+                    && !entry.supported_phases.is_empty()
+            })
+            .ok_or(Error::InvalidInput("interface_event_unavailable"))?;
+        Ok(declared.payload_schema.clone())
     }
 
     pub async fn get_workflow_trigger(
@@ -137,7 +224,15 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
         actor: &ActorContext,
         input: &WorkflowEventTriggerInput,
     ) -> anyhow::Result<()> {
-        if input.contract_id.trim().is_empty() || input.contract_version.trim().is_empty() {
+        if let Some(source) = &input.source {
+            if source.source_id.trim().is_empty()
+                || !source_visible(actor, &source.scope)
+                || source.scope == EventSourceScope::Unbound
+            {
+                return Err(Error::PermissionDenied("event_source_scope").into());
+            }
+        }
+        if input.contract_id.trim().is_empty() {
             return Err(Error::InvalidInput("event_contract_required").into());
         }
         if input
@@ -157,9 +252,13 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
             .await?
             .into_iter()
             .find(|entry| {
-                entry.enabled
+                entry.enabled != Some(false)
+                    && match (&input.source, &entry.source) {
+                        (None, None) => entry.origin == EventDefinitionOrigin::Custom,
+                        (Some(selected), Some(source)) => selected == &source.selection,
+                        _ => false,
+                    }
                     && entry.contract_id == input.contract_id
-                    && entry.contract_version == input.contract_version
             })
             .ok_or(Error::InvalidInput("event_unavailable"))?;
         if !event.supported_phases.contains(&input.trigger_phase) {
@@ -197,15 +296,13 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
     }
 }
 
-pub(super) fn validate_identity(contract_id: &str, contract_version: &str) -> anyhow::Result<()> {
+pub(super) fn validate_identity(contract_id: &str) -> anyhow::Result<()> {
     let slug = contract_id.strip_prefix("custom.").unwrap_or("");
     if slug.is_empty()
         || !slug.bytes().all(|ch| {
             ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, b'-' | b'_' | b'.')
         })
         || slug.split('.').any(str::is_empty)
-        || contract_version.trim().is_empty()
-        || contract_version.trim() != contract_version
     {
         return Err(Error::InvalidInput("invalid_custom_event_identity").into());
     }
@@ -246,3 +343,10 @@ pub(super) fn payload_validator(schema: &Value) -> anyhow::Result<jsonschema::Va
 #[cfg(test)]
 #[path = "_tests/configuration.rs"]
 mod tests;
+
+fn source_visible(actor: &ActorContext, scope: &EventSourceScope) -> bool {
+    match scope {
+        EventSourceScope::Workspace { workspace_id } => *workspace_id == actor.current_workspace_id,
+        EventSourceScope::System | EventSourceScope::Unbound => actor.is_root,
+    }
+}

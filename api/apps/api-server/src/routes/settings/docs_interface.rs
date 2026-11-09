@@ -1,3 +1,5 @@
+#[path = "docs_interface/event_projection.rs"]
+mod event_projection;
 use std::sync::Arc;
 
 use control_plane::errors::ControlPlaneError;
@@ -20,8 +22,11 @@ use crate::{
     runtime_data_model_docs,
 };
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum DocsInput {
     Catalog,
+    #[serde(serialize_with = "crate::openapi_interface::json_contract::path_query_omit_nulls")]
     CategoryOperations {
         category_id: String,
         query: DocsCategoryOperationsQuery,
@@ -33,6 +38,7 @@ pub(crate) enum DocsInput {
         operation_id: String,
     },
 }
+impl crate::openapi_interface::json_contract::JsonApiInput for DocsInput {}
 
 impl InterfaceContract for DocsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {

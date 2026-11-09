@@ -1,0 +1,52 @@
+name: MCP directory transaction evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/mcp-directory-staging-*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-directory-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  directory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: postgres://postgres:directory-fixture@127.0.0.1:5432/mcp_directory
+      API_DATABASE_URL: postgres://postgres:directory-fixture@127.0.0.1:5432/mcp_directory
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_PASSWORD: directory-fixture
+          POSTGRES_DB: mcp_directory
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d mcp_directory"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: web/.nvmrc
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.0'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api -> target
+          key: terminal-mcp-api
+          cache-on-failure: true
+      - name: Verify the directory contract and build its exact runtime
+        run: node scripts/node/mcp-directory/ci.cjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: mcp-directory-${{ github.sha }}
+          path: tmp/test-governance/mcp-directory-ci/
+          if-no-files-found: error

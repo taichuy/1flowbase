@@ -410,10 +410,15 @@ fn event_configuration_models_protect_physical_contract_and_dedicated_service_wr
             crate::DataModelRecordCapabilities::read_only()
         );
         assert!(contract.owns_field_code("workspace_id"));
+        assert!(!contract.owns_field_code("contract_version"));
         assert!(!contract.owns_field_code("scope_id"));
         for field in contract.system_field_codes {
             let field_contract = contract.field_contract(field).unwrap();
-            assert!(field_contract.is_required);
+            assert_eq!(
+                field_contract.is_required,
+                !((code == "workflow_event_triggers" && *field == "source")
+                    || (code == "event_definitions" && *field == "interface_event"))
+            );
             assert_eq!(field_contract.physical_column_name, *field);
             assert_eq!(field_contract.is_unique, *field == "id");
         }
@@ -434,4 +439,33 @@ fn event_configuration_models_protect_physical_contract_and_dedicated_service_wr
             .field_kind,
         crate::ModelFieldKind::Json
     );
+}
+
+#[test]
+fn workflow_event_trigger_source_is_owned_nullable_json() {
+    let contract = crate::builtin_data_model_contract("workflow_event_triggers").unwrap();
+    assert!(contract.owns_field_code("source"));
+    let field = contract.field_contract("source").unwrap();
+    assert_eq!(field.field_kind, crate::ModelFieldKind::Json);
+    assert!(!field.is_required);
+    assert_eq!(field.physical_column_name, "source");
+    assert!(!crate::builtin_data_model_contract("event_definitions")
+        .unwrap()
+        .owns_field_code("source"));
+}
+
+#[test]
+fn event_interface_binding_is_owned_nullable_json() {
+    let contract = crate::builtin_data_model_contract("event_definitions").unwrap();
+    let field = contract
+        .field_contract("interface_event")
+        .expect("interface rules own their persisted binding");
+    assert_eq!(field.field_kind, crate::ModelFieldKind::Json);
+    assert!(
+        !field.is_required,
+        "legacy definitions have no interface binding"
+    );
+    assert!(!field.is_unique);
+    assert_eq!(field.physical_column_name, "interface_event");
+    assert!(!contract.capabilities.record.can_update);
 }

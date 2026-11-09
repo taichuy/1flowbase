@@ -147,7 +147,6 @@ test('E7 event configuration uses dedicated flat contract and csrf', async () =>
   const body = {
     enabled: true,
     contract_id: 'custom.invoice',
-    contract_version: '1',
     trigger_phase: 'consumed' as const,
     input_mapping: { invoice: '/payload/invoice~1id' }
   };

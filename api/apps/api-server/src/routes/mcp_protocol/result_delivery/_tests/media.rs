@@ -143,3 +143,35 @@ fn resource_projection_and_standard_validation_reject_invalid_shapes() {
     assert!(!valid_annotations(&json!({"audience":["system"]})));
     assert!(!valid_annotations(&json!([])));
 }
+
+#[test]
+fn nullable_resource_skips_only_explicit_null_and_preserves_link() {
+    let declaration = json!({"structured_content_path":"/metadata","resource_read":true,
+        "mcp_content":[{"type":"resource_link","uri_path":"/uri","name_path":"/name"},
+            {"type":"resource","uri_path":"/uri","blob_path":"/blob","skip_if_null":true}]});
+    let parsed = mapping(&declaration).unwrap().unwrap();
+    let source = json!({"uri":"urn:file:a","name":"a","blob":null,"metadata":{}});
+    let result = project(&parsed, &source).unwrap();
+    assert_eq!(result.content.as_array().unwrap().len(), 1);
+    assert_eq!(result.content[0]["type"], "resource_link");
+    let mut missing = source.clone();
+    missing.as_object_mut().unwrap().remove("blob");
+    assert!(project(&parsed, &missing).is_err());
+    for invalid in [json!(false), json!({}), json!("%%%")] {
+        let mut source = source.clone();
+        source["blob"] = invalid;
+        assert!(project(&parsed, &source).is_err());
+    }
+    let mut required = declaration;
+    required["mcp_content"][1]
+        .as_object_mut()
+        .unwrap()
+        .remove("skip_if_null");
+    assert!(project(&mapping(&required).unwrap().unwrap(), &source).is_err());
+    let mut complete = source;
+    complete["blob"] = json!("YQ==");
+    assert_eq!(
+        project(&parsed, &complete).unwrap().content[1]["resource"]["blob"],
+        "YQ=="
+    );
+}

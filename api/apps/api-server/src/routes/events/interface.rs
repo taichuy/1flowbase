@@ -12,30 +12,43 @@ use domain::event_center::{
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde_json::{json, Value};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub(crate) struct Dependencies {
     store: storage_durable_postgres::MainDurableStore,
     runtime: EventCenterRuntime,
-    boot: Option<Arc<crate::extension_bus::ExtensionBootSnapshot>>,
+    // The compiled registry owns this handler; retaining Boot here would close a cycle.
+    boot: Option<Weak<crate::extension_bus::ExtensionBootSnapshot>>,
     changes: Arc<tokio::sync::Notify>,
     statuses: crate::workers::event_workflow::EventWorkflowStatuses,
+    sources: Arc<crate::event_center::catalog::EventSourceCatalog>,
+    api_catalog: crate::openapi_interface::OpenApiCapabilityCatalogDependencies,
 }
 impl Dependencies {
     pub(crate) fn new(state: &ApiState) -> Self {
         Self {
             store: state.store.clone(),
             runtime: state.event_center.clone(),
-            boot: state.extension_boot_snapshot.clone(),
+            boot: state.extension_boot_snapshot.as_ref().map(Arc::downgrade),
             changes: state.event_workflow_changes.clone(),
             statuses: state.event_workflow_statuses.clone(),
+            sources: state.event_sources.clone(),
+            api_catalog: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
+                store: state.store.clone(),
+                console_operations: state.console_operation_registry.inventory().clone(),
+                interface_registry: None,
+                api_docs: state.api_docs.clone(),
+                template_catalog: state.runtime_engine.template_catalog().clone(),
+            },
         }
     }
 }
 pub(crate) enum Input {
     Catalog,
+    ApiOperations,
+    ApiOperation(String),
     Create(CreateEventDefinitionInput),
     Update(Uuid, UpdateEventDefinitionInput),
     Runtime,
@@ -52,7 +65,7 @@ impl InterfaceContract for Input {
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         Some(
-            json!({"operation": match self { Self::Catalog=>"catalog", Self::Create(_)=>"create",Self::Update(..)=>"update",Self::Runtime=>"runtime" }}),
+            json!({"operation": match self { Self::Catalog=>"catalog", Self::ApiOperations=>"api_operations", Self::ApiOperation(_)=>"api_operation", Self::Create(_)=>"create",Self::Update(..)=>"update",Self::Runtime=>"runtime" }}),
         )
     }
 }
@@ -77,20 +90,91 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
         Box::pin(async move {
             let result: Result<Value, ApiError> = async {
                 let actor = principal.actor();
-                let service = EventCenterConfigurationService::new(self.store.clone());
-                match input {
-                    Input::Catalog => {
-                        let entries = crate::event_center::catalog::registered_events(
-                            self.boot.as_deref(),
-                            actor,
-                        );
-                        let service = EventCenterConfigurationService::with_registered_events(
-                            self.store.clone(),
-                            actor.current_workspace_id,
-                            entries,
-                        );
-                        Ok(serde_json::to_value(service.catalog(actor).await?)?)
+                // Registry descendants borrow their own generation; an expired binding
+                // must not silently become an unbound or newer source catalog.
+                let _generation = self
+                    .boot
+                    .as_ref()
+                    .map(|boot| {
+                        boot.upgrade()
+                            .ok_or_else(crate::generation_dispatch::unavailable)
+                    })
+                    .transpose()?;
+                let registry = _generation
+                    .as_ref()
+                    .and_then(|boot| boot.interface_registry())
+                    .map(|registry| registry.snapshot());
+                let external_catalog = _generation
+                    .as_ref()
+                    .and_then(|boot| boot.external_endpoint_catalog())
+                    .map(Arc::as_ref);
+                let entries = self.sources.registered_events_with_interfaces(
+                    actor,
+                    &self.runtime,
+                    registry.as_deref(),
+                );
+                let mut api_catalog = self.api_catalog.clone();
+                api_catalog.interface_registry = registry.clone();
+                let mut service = EventCenterConfigurationService::with_registered_events(
+                    self.store.clone(),
+                    actor.current_workspace_id,
+                    entries,
+                );
+                let stopping_unchanged_rule = if let Input::Update(id, value) = &input {
+                    !value.enabled
+                        && service
+                            .get_definition(actor, *id)
+                            .await?
+                            .interface_event
+                            .as_ref()
+                            == Some(&value.interface_event)
+                } else {
+                    false
+                };
+                let selected_operation = match &input {
+                    Input::Create(value) => value.interface_event.operation_id(),
+                    Input::Update(_, value) if !stopping_unchanged_rule => {
+                        value.interface_event.operation_id()
                     }
+                    _ => None,
+                };
+                if let Some(operation_id) = selected_operation {
+                    let selected = crate::event_center::api_catalog::get_with(
+                        &api_catalog,
+                        actor,
+                        operation_id,
+                        external_catalog,
+                    )
+                    .await?
+                    .into_iter()
+                    .collect();
+                    service = service.with_api_operations(actor.current_workspace_id, selected);
+                }
+                match input {
+                    Input::ApiOperations => Ok(serde_json::to_value(
+                        crate::event_center::api_catalog::summaries_with(
+                            &api_catalog,
+                            actor,
+                            external_catalog,
+                        )
+                        .await?,
+                    )?),
+                    Input::ApiOperation(operation_id) => {
+                        let details = crate::event_center::api_catalog::get_with(
+                            &api_catalog,
+                            actor,
+                            &operation_id,
+                            external_catalog,
+                        )
+                        .await?
+                        .ok_or(
+                            control_plane::errors::ControlPlaneError::NotFound(
+                                "api_event_operation",
+                            ),
+                        )?;
+                        Ok(serde_json::to_value(details)?)
+                    }
+                    Input::Catalog => Ok(serde_json::to_value(service.catalog(actor).await?)?),
                     Input::Create(input) => {
                         definition_value(service.create_definition(actor, input).await?)
                     }
@@ -99,11 +183,34 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
                         self.changes.notify_one();
                         definition_value(record)
                     }
-                    Input::Runtime => Ok(serde_json::to_value(RuntimeResponse {
-                        snapshot: self.runtime.snapshot(actor.current_workspace_id),
-                        workflow_subscriptions: self.statuses.snapshot(actor.current_workspace_id),
-                        workflow_refresh_error: self.statuses.refresh_error(),
-                    })?),
+                    Input::Runtime => {
+                        use control_plane_contracts::ports::LifecycleOutboxRepository;
+                        let source_queue_refresh_error =
+                            if let Some(observer) = &self.sources.lifecycle_observer {
+                                match self.store.lifecycle_source_queue_snapshots().await {
+                                    Ok(facts) => {
+                                        observer.refresh_queue_snapshots(facts);
+                                        None
+                                    }
+                                    Err(_) => Some("source_queue_refresh_unavailable".to_owned()),
+                                }
+                            } else {
+                                Some("source_queue_observer_unavailable".to_owned())
+                            };
+                        let source_views = crate::event_center::catalog::visible_scopes(actor)
+                            .into_iter()
+                            .map(|scope| self.runtime.snapshot_sources(scope))
+                            .collect();
+                        Ok(serde_json::to_value(RuntimeResponse {
+                            snapshot: self.runtime.snapshot(actor.current_workspace_id),
+                            source_views,
+                            source_queue_refresh_error,
+                            workflow_subscriptions: self
+                                .statuses
+                                .snapshot(actor.current_workspace_id),
+                            workflow_refresh_error: self.statuses.refresh_error(),
+                        })?)
+                    }
                 }
             }
             .await;
@@ -113,6 +220,8 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
 }
 #[derive(serde::Serialize)]
 struct RuntimeResponse {
+    source_views: Vec<control_plane::event_center::EventSourceRuntimeSnapshot>,
+    source_queue_refresh_error: Option<String>,
     #[serde(flatten)]
     snapshot: control_plane::event_center::EventRuntimeSnapshot,
     workflow_subscriptions: Vec<crate::workers::event_workflow::EventWorkflowStatus>,
@@ -147,6 +256,20 @@ pub(crate) fn compile_registry(
 }
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     ConsoleInterfaceDeclaration {
+        interface_id: "events.api_operations.list",
+        binding_id: "http.console.events.api_operations.list.v1",
+        method: "GET",
+        path: "/api/console/events/api-operations",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "events.api_operations.get",
+        binding_id: "http.console.events.api_operations.get.v1",
+        method: "GET",
+        path: "/api/console/events/api-operations/:operation_id",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
         interface_id: "events.catalog.list",
         binding_id: "http.console.events.catalog.list.v1",
         method: "GET",
@@ -175,3 +298,33 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: false,
     },
 ];
+
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "_tests/interface.rs"]
+mod tests;
+
+impl crate::openapi_interface::contract::ApiInput for Input {
+    fn project_document_input(
+        &self,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<Value, Arc<str>> {
+        use crate::openapi_interface::contract::to_value;
+        Ok(match self {
+            Self::Catalog | Self::Runtime | Self::ApiOperations => json!({}),
+            Self::ApiOperation(operation_id) => json!({"path":{"operation_id":operation_id}}),
+            Self::Create(input) => json!({"body":to_value(input)?}),
+            Self::Update(id, input) => {
+                json!({"path":{"event_definition_id":id},"body":to_value(input)?})
+            }
+        })
+    }
+}
+impl crate::openapi_interface::contract::ApiOutput for Output {
+    fn project_document_output(
+        &self,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<Value, Arc<str>> {
+        Ok(self.0.clone())
+    }
+}

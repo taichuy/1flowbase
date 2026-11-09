@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::{JsonApiInput, JsonApiOutput};
 use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{extract::State, http::HeaderMap, Json, Router};
@@ -199,7 +200,10 @@ pub(crate) struct FrontendBlockDependencies {
     pub(crate) graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
 }
 
+#[derive(serde::Serialize)]
 pub(crate) struct FrontendBlocksInput;
+impl JsonApiInput for FrontendBlocksInput {}
+
 impl InterfaceContract for FrontendBlocksInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
@@ -220,7 +224,11 @@ impl InterfaceContract for FrontendBlocksInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct FrontendBlocksOutput(Vec<FrontendBlockCatalogResponse>);
+impl JsonApiOutput for FrontendBlocksOutput {}
+
 impl InterfaceContract for FrontendBlocksOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;

@@ -16,6 +16,30 @@ pub enum CreditNotificationEventType {
 }
 
 impl CreditNotificationEventType {
+    pub const ALL: [Self; 9] = [
+        Self::CreditReserved,
+        Self::CreditSettled,
+        Self::CreditReleased,
+        Self::CreditGranted,
+        Self::CreditCharged,
+        Self::CreditRefunded,
+        Self::CreditAdjusted,
+        Self::CreditChargeSettingChanged,
+        Self::CreditCommandRejected,
+    ];
+    pub fn wire_name(self) -> &'static str {
+        match self {
+            Self::CreditReserved => "CreditReserved",
+            Self::CreditSettled => "CreditSettled",
+            Self::CreditReleased => "CreditReleased",
+            Self::CreditGranted => "CreditGranted",
+            Self::CreditCharged => "CreditCharged",
+            Self::CreditRefunded => "CreditRefunded",
+            Self::CreditAdjusted => "CreditAdjusted",
+            Self::CreditChargeSettingChanged => "CreditChargeSettingChanged",
+            Self::CreditCommandRejected => "CreditCommandRejected",
+        }
+    }
     pub fn from_event_type(value: &str) -> anyhow::Result<Self> {
         serde_json::from_value(serde_json::Value::String(value.to_owned()))
             .map_err(anyhow::Error::from)
@@ -157,5 +181,23 @@ mod tests {
         }
         assert!(CreditNotificationEventType::from_event_type("CreditUnknown").is_err());
         assert!(CreditNotificationEventType::from_event_type("credit_settled").is_err());
+    }
+}
+
+impl ModelDefinitionIntegrationNotification {
+    pub fn event_source_schema() -> serde_json::Value {
+        super::ModelDefinitionCommittedFact::event_source_schema()
+    }
+}
+impl CreditNotificationFact {
+    pub fn event_source_schema() -> serde_json::Value {
+        serde_json::json!({"type":"object","required":["payload"],"properties":{"payload":{
+            "type":"object","required":["workspace_id","account_id","event_type","payload"],"properties":{
+                "workspace_id":{"type":"string","format":"uuid"},
+                "account_id":{"type":["string","null"]},
+                "event_type":{"type":"string","enum":["CreditReserved","CreditSettled","CreditReleased","CreditGranted","CreditCharged","CreditRefunded","CreditAdjusted","CreditChargeSettingChanged","CreditCommandRejected"]},
+                "payload":{}
+            },"additionalProperties":false
+        }}})
     }
 }

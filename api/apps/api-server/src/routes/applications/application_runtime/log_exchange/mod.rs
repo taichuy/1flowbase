@@ -16,6 +16,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use uuid::Uuid;
 
+pub(crate) mod event_projection;
 mod interface;
 mod projection;
 mod routes;
@@ -23,7 +24,7 @@ mod routes;
 pub(crate) use interface::{compile_registry, OPERATIONS};
 pub(crate) use routes::*;
 
-#[derive(Deserialize, utoipa::ToSchema)]
+#[derive(Deserialize, utoipa::ToSchema, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct OtlpExportBody {
     pub record_ids: Option<Vec<Uuid>>,

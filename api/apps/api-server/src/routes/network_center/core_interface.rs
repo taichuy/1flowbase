@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::JsonApiOutput;
 use std::sync::Arc;
 
 use control_plane::{
@@ -274,6 +275,8 @@ impl InterfaceContract for NetworkCenterInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum NetworkCenterOutput {
     Providers(Vec<NetworkEgressProviderResponse>),
     ProviderTypes(Vec<NetworkEgressProviderTypeResponse>),
@@ -282,6 +285,8 @@ pub(crate) enum NetworkCenterOutput {
     Route(NetworkEgressRouteResponse),
     Deleted,
 }
+
+impl JsonApiOutput for NetworkCenterOutput {}
 
 impl InterfaceContract for NetworkCenterOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -732,3 +737,6 @@ pub(crate) fn compile_registry(
         Arc::new(NetworkCenterAdapter(dependencies)),
     )
 }
+
+#[path = "core_interface/event_projection.rs"]
+mod event_projection;

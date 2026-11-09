@@ -32,20 +32,7 @@ impl LoadedManagedBinding {
         if !self.actor_workspace_scope {
             return Ok(None);
         }
-        let caller = principal.caller.as_ref().ok_or_else(|| {
-            super::invalid("actor_workspace_scope service requires a captured caller")
-        })?;
-        let actor_id = caller.actor.user_id.to_string();
-        if principal.actor_id.as_deref() != Some(actor_id.as_str()) {
-            return Err(super::invalid(
-                "managed service caller actor does not match execution actor",
-            ));
-        }
-        Ok(Some(extension_contracts::ManagedServiceCallContext {
-            actor_id,
-            workspace_id: caller.actor.current_workspace_id.to_string(),
-            deadline_unix_ms: principal.deadline_unix_ms,
-        }))
+        actor_workspace_context(principal).map(Some)
     }
 
     /// Runs on the host's blocking pool before admission; the installed path is never resolved
@@ -90,3 +77,39 @@ impl LoadedManagedBinding {
         Ok(())
     }
 }
+
+/// Replay deliberately suppresses delegated Host callbacks. Its independent record admission
+/// still carries the sealed caller identity needed to pick the correct actor/workspace worker.
+fn actor_workspace_context(
+    principal: &runtime_core::runtime_backend::RuntimeExecutionPrincipal,
+) -> extension_package_runtime::FrameworkResult<extension_contracts::ManagedServiceCallContext> {
+    let (actor_id, workspace_id) = if let Some(caller) = principal.caller.as_ref() {
+        (
+            caller.actor.user_id.to_string(),
+            caller.actor.current_workspace_id.to_string(),
+        )
+    } else if let Some(context) = principal.record_permissions.as_ref() {
+        (
+            context.actor_user_id.clone(),
+            context.caller_workspace_id.clone(),
+        )
+    } else {
+        return Err(super::invalid(
+            "actor_workspace_scope service requires a captured caller",
+        ));
+    };
+    if principal.actor_id.as_deref() != Some(actor_id.as_str()) {
+        return Err(super::invalid(
+            "managed service caller actor does not match execution actor",
+        ));
+    }
+    Ok(extension_contracts::ManagedServiceCallContext {
+        actor_id,
+        workspace_id,
+        deadline_unix_ms: principal.deadline_unix_ms,
+    })
+}
+
+#[cfg(test)]
+#[path = "../_tests/host_services/managed_record_call_context.rs"]
+mod record_context_tests;

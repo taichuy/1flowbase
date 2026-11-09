@@ -27,6 +27,7 @@ pub(super) async fn commit(
     if revision.is_none() {
         return Ok(None);
     }
+    let mut received = Vec::new();
     for m in input.messages {
         if m.provider_message_id.trim().is_empty()
             || m.conversation_id.trim().is_empty()
@@ -38,11 +39,16 @@ pub(super) async fn commit(
         let conversation_id:Uuid=sqlx::query_scalar("INSERT INTO communication_conversations(id,scope_id,instance_id,external_identity,external_conversation_key,sender_display_name) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(scope_id,instance_id,external_identity,external_conversation_key) DO UPDATE SET sender_display_name=excluded.sender_display_name RETURNING id")
             .bind(Uuid::now_v7()).bind(w).bind(i).bind(&m.sender_id).bind(m.conversation_id).bind(m.sender_display_name).fetch_one(&mut *tx).await?;
         let message_id:Option<Uuid>=sqlx::query_scalar("INSERT INTO communication_inputs(id,scope_id,instance_id,conversation_id,external_identity,external_message_key,received_at_ms) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(scope_id,instance_id,external_identity,external_message_key) DO NOTHING RETURNING id")
-            .bind(Uuid::now_v7()).bind(w).bind(i).bind(conversation_id).bind(&m.sender_id).bind(m.provider_message_id).bind(m.received_at_ms).fetch_optional(&mut *tx).await?;
+            .bind(Uuid::now_v7()).bind(w).bind(i).bind(conversation_id).bind(&m.sender_id).bind(&m.provider_message_id).bind(m.received_at_ms).fetch_optional(&mut *tx).await?;
         if let Some(message_id) = message_id {
+            let mut contents = Vec::new();
             if let Some(text) = m.text.filter(|text| !text.trim().is_empty()) {
                 sqlx::query("INSERT INTO communication_messages(id,scope_id,instance_id,external_identity,conversation_id,input_id,type,direction,occurred_at_ms,content) VALUES($1,$2,$3,$4,$5,$1,'text','inbound',$6,$7)")
-                    .bind(message_id).bind(w).bind(i).bind(&m.sender_id).bind(conversation_id).bind(m.received_at_ms).bind(text).execute(&mut *tx).await?;
+                    .bind(message_id).bind(w).bind(i).bind(&m.sender_id).bind(conversation_id).bind(m.received_at_ms).bind(&text).execute(&mut *tx).await?;
+                contents.push(CommunicationFactContent::Text {
+                    message_id: Some(message_id),
+                    content: text,
+                });
             }
             for a in m.attachments {
                 if a.provider_attachment_id.trim().is_empty() || a.file_name.trim().is_empty() {
@@ -59,11 +65,33 @@ pub(super) async fn commit(
                 reference["communication_scope"] =
                     serde_json::json!({"workspace_id":w,"instance_id":i});
                 sqlx::query("INSERT INTO communication_messages(id,scope_id,input_id,provider_attachment_id,file_name,media_type,size_bytes,encrypted_reference,instance_id,external_identity,conversation_id,occurred_at_ms,type,direction,status) VALUES($1,$8,$2,$3,$4,$5,$6,$7,$9,$10,$11,$12,'file','inbound','pending')")
-                    .bind(id).bind(message_id).bind(a.provider_attachment_id).bind(a.file_name).bind(a.media_type).bind(a.size_bytes).bind(reference).bind(w).bind(i).bind(&m.sender_id).bind(conversation_id).bind(m.received_at_ms).execute(&mut *tx).await?;
+                    .bind(id).bind(message_id).bind(a.provider_attachment_id).bind(&a.file_name).bind(&a.media_type).bind(a.size_bytes).bind(reference).bind(w).bind(i).bind(&m.sender_id).bind(conversation_id).bind(m.received_at_ms).execute(&mut *tx).await?;
+                contents.push(CommunicationFactContent::File {
+                    message_id: id,
+                    file_name: a.file_name,
+                    media_type: a.media_type,
+                    size_bytes: a.size_bytes,
+                });
             }
+            received.push(CommunicationReceivedFact {
+                workspace_id: w,
+                instance_id: i,
+                conversation_id,
+                input_id: message_id,
+                provider_message_id: m.provider_message_id,
+                sender_id: m.sender_id,
+                received_at_ms: m.received_at_ms,
+                contents,
+                workflow_ancestor_ids: store.workflow_ancestor_ids(),
+            });
         }
     }
     sqlx::query("UPDATE communication_bindings SET encrypted_cursor=COALESCE($3,encrypted_cursor) WHERE scope_id=$1 AND instance_id=$2").bind(w).bind(i).bind(cursor).execute(&mut *tx).await?;
     tx.commit().await?;
+    if let Some(observer) = &store.communication_lifecycle_observer {
+        for fact in received {
+            observer.observed(CommunicationLifecycleFact::Received(fact));
+        }
+    }
     Ok(revision)
 }

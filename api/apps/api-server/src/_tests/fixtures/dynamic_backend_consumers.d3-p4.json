@@ -1,7 +1,17 @@
 {
   "packet": "D3-P4",
-  "count": 88,
+  "count": 90,
   "consumers": [
+    {
+      "category": "settings_feature_label",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
+      "key": "Event center"
+    },
+    {
+      "category": "settings_feature_description",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
+      "key": "Manage event definitions and observe current queues"
+    },
     {
       "category": "settings_feature_label",
       "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",

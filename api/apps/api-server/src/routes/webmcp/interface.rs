@@ -290,13 +290,18 @@ pub(crate) fn compile_registry(
                 PrincipalProfile::User,
             ),
         )?;
+        let event_binding = ProtocolBinding::new(
+            BindingId::new(binding).expect("static binding"),
+            identity,
+            contracts,
+            ProtocolProjection::http(RouteIdentity::new(method, path).expect("static route")),
+        );
+        crate::openapi_interface::contract::register_static_api_operation::<
+            WebMcpInput,
+            WebMcpOutput,
+        >(&mut compiler, &event_binding, "graph:webmcp-v1")?;
         compiler.register_binding(
-            ProtocolBinding::new(
-                BindingId::new(binding).expect("static binding"),
-                identity,
-                contracts,
-                ProtocolProjection::http(RouteIdentity::new(method, path).expect("static route")),
-            ),
+            event_binding,
             InvocationAdapterPlan::new(
                 AuthenticationAdapterReference::new(AUTHENTICATION).expect("static authentication"),
                 AuthorizationAdapterReference::new(AUTHORIZATION).expect("static authorization"),
@@ -317,3 +322,6 @@ pub(crate) fn compile_registry(
 fn contract_identity<T: InterfaceContract>() -> ContractIdentity {
     ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION).expect("static WebMCP contract")
 }
+
+#[path = "api_event_projection.rs"]
+mod api_event_projection;

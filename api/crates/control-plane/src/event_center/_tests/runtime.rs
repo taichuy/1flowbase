@@ -30,10 +30,11 @@ fn runtime(items: usize) -> (EventCenterRuntime, Arc<MemoryEventBus>) {
 fn definition() -> EventDefinitionRecord {
     let now = OffsetDateTime::now_utc();
     EventDefinitionRecord {
+        interface_event: None,
+
         id: Uuid::now_v7(),
         workspace_id: Uuid::now_v7(),
         contract_id: "custom.orders".into(),
-        contract_version: "1".into(),
         name: "Orders".into(),
         description: String::new(),
         payload_schema: serde_json::json!({"type":"object","properties":{"secret":{"type":"string"}},"required":["secret"]}),
@@ -48,7 +49,6 @@ fn spec(definition: &EventDefinitionRecord, phase: EventTriggerPhase) -> EventRu
         subscription_id: Uuid::now_v7(),
         workspace_id: definition.workspace_id,
         contract_id: definition.contract_id.clone(),
-        contract_version: definition.contract_version.clone(),
         trigger_phase: phase,
         consumer_id: Uuid::now_v7(),
     }
@@ -161,7 +161,7 @@ async fn consumed_observes_real_handoff_and_never_creates_a_business_target() {
     assert_ne!(receipt.event_id, control_delivery.signal().event_id);
     assert!(
         matches!(&control_delivery.signal().body, EventCenterSignalBody::Consumed { source_event_id, subscription_id, consumer_id }
-        if *source_event_id == receipt.event_id && *subscription_id == business_spec.subscription_id && *consumer_id == business_spec.consumer_id)
+        if *source_event_id == receipt.event_id.to_string() && *subscription_id == business_spec.subscription_id.to_string() && *consumer_id == business_spec.consumer_id.to_string())
     );
     assert!(!serde_json::to_string(control_delivery.signal())
         .unwrap()
@@ -203,7 +203,7 @@ async fn subscribed_restore_is_quiet_and_competing_consumers_do_not_duplicate_lo
     let _new = runtime.subscribe(new_spec.clone(), true).unwrap();
     let signal = receive(&observer).await;
     assert!(
-        matches!(&signal.signal().body, EventCenterSignalBody::Subscribed { subscription_id, .. } if *subscription_id == new_spec.subscription_id)
+        matches!(&signal.signal().body, EventCenterSignalBody::Subscribed { subscription_id, .. } if *subscription_id == new_spec.subscription_id.to_string())
     );
     empty(&observer).await;
 }
@@ -333,7 +333,7 @@ async fn workspace_contract_phase_and_consumer_identity_cannot_cross_or_silently
     let first = runtime.subscribe(first_spec.clone(), false).unwrap();
     assert!(runtime.subscribe(first_spec.clone(), false).is_err());
     let mut rebind = first_spec.clone();
-    rebind.contract_version = "2".into();
+    rebind.contract_id = "custom.changed".into();
     rebind.consumer_id = Uuid::now_v7();
     assert!(runtime.subscribe(rebind, false).is_err());
     let mut other_definition = definition.clone();
@@ -438,7 +438,7 @@ async fn new_subscribed_observer_only_observes_later_joins() {
     let second = runtime.subscribe(second_spec.clone(), true).unwrap();
     let joined = receive(&first).await;
     assert!(
-        matches!(&joined.signal().body, EventCenterSignalBody::Subscribed { subscription_id, .. } if *subscription_id == second_spec.subscription_id)
+        matches!(&joined.signal().body, EventCenterSignalBody::Subscribed { subscription_id, .. } if *subscription_id == second_spec.subscription_id.to_string())
     );
     empty(&second).await;
     let business_spec = spec(&definition, EventTriggerPhase::Published);
@@ -446,7 +446,7 @@ async fn new_subscribed_observer_only_observes_later_joins() {
     for observer in [&first, &second] {
         let joined = receive(observer).await;
         assert!(
-            matches!(&joined.signal().body, EventCenterSignalBody::Subscribed { subscription_id, .. } if *subscription_id == business_spec.subscription_id)
+            matches!(&joined.signal().body, EventCenterSignalBody::Subscribed { subscription_id, .. } if *subscription_id == business_spec.subscription_id.to_string())
         );
     }
 }
@@ -487,4 +487,30 @@ async fn readiness_does_not_create_consumption_and_competing_try_dequeue_has_one
     assert_eq!(bus.event_bus_snapshot().waiters, 1);
     drop(waiting);
     assert_eq!(bus.event_bus_snapshot().waiters, 0);
+}
+
+#[tokio::test]
+async fn current_schema_replaces_body_validation_without_rebinding_subscription() {
+    let (runtime, _) = runtime(8);
+    let mut definition = definition();
+    let subscription = runtime
+        .subscribe(spec(&definition, EventTriggerPhase::Published), false)
+        .unwrap();
+    definition.payload_schema = serde_json::json!({"type":"object","required":["amount"],"additionalProperties":false,"properties":{"amount":{"type":"integer"}}});
+    assert!(runtime.publish(&definition, payload()).is_err());
+    runtime
+        .publish(&definition, serde_json::json!({"amount":42}))
+        .unwrap();
+    let delivery = receive(&subscription).await;
+    let encoded = serde_json::to_value(delivery.signal()).unwrap();
+    assert!(encoded.get("contract_version").is_none());
+    assert_eq!(encoded["payload"], serde_json::json!({"amount":42}));
+    delivery.complete();
+    let snapshot = serde_json::to_value(runtime.snapshot(definition.workspace_id)).unwrap();
+    for activity in snapshot["activity"].as_array().unwrap() {
+        assert!(activity.get("contract_version").is_none());
+    }
+    for queue in snapshot["queues"].as_array().unwrap() {
+        assert!(queue.get("contract_version").is_none());
+    }
 }

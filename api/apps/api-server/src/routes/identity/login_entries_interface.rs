@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::{JsonApiInput, JsonApiOutput};
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use interface_runtime::{
@@ -19,9 +20,13 @@ use crate::error_response::ApiError;
 pub(crate) const INTERFACE_ID: &str = "public.auth.login-entries.list";
 const HANDLER_REFERENCE: &str = "api-server.public-auth.login-entries";
 
+#[derive(serde::Serialize)]
 pub(crate) struct PublicLoginEntriesInput {
+    #[serde(skip_serializing)]
     pub(crate) locale: domain::CatalogLocale,
 }
+
+impl JsonApiInput for PublicLoginEntriesInput {}
 
 impl InterfaceContract for PublicLoginEntriesInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -40,7 +45,11 @@ impl InterfaceContract for PublicLoginEntriesInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct PublicLoginEntriesOutput(pub(crate) PublicLoginEntriesResponse);
+
+impl JsonApiOutput for PublicLoginEntriesOutput {}
 
 impl InterfaceContract for PublicLoginEntriesOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -275,16 +284,25 @@ pub(crate) fn compile_registry(
             interface_runtime::PrincipalProfile::Public,
         ),
     )?;
-    compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new("http.public.auth.login-entries.v1").expect("static binding is valid"),
-            identity,
-            contracts,
-            ProtocolProjection::http(
-                RouteIdentity::new("GET", "/api/public/auth/login-entries")
-                    .expect("static route is valid"),
-            ),
+    let event_binding = ProtocolBinding::new(
+        BindingId::new("http.public.auth.login-entries.v1").expect("static binding is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::http(
+            RouteIdentity::new("GET", "/api/public/auth/login-entries")
+                .expect("static route is valid"),
         ),
+    );
+    crate::openapi_interface::contract::register_static_api_operation::<
+        PublicLoginEntriesInput,
+        PublicLoginEntriesOutput,
+    >(
+        &mut compiler,
+        &event_binding,
+        "graph:public-login-entries-v1",
+    )?;
+    compiler.register_binding(
+        event_binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new("api-server.public")
                 .expect("static adapter is valid"),

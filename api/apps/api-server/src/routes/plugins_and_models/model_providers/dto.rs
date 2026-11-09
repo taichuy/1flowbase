@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::routes::system::LocaleMetaResponse;
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct ConfiguredModelBody {
     pub model_id: String,
     pub enabled: bool,
@@ -58,14 +58,14 @@ pub struct AuthenticateModelProviderInstanceBody {
     pub operation: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct UpdateModelProviderMainInstanceBody {
     pub auto_include_new_instances: bool,
     pub expected_revision: i64,
     pub model_routing_policies: Option<Vec<ModelProviderMainModelRoutingPolicyBody>>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct ModelProviderMainModelRoutingPolicyBody {
     pub model_id: String,
     pub distribution_rule: String,
@@ -87,7 +87,7 @@ pub enum ModelProviderDistributionConfigValueBody {
     Boolean(bool),
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct RevealModelProviderSecretBody {
     pub key: String,
 }
@@ -100,8 +100,9 @@ pub struct PreviewModelProviderModelsBody {
     pub config: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize, IntoParams, Clone)]
+#[derive(Debug, Deserialize, IntoParams, Clone, Serialize)]
 pub struct ModelProviderCatalogQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub locale: Option<String>,
 }
 
@@ -335,7 +336,7 @@ pub struct ModelProviderResetCreditCountResponse {
     pub available_count: u32,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConsumeModelProviderResetCreditBody {
     pub idempotency_key: String,
@@ -483,19 +484,29 @@ pub struct ModelProviderOptionTargetResponse {
     pub model: ProviderModelDescriptorResponse,
 }
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Deserialize, IntoParams, Serialize)]
 pub struct ModelProviderRequestLogsQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub flow_run_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub user_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub application_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_instance_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub model_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
     #[serde(default)]
     pub zero_output_only: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub started_after: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub started_before: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub page: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub page_size: Option<i64>,
 }
 
@@ -548,7 +559,7 @@ pub struct ModelProviderRequestLogsPageResponse {
     pub page_size: i64,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct DeleteModelProviderRequestLogsBody {
     pub attempt_ids: Vec<String>,
 }

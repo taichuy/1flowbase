@@ -417,3 +417,87 @@ pub(crate) fn compile_registry(
         port,
     )
 }
+
+impl crate::openapi_interface::contract::ApiInput for ApplicationApiKeyInput {
+    fn project_document_input(
+        &self,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::List { application_id } => {
+                crate::routes::applications_group::event_projection::request(
+                    operation,
+                    serde_json::json!({"application_id":application_id}),
+                    serde_json::json!({}),
+                    serde_json::Value::Null,
+                )
+            }
+            Self::Create {
+                application_id,
+                body,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::openapi_interface::contract::to_value(body)?,
+            ),
+            Self::Revoke {
+                application_id,
+                key_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"key_id":key_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+        })
+    }
+}
+
+impl crate::openapi_interface::contract::ApiOutput for ApplicationApiKeyOutput {
+    fn document_output_schema(
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Option<serde_json::Value> {
+        (operation.interface_id == "applications.api-keys.create").then(|| {
+            let mut schema =
+                crate::openapi_interface::contract::schema::<super::ApplicationApiKeyResponse>();
+            if let Some(properties) = schema["properties"].as_object_mut() {
+                properties.remove("token_prefix");
+            }
+            if let Some(required) = schema["required"].as_array_mut() {
+                required.retain(|field| field != "token_prefix");
+            }
+            schema
+        })
+    }
+    fn project_document_output(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::List(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Created(value) => {
+                // Build the real DTO before selecting its credential-free event view.
+                let mut document = crate::openapi_interface::contract::to_value(
+                    &super::ApplicationApiKeyResponse {
+                        id: value.id,
+                        name: value.name.clone(),
+                        token_prefix: value.token_prefix.clone(),
+                        creator_user_id: value.creator_user_id,
+                        enabled: value.enabled,
+                        expires_at: value.expires_at.clone(),
+                        last_used_at: value.last_used_at.clone(),
+                        created_at: value.created_at.clone(),
+                        updated_at: value.updated_at.clone(),
+                    },
+                )?;
+                document
+                    .as_object_mut()
+                    .expect("API key response is an object")
+                    .remove("token_prefix");
+                Ok(document)
+            }
+            Self::NoContent => Ok(serde_json::Value::Null),
+        }
+    }
+}

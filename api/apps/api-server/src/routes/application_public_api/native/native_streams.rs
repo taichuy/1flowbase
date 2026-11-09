@@ -74,6 +74,15 @@ pub(super) async fn start_native_run_event_channel_for_actor_with_dependencies(
     mpsc::Receiver<Result<axum::response::sse::Event, std::convert::Infallible>>,
     NativeApiError,
 > {
+    dependencies
+        .runtime_event_stream
+        .open_run_scoped(
+            run.id,
+            control_plane::ports::RuntimeEventStreamPolicy::debug_default(),
+            control_plane::ports::RuntimeEventSourceBinding::workspace(actor.workspace_id),
+        )
+        .await
+        .map_err(service_error)?;
     let runtime_internal_tool_invoker =
         runtime_internal_tool_invoker_for_run(&dependencies, &actor, &run).await?;
     start_native_run_event_channel_with_dependencies(

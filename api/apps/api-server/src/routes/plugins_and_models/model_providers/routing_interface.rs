@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::{JsonApiInput, JsonApiOutput};
 use std::sync::Arc;
 
 use control_plane::ports::CacheStore;
@@ -10,6 +11,8 @@ use crate::routes::console_interface::{
     ConsoleInterfaceTargetError,
 };
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum ProviderRoutingInput {
     Get {
         provider_code: String,
@@ -19,6 +22,8 @@ pub(crate) enum ProviderRoutingInput {
         body: UpdateModelProviderMainInstanceBody,
     },
 }
+impl JsonApiInput for ProviderRoutingInput {}
+
 impl InterfaceContract for ProviderRoutingInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
@@ -99,7 +104,11 @@ impl InterfaceContract for ProviderRoutingInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct ProviderRoutingOutput(pub(crate) ModelProviderMainInstanceResponse);
+impl JsonApiOutput for ProviderRoutingOutput {}
+
 impl InterfaceContract for ProviderRoutingOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
@@ -416,3 +425,13 @@ pub(crate) fn compile_registry(
         Arc::new(ProviderRoutingAdapter(dependencies)),
     )
 }
+
+#[cfg(test)]
+use crate::openapi_interface::contract::{ApiInput, ApiOperationContext};
+#[cfg(test)]
+use serde_json::json;
+
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "routing_interface/_tests/event_projection.rs"]
+mod event_tests;

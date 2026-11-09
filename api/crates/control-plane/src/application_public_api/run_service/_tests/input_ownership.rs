@@ -290,7 +290,9 @@ fn event_freeze_owns_trigger_metadata_and_discards_caller_sys() {
         json!({"event-start":{"invoice":"A"},"trigger":{"type":"extension"},"sys":{"native_inference_recovery":"forged"}}),
         &variables(),
         WorkflowRunTriggerContext::Event {
-            signal_id: signal, event_id: Some(signal), subscription_id: subscription,
+            source_context: None,
+            workflow_ancestor_ids: &[],
+            signal_id: signal, event_id: Some(&signal.to_string()), subscription_id: subscription,
             trigger_phase: domain::event_center::EventTriggerPhase::Consumed,
         },
     ).unwrap();

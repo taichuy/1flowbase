@@ -2,6 +2,7 @@ use super::{
     DepartmentPageResponse, DepartmentResponse, OrganizationAccessResponse,
     ReplaceMemberDepartmentsBody, SaveDepartmentBody,
 };
+use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 use crate::{
     error_response::ApiError,
     routes::console_interface::{
@@ -11,11 +12,16 @@ use crate::{
 };
 use control_plane::{navigation_cache::NavigationCache, organization::OrganizationService};
 use interface_runtime::{InterfaceContract, UserPrincipal};
+use serde::Serialize;
 use std::sync::Arc;
 use storage_durable_postgres::MainDurableStore;
+#[derive(Serialize)]
+#[serde(untagged)]
 pub(crate) enum OrganizationInput {
     Access,
+    #[serde(serialize_with = "super::serialize_list_input")]
     List(control_plane::ports::DepartmentListInput),
+    #[serde(serialize_with = "json_contract::body")]
     Create(SaveDepartmentBody),
     Update {
         id: String,
@@ -29,12 +35,18 @@ pub(crate) enum OrganizationInput {
         body: ReplaceMemberDepartmentsBody,
     },
 }
+impl JsonApiInput for OrganizationInput {}
+
+#[derive(Serialize)]
+#[serde(untagged)]
 pub(crate) enum OrganizationOutput {
     Access(OrganizationAccessResponse),
     Departments(DepartmentPageResponse),
     Department(DepartmentResponse),
     Empty,
 }
+impl JsonApiOutput for OrganizationOutput {}
+
 impl InterfaceContract for OrganizationInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;

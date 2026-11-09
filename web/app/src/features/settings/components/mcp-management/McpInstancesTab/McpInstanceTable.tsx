@@ -113,6 +113,7 @@ export function McpInstanceTable({
           <Tooltip title={i18nText('settings', 'auto.directory_editor')}>
             <Button
               aria-label={i18nText('settings', 'auto.directory_editor')}
+              disabled={!can('mcp.directory.view')}
               icon={<SettingOutlined />}
               size="small"
               onClick={() => onOpenDirectory(record)}

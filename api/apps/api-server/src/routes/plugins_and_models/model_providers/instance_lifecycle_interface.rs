@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::JsonApiOutput;
 use std::sync::Arc;
 
 use control_plane::ports::CacheStore;
@@ -247,12 +248,17 @@ impl InterfaceContract for ProviderInstanceLifecycleInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum ProviderInstanceLifecycleOutput {
     Instances(Vec<ModelProviderInstanceResponse>),
+    // instance.config_json is the service's persisted public config.
     Instance(ModelProviderInstanceResponse),
     Validation(ValidateModelProviderResponse),
     Deleted(DeletedResponse),
 }
+
+impl JsonApiOutput for ProviderInstanceLifecycleOutput {}
 
 impl InterfaceContract for ProviderInstanceLifecycleOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -896,3 +902,6 @@ pub(crate) fn compile_registry(
         Arc::new(ProviderInstanceLifecycleAdapter(dependencies)),
     )
 }
+
+#[path = "instance_lifecycle_interface/event_projection.rs"]
+mod event_projection;

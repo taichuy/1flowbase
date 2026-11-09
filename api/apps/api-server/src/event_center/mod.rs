@@ -1,2 +1,8 @@
 //! Host assembly for the ephemeral event service. Business configuration stays in control-plane.
-pub(crate) mod catalog;
+pub(crate) mod business;
+pub mod catalog;
+pub(crate) mod interface;
+
+pub(crate) mod api_observer;
+
+pub(crate) mod api_catalog;

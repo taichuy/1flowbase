@@ -55,15 +55,11 @@ export function CommunicationEventCommandsEditor({
     communicationEventCatalogOptions(scope, editing !== undefined)
   );
   const contract_id = Form.useWatch('contract_id', form);
-  const contract_version = Form.useWatch('contract_version', form);
   const targets =
-    catalog.data?.filter((item) => item.enabled && item.origin === 'custom') ??
-    [];
-  const target = targets.find(
-    (item) =>
-      item.contract_id === contract_id &&
-      item.contract_version === contract_version
-  );
+    catalog.data?.filter(
+      (item) => item.enabled !== false && item.origin === 'custom'
+    ) ?? [];
+  const target = targets.find((item) => item.contract_id === contract_id);
   const schema =
     target &&
     target.payload_schema !== null &&
@@ -97,7 +93,6 @@ export function CommunicationEventCommandsEditor({
             description: '',
             enabled: true,
             contract_id: '',
-            contract_version: '',
             input_mapping: {}
           }
         : value[index]
@@ -118,9 +113,7 @@ export function CommunicationEventCommandsEditor({
       width: 250,
       render: (_, item) => (
         <Flex vertical>
-          <Typography.Text>
-            {item.contract_id} · {item.contract_version}
-          </Typography.Text>
+          <Typography.Text>{item.contract_id}</Typography.Text>
           <Typography.Text type="secondary">{item.description}</Typography.Text>
           {commands.some(
             (command) =>
@@ -317,22 +310,14 @@ export function CommunicationEventCommandsEditor({
             <Select
               aria-label={t('event_commands.target')}
               loading={catalog.isPending}
-              value={
-                contract_id
-                  ? JSON.stringify([contract_id, contract_version])
-                  : undefined
-              }
+              value={contract_id ? contract_id : undefined}
               options={targets.map((item) => ({
-                value: JSON.stringify([
-                  item.contract_id,
-                  item.contract_version
-                ]),
-                label: `${item.name} · ${item.contract_version}`
+                value: item.contract_id,
+                label: item.name
               }))}
               onChange={(selected) => {
-                const [id, version] = JSON.parse(selected) as string[];
+                const id = selected;
                 form.setFieldValue('contract_id', id);
-                form.setFieldValue('contract_version', version);
                 form.setFieldValue('input_mapping', {});
                 setCustomFields([]);
               }}
@@ -352,9 +337,6 @@ export function CommunicationEventCommandsEditor({
               }
             ]}
           >
-            <Input />
-          </Form.Item>
-          <Form.Item name="contract_version" hidden>
             <Input />
           </Form.Item>
           {fields.map((field) => (

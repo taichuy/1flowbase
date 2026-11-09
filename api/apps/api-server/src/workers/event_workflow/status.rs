@@ -1,4 +1,4 @@
-//! Latest payload-free state, bounded by the current enabled configuration set.
+//! Latest payload-free state, bounded by the current listener configuration set.
 use serde::Serialize;
 use std::{
     collections::BTreeMap,

@@ -102,6 +102,18 @@ export function createFrontendModuleExtraLib(
   moduleSource: string,
   exports: readonly string[]
 ): BlockSourceExtraLib {
+  if (moduleSource === '@1flowbase/data-blocks') {
+    return {
+      source: moduleSource,
+      filePath: 'file:///node_modules/@1flowbase/data-blocks/index.d.ts',
+      content: `declare module '@1flowbase/data-blocks' {
+  import type { ReactElement } from 'react';
+  import type { BlockContext } from '@1flowbase/block-sdk';
+  export function TableBlock(props: { ctx: BlockContext }): ReactElement;
+  export function FormBlock(props: { ctx: BlockContext }): ReactElement;
+}`
+    };
+  }
   if (moduleSource === '@1flowbase/files') {
     return {
       source: moduleSource,
@@ -119,6 +131,16 @@ export function createFrontendModuleExtraLib(
       filePath: 'file:///node_modules/@1flowbase/plugin-settings/index.d.ts',
       content: `
 declare module '@1flowbase/plugin-settings' {
+  import type { ReactElement } from 'react';
+  export interface RecordPermissionEditorProps {
+    pluginCode: string; resourceCode: string; recordId: string; open: boolean;
+    locale?: string; onCancel(): void; onSaved(): void;
+  }
+  export function RecordPermissionEditor(props: RecordPermissionEditorProps): ReactElement;
+  export interface RecordPermissionCapabilities {
+    record_id: string; allowed_actions: string[]; can_manage_permissions: boolean;
+  }
+  export function getRecordCapabilities(pluginCode: string, resourceCode: string, recordIds: string[], signal?: AbortSignal): Promise<{ items: RecordPermissionCapabilities[] }>;
   export interface StreamOptions {
     path: string; body?: unknown; signal?: AbortSignal;
     onEvent(event: unknown): void | Promise<void>;

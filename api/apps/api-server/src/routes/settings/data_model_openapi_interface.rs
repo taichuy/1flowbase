@@ -1,3 +1,4 @@
+use crate::openapi_interface::json_contract::{JsonApiInput, JsonApiOutput};
 use std::sync::Arc;
 
 use interface_runtime::{InterfaceContract, UserPrincipal};
@@ -11,9 +12,12 @@ use crate::{
     runtime_data_model_docs,
 };
 
+#[derive(serde::Serialize)]
 pub(crate) struct DataModelOpenApiInput {
     pub(crate) model_id: String,
 }
+
+impl JsonApiInput for DataModelOpenApiInput {}
 
 impl InterfaceContract for DataModelOpenApiInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -32,7 +36,11 @@ impl InterfaceContract for DataModelOpenApiInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct DataModelOpenApiOutput(pub(crate) serde_json::Value);
+
+impl JsonApiOutput for DataModelOpenApiOutput {}
 
 impl InterfaceContract for DataModelOpenApiOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {

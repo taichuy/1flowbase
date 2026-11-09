@@ -42,21 +42,32 @@ use crate::{
     },
 };
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum AssistantSettingsInput {
     Get,
+    #[serde(serialize_with = "crate::openapi_interface::json_contract::body")]
     Update(AssistantPreferenceBody),
 }
+impl crate::openapi_interface::json_contract::JsonApiInput for AssistantSettingsInput {}
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum AssistantSettingsOutput {
     Settings(AssistantSettingsResponse),
 }
+impl crate::openapi_interface::json_contract::JsonApiOutput for AssistantSettingsOutput {}
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum AssistantConversationsInput {
     GetRunActivity {
         flow_run_id: Uuid,
         query: AssistantRunActivityQuery,
     },
+    #[serde(serialize_with = "crate::openapi_interface::json_contract::body")]
     CreateConversation(CreateAssistantConversationBody),
+    #[serde(serialize_with = "crate::openapi_interface::json_contract::query_with_nulls")]
     ListConversations(ListAssistantConversationsQuery),
     GetConversationMessages {
         conversation_id: Uuid,
@@ -67,20 +78,30 @@ pub(crate) enum AssistantConversationsInput {
         query: super::AssistantConversationMessagesQuery,
     },
 }
+impl crate::openapi_interface::json_contract::JsonApiInput for AssistantConversationsInput {}
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
 pub(crate) enum AssistantConversationsOutput {
     RunActivity(AssistantRunActivityPageResponse),
     Conversation(AssistantConversationResponse),
     ConversationPage(AssistantConversationPageResponse),
     ConversationMessages(Vec<AssistantConversationMessageResponse>),
 }
+impl crate::openapi_interface::json_contract::JsonApiOutput for AssistantConversationsOutput {}
 
+#[derive(serde::Serialize)]
 pub(crate) struct AssistantRunInput {
     pub(crate) body: StartAssistantRunBody,
+    #[serde(skip)]
     pub(crate) headers: axum::http::HeaderMap,
 }
+impl crate::openapi_interface::json_contract::JsonApiInput for AssistantRunInput {}
 
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct AssistantRunOutput(pub(crate) AssistantRunResponse);
+impl crate::openapi_interface::json_contract::JsonApiOutput for AssistantRunOutput {}
 
 pub(crate) struct AssistantRunStreamEvent(pub(crate) Result<Event, Infallible>);
 

@@ -1,3 +1,4 @@
+mod document_projection;
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use control_plane::application_public_api::{
@@ -46,7 +47,10 @@ pub(crate) const CANCEL_RUN_BINDING_ID: &str = "http.application.native.runs.can
 pub(crate) const RESUME_RUN_BINDING_ID: &str = "http.application.native.runs.resume.v1";
 pub(crate) const UPLOAD_FILE_BINDING_ID: &str = "http.application.native.files.upload.v1";
 
+#[derive(serde::Serialize)]
 pub(crate) struct NativeModelsInput;
+impl crate::openapi_interface::json_contract::JsonApiInput for NativeModelsInput {}
+
 impl InterfaceContract for NativeModelsInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
@@ -67,7 +71,11 @@ impl InterfaceContract for NativeModelsInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct NativeModelsOutput(pub(crate) NativeModelListResponse);
+impl crate::openapi_interface::json_contract::JsonApiOutput for NativeModelsOutput {}
+
 impl InterfaceContract for NativeModelsOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
@@ -199,7 +207,13 @@ impl InterfaceContract for NativeModelsOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct NativeGetRunInput(pub(crate) Uuid);
+impl crate::openapi_interface::json_contract::JsonApiInput for NativeGetRunInput {
+    const LOCATION: crate::openapi_interface::json_contract::JsonInputLocation =
+        crate::openapi_interface::json_contract::JsonInputLocation::Path;
+}
 
 pub(crate) struct NativeUploadFileInput {
     pub(crate) file_table_id: Uuid,
@@ -247,7 +261,11 @@ impl InterfaceContract for NativeUploadFileInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct NativeUploadFileOutput(pub(crate) UploadedFileResponse);
+impl crate::openapi_interface::json_contract::JsonApiOutput for NativeUploadFileOutput {}
+
 impl InterfaceContract for NativeUploadFileOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
@@ -905,7 +923,10 @@ pub(crate) fn compile_registry(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn register<I: InterfaceContract, O: InterfaceContract>(
+fn register<
+    I: crate::openapi_interface::contract::ApiInput,
+    O: crate::openapi_interface::contract::ApiOutput,
+>(
     compiler: &mut RegistryCompiler,
     owner: &InterfaceOwner,
     operation: AuthorizationOperation,
@@ -972,13 +993,19 @@ fn register<I: InterfaceContract, O: InterfaceContract>(
             interface_runtime::PrincipalProfile::Application,
         ),
     )?;
+    let binding = ProtocolBinding::new(
+        BindingId::new(binding_id).expect("static binding id is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::http(route),
+    );
+    crate::openapi_interface::contract::register_static_api_operation::<I, O>(
+        compiler,
+        &binding,
+        "graph:application-native-read-v1",
+    )?;
     compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new(binding_id).expect("static binding id is valid"),
-            identity,
-            contracts,
-            ProtocolProjection::http(route),
-        ),
+        binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new("api-server.application-api-key")
                 .expect("static authentication adapter reference is valid"),

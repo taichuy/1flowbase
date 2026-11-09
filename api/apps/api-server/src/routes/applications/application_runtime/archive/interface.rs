@@ -15,6 +15,9 @@ use crate::routes::console_interface::{
     ConsoleInterfaceTargetError,
 };
 
+#[path = "event_projection.rs"]
+mod document_event_projection;
+
 pub(crate) enum ApplicationRuntimeArchiveInput {
     ExportOne {
         application_id: Uuid,
@@ -291,6 +294,7 @@ impl InterfaceContract for ApplicationRuntimeArchiveInput {
 pub(crate) struct ArchiveDownload {
     pub(crate) filename: String,
     pub(crate) body: Vec<u8>,
+    document: document_event_projection::ArchiveDocument,
 }
 
 #[expect(
@@ -642,6 +646,7 @@ impl ApplicationRuntimeArchiveAdapter {
         Ok(ApplicationRuntimeArchiveOutput::Download(ArchiveDownload {
             filename,
             body: serde_json::to_vec_pretty(&archive)?,
+            document: document_event_projection::ArchiveDocument::from_archive(&archive),
         }))
     }
 
@@ -999,4 +1004,103 @@ pub(crate) fn compile_registry(
         DECLARATIONS,
         Arc::new(ApplicationRuntimeArchiveAdapter { dependencies }),
     )
+}
+
+impl crate::openapi_interface::contract::ApiInput for ApplicationRuntimeArchiveInput {
+    // UploadChunk owns raw ZIP bytes and a checksum header, not a JSON body.
+    fn document_input_unavailable(
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Option<domain::event_center::ApiEventUnavailableReason> {
+        (operation.interface_id == "applications.runtime.archive.upload-chunks.upsert")
+            .then_some(domain::event_center::ApiEventUnavailableReason::BinaryRequest)
+    }
+    fn project_document_input(
+        &self,
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::ExportOne {
+                application_id,
+                run_id,
+                archive_version,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"run_id":run_id}),
+                serde_json::json!({"archive_version":archive_version}),
+                serde_json::Value::Null,
+            ),
+            Self::ExportMany {
+                application_id,
+                body,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::openapi_interface::contract::to_value(body)?,
+            ),
+            Self::CreateUploadSession {
+                application_id,
+                body,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id}),
+                serde_json::json!({}),
+                crate::openapi_interface::contract::to_value(body)?,
+            ),
+            Self::UploadChunk { .. } => {
+                return Err(std::sync::Arc::from(
+                    "archive_chunk_body_is_binary_and_checksum_is_a_header",
+                ))
+            }
+            Self::CompleteUploadSession {
+                application_id,
+                session_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"session_id":session_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+            Self::GetImportJob {
+                application_id,
+                job_id,
+            } => crate::routes::applications_group::event_projection::request(
+                operation,
+                serde_json::json!({"application_id":application_id,"job_id":job_id}),
+                serde_json::json!({}),
+                serde_json::Value::Null,
+            ),
+        })
+    }
+}
+
+impl crate::openapi_interface::contract::ApiOutput for ApplicationRuntimeArchiveOutput {
+    fn document_output_schema(
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Option<serde_json::Value> {
+        (matches!(
+            operation.interface_id.as_str(),
+            "applications.runtime.archive.run.export" | "applications.runtime.archive.runs.export"
+        ))
+        .then(
+            crate::routes::applications_group::event_projection::runtime::schema::<
+                document_event_projection::ArchiveDocument,
+            >,
+        )
+    }
+    fn project_document_output(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::Download(value) => {
+                crate::routes::applications_group::event_projection::runtime::document(
+                    &value.document,
+                )
+            }
+            Self::UploadSession(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Chunk(value) => crate::openapi_interface::contract::to_value(value),
+            Self::ImportJob(value) => crate::openapi_interface::contract::to_value(value),
+        }
+    }
 }

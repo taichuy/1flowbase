@@ -28,6 +28,7 @@ use interface_operation::{
 pub(crate) mod client_context;
 mod input_schema;
 mod interface_operation;
+mod protocol_version;
 pub(crate) mod resources;
 pub(crate) mod result_delivery;
 pub(crate) mod virtual_ui;
@@ -157,6 +158,15 @@ async fn handle_mcp_request(
         return Ok(jsonrpc_error(request.id, -32600, "Invalid Request"));
     }
 
+    let protocol_version =
+        match protocol_version::negotiate(&request.method, &request.params, &headers) {
+            Ok(version) => version,
+            Err(message) => {
+                let (_, response) = jsonrpc_error(request.id, -32602, message);
+                return Ok((StatusCode::BAD_REQUEST, response));
+            }
+        };
+
     let catalog = McpManagementService::new(state.store.clone())
         .read_catalog_for_actor(&actor)
         .await?;
@@ -178,7 +188,7 @@ async fn handle_mcp_request(
         "tools/list" => McpInvocationInput::ToolsList {
             path_regex_enabled: scope.path_regex_enabled(&catalog),
         },
-        "tools/call" | "resources/read" | "resources/list" => {
+        "tools/call" | "resources/read" | "resources/list" | "resources/templates/list" => {
             let (name, arguments) = match protocol_call(&request.method, &request.params) {
                 Ok(call) => call,
                 Err(message) => return Ok(jsonrpc_error(request.id, -32602, message)),
@@ -233,7 +243,7 @@ async fn handle_mcp_request(
                 jsonrpc: "2.0",
                 id: request.id,
                 result: Some(
-                    json!({"protocolVersion":"2025-03-26","capabilities":resources::capabilities(),"serverInfo":{"name":instance_name,"version":env!("CARGO_PKG_VERSION")}}),
+                    json!({"protocolVersion":protocol_version,"capabilities":resources::capabilities(),"serverInfo":{"name":instance_name,"version":env!("CARGO_PKG_VERSION")}}),
                 ),
                 error: None,
             },
@@ -252,7 +262,10 @@ async fn handle_mcp_request(
             JsonRpcResponse {
                 jsonrpc: "2.0",
                 id: request.id,
-                result: Some(json!({"tools": virtual_ui::meta_tools(path_regex_enabled)})),
+                result: Some(protocol_version::project(
+                    json!({"tools": virtual_ui::meta_tools(path_regex_enabled)}),
+                    protocol_version,
+                )),
                 error: None,
             },
         )),
@@ -262,7 +275,7 @@ async fn handle_mcp_request(
                 JsonRpcResponse {
                     jsonrpc: "2.0",
                     id: request.id,
-                    result: Some(result),
+                    result: Some(protocol_version::project(result, protocol_version)),
                     error: None,
                 },
             ))
@@ -288,7 +301,23 @@ fn protocol_call<'a>(method: &str, params: &'a Value) -> Result<(&'a str, Value)
                 .ok_or("Invalid resource URI")?;
             Ok((resources::READ_TOOL, json!({"uri":uri})))
         }
-        "resources/list" => Ok((resources::LIST_TOOL, json!({}))),
+        "resources/list" | "resources/templates/list" => {
+            let mut arguments = json!({});
+            if let Some(cursor) = params.get("cursor") {
+                if !cursor.is_string() {
+                    return Err("Invalid resource cursor");
+                }
+                arguments["cursor"] = cursor.clone();
+            }
+            Ok((
+                if method == "resources/list" {
+                    resources::LIST_TOOL
+                } else {
+                    resources::TEMPLATES_TOOL
+                },
+                arguments,
+            ))
+        }
         _ => {
             let name = params
                 .get("name")

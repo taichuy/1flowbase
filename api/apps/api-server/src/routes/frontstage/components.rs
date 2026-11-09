@@ -22,7 +22,7 @@ use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess}
 
 const COMPONENT_PAGE_SIZE: usize = 20;
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Deserialize, IntoParams, serde::Serialize)]
 pub struct FrontstageComponentQuery {
     pub query: Option<String>,
     #[param(minimum = 0)]
@@ -800,4 +800,53 @@ fn component_response(value: UiComponentRecord) -> Result<FrontstageComponentRes
         created_at: value.created_at.format(&Rfc3339)?,
         updated_at: value.updated_at.format(&Rfc3339)?,
     })
+}
+
+impl crate::openapi_interface::contract::ApiInput for FrontstageComponentsInput {
+    fn project_document_input(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::List(query) => crate::routes::frontstage::event_projection::request(
+                serde_json::json!({}),
+                crate::openapi_interface::contract::to_value(query)?,
+                None,
+            ),
+            Self::Get(component_id) => crate::routes::frontstage::event_projection::request(
+                serde_json::json!({"component_id":component_id}),
+                serde_json::json!({}),
+                None,
+            ),
+            Self::Asset(sha256) => crate::routes::frontstage::event_projection::request(
+                serde_json::json!({"sha256":sha256}),
+                serde_json::json!({}),
+                None,
+            ),
+        })
+    }
+}
+
+impl crate::openapi_interface::contract::ApiOutput for FrontstageComponentsOutput {
+    fn document_output_unavailable(
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Option<domain::event_center::ApiEventUnavailableReason> {
+        operation
+            .path
+            .split('/')
+            .any(|segment| segment == "component-module-assets")
+            .then_some(domain::event_center::ApiEventUnavailableReason::BinaryResponse)
+    }
+    fn project_document_output(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::Page(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Component(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Asset(_) => Err(std::sync::Arc::from(
+                "frontend_component_module_asset_is_not_json",
+            )),
+        }
+    }
 }

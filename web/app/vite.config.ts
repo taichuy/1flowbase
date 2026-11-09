@@ -381,6 +381,13 @@ export default defineConfig(({ command, mode }) => {
       }
     },
     test: {
+      // Native-template tests verify the actual registered ShadowRoot style assets.
+      // Vitest otherwise stubs even CSS ?inline exports with an empty string.
+      css: {
+        include: [
+          /\/features\/frontstage\/components\/data-blocks\/(?:table\/table-block|form\/form-block)\.css(?:\?|$)/
+        ]
+      },
       // Match browser ESM resolution so leaf providers and barrel consumers share context.
       alias: [
         {

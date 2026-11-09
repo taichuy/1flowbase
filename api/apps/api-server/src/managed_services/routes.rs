@@ -25,6 +25,7 @@ pub(crate) fn route_assembly(
                 continue;
             }
             let operation = Arc::new(operation.clone());
+            let event_policy = Arc::new(super::event_projection::OperationPolicy::new(&operation));
             let owner = access_control::ConsoleRouteOwnership::ConsoleOperation(
                 operation.interface_id.clone(),
             );
@@ -36,7 +37,8 @@ pub(crate) fn route_assembly(
                                 headers: HeaderMap,
                                 body: Bytes| {
                 let operation = operation.clone();
-                async move { invoke(state, operation, path, query, headers, body).await }
+                let event_policy = event_policy.clone();
+                async move { invoke(state, operation, event_policy, path, query, headers, body).await }
             };
             let router = match method.as_str() {
                 "GET" => console_get(handler, owner),
@@ -54,6 +56,7 @@ pub(crate) fn route_assembly(
 async fn invoke(
     state: Arc<ApiState>,
     operation: Arc<plugin_framework::ManagedServiceOperation>,
+    event_policy: Arc<super::event_projection::OperationPolicy>,
     path: BTreeMap<String, String>,
     query: BTreeMap<String, String>,
     headers: HeaderMap,
@@ -102,11 +105,12 @@ async fn invoke(
             headers,
         }
     };
-    let ManagedServiceOutput(output) = crate::routes::console_interface::invoke(
+    let ManagedServiceOutput(output, _) = crate::routes::console_interface::invoke(
         state,
         &format!("http.{}.v1", operation.interface_id),
         credential,
         ManagedServiceInput {
+            event_policy,
             stream: None,
             interface_id: operation.interface_id.clone(),
             payload: serde_json::json!({"path":path,"query":query_value,"body":body}),

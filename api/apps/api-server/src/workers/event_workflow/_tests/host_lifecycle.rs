@@ -77,7 +77,6 @@ fn original(fixture: &Fixture) -> EventRuntimeSubscription {
         subscription_id: Uuid::now_v7(),
         workspace_id: fixture.definition.workspace_id,
         contract_id: fixture.definition.contract_id.clone(),
-        contract_version: fixture.definition.contract_version.clone(),
         trigger_phase: EventTriggerPhase::Published,
         consumer_id: Uuid::now_v7(),
     }
@@ -350,6 +349,86 @@ async fn published_worker_mapping_rejection_after_handoff_does_not_prevent_consu
         assert_eq!(
             count(&fixture, fixture.snapshot.trigger.application_id).await,
             1
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn publication_state_automatically_controls_listener_with_legacy_disabled_config() {
+    use crate::routes::application_api::{interface_publication, PatchApplicationApiStatusBody};
+    let fixture = fixture().await;
+    sqlx::query("UPDATE workflow_event_triggers SET enabled=false WHERE id=$1")
+        .bind(fixture.snapshot.trigger.id)
+        .execute(fixture.state.store.pool())
+        .await
+        .unwrap_or_else(|_| panic!("publication state mutation must succeed"));
+    let statuses = EventWorkflowStatuses::default();
+    let port = interface_publication::port(
+        fixture.state.store.clone(),
+        fixture.state.infrastructure.cache_store(),
+        fixture.state.event_workflow_changes.clone(),
+    );
+    let principal = interface_runtime::UserPrincipal::server_delegation(fixture.actor.clone());
+    with_worker(&fixture, statuses.clone(), async {
+        idle(&fixture, &statuses, fixture.snapshot.trigger.application_id).await;
+        port.execute(
+            &principal,
+            interface_publication::ApplicationPublicationInput::SetEnabled {
+                application_id: fixture.snapshot.trigger.application_id,
+                body: PatchApplicationApiStatusBody { api_enabled: false },
+            },
+        )
+        .await
+        .unwrap_or_else(|_| panic!("publication state mutation must succeed"));
+        loop {
+            if statuses
+                .snapshot(fixture.actor.current_workspace_id)
+                .iter()
+                .any(|row| {
+                    row.application_id == fixture.snapshot.trigger.application_id
+                        && row.activation == "unavailable"
+                        && row.reason.as_deref() == Some("application_disabled")
+                })
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        port.execute(
+            &principal,
+            interface_publication::ApplicationPublicationInput::SetEnabled {
+                application_id: fixture.snapshot.trigger.application_id,
+                body: PatchApplicationApiStatusBody { api_enabled: true },
+            },
+        )
+        .await
+        .unwrap_or_else(|_| panic!("publication state mutation must succeed"));
+        idle(&fixture, &statuses, fixture.snapshot.trigger.application_id).await;
+        port.execute(
+            &principal,
+            interface_publication::ApplicationPublicationInput::Unpublish {
+                application_id: fixture.snapshot.trigger.application_id,
+            },
+        )
+        .await
+        .unwrap_or_else(|_| panic!("publication state mutation must succeed"));
+        loop {
+            if statuses
+                .snapshot(fixture.actor.current_workspace_id)
+                .iter()
+                .any(|row| {
+                    row.application_id == fixture.snapshot.trigger.application_id
+                        && row.activation == "unavailable"
+                })
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(
+            count(&fixture, fixture.snapshot.trigger.application_id).await,
+            0
         );
     })
     .await;

@@ -1,3 +1,6 @@
+pub(crate) mod document_projection;
+mod event_projection;
+
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use control_plane::application_public_api::{
@@ -39,6 +42,12 @@ pub(crate) struct ApplicationNativeRunInput {
 }
 
 impl InterfaceContract for ApplicationNativeRunInput {
+    fn event_projection_schema() -> Option<serde_json::Value> {
+        Some(event_projection::input_schema())
+    }
+    fn project_for_event(&self) -> Option<serde_json::Value> {
+        Some(event_projection::input(self))
+    }
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::object_schema([
@@ -124,6 +133,12 @@ impl InterfaceContract for ApplicationNativeRunInput {
 pub(crate) struct ApplicationNativeRunOutput(pub(crate) NativeRunResult);
 
 impl InterfaceContract for ApplicationNativeRunOutput {
+    fn event_projection_schema() -> Option<serde_json::Value> {
+        Some(event_projection::output_schema())
+    }
+    fn project_for_event(&self) -> Option<serde_json::Value> {
+        Some(event_projection::output(self))
+    }
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::object_schema([(
@@ -427,25 +442,28 @@ pub(crate) fn compile_registry(
             id.clone(),
             InterfaceVersion::new(INTERFACE_VERSION).expect("static interface version is valid"),
         );
-        compiler.register_definition(InterfaceDefinition::new(
-            identity.clone(),
-            contracts.clone(),
-            InterfaceAccess::new(
-                interface_runtime::PrincipalProfile::Application,
-                InterfaceAuthenticationPolicy::Authenticated,
-                operation.clone(),
-                InterfaceScope::Workspace,
-            ),
-            InterfaceExecution::new(
-                mode,
-                HandlerReference::new(handler_reference).expect("static handler is valid"),
-                TargetReference::new(TARGET_REFERENCE).expect("static target is valid"),
-            ),
-            InterfaceAuditPolicy::Mutating,
-            InterfaceErrorPolicy::TypedTarget,
-            InterfaceLifecycle::BootSnapshot,
-            owner.clone(),
-        ))?;
+        compiler.register_definition(
+            InterfaceDefinition::new(
+                identity.clone(),
+                contracts.clone(),
+                InterfaceAccess::new(
+                    interface_runtime::PrincipalProfile::Application,
+                    InterfaceAuthenticationPolicy::Authenticated,
+                    operation.clone(),
+                    InterfaceScope::Workspace,
+                ),
+                InterfaceExecution::new(
+                    mode,
+                    HandlerReference::new(handler_reference).expect("static handler is valid"),
+                    TargetReference::new(TARGET_REFERENCE).expect("static target is valid"),
+                ),
+                InterfaceAuditPolicy::Mutating,
+                InterfaceErrorPolicy::TypedTarget,
+                InterfaceLifecycle::BootSnapshot,
+                owner.clone(),
+            )
+            .with_event_observation(),
+        )?;
         compiler.register_authentication_adapter(
             &id,
             1,
@@ -473,15 +491,17 @@ pub(crate) fn compile_registry(
                 interface_runtime::PrincipalProfile::Application,
             ),
         )?;
-        compiler.register_binding(
-            ProtocolBinding::new(
-                BindingId::new(binding_id).expect("static binding is valid"),
-                identity,
-                contracts,
-                projection,
-            ),
-            adapter_plan(),
-        )?;
+        let binding = ProtocolBinding::new(
+            BindingId::new(binding_id).expect("static binding is valid"),
+            identity,
+            contracts,
+            projection,
+        );
+        crate::openapi_interface::contract::register_static_api_operation::<
+            ApplicationNativeRunInput,
+            ApplicationNativeRunOutput,
+        >(&mut compiler, &binding, "graph:application-native-run-v1")?;
+        compiler.register_binding(binding, adapter_plan())?;
     }
     compiler.bind_handler::<ApplicationNativeRunInput, ApplicationNativeRunOutput, ApplicationNativeRunTargetError, ApplicationPrincipal>(
         &InterfaceId::new(ASYNC_INTERFACE_ID).expect("static async interface id is valid"),

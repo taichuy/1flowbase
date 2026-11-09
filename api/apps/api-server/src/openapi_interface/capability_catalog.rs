@@ -490,7 +490,9 @@ pub fn operation_risk_level(method: &str) -> &'static str {
 }
 
 fn static_operation_is_bindable(path: &str) -> bool {
-    path.starts_with("/api/console/") || path.starts_with(crate::routes::PUBLIC_API_PATH_PREFIX)
+    path == crate::routes::runtime_models::metadata_interface::OPENAPI_PATH
+        || path.starts_with("/api/console/")
+        || path.starts_with(crate::routes::PUBLIC_API_PATH_PREFIX)
 }
 
 fn static_disabled_reason(
@@ -505,7 +507,10 @@ fn static_disabled_reason(
         Some(media_type) if is_json_media_type(media_type) => None,
         Some(_) => Some("unsupported_response_media_type"),
         None if has_no_content_success(operation, spec) => None,
-        None => Some("missing_openapi_contract"),
+        // The operation is documented. Its upgrade/redirect/empty carrier has
+        // no response shape for an MCP interface wrapper; event phases decide
+        // from their own principal, typed codec and terminal owner.
+        None => Some("unsupported_response_semantics"),
     }
 }
 

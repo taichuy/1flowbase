@@ -293,10 +293,18 @@ pub fn build_workflow_start_node_input_payload(
     contract: &WorkflowStartHttpInputs,
     parameters: &WorkflowExtensionRequestParameters,
 ) -> Result<Value, WorkflowStartHttpInputError> {
+    build_workflow_start_resolved_node_input_payload(contract, parameters, &parameters.path)
+}
+
+pub fn build_workflow_start_resolved_node_input_payload(
+    contract: &WorkflowStartHttpInputs,
+    parameters: &WorkflowExtensionRequestParameters,
+    resolved_path: &std::collections::BTreeMap<String, Value>,
+) -> Result<Value, WorkflowStartHttpInputError> {
     let mut start_node_payload = Map::new();
     for field in &contract.fields {
         let request_value = match field.source {
-            WorkflowStartHttpInputSource::Path => parameters.path.get(&field.key),
+            WorkflowStartHttpInputSource::Path => resolved_path.get(&field.key),
             WorkflowStartHttpInputSource::Query => parameters.query.get(&field.key),
             WorkflowStartHttpInputSource::Body => parameters
                 .body

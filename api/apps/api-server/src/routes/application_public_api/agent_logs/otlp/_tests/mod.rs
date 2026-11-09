@@ -4,15 +4,15 @@ use serde_json::json;
 
 #[test]
 fn otlp_managed_contracts_expose_only_counts_and_static_wire_tags() {
-    let input = Input {
-        format: WireFormat::Json,
-        encoding: ContentEncoding::Gzip,
-        body: Bytes::from_static(b"private body with raw source facts and bearer-like text"),
-    };
+    let input = Input::new(
+        WireFormat::Json,
+        ContentEncoding::Gzip,
+        Bytes::from_static(b"private body with raw source facts and bearer-like text"),
+    );
     let projection = input.project_for_managed_hook().unwrap();
     assert_eq!(
         projection,
-        json!({"kind":Input::CONTRACT_ID,"byte_count":input.body.len(),"format":"json","encoding":"gzip"})
+        json!({"kind":Input::CONTRACT_ID,"byte_count":input.byte_count,"format":"json","encoding":"gzip"})
     );
     let output = Output {
         response: ExportTraceServiceResponse {
@@ -22,6 +22,11 @@ fn otlp_managed_contracts_expose_only_counts_and_static_wire_tags() {
             }),
         },
         accepted_spans: 2,
+        receipt: AgentLogsReceipt {
+            accepted_events: 2,
+            duplicate_events: 0,
+            record_ids: vec![],
+        },
     };
     let error = TargetError(ControlPlaneError::NotAuthenticated.into());
     for (id, schema, value) in [
@@ -55,6 +60,103 @@ fn otlp_managed_contracts_expose_only_counts_and_static_wire_tags() {
         assert!(
             !value.to_string().contains("private") && !value.to_string().contains("not projected")
         );
+    }
+}
+
+#[test]
+fn otlp_event_projection_uses_decoded_json_protobuf_and_gzip_facts_and_true_receipts() {
+    let batch = super::super::event_projection_tests::batch_without_task_end();
+    let request = agent_logs_protocol::batches_to_traces(&[batch]).unwrap();
+    for (format, bytes) in [
+        (
+            WireFormat::Json,
+            agent_logs_protocol::encode_json(&request).unwrap(),
+        ),
+        (
+            WireFormat::Protobuf,
+            agent_logs_protocol::encode_protobuf(&request),
+        ),
+    ] {
+        for encoding in [ContentEncoding::Identity, ContentEncoding::Gzip] {
+            let bytes = if matches!(encoding, ContentEncoding::Gzip) {
+                agent_logs_protocol::encode_gzip(&bytes).unwrap()
+            } else {
+                bytes.clone()
+            };
+            let input = Input::new(format, encoding, Bytes::from(bytes));
+            let value = input.project_for_event().unwrap();
+            assert_eq!(
+                value["batches"][0]["events"][0]["content"],
+                "business answer"
+            );
+            assert_eq!(value["batches"][0]["events"][0]["kind"], "assistant");
+            assert!(!value.to_string().contains("RAW_SECRET"));
+            assert!(
+                jsonschema::validator_for(&Input::event_projection_schema().unwrap())
+                    .unwrap()
+                    .is_valid(&value)
+            );
+        }
+    }
+    let record_id = uuid::Uuid::now_v7();
+    let output = Output {
+        accepted_spans: 3,
+        receipt: AgentLogsReceipt {
+            accepted_events: 2,
+            duplicate_events: 1,
+            record_ids: vec![record_id],
+        },
+        response: ExportTraceServiceResponse {
+            partial_success: Some(ExportTracePartialSuccess {
+                rejected_spans: 4,
+                error_message: "safe partial receipt".into(),
+            }),
+        },
+    };
+    let value = output.project_for_event().unwrap();
+    assert_eq!(
+        value,
+        json!({"accepted_spans":3,"rejected_spans":4,"accepted_events":2,"duplicate_events":1,"record_ids":[record_id]})
+    );
+    assert!(
+        jsonschema::validator_for(&Output::event_projection_schema().unwrap())
+            .unwrap()
+            .is_valid(&value)
+    );
+}
+
+#[test]
+fn opaque_or_invalid_otlp_wire_has_no_business_event_projection() {
+    for (format, encoding, bytes) in [
+        (
+            WireFormat::Json,
+            ContentEncoding::Identity,
+            b"not json".as_slice(),
+        ),
+        (
+            WireFormat::Protobuf,
+            ContentEncoding::Identity,
+            b"\xff".as_slice(),
+        ),
+        (
+            WireFormat::Json,
+            ContentEncoding::Gzip,
+            b"not gzip".as_slice(),
+        ),
+        (
+            WireFormat::Unsupported,
+            ContentEncoding::Identity,
+            b"{}".as_slice(),
+        ),
+        (
+            WireFormat::Json,
+            ContentEncoding::Unsupported,
+            b"{}".as_slice(),
+        ),
+    ] {
+        let input = Input::new(format, encoding, Bytes::copy_from_slice(bytes));
+        assert!(input.prepared.is_err());
+        assert!(input.project_for_event().is_none());
     }
 }
 

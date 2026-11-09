@@ -1073,3 +1073,181 @@ pub(crate) fn compile_registry(
         Arc::new(FrontstageBlocksAdapter(dependencies)),
     )
 }
+
+impl crate::openapi_interface::contract::ApiInput for FrontstageBlocksInput {
+    fn project_document_input(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        Ok(match self {
+            Self::Open(page_id, block_id) => crate::routes::frontstage::event_projection::request(
+                serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                serde_json::json!({}),
+                None,
+            ),
+            Self::Get(page_id, block_id) => crate::routes::frontstage::event_projection::request(
+                serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                serde_json::json!({}),
+                None,
+            ),
+            Self::DeleteLeaf(page_id, block_id) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                    serde_json::json!({}),
+                    None,
+                )
+            }
+            Self::Ancestors(page_id, block_id) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                    serde_json::json!({}),
+                    None,
+                )
+            }
+            Self::DeleteImpact(page_id, block_id) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                    serde_json::json!({}),
+                    None,
+                )
+            }
+            Self::RuntimeAssembly(page_id, block_id) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                    serde_json::json!({}),
+                    None,
+                )
+            }
+            Self::ListRoots(page_id, query) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id}),
+                    crate::openapi_interface::contract::to_value(query)?,
+                    None,
+                )
+            }
+            Self::Search(page_id, query) => crate::routes::frontstage::event_projection::request(
+                serde_json::json!({"page_id":page_id}),
+                crate::openapi_interface::contract::to_value(query)?,
+                None,
+            ),
+            Self::Children(page_id, block_id, query) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                    crate::openapi_interface::contract::to_value(query)?,
+                    None,
+                )
+            }
+            Self::Descendants(page_id, block_id, query) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                    crate::openapi_interface::contract::to_value(query)?,
+                    None,
+                )
+            }
+            Self::GetCodeFragment(page_id, block_id, query) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                    crate::openapi_interface::contract::to_value(query)?,
+                    None,
+                )
+            }
+            Self::SearchCode(page_id, block_id, query) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                    crate::openapi_interface::contract::to_value(query)?,
+                    None,
+                )
+            }
+            Self::Create(page_id, body) => crate::routes::frontstage::event_projection::request(
+                serde_json::json!({"page_id":page_id}),
+                serde_json::json!({}),
+                Some(crate::openapi_interface::contract::to_value(body)?),
+            ),
+            Self::Update(page_id, block_id, body) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                    serde_json::json!({}),
+                    Some(crate::openapi_interface::contract::to_value(body)?),
+                )
+            }
+            Self::Move(page_id, block_id, body) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                    serde_json::json!({}),
+                    Some(crate::openapi_interface::contract::to_value(body)?),
+                )
+            }
+            Self::DeleteSubtree(page_id, block_id, body) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                    serde_json::json!({}),
+                    Some(crate::openapi_interface::contract::to_value(body)?),
+                )
+            }
+            Self::SaveCode(page_id, block_id, body) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                    serde_json::json!({}),
+                    Some(crate::openapi_interface::contract::to_value(body)?),
+                )
+            }
+            Self::PatchCode(page_id, block_id, body) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                    serde_json::json!({}),
+                    Some(crate::openapi_interface::contract::to_value(body)?),
+                )
+            }
+            Self::ReplaceCode(page_id, block_id, body) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                    serde_json::json!({}),
+                    Some(crate::openapi_interface::contract::to_value(body)?),
+                )
+            }
+            Self::UpdateDescriptors(page_id, tab_id, body) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"tab_id":tab_id}),
+                    serde_json::json!({}),
+                    Some(crate::openapi_interface::contract::to_value(body)?),
+                )
+            }
+            Self::GetCode(page_id, block_id, _if_none_match) => {
+                crate::routes::frontstage::event_projection::request(
+                    serde_json::json!({"page_id":page_id,"block_id":block_id}),
+                    serde_json::json!({}),
+                    None,
+                )
+            }
+        })
+    }
+}
+
+impl crate::openapi_interface::contract::ApiOutput for FrontstageBlocksOutput {
+    fn document_output_schema(
+        operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Option<serde_json::Value> {
+        (operation.method == "GET" && operation.path.ends_with("/code")).then(|| serde_json::json!({"anyOf":[crate::openapi_interface::contract::schema::<FrontstageBlockNodeCodeResponse>(),{"type":"null"}]}))
+    }
+    fn project_document_output(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, std::sync::Arc<str>> {
+        match self {
+            Self::Open(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Nodes(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Node(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Search(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Summaries(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Descendants(value) => crate::openapi_interface::contract::to_value(value),
+            Self::DeleteImpact(value) => crate::openapi_interface::contract::to_value(value),
+            Self::DeleteSubtree(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Code(value) => crate::openapi_interface::contract::to_value(value),
+            Self::Fragment(value) => crate::openapi_interface::contract::to_value(value),
+            Self::CodeSearch(value) => crate::openapi_interface::contract::to_value(value),
+            Self::EditedCode(value) => crate::openapi_interface::contract::to_value(value),
+            Self::RuntimeAssembly(value) => crate::openapi_interface::contract::to_value(value),
+            Self::NotModified(_) | Self::NoContent => Ok(serde_json::Value::Null),
+        }
+    }
+}

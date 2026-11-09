@@ -1,6 +1,7 @@
 pub(crate) mod bundles;
 pub(crate) mod bundles_interface;
 pub(crate) mod debug_execute;
+pub(crate) mod directory;
 mod dto;
 pub(crate) mod interface_catalog;
 pub(crate) mod interface_catalog_routes;
@@ -205,6 +206,17 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
+            "/mcp/instances/:instance_id/directory",
+            console_get(
+                directory::get_instance_directory,
+                ConsoleOperation("mcp.directory.view".to_string()),
+            )
+            .put(
+                directory::replace_instance_directory,
+                ConsoleOperation("mcp.directory.replace".to_string()),
+            ),
+        )
+        .route(
             "/mcp/instances/:instance_id/groups",
             console_post(
                 upsert_mcp_group,
@@ -299,6 +311,15 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .merge(upstream::route_assembly())
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/console/mcp/instances/{instance_id}/client-credential",
+    operation_id = "mcp.client_credential.reveal",
+    summary = "Reveal MCP client credential",
+    description = "Reveal MCP client credential in the system backend.",
+    params(("instance_id" = String, Path, description = "MCP instance identifier")),
+    responses((status = 200, body = McpClientCredentialResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
 pub async fn get_mcp_client_credential(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -318,6 +339,16 @@ pub async fn get_mcp_client_credential(
     Ok(Json(ApiSuccess::new(value)))
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/console/mcp/instances/{instance_id}/client-credential",
+    operation_id = "mcp.client_credential.save",
+    summary = "Save MCP client credential",
+    description = "Save MCP client credential in the system backend.",
+    params(("instance_id" = String, Path, description = "MCP instance identifier")),
+    request_body = SaveMcpClientCredentialBody,
+    responses((status = 200, body = McpClientCredentialResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
 pub async fn save_mcp_client_credential(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -338,6 +369,15 @@ pub async fn save_mcp_client_credential(
     Ok(Json(ApiSuccess::new(value)))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/console/mcp/instances/{instance_id}/client-credential",
+    operation_id = "mcp.client_credential.delete",
+    summary = "Delete MCP client credential",
+    description = "Delete MCP client credential in the system backend.",
+    params(("instance_id" = String, Path, description = "MCP instance identifier")),
+    responses((status = 204, description = "Client credential removed"), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
 pub async fn delete_mcp_client_credential(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -553,7 +593,8 @@ pub async fn upsert_mcp_group(
     Ok(Json(ApiSuccess::new(value)))
 }
 
-#[utoipa::path(post, path = "/api/console/mcp/instances/{instance_id}/groups/move", request_body = MoveMcpGroupBody, responses((status = 200, body = McpGroupResponse)))]
+#[utoipa::path(
+    operation_id = "mcp.groups.move",post, path = "/api/console/mcp/instances/{instance_id}/groups/move", request_body = MoveMcpGroupBody, responses((status = 200, body = McpGroupResponse)))]
 pub async fn move_mcp_group(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,

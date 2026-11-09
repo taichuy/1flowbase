@@ -33,8 +33,10 @@ export function createNativeOverlayLayer({
   });
   const interactionStyle = targetRoot.ownerDocument.createElement('style');
   interactionStyle.dataset.flowbaseNativeOverlayInteraction = '';
+  // Portal roots may deliberately be pointer-transparent while their children stay interactive.
+  // Keep this default below component CSS so retained, closed overlays do not capture hits.
   interactionStyle.textContent =
-    '[data-flowbase-native-overlay-layer] > :not(style) { pointer-events: auto; }';
+    ':where([data-flowbase-native-overlay-layer] > :not(style)) { pointer-events: auto; }';
   container.append(interactionStyle);
   targetRoot.append(container);
 

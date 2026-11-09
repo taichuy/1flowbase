@@ -1,7 +1,4 @@
-import type { ConsoleMcpCatalog, ConsoleMcpGroup } from '@1flowbase/api-client';
-
-import { i18nText } from '../../../../../shared/i18n/text';
-import { normalizeMcpDirectoryPath } from '../mcp-management-view-model';
+import type { ConsoleMcpCatalog } from '@1flowbase/api-client';
 
 export function countMcpInstanceDirectoryItems(catalog: ConsoleMcpCatalog) {
   const groupCounts = new Map<string, number>();
@@ -19,35 +16,4 @@ export function countMcpInstanceDirectoryItems(catalog: ConsoleMcpCatalog) {
     );
   }
   return { groupCounts, toolCounts };
-}
-
-function readablePath(
-  instanceName: string,
-  path: string,
-  groups: Map<string, ConsoleMcpGroup>
-) {
-  if (path === '/') return `${instanceName} /`;
-  const pathParts = [instanceName];
-  let currentPath = '';
-  for (const segment of path.split('/').filter(Boolean)) {
-    currentPath += `/${segment}`;
-    pathParts.push(
-      groups.get(currentPath)?.display_name?.trim() ||
-        segment ||
-        i18nText('settingsMcpManagement', 'auto.unnamed')
-    );
-  }
-  return pathParts.join(' / ');
-}
-
-export function formatMcpDirectoryPath(
-  instanceName: string,
-  rawPath: string | null | undefined,
-  groups: Map<string, ConsoleMcpGroup>
-) {
-  return readablePath(
-    instanceName || 'mcp',
-    normalizeMcpDirectoryPath(rawPath || '/'),
-    groups
-  );
 }

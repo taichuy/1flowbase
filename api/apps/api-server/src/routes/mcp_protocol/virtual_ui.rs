@@ -475,67 +475,79 @@ impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
         registration: &RuntimeInternalToolRegistration,
         arguments: Value,
     ) -> anyhow::Result<RuntimeInternalToolOutput> {
-        let instance_id = registration
-            .owner
-            .get("instance_id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| anyhow::anyhow!("MCP runtime registration is missing instance_id"))?;
-        let operation_name = match registration.owner.get("operation").and_then(Value::as_str) {
-            Some("list") => MCP_LIST,
-            Some("get") => MCP_GET,
-            Some("result") => MCP_RESULT,
-            Some("call") => MCP_CALL,
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "MCP runtime registration has invalid operation"
-                ))
-            }
-        };
-        let scope = VirtualMcpScope::single(instance_id.to_string());
-        let outcome = match &self.authorization {
-            RuntimeMcpAuthorization::ServerDelegation(delegation) => {
-                let context = match delegation.request_context(&self.dependencies.store).await {
-                    Ok(context) => context,
-                    Err(error)
-                        if matches!(
+        // Runtime node execution may spawn independently of the workflow task. Restore the
+        // trusted chain captured in this invoker's explicit store before entering Console.
+        control_plane_contracts::ports::with_lifecycle_workflow_ancestors(
+            self.dependencies.store.workflow_ancestor_ids(),
+            async {
+                let instance_id = registration
+                    .owner
+                    .get("instance_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("MCP runtime registration is missing instance_id")
+                    })?;
+                let operation_name =
+                    match registration.owner.get("operation").and_then(Value::as_str) {
+                        Some("list") => MCP_LIST,
+                        Some("get") => MCP_GET,
+                        Some("result") => MCP_RESULT,
+                        Some("call") => MCP_CALL,
+                        _ => {
+                            return Err(anyhow::anyhow!(
+                                "MCP runtime registration has invalid operation"
+                            ))
+                        }
+                    };
+                let scope = VirtualMcpScope::single(instance_id.to_string());
+                let outcome = match &self.authorization {
+                    RuntimeMcpAuthorization::ServerDelegation(delegation) => {
+                        let context =
+                            match delegation.request_context(&self.dependencies.store).await {
+                                Ok(context) => context,
+                                Err(error)
+                                    if matches!(
                             error
                                 .0
                                 .downcast_ref::<control_plane::errors::ControlPlaneError>(),
                             Some(control_plane::errors::ControlPlaneError::NotAuthenticated)
                         ) =>
-                    {
-                        return runtime_internal_tool_output(
-                            node,
-                            registration,
-                            target_failure(
-                                StatusCode::UNAUTHORIZED,
-                                Some("not_authenticated".to_string()),
+                                {
+                                    return runtime_internal_tool_output(
+                                        node,
+                                        registration,
+                                        target_failure(
+                                            StatusCode::UNAUTHORIZED,
+                                            Some("not_authenticated".to_string()),
+                                        ),
+                                    )
+                                }
+                                Err(error) => return Err(anyhow::anyhow!(error.0.to_string())),
+                            };
+                        let actor = context.actor.clone();
+                        with_server_delegated_request_context(
+                            context,
+                            dispatch(
+                                &self.dependencies,
+                                self.interface_catalog.as_ref(),
+                                self.interface_dispatch.as_ref(),
+                                &self.headers,
+                                &actor,
+                                &self.catalog,
+                                &scope,
+                                operation_name,
+                                arguments,
+                                self.assistant_client.as_deref(),
                             ),
                         )
+                        .await
                     }
-                    Err(error) => return Err(anyhow::anyhow!(error.0.to_string())),
-                };
-                let actor = context.actor.clone();
-                with_server_delegated_request_context(
-                    context,
-                    dispatch(
-                        &self.dependencies,
-                        self.interface_catalog.as_ref(),
-                        self.interface_dispatch.as_ref(),
-                        &self.headers,
-                        &actor,
-                        &self.catalog,
-                        &scope,
-                        operation_name,
-                        arguments,
-                        self.assistant_client.as_deref(),
-                    ),
-                )
-                .await
-            }
-        }
-        .map_err(|error| anyhow::anyhow!(error.0.to_string()))?;
-        runtime_internal_tool_output(node, registration, outcome)
+                }
+                .map_err(|error| anyhow::anyhow!(error.0.to_string()))?;
+                runtime_internal_tool_output(node, registration, outcome)
+            },
+        )
+        .await
     }
 }
 
@@ -801,7 +813,13 @@ pub(crate) async fn dispatch(
             })
             .await
         }
-        (resources::LIST_TOOL, None) => Ok(VirtualToolOutcome::Success(resources::list_result())),
+        (resources::LIST_TOOL | resources::TEMPLATES_TOOL, None) => Ok(resources::list_result(
+            actor,
+            catalog,
+            &effective_scope,
+            &arguments,
+            name == resources::TEMPLATES_TOOL,
+        )),
         (resources::READ_TOOL, None) => {
             resources::read(McpCallRequest {
                 dependencies,
@@ -945,7 +963,7 @@ fn get(
         "name": tool.name,
         "short_description": tool.short_description,
         "full_description": tool.full_description,
-        "input_schema": input_schema::mapped_schema(&tool.parameter_schema, &tool.input_mapping),
+        "input_schema": input_schema::tool_mapped_schema(&tool.execution_target, &tool.parameter_schema, &tool.input_mapping),
         "result_schema": tool.result_schema,
         "risk_level": tool.risk_level,
         "des_id": tool.des_id,
