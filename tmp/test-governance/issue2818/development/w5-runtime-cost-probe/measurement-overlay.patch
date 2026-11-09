@@ -1,0 +1,273 @@
+diff --git a/api/crates/interface-runtime/src/_tests/mod.rs b/api/crates/interface-runtime/src/_tests/mod.rs
+--- a/api/crates/interface-runtime/src/_tests/mod.rs
++++ b/api/crates/interface-runtime/src/_tests/mod.rs
+@@ -4,3 +4,5 @@
+ mod principal_tests;
+ mod registry_tests;
+ mod review_remediation_tests;
++
++mod w5_runtime_cost_probe;
+diff --git a/api/crates/interface-runtime/src/_tests/w5_runtime_cost_probe.rs b/api/crates/interface-runtime/src/_tests/w5_runtime_cost_probe.rs
+new file mode 100644
+--- /dev/null
++++ b/api/crates/interface-runtime/src/_tests/w5_runtime_cost_probe.rs
+@@ -0,0 +1,95 @@
++//! Temporary actual-fixture probe only; no driver or production replacements.
++#![allow(unexpected_cfgs)]
++use std::time::Instant;
++#[derive(Clone, Copy, Debug)]
++pub(super) struct Counts {
++    pub alloc: usize, pub dealloc: usize, pub realloc: usize,
++    pub allocated: usize, pub freed: usize, pub live: isize,
++}
++#[cfg(w5_heap_counts)]
++mod heap {
++    use super::Counts;
++    use std::{alloc::{GlobalAlloc, Layout, System}, sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering::SeqCst}};
++    static ALLOC: AtomicUsize = AtomicUsize::new(0);
++    static FREE: AtomicUsize = AtomicUsize::new(0);
++    static REALLOC: AtomicUsize = AtomicUsize::new(0);
++    static ADDED: AtomicUsize = AtomicUsize::new(0);
++    static REMOVED: AtomicUsize = AtomicUsize::new(0);
++    static LIVE: AtomicIsize = AtomicIsize::new(0);
++    static PEAK: AtomicIsize = AtomicIsize::new(0);
++    static ACTIVE: AtomicBool = AtomicBool::new(false);
++    struct Tracked;
++    #[global_allocator]
++    static GLOBAL: Tracked = Tracked;
++    fn changed(old: usize, new: usize) {
++        ADDED.fetch_add(new, SeqCst); REMOVED.fetch_add(old, SeqCst);
++        let live = LIVE.fetch_add(new as isize - old as isize, SeqCst) + new as isize - old as isize;
++        if ACTIVE.load(SeqCst) { PEAK.fetch_max(live, SeqCst); }
++    }
++    unsafe impl GlobalAlloc for Tracked {
++        unsafe fn alloc(&self, l: Layout) -> *mut u8 {
++            let p = System.alloc(l);
++            if !p.is_null() { ALLOC.fetch_add(1, SeqCst); changed(0, l.size()); } p
++        }
++        unsafe fn alloc_zeroed(&self, l: Layout) -> *mut u8 {
++            let p = System.alloc_zeroed(l);
++            if !p.is_null() { ALLOC.fetch_add(1, SeqCst); changed(0, l.size()); } p
++        }
++        unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
++            System.dealloc(p, l); FREE.fetch_add(1, SeqCst); changed(l.size(), 0);
++        }
++        unsafe fn realloc(&self, p: *mut u8, l: Layout, n: usize) -> *mut u8 {
++            let next = System.realloc(p, l, n);
++            if !next.is_null() { REALLOC.fetch_add(1, SeqCst); changed(l.size(), n); } next
++        }
++    }
++    pub(super) fn snapshot() -> Counts { Counts {
++        alloc: ALLOC.load(SeqCst), dealloc: FREE.load(SeqCst), realloc: REALLOC.load(SeqCst),
++        allocated: ADDED.load(SeqCst), freed: REMOVED.load(SeqCst), live: LIVE.load(SeqCst),
++    } }
++    pub(super) fn start(live: isize) { PEAK.store(live, SeqCst); ACTIVE.store(true, SeqCst); }
++    pub(super) fn stop() -> isize { ACTIVE.store(false, SeqCst); PEAK.load(SeqCst) }
++}
++pub(super) fn snapshot() -> Option<Counts> {
++    #[cfg(w5_heap_counts)] { Some(heap::snapshot()) }
++    #[cfg(not(w5_heap_counts))] { None }
++}
++pub(super) struct Window { start: Instant, s1: Option<Counts> }
++pub(super) struct Sample {
++    pub nanos: Option<u128>, pub instrument_nanos: Option<u128>, pub s1: Option<Counts>, pub s3: Option<Counts>, pub peak: Option<isize>,
++}
++pub(super) fn begin() -> Window {
++    let s1 = snapshot();
++    #[cfg(w5_heap_counts)] heap::start(s1.unwrap().live);
++    Window { start: Instant::now(), s1 }
++}
++impl Window {
++    pub(super) fn finish(self, timed: bool) -> Sample {
++        let elapsed = self.start.elapsed().as_nanos();
++        #[cfg(w5_heap_counts)] let peak = Some(heap::stop());
++        #[cfg(not(w5_heap_counts))] let peak = None;
++        Sample { nanos: (timed && !cfg!(w5_heap_counts)).then_some(elapsed), instrument_nanos: cfg!(w5_heap_counts).then_some(elapsed), s1: self.s1, s3: snapshot(), peak }
++    }
++}
++pub(super) fn config() -> (usize, usize) {
++    let read = |key| std::env::var(key).expect("freeze explicit probe counts before outcomes").parse::<usize>().unwrap();
++    let iterations = read("W5_PROBE_ITERS"); let warmup = read("W5_PROBE_WARMUP");
++    assert!(iterations > 0 && warmup > 0); (iterations, warmup)
++}
++pub(super) fn sizes<I, O, E, P: crate::InvocationPrincipal>() -> [usize; 5] {
++    [std::mem::size_of::<I>(), std::mem::size_of::<O>(), std::mem::size_of::<E>(),
++     std::mem::size_of::<P>(), std::mem::size_of::<crate::InterfaceHandlerContext<P>>()]
++}
++pub(super) fn clear<T>(events: &std::sync::Mutex<Vec<T>>) {
++    let released = std::mem::take(&mut *events.lock().unwrap()); drop(released);
++}
++pub(super) fn report(case: &str, iteration: usize, sample: Sample, checkpoints: [Option<Counts>; 3], pending: Option<Counts>, state: impl std::fmt::Debug) {
++    let [s0, s4, s5] = checkpoints;
++    let delta = |a: Option<Counts>, b: Option<Counts>| a.zip(b).map(|(a,b)| b.live-a.live);
++    let live_valid = [s0,sample.s1,pending,sample.s3,s4,s5].iter().flatten().all(|s| s.live >= 0);
++    println!("W5_SAMPLE case={case} iteration={iteration} mode={} normal_nanos={:?} instrumented_window_nanos={:?} state={state:?} S0={s0:?} S1={:?} S2={pending:?} S3={:?} S4={s4:?} S5={s5:?} live_delta_S0_S5={:?} live_delta_S1_S3={:?} window_peak={:?} peak_above_S1={:?} live_nonnegative={live_valid} attribution=process_global_other_threads_unknown stack=unknown RSS=unknown",
++        if cfg!(w5_heap_counts) { "counts" } else { "normal" }, sample.nanos, sample.instrument_nanos, sample.s1, sample.s3,
++        delta(s0,s5), delta(sample.s1,sample.s3), sample.peak, sample.peak.zip(sample.s1).map(|(p,s)| p-s.live));
++}
++
++pub(super) fn instrumented() -> bool { cfg!(w5_heap_counts) }
+diff --git a/api/crates/interface-runtime/src/_tests/invocation_tests.rs b/api/crates/interface-runtime/src/_tests/invocation_tests.rs
+--- a/api/crates/interface-runtime/src/_tests/invocation_tests.rs
++++ b/api/crates/interface-runtime/src/_tests/invocation_tests.rs
+@@ -1024,3 +1024,42 @@
+ 
+ #[path = "managed_context_tests.rs"]
+ mod managed_context_tests;
++
++// Temporary measurement entrypoint; original behavior cases above are untouched.
++#[tokio::test(flavor = "current_thread")]
++#[ignore = "temporary W5 runtime cost; exact entrypoint only"]
++async fn w5_probe_empty_plan() {
++    use crate::_tests::w5_runtime_cost_probe as probe;
++    let (iterations, warmup) = probe::config();
++    println!("W5_LAYOUT case=empty sizes_I_O_E_P_context={:?}", probe::sizes::<Input, Output, TargetError, UserPrincipal>());
++    tokio::task::yield_now().await;
++    let mut total = Some(0);
++    for index in 0..warmup + iterations {
++        let s0 = probe::snapshot();
++        let seen = Arc::new(Mutex::new(None));
++        let snapshot = compile_snapshot("graph:one", 3, false, Arc::clone(&seen));
++        let kernel = InterfaceInvocationKernel::with_target_admission(
++            Arc::new(Authorization { reject: false }), Arc::new(Admission { reject: false }));
++        let request = envelope(actor(true)); let call_snapshot = Arc::clone(&snapshot);
++        assert!(seen.lock().unwrap().is_none());
++        let window = probe::begin();
++        let correct;
++        {
++            let future = kernel.invoke::<Input, Output, TargetError>(call_snapshot, request);
++            let outcome = future.await.unwrap();
++            correct = outcome.value().0 == 5 && outcome.receipt().terminal() == InterfaceInvocationTerminal::Completed;
++            std::hint::black_box(&outcome); drop(outcome);
++        }
++        let sample = window.finish(true);
++        let retained = seen.lock().unwrap().as_ref().map(|s| (s.len(),s.capacity()));
++        drop(seen.lock().unwrap().take());
++        let s4 = probe::snapshot();
++        drop(kernel); drop(snapshot); drop(seen);
++        let s5 = probe::snapshot(); assert!(correct && retained.is_some());
++        if index >= warmup {
++            total = total.zip(sample.nanos).map(|(total, n)| total+n);
++            probe::report("empty", index-warmup, sample, [s0,s4,s5], None, ("fingerprint_before=None", retained));
++        }
++    }
++    println!("W5_TOTAL case=empty iterations={iterations} normal_nanos={total:?} counts_timing_not_latency={}", probe::instrumented());
++}
+diff --git a/api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs b/api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs
+--- a/api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs
++++ b/api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs
+@@ -1082,3 +1082,64 @@
+         .iter()
+         .all(|record| record.status() == InterfaceObserverStatus::Executed));
+ }
++
++// Temporary measurement entrypoint; original behavior cases above are untouched.
++#[tokio::test(flavor = "current_thread")]
++#[ignore = "temporary W5 runtime cost; exact entrypoint only"]
++async fn w5_probe_document_before() {
++    use crate::_tests::w5_runtime_cost_probe as probe;
++    let (iterations, warmup) = probe::config();
++    println!("W5_LAYOUT case=document sizes_I_O_E_P_context={:?}", probe::sizes::<Input, Output, TargetError, UserPrincipal>());
++    tokio::task::yield_now().await;
++    let mut total = Some(0);
++    for index in 0..warmup + iterations {
++        let s0 = probe::snapshot();
++        let (mut compiler, observer, legacy) = document_compiler(ObserverBehavior::Record, true, false);
++        let calls = Arc::new(AtomicUsize::new(0));
++        register_static(&mut compiler, descriptor(), Arc::clone(&calls));
++        // Same real RecordingHandler fields as bind_handler(false,false), with a retained inspection handle.
++        let seen = Arc::new(Mutex::new(None));
++        compiler.bind_handler::<Input, Output, TargetError, UserPrincipal>(&interface_id(),
++            HandlerReference::new("invocation.handler").unwrap(), Arc::new(RecordingHandler {
++                increment: 3, fail: false, seen_fingerprint: Arc::clone(&seen),
++            })).unwrap();
++        let before_events = Arc::new(Mutex::new(Vec::new()));
++        let hooks = TypedInterfaceHookPlan::<Input, Output>::new(GraphFingerprint::new("graph:events").unwrap())
++            .bind_before(PluginIdentity::new("hook.mutate").unwrap(), Arc::new(RecordingBeforeHook {
++                name: "mutate", increment: 4, events: Arc::clone(&before_events),
++            }));
++        compiler.register_extension(&interface_id(), 1, hook_registration("hook.mutate", InterfaceExtensionPoint::Before)).unwrap();
++        compiler.bind_hook_plan(&interface_id(), Arc::new(hooks)).unwrap();
++        let snapshot = compiler.compile().unwrap(); let kernel = kernel(false);
++        let request = envelope(actor(true)); let call_snapshot = Arc::clone(&snapshot);
++        let initial = {
++            let d = observer.events.lock().unwrap(); let b = before_events.lock().unwrap(); let l = legacy.lock().unwrap();
++            (d.len(),d.capacity(),b.len(),b.capacity(),l.len(),l.capacity(),seen.lock().unwrap().is_none())
++        };
++        assert_eq!(initial, (0,0,0,0,0,0,true));
++        let window = probe::begin();
++        let correct;
++        {
++            let future = kernel.invoke::<Input, Output, TargetError>(call_snapshot, request);
++            let outcome = future.await.unwrap();
++            correct = outcome.value().0 == 9 && outcome.receipt().terminal() == InterfaceInvocationTerminal::Completed;
++            std::hint::black_box(&outcome); drop(outcome);
++        }
++        let sample = window.finish(true);
++        let final_state = {
++            let d = observer.events.lock().unwrap(); let b = before_events.lock().unwrap();
++            assert!(matches!(&d[0], DocumentOperationEvent::Before { input, .. } if input["body"]["number"] == 6));
++            (d.len(),d.capacity(),b.len(),b.capacity(),seen.lock().unwrap().as_ref().map(|s| (s.len(),s.capacity())),calls.load(Ordering::SeqCst))
++        };
++        probe::clear(&observer.events); probe::clear(&before_events); probe::clear(&legacy);
++        drop(seen.lock().unwrap().take());
++        let s4 = probe::snapshot();
++        drop(kernel); drop(snapshot); drop(observer); drop(before_events); drop(legacy); drop(calls); drop(seen);
++        let s5 = probe::snapshot(); assert!(correct);
++        if index >= warmup {
++            total = total.zip(sample.nanos).map(|(total, n)| total+n);
++            probe::report("document", index-warmup, sample, [s0,s4,s5], None, (initial,final_state));
++        }
++    }
++    println!("W5_TOTAL case=document iterations={iterations} normal_nanos={total:?} counts_timing_not_latency={}", probe::instrumented());
++}
+diff --git a/api/crates/interface-runtime/src/_tests/finalization_tests.rs b/api/crates/interface-runtime/src/_tests/finalization_tests.rs
+--- a/api/crates/interface-runtime/src/_tests/finalization_tests.rs
++++ b/api/crates/interface-runtime/src/_tests/finalization_tests.rs
+@@ -550,3 +550,46 @@
+         })
+     }
+ }
++
++// Temporary storage observation only; no latency/deadline/stream matrix.
++#[tokio::test(flavor = "current_thread")]
++#[ignore = "temporary W5 storage; exact entrypoint only"]
++async fn w5_probe_pending_storage() {
++    use crate::_tests::w5_runtime_cost_probe as probe;
++    use std::{future::Future, task::Poll};
++    println!("W5_LAYOUT case=pending sizes_I_O_E_P_context={:?}", probe::sizes::<Input, Output, TargetError, UserPrincipal>());
++    tokio::task::yield_now().await;
++    let s0 = probe::snapshot();
++    let cancellation = InvocationCancellation::new();
++    let snapshot = snapshot(InterfaceExecutionMode::Unary, Business::Pending, Observer::Quick, &cancellation);
++    let controls = InvocationControls::new(None, cancellation.clone(), None);
++    let base = envelope("http.review.finalization.v1", InterfaceProtocol::Http, "review.authn");
++    let request = InvocationEnvelope::with_principal_and_controls(base.lineage().clone(), base.binding_id().clone(),
++        base.protocol(), base.authentication_adapter().clone(), base.authentication_activation().clone(),
++        base.principal().clone(), controls, Input(4));
++    let kernel = InterfaceInvocationKernel::new(Arc::new(Authorization("review.authz")));
++    let call_snapshot = Arc::clone(&snapshot);
++    let window = probe::begin(); let pending; let correct;
++    {
++        let mut future = std::pin::pin!(kernel.invoke::<Input, Output, TargetError>(call_snapshot, request));
++        std::future::poll_fn(|cx| {
++            assert!(future.as_mut().poll(cx).is_pending(), "real Pending target must not finish");
++            Poll::Ready(())
++        }).await;
++        pending = probe::snapshot(); cancellation.cancel();
++        let failure = future.as_mut().await.unwrap_err();
++        let records = failure.receipt().observer_records();
++        correct = failure.receipt().stages().any(|s| s == InterfaceInvocationStage::Executing)
++            && failure.receipt().terminal() == InterfaceInvocationTerminal::Cancelled
++            && matches!(failure.error(), InterfaceInvocationError::Cancelled)
++            && records.len() == 1 && records[0].point() == InterfaceExtensionPoint::Completion
++            && records[0].status() == InterfaceObserverStatus::Executed;
++        std::hint::black_box(&failure); drop(failure);
++    }
++    let sample = window.finish(false);
++    let s4 = probe::snapshot(); // This fixture has no external event/fingerprint containers.
++    drop(kernel); drop(snapshot); drop(base); drop(cancellation);
++    let s5 = probe::snapshot(); assert!(correct);
++    probe::report("pending_storage_only", 0, sample, [s0,s4,s5], pending,
++        "source-ready authorization, empty Before, no event/doc observer; first Pending is real Business::Pending; no P/I drop-delay inference");
++}

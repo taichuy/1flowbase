@@ -1,0 +1,184 @@
+{
+  "status": "temporary overlay prepared and apply-checked only; no Rust compile/discovery/execution",
+  "old_sha": "ca19501827fdeac86b9f5d9fcba767715220f3dd",
+  "current_sha": "903971d5c3ddd37f93c1f7314e02dae4a2bb120c",
+  "current_IR_tree_equals": "489943b16401b2e4bc472b23699e9bfd2a3e811a",
+  "patch": "/home/taichuy/git/git_worktree/issue2818-global-20261109/tmp/test-governance/issue2818/development/w5-runtime-cost-probe/measurement-overlay.patch",
+  "patch_sha256": "08e61faf2e25c27d5ba7a9a9398dbd34074151eb86b5de4a3d5cba130a434a3c",
+  "maximum_write_set": [
+    "api/crates/interface-runtime/src/_tests/mod.rs",
+    "api/crates/interface-runtime/src/_tests/w5_runtime_cost_probe.rs",
+    "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+    "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+    "api/crates/interface-runtime/src/_tests/finalization_tests.rs"
+  ],
+  "new_Rust_files": [
+    "api/crates/interface-runtime/src/_tests/w5_runtime_cost_probe.rs"
+  ],
+  "new_files": {
+    "helper_sha256": "cbf3a1a4783208e72e050f18df7aa22c9e09a68861c97ca0257d4ff167664b39"
+  },
+  "same_patch_checks": [
+    {
+      "input_sha": "ca19501827fdeac86b9f5d9fcba767715220f3dd",
+      "same_patch_applied": true,
+      "original_files_full_prefix_unchanged": true
+    },
+    {
+      "input_sha": "903971d5c3ddd37f93c1f7314e02dae4a2bb120c",
+      "same_patch_applied": true,
+      "original_files_full_prefix_unchanged": true
+    }
+  ],
+  "unchanged_original_function_bindings": [
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "function": "root_1998_ac_006_empty_plan_executes_core_and_records_terminal_receipt",
+      "sha256": "a3c05d5e8f0c8132e09dd8ad5a996873367b1661596029e662c3180e7e3ddcae",
+      "old_current_equal": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "function": "compile_snapshot",
+      "sha256": "379103759decbed84062049c0c4086256d6a9f63d7f3a046af9845248ade948c",
+      "old_current_equal": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "function": "invoke",
+      "sha256": "1bfffa9bf7492621b6ccf1797c1a56a3f42760f2143c8318587b81b598b4c03b",
+      "old_current_equal": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "function": "envelope",
+      "sha256": "29ca2a86f034895d388d67e16884cd070bd986182d23662cb8106365845cb8d5",
+      "old_current_equal": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "function": "before",
+      "sha256": "cdb78e6d3aa5f32e1580307fc3f0b82d9317053137461e516cc7d70c08dcf7f3",
+      "old_current_equal": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/event_observation_tests.rs",
+      "function": "event_compiler",
+      "sha256": "662f47e59dcaa27e5975f793e0fd13f672eea2973ff7865ebebf20337e4f6bca",
+      "old_current_equal": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/event_observation_tests.rs",
+      "function": "kernel",
+      "sha256": "7f9b741b411212829d12b999aba6dea6033814ebd0edcad087d64d6c4bba0a0d",
+      "old_current_equal": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "document_before_observes_mutated_typed_before_input",
+      "sha256": "fb0655f6783a27f0b0e209853c63f6caf2f8e02e5421472cf6834847d8e5c37f",
+      "old_current_equal": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "document_compiler",
+      "sha256": "1763de8296191e8d85d1efde367728d8429f2efa143f9856e7d85a49635d7a1a",
+      "old_current_equal": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "register_static",
+      "sha256": "2e3c765c312b1d1619abc6ace2956949d86e673f76a98763fdae754e9fbade6d",
+      "old_current_equal": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "bind_handler",
+      "sha256": "cb68426c66799d8c5e7e10fbd570af3a836b0fe29f171611cf36a596c08489a8",
+      "old_current_equal": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "project_input",
+      "sha256": "1daee732975b43f3812b040619973297b4c429649459b85e1af1c605bf9be324",
+      "old_current_equal": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "project_output",
+      "sha256": "6acf181f9c1507b2ccc6279a0a6cb98d87d3990e2321d82f4c485b14ff29768a",
+      "old_current_equal": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_tests.rs",
+      "function": "snapshot",
+      "sha256": "2958b2df5310db0dcf2a64f20d0f6ede5e856921d36d028b153d960c0ee6e87d",
+      "old_current_equal": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_tests.rs",
+      "function": "invoke",
+      "sha256": "746ccdaba452f3402fdee6f57e3771954338d0ef34ed771eb3b856a114acb54d",
+      "old_current_equal": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_tests.rs",
+      "function": "root_1998_cancellation_and_deadline_still_execute_completion",
+      "sha256": "685d5e09d3ceb079b16c62f31d93d0da41c45076487be78d4e6c0c29e8b8b60d",
+      "old_current_equal": true
+    }
+  ],
+  "probe_fixture_sources": [
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "fragment": "empty.append.rs",
+      "fragment_sha256": "d019e4a4f77b361e7e49ac2ab3c489a1acaa23465706cb0b90862e93aa28666a",
+      "setup_segment_sha256": "894fefff5aff714fee14a7f35c2bd184bec09b085df87bc3f1b753c1959120cc",
+      "entrypoint": "w5_probe_empty_plan",
+      "timing_start": "probe::begin before actual synchronous kernel.invoke",
+      "timing_end": "window.finish after scope drops actual invocation future and outcome/failure",
+      "prefix_sha256_old": "9164b4b1fb0d3926588ffa5470ccd0f5b60d54c7501bee271a2b5f20d93ed9f8",
+      "prefix_sha256_current": "b4eeacd4faf42196926214a5cd81a3d647d2cd495acb87cc8e645f47c53f8d26"
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "fragment": "document.append.rs",
+      "fragment_sha256": "8d7be17a8bb2420a66a436828d62654fa7f66b1018a7c401092ebbdc66f271a3",
+      "setup_segment_sha256": "d398f842dd9fe6457e8dbda5e3d9e2202567cac1bf5061bfb56b1c5bdb96c25d",
+      "entrypoint": "w5_probe_document_before",
+      "timing_start": "probe::begin before actual synchronous kernel.invoke",
+      "timing_end": "window.finish after scope drops actual invocation future and outcome/failure",
+      "prefix_sha256_old": "40a3770b885cd39a7c925e74d1d2d3f60be97e0d36398ca620381727d8de0d0e",
+      "prefix_sha256_current": "40a3770b885cd39a7c925e74d1d2d3f60be97e0d36398ca620381727d8de0d0e"
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_tests.rs",
+      "fragment": "pending.append.rs",
+      "fragment_sha256": "7695949b7cd9c7a92bd8e1a40a25ec277f7574db554042f55641ab88865cc553",
+      "setup_segment_sha256": "0e9b0e53c3ae55367b10f8fa88ba88ce876c138b121b28e06e6c15bcb690f6d6",
+      "entrypoint": "w5_probe_pending_storage",
+      "timing_start": "probe::begin before actual synchronous kernel.invoke",
+      "timing_end": "window.finish after scope drops actual invocation future and outcome/failure",
+      "prefix_sha256_old": "f46e3e2ef2149a98f3ac3cb126c7bc3fbdbb5f7e2f4b80f497d20fb9951a9e20",
+      "prefix_sha256_current": "f46e3e2ef2149a98f3ac3cb126c7bc3fbdbb5f7e2f4b80f497d20fb9951a9e20"
+    }
+  ],
+  "exact_ignored_test_names": [
+    "_tests::invocation_tests::w5_probe_empty_plan",
+    "_tests::invocation_tests::event_observation_tests::document_operation_tests::w5_probe_document_before",
+    "_tests::review_remediation_tests::finalization_tests::w5_probe_pending_storage"
+  ],
+  "runtime": "one exact current_thread Tokio ignored test; --exact --ignored --test-threads=1 --nocapture",
+  "counter_cfg": "w5_heap_counts applied only by root IR --test RUSTC_WRAPPER; no global RUSTFLAGS/workspace wrapper",
+  "allocator": "instrumented-only process-global System; continuous successful Rust requested-live from process start; alloc includes zeroed; realloc success adds full new request/removes old, failure leaves live unchanged; no TLS/pointer map/window zero reset",
+  "limits": [
+    "snapshots are sequential atomic loads, not an atomic cross-counter transaction; other process threads are not attributable to driver",
+    "negative S1-to-S3 live delta and dealloc bytes > interval allocated bytes are valid",
+    "negative absolute live or concurrent interference makes live/peak attribution unknown; retain event counters/raw checkpoints",
+    "System realloc internals, allocator metadata/usable sizes, foreign malloc and RSS unmeasured",
+    "real API enum/MainDurableStore/HTTP/large-inline-I-P/physical-stack/build-resource risks remain unmeasured"
+  ],
+  "primary_buffers": "per-invocation fresh original fixtures; actual Vec::new len0/cap0 and fingerprint None; explicit inspection handles are retained equally outside both windows",
+  "new_probe_lines": 238,
+  "no_original_case_or_production_changes": true
+}

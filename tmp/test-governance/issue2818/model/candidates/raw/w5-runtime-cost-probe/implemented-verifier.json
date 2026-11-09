@@ -1,0 +1,352 @@
+{
+  "status": "SOURCE_BOUND_FINITE_PASS_RUNTIME_AND_COMPILER_UNVERIFIED",
+  "verifier_scope": "same W5 real-fixture probe specification; finite source-binding/setup/window/lifecycle/counter audit only; not fresh QA, Rust typecheck, runtime measurement or global acceptance",
+  "old_sha": "ca19501827fdeac86b9f5d9fcba767715220f3dd",
+  "current_sha": "903971d5c3ddd37f93c1f7314e02dae4a2bb120c",
+  "patch_sha256": "08e61faf2e25c27d5ba7a9a9398dbd34074151eb86b5de4a3d5cba130a434a3c",
+  "spec": "/home/taichuy/git/git_worktree/issue2818-global-20261109/tmp/test-governance/issue2818/model/candidates/raw/w5-runtime-cost-probe/probe-spec.md",
+  "development_manifest": "/home/taichuy/git/git_worktree/issue2818-global-20261109/tmp/test-governance/issue2818/development/w5-runtime-cost-probe/manifest.json",
+  "checks": [
+    {
+      "id": "V01_original_16_function_bindings",
+      "status": "PASS",
+      "evidence": "Independent exact line-span signature/body hashes read from both immutable Git commits; all match prior source-map."
+    },
+    {
+      "id": "V02_same_append_only_five_path_overlay",
+      "status": "PASS",
+      "evidence": "Exact canonical patch reconstructed independently from current immutable prefixes plus helper/fragments; all overlay-files equal. Existing actual old/current apply receipt reused, and old EOF contexts independently checked. No patch/production edit performed."
+    },
+    {
+      "id": "V03_three_ignored_current_thread_entries",
+      "status": "PASS",
+      "evidence": "Exactly three new ignored entries, mounted at original private modules; no Cargo target, production export, type or trait implementation replacement."
+    },
+    {
+      "id": "V04_empty_real_fixture_and_fresh_state",
+      "status": "PASS",
+      "evidence": "Actual original Input(u8)/Output(u8)/ZST TargetError/UserPrincipal; original Input2 envelope, graph:one, increment3 and ready core auth/admission. Fresh registry/handler/fingerprint inspection handle prepared per call outside window."
+    },
+    {
+      "id": "V05_document_real_ports_and_fresh_buffers",
+      "status": "PASS",
+      "evidence": "Original DocumentObserver/Codec/static descriptor, typed Before +4 and real RecordingHandler +3. Record/interested=true/legacy=false; Input2\u2192Before6\u2192Output9. Document/hook/legacy Vec length AND capacity are asserted zero, fingerprint None. Actual source original compiler uses Vec::new. Retained seen/calls/observer/hook/legacy inspection Arcs are identical additions in the same patch on both versions; they change measured fixture ownership, explicitly reported."
+    },
+    {
+      "id": "V06_empty_synchronous_construct_through_drop_window",
+      "status": "PASS",
+      "evidence": "begin precedes actual synchronous invoke, including current bridge/mapper construction; actual await and explicit outcome drop precede block exit, which ends actual invocation future storage, then finish. Correctness flags/black_box are allocation-free on successful path. Assertions, container inspection, formatting/reporting and teardown are outside primary window. Source lifetime reasoning only; no generated machine-code/drop timing proof."
+    },
+    {
+      "id": "V06_document_synchronous_construct_through_drop_window",
+      "status": "PASS",
+      "evidence": "begin precedes actual synchronous invoke, including current bridge/mapper construction; actual await and explicit outcome drop precede block exit, which ends actual invocation future storage, then finish. Correctness flags/black_box are allocation-free on successful path. Assertions, container inspection, formatting/reporting and teardown are outside primary window. Source lifetime reasoning only; no generated machine-code/drop timing proof."
+    },
+    {
+      "id": "V07_cleanup_is_explicit_and_separate",
+      "status": "PASS",
+      "evidence": "S3 follows result/future destruction. S4 takes+drops Vec allocations (not capacity-retaining clear) and fingerprint String while owners still exist; S5 drops remaining registry/kernel/inspection owners. Retained external observer data is not called driver leakage. Final-state tuples retain only lengths/capacities/counters, not container payload."
+    },
+    {
+      "id": "V08_pending_real_business_checkpoint_and_cancel",
+      "status": "PASS",
+      "evidence": "Real original unary Target captures only Business and awaits std::future::pending for Pending. Core review.authz future is immediately Ready; no core admission, contributions, Before entries, event/document observer or deadline wait. Original empty run_before completes immediately. First actual future poll therefore reaches selected business Pending; runtime Executing plus one Executed Completion and Cancelled/error guards reject an early-stage cancellation. Stack pin adds no wrapper allocation. No extra Hang/stream matrix and no P/I delayed-drop claim. Source path verified; actual reached checkpoint awaits execution."
+    },
+    {
+      "id": "V09_continuous_process_allocator_source",
+      "status": "PASS",
+      "evidence": "Instrumented-only System GlobalAlloc starts tracking at process startup. Successful alloc/zeroed allocations add requested size; dealloc removes original requested size; successful realloc adds full new/removes old, failure leaves counters/live unchanged. ACTIVE gates peak updates only; live/cumulative event tracking is never reset or window-gated. No pointer map/TLS tracker."
+    },
+    {
+      "id": "V10_preallocated_free_and_realloc_finite_arithmetic",
+      "status": "PASS",
+      "evidence": "Finite model permits dealloc bytes above interval added bytes and negative S1\u2192S3 delta without negative absolute live; grow/shrink/failed realloc and alloc_zeroed covered. No assertion of window-end live=0 exists in probe; model zero is only this finite sequence result, not a runtime requirement."
+    },
+    {
+      "id": "V11_counter_attribution_and_timing_limits",
+      "status": "PASS",
+      "evidence": "Raw checkpoints are sequential atomic reads; any other process thread contributes. Numeric live/peak output is raw process-global data with validity/unknown attribution, not driver-exclusive exact storage. If absolute live is invalid, reported derived live/peak must remain UNKNOWN during analysis even though raw fields are retained. Counts mode normal_nanos=None; instrumented window time is separately named, including pending; normal pending has no latency.",
+      "limits": "No concurrency linearizability, exclusive-driver attribution, allocator metadata/usable size, foreign malloc, System realloc internal copy peak, physical stack or RSS proof."
+    },
+    {
+      "id": "V12_cfg_and_run_scope_contract",
+      "status": "PASS",
+      "evidence": "The source uses one cfg name and one byte-identical overlay on old/current. Normal branch removes allocator interception; counted branch includes it. Expected CI wrapper injects cfg exclusively for root interface_runtime --test invocation, with isolated normal/count root artifacts and copied independent binaries.",
+      "limits": "Actual compiler argv/cfg, wrapper implementation, compiler/features/profile equivalence, binary hashes, exact ignored discovery and nonzero run are NOT verified; CI owner has not published run code."
+    },
+    {
+      "id": "V13_baseline_and_product_unchanged",
+      "status": "PASS",
+      "evidence": "Assembly HEAD is 903971d5, tracked source clean, current full interface-runtime tree equals W5 489943b1. Source-only verification wrote only this evidence artifact; no Rust/Cargo/CI or service operations."
+    }
+  ],
+  "blockers": [],
+  "function_bindings": [
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "function": "root_1998_ac_006_empty_plan_executes_core_and_records_terminal_receipt",
+      "old_sha256": "a3c05d5e8f0c8132e09dd8ad5a996873367b1661596029e662c3180e7e3ddcae",
+      "current_sha256": "a3c05d5e8f0c8132e09dd8ad5a996873367b1661596029e662c3180e7e3ddcae",
+      "expected_sha256": "a3c05d5e8f0c8132e09dd8ad5a996873367b1661596029e662c3180e7e3ddcae",
+      "pass": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "function": "compile_snapshot",
+      "old_sha256": "379103759decbed84062049c0c4086256d6a9f63d7f3a046af9845248ade948c",
+      "current_sha256": "379103759decbed84062049c0c4086256d6a9f63d7f3a046af9845248ade948c",
+      "expected_sha256": "379103759decbed84062049c0c4086256d6a9f63d7f3a046af9845248ade948c",
+      "pass": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "function": "invoke",
+      "old_sha256": "1bfffa9bf7492621b6ccf1797c1a56a3f42760f2143c8318587b81b598b4c03b",
+      "current_sha256": "1bfffa9bf7492621b6ccf1797c1a56a3f42760f2143c8318587b81b598b4c03b",
+      "expected_sha256": "1bfffa9bf7492621b6ccf1797c1a56a3f42760f2143c8318587b81b598b4c03b",
+      "pass": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "function": "envelope",
+      "old_sha256": "29ca2a86f034895d388d67e16884cd070bd986182d23662cb8106365845cb8d5",
+      "current_sha256": "29ca2a86f034895d388d67e16884cd070bd986182d23662cb8106365845cb8d5",
+      "expected_sha256": "29ca2a86f034895d388d67e16884cd070bd986182d23662cb8106365845cb8d5",
+      "pass": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "function": "before",
+      "old_sha256": "cdb78e6d3aa5f32e1580307fc3f0b82d9317053137461e516cc7d70c08dcf7f3",
+      "current_sha256": "cdb78e6d3aa5f32e1580307fc3f0b82d9317053137461e516cc7d70c08dcf7f3",
+      "expected_sha256": "cdb78e6d3aa5f32e1580307fc3f0b82d9317053137461e516cc7d70c08dcf7f3",
+      "pass": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/event_observation_tests.rs",
+      "function": "event_compiler",
+      "old_sha256": "662f47e59dcaa27e5975f793e0fd13f672eea2973ff7865ebebf20337e4f6bca",
+      "current_sha256": "662f47e59dcaa27e5975f793e0fd13f672eea2973ff7865ebebf20337e4f6bca",
+      "expected_sha256": "662f47e59dcaa27e5975f793e0fd13f672eea2973ff7865ebebf20337e4f6bca",
+      "pass": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/event_observation_tests.rs",
+      "function": "kernel",
+      "old_sha256": "7f9b741b411212829d12b999aba6dea6033814ebd0edcad087d64d6c4bba0a0d",
+      "current_sha256": "7f9b741b411212829d12b999aba6dea6033814ebd0edcad087d64d6c4bba0a0d",
+      "expected_sha256": "7f9b741b411212829d12b999aba6dea6033814ebd0edcad087d64d6c4bba0a0d",
+      "pass": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "document_before_observes_mutated_typed_before_input",
+      "old_sha256": "fb0655f6783a27f0b0e209853c63f6caf2f8e02e5421472cf6834847d8e5c37f",
+      "current_sha256": "fb0655f6783a27f0b0e209853c63f6caf2f8e02e5421472cf6834847d8e5c37f",
+      "expected_sha256": "fb0655f6783a27f0b0e209853c63f6caf2f8e02e5421472cf6834847d8e5c37f",
+      "pass": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "document_compiler",
+      "old_sha256": "1763de8296191e8d85d1efde367728d8429f2efa143f9856e7d85a49635d7a1a",
+      "current_sha256": "1763de8296191e8d85d1efde367728d8429f2efa143f9856e7d85a49635d7a1a",
+      "expected_sha256": "1763de8296191e8d85d1efde367728d8429f2efa143f9856e7d85a49635d7a1a",
+      "pass": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "register_static",
+      "old_sha256": "2e3c765c312b1d1619abc6ace2956949d86e673f76a98763fdae754e9fbade6d",
+      "current_sha256": "2e3c765c312b1d1619abc6ace2956949d86e673f76a98763fdae754e9fbade6d",
+      "expected_sha256": "2e3c765c312b1d1619abc6ace2956949d86e673f76a98763fdae754e9fbade6d",
+      "pass": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "bind_handler",
+      "old_sha256": "cb68426c66799d8c5e7e10fbd570af3a836b0fe29f171611cf36a596c08489a8",
+      "current_sha256": "cb68426c66799d8c5e7e10fbd570af3a836b0fe29f171611cf36a596c08489a8",
+      "expected_sha256": "cb68426c66799d8c5e7e10fbd570af3a836b0fe29f171611cf36a596c08489a8",
+      "pass": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "project_input",
+      "old_sha256": "1daee732975b43f3812b040619973297b4c429649459b85e1af1c605bf9be324",
+      "current_sha256": "1daee732975b43f3812b040619973297b4c429649459b85e1af1c605bf9be324",
+      "expected_sha256": "1daee732975b43f3812b040619973297b4c429649459b85e1af1c605bf9be324",
+      "pass": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "project_output",
+      "old_sha256": "6acf181f9c1507b2ccc6279a0a6cb98d87d3990e2321d82f4c485b14ff29768a",
+      "current_sha256": "6acf181f9c1507b2ccc6279a0a6cb98d87d3990e2321d82f4c485b14ff29768a",
+      "expected_sha256": "6acf181f9c1507b2ccc6279a0a6cb98d87d3990e2321d82f4c485b14ff29768a",
+      "pass": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_tests.rs",
+      "function": "snapshot",
+      "old_sha256": "2958b2df5310db0dcf2a64f20d0f6ede5e856921d36d028b153d960c0ee6e87d",
+      "current_sha256": "2958b2df5310db0dcf2a64f20d0f6ede5e856921d36d028b153d960c0ee6e87d",
+      "expected_sha256": "2958b2df5310db0dcf2a64f20d0f6ede5e856921d36d028b153d960c0ee6e87d",
+      "pass": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_tests.rs",
+      "function": "invoke",
+      "old_sha256": "746ccdaba452f3402fdee6f57e3771954338d0ef34ed771eb3b856a114acb54d",
+      "current_sha256": "746ccdaba452f3402fdee6f57e3771954338d0ef34ed771eb3b856a114acb54d",
+      "expected_sha256": "746ccdaba452f3402fdee6f57e3771954338d0ef34ed771eb3b856a114acb54d",
+      "pass": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_tests.rs",
+      "function": "root_1998_cancellation_and_deadline_still_execute_completion",
+      "old_sha256": "685d5e09d3ceb079b16c62f31d93d0da41c45076487be78d4e6c0c29e8b8b60d",
+      "current_sha256": "685d5e09d3ceb079b16c62f31d93d0da41c45076487be78d4e6c0c29e8b8b60d",
+      "expected_sha256": "685d5e09d3ceb079b16c62f31d93d0da41c45076487be78d4e6c0c29e8b8b60d",
+      "pass": true
+    }
+  ],
+  "original_prefixes": [
+    {
+      "path": "api/crates/interface-runtime/src/_tests/mod.rs",
+      "current_prefix_sha256": "c6219e11f4e7d137a1ce103ae2be99164e7d079aeb7f05cbb5091bce7576d682",
+      "old_prefix_sha256": "c6219e11f4e7d137a1ce103ae2be99164e7d079aeb7f05cbb5091bce7576d682",
+      "complete_current_prefix_preserved": true,
+      "same_old_current_EOF_context": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "current_prefix_sha256": "b4eeacd4faf42196926214a5cd81a3d647d2cd495acb87cc8e645f47c53f8d26",
+      "old_prefix_sha256": "9164b4b1fb0d3926588ffa5470ccd0f5b60d54c7501bee271a2b5f20d93ed9f8",
+      "complete_current_prefix_preserved": true,
+      "same_old_current_EOF_context": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "current_prefix_sha256": "40a3770b885cd39a7c925e74d1d2d3f60be97e0d36398ca620381727d8de0d0e",
+      "old_prefix_sha256": "40a3770b885cd39a7c925e74d1d2d3f60be97e0d36398ca620381727d8de0d0e",
+      "complete_current_prefix_preserved": true,
+      "same_old_current_EOF_context": true
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_tests.rs",
+      "current_prefix_sha256": "f46e3e2ef2149a98f3ac3cb126c7bc3fbdbb5f7e2f4b80f497d20fb9951a9e20",
+      "old_prefix_sha256": "f46e3e2ef2149a98f3ac3cb126c7bc3fbdbb5f7e2f4b80f497d20fb9951a9e20",
+      "complete_current_prefix_preserved": true,
+      "same_old_current_EOF_context": true
+    }
+  ],
+  "counter_finite_arithmetic": {
+    "events": [
+      {
+        "old_requested": 0,
+        "new_requested": 100,
+        "live_after": 100,
+        "peak_after": 0
+      },
+      {
+        "old_requested": 100,
+        "new_requested": 0,
+        "live_after": 0,
+        "peak_after": 100
+      },
+      {
+        "old_requested": 0,
+        "new_requested": 64,
+        "live_after": 64,
+        "peak_after": 100
+      },
+      {
+        "old_requested": 64,
+        "new_requested": 16,
+        "live_after": 16,
+        "peak_after": 100
+      },
+      {
+        "old_requested": 16,
+        "new_requested": 96,
+        "live_after": 96,
+        "peak_after": 100
+      },
+      {
+        "old_requested": 96,
+        "new_requested": 0,
+        "live_after": 0,
+        "peak_after": 100
+      }
+    ],
+    "S1_live": 100,
+    "S3_live": 0,
+    "S1_S3_delta": -100,
+    "window_requested_added": 176,
+    "window_requested_removed": 276,
+    "window_peak": 100,
+    "success_events": {
+      "alloc_including_zeroed": 2,
+      "dealloc": 2,
+      "realloc": 2
+    },
+    "failure_preserves_live": true
+  },
+  "exact_expected_ignored_names": [
+    "_tests::invocation_tests::w5_probe_empty_plan",
+    "_tests::invocation_tests::event_observation_tests::document_operation_tests::w5_probe_document_before",
+    "_tests::review_remediation_tests::finalization_tests::w5_probe_pending_storage"
+  ],
+  "expected_source_cfg_matrix": {
+    "normal": {
+      "old_overlay_sha256": "08e61faf2e25c27d5ba7a9a9398dbd34074151eb86b5de4a3d5cba130a434a3c",
+      "current_overlay_sha256": "08e61faf2e25c27d5ba7a9a9398dbd34074151eb86b5de4a3d5cba130a434a3c",
+      "root_cfg_w5_heap_counts": false,
+      "allocator_interception": false
+    },
+    "counts": {
+      "old_overlay_sha256": "08e61faf2e25c27d5ba7a9a9398dbd34074151eb86b5de4a3d5cba130a434a3c",
+      "current_overlay_sha256": "08e61faf2e25c27d5ba7a9a9398dbd34074151eb86b5de4a3d5cba130a434a3c",
+      "root_cfg_w5_heap_counts": true,
+      "allocator_interception": true
+    },
+    "cfg_injection_rule": "only crate-name=interface_runtime with --test; no global RUSTFLAGS; actual wrapper not supplied/verified"
+  },
+  "temporary_line_counts": {
+    "helper": 95,
+    "fragments": 143,
+    "Rust_helper_plus_fragments": 238,
+    "additional_private_module_mount_lines": 2,
+    "generator": 56,
+    "README": 15
+  },
+  "evidence_hashes": {
+    "manifest.json": "2419f5394b3d4b2dc4b8a0a6e3c342acc9478e59edacc0d62a6f0e458424cd5b",
+    "measurement-overlay.patch": "08e61faf2e25c27d5ba7a9a9398dbd34074151eb86b5de4a3d5cba130a434a3c",
+    "fixture-receipt.json": "32e511c2502496be120c5d8e5bf16bd7160f2bed14fb3a4c220ff2dbecadba6d",
+    "helper.rs": "cbf3a1a4783208e72e050f18df7aa22c9e09a68861c97ca0257d4ff167664b39",
+    "empty.append.rs": "d019e4a4f77b361e7e49ac2ab3c489a1acaa23465706cb0b90862e93aa28666a",
+    "document.append.rs": "8d7be17a8bb2420a66a436828d62654fa7f66b1018a7c401092ebbdc66f271a3",
+    "pending.append.rs": "7695949b7cd9c7a92bd8e1a40a25ec277f7574db554042f55641ab88865cc553",
+    "generate-overlay.py": "60f3de1ae3d21e331b8643497d20622e033fd4bc9a8351f2d87168335b3cd8e0",
+    "README.md": "cc68b5f95e15de5af1fa97bd3a24a9c63902af51d3f89b00f37df53730dace90"
+  },
+  "remaining_unverified": [
+    "Rust compile/link and actual drop/codegen timing",
+    "compiler/toolchain/profile/features and root-only cfg command receipts",
+    "three exact ignored tests actual discovery/nonzero execution",
+    "real outputs, Before6 and Cancelled/Executing/one Completion at runtime",
+    "normal latency pairs, same-old noise control and allocator event/live checkpoints",
+    "other process-thread noise/driver-exclusive attribution",
+    "finalization-pending storage, actual API QueryFields/MainDurableStore, HTTP, large inline I/P, physical stack, build RSS and C01/final resource objective"
+  ],
+  "runtime_interpretation_stop_conditions": [
+    "different overlay/fixture/compiler mode or artifact cache identity",
+    "nonzero or exact-name/ignored mismatch",
+    "fresh fixture len/cap/seen state mismatch or correctness guard failure",
+    "negative absolute requested-live or inconsistent/concurrent attribution: keep raw counters, mark derived live/peak UNKNOWN",
+    "Root resource/deadline limit; no adaptive reruns/new83-case wave"
+  ],
+  "no_additional_execution": "No Cargo, rustc, rustfmt, CI, new QA agent or source patch applied by this verifier."
+}

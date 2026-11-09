@@ -1,0 +1,47 @@
+{
+  "status": "overlay/source binding/apply checks and syntax parsing only; not Rust typechecked or measured",
+  "manifest": "/home/taichuy/git/git_worktree/issue2818-global-20261109/tmp/test-governance/issue2818/development/w5-runtime-cost-probe/manifest.json",
+  "patch": "/home/taichuy/git/git_worktree/issue2818-global-20261109/tmp/test-governance/issue2818/development/w5-runtime-cost-probe/measurement-overlay.patch",
+  "patch_sha256": "08e61faf2e25c27d5ba7a9a9398dbd34074151eb86b5de4a3d5cba130a434a3c",
+  "source_worktree_sha": "903971d5c3ddd37f93c1f7314e02dae4a2bb120c",
+  "checks": {
+    "same_patch_old_current_applied": true,
+    "all_original_file_prefixes_and_16_function_hashes_untouched": true,
+    "only_five_test_paths": true,
+    "three_ignored_current_thread_entries": true,
+    "counter_process_continuous_no_TLS_or_live_reset": true,
+    "no_interval_live_zero_assertion": true,
+    "window_before_synchronous_invoke": true,
+    "window_end_after_result_drop": true,
+    "normal_no_GlobalAlloc_cfg": true,
+    "instrumented_time_separate_from_latency": true,
+    "pending_storage_only_no_extra_probe_heap_pin": true,
+    "source_worktree_clean": true
+  },
+  "temporary_lines": {
+    "helper.rs": 95,
+    "empty.append.rs": 39,
+    "document.append.rs": 61,
+    "pending.append.rs": 43,
+    "generate-overlay.py": 56,
+    "README.md": 15
+  },
+  "temporary_Rust_probe_lines": 238,
+  "other_threads_attribution": "unknown; raw process-global totals are not driver-exclusive",
+  "not_run": [
+    "Rust compile",
+    "test discovery/execution",
+    "normal timing",
+    "allocation/live-byte measurement",
+    "CI",
+    "API/service operations"
+  ],
+  "production_obligations_unmeasured": [
+    "real API enum/MainDurableStore layouts",
+    "HTTP",
+    "large inline I/P",
+    "stack",
+    "finalization pending",
+    "build/RSS/cgroup gates"
+  ]
+}

@@ -1,4 +1,4 @@
-name: Issue 2818 resume unexecuted W6 host phases
+name: Issue 2818 W5 real fixture runtime cost
 
 on:
   push:
@@ -31,7 +31,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: '1.99.1' 
-      - name: Resume unexecuted W6 host compile and fixed measurements
+      - name: Compile four IR probe binaries and run only fixed exact ignored cost entries
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -52,7 +52,7 @@ jobs:
             --property=RuntimeMaxSec=1200s --property=TimeoutStopSec=5s --property=KillMode=control-group \
             --working-directory="$GITHUB_WORKSPACE" \
             env "ONEFLOWBASE_TASK_BUDGET_CGROUP=$task_group" "ONEFLOWBASE_TASK_BUDGET_ID=$task_inode" \
-            python3 tmp/test-governance/issue2818/ci-preparation/w6-host/host.py --execute
+            python3 tmp/test-governance/issue2818/ci-preparation/w5-runtime-cost/entry.py --execute
       - name: Confirm owned slice is empty and preserve final limits
         if: always()
         shell: bash
@@ -77,25 +77,24 @@ jobs:
         if: always()
         timeout-minutes: 5
         with:
-          name: issue2818-w6-host-results-${{ github.run_id }}-${{ github.run_attempt }}
+          name: issue2818-w5-runtime-cost-results-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             tmp/test-governance/issue2818/ci-evidence/**
             tmp/test-governance/issue2818/ci-preparation/**
             !tmp/test-governance/issue2818/ci-evidence/seed-target-and-source.tar.zst
-            !tmp/test-governance/issue2818/ci-evidence/host-binaries/**
-            tmp/test-governance/issue2818/development/static-runtime-reads-schema/qualification/**
-            tmp/test-governance/issue2818/development/static-runtime-reads-schema/source-map.json
-            tmp/test-governance/issue2818/development/static-runtime-reads-schema/original-function.rs
+            !tmp/test-governance/issue2818/ci-evidence/test-binaries/**
+            tmp/test-governance/issue2818/development/w5-runtime-cost-probe/**
+            tmp/test-governance/issue2818/model/candidates/raw/w5-runtime-cost-probe/implemented-verifier.json
           if-no-files-found: error
           compression-level: 1
           retention-days: 3
-      - name: Upload source-bound host binaries separately
+      - name: Upload four copied IR probe test binaries separately
         uses: actions/upload-artifact@v7
         if: always()
         timeout-minutes: 5
         with:
-          name: issue2818-w6-host-binaries-${{ github.run_id }}-${{ github.run_attempt }}
-          path: tmp/test-governance/issue2818/ci-evidence/host-binaries/**
+          name: issue2818-w5-runtime-cost-binaries-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tmp/test-governance/issue2818/ci-evidence/test-binaries/**
           if-no-files-found: warn
           compression-level: 1
           retention-days: 3
