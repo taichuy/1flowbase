@@ -246,7 +246,14 @@ export function EventsPage() {
   ];
   return (
     <SettingsSectionSurface heightMode="fill">
-      <Flex vertical gap={16} style={{ height: '100%', minHeight: 0 }}>
+      <Flex
+        vertical
+        gap={16}
+        style={{
+          height: tab === 'catalog' ? '100%' : 'max-content',
+          minHeight: 0
+        }}
+      >
         <Tabs
           activeKey={tab}
           onChange={(next) => navigateEventTab(next as EventTab)}

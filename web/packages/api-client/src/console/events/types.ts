@@ -1,3 +1,4 @@
+/** Subscription activation, event publication, or delivery dequeue/handoff (not business completion). */
 export type EventTriggerPhase = 'subscribed' | 'published' | 'consumed';
 export type EventDefinitionOrigin = 'custom' | 'core' | 'plugin';
 export type EventSourceScope =

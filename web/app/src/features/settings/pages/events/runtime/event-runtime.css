@@ -6,6 +6,9 @@
   min-height: 0;
   flex: 1 1 auto;
 }
+.event-runtime .data-table__scroll-area {
+  overflow-y: hidden;
+}
 .event-runtime-freshness {
   font-size: 12px;
 }
@@ -15,7 +18,7 @@
   flex-direction: column;
   gap: 14px;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: none;
 }
 .event-runtime-source-button {
   max-width: 100%;

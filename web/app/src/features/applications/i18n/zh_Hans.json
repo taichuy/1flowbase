@@ -466,9 +466,9 @@
     "unbound_scope": "未绑定",
     "source_unavailable": "请选择可用的监听事件及其支持的阶段。",
     "phase": "监听时机",
-    "subscribed": "监听生效时",
-    "published": "事件发布时",
-    "consumed": "消费时（出队）",
+    "subscribed": "订阅",
+    "published": "发布",
+    "consumed": "消费",
     "pointer_invalid": "请输入有效的 RFC6901 指针。",
     "pointer_hint": "选择源声明的数据字段，或输入 RFC6901 路径。消费表示出队交接，不代表工作流完成。",
     "listening_hint": "工作流发布并启用后自动监听配置事件；撤回发布或停用后停止监听。"

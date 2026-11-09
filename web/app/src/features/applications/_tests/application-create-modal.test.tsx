@@ -283,7 +283,7 @@ describe('ApplicationFormModal create intent', () => {
       await screen.findByRole('combobox', { name: '监听时机' })
     );
     fireEvent.click(
-      await screen.findByText('消费时（出队）', {
+      await screen.findByText('消费', {
         selector: '.ant-select-item-option-content'
       })
     );

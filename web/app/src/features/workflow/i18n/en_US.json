@@ -42,7 +42,7 @@
     "disabled": "Subscription disabled",
     "subscribed": "Subscribed",
     "published": "Published",
-    "consumed": "Consumed (dequeued)",
+    "consumed": "Consumed",
     "debug_delivery": "Event workflow debug run",
     "debug_hint": "Test scalar Start inputs directly. This debug run does not publish an event or exercise delivery."
   }

@@ -195,9 +195,9 @@ test('same-contract source scopes remain distinct and save canonical source with
   const selects = screen.getAllByRole('combobox');
   fireEvent.mouseDown(selects[1]);
   // Only the source adapter's published phase is offered.
-  expect(screen.queryByText('消费时（出队）')).not.toBeInTheDocument();
+  expect(screen.queryByText('消费')).not.toBeInTheDocument();
   fireEvent.click(
-    await screen.findByText('事件发布时', {
+    await screen.findByText('发布', {
       selector: '.ant-select-item-option-content'
     })
   );
@@ -377,7 +377,7 @@ test('same-contract subtype leaves save complete backend filters and discover es
   const phaseSelect = screen.getByRole('combobox', { name: '监听时机' });
   fireEvent.mouseDown(phaseSelect);
   fireEvent.click(
-    await screen.findByText('事件发布时', {
+    await screen.findByText('发布', {
       selector: '.ant-select-item-option-content'
     })
   );
@@ -443,7 +443,7 @@ test('new listeners default to publication and retain every supported phase with
   await waitFor(() =>
     expect(
       screen.getByRole('combobox', { name: '监听时机' }).closest('.ant-select')
-    ).toHaveTextContent('事件发布时')
+    ).toHaveTextContent('发布')
   );
   fireEvent.click(screen.getByRole('button', { name: 'Save listener' }));
   await waitFor(() => expect(saved).toHaveBeenCalled());
@@ -454,13 +454,13 @@ test('new listeners default to publication and retain every supported phase with
   });
   expect(saved.mock.calls[0][0].event).not.toHaveProperty('enabled');
   fireEvent.mouseDown(screen.getByRole('combobox', { name: '监听时机' }));
-  for (const label of ['监听生效时', '事件发布时', '消费时（出队）']) {
+  for (const label of ['订阅', '发布', '消费']) {
     expect(
       screen.getByText(label, { selector: '.ant-select-item-option-content' })
     ).toBeInTheDocument();
   }
   fireEvent.click(
-    screen.getByText('消费时（出队）', {
+    screen.getByText('消费', {
       selector: '.ant-select-item-option-content'
     })
   );

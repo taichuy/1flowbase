@@ -90,6 +90,7 @@ export function EventsTable<T extends object>({
         mobileList={
           showRecords
             ? {
+                scrollMode: 'page',
                 resetKey: mobileRecords,
                 hasMore: currentPage * effectiveSize < rows.length,
                 loading,

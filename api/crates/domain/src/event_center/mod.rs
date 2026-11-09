@@ -8,8 +8,11 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EventTriggerPhase {
+    /// Subscription: a new effective logical subscription is activated.
     Subscribed,
+    /// Publication: a valid event is published to its current subscribers.
     Published,
+    /// Consumption: a delivery is dequeued and handed off, before business completion.
     Consumed,
 }
 
