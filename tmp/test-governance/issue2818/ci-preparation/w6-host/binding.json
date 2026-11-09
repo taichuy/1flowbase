@@ -80,6 +80,26 @@
     "stack_peak": "unknown",
     "timing_diff": "(new-old)/old for each fixed pair; abs(diff)<=noise band is unresolved"
   },
+  "resume_prepared_inputs": {
+    "controller_validation_only_no_render_scope": true,
+    "files": {
+      "tmp/test-governance/issue2818/ci-preparation/w6-host/prepared/host.manifest.json": {
+        "bytes": 2969,
+        "sha256": "9e5ff11bf03270e8117072596d96b72755b090e78e8fc8014f8a246f376b8dbf"
+      },
+      "tmp/test-governance/issue2818/ci-preparation/w6-host/prepared/host.rs": {
+        "bytes": 78198,
+        "sha256": "359553a599b1bd8f486fc9d160999ab71586077b27f7b996200f5b83412bf94b"
+      }
+    },
+    "measurement_parameters_unchanged": true,
+    "prior_control_sha": "4f71ab2751dba85c82fdb90f435f296685c721fd",
+    "prior_failed_run": 42640576659,
+    "prior_render_command_exit": 0,
+    "prior_render_wrapper": "cleanup_failure125/ENODEV/cgroup_empty=null remains FAIL",
+    "prior_small_artifact_digest": "sha256:5ad4a535b1b2d151f867b7ca3dd3654f520318c2e640cdaec8fa938c9ec01262",
+    "serde_rlib_sha256": "95600673f9661d529029eab706b8e583785c7387faf46dcadf47bba92f8f9c1c"
+  },
   "serde_json": {
     "API_source_sha": "7bb249e47d29dce87a291677884bd42962aa2046",
     "actual_API_extern": "serde_json=/home/runner/work/_temp/issue2818/target-seed/debug/deps/libserde_json-0cb8b03c48863d22.rmeta",
@@ -131,5 +151,5 @@
   },
   "shared_budget_helper_sha256": "77952af01b8bed3781782d09f5b028bb089ad5ccb68dce3f4454cf03a06df40e",
   "source_sha": "903971d5c3ddd37f93c1f7314e02dae4a2bb120c",
-  "status": "AUTHORIZED_SINGLE_W6_LOCAL_QUALIFICATION"
+  "status": "AUTHORIZED_RESUME_UNEXECUTED_W6_HOST_PHASES"
 }

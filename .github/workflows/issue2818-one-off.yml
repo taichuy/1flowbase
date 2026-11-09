@@ -1,4 +1,4 @@
-name: Issue 2818 W6 source-bound small host
+name: Issue 2818 resume unexecuted W6 host phases
 
 on:
   push:
@@ -31,7 +31,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: '1.99.1' 
-      - name: Compile and execute only the source-bound W6 small host
+      - name: Resume unexecuted W6 host compile and fixed measurements
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

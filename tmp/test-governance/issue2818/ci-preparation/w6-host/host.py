@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""W6 small-host draft. No Rust runs unless invoked with --execute after publication."""
+"""Resume only previously unexecuted W6 Rust/measurement phases from frozen prepared input."""
 import ast, hashlib, importlib.util, json, os, shutil, sys, time
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
@@ -13,6 +13,7 @@ def self_check():
     assert b['source_sha']=='903971d5c3ddd37f93c1f7314e02dae4a2bb120c'
     assert b['old_source_sha']==b['cache']['source_sha']=='7bb249e47d29dce87a291677884bd42962aa2046'
     assert b['parameters']['diagnostic_flags']==[]
+    assert all(sha(ROOT/p)==v['sha256'] and (ROOT/p).stat().st_size==v['bytes'] for p,v in b['resume_prepared_inputs']['files'].items())
     assert sha(HERE.parent/'experiment.py')==b['shared_budget_helper_sha256']
     assert all(sha(ROOT/p)==h for p,h in b['fixture_hashes'].items())
     assert b['serde_json']['corresponding_rlib'] in b['serde_json']['compiler_artifact']['filenames']
@@ -55,8 +56,23 @@ def main():
         assert g.capture(['git','rev-parse','HEAD'],source)==b['source_sha'];g.capture(['git','diff','--exit-code','HEAD','--'],source)
         rlib=Path(b['serde_json']['corresponding_rlib']);assert rlib.is_file() and rlib.parent==target/'debug/deps';rlib_hash=sha(rlib)
         g.save(e/'serde-link-binding.json',{'path':str(rlib),'sha256':rlib_hash,'prior_API_extern':b['serde_json']['actual_API_extern'],'compiler_artifact':b['serde_json']['compiler_artifact']})
-        host=e/'host.rs';g.run('render-source-bound-host',[sys.executable,str(QUAL/'render.py'),'--repo-root',str(source),'--output',str(host),'--serde-rlib',str(rlib)],seconds=60)
-        manifest=read(host.with_suffix('.manifest.json'));assert manifest['source_sha']==b['source_sha'] and manifest['original_input_sha']==b['old_source_sha']
+        # Original renderer exited0; its cleanup failure remains sealed. Do not rerender.
+        state['phase']='validate-prepared-input-controller'
+        host=e/'host.rs';prepared=HERE/'prepared/host.rs';prepared_manifest=HERE/'prepared/host.manifest.json'
+        manifest=read(prepared_manifest);mapping=read(QUAL.parent/'source-map.json')
+        assert sha(prepared)==manifest['rendered_host_sha256']
+        assert manifest['source_sha']==b['source_sha'] and manifest['original_input_sha']==b['old_source_sha']
+        assert manifest['source_root']==str(source) and manifest['rendered_host']==str(host)
+        assert all(sha(source/path)==digest for path,digest in manifest['source_binding'].items())
+        assert manifest['old_function_sha256']==mapping['original_function']['sha256'] and manifest['new_function_sha256']==mapping['new_function']['sha256']
+        assert manifest['protected_suffix_sha256']==mapping['protected_suffix']['sha256']
+        assert manifest['template_sha256']==sha(QUAL/'host.rs.in') and manifest['renderer_sha256']==sha(QUAL/'render.py')
+        assert manifest['serde_json_rlib']['path']==str(rlib) and manifest['serde_json_rlib']['sha256']==rlib_hash==b['resume_prepared_inputs']['serde_rlib_sha256']
+        assert str(source/'api/apps/api-server/src/extension_bus/managed_projection.rs') in prepared.read_text()
+        assert str(source/'api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads/managed_projection/application_runtime_reads_schema.rs') in prepared.read_text()
+        host.write_bytes(prepared.read_bytes());host.with_suffix('.manifest.json').write_bytes(prepared_manifest.read_bytes())
+        assert sha(host)==sha(prepared) and sha(host.with_suffix('.manifest.json'))==sha(prepared_manifest)
+        g.save(e/'prepared-input-validation.json',{'all_fields_verified':True,'host_sha256':sha(host),'manifest_sha256':sha(prepared_manifest),'source_sha':b['source_sha'],'old_source_sha':b['old_source_sha'],'source_root':str(source),'serde_rlib_sha256':rlib_hash,'prior_failed_run':42640576659,'prior_failure_preserved':True,'no_render_reexecution':True,'controller_file_hash_validation_inside_parent_budget':True,'Rust_not_yet_started_at_validation':True})
         rustc=g.capture(['rustup','which','rustc']);flags=['--edition=2021','-C','opt-level=0','-C','debuginfo=0','-C','debug-assertions=yes','-C','overflow-checks=yes','-C','codegen-units=256','-C','embed-bitcode=no','-C','strip=debuginfo','--extern','serde_json='+str(rlib),'-L','dependency='+str(rlib.parent)]
         normal=bins/'w6-normal';instrumented=bins/'w6-heap-counts'
         for name,binary,cfg in [('normal',normal,[]),('heap-counts',instrumented,['--cfg','heap_counts'])]:

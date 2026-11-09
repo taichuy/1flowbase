@@ -1,0 +1,40 @@
+{
+  "source_sha": "903971d5c3ddd37f93c1f7314e02dae4a2bb120c",
+  "original_input_sha": "7bb249e47d29dce87a291677884bd42962aa2046",
+  "source_root": "/home/runner/work/_temp/issue2818/w6-source",
+  "source_binding": {
+    "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads/managed_projection/application_runtime_reads_output.rs": "c090929208b00618e40787999d66611dd1c1994c69d61e926c401b18fa01c339",
+    "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads/managed_projection/application_runtime_reads_schema.rs": "ef9d0f27de58aea4e6c254aa8f0a9c5a067d2afea41b0217e6d2d2662fcaf987",
+    "api/apps/api-server/src/extension_bus/managed_projection.rs": "20a73b7f7950f20451c180e43bf91516f83c3312866e9b3d86447431153984f7"
+  },
+  "old_function_sha256": "0d6ca0ada1f37d18e2f3f8d40cf31998babd2e3b2707783c6d95f1cebcdc5d16",
+  "new_function_sha256": "9c3f89812de371114cdd7ffb1177246c3dd1a2a3e24b5b21b3a310fec46c8c34",
+  "protected_suffix_sha256": "5146e3ba37c82a92d433ea1693006fc7dce73b5c64b3c368077d392088c0e774",
+  "template_sha256": "cfc2e33737bcb0303b2f82672abb73e162f45f5907bcd5a5462ad70b1b726c9c",
+  "renderer_sha256": "405966aedbe72fc9792479a9b40f4477f5f90e3fd542d26381126aeedb4ecde6",
+  "rendered_host": "/home/runner/work/1flowbase/1flowbase/tmp/test-governance/issue2818/ci-evidence/host.rs",
+  "rendered_host_sha256": "359553a599b1bd8f486fc9d160999ab71586077b27f7b996200f5b83412bf94b",
+  "serde_json_rlib": {
+    "path": "/home/runner/work/_temp/issue2818/target-seed/debug/deps/libserde_json-0cb8b03c48863d22.rlib",
+    "sha256": "95600673f9661d529029eab706b8e583785c7387faf46dcadf47bba92f8f9c1c"
+  },
+  "owner_parameters_pending": [
+    "rustc toolchain/version",
+    "exact serde_json API artifact/features/dependency search path",
+    "matching profile/optimization flags",
+    "fixed measured/warmup iterations"
+  ],
+  "measurement": {
+    "noise_control": "same normal binary with W6_OLD_CONTROL=1 binds both sides to old::schema with old_control_a/b labels; 5 raw alternating pairs",
+    "fixed_timing_arguments": "1000 iterations, 100 equal warmups; CI owner may confirm within 120s before any outcomes",
+    "fixed_instrumented_arguments": "1 iteration per side, 100 equal warmups; separate binary",
+    "decision": "Root predeclares maximum old-old pair relative difference as conservative noise band; in-band old/new difference is unresolved; no post-result sample tuning or retry for PASS",
+    "samples": "five fixed alternating pairs",
+    "timed_region": "construction and drop only",
+    "instrumentation": "separate binary compiled with --cfg heap_counts; do not use its timings",
+    "requested_peak": "successful GlobalAlloc boundaries; System realloc internal transient/usable-size/RSS is unknown",
+    "stack_peak": "unknown",
+    "rodata_delta": "unknown; combined host total is not a delta"
+  },
+  "status": "rendered and source-bound only; no Rust compile/runtime outcome"
+}
