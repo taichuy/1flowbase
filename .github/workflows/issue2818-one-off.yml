@@ -1,4 +1,4 @@
-name: Issue 2818 W5 unary lifecycle crate qualification
+name: Issue 2818 W5 ordinary API lib qualification
 
 on:
   push:
@@ -45,7 +45,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: '1.99.1' 
-      - name: Qualify ca195 with exact two-test overlay then candidate489 full existing lib suite
+      - name: Qualify W5 ordinary API lib only at fixed 600s and 8GB
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -94,7 +94,7 @@ jobs:
         if: always()
         timeout-minutes: 5
         with:
-          name: issue2818-w5-focused-results-${{ github.run_id }}-${{ github.run_attempt }}
+          name: issue2818-w5-api-results-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             tmp/test-governance/issue2818/ci-evidence/**
             tmp/test-governance/issue2818/ci-preparation/**
@@ -107,7 +107,7 @@ jobs:
         if: always()
         timeout-minutes: 5
         with:
-          name: issue2818-w5-focused-cache-${{ github.run_id }}-${{ github.run_attempt }}
+          name: issue2818-w5-api-cache-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             tmp/test-governance/issue2818/ci-evidence/seed-target-and-source.tar.zst
             tmp/test-governance/issue2818/ci-evidence/seed-retention.json

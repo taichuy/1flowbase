@@ -12,12 +12,12 @@ import subprocess
 import sys
 import time
 
-SEED_SHA = 'ca19501827fdeac86b9f5d9fcba767715220f3dd'
-PRIOR_RUN = '42603827669'
-PRIOR_NAME = 'issue2818-w4-api-cache-42603827669-1'
-PRIOR_ARTIFACT_ID = 13667391947
-ARCHIVE_SHA = '644f5e5857e878c68fa928c8abf2b1d64e5f4639e292ae3bb0db1144971c28a4'
-ARCHIVE_BYTES = 747124483
+SEED_SHA = '489943b16401b2e4bc472b23699e9bfd2a3e811a'
+PRIOR_RUN = '42616288977'
+PRIOR_NAME = 'issue2818-w5-focused-cache-42616288977-1'
+PRIOR_ARTIFACT_ID = 13672727283
+ARCHIVE_SHA = '1b9ee1c5659404ec3e0102b45dd9c090757596a5af1861e6fcbfce4a3abbf551'
+ARCHIVE_BYTES = 747093050
 BASELINE = 'e3cdfefb7a5b85d1d7d9c2ef166e3b923c05de89'
 W2_CANDIDATE = 'e0a2790bb08ec3b4c914b27e1bed9938c293d1fe'
 W2_ALLOWED = ['.agents/skills/qa-evaluation/references/backend/console-settings-registration-gate.md', '.github/workflows/notification-subscription.yml', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/data_model_and_docs.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/infrastructure_and_mcp.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/plugins_and_models.rs', 'api/apps/api-server/src/routes/_tests/file_console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/_tests/mod.rs', 'api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/console_route_assembly.rs', 'api/apps/api-server/src/routes/console_route_assembly/_tests/assembly.rs', 'api/apps/api-server/src/routes/mod.rs', 'api/apps/api-server/src/test_support/mod.rs', 'api/apps/api-server/tests/README.md', 'api/apps/api-server/tests/console_core_registry_tests.rs', 'scripts/node/agent-logs-exchange/ci-api.cjs', 'scripts/node/console-operation-registry-hygiene/README.md', 'scripts/node/console-operation-registry-hygiene/_tests/core.test.js', 'scripts/node/console-operation-registry-hygiene/compiled-assembly-checks.js']
@@ -248,10 +248,18 @@ def plan(root):
     return data
 
 def frozen(root):
-    paths=capture(['git','ls-files','-z'],root).split('\0')
-    return {p:hashlib.sha256((root/p).read_bytes()).hexdigest() for p in paths if p and (root/p).is_file()}
-
-
+    paths = capture(['git','ls-files','-z'],root).split('\0')
+    # Source, fixtures and all configuration stay exact; only intended JS selectors may differ.
+    allowed = {'scripts/node/verify/backend.js','scripts/node/verify/backend-targets.js',
+               'scripts/node/foundation-contracts/core.js',
+               'scripts/node/foundation-contracts/_tests/core.test.js',
+               'scripts/node/verify-backend/_tests/cli.test.js',
+               'scripts/node/verify/_tests/history-maintenance.test.js',
+               'scripts/shell/resource-job-run.py','scripts/shell/_tests/resource-job-run.test.py'}
+    selected = [p for p in paths if p not in allowed]
+    hashes = {p:hashlib.sha256((root/p).read_bytes()).hexdigest()
+              for p in selected if (root/p).is_file()}
+    return hashes
 
 def prepare(name, ref, archive=None):
     source = TEMP/name
@@ -424,8 +432,8 @@ def download_retained():
         assert '.git' not in parts, 'archive must not overwrite the new worktree identity'
     save(EVIDENCE/'cache-resume.json',{'source_run':PRIOR_RUN,'artifact':PRIOR_NAME,
         'archive_sha256':ARCHIVE_SHA,'archive_bytes':ARCHIVE_BYTES,'archive_source_sha':SEED_SHA,
-        'cache_state':'retained W4 ca195 source/mtime/partial target; no cold fallback',
-        'scope':'W5 old-overlay/new candidate full existing crate qualification'})
+        'cache_state':'retained qualified W5 489 source/mtime/partial target; no cold fallback',
+        'scope':'W5 ordinary API lib qualification; prior focused crate cases not rerun'})
     return archive,evidence
 
 def retain_seed_cache(source, target, metadata):
@@ -605,13 +613,11 @@ def collect_mono_files(source,target):
             files.append(row)
     save(EVIDENCE/'mono-stat-files.json',{'files':files,'meaning':'definition/instantiation attribution only; not RSS allocation percentages'})
 
-SOURCE_HASHES = {'api/crates/interface-runtime/src/invocation/kernel.rs': {'before': '3f9f2993b19e78adfe5ecb1816e47e3be6b29a1211fa5647d2b2c4ad455479b4', 'after': 'f9062a67513dce43829d900480468b18365e44bbba74609b08bd934e6cf9934f'}, 'api/crates/interface-runtime/src/invocation.rs': {'before': 'd12943da62d66771215c1126c78224b27fa21d4b8cb9ec5cafe672d73df20810', 'after': '8815cbd2b47fa721ef0e4992fa77025398be839be2d5db30688bb38b6e7bbd37'}, 'api/crates/interface-runtime/src/invocation/unary.rs': {'before': None, 'after': '021739e1fe12a67ae21b8b7592581e1e368f714d68d489e0d41cf94acf56cab1'}, 'api/crates/interface-runtime/src/invocation/unary/bridge.rs': {'before': None, 'after': '496deb4a33b4853b726b91980a5cca4dbc9436eb8f3848a4f0d00dfddaac492b'}, 'api/crates/interface-runtime/src/invocation/policy.rs': {'before': '9aedf251bf8e1b94a0e4c9d2cb01a070cca430bedb3d9b94e1668789a1d71fe1', 'after': None}, 'api/crates/interface-runtime/src/_tests/invocation_tests.rs': {'before': '9164b4b1fb0d3926588ffa5470ccd0f5b60d54c7501bee271a2b5f20d93ed9f8', 'after': 'b4eeacd4faf42196926214a5cd81a3d647d2cd495acb87cc8e645f47c53f8d26'}, 'api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs': {'before': '415594bd8ad4c7b546a0bdbbdf06748864116cb3b1c1b09b8084ec5e3522ee2f', 'after': '3499278ab92a714ad790fa9c42f14b2e9b086f8be265f5556cb8c7b482b3cf96'}}
-APPROVED_NAME_STATUS = ['M\tapi/crates/interface-runtime/src/_tests/invocation_tests.rs', 'M\tapi/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs', 'M\tapi/crates/interface-runtime/src/invocation.rs', 'M\tapi/crates/interface-runtime/src/invocation/kernel.rs', 'D\tapi/crates/interface-runtime/src/invocation/policy.rs', 'A\tapi/crates/interface-runtime/src/invocation/unary.rs', 'A\tapi/crates/interface-runtime/src/invocation/unary/bridge.rs']
-TEST_OVERLAY_FILES = ['api/crates/interface-runtime/src/_tests/invocation_tests.rs', 'api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs']
-TEST_OVERLAY_PATCH_SHA256 = 'a667ba8e99e5dbf9eb3fedb2276789f9a19a96633b7fe4c871d7cc04cfd3d704'
-EXPECTED_LEGACY_CASE_NAMES = ['_tests::extension_tests::approved_points_bind_permission_and_typed_facts', '_tests::extension_tests::mutation_illegal_facts_and_multiple_handlers_fail_closed', '_tests::extension_tests::runtime_and_capability_plugins_cannot_authenticate_or_escape_process_wire', '_tests::identity_tests::route_identity_accepts_static_external_protocol_paths', '_tests::identity_tests::route_identity_rejects_non_absolute_or_request_specific_paths', '_tests::invocation_tests::active_invocation_uses_its_frozen_snapshot_after_candidate_publish', '_tests::invocation_tests::deadline_cancels_each_in_flight_stage', '_tests::invocation_tests::dispatch_pin_retry_and_receipt_controls_are_immutable', '_tests::invocation_tests::event_observation_tests::authentication_rejection_retains_frozen_identity_without_fabricating_principal_or_input', '_tests::invocation_tests::event_observation_tests::before_observes_the_actual_prepared_input_after_compiled_typed_mutation', '_tests::invocation_tests::event_observation_tests::core_deny_has_no_before_or_business_data_and_keeps_real_error_classification', '_tests::invocation_tests::event_observation_tests::document_operation_tests::absorbing_snapshot_or_interface_retains_document_registration_and_observer', '_tests::invocation_tests::event_observation_tests::document_operation_tests::capture_context_panic_is_a_diagnostic_and_preserves_primary_result', '_tests::invocation_tests::event_observation_tests::document_operation_tests::compiled_document_metadata_distinguishes_registered_codec_from_active_observer', '_tests::invocation_tests::event_observation_tests::document_operation_tests::compiled_document_metadata_reports_static_dynamic_and_missing_bindings_without_codecs', '_tests::invocation_tests::event_observation_tests::document_operation_tests::composition_metadata_refinement_rejects_cross_binding_generation_and_dynamic_replacement', '_tests::invocation_tests::event_observation_tests::document_operation_tests::document_before_observes_mutated_typed_before_input', '_tests::invocation_tests::event_observation_tests::document_operation_tests::document_channel_does_not_require_legacy_opt_in_and_coexists_without_changing_legacy_values', '_tests::invocation_tests::event_observation_tests::document_operation_tests::document_failure_denial_and_cancellation_never_project_success_output', '_tests::invocation_tests::event_observation_tests::document_operation_tests::document_observer_faults_preserve_primary_success_and_failure', '_tests::invocation_tests::event_observation_tests::document_operation_tests::document_registration_rejects_a_codec_for_a_different_typed_input_contract', '_tests::invocation_tests::event_observation_tests::document_operation_tests::document_registration_rejects_binding_interface_contract_and_generation_mismatch', '_tests::invocation_tests::event_observation_tests::document_operation_tests::document_schema_and_codec_generation_change_registry_proof', '_tests::invocation_tests::event_observation_tests::document_operation_tests::document_stream_uses_unique_real_terminal_and_drop_does_not_fabricate_completion', '_tests::invocation_tests::event_observation_tests::document_operation_tests::dynamic_snapshot_selects_once_and_invalid_target_only_disables_observation', '_tests::invocation_tests::event_observation_tests::document_operation_tests::interest_faults_fail_closed_without_projecting_or_replacing_primary_result', '_tests::invocation_tests::event_observation_tests::document_operation_tests::no_interest_or_missing_phase_schema_skips_codecs_without_fabricating_values', '_tests::invocation_tests::event_observation_tests::document_operation_tests::opaque_owner_phase_reasons_disable_projection_without_kernel_policy_or_fault', '_tests::invocation_tests::event_observation_tests::document_operation_tests::rejected_authentication_has_static_identity_completion_without_business_data', '_tests::invocation_tests::event_observation_tests::event_capability_is_explicit_and_independent_of_managed_hooks_and_subscriptions', '_tests::invocation_tests::event_observation_tests::missing_event_schema_fails_closed_instead_of_using_managed_schema_or_first_sample', '_tests::invocation_tests::event_observation_tests::observer_error_panic_and_timeout_never_replace_primary_result_or_typed_failure', '_tests::invocation_tests::event_observation_tests::stream_cancellation_and_deadline_complete_once_and_drop_does_not_claim_completion', '_tests::invocation_tests::event_observation_tests::stream_completion_waits_for_real_complete_and_preserves_all_terminal_facts', '_tests::invocation_tests::event_observation_tests::unary_completion_preserves_target_failure_cancellation_and_deadline', '_tests::invocation_tests::event_observation_tests::undeclared_operations_produce_no_observations_even_with_registered_contract_projections', '_tests::invocation_tests::explicit_cancellation_terminates_without_dispatch', '_tests::invocation_tests::lcf_002_lcf_004_typed_hook_plan_runs_after_authorization_and_admission', '_tests::invocation_tests::lcf_006_completion_is_emitted_once_for_target_failure', '_tests::invocation_tests::managed_context_tests::root_2007_ac_003_004_managed_context_completion_and_reporter_are_isolated', '_tests::invocation_tests::managed_context_tests::root_2007_ac_003_004_managed_late_report_cannot_mark_another_observer_failed', '_tests::invocation_tests::parent_lineage_rejects_cycles', '_tests::invocation_tests::rejects_authorization_admission_target_failure_and_elapsed_deadline', '_tests::invocation_tests::root_1998_ac_006_empty_plan_executes_core_and_records_terminal_receipt', '_tests::invocation_tests::snapshot_acceptance_tests::root_1998_ac_006_in_flight_snapshot_keeps_plan_handler_and_completion_identity', '_tests::invocation_tests::stack_budget_tests::invocation_inline_state_has_bounded_stack_cost', '_tests::invocation_tests::stream_requires_exactly_one_terminal_and_rejects_events_after_terminal', '_tests::principal_tests::application_profile_rejects_missing_or_mismatched_identity', '_tests::principal_tests::authenticated_session_is_a_sealed_user_fact_not_a_receipt_summary_field', '_tests::principal_tests::public_user_and_application_profiles_expose_only_stable_summaries', '_tests::registry_tests::compiles_definition_binding_and_plan_into_deterministic_snapshot', '_tests::registry_tests::rejects_duplicate_interface_binding_and_projection_identity', '_tests::registry_tests::rejects_handler_bound_with_the_wrong_principal_profile', '_tests::registry_tests::rejects_missing_or_mismatched_typed_handler_and_missing_binding', '_tests::registry_tests::rejects_unknown_operation_inactive_owner_and_binding_contract_or_version_mismatch', '_tests::review_remediation_tests::decision_order::policy_boundary_checks_controls_after_core_construction_and_never_runs_failure_on_interrupt', '_tests::review_remediation_tests::decision_order::policy_boundary_drops_core_future_before_veto_or_failure_and_retains_rejection_sources', '_tests::review_remediation_tests::decision_order::policy_boundary_rejection_failure_and_completion_keep_one_budget', '_tests::review_remediation_tests::decision_order::policy_boundary_retains_full_public_user_application_principals_and_freeze_precedes_construction', '_tests::review_remediation_tests::decision_order::policy_boundary_skips_real_typed_none_even_when_contract_identities_match', '_tests::review_remediation_tests::decision_order::root_1998_ac_006_rr15_core_deny_dominates_plugin_allow_and_extension_failures_fail_closed', '_tests::review_remediation_tests::decision_order::root_1998_ac_006_rr15_rr16_decision_bindings_fail_publish_when_missing_extra_or_contract_mismatched', '_tests::review_remediation_tests::decision_order::root_1998_ac_006_rr15_rr16_unary_and_stream_execute_core_then_ordered_veto_then_hook_handler', '_tests::review_remediation_tests::decision_order::rr15_rr16_extension_timeout_and_admission_reject_fail_closed', '_tests::review_remediation_tests::finalization_tests::root_1998_authentication_rejection_uses_frozen_plan_and_absent_principal', '_tests::review_remediation_tests::finalization_tests::root_1998_cancellation_and_deadline_still_execute_completion', '_tests::review_remediation_tests::finalization_tests::root_1998_observers_never_replace_business_output_or_failure', '_tests::review_remediation_tests::finalization_tests::root_1998_resolved_plan_early_returns_finalize_once_without_typed_io', '_tests::review_remediation_tests::http_sibling_authentication_tests::root_1998_f9_http_sibling_keeps_lineage_snapshot_and_selected_kernel_plan', '_tests::review_remediation_tests::http_sibling_authentication_tests::root_1998_f9_http_sibling_rejects_unknown_carrier_authentication_and_typed_contract_mismatch', '_tests::review_remediation_tests::review_binding_identity_drives_resolve_and_rejects_protocol_or_adapter_mismatch', '_tests::review_remediation_tests::review_compiled_completion_binding_is_mandatory_and_cannot_be_skipped_by_invoke', '_tests::review_remediation_tests::review_host_extension_handler_is_the_real_exactly_one_effective_target', '_tests::review_remediation_tests::review_live_server_stream_finishes_after_events_with_one_runtime_pinned_terminal', '_tests::review_remediation_tests::review_registry_compiles_ordered_extension_plan_from_real_registrations', '_tests::review_remediation_tests::rr12_hook_contract_mismatch_fails_registry_compilation_for_unary_and_stream', '_tests::review_remediation_tests::rr13_definition_contribution_is_real_registry_input_and_metadata_only_fails', '_tests::review_remediation_tests::rr14_authentication_activation_missing_duplicate_and_identity_mismatch_fail_closed', 'finalization::driver_tests::observer_catches_a_second_poll_panic_with_the_original_reason', 'finalization::driver_tests::observer_drops_before_recording_and_preserves_outer_drop_and_drop_panics', 'finalization::driver_tests::observer_is_lazy_and_uses_the_remaining_shared_deadline', 'finalization::driver_tests::observer_preserves_borrowed_mut_nonstatic_pinned_futures_and_send', 'registry::compiler::schema_sharing_tests::exact_schema_interning_preserves_registry_fingerprint_bytes_and_order']
+OLD_API_MONO_SHA256 = 'abf86463ac36442bf0b055c0cbda3a0eb3d244a08d4d69cc8899e760f0c3730b'
+API_SOURCE_SHA256 = {'api/crates/interface-runtime/src/invocation/kernel.rs': 'f9062a67513dce43829d900480468b18365e44bbba74609b08bd934e6cf9934f', 'api/crates/interface-runtime/src/invocation.rs': '8815cbd2b47fa721ef0e4992fa77025398be839be2d5db30688bb38b6e7bbd37', 'api/crates/interface-runtime/src/invocation/unary.rs': '021739e1fe12a67ae21b8b7592581e1e368f714d68d489e0d41cf94acf56cab1', 'api/crates/interface-runtime/src/invocation/unary/bridge.rs': '496deb4a33b4853b726b91980a5cca4dbc9436eb8f3848a4f0d00dfddaac492b', 'api/crates/interface-runtime/src/invocation/policy.rs': None, 'api/crates/interface-runtime/src/_tests/invocation_tests.rs': 'b4eeacd4faf42196926214a5cd81a3d647d2cd495acb87cc8e645f47c53f8d26', 'api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs': '3499278ab92a714ad790fa9c42f14b2e9b086f8be265f5556cb8c7b482b3cf96'}
 
 CRATE_CANDIDATE = '489943b16401b2e4bc472b23699e9bfd2a3e811a'
+CRATE_ALLOWED = ['api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs', 'api/crates/interface-runtime/src/decision.rs', 'api/crates/interface-runtime/src/hook.rs', 'api/crates/interface-runtime/src/invocation.rs', 'api/crates/interface-runtime/src/invocation/kernel.rs', 'api/crates/interface-runtime/src/invocation/policy.rs']
 
 def crate_artifacts(label=None):
     rows=[]
@@ -629,40 +635,44 @@ def crate_artifacts(label=None):
         'note':'standalone crate test feature/profile graph; do not assume prior API 509 count'})
     return rows
 
+CRATE_TEST_PATHS = ['api/crates/interface-runtime/src/_tests/finalization_driver_tests.rs']
+BASELINE_MOUNT_FILE = 'api/crates/interface-runtime/src/finalization.rs'
+BASELINE_CHILD_MOUNT = '\n#[cfg(test)]\n#[path = "_tests/finalization_driver_tests.rs"]\nmod driver_tests;\n'
+BASELINE_MOUNT_OFFSET = 3615
+BASELINE_ORIGINAL_SHA256 = '933fcb4f7648f14aaa8fde646f9d09792340423a387b3883a7d4cf6d8654b656'
+CRATE_FILE_SHA256 = {'api/crates/interface-runtime/src/finalization.rs': 'cf892d97b4fac76a510e9c62e6dd9fc63617f5f8e40e281d62325555be910ca4', 'api/crates/interface-runtime/src/_tests/finalization_driver_tests.rs': 'fc5469b9e28449070148d2cdd27269b78209b3c8d003aa5de52a693d8db5a747'}
 
 def qualify_interface_phase(side,source,target,env,argv,roots,identity,native):
-    def unit_for(row):
-        units=[r for r in crate_artifacts(row['label']) if r['target']['name']==native['name'] and r['profile']['test'] and r['executable']]
-        assert len(units)==1
-        unit=units[0];executable=Path(unit['executable'])
-        assert unit['target']==native and unit['profile']['opt_level']=='0' and unit['profile']['debuginfo']==0
-        assert executable.is_file() and executable.parent==target/'debug/deps' and executable.name.startswith('interface_runtime-')
-        return unit
-    # The first listing compiles this one lib target. Actual executes once after preflight.
-    listed=run(side+'-interface-runtime-list',[*argv,'--list'],cwd=source/'api',env=env,heavy=True,seconds=600)
-    first=unit_for(listed)
-    if side=='candidate':assert first['fresh'] is False,'candidate first lib-test artifact must rebuild'
-    listing=cases(listed['merged_log'],roots,'list')
-    assert Counter(map(tuple,listing))==Counter((identity,name,'test') for name in EXPECTED_LEGACY_CASE_NAMES)
+    label=side+'-interface-runtime-lib'
+    executed=run(label,argv,cwd=source/'api',env=env,heavy=True,seconds=600)
+    listed=run(side+'-interface-runtime-list',[*argv,'--list'],cwd=source/'api',env=env,heavy=True,seconds=120)
     ignored=run(side+'-interface-runtime-ignored',[*argv,'--list','--ignored'],cwd=source/'api',env=env,heavy=True,seconds=120)
-    ignored_unit=unit_for(ignored)
-    assert not cases(ignored['merged_log'],roots,'list'),'unexpected ignored cases'
-    executed=run(side+'-interface-runtime-lib',argv,cwd=source/'api',env=env,heavy=True,seconds=600)
-    actual_unit=unit_for(executed)
-    assert first['executable']==ignored_unit['executable']==actual_unit['executable']
+    listing=cases(listed['merged_log'],roots,'list')
+    ignored_rows=cases(ignored['merged_log'],roots,'list')
+    ignored_cases=Counter(map(tuple,ignored_rows))
+    expected=Counter()
+    detailed=[]
+    for root,name,kind in listing:
+        key=(root,name,kind)
+        flag=ignored_cases[key]>0
+        detailed.append([root,name,kind,flag])
+        expected[(root,name,'ignored' if flag else 'ok')]+=1
+        if flag:ignored_cases[key]-=1
+    assert not +ignored_cases
     actual=cases(executed['merged_log'],roots,'run')
-    assert Counter(map(tuple,actual))==Counter((identity,name,'ok') for name in EXPECTED_LEGACY_CASE_NAMES),'incomplete/failed/zero or changed actual lib suite'
-    result={'side':side,'identity':identity,'argv':argv,'list_with_ignored':[[*r,False] for r in listing],
-        'actual':actual,'passed':len(actual),'failed':0,'ignored':0,'expected_count':len(EXPECTED_LEGACY_CASE_NAMES),
-        'test_artifact_fresh':first['fresh'],'first_list_artifact':first,'ignored_list_artifact':ignored_unit,
-        'actual_artifact':actual_unit,'actual_execution_count':1,'preflight':'list then ignored then actual'}
+    assert expected==Counter(map(tuple,actual)) and any(row[2]=='ok' for row in actual), side+': incomplete/zero/failed actual crate tests'
+    artifacts=crate_artifacts(label)
+    assert any(r['target']['name']==native['name'] and r['profile']['test'] and r['executable'] for r in artifacts)
+    result={'side':side,'identity':identity,'argv':argv,'list_with_ignored':detailed,'actual':actual,
+        'passed':sum(r[2]=='ok' for r in actual),'failed':sum(r[2]=='FAILED' for r in actual)}
     save(EVIDENCE/(side+'-crate-test-cases.json'),result)
     return result
 
+FOCUSED_TEST_FILE = 'api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs'
+CRATE_TEST_SHA256 = '415594bd8ad4c7b546a0bdbbdf06748864116cb3b1c1b09b8084ec5e3522ee2f'
+FOCUSED_FILTERS = ['_tests::review_remediation_tests::decision_order::','_tests::invocation_tests::','_tests::review_remediation_tests::finalization_tests::']
 
-
-
-def follow_w5(run_id,out_dir,control_sha):
+def follow_w4(run_id,out_dir,control_sha,api=False):
     # One authorized local lifecycle: watch, bounded light download, deterministic receipt.
     from datetime import datetime,timezone
     out=Path(out_dir).resolve();out.mkdir(parents=True,exist_ok=True)
@@ -680,7 +690,7 @@ def follow_w5(run_id,out_dir,control_sha):
     assert run['headSha']==control_sha and run['status']=='completed','watch transport failure is not a final CI result'
     meta=json.loads(subprocess.check_output(['gh','api','repos/taichuy/1flowbase/actions/runs/'+str(run_id)+'/artifacts'],text=True,timeout=45))
     save(out/'artifact-meta.json',meta)
-    name='issue2818-w5-focused-results-'+str(run_id)+'-'+str(run['attempt'])
+    name=('issue2818-w5-api-results-' if api else 'issue2818-w4-results-')+str(run_id)+'-'+str(run['attempt'])
     light=next(a for a in meta['artifacts'] if a['name']==name)
     assert not light['expired'] and light['size_in_bytes']<=16_000_000,'bounded small-results guard; never download cache artifact'
     fetched=command(['gh','run','download',str(run_id),'--name',name,'--dir',str(out/'results')],'download.log',180)
@@ -693,134 +703,199 @@ def follow_w5(run_id,out_dir,control_sha):
     state=read(evidence/'qualification-phase-state.json') if (evidence/'qualification-phase-state.json').exists() else {}
     cases=[]
     for side in ['baseline','candidate']:
-        path=evidence/(side+'-crate-test-cases.json')
-        if path.exists():
-            record=read(path)
-            cases.append({'side':side,'passed':record['passed'],'failed':record['failed'],'ignored':record['ignored'],
-                'first_list_fresh':record['first_list_artifact']['fresh'],'ignored_fresh':record['ignored_list_artifact']['fresh'],
-                'actual_fresh':record['actual_artifact']['fresh'],'executable':record['actual_artifact']['executable'],'raw_json':str(path)})
+        for index in range(3):
+            prefix=side+'-q'+str(index)
+            path=evidence/(prefix+'-crate-test-cases.json')
+            if path.exists():
+                record=read(path)
+                cases.append({'side':side,'query':index,'filter':record.get('filter'),
+                    'passed':record['passed'],'failed':record['failed'],
+                    'ignored':sum(r[3] for r in record['list_with_ignored']),
+                    'test_artifact_fresh':record.get('test_artifact_fresh'),'raw_json':str(path)})
     failure=read(evidence/'failure.json') if (evidence/'failure.json').exists() else None
     receipt={'run_id':run_id,'control_sha':control_sha,'candidate_sha':CRATE_CANDIDATE,
         'CI_conclusion':run['conclusion'],'source_state':state,'case_groups':cases,'phases':phases,
         'failure':failure,'watch_finished_at':after_watch,'small_results_ready_at':now(),
         'watch':watched,'light_download':fetched,'light_artifact':light,
         'cache_artifacts_not_downloaded':[a for a in meta['artifacts'] if a['name']!=name],
-        'not_API_or_Root_or_performance_PASS':True}
+        'not_API_or_W3_78_retest_or_performance_PASS':True}
     save(out/'attribution-receipt.json',receipt)
-    budget=read(evidence/'budget-after.json') if (evidence/'budget-after.json').exists() else {}
-    final=(evidence/'final-cgroup.events').read_text() if (evidence/'final-cgroup.events').exists() else ''
-    summary={'status':'PASS_ACTUAL_W5_LIB_SCOPE' if run['conclusion']=='success' and state.get('baseline_passed') and state.get('candidate_passed') else 'FAIL_OR_INCOMPLETE_W5_LIB_SCOPE',
-        'baseline_sha':SEED_SHA,'candidate_sha':CRATE_CANDIDATE,'control_sha':control_sha,'run_id':run_id,
-        'groups':cases,'phase_state':state,'failure':failure,'budget_after':budget,'final_populated_zero':'populated 0' in final,
-        'all_command_cleanup_complete':all(r['cleanup_complete'] for r in phases),'light_download':fetched,
-        'job_completed_at':run['jobs'][0]['completedAt'],'first_raw_attribution_ready_at':receipt['small_results_ready_at'],
-        'cache_not_downloaded':True,'not_API_or_Root_or_performance_PASS':True}
-    save(out/'qualification-summary.json',summary)
-    (out/'report.md').write_text(summary['status']+'\n\nRun '+str(run_id)+'; baseline '+SEED_SHA+'; candidate '+CRATE_CANDIDATE+'; control '+control_sha+'.\n'+
-        'Groups: '+json.dumps(cases)+'\nFailure: '+json.dumps(failure)+'\nParent budget/peak/events: '+json.dumps(budget)+'\nFinal populated0: '+str(summary['final_populated_zero'])+'; command cleanup: '+str(summary['all_command_cleanup_complete'])+'.\n'+
-        'Evidence: attribution-receipt.json, qualification-summary.json, results/ci-evidence/*. Full existing lib correctness only; no API, Root or performance PASS.\n')
-
+    if api:
+        try:
+            attribute_api(out,evidence,receipt,run)
+        except Exception as error:
+            save(out/'attribution-error.json',{'kind':type(error).__name__,'message':str(error),'raw_receipt':'attribution-receipt.json','CI_conclusion':run['conclusion']})
+            (out/'report.md').write_text('Attribution incomplete: '+type(error).__name__+': '+str(error)+'\nRaw small results and attribution-receipt.json are preserved. Do not classify as Rust or behavior PASS. No rerun or cache download.\n')
+            raise
     print(json.dumps({'run_id':run_id,'conclusion':run['conclusion'],'candidate':CRATE_CANDIDATE,
         'groups':cases,'failure':failure,'receipt':str(out/'attribution-receipt.json')}),flush=True)
     return 0
 
+def attribute_api(out,evidence,receipt,run_record):
+    from datetime import datetime
+    def optional(name,default=None):
+        file=evidence/name
+        return read(file) if file.exists() else default
+    state=optional('qualification-phase-state.json',{});budget=optional('budget-after.json',{});fresh=optional('restored-cargo-fresh.json',{});stage=optional('compiler-stage-summary.json',{});proof=optional('mono-generation-proof.json',{})
+    build=next((r for r in receipt['phases'] if r['phase']=='seed-normal-lib-prebuild'),None)
+    api_units=[r for r in fresh.get('artifacts',[]) if r['target']=='api_server' and r['kind']==['lib']]
+    comparison=None;packed=evidence/'api_server.mono_items.json.gz'
+    if packed.exists() and proof.get('generation')=='new-source-bound-output':
+        with gzip.open(packed,'rb') as source:raw=source.read(32_000_001)
+        assert len(raw)<=32_000_000 and len(raw)==proof['bytes'] and hashlib.sha256(raw).hexdigest()==proof['sha256']
+        assert proof['source_sha']==CRATE_CANDIDATE and proof['sha256']!=OLD_API_MONO_SHA256
+        (out/'api_server.mono_items.json').write_bytes(raw)
+        save(out/'mono-integrity.json',proof)
+        task=out.parent
+        frozen=read(task/'model/candidates/raw/generic-boundary/w2-w3-mono-aggregation.json')
+        tables={};files={}
+        for side in ['w2','w3']:
+            file=task/Path(frozen['files'][side]['path']).relative_to('tmp/test-governance/issue2818');content=file.read_bytes()
+            assert hashlib.sha256(content).hexdigest()==frozen['files'][side]['sha256']
+            tables[side]=json.loads(content);files[side]=frozen['files'][side]
+        old=task/'ci-w4-api-42603827669/api_server.mono_items.json';content=old.read_bytes();assert hashlib.sha256(content).hexdigest()==OLD_API_MONO_SHA256
+        tables['w4']=json.loads(content);files['w4']={'path':str(old),'sha256':OLD_API_MONO_SHA256}
+        tables['w5']=json.loads(raw);files['w5']={'path':str(out/'api_server.mono_items.json'),'sha256':proof['sha256'],'source_sha':CRATE_CANDIDATE}
+        def total(rows):return {'definitions':len(rows),'instantiations':sum(r['instantiation_count'] for r in rows),'estimate':sum(r['total_estimate'] for r in rows)}
+        selectors={
+            'old_typed_unary_prepare':lambda n:n.startswith('interface_runtime::invocation::kernel::') and '::prepare_unary' in n,
+            'old_typed_unary_execute':lambda n:n.startswith('interface_runtime::invocation::kernel::') and '::execute_unary' in n,
+            'old_W4_policy_driver':lambda n:n.startswith('interface_runtime::invocation::policy::'),
+            'new_full_unary_source_family':lambda n:n.startswith('interface_runtime::invocation::unary::'),
+            'new_private_typed_bridge':lambda n:'TypedUnaryBridge' in n,
+            'new_O_only_output_mapper':lambda n:n.startswith('interface_runtime::invocation::unary::map_output'),
+            'kernel_all':lambda n:n.startswith('interface_runtime::invocation::kernel::'),
+            'await_in_flight':lambda n:n.startswith('interface_runtime::invocation::await_in_flight'),
+            'decision_contributions':lambda n:'interface_runtime::decision::AuthorizationContributions' in n or 'interface_runtime::decision::AdmissionContributions' in n,
+            'failure_observers':lambda n:'interface_runtime::hook::FailureObservers' in n,
+            'canonical_prefix':lambda n:n.startswith('interface_runtime::'),
+            'carrier_std_core_alloc':lambda n:n.startswith(('std::','core::','alloc::')),
+            'carrier_drop':lambda n:'::drop_in_place' in n,
+            'carrier_tokio':lambda n:n.startswith('tokio::')}
+        common={name:lambda n,name=name:n.replace("::<'_>",'').startswith('interface_runtime::invocation::unary::'+name) for name in ['start_unary','prepare','reject','execute']}
+        selectors.update({'new_common_'+name:select for name,select in common.items()})
+        groups={name:{side:total([r for r in rows if select(r['name'])]) for side,rows in tables.items()} for name,select in selectors.items()}
+        sums={side:total(rows) for side,rows in tables.items()};assert sums['w2']==frozen['totals']['w2'] and sums['w3']==frozen['totals']['w3']
+        bodies={name:[r for r in tables['w5'] if select(r['name'])] for name,select in common.items()}
+        comparison={'files':files,'totals':sums,'delta_W5_minus_W4':{key:sums['w5'][key]-sums['w4'][key] for key in sums['w4']},
+            'overlapping_source_and_carrier_families':groups,'common_driver_rows':bodies,'common_driver_each_one':{name:bool(rows) and all(r['instantiation_count']==1 for r in rows) for name,rows in bodies.items()},
+            'private_bridge_rows':[r for r in tables['w5'] if 'TypedUnaryBridge' in r['name']],
+            'O_only_mapper_rows':[r for r in tables['w5'] if selectors['new_O_only_output_mapper'](r['name'])],
+            'limits':['Same-source mono collector rows only; not timing, RSS or byte size.','Family views overlap and must not be added twice. Carriers have no exclusive owner attribution.','Typed bridges and O-only mapper remaining instances are reported; no claim that all typed code disappears.','Retained bytes were not measured. No print-type-sizes or other new diagnostics.']}
+        save(out/'mono-comparison.json',comparison)
+    def ts(t):return datetime.fromisoformat(t.replace('Z','+00:00'))
+    job=run_record['jobs'][0];complete=bool(state.get('normal_lib_complete'));valid=complete and len(api_units)==1 and not api_units[0]['profile']['test']
+    final=(evidence/'final-cgroup.events').read_text() if (evidence/'final-cgroup.events').exists() else ''
+    summary={'status':'PASS_ORDINARY_API_LIB_SCOPE' if valid else 'FAIL_ORDINARY_API_LIB_SCOPE','run_id':receipt['run_id'],'source_sha':CRATE_CANDIDATE,'control_sha':receipt['control_sha'],
+        'normal_lib_complete':complete,'actual_test_counts':None,'root_build_phase':build,'successful_api_root_artifact':api_units,
+        'fresh_completed':fresh.get('fresh_artifacts'),'rebuilt_completed':fresh.get('rebuilt_artifacts'),'compiler_stages':stage,'mono_generation':proof,
+        'mono_comparison_available':comparison is not None,'common_driver_each_one':comparison['common_driver_each_one'] if comparison else None,
+        'failure':receipt['failure'],'budget_after':budget,'all_command_cleanup_complete':all(r['cleanup_complete'] for r in receipt['phases']),
+        'final_cgroup_populated_zero':'populated 0' in final,'job_elapsed_seconds':(ts(job['completedAt'])-ts(job['startedAt'])).total_seconds(),
+        'first_raw_attribution_delay_seconds':(ts(receipt['small_results_ready_at'])-ts(job['completedAt'])).total_seconds(),
+        'local_light_download_seconds':receipt['light_download']['elapsed_seconds'],'light_artifact':receipt['light_artifact'],
+        'cache_artifacts_not_downloaded':receipt['cache_artifacts_not_downloaded'],'seed_retention':optional('seed-retention.json'),'api_cost_summary':optional('api-cost-summary.json'),
+        'tail_deferred':['private24','native7','seed','MCP','application','alltargets','C01'],'retainedbytes_not_measured':True,'no_followon_or_retry':True,'not_behavior_or_Root_or_performance_PASS':True}
+    save(out/'api-result-summary.json',summary)
+    lines=[summary['status'],'','Run '+str(receipt['run_id'])+' '+run_record['url'],'Source '+CRATE_CANDIDATE+'; control '+receipt['control_sha'],
+        'Ordinary API complete '+str(complete)+'; behavior test counts null. Deferred '+json.dumps(summary['tail_deferred'])+'.',
+        'Build '+json.dumps(build),'Budget '+json.dumps(budget),'Cleanup '+str(summary['all_command_cleanup_complete'])+'; populated0 '+str(summary['final_cgroup_populated_zero']),
+        'Raw delay '+str(summary['first_raw_attribution_delay_seconds'])+'s; direct small download '+str(summary['local_light_download_seconds'])+'s; cache not downloaded.']
+    if comparison:
+        lines+=['','Common driver instances: '+json.dumps(comparison['common_driver_each_one']),
+            '| Source family | W2 defs/instances/estimate | W3 | W4 | W5 |','| --- | --- | --- | --- | --- |']
+        for name,group in {'TOTAL':comparison['totals'],**comparison['overlapping_source_and_carrier_families']}.items():lines.append('| '+name+' | '+' | '.join(' / '.join(str(group[side][k]) for k in ['definitions','instantiations','estimate']) for side in ['w2','w3','w4','w5'])+' |')
+    lines+=['','Mono estimates are not RSS/time or exclusive ownership. No retainedbytes measurement. Preserve failure/cache/cleanup and stop failed configuration; no auto retry/tail.','Evidence: attribution-receipt.json, results/ci-evidence/*, mono-integrity.json, mono-comparison.json, api-result-summary.json.']
+    (out/'report.md').write_text('\n'.join(lines)+'\n')
+    print(json.dumps({'api_attribution':{k:summary[k] for k in ['status','run_id','normal_lib_complete','fresh_completed','rebuilt_completed','common_driver_each_one','first_raw_attribution_delay_seconds']},'report':str(out/'report.md')}),flush=True)
+
+
 def main():
+    # Authorized minimal packet: normal API lib only; no automatic test-tail/API expansion.
     candidate=os.environ['CANDIDATE_SHA']
-    assert candidate==CRATE_CANDIDATE and candidate!=SEED_SHA
+    assert candidate==SEED_SHA==CRATE_CANDIDATE
     EVIDENCE.mkdir(parents=True,exist_ok=False);TEMP.mkdir(parents=True,exist_ok=False)
     source,target=TEMP/'seed-source',TEMP/'target-seed'
-    metadata={'source_sha':candidate,'baseline_sha':SEED_SHA,'scope':'W5 full existing interface-runtime lib suite old plus exact two-test overlay then candidate',
-        'baseline_passed':False,'candidate_started':False,'candidate_passed':False,'active_phase':'prepare',
-        'resumed_from_run':PRIOR_RUN,'no_API_continuation':True,'cache_start':'restored W4 ca195 source/target; not cold'}
+    metadata={'source_sha':candidate,'scope':'W5 ordinary API lib qualification only',
+        'normal_lib_complete':False,'resumed_from_run':PRIOR_RUN,
+        'tail_deferred_to_Root':True,'cache_start':'restored qualified W5 489 source/target; not cold'}
     initial=budget_snapshot();save(EVIDENCE/'budget-before.json',initial)
     assert int(initial['memory.max'])==8_000_000_000 and initial['memory.high']=='max' and initial['memory.swap.max']=='0'
     q,p=map(int,initial['cpu.max'].split());assert q/p<=os.cpu_count()*.6+.001
     assert TEMP==Path('/home/runner/work/_temp/issue2818')
     assert capture(['rustc','--version']).startswith('rustc 1.99.1 ')
     assert not any(os.environ.get(k) for k in ['RUSTC_WRAPPER','RUSTC_WORKSPACE_WRAPPER','RUSTC_BOOTSTRAP','RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS'])
-    save(EVIDENCE/'environment.json',{'baseline_sha':SEED_SHA,'candidate_sha':candidate,'rustc':capture(['rustc','-vV']),
-        'cargo':capture(['cargo','-vV']),'host_cpu_count':os.cpu_count(),'scope':metadata['scope'],'root_diagnostics':False,
-        'expected_cases':len(EXPECTED_LEGACY_CASE_NAMES),'not_API_or_Rust_D_or_performance_PASS':True})
-    def prove_manifest(which):
-        actual={}
-        for path,pair in SOURCE_HASHES.items():
-            file=source/path
-            actual[path]=hashlib.sha256(file.read_bytes()).hexdigest() if file.is_file() else None
-            assert actual[path]==pair[which],path+': '+which+' source bytes mismatch'
-        return actual
+    save(EVIDENCE/'environment.json',{'source_sha':candidate,'rustc':capture(['rustc','-vV']),
+        'cargo':capture(['cargo','-vV']),'phase':metadata['scope'],'host_cpu_count':os.cpu_count(),
+        'diagnostics':'same four root-only flags as 425907; dependency rustc transparently execs',
+        'not_cold_or_PR_AB':True})
     try:
         archive,incoming=download_retained()
-        run('checkout-archive-source',['git','worktree','add','--detach',str(source),SEED_SHA],seconds=120)
+        run('checkout-qualified-source',['git','worktree','add','--detach',str(source),candidate],seconds=120)
         run('restore-retained-source-target',['tar','-I','zstd -T1','-xf',str(archive),'--no-same-owner','-C',str(TEMP)],seconds=180)
-        assert capture(['git','rev-parse','HEAD'],source)==SEED_SHA
+        assert capture(['git','rev-parse','HEAD'],source)==candidate
         capture(['git','diff','--exit-code','HEAD','--'],source)
-        assert target.is_dir() and any(target.rglob('*.rlib'))
-        before=frozen(source);old_manifest=prove_manifest('before')
-        changes=capture(['git','diff','--no-renames','--name-status',SEED_SHA,candidate],source).splitlines()
-        assert changes==APPROVED_NAME_STATUS
-        test_bytes={}
-        for path in TEST_OVERLAY_FILES:
-            body=subprocess.check_output(['git','show',candidate+':'+path],cwd=source)
-            assert hashlib.sha256(body).hexdigest()==SOURCE_HASHES[path]['after']
-            assert hashlib.sha256((source/path).read_bytes()).hexdigest()==SOURCE_HASHES[path]['before']
-            test_bytes[path]=body;(source/path).write_bytes(body)
-        baseline=frozen(source)
-        assert all(baseline.get(path)==digest for path,digest in before.items() if path not in TEST_OVERLAY_FILES)
-        assert capture(['git','diff','--name-only','HEAD','--'],source).splitlines()==sorted(TEST_OVERLAY_FILES)
-        save(EVIDENCE/'baseline-fixture-proof.json',{'baseline_head':SEED_SHA,'only_overlays':TEST_OVERLAY_FILES,
-            'overlay_sha256':{path:SOURCE_HASHES[path]['after'] for path in TEST_OVERLAY_FILES},'approved_overlay_patch_sha256':TEST_OVERLAY_PATCH_SHA256,
-            'old_manifest_before_overlay':old_manifest,'all_other_tracked_bytes_unchanged':True,'no_new_mount_or_production_overlay':True})
-        os.environ['ISSUE2818_OBSERVED_SOURCE_SHA']=SEED_SHA
-        metadata['source_state']='ca195 real production; exact two existing test files overlaid'
+        assert target.is_dir() and any(target.rglob('*.rlib')), 'never fall back to empty target'
+        assert hashlib.sha256((source/BASELINE_MOUNT_FILE).read_bytes()).hexdigest()==CRATE_FILE_SHA256[BASELINE_MOUNT_FILE]
+        source_hashes={path:hashlib.sha256((source/path).read_bytes()).hexdigest() if (source/path).is_file() else None for path in API_SOURCE_SHA256}
+        assert source_hashes==API_SOURCE_SHA256
+        os.environ['ISSUE2818_OBSERVED_SOURCE_SHA']=candidate
+        save(EVIDENCE/'source-identity.json',{'actual_sha':candidate,'clean_tracked_source':True,
+            'finalization_sha256':CRATE_FILE_SHA256[BASELINE_MOUNT_FILE],'prior_crate_qualification_run':PRIOR_RUN,
+            'approved_W4_source_sha256':source_hashes,'focused_tests_prequalified_not_rerun':True})
+        stale=source/'api/api_server.mono_items.json'
+        assert stale.is_file() and hashlib.sha256(stale.read_bytes()).hexdigest()==OLD_API_MONO_SHA256, 'fixed W4 mono provenance mismatch; no fallback'
+        if stale.exists():
+            assert not capture(['git','ls-files','--','api/api_server.mono_items.json'],source)
+            save(EVIDENCE/'removed-stale-mono.json',{'path':str(stale),'bytes':stale.stat().st_size,
+                'sha256':hashlib.sha256(stale.read_bytes()).hexdigest(),'reason':'restored old W4 statistics cannot be relabelled as new W5 candidate output'})
+            stale.unlink()
         run('registry-prefetch',['cargo','fetch','--locked','--manifest-path','api/Cargo.toml'],cwd=source,seconds=900)
-        meta=run('crate-metadata',['cargo','metadata','--no-deps','--format-version','1','--manifest-path','api/Cargo.toml'],cwd=source,seconds=60)
-        package=next(p for p in json.loads(Path(meta['stdout_log']).read_text())['packages'] if p['name']=='interface-runtime')
-        native=next(t for t in package['targets'] if t['kind']==['lib'] and t['test'])
-        identity='interface-runtime/lib/'+native['name']+'/'+str(Path(native['src_path']).relative_to(source))
-        roots={str(Path(native['src_path']).relative_to(base)):identity for base in [source/'api',Path(package['manifest_path']).parent]}
-        save(EVIDENCE/'crate-target.json',{'package_id':package['id'],'target':native,'identity':identity})
-        env={**os.environ,'CARGO_TARGET_DIR':str(target),'CARGO_BUILD_JOBS':'1','CARGO_INCREMENTAL':'0','CARGO_NET_OFFLINE':'true','CARGO_TERM_COLOR':'never','TERM':'dumb'}
-        argv=['cargo','test','-p','interface-runtime','--lib','--jobs','1','--message-format=json','--','--test-threads=1']
-        results={}
-        for side in ['baseline','candidate']:
-            if side=='candidate':
-                assert metadata['baseline_passed']
-                run('remove-baseline-test-overlays',['git','restore','--source',SEED_SHA,'--worktree','--',*TEST_OVERLAY_FILES],cwd=source,seconds=60)
-                run('checkout-crate-candidate',['git','checkout','--detach',candidate],cwd=source,seconds=60)
-                assert capture(['git','rev-parse','HEAD'],source)==candidate
-                capture(['git','diff','--exit-code','HEAD','--'],source)
-                after=frozen(source);allowed={row.split('\t')[-1] for row in APPROVED_NAME_STATUS}
-                assert all(after.get(path)==digest for path,digest in before.items() if path not in allowed)
-                assert set(after)-set(before)=={row.split('\t')[-1] for row in APPROVED_NAME_STATUS if row.startswith('A\t')}
-                assert set(before)-set(after)=={row.split('\t')[-1] for row in APPROVED_NAME_STATUS if row.startswith('D\t')}
-                new_manifest=prove_manifest('after')
-                assert all((source/path).read_bytes()==body for path,body in test_bytes.items())
-                save(EVIDENCE/'candidate-source-validation.json',{'actual_sha':candidate,'approved_name_status':changes,
-                    'manifest_after':new_manifest,'protected_tracked_hashes_match':True,'same_test_bytes':True,'new_private_source_files_checked':True})
-                os.environ['ISSUE2818_OBSERVED_SOURCE_SHA']=candidate
-                metadata.update(candidate_started=True,source_state='clean candidate; same two test bytes')
-            metadata['active_phase']=side
-            results[side]=qualify_interface_phase(side,source,target,env,argv,roots,identity,native)
-            metadata[side+'_passed']=True
-        for key in ['actual','list_with_ignored']:
-            assert Counter(map(tuple,results['baseline'][key]))==Counter(map(tuple,results['candidate'][key]))
-        save(EVIDENCE/'status.json',{'status':'W5_OLD_OVERLAY_AND_CANDIDATE_LIB_QUALIFIED','baseline_sha':SEED_SHA,'source_sha':candidate,
-            'count_each':len(EXPECTED_LEGACY_CASE_NAMES),'same_target_cases_ignored_actual':True,'not_API_or_Root_or_performance_PASS':True})
+        env={**os.environ,'CARGO_TARGET_DIR':str(target),'CARGO_BUILD_JOBS':'1','CARGO_INCREMENTAL':'0',
+             'CARGO_NET_OFFLINE':'true','CARGO_TERM_COLOR':'never','TERM':'dumb'}
+        diagnostic=install_stage_wrapper(source,env)
+        assert diagnostic.get('ISSUE2818_MONO_STATS')=='1', 'frozen comparison requires all four supported root diagnostics'
+        save(EVIDENCE/'effective-cargo-env.json',{k:diagnostic.get(k) for k in [
+            'CARGO_TARGET_DIR','CARGO_BUILD_JOBS','CARGO_INCREMENTAL','CARGO_NET_OFFLINE',
+            'RUSTC_WRAPPER','RUSTC_WORKSPACE_WRAPPER','RUSTC_BOOTSTRAP','RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS',
+            'ISSUE2818_RUSTC_MODE','ISSUE2818_MONO_STATS']})
+        build=['cargo','build','--profile','test','--package','api-server','--features','test-support','--lib','--jobs','1','--message-format=json']
+        metadata['api_build_started_wall_ns']=time.time_ns()
+        metadata['actual_test_counts']=None
+        metadata['deferred']=['private24','native7','seed','MCP','application','all-targets','C01']
+        run('seed-normal-lib-prebuild',build,cwd=source/'api',env=diagnostic,heavy=True,seconds=600)
+        metadata['normal_lib_complete']=True
+        assert stage_summary()['diagnostic_root_execs']==1
+        save(EVIDENCE/'status.json',{'status':'W4_NORMAL_API_LIB_COMPLETED','source_sha':candidate,
+            'tail_not_run':True,'actual_test_counts':None,'remaining':'private24/native7/seed/MCP/application/alltargets/C01 explicitly deferred',
+            'not_full_Root_PASS':True})
         return 0
     finally:
-        crate_artifacts();save(EVIDENCE/'qualification-phase-state.json',metadata)
+        cargo_fresh_summary();stage_summary();collect_mono_files(source,target)
+        mono=source/'api/api_server.mono_items.json'
+        proof={'source_sha':candidate,'path':str(mono),'old_mono_sha256':OLD_API_MONO_SHA256,'generation':'missing','not_RSS_or_timing':True}
+        if mono.is_file():
+            proof.update(bytes=mono.stat().st_size,mtime_ns=mono.stat().st_mtime_ns,
+                sha256=hashlib.sha256(mono.read_bytes()).hexdigest(),api_build_started_wall_ns=metadata.get('api_build_started_wall_ns'))
+            proof['generation']='new-source-bound-output' if proof['sha256']!=OLD_API_MONO_SHA256 and proof['mtime_ns']>=metadata.get('api_build_started_wall_ns',2**63) else 'INVALID_STALE_OUTPUT'
+        save(EVIDENCE/'mono-generation-proof.json',proof)
         retain_seed_cache(source,target,metadata)
-        save(EVIDENCE/'crate-cost-summary.json',{'commands':RESULTS,'total_measured_command_seconds':sum(r['wall_seconds'] for r in RESULTS),
-            'scope':'full existing lib target once each actual; same restored serial cache, transport/archive/failures included; not performance AB'})
-
-
-
+        save(EVIDENCE/'qualification-phase-state.json',metadata)
+        save(EVIDENCE/'api-cost-summary.json',{'commands':RESULTS,
+            'total_measured_command_seconds':sum(r['wall_seconds'] for r in RESULTS),
+            'scope':'ordinary API lib qualification only; restored cache and changed workspace dependencies; no crate55/13 or cold/PR benefit claim'})
+        save(EVIDENCE/'completion-summary.json',{'source_sha':candidate,'normal_lib_complete':metadata['normal_lib_complete'],
+            'tail_not_run':True,'phases':RESULTS})
+        print(json.dumps({'ci_completion':{'source_sha':candidate,'normal_lib_complete':metadata['normal_lib_complete'],
+             'tail_not_run':True,'command_count':len(RESULTS)}}),flush=True)
 if __name__=='__main__':
     if len(sys.argv)>1 and sys.argv[1] in ('--help','-h'):
-        print('CI entry: W5 fixed ca195 two-test overlay then candidate489 full83 lib. Local owner: follow-w5 RUN_ID OUT_DIR EXPECTED_CONTROL_SHA. Publication requires Root authorization and finite verifier PASS.')
+        print('CI entry: fixed W5 ordinary API lib only. Local owner: follow-w5-api RUN_ID OUT_DIR EXPECTED_CONTROL_SHA. No automatic test tail.')
         sys.exit(0)
-    if len(sys.argv)>1 and sys.argv[1]=='follow-w5':
-        sys.exit(follow_w5(int(sys.argv[2]),sys.argv[3],sys.argv[4]))
+    if len(sys.argv)>1 and sys.argv[1]=='follow-w5-api':
+        sys.exit(follow_w4(int(sys.argv[2]),sys.argv[3],sys.argv[4],api=True))
+    if len(sys.argv)>1 and sys.argv[1]=='follow-w4':
+        sys.exit(follow_w4(int(sys.argv[2]),sys.argv[3],sys.argv[4]))
     if len(sys.argv)>1 and sys.argv[1]=='prior-summary':
         summarize_prior(sys.argv[2],sys.argv[3])
         sys.exit(0)
