@@ -1,0 +1,116 @@
+name: Issue 2818 one-off paired feasibility
+
+on:
+  push:
+    branches: ['ci/2818-target-evidence-20261109']
+  workflow_dispatch:
+    inputs:
+      candidate_ref:
+        description: Branch fetched after the baseline completes
+        type: string
+        default: refs/heads/opt/2818-global-20261109
+      candidate_sha:
+        description: Exact candidate SHA (optional until Root pushes)
+        type: string
+        default: 1f3aa16782c34f244420bb55bd30292bf225b1c6
+      wait_seconds:
+        description: Bounded candidate availability wait
+        type: string
+        default: '1200'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue2818-one-off-feasibility
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CI: 'true'
+  API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+  DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
+  PGHOST: 127.0.0.1
+  PGPORT: '5432'
+  PGUSER: postgres
+  PGPASSWORD: 1flowbase
+  CARGO_INCREMENTAL: '0'
+  CARGO_TERM_COLOR: never
+
+jobs:
+  first-pair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: 1flowbase
+          POSTGRES_DB: 1flowbase
+        ports:
+          - 5432:5432
+        options: >-
+          --memory 400000000 --memory-swap 400000000 --cpus 0.5
+          --health-cmd "pg_isready -U postgres -d 1flowbase"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: web/.nvmrc
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Create only this task's finite user slice and run one serial pair
+        shell: bash
+        env:
+          CANDIDATE_REF: ${{ inputs.candidate_ref || 'refs/heads/opt/2818-global-20261109' }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha || '1f3aa16782c34f244420bb55bd30292bf225b1c6' }}
+          CANDIDATE_WAIT: ${{ inputs.wait_seconds || '1200' }}
+        run: |
+          set -euo pipefail
+          task_uid=$(id -u)
+          sudo loginctl enable-linger "$(id -un)"
+          sudo systemctl start "user@$task_uid.service"
+          export XDG_RUNTIME_DIR="/run/user/$task_uid"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          task_cpu_percent=$(( $(getconf _NPROCESSORS_ONLN) * 60 - 50 ))
+          systemctl --user set-property --runtime issue2818.slice MemoryMax=7600000000 MemoryHigh=7200000000 MemorySwapMax=0 "CPUQuota=$task_cpu_percent%"
+          systemctl --user start issue2818.slice
+          task_group=$(systemctl --user show issue2818.slice --property=ControlGroup --value)
+          task_inode=$(stat -c %i "/sys/fs/cgroup$task_group")
+          systemd-run --user --scope --quiet --unit=issue2818-orchestrator --slice=issue2818.slice \
+            --property=RuntimeMaxSec=5000s --property=TimeoutStopSec=5s --property=KillMode=control-group \
+            --working-directory="$GITHUB_WORKSPACE" \
+            env "ONEFLOWBASE_TASK_BUDGET_CGROUP=$task_group" "ONEFLOWBASE_TASK_BUDGET_ID=$task_inode" \
+            python3 tmp/test-governance/issue2818/ci-preparation/experiment.py \
+              --candidate-ref "$CANDIDATE_REF" --candidate-sha "$CANDIDATE_SHA" --wait-seconds "$CANDIDATE_WAIT"
+      - name: Confirm owned slice is empty and preserve final limits
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          evidence=tmp/test-governance/issue2818/ci-evidence
+          mkdir -p "$evidence"
+          systemctl --user show issue2818.slice --property=Id,ControlGroup,ActiveState,MemoryMax,MemoryHigh,MemorySwapMax,CPUQuotaPerSecUSec > "$evidence/final-slice.txt"
+          task_group=$(systemctl --user show issue2818.slice --property=ControlGroup --value)
+          if test -n "$task_group" && test -e "/sys/fs/cgroup$task_group/cgroup.events"; then
+            cat "/sys/fs/cgroup$task_group/cgroup.events" > "$evidence/final-cgroup.events"
+            if ! grep -qx 'populated 0' "$evidence/final-cgroup.events"; then
+              systemctl --user stop issue2818.slice
+              exit 1
+            fi
+          fi
+          systemctl --user stop issue2818.slice
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: issue2818-first-pair-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tmp/test-governance/issue2818/ci-evidence/**
+            tmp/test-governance/issue2818/ci-preparation/**
+          if-no-files-found: error
+          retention-days: 14
