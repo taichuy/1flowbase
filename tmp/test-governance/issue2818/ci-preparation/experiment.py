@@ -13,10 +13,11 @@ import sys
 import time
 
 SEED_SHA = 'a9e85b53bb385349896a16eeaa32238093248626'
-PRIOR_RUN = '42562236751'
-PRIOR_NAME = 'issue2818-seed-owner-42562236751-1'
-ARCHIVE_SHA = '196b2154d3b95320465cc6b7c33356e9d9863ecc10e5d4174313c8966c1e76a9'
-ARCHIVE_BYTES = 648028887
+PRIOR_RUN = '42568534500'
+PRIOR_NAME = 'issue2818-seed-owner-42568534500-1'
+PRIOR_ARTIFACT_ID = 13652328448
+ARCHIVE_SHA = '26bb9930154de09183a5270b23dae7b53a85437eebf9e62175742e02661516c4'
+ARCHIVE_BYTES = 679483365
 BASELINE = 'e3cdfefb7a5b85d1d7d9c2ef166e3b923c05de89'
 HOME_ROOT = Path(__file__).resolve().parents[4]
 SELF = Path(__file__).resolve()
@@ -28,6 +29,7 @@ END = time.monotonic() + 70 * 60
 SERIAL = 0
 RESULTS = []
 PG_GROUP = None
+THREAD_STATE = {'next':0,'previous':{},'summaries':{}}
 
 BUILDERS = r"""
 const root=process.argv[1], path=require('node:path');
@@ -65,6 +67,45 @@ def stream_exec(argv, merged):
             sys.stdout.buffer.flush()
     return child.wait()
 
+def rustc_thread_sample(processes, now):
+    if now < THREAD_STATE['next']:
+        return []
+    previous=THREAD_STATE['previous']
+    current={}
+    snapshots=[]
+    summaries={}
+    ticks=os.sysconf('SC_CLK_TCK')
+    for process in processes:
+        if process['comm']!='rustc':
+            continue
+        rows=[]
+        pid=process['pid']
+        try:
+            tasks=list((Path('/proc')/str(pid)/'task').iterdir())
+        except FileNotFoundError:
+            continue
+        for task in tasks:
+            try:
+                stat=(task/'stat').read_text().rsplit(')',1)[1].split()
+                user,system,start=int(stat[11]),int(stat[12]),int(stat[19])
+                key=(pid,int(task.name),start)
+                total=user+system
+                old=previous.get(key)
+                cpu=100*(total-old[1])/ticks/(now-old[0]) if old and now>old[0] else None
+                current[key]=(now,total)
+                rows.append({'tid':int(task.name),'name':(task/'comm').read_text().strip(),
+                    'state':stat[0],'user_ticks':user,'system_ticks':system,'start_ticks':start,
+                    'cpu_percent_since_previous':None if cpu is None else round(cpu,2)})
+            except (FileNotFoundError,ProcessLookupError,ValueError,IndexError):
+                pass
+        snapshots.append({'pid':pid,'crate':process.get('crate_name'),'clock_ticks_per_second':ticks,
+            'sampled_monotonic':now,'threads_reported_by_status':process['thread_count'],'threads':rows})
+        summaries[pid]={'names':dict(Counter(r['name'] for r in rows)),
+            'top_cpu':[{k:r[k] for k in ['tid','name','cpu_percent_since_previous']}
+                for r in sorted(rows,key=lambda r:r['cpu_percent_since_previous'] or 0,reverse=True)[:4]]}
+    THREAD_STATE.update(next=now+1,previous=current,summaries=summaries)
+    return snapshots
+
 def native_sample():
     group = Path('/sys/fs/cgroup') / os.environ['ONEFLOWBASE_TASK_BUDGET_CGROUP'].lstrip('/')
     stats = {k:int(v) for k,v in (line.split() for line in (group/'memory.stat').read_text().splitlines())}
@@ -81,7 +122,8 @@ def native_sample():
             status = dict(line.split(':',1) for line in (proc/'status').read_text().splitlines() if ':' in line)
             row = {'pid':pid,'comm':status['Name'].strip(),
                    'rss':int(status.get('VmRSS','0 kB').split()[0])*1024,
-                   'vm_hwm':int(status.get('VmHWM','0 kB').split()[0])*1024}
+                   'vm_hwm':int(status.get('VmHWM','0 kB').split()[0])*1024,
+                   'thread_count':int(status.get('Threads','0').strip())}
             if row['comm'] in ('rustc','cargo'):
                 argv = (proc/'cmdline').read_bytes().split(b'\0')
                 def flag(key):
@@ -93,10 +135,13 @@ def native_sample():
             processes.append(row)
         except (FileNotFoundError,ProcessLookupError):
             pass
+    now=time.monotonic()
+    threads=rustc_thread_sample(processes,now)
     current = int((group/'memory.current').read_text())
     pg = int((PG_GROUP/'memory.current').read_text()) if PG_GROUP else 0
     return {'monotonic':time.monotonic(),'memory_current':current,'pg_memory_current':pg,
             'aggregate_current':current+pg,'memory_stat':stats,'processes':processes,
+            'rustc_thread_samples':threads,'thread_sampling_interval_seconds':1,
             'tree_rss_sample':sum(r['rss'] for r in processes),
             'max_process_vm_hwm':max((r['vm_hwm'] for r in processes),default=0),
             'memory_pressure':(group/'memory.pressure').read_text().strip(),
@@ -134,7 +179,9 @@ def run(label, argv, cwd=HOME_ROOT, env=None, heavy=False, seconds=1200, expecte
                     'refault_file':stat.get('workingset_refault_file'),
                     'pressure':sample['memory_pressure'],
                     'rustc':[{'crate':r.get('crate_name'),'type':r.get('crate_type'),
-                              'test':r.get('is_test'),'rss':r['rss'],'hwm':r['vm_hwm']}
+                              'test':r.get('is_test'),'rss':r['rss'],'hwm':r['vm_hwm'],
+                              'thread_count':r['thread_count'],
+                              'threads':THREAD_STATE['summaries'].get(r['pid'],{})}
                              for r in sample['processes'] if r['comm']=='rustc'][:4]}),flush=True)
                 next_report=time.monotonic()+30
             time.sleep(.1)
@@ -339,6 +386,11 @@ def cargo_fresh_summary():
 
 def download_retained():
     prior=TEMP/'incoming'
+    identity=run('verify-prior-artifact-id',['gh','api',
+        'repos/taichuy/1flowbase/actions/artifacts/'+str(PRIOR_ARTIFACT_ID)],seconds=60)
+    artifact=read(Path(identity['stdout_log']))
+    assert artifact['id']==PRIOR_ARTIFACT_ID and artifact['name']==PRIOR_NAME and not artifact['expired']
+    assert artifact['workflow_run']['id']==int(PRIOR_RUN)
     run('download-prior-artifact',['gh','run','download',PRIOR_RUN,'--name',PRIOR_NAME,
         '--repo','taichuy/1flowbase','--dir',str(prior)],seconds=600)
     archived=list(prior.rglob('seed-target-and-source.tar.zst'))
@@ -360,19 +412,22 @@ def download_retained():
         assert '.git' not in parts, 'archive must not overwrite the new worktree identity'
     prior_plan=read(evidence/'seed-source-plan.json')
     commands=read(evidence/'commands.json')
-    prebuild=next(c for c in commands if c['label']=='seed-normal-lib-prebuild')['argv']
+    old_build=next(c for c in commands if c['label']=='seed-normal-lib-prebuild')
+    original_prebuild=old_build['argv']
+    prebuild=[arg for arg in original_prebuild if not arg.startswith('--message-format=')]
     assert prebuild==['cargo','build','--profile','test','--package','api-server',
         '--features','test-support','--lib','--jobs',str(prior_plan['runtime']['backend']['cargoJobs'])]
-    assert prior_plan['runtime']['backend']['cargoJobs']==2, 'preserve observed incoming jobs=2'
+    assert prior_plan['runtime']['backend']['cargoJobs']==2, 'incoming source runtime must remain observed jobs=2'
     os.environ['ISSUE2818_FROZEN_RUNTIME']=json.dumps(prior_plan['runtime'])
-    old_samples=evidence/'006-seed-normal-lib-prebuild.native-samples.jsonl'
+    old_samples=evidence/Path(old_build['merged_log']).name.replace('.combined.log','.native-samples.jsonl')
     run('summarize-prior-native',[sys.executable,str(SELF),'prior-summary',str(old_samples),
         str(EVIDENCE/'prior-native-summary.json')],seconds=90)
     save(EVIDENCE/'cache-resume.json',{'source_run':PRIOR_RUN,'artifact':PRIOR_NAME,
         'archive_sha256':ARCHIVE_SHA,'archive_bytes':ARCHIVE_BYTES,'source_sha':SEED_SHA,
-        'runtime':prior_plan['runtime'],'original_prebuild_argv':prebuild,
-        'cache_state':'restored partial target from a deadline; not cold','memory_high':'max',
-        'different_condition':'previous high=7200000000; current high=max; no before-after speed claim'})
+        'runtime':prior_plan['runtime'],'original_prebuild_argv':original_prebuild,
+        'cache_state':'restored partial target from hard-cap OOM; not cold','memory_high':'max',
+        'incoming_jobs':2,'diagnostic_jobs':1,'compiler_stage_flags':'root-only temporary RUSTC_WRAPPER: -Ztime-passes -Ztime-passes-format=json',
+        'different_condition':'previous no-high/jobs2 failed; next authorized variable is jobs1; no performance claim'})
     return archive,evidence,prior_plan,prebuild
 
 def retain_seed_cache(source, target, metadata):
@@ -403,12 +458,57 @@ def retain_seed_cache(source, target, metadata):
         archive.unlink(missing_ok=True)
         save(out,{'status':'archive-unavailable','reason':str(failure),'bounded_bytes':cap,'bounded_seconds':300})
 
+ROOT_WRAPPER = "#!/usr/bin/env python3\nimport json,os,re,sys,time\nfrom pathlib import Path\nreal,args=sys.argv[1],sys.argv[2:]\ndef value(flag):\n    if flag in args:\n        return args[args.index(flag)+1]\n    return next((x.split('=',1)[1] for x in args if x.startswith(flag+'=')),None)\nmatch=(value('--crate-name')=='api_server' and value('--crate-type')=='lib'\n       and '--test' not in args and any(Path(x).name=='lib_root.rs' for x in args))\nenv=dict(os.environ)\neffective=list(args)\nif match:\n    mode=env.get('ISSUE2818_RUSTC_MODE','diagnostic')\n    if mode=='diagnostic':\n        effective+=['-Ztime-passes','-Ztime-passes-format=json']\n        env['RUSTC_BOOTSTRAP']='api_server'\n    auth=re.search(r'--jobserver-(?:auth|fds)=(\\d+),(\\d+)',env.get('CARGO_MAKEFLAGS',''))\n    fds={}\n    for fd in (map(int,auth.groups()) if auth else []):\n        try:\n            os.fstat(fd)\n            fds[str(fd)]='open'\n        except OSError:\n            fds[str(fd)]='closed'\n    row={'pid':os.getpid(),'monotonic':time.monotonic(),'mode':mode,'probe':'-Zhelp' in args,\n         'original_argv':[real,*args],'effective_argv':[real,*effective],\n         'bootstrap_for_this_exec':env.get('RUSTC_BOOTSTRAP'),'jobserver_fds':fds}\n    with open(env['ISSUE2818_ROOT_LOG'],'a') as log:\n        log.write(json.dumps(row)+'\\n')\n        log.flush()\n    if mode=='observe-only':\n        os._exit(86)\nos.execve(real,[real,*effective],env)\n"
+
+def install_stage_wrapper(source,env):
+    wrapper=TEMP/'seed-rustc-wrapper.py'
+    wrapper.write_text(ROOT_WRAPPER)
+    wrapper.chmod(0o700)
+    (EVIDENCE/'seed-rustc-wrapper.py').write_text(ROOT_WRAPPER)
+    assert not env.get('RUSTC_WRAPPER') and not env.get('RUSTC_WORKSPACE_WRAPPER')
+    assert not env.get('RUSTC_BOOTSTRAP'), 'bootstrap must be scoped only to matched rustc exec'
+    diagnostic={**env,'CARGO_BUILD_JOBS':'1','RUSTC_WRAPPER':str(wrapper),
+        'ISSUE2818_RUSTC_MODE':'diagnostic',
+        'ISSUE2818_ROOT_LOG':str(EVIDENCE/'root-rustc-invocations.jsonl')}
+    real=capture(['rustup','which','rustc'])
+    help_row=run('rustc-stage-help',[str(wrapper),real,'--crate-name','api_server',
+        '--crate-type','lib',str(source/'api/apps/api-server/src/lib_root.rs'),'-Zhelp'],
+        cwd=source/'api',env=diagnostic,seconds=30)
+    help_text=Path(help_row['stdout_log']).read_text()
+    assert 'time-passes' in help_text and 'time-passes-format' in help_text
+    return diagnostic
+
+def stage_summary():
+    path=EVIDENCE/'root-rustc-invocations.jsonl'
+    invocations=[json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+    completed=[]
+    for log in EVIDENCE.glob('*seed-normal-lib-prebuild.combined.log'):
+        for line in log.open(errors='replace'):
+            try:
+                row=json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(row,dict) and ('pass' in row or 'pass_name' in row):
+                completed.append(row)
+    builds=[r for r in invocations if r['mode']=='diagnostic' and not r['probe']]
+    blocked=[r for r in invocations if r['mode']=='observe-only']
+    data={'root_match_count':len(invocations),'diagnostic_root_execs':len(builds),
+        'default_root_recompile_blocked':len(blocked),'invocations':invocations,
+        'last_completed_pass':completed[-1] if completed else None,'completed_passes':completed,
+        'limits':'time-passes RSS values are completed-pass endpoints, not peaks; interrupted pass may have no trailing row; observations do not prove the exact OOM phase or pure jobs1 speed effect'}
+    save(EVIDENCE/'compiler-stage-summary.json',data)
+    print(json.dumps({'diagnostic_root_execs':len(builds),'default_recompile_blocked':len(blocked),
+        'last_completed_pass':data['last_completed_pass']}),flush=True)
+    return data
+
 def main():
     # Lowest-cost next evidence: one real database-free seed owner, not another full W.
     EVIDENCE.mkdir(parents=True,exist_ok=False)
     TEMP.mkdir(parents=True,exist_ok=False)
     metadata={'source_sha':os.environ['CANDIDATE_SHA'],'normal_lib_complete':False,'seed_queries_complete':False,
-              'resumed_from_run':PRIOR_RUN,'cache_start':'restored-partial-target'}
+              'resumed_from_run':PRIOR_RUN,'cache_start':'restored-partial-target',
+              'diagnostic_jobs':1,'default_ordinary_lib_fresh_verified':False,
+              'root_only_diagnostics':['-Ztime-passes','-Ztime-passes-format=json']}
     assert metadata['source_sha']==SEED_SHA
     assert TEMP==Path('/home/runner/work/_temp/issue2818'), 'restore paths must stay exact'
     source=TEMP/'seed-source'
@@ -422,7 +522,7 @@ def main():
     assert capture(['rustc','--version']).startswith('rustc 1.99.1 '), 'exact compiler pin required'
     save(EVIDENCE/'environment.json',{'rustc':capture(['rustc','-vV']),'cargo':capture(['cargo','-vV']),
          'host_cpu_count':os.cpu_count(),'source_sha':metadata['source_sha'],'postgres':False,
-         'phase':'seed resume from 425622 artifact; 600-second ordinary-lib diagnostic window',
+         'phase':'jobs1 root-only API lib compiler-stage diagnosis from latest hard-OOM cache',
          'cache_start':'restored-partial, not cold','memory_high':'max','extra_G0_policy':False})
     try:
         archive,prior_evidence,prior_plan,prior_build=download_retained()
@@ -438,8 +538,9 @@ def main():
         graph_env={**env,'RUSTC_BOOTSTRAP':'1'}
         original=seed_data['tests'][0]['args'];stop=original.index('--') if '--' in original else len(original)
         qgraph=run('seed-query-unit-graph',['cargo',*original[:stop],'-Z','unstable-options','--unit-graph','--no-run'],cwd=source/'api',env=graph_env,seconds=60)
-        build=prior_build
-        bgraph=run('seed-lib-unit-graph',[*build,'-Z','unstable-options','--unit-graph'],cwd=source/'api',env=graph_env,seconds=60)
+        build=list(prior_build)
+        build[build.index('--jobs')+1]='1'
+        bgraph=run('seed-lib-unit-graph',[*build,'-Z','unstable-options','--unit-graph'],cwd=source/'api',env={**graph_env,'CARGO_BUILD_JOBS':'1'},seconds=60)
         q=json.loads(Path(qgraph['stdout_log']).read_text());b=json.loads(Path(bgraph['stdout_log']).read_text())
         def sig(u):
             return json.dumps({k:u[k] for k in ('pkg_id','target','profile','platform','mode','features')},sort_keys=True)
@@ -454,22 +555,50 @@ def main():
         assert len(matches)==1 and closure(q,matches[0])==closure(b,r), 'prebuild not exact seed dependency'
         assert len(closure(b,r))==548, 'the frozen ordinary-lib dependency graph must remain 548 units'
         save(EVIDENCE/'seed-prebuild-compatibility.json',{'exact_recursive_unit_equality':True,'units':len(closure(b,r)),
-             'compiler':capture(['rustc','--version']),'purpose':'one ordinary-lib heavy root before private-contracts root; unchanged jobs/features/profile'})
-        run('seed-normal-lib-prebuild',[*build,'--message-format=json'],cwd=source/'api',env=env,heavy=True,seconds=600)
+             'compiler':capture(['rustc','--version']),'purpose':'same ordinary-lib build profile/features and 548 units; jobs2 incoming to jobs1 diagnostic; root-only stage flags are not a runtime equivalence proof'})
+        diagnostic=install_stage_wrapper(source,env)
+        run('seed-normal-lib-prebuild',[*build,'--message-format=json'],cwd=source/'api',env=diagnostic,heavy=True,seconds=600)
         cargo_fresh_summary()
-        assert read(EVIDENCE/'restored-cargo-fresh.json')['fresh_artifacts']>0, 'no Cargo reuse observed; do not continue a cold fallback'
+        fresh=read(EVIDENCE/'restored-cargo-fresh.json')
+        assert fresh['fresh_artifacts']>=509, 'expected 509 cached dependency artifacts; no cold fallback'
+        assert not [r for r in fresh['artifacts'] if not r['fresh'] and r['target']!='api_server'], 'dependency rebuilt unexpectedly; stop before seed'
+        assert stage_summary()['diagnostic_root_execs']==1, 'expected exactly one ordinary API lib diagnostic compilation'
         metadata['normal_lib_complete']=True
+        # Same temporary wrapper in observe-only mode refuses any hidden second ordinary-lib compile.
+        observe={**diagnostic,'ISSUE2818_RUSTC_MODE':'observe-only'}
+        default=run('default-lib-freshness-check',[*build,'--message-format=json'],
+            cwd=source/'api',env=observe,heavy=True,seconds=90)
+        default_artifacts=[]
+        for line in Path(default['merged_log']).read_text().splitlines():
+            try:
+                row=json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get('reason')=='compiler-artifact' and row['target']['name']=='api_server' and row['target']['kind']==['lib']:
+                default_artifacts.append(row)
+        assert default_artifacts and all(r['fresh'] for r in default_artifacts), 'default API lib is not Cargo Fresh; no automatic recompile'
+        assert stage_summary()['default_root_recompile_blocked']==0
+        metadata['default_ordinary_lib_fresh_verified']=True
+        save(EVIDENCE/'default-lib-freshness.json',{'cargo_reports_fresh':True,
+            'root_compiler_was_not_invoked':True,'diagnostic_flags_not_reapplied':True,
+            'not_a_blanket_cache_equivalence_or_performance_claim':True})
         executions=[]
         for index,command in enumerate(seed_data['tests']):
             executions.append(run('seed-query-'+str(index),[command['command'],*command['args']],
-                 cwd=source/command['cwd'],env=command_env(data,command,target),heavy=True,seconds=2700))
+                 cwd=source/command['cwd'],env={**command_env(data,command,target),
+                     'RUSTC_WRAPPER':diagnostic['RUSTC_WRAPPER'],'ISSUE2818_RUSTC_MODE':'observe-only',
+                     'ISSUE2818_ROOT_LOG':diagnostic['ISSUE2818_ROOT_LOG']},heavy=True,seconds=2700))
         metadata['seed_queries_complete']=True
+        # Listings use the same observe-only guard; no root flags or silent ordinary-lib rebuild.
+        os.environ.update(RUSTC_WRAPPER=diagnostic['RUSTC_WRAPPER'],ISSUE2818_RUSTC_MODE='observe-only',
+                          ISSUE2818_ROOT_LOG=diagnostic['ISSUE2818_ROOT_LOG'])
         discover('candidate-seed',source,seed_data,cargo_meta,target,executions)
         save(EVIDENCE/'status.json',{'status':'SEED_OWNER_EXECUTED','source_sha':metadata['source_sha'],
              'not_final_QA':True,'not_full_W_or_performance_PASS':True,'remaining':'old/new complete sets, MCP/application, known D, additional API check cost, job-boundary A/B'})
         return 0
     finally:
         cargo_fresh_summary()
+        stage_summary()
         retain_seed_cache(source,target,metadata)
 
 if __name__=='__main__':

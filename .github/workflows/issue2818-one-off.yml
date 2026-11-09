@@ -1,4 +1,4 @@
-name: Issue 2818 restored seed diagnostic
+name: Issue 2818 jobs1 API lib stage diagnostic
 
 on:
   push:
@@ -45,7 +45,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: '1.99.1' 
-      - name: Restore retained source and target, diagnose ordinary lib for 600 seconds, then execute seed
+      - name: Restore latest target, diagnose only ordinary API lib at jobs1, guard default seed reuse
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
