@@ -304,7 +304,7 @@ export function EventDefinitionDrawer({
                   label: t('scope'),
                   children:
                     entry.scope.kind === 'workspace'
-                      ? `${t('workspace_scope')} · ${entry.scope.workspace_id}`
+                      ? `${t('workspace_id')} · ${entry.scope.workspace_id}`
                       : t(entry.scope.kind)
                 },
                 {

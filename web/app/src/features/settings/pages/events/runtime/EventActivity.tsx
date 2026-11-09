@@ -3,6 +3,7 @@ import type {
   EventRegisteredSourceSnapshot
 } from '@1flowbase/api-client';
 import { Button, Input, Select, Tag, Typography } from 'antd';
+import type { ReactNode } from 'react';
 import type { DataTableColumn } from '../../../../../shared/ui/data-table/DataTable';
 import { EventsTable } from '../EventsTable';
 import { navigateEventState, useEventParameter } from '../event-navigation';
@@ -12,10 +13,12 @@ import { activityKey, timeLabel, useRuntimeLabels } from './runtime-labels';
 
 export function EventActivity({
   activity,
-  sources
+  sources,
+  toolbarActions
 }: {
   activity: EventRuntimeActivity[];
   sources: EventRegisteredSourceSnapshot[];
+  toolbarActions?: ReactNode;
 }) {
   const { t, phases, admissions, scopeLabel } = useRuntimeLabels();
   const search = useEventParameter('query') ?? '',
@@ -167,60 +170,69 @@ export function EventActivity({
     navigateEventState({ ...values, activity_page: null, record: null });
   return (
     <div className="event-runtime-activity">
-      <div className="event-runtime-filters">
-        <Input.Search
-          className="event-runtime-search"
-          aria-label={t('runtime_find_activity')}
-          placeholder={t('runtime_find_activity')}
-          allowClear
-          value={search}
-          onChange={(event) =>
-            navigateEventState(
-              { query: event.target.value, activity_page: null, record: null },
-              true
-            )
-          }
-          onSearch={(value) => set({ query: value })}
-        />
-        <Select
-          className="event-runtime-filter-select"
-          aria-label={t('phase')}
-          value={phase ?? undefined}
-          placeholder={t('runtime_all_phases')}
-          allowClear
-          options={Object.entries(phases).map(([value, label]) => ({
-            value,
-            label
-          }))}
-          onChange={(value) => set({ phase: value ?? null })}
-        />
-        <Select
-          className="event-runtime-filter-select"
-          aria-label={t('admission')}
-          value={admission ?? undefined}
-          placeholder={t('runtime_all_admissions')}
-          allowClear
-          options={[
-            ...Object.entries(admissions).map(([value, label]) => ({
-              value,
-              label
-            })),
-            { value: 'none', label: t('runtime_not_applicable') }
-          ]}
-          onChange={(value) => set({ admission: value ?? null })}
-        />
-        {(search || phase || admission) && (
-          <Button
-            onClick={() => set({ query: null, phase: null, admission: null })}
-          >
-            {t('runtime_reset')}
-          </Button>
-        )}
-      </div>
       <Typography.Text type="secondary">
         {t('runtime_snapshot_filter')}
       </Typography.Text>
       <EventsTable
+        toolbar={toolbarActions}
+        toolbarStart={
+          <div className="event-runtime-filters">
+            <Input.Search
+              className="event-runtime-search"
+              aria-label={t('runtime_find_activity')}
+              placeholder={t('runtime_find_activity')}
+              allowClear
+              value={search}
+              onChange={(event) =>
+                navigateEventState(
+                  {
+                    query: event.target.value,
+                    activity_page: null,
+                    record: null
+                  },
+                  true
+                )
+              }
+              onSearch={(value) => set({ query: value })}
+            />
+            <Select
+              className="event-runtime-filter-select"
+              aria-label={t('phase')}
+              value={phase ?? undefined}
+              placeholder={t('runtime_all_phases')}
+              allowClear
+              options={Object.entries(phases).map(([value, label]) => ({
+                value,
+                label
+              }))}
+              onChange={(value) => set({ phase: value ?? null })}
+            />
+            <Select
+              className="event-runtime-filter-select"
+              aria-label={t('admission')}
+              value={admission ?? undefined}
+              placeholder={t('runtime_all_admissions')}
+              allowClear
+              options={[
+                ...Object.entries(admissions).map(([value, label]) => ({
+                  value,
+                  label
+                })),
+                { value: 'none', label: t('runtime_not_applicable') }
+              ]}
+              onChange={(value) => set({ admission: value ?? null })}
+            />
+            {(search || phase || admission) && (
+              <Button
+                onClick={() =>
+                  set({ query: null, phase: null, admission: null })
+                }
+              >
+                {t('runtime_reset')}
+              </Button>
+            )}
+          </div>
+        }
         mobileRecords={JSON.stringify([search, phase, admission])}
         urlState
         tableKey="activity"

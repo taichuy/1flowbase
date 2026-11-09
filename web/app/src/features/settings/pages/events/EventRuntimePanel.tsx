@@ -1,31 +1,20 @@
 import { ApiClientError, getEventRuntime } from '@1flowbase/api-client';
 import { useQuery } from '@tanstack/react-query';
 import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
-import { Alert, Button, Collapse, Select, Spin, Typography } from 'antd';
+import { Alert, Button, Spin, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../../../../state/auth-store';
-import { EventSourceQueues } from './EventSourceQueues';
-import {
-  navigateEventScope,
-  navigateEventState,
-  useEventParameter,
-  useEventScope
-} from './event-navigation';
-import { EventWorkflowSubscriptions } from './EventWorkflowSubscriptions';
 import { EventActivity } from './runtime/EventActivity';
-import { RuntimeDetails } from './runtime/RuntimeDetails';
-import { WorkflowQueues } from './runtime/WorkflowQueues';
-import {
-  scopeKey,
-  timeLabel,
-  useRuntimeLabels
-} from './runtime/runtime-labels';
+import { QueueWorkbench } from './runtime/QueueWorkbench';
+import { QueueStatistics } from './runtime/statistics/QueueStatistics';
+import { ObservationStatistics } from './runtime/statistics/ObservationStatistics';
+import { timeLabel, useRuntimeLabels } from './runtime/runtime-labels';
 import './runtime/event-runtime.css';
 
+const REFRESH_INTERVAL_MS = 5000;
+
 export function EventRuntimePanel({ tab }: { tab: 'queues' | 'activity' }) {
-  const { t, scopeLabel } = useRuntimeLabels();
-  const requestedScope = useEventScope();
-  const diagnostics = useEventParameter('observation') === '1';
+  const { t } = useRuntimeLabels();
   const workspaceId = useAuthStore(
     (state) => state.actor?.current_workspace_id
   );
@@ -34,7 +23,14 @@ export function EventRuntimePanel({ tab }: { tab: 'queues' | 'activity' }) {
     queryFn: () => getEventRuntime(),
     gcTime: 0,
     retry: false,
-    refetchOnWindowFocus: false
+    refetchInterval: (query) =>
+      query.state.error instanceof ApiClientError &&
+      [401, 403].includes(query.state.error.status)
+        ? false
+        : REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true
   });
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -42,89 +38,68 @@ export function EventRuntimePanel({ tab }: { tab: 'queues' | 'activity' }) {
     return () => window.clearInterval(timer);
   }, []);
   const snapshot = query.data;
-  const selectedView = requestedScope
-    ? snapshot?.source_views.find(
-        (view) => scopeKey(view.scope) === requestedScope
-      )
-    : snapshot?.source_views.find(
-        (view) =>
-          view.scope.kind === 'workspace' &&
-          view.scope.workspace_id === snapshot.workspace_id
-      );
   const denied =
     query.error instanceof ApiClientError &&
     [401, 403].includes(query.error.status);
   // A rejected authorization response must not continue displaying an older privileged snapshot.
-  const observation = denied ? undefined : selectedView;
-  const stale =
-    observation &&
-    Math.max(now, Date.now()) - query.dataUpdatedAt >=
-      observation.observation_ttl_ms;
-  const workspaceView =
-    observation?.scope.kind === 'workspace' &&
-    observation.scope.workspace_id === snapshot?.workspace_id;
-  const needsAttention = workspaceView
-    ? (snapshot?.workflow_subscriptions.filter(
-        (row) => row.activation !== 'active'
-      ) ?? [])
-    : [];
-  const refresh = () => void query.refetch();
+  const observations = denied ? [] : (snapshot?.source_views ?? []);
+  const stale = observations.some(
+    (observation) =>
+      Math.max(now, Date.now()) - query.dataUpdatedAt >=
+      observation.observation_ttl_ms
+  );
+  // The workspace queues already include its source-bound subscriptions.
+  const queues = [
+    ...(snapshot?.queues ?? []),
+    ...observations.flatMap((observation) =>
+      observation.scope.kind === 'workspace' &&
+      observation.scope.workspace_id === snapshot?.workspace_id
+        ? []
+        : observation.workflow_queues
+    )
+  ];
+  const refresh = () => void query.refetch({ cancelRefetch: false });
+  const toolbarActions = (
+    <>
+      <Button
+        data-event-runtime-refresh
+        aria-label={t('refresh')}
+        onClick={refresh}
+        loading={query.isFetching}
+        icon={<ReloadOutlined />}
+      >
+        {t('refresh')}
+      </Button>
+    </>
+  );
   return (
     <div className="event-runtime" aria-busy={query.isFetching}>
-      <div className="event-runtime-toolbar">
-        <Select
-          className="event-runtime-scope"
-          aria-label={t('scope')}
-          value={
-            observation
-              ? scopeKey(observation.scope)
-              : (requestedScope ?? undefined)
-          }
-          placeholder={t('scope')}
-          options={
-            denied
-              ? []
-              : snapshot?.source_views.map((view) => ({
-                  value: scopeKey(view.scope),
-                  label: scopeLabel(view.scope)
-                }))
-          }
-          onChange={navigateEventScope}
-          popupMatchSelectWidth={false}
-        />
+      {snapshot &&
+        !denied &&
+        observations.length > 0 &&
+        (tab === 'queues' ? (
+          <QueueStatistics
+            key={`${workspaceId}:${snapshot.instance_id}`}
+            queues={queues}
+            capturedAt={query.dataUpdatedAt}
+          />
+        ) : (
+          <ObservationStatistics
+            key={`${workspaceId}:${snapshot.instance_id}`}
+            views={observations}
+            capturedAt={query.dataUpdatedAt}
+            admissionRejected={snapshot.admission_rejected}
+          />
+        ))}
+      {query.isPaused && (
         <Typography.Text
           type="secondary"
           className="event-runtime-freshness"
           role="status"
         >
-          {query.isFetching
-            ? t('runtime_refreshing')
-            : query.dataUpdatedAt
-              ? t('runtime_snapshot_time', {
-                  time: timeLabel(query.dataUpdatedAt)
-                })
-              : t('runtime_loading')}
+          {t('runtime_waiting_for_network')}
         </Typography.Text>
-        <div className="event-runtime-toolbar-actions">
-          <Button
-            aria-label={t('refresh')}
-            onClick={refresh}
-            loading={query.isFetching}
-            icon={<ReloadOutlined />}
-          >
-            {t('refresh')}
-          </Button>
-          <Button
-            disabled={!observation}
-            onClick={() => navigateEventState({ observation: '1' })}
-          >
-            {t('runtime_observation_details')}
-          </Button>
-        </div>
-      </div>
-      <Typography.Text type="secondary">
-        {t('runtime_snapshot_note')}
-      </Typography.Text>
+      )}
       {query.isError && (
         <Alert
           type="error"
@@ -152,28 +127,21 @@ export function EventRuntimePanel({ tab }: { tab: 'queues' | 'activity' }) {
       {!query.isError && stale && (
         <Alert type="warning" showIcon title={t('runtime_stale_snapshot')} />
       )}
-      {snapshot && !denied && snapshot.source_queue_refresh_error !== null && (
-        <Alert
-          type="warning"
-          showIcon
-          title={t('source_queue_refresh_error')}
-        />
-      )}
-      {workspaceView && snapshot?.workflow_refresh_error !== null && (
+      {!denied && snapshot?.workflow_refresh_error && (
         <Alert type="warning" showIcon title={t('workflow_refresh_error')} />
       )}
-      {observation && !observation.configured && (
+      {observations.some((view) => !view.configured) && (
         <Alert type="warning" showIcon title={t('unconfigured')} />
       )}
-      {snapshot && !denied && !observation && (
+      {snapshot && !denied && !observations.length && (
         <Alert type="warning" showIcon title={t('runtime_scope_unavailable')} />
       )}
-      {observation && !observation.observation_loss.accounting_available && (
-        <Alert type="info" showIcon title={t('loss_unavailable')} />
-      )}
-      {observation?.observation_loss.accounting_available &&
-        (observation.observation_loss.evicted > 0 ||
-          observation.observation_loss.oversize_dropped > 0) && (
+      {tab === 'activity' &&
+        observations.some(
+          ({ observation_loss: loss }) =>
+            loss.accounting_available &&
+            (loss.evicted > 0 || loss.oversize_dropped > 0)
+        ) && (
           <Alert type="warning" showIcon title={t('runtime_records_limited')} />
         )}
       {query.isPending ? (
@@ -181,53 +149,21 @@ export function EventRuntimePanel({ tab }: { tab: 'queues' | 'activity' }) {
           <div className="event-runtime-loading" />
         </Spin>
       ) : (
-        observation &&
+        snapshot &&
+        !denied &&
         (tab === 'activity' ? (
           <EventActivity
-            key={scopeKey(observation.scope)}
-            activity={observation.activity}
-            sources={observation.sources}
+            activity={observations.flatMap((view) => view.activity)}
+            sources={observations.flatMap((view) => view.sources)}
+            toolbarActions={toolbarActions}
           />
         ) : (
-          <>
-            <EventSourceQueues
-              key={scopeKey(observation.scope)}
-              sources={observation.sources}
-            />
-            {needsAttention.length > 0 && (
-              <EventWorkflowSubscriptions
-                subscriptions={snapshot!.workflow_subscriptions}
-              />
-            )}
-            <Collapse
-              ghost
-              defaultActiveKey={
-                observation.sources.length === 0 ||
-                observation.workflow_queues.length > 0
-                  ? ['workflows']
-                  : []
-              }
-              items={[
-                {
-                  key: 'workflows',
-                  label: `${t(workspaceView ? 'workspace_workflow_queues' : 'scope_workflow_queues')} · ${observation.workflow_queues.length}`,
-                  children: (
-                    <WorkflowQueues queues={observation.workflow_queues} />
-                  )
-                }
-              ]}
-            />
-          </>
+          <QueueWorkbench
+            queues={queues}
+            workflows={snapshot.workflow_subscriptions}
+            toolbarActions={toolbarActions}
+          />
         ))
-      )}
-      {diagnostics && observation && (
-        <RuntimeDetails
-          open
-          observation={observation}
-          snapshot={snapshot}
-          fetchedAt={query.dataUpdatedAt}
-          onClose={() => navigateEventState({ observation: null }, true)}
-        />
       )}
     </div>
   );

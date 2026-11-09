@@ -181,7 +181,7 @@ export function EventsPage() {
       width: 220,
       render: (_, row) =>
         row.scope.kind === 'workspace'
-          ? `${t('workspace_scope')} · ${row.scope.workspace_id}`
+          ? `${t('workspace_id')} · ${row.scope.workspace_id}`
           : t(row.scope.kind)
     },
     {

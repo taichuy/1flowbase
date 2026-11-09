@@ -195,6 +195,10 @@ export interface EventWorkflowStatus {
   workspace_id: string;
   application_id: string;
   subscription_id: string;
+  /** The configured event identity is retained even if the queue never activated. */
+  contract_id?: string;
+  trigger_phase?: EventTriggerPhase;
+  source?: EventSourceSelection | null;
   activation: 'active' | 'unavailable' | 'draining' | 'stopping' | 'stopped';
   reason: string | null;
   last_signal_id: string | null;
