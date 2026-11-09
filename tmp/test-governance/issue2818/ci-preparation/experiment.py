@@ -765,7 +765,7 @@ def follow_withdrawal(run_id,out_dir,control_sha):
     result={'status':'PASS_TWO_CLEAN_CHECKS_SCOPE' if record['conclusion']=='success' and state.get('apps_check_complete') and state.get('API_alltargets_complete') else 'FAIL_OR_INCOMPLETE_CLEAN_CHECKS_SCOPE',
         'run_id':run_id,'control_sha':control_sha,'candidate_sha':CRATE_CANDIDATE,'apps_check_complete':state.get('apps_check_complete'),'API_alltargets_complete':state.get('API_alltargets_complete'),'frozen_pair_completion':'incomplete','C01_not_run':True,'native_actual_passed':native['passed'] if native else None,
         'native_actual_test_counts':{'passed':native['passed'],'failed':0,'ignored':0} if native else None,'failure':failure,'budget_after':budget,
-        'all_command_cleanup_complete':all(r['cleanup_complete'] for r in phases),'final_populated_zero':'populated 0' in final,'no_private_root_or_PG_or_tail':True,
+        'all_command_cleanup_complete':all(r['cleanup_complete'] for r in phases),'final_populated_zero':'populated 0' in final,'no_PG_or_runtime_tests_or_C01':True,
         'clean_check_artifact_files':['original-three-package-check-artifacts.json','API-only-all-targets-check-artifacts.json'],'restoration_net_lines':173,'not_optimization_or_Root_PASS':True}
     save(out/'qualification-summary.json',result)
     (out/'report.md').write_text(result['status']+'\n\n'+json.dumps(result,indent=2)+'\nEvidence: attribution-receipt.json, stdout-phase-attribution.json, small-results-transport.json, results/ci-evidence/*.\nClean check scope only; no behavior/C01 D/optimization/Root or remaining-obligation PASS.\n')

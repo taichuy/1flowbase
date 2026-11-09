@@ -1,0 +1,17 @@
+Temporary W6 qualification only. Product source remains 903971d5c3ddd37f93c1f7314e02dae4a2bb120c. render.py validates actual candidate workspace bytes against that commit, extracts the real old and new method bytes, validates the frozen oracle/suffix/helper hashes, includes the real helper/schema files with JSON-quoted absolute paths, and emits a source-bound manifest. It never invokes rustc or Cargo.
+
+CI owner renders with `python3 render.py --repo-root <fixed-source-root> --output <host.rs> --serde-rlib <the exact serde_json rlib used by the API cache>`. Select the matching toolchain, serde features, dependency search path and original profile flags; record them externally. Link directly with rustc using `--extern serde_json=<rlib>` and `-L dependency=<cache-deps>`; no Cargo crate is needed. Build the normal host without heap_counts, and a separate instrumented binary with `--cfg heap_counts`. Optional existing root mono/timepasses flags remain the CI owner's choice; this fixture adds none.
+
+Run both binaries with the same fixed `<iterations> <warmup>` chosen before viewing outcomes. Each binary asserts old/new Some separately, direct full Value equality, direct serde_json::to_vec bytes equality, and independently mutated simultaneously-live old/new call pairs. Validation/serialization/printing and equal warmups are outside measured timing. Five fixed alternating raw pairs are emitted; keep all samples and report unresolved noise instead of tuning for PASS. Normal timing has no allocator instrumentation. Instrumented results separately report successful alloc/zeroed calls, realloc calls, dealloc calls, cumulative requested bytes, maximum simultaneously outstanding requested bytes at allocator boundaries and after-drop live=0; tracking excludes reporting/setup allocations and rejects unbalanced windows. System's realloc internal transient allocation and allocator usable-size/RSS are unobserved. Stack peak and attributable rodata delta remain unknown; the dual-body host's whole binary size is not an old/new difference.
+
+The old eager child schemas and new lazy fields iterator may have different temporary live-byte and stack profiles. Neither allocation counts nor source shrinking establishes non-regression. This fixture supplies raw evidence only; CI owner and Root decide equivalence/cost disposition. No API compilation or new CI wave is authorized by this fixture.
+
+Direct execution after CI-owner compilation (same fixed normal binary and flags):
+
+```bash
+W6_OLD_CONTROL=1 <normal-host> 1000 100 > old-old-noise.log
+<normal-host> 1000 100 > old-new-timing.log
+<instrumented-host> 1 100 > instrumented-requested-bytes.log
+```
+
+Keep W6_OLD_CONTROL unset for comparison and instrumented runs; the instrumented binary rejects old-old mode. The control prints old_control_a/b, both bound to the exact old function; warmups use those same two sides. CI owner may confirm these fixed counts fit 120 seconds before observing any outcome. Root predeclares the largest relative difference among all five old-old pairs as a conservative noise band. Old/new differences within that band are unresolved; retain every raw sample, do not choose favorable pairs, tune after outcomes or retry to obtain PASS. Instrumented results/costs remain separate; requested live-byte boundaries do not measure RSS or System realloc internals. Stack peak and attributable rodata delta remain unknown.

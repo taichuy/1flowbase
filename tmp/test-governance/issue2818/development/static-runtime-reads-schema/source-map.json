@@ -1,0 +1,131 @@
+{
+  "input_sha": "7bb249e47d29dce87a291677884bd42962aa2046",
+  "evidence_type": "developer exact source/descriptor/shape checks, not executed Rust equality, byte-order or performance evidence",
+  "files": {
+    "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads/managed_projection/application_runtime_reads_output.rs": {
+      "before_sha256": "d00cc55d6c9333b8d6c03734b1ec800210eb1e58229b896699522a6a81742449",
+      "after_sha256": "c090929208b00618e40787999d66611dd1c1994c69d61e926c401b18fa01c339",
+      "before_lines": 1150,
+      "after_lines": 153,
+      "before_bytes": 135805,
+      "after_bytes": 64845
+    },
+    "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads/managed_projection/application_runtime_reads_schema.rs": {
+      "before_sha256": null,
+      "after_sha256": "ef9d0f27de58aea4e6c254aa8f0a9c5a067d2afea41b0217e6d2d2662fcaf987",
+      "lines": 867,
+      "bytes": 32447
+    }
+  },
+  "original_function": {
+    "file": "/home/taichuy/git/git_worktree/issue2818-global-20261109/tmp/test-governance/issue2818/development/static-runtime-reads-schema/original-function.rs",
+    "sha256": "0d6ca0ada1f37d18e2f3f8d40cf31998babd2e3b2707783c6d95f1cebcdc5d16",
+    "source_span_lines": [
+      4,
+      1006
+    ]
+  },
+  "new_function": {
+    "sha256": "9c3f89812de371114cdd7ffb1177246c3dd1a2a3e24b5b21b3a310fec46c8c34",
+    "lines": [
+      7,
+      9
+    ],
+    "body": "fn managed_projection_schema() -> Option<serde_json::Value> {\n        Some(schema::build())\n    }"
+  },
+  "protected_suffix": {
+    "sha256": "5146e3ba37c82a92d433ea1693006fc7dce73b5c64b3c368077d392088c0e774",
+    "byte_equal": true,
+    "scope": "all remaining project_for_managed_hook/document and other source after original schema function"
+  },
+  "helper_dependency": {
+    "path": "api/apps/api-server/src/extension_bus/managed_projection.rs",
+    "sha256": "20a73b7f7950f20451c180e43bf91516f83c3312866e9b3d86447431153984f7",
+    "policy": "Text/Tag/Count/JsonSummary call original helper at build time; do not infer policy equivalence from MAX_TEXT_BYTES=256 sample only"
+  },
+  "descriptor": {
+    "constructors": [
+      "AnyOf",
+      "Array",
+      "Boolean",
+      "Count",
+      "Integer",
+      "JsonSummary",
+      "Null",
+      "Number",
+      "Object",
+      "OneOf",
+      "Tag",
+      "Text"
+    ],
+    "expanded_nodes": 1104,
+    "node_counts": {
+      "OneOf": 3,
+      "Object": 239,
+      "Tag": 32,
+      "Count": 143,
+      "JsonSummary": 37,
+      "Text": 189,
+      "Array": 17,
+      "AnyOf": 158,
+      "Null": 158,
+      "Number": 34,
+      "Integer": 81,
+      "Boolean": 13
+    },
+    "variants": 23,
+    "const_shape_aliases": [
+      "BYTE_COUNT",
+      "OPTIONAL_BYTE_COUNT",
+      "OPTIONAL_TEXT",
+      "OPTIONAL_INTEGER",
+      "OPTIONAL_NUMBER",
+      "OPTIONAL_JSON_SUMMARY",
+      "RUN_HEADER",
+      "FLOW_RUN_WITH_PAYLOAD",
+      "TRACE_NODE",
+      "NODE_LAST_RUN"
+    ],
+    "const_aliases_are_data_not_runtime_clones": true,
+    "actual_source_expanded_descriptor_sha256": "3392c7f212be18ef262a901ae0e6915396ed9234cd737cc3f2f09003e4756f6c",
+    "model_descriptor_sha256": "3392c7f212be18ef262a901ae0e6915396ed9234cd737cc3f2f09003e4756f6c"
+  },
+  "checks": {
+    "closed_descriptor_expands_exact_model": true,
+    "all_1104_source_nodes_and_23_variants_preserved": true,
+    "actual_Null_constructor_is_null_schema": true,
+    "Some_each_call": true,
+    "shared_helper_policy_linkage": true,
+    "no_copied_256_policy": true,
+    "no_value_cache_parse_clone_or_box": true,
+    "no_field_Vector": true,
+    "nongeneric_traversal": true,
+    "adjacent_suffix_byte_unchanged": true,
+    "other_prefix_only_private_module_declaration": true,
+    "original_function_frozen_only_as_tmp_oracle": true,
+    "helper_source_unchanged": true,
+    "file_line_and_directory_bounds": true
+  },
+  "net_source": {
+    "before_lines": 1150,
+    "after_lines_all_files": 1020,
+    "line_delta": -130,
+    "byte_delta": -38513,
+    "includes": "method replacement, necessary private mod declaration, complete enum/builder/10 const shapes/static descriptor; no product tests/assets/rules added"
+  },
+  "runtime_unknowns": [
+    "recursive builder dispatch CPU/stack",
+    "eager old child materialization versus lazy new fields iterator temporary live bytes",
+    "allocation counts and peak retained bytes including child moves/clones",
+    "descriptor rodata and compilation cost; combined old+new host total size cannot be a delta"
+  ],
+  "not_run": [
+    "Rust compilation",
+    "actual Some/Value/serialized bytes equality",
+    "actual freshness mutation check",
+    "five paired CPU construction/drop comparisons",
+    "instrumented allocation/live-byte comparison",
+    "API build",
+    "CI"
+  ]
+}
