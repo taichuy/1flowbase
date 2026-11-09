@@ -1,4 +1,4 @@
-name: Issue 2818 W4 focused kernel qualification
+name: Issue 2818 W4 ordinary API lib qualification
 
 on:
   push:
@@ -45,7 +45,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: '1.99.1' 
-      - name: Qualify exact decision-order overlay on d963, then candidate with three disjoint filters
+      - name: Qualify W4 ordinary API lib only at fixed 600s and 8GB
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -94,7 +94,7 @@ jobs:
         if: always()
         timeout-minutes: 5
         with:
-          name: issue2818-w4-results-${{ github.run_id }}-${{ github.run_attempt }}
+          name: issue2818-w4-api-results-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             tmp/test-governance/issue2818/ci-evidence/**
             tmp/test-governance/issue2818/ci-preparation/**
@@ -107,7 +107,7 @@ jobs:
         if: always()
         timeout-minutes: 5
         with:
-          name: issue2818-w4-cache-${{ github.run_id }}-${{ github.run_attempt }}
+          name: issue2818-w4-api-cache-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             tmp/test-governance/issue2818/ci-evidence/seed-target-and-source.tar.zst
             tmp/test-governance/issue2818/ci-evidence/seed-retention.json

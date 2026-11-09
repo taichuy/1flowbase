@@ -12,12 +12,12 @@ import subprocess
 import sys
 import time
 
-SEED_SHA = 'd9636d6ed9fe7122d78c52ccc9fd93d0c96a2abe'
-PRIOR_RUN = '42590751940'
-PRIOR_NAME = 'issue2818-api-cache-42590751940-1'
-PRIOR_ARTIFACT_ID = 13661098760
-ARCHIVE_SHA = 'ad7948d69e2798751334096309376c31425c20f34b74e60cfbc3a96738b7e75b'
-ARCHIVE_BYTES = 747063658
+SEED_SHA = 'ca19501827fdeac86b9f5d9fcba767715220f3dd'
+PRIOR_RUN = '42600960280'
+PRIOR_NAME = 'issue2818-w4-cache-42600960280-1'
+PRIOR_ARTIFACT_ID = 13665767849
+ARCHIVE_SHA = '7717f445653790701e6d48f091018c388e05e2f80de9b89997d0849dfedcf081'
+ARCHIVE_BYTES = 747218241
 BASELINE = 'e3cdfefb7a5b85d1d7d9c2ef166e3b923c05de89'
 W2_CANDIDATE = 'e0a2790bb08ec3b4c914b27e1bed9938c293d1fe'
 W2_ALLOWED = ['.agents/skills/qa-evaluation/references/backend/console-settings-registration-gate.md', '.github/workflows/notification-subscription.yml', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/data_model_and_docs.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/infrastructure_and_mcp.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/plugins_and_models.rs', 'api/apps/api-server/src/routes/_tests/file_console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/_tests/mod.rs', 'api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/console_route_assembly.rs', 'api/apps/api-server/src/routes/console_route_assembly/_tests/assembly.rs', 'api/apps/api-server/src/routes/mod.rs', 'api/apps/api-server/src/test_support/mod.rs', 'api/apps/api-server/tests/README.md', 'api/apps/api-server/tests/console_core_registry_tests.rs', 'scripts/node/agent-logs-exchange/ci-api.cjs', 'scripts/node/console-operation-registry-hygiene/README.md', 'scripts/node/console-operation-registry-hygiene/_tests/core.test.js', 'scripts/node/console-operation-registry-hygiene/compiled-assembly-checks.js']
@@ -432,8 +432,8 @@ def download_retained():
         assert '.git' not in parts, 'archive must not overwrite the new worktree identity'
     save(EVIDENCE/'cache-resume.json',{'source_run':PRIOR_RUN,'artifact':PRIOR_NAME,
         'archive_sha256':ARCHIVE_SHA,'archive_bytes':ARCHIVE_BYTES,'archive_source_sha':SEED_SHA,
-        'cache_state':'retained qualified W3 d963 source/mtime/partial target; no cold fallback',
-        'scope':'W3 normal API lib qualification; consume prior crate receipts without rerunning them'})
+        'cache_state':'retained qualified W4 ca195 source/mtime/partial target; no cold fallback',
+        'scope':'W4 ordinary API lib qualification; prior focused crate cases not rerun'})
     return archive,evidence
 
 def retain_seed_cache(source, target, metadata):
@@ -613,6 +613,9 @@ def collect_mono_files(source,target):
             files.append(row)
     save(EVIDENCE/'mono-stat-files.json',{'files':files,'meaning':'definition/instantiation attribution only; not RSS allocation percentages'})
 
+OLD_API_MONO_SHA256 = '75ccff8f0dc1a1d9a7bb3a25e683b46e7d29fdb2b2d621eb81260aa98ef9151c'
+API_SOURCE_SHA256 = {'api/crates/interface-runtime/src/invocation/kernel.rs': '3f9f2993b19e78adfe5ecb1816e47e3be6b29a1211fa5647d2b2c4ad455479b4', 'api/crates/interface-runtime/src/invocation.rs': 'd12943da62d66771215c1126c78224b27fa21d4b8cb9ec5cafe672d73df20810', 'api/crates/interface-runtime/src/invocation/policy.rs': '9aedf251bf8e1b94a0e4c9d2cb01a070cca430bedb3d9b94e1668789a1d71fe1', 'api/crates/interface-runtime/src/decision.rs': 'b1b06844bc2499c2622b817aac9d4c98908ad6debc906ec9e0119e1d51bab823', 'api/crates/interface-runtime/src/hook.rs': '00b6e24ee82e170c981723476855f0f1a43fdc84fdaffcccf4a0f4801294179a', 'api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs': '415594bd8ad4c7b546a0bdbbdf06748864116cb3b1c1b09b8084ec5e3522ee2f'}
+
 CRATE_CANDIDATE = 'ca19501827fdeac86b9f5d9fcba767715220f3dd'
 CRATE_ALLOWED = ['api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs', 'api/crates/interface-runtime/src/decision.rs', 'api/crates/interface-runtime/src/hook.rs', 'api/crates/interface-runtime/src/invocation.rs', 'api/crates/interface-runtime/src/invocation/kernel.rs', 'api/crates/interface-runtime/src/invocation/policy.rs']
 
@@ -669,7 +672,7 @@ FOCUSED_TEST_FILE = 'api/crates/interface-runtime/src/_tests/review_remediation_
 CRATE_TEST_SHA256 = '415594bd8ad4c7b546a0bdbbdf06748864116cb3b1c1b09b8084ec5e3522ee2f'
 FOCUSED_FILTERS = ['_tests::review_remediation_tests::decision_order::','_tests::invocation_tests::','_tests::review_remediation_tests::finalization_tests::']
 
-def follow_w4(run_id,out_dir,control_sha):
+def follow_w4(run_id,out_dir,control_sha,api=False):
     # One authorized local lifecycle: watch, bounded light download, deterministic receipt.
     from datetime import datetime,timezone
     out=Path(out_dir).resolve();out.mkdir(parents=True,exist_ok=True)
@@ -687,7 +690,7 @@ def follow_w4(run_id,out_dir,control_sha):
     assert run['headSha']==control_sha and run['status']=='completed','watch transport failure is not a final CI result'
     meta=json.loads(subprocess.check_output(['gh','api','repos/taichuy/1flowbase/actions/runs/'+str(run_id)+'/artifacts'],text=True,timeout=45))
     save(out/'artifact-meta.json',meta)
-    name='issue2818-w4-results-'+str(run_id)+'-'+str(run['attempt'])
+    name=('issue2818-w4-api-results-' if api else 'issue2818-w4-results-')+str(run_id)+'-'+str(run['attempt'])
     light=next(a for a in meta['artifacts'] if a['name']==name)
     assert not light['expired'] and light['size_in_bytes']<=16_000_000,'bounded small-results guard; never download cache artifact'
     fetched=command(['gh','run','download',str(run_id),'--name',name,'--dir',str(out/'results')],'download.log',180)
@@ -717,126 +720,259 @@ def follow_w4(run_id,out_dir,control_sha):
         'cache_artifacts_not_downloaded':[a for a in meta['artifacts'] if a['name']!=name],
         'not_API_or_W3_78_retest_or_performance_PASS':True}
     save(out/'attribution-receipt.json',receipt)
+    if api:
+        try:
+            attribute_api(out,evidence,receipt,run)
+        except Exception as error:
+            save(out/'attribution-error.json',{'kind':type(error).__name__,'message':str(error),'raw_receipt':'attribution-receipt.json','CI_conclusion':run['conclusion']})
+            (out/'report.md').write_text('Attribution incomplete: '+type(error).__name__+': '+str(error)+'\nRaw small results and attribution-receipt.json are preserved. Do not classify as Rust or behavior PASS. No rerun or cache download.\n')
+            raise
     print(json.dumps({'run_id':run_id,'conclusion':run['conclusion'],'candidate':CRATE_CANDIDATE,
         'groups':cases,'failure':failure,'receipt':str(out/'attribution-receipt.json')}),flush=True)
     return 0
 
+def attribute_api(out,evidence,receipt,run_record):
+    # Local, deterministic attribution of the downloaded small result; never fetch cache.
+    from datetime import datetime
+    def loaded(name,default=None):
+        path=evidence/name
+        return read(path) if path.exists() else default
+    state=loaded('qualification-phase-state.json',{})
+    root_stage=loaded('compiler-stage-summary.json',{})
+    fresh=loaded('restored-cargo-fresh.json',{})
+    generation=loaded('mono-generation-proof.json',{})
+    budget=loaded('budget-after.json',{})
+    phases=receipt['phases']
+    build=next((r for r in phases if r['phase']=='seed-normal-lib-prebuild'),None)
+    roots=[r for r in fresh.get('artifacts',[]) if r['target']=='api_server' and r['kind']==['lib']]
+    native=None;comparison=None
+    packed=evidence/'api_server.mono_items.json.gz'
+    if packed.exists() and generation.get('generation')=='new-source-bound-output':
+        assert generation.get('generation')=='new-source-bound-output'
+        assert generation['source_sha']==CRATE_CANDIDATE
+        with gzip.open(packed,'rb') as stream:
+            raw=stream.read(32_000_001)
+        assert len(raw)<=32_000_000 and len(raw)==generation['bytes']
+        digest=hashlib.sha256(raw).hexdigest()
+        assert digest==generation['sha256'] and digest!=OLD_API_MONO_SHA256
+        native=json.loads(raw)
+        (out/'api_server.mono_items.json').write_bytes(raw)
+        save(out/'mono-integrity.json',{'source_sha':CRATE_CANDIDATE,'bytes':len(raw),'sha256':digest,
+            'mtime_ns':generation['mtime_ns'],'build_started_wall_ns':generation['api_build_started_wall_ns'],
+            'old_mono_removed':loaded('removed-stale-mono.json'),'compressed_raw_file':str(packed)})
+        task_root=out.parent
+        frozen=read(task_root/'model/candidates/raw/generic-boundary/w2-w3-mono-aggregation.json')
+        tables={}
+        files={}
+        for key in ['w2','w3']:
+            old=task_root/Path(frozen['files'][key]['path']).relative_to('tmp/test-governance/issue2818')
+            content=old.read_bytes()
+            assert hashlib.sha256(content).hexdigest()==frozen['files'][key]['sha256']
+            tables[key]=json.loads(content);files[key]=frozen['files'][key]
+        tables['w4']=native
+        files['w4']={'path':str(out/'api_server.mono_items.json'),'sha256':digest,'bytes':len(raw),'source_sha':CRATE_CANDIDATE}
+        def total(rows):
+            return {'definitions':len(rows),'instantiations':sum(r['instantiation_count'] for r in rows),
+                'estimate':sum(r['total_estimate'] for r in rows)}
+        def unary(n):return n.startswith('interface_runtime::invocation::kernel::') and '::prepare_unary' in n
+        def decision_run(n):return n.startswith('interface_runtime::TypedInterface') and ('AuthorizationPlan::' in n.replace('<I, O>','') or 'AdmissionPlan::' in n.replace('<I, O>','')) and '::run' in n
+        def failure(n):return n.startswith('interface_runtime::TypedInterfaceHookPlan') and '::run_failure' in n
+        heavy={
+            'InvocationPolicy::run':lambda n:'interface_runtime::invocation::policy::InvocationPolicy::run' in n,
+            'InvocationPolicy::reject':lambda n:'interface_runtime::invocation::policy::InvocationPolicy::reject' in n,
+            'AuthorizationContributions::run':lambda n:'interface_runtime::decision::AuthorizationContributions::run' in n,
+            'AdmissionContributions::run':lambda n:'interface_runtime::decision::AdmissionContributions::run' in n,
+            'FailureObservers::run':lambda n:'interface_runtime::hook::FailureObservers::run' in n}
+        def common(n):return any(fn(n) for fn in heavy.values())
+        families={
+            'unary_preparation':unary,
+            'decision_run_typed_shells':decision_run,
+            'failure_run_typed_shells':failure,
+            'new_common_heavy_bodies':common,
+            'whole_changed_common_boundary':lambda n:unary(n) or decision_run(n) or failure(n) or common(n),
+            'kernel_all':lambda n:n.startswith('interface_runtime::invocation::kernel::'),
+            'await_in_flight':lambda n:n.startswith('interface_runtime::invocation::await_in_flight'),
+            'typed_hook_plan_all':lambda n:n.startswith('interface_runtime::TypedInterfaceHookPlan'),
+            'typed_decision_plan_all':lambda n:n.startswith(('interface_runtime::TypedInterfaceAuthorizationPlan','interface_runtime::TypedInterfaceAdmissionPlan')),
+            'canonical_prefix':lambda n:n.startswith('interface_runtime::'),
+            'carrier_std_core_alloc':lambda n:n.startswith(('std::','core::','alloc::')),
+            'carrier_drop_in_place':lambda n:'::drop_in_place' in n,
+            'carrier_tokio':lambda n:n.startswith('tokio::'),
+            'carrier_timeout':lambda n:'tokio::time::timeout::' in n or 'tokio::time::timeout(' in n}
+        sums={key:total(rows) for key,rows in tables.items()}
+        assert sums['w2']==frozen['totals']['w2'] and sums['w3']==frozen['totals']['w3']
+        groups={key:{side:total([r for r in rows if select(r['name'])]) for side,rows in tables.items()} for key,select in families.items()}
+        body_rows={key:[r for r in native if select(r['name'])] for key,select in heavy.items()}
+        body_single={key:bool(rows) and any(r['name'].endswith('::{closure#0}') for r in rows) and all(r['instantiation_count']==1 for r in rows) for key,rows in body_rows.items()}
+        shells=[r for r in native if unary(r['name']) and r['name'].endswith('::prepare_unary_inner::{closure#0}')]
+        def delta(old,new):return {k:new[k]-old[k] for k in ['definitions','instantiations','estimate']}
+        boundary=groups['whole_changed_common_boundary']
+        comparison={'evidence_type':'same rustc mono definition/instantiation/estimate tables; not timing, bytes or RSS allocation',
+            'files':files,'totals':sums,'total_delta_w4_minus_w3':delta(sums['w3'],sums['w4']),
+            'total_delta_w4_minus_w2':delta(sums['w2'],sums['w4']),
+            'overlapping_source_and_carrier_families':groups,
+            'whole_common_boundary_delta_w4_minus_w3':delta(boundary['w3'],boundary['w4']),
+            'whole_common_boundary_estimate_change_percent':100*(boundary['w4']['estimate']/boundary['w3']['estimate']-1),
+            'new_heavy_body_rows':body_rows,'new_heavy_body_each_one':body_single,
+            'all_five_heavy_families_single':all(body_single.values()),'typed_prepare_body_shell_rows':shells,
+            'caveats':frozen['caveats']+['New family views overlap and cannot be summed. Carrier families have no unique owner/call-edge attribution. Source-bound whole family is compared because closure names can move.','No numeric threshold is invented for meaningful collapse; report the whole-boundary measurements for Root judgment.']}
+        save(out/'mono-comparison.json',comparison)
+    samples=next(iter(evidence.glob('*seed-normal-lib-prebuild.native-samples.jsonl')),None)
+    process={'root_rustc_peak_rss':0,'root_rustc_peak_vm_hwm':0,'root_rustc_max_threads':0,'sampled_tree_peak_rss':0,'thread_snapshots':0,'thread_names':Counter(),'max_observed_thread_cpu_percent':{}}
+    first_cpu=last_cpu=None
+    if samples:
+        for line in samples.open():
+            row=json.loads(line);first_cpu=first_cpu or row.get('cpu_stat');last_cpu=row.get('cpu_stat')
+            process['sampled_tree_peak_rss']=max(process['sampled_tree_peak_rss'],row['tree_rss_sample'])
+            for child in row['processes']:
+                if child.get('crate_name')=='api_server' and child['comm']=='rustc':
+                    process['root_rustc_peak_rss']=max(process['root_rustc_peak_rss'],child['rss'])
+                    process['root_rustc_peak_vm_hwm']=max(process['root_rustc_peak_vm_hwm'],child['vm_hwm'])
+                    process['root_rustc_max_threads']=max(process['root_rustc_max_threads'],child['thread_count'])
+            for snapshot in row.get('rustc_thread_samples',[]):
+                if snapshot.get('crate')=='api_server':
+                    process['thread_snapshots']+=1
+                    for thread in snapshot['threads']:
+                        name=thread['name'];process['thread_names'][name]+=1
+                        value=thread.get('cpu_percent_since_previous')
+                        if value is not None:process['max_observed_thread_cpu_percent'][name]=max(process['max_observed_thread_cpu_percent'].get(name,0),value)
+        process['parent_cpu_usage_delta_seconds']=(last_cpu['usage_usec']-first_cpu['usage_usec'])/1e6 if first_cpu and last_cpu else None
+    events=dict(line.split() for line in budget.get('memory.events','').splitlines())
+    final_events=(evidence/'final-cgroup.events').read_text() if (evidence/'final-cgroup.events').exists() else ''
+    def ts(value):return datetime.fromisoformat(value.replace('Z','+00:00'))
+    job=run_record['jobs'][0]
+    complete=bool(state.get('normal_lib_complete'))
+    api_valid=complete and len(roots)==1 and roots[0]['profile']['test'] is False and roots[0]['profile']['debuginfo']==0 and roots[0]['profile']['opt_level']=='0'
+    summary={'status':'PASS_ORDINARY_API_LIB_SCOPE' if api_valid else 'FAIL_ORDINARY_API_LIB_SCOPE',
+        'source_sha':CRATE_CANDIDATE,'run_id':receipt['run_id'],'control_sha':receipt['control_sha'],
+        'CI_conclusion':receipt['CI_conclusion'],'normal_lib_complete':complete,'successful_api_root_artifact':roots,
+        'actual_test_counts':None,'tail_deferred':['private24','native7','seed','MCP','application','all-targets','C01'],
+        'root_build_phase':build,'failure':receipt['failure'],'fresh_completed':fresh.get('fresh_artifacts'),
+        'rebuilt_completed':fresh.get('rebuilt_artifacts'),'root_diagnostic_execs':root_stage.get('diagnostic_root_execs'),
+        'compiler_stages':root_stage,'mono_generation':generation,'mono_comparison_available':comparison is not None,
+        'all_five_heavy_families_single':comparison['all_five_heavy_families_single'] if comparison else None,
+        'whole_common_boundary_estimate_change_percent':comparison['whole_common_boundary_estimate_change_percent'] if comparison else None,
+        'process_and_thread_samples':process,'parent_memory_peak_bytes':int(budget['memory.peak']) if 'memory.peak' in budget else None,
+        'parent_memory_events':events,'all_command_cleanup_complete':all(row['cleanup_complete'] for row in phases),
+        'final_cgroup_populated_zero':'populated 0' in final_events,'job_elapsed_seconds':(ts(job['completedAt'])-ts(job['startedAt'])).total_seconds(),
+        'first_raw_attribution_delay_seconds':(ts(receipt['small_results_ready_at'])-ts(job['completedAt'])).total_seconds(),
+        'raw_receipt_ready_at':receipt['small_results_ready_at'],'local_light_download_seconds':receipt['light_download']['elapsed_seconds'],
+        'light_artifact':receipt['light_artifact'],'cache_artifacts_not_downloaded':receipt['cache_artifacts_not_downloaded'],
+        'api_cost_summary':loaded('api-cost-summary.json'),'seed_retention':loaded('seed-retention.json'),
+        'not_behavior_or_API_alltargets_or_Root_or_PR_performance_PASS':True,
+        'stop_no_extension_or_same_configuration_retry':True}
+    save(out/'api-result-summary.json',summary)
+    lines=[summary['status'], '', 'Run '+str(receipt['run_id'])+': '+run_record['url'],
+        'Source '+CRATE_CANDIDATE+'; control '+receipt['control_sha']+'.',
+        'Ordinary build completed: '+str(complete)+'. Actual behavior test counts: null. Private24/native7/seed/MCP/application/all-targets/C01 deferred.',
+        'API build raw phase: '+json.dumps(build),
+        'Completed Fresh/rebuilt artifacts: '+str(summary['fresh_completed'])+'/'+str(summary['rebuilt_completed'])+'.',
+        'Parent peak '+str(summary['parent_memory_peak_bytes'])+' bytes; memory events '+json.dumps(events)+'.',
+        'Process/thread sampling: '+json.dumps(process)+'.',
+        'All command cleanup complete '+str(summary['all_command_cleanup_complete'])+'; final populated0 '+str(summary['final_cgroup_populated_zero'])+'.',
+        'Job '+str(summary['job_elapsed_seconds'])+'s; small direct download '+str(summary['local_light_download_seconds'])+'s; first automatic raw receipt delay '+str(summary['first_raw_attribution_delay_seconds'])+'s. Cache not downloaded.',
+        '', 'Mono common-boundary evidence:']
+    if comparison:
+        lines+=['All five heavy-body families each one instance: '+str(comparison['all_five_heavy_families_single'])+'. Typed shell rows: '+json.dumps(comparison['typed_prepare_body_shell_rows']),
+            'Whole changed common boundary estimate change vs W3 '+str(comparison['whole_common_boundary_estimate_change_percent'])+'%. This estimate is not bytes, RSS or time.',
+            '', '| Table/family | W2 definitions / instances / estimate | W3 | W4 |','| --- | --- | --- | --- |']
+        values={'TOTAL':comparison['totals'],**comparison['overlapping_source_and_carrier_families']}
+        for family,group in values.items():
+            lines.append('| '+family+' | '+' | '.join(' / '.join(str(group[side][k]) for k in ['definitions','instantiations','estimate']) for side in ['w2','w3','w4'])+' |')
+    else:lines.append('No newly generated mono output available; no collapse claim.')
+    lines+=['', 'Compiler pass RSS rows are completed-pass endpoints, not peaks or proof of the exact killed pass. Family views overlap and carriers are not exclusive owner allocations.',
+        'A failed/unfinished API or an unconvincing whole boundary ends this path. No extended deadline, same configuration retry, test-tail continuation or per-hotspot CI was performed.',
+        'Raw evidence: attribution-receipt.json, results/ci-evidence/*, mono-integrity.json, mono-comparison.json, api-result-summary.json.']
+    (out/'report.md').write_text('\n'.join(lines)+'\n')
+    manifest=[{'path':str(path.relative_to(out)),'bytes':path.stat().st_size,'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}
+        for path in sorted((out/'results').rglob('*')) if path.is_file()]
+    save(out/'integrity-index.json',{'run_id':receipt['run_id'],'files':manifest})
+    print(json.dumps({'api_attribution':{k:summary[k] for k in ['status','run_id','normal_lib_complete','actual_test_counts','fresh_completed','rebuilt_completed','all_five_heavy_families_single','whole_common_boundary_estimate_change_percent','parent_memory_peak_bytes','first_raw_attribution_delay_seconds']},'report':str(out/'report.md')}),flush=True)
+
 def main():
-    # W4 correctness only: same existing decision_order test bytes, three disjoint filters.
+    # Authorized minimal packet: normal API lib only; no automatic test-tail/API expansion.
     candidate=os.environ['CANDIDATE_SHA']
-    assert re.fullmatch(r'[0-9a-f]{40}',CRATE_CANDIDATE or '') and candidate==CRATE_CANDIDATE and candidate!=SEED_SHA
-    assert CRATE_ALLOWED and CRATE_TEST_SHA256
+    assert candidate==SEED_SHA==CRATE_CANDIDATE
     EVIDENCE.mkdir(parents=True,exist_ok=False);TEMP.mkdir(parents=True,exist_ok=False)
     source,target=TEMP/'seed-source',TEMP/'target-seed'
-    metadata={'source_sha':candidate,'scope':'W4 focused crate baseline then candidate',
-        'baseline_passed':False,'candidate_started':False,'candidate_passed':False,
-        'active_phase':'prepare','source_state':'not restored','resumed_from_run':PRIOR_RUN,
-        'no_API_continuation':True,'cache_start':'restored partial W3 cache, then serial dependency reuse'}
+    metadata={'source_sha':candidate,'scope':'W4 ordinary API lib qualification only',
+        'normal_lib_complete':False,'resumed_from_run':PRIOR_RUN,
+        'tail_deferred_to_Root':True,'cache_start':'restored qualified W4 ca195 source/target; not cold'}
     initial=budget_snapshot();save(EVIDENCE/'budget-before.json',initial)
     assert int(initial['memory.max'])==8_000_000_000 and initial['memory.high']=='max' and initial['memory.swap.max']=='0'
     q,p=map(int,initial['cpu.max'].split());assert q/p<=os.cpu_count()*.6+.001
     assert TEMP==Path('/home/runner/work/_temp/issue2818')
     assert capture(['rustc','--version']).startswith('rustc 1.99.1 ')
     assert not any(os.environ.get(k) for k in ['RUSTC_WRAPPER','RUSTC_WORKSPACE_WRAPPER','RUSTC_BOOTSTRAP','RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS'])
-    save(EVIDENCE/'environment.json',{'baseline_sha':SEED_SHA,'candidate_sha':candidate,
-        'rustc':capture(['rustc','-vV']),'cargo':capture(['cargo','-vV']),'host_cpu_count':os.cpu_count(),
-        'filters':FOCUSED_FILTERS,'scope':metadata['scope'],'root_diagnostics':False,
-        'not_W3_observer_retest_or_API_PASS':True,'not_same_cache_performance_AB':True})
+    save(EVIDENCE/'environment.json',{'source_sha':candidate,'rustc':capture(['rustc','-vV']),
+        'cargo':capture(['cargo','-vV']),'phase':metadata['scope'],'host_cpu_count':os.cpu_count(),
+        'diagnostics':'same four root-only flags as 425907; dependency rustc transparently execs',
+        'not_cold_or_PR_AB':True})
     try:
         archive,incoming=download_retained()
-        run('checkout-archive-source',['git','worktree','add','--detach',str(source),SEED_SHA],seconds=120)
+        run('checkout-qualified-source',['git','worktree','add','--detach',str(source),candidate],seconds=120)
         run('restore-retained-source-target',['tar','-I','zstd -T1','-xf',str(archive),'--no-same-owner','-C',str(TEMP)],seconds=180)
-        assert capture(['git','rev-parse','HEAD'],source)==SEED_SHA
+        assert capture(['git','rev-parse','HEAD'],source)==candidate
         capture(['git','diff','--exit-code','HEAD','--'],source)
-        assert target.is_dir() and any(target.rglob('*.rlib'))
-        before=frozen(source)
-        changed=capture(['git','diff','--name-only',SEED_SHA,candidate],source).splitlines()
-        assert set(changed)==set(CRATE_ALLOWED)
-        test_path=source/FOCUSED_TEST_FILE
-        original_test=test_path.read_bytes()
-        test_bytes=subprocess.check_output(['git','show',candidate+':'+FOCUSED_TEST_FILE],cwd=source)
-        assert hashlib.sha256(test_bytes).hexdigest()==CRATE_TEST_SHA256 and test_bytes!=original_test
-        test_path.write_bytes(test_bytes)
-        baseline=frozen(source)
-        assert all(baseline.get(path)==digest for path,digest in before.items() if path!=FOCUSED_TEST_FILE)
-        assert capture(['git','diff','--name-only','HEAD','--'],source).splitlines()==[FOCUSED_TEST_FILE]
-        save(EVIDENCE/'baseline-fixture-proof.json',{'baseline_head':SEED_SHA,
-            'only_overlay':FOCUSED_TEST_FILE,'old_test_sha256':hashlib.sha256(original_test).hexdigest(),
-            'shared_test_sha256':CRATE_TEST_SHA256,'all_other_tracked_source_and_production_hashes_match':True,
-            'no_mount_or_toy_implementation':True,'not_model_mutants_or_Rust_D':True})
-        metadata['source_state']='d963 production unchanged; only exact existing decision_order test overlay'
-        os.environ['ISSUE2818_OBSERVED_SOURCE_SHA']=SEED_SHA
+        assert target.is_dir() and any(target.rglob('*.rlib')), 'never fall back to empty target'
+        assert hashlib.sha256((source/BASELINE_MOUNT_FILE).read_bytes()).hexdigest()==CRATE_FILE_SHA256[BASELINE_MOUNT_FILE]
+        source_hashes={path:hashlib.sha256((source/path).read_bytes()).hexdigest() for path in API_SOURCE_SHA256}
+        assert source_hashes==API_SOURCE_SHA256
+        os.environ['ISSUE2818_OBSERVED_SOURCE_SHA']=candidate
+        save(EVIDENCE/'source-identity.json',{'actual_sha':candidate,'clean_tracked_source':True,
+            'finalization_sha256':CRATE_FILE_SHA256[BASELINE_MOUNT_FILE],'prior_crate_qualification_run':PRIOR_RUN,
+            'approved_W4_source_sha256':source_hashes,'focused_tests_prequalified_not_rerun':True})
+        stale=source/'api/api_server.mono_items.json'
+        assert stale.is_file() and hashlib.sha256(stale.read_bytes()).hexdigest()==OLD_API_MONO_SHA256, 'fixed W3 mono provenance mismatch; no fallback'
+        if stale.exists():
+            assert not capture(['git','ls-files','--','api/api_server.mono_items.json'],source)
+            save(EVIDENCE/'removed-stale-mono.json',{'path':str(stale),'bytes':stale.stat().st_size,
+                'sha256':hashlib.sha256(stale.read_bytes()).hexdigest(),'reason':'restored old W3 statistics cannot be relabelled as new W4 candidate output'})
+            stale.unlink()
         run('registry-prefetch',['cargo','fetch','--locked','--manifest-path','api/Cargo.toml'],cwd=source,seconds=900)
-        meta=run('crate-metadata',['cargo','metadata','--no-deps','--format-version','1','--manifest-path','api/Cargo.toml'],cwd=source,seconds=60)
-        package=next(p for p in json.loads(Path(meta['stdout_log']).read_text())['packages'] if p['name']=='interface-runtime')
-        native=next(t for t in package['targets'] if t['kind']==['lib'] and t['test'])
-        identity='interface-runtime/lib/'+native['name']+'/'+str(Path(native['src_path']).relative_to(source))
-        roots={str(Path(native['src_path']).relative_to(base)):identity for base in [source/'api',Path(package['manifest_path']).parent]}
-        save(EVIDENCE/'crate-target.json',{'package_id':package['id'],'target':native,'identity':identity})
         env={**os.environ,'CARGO_TARGET_DIR':str(target),'CARGO_BUILD_JOBS':'1','CARGO_INCREMENTAL':'0',
              'CARGO_NET_OFFLINE':'true','CARGO_TERM_COLOR':'never','TERM':'dumb'}
-        results={}
-        for side in ['baseline','candidate']:
-            if side=='candidate':
-                assert metadata['baseline_passed']
-                assert test_path.read_bytes()==test_bytes
-                run('remove-baseline-test-overlay',['git','restore','--source',SEED_SHA,'--worktree','--',FOCUSED_TEST_FILE],cwd=source,seconds=60)
-                run('checkout-crate-candidate',['git','checkout','--detach',candidate],cwd=source,seconds=60)
-                assert capture(['git','rev-parse','HEAD'],source)==candidate
-                capture(['git','diff','--exit-code','HEAD','--'],source)
-                after=frozen(source)
-                assert all(after.get(path)==digest for path,digest in before.items() if path not in CRATE_ALLOWED)
-                assert test_path.read_bytes()==test_bytes
-                save(EVIDENCE/'candidate-source-validation.json',{'actual_sha':candidate,
-                    'exact_changed_paths':changed,'protected_hashes_match':True,'shared_test_sha256':CRATE_TEST_SHA256,
-                    'W3_observer_and_fixture_not_changed':True})
-                metadata.update(candidate_started=True,source_state='clean candidate with same test bytes')
-                os.environ['ISSUE2818_OBSERVED_SOURCE_SHA']=candidate
-            results[side]=[]
-            seen=set()
-            for index,query in enumerate(FOCUSED_FILTERS):
-                label=side+'-q'+str(index)
-                metadata['active_phase']=label
-                argv=['cargo','test','-p','interface-runtime','--lib','--jobs','1','--message-format=json',query,'--','--test-threads=1']
-                result=qualify_interface_phase(label,source,target,env,argv,roots,identity,native)
-                keys={(r[0],r[1]) for r in result['list_with_ignored']}
-                assert not seen.intersection(keys),'focused filters overlap'
-                assert not any('finalization::driver_tests::' in r[1] for r in result['actual'])
-                seen.update(keys)
-                artifact_file=EVIDENCE/(label+'-interface-runtime-lib-artifacts.json')
-                units=[r for r in read(artifact_file)['artifacts'] if r['target']['name']==native['name'] and r['profile']['test'] and r['executable']]
-                assert len(units)==1
-                unit=units[0]
-                executable=Path(unit['executable'])
-                assert unit['package_id']==package['id'] and unit['target']==native
-                assert unit['profile']['test'] is True and unit['profile']['opt_level']=='0' and unit['profile']['debuginfo']==0
-                assert executable.is_file() and executable.parent==target/'debug/deps' and executable.name.startswith('interface_runtime-')
-                if side=='candidate' and index==0:
-                    assert units[0]['fresh'] is False,'first candidate test binary must really rebuild'
-                result['filter']=query;result['test_artifact_fresh']=units[0]['fresh']
-                save(EVIDENCE/(label+'-crate-test-cases.json'),result)
-                results[side].append(result)
-            metadata[side+'_passed']=True
-        for old,new in zip(results['baseline'],results['candidate']):
-            assert Counter(map(tuple,old['list_with_ignored']))==Counter(map(tuple,new['list_with_ignored']))
-            assert Counter(map(tuple,old['actual']))==Counter(map(tuple,new['actual']))
-        save(EVIDENCE/'status.json',{'status':'W4_FOCUSED_BASELINE_AND_CANDIDATE_QUALIFIED',
-            'source_sha':candidate,'filters':FOCUSED_FILTERS,'same_nonoverlapping_cases_ignored_actual':True,
-            'not_API_or_W3_78_retest_or_Rust_D_or_performance_PASS':True})
+        diagnostic=install_stage_wrapper(source,env)
+        assert diagnostic.get('ISSUE2818_MONO_STATS')=='1', 'frozen comparison requires all four supported root diagnostics'
+        save(EVIDENCE/'effective-cargo-env.json',{k:diagnostic.get(k) for k in [
+            'CARGO_TARGET_DIR','CARGO_BUILD_JOBS','CARGO_INCREMENTAL','CARGO_NET_OFFLINE',
+            'RUSTC_WRAPPER','RUSTC_WORKSPACE_WRAPPER','RUSTC_BOOTSTRAP','RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS',
+            'ISSUE2818_RUSTC_MODE','ISSUE2818_MONO_STATS']})
+        build=['cargo','build','--profile','test','--package','api-server','--features','test-support','--lib','--jobs','1','--message-format=json']
+        metadata['api_build_started_wall_ns']=time.time_ns()
+        metadata['actual_test_counts']=None
+        metadata['deferred']=['private24','native7','seed','MCP','application','all-targets','C01']
+        run('seed-normal-lib-prebuild',build,cwd=source/'api',env=diagnostic,heavy=True,seconds=600)
+        metadata['normal_lib_complete']=True
+        assert stage_summary()['diagnostic_root_execs']==1
+        save(EVIDENCE/'status.json',{'status':'W4_NORMAL_API_LIB_COMPLETED','source_sha':candidate,
+            'tail_not_run':True,'actual_test_counts':None,'remaining':'private24/native7/seed/MCP/application/alltargets/C01 explicitly deferred',
+            'not_full_Root_PASS':True})
         return 0
     finally:
-        crate_artifacts();save(EVIDENCE/'qualification-phase-state.json',metadata)
+        cargo_fresh_summary();stage_summary();collect_mono_files(source,target)
+        mono=source/'api/api_server.mono_items.json'
+        proof={'source_sha':candidate,'path':str(mono),'old_mono_sha256':OLD_API_MONO_SHA256,'generation':'missing','not_RSS_or_timing':True}
+        if mono.is_file():
+            proof.update(bytes=mono.stat().st_size,mtime_ns=mono.stat().st_mtime_ns,
+                sha256=hashlib.sha256(mono.read_bytes()).hexdigest(),api_build_started_wall_ns=metadata.get('api_build_started_wall_ns'))
+            proof['generation']='new-source-bound-output' if proof['sha256']!=OLD_API_MONO_SHA256 and proof['mtime_ns']>=metadata.get('api_build_started_wall_ns',2**63) else 'INVALID_STALE_OUTPUT'
+        save(EVIDENCE/'mono-generation-proof.json',proof)
         retain_seed_cache(source,target,metadata)
-        save(EVIDENCE/'crate-cost-summary.json',{'commands':RESULTS,
-            'baseline_command_seconds':sum(r['wall_seconds'] for r in RESULTS if r['label'].startswith('baseline-')),
-            'candidate_command_seconds':sum(r['wall_seconds'] for r in RESULTS if r['label'].startswith('candidate-')),
+        save(EVIDENCE/'qualification-phase-state.json',metadata)
+        save(EVIDENCE/'api-cost-summary.json',{'commands':RESULTS,
             'total_measured_command_seconds':sum(r['wall_seconds'] for r in RESULTS),
-            'scope':'shared restored cache; baseline may build missing dependency/test artifacts; candidate rebuilds changed crate; later filters may be Fresh; no same-cache build/PR gain; failure/retention costs included'})
-
+            'scope':'ordinary API lib qualification only; restored cache and changed workspace dependencies; no crate55/13 or cold/PR benefit claim'})
+        save(EVIDENCE/'completion-summary.json',{'source_sha':candidate,'normal_lib_complete':metadata['normal_lib_complete'],
+            'tail_not_run':True,'phases':RESULTS})
+        print(json.dumps({'ci_completion':{'source_sha':candidate,'normal_lib_complete':metadata['normal_lib_complete'],
+             'tail_not_run':True,'command_count':len(RESULTS)}}),flush=True)
 if __name__=='__main__':
     if len(sys.argv)>1 and sys.argv[1] in ('--help','-h'):
-        print('CI entry: fixed W4 focused baseline/candidate. Local owner: follow-w4 RUN_ID OUT_DIR EXPECTED_CONTROL_SHA. Root must freeze candidate/test hash before publication.')
+        print('CI entry: fixed W4 ordinary API lib only. Local owner: follow-w4-api RUN_ID OUT_DIR EXPECTED_CONTROL_SHA. No automatic test tail.')
         sys.exit(0)
+    if len(sys.argv)>1 and sys.argv[1]=='follow-w4-api':
+        sys.exit(follow_w4(int(sys.argv[2]),sys.argv[3],sys.argv[4],api=True))
     if len(sys.argv)>1 and sys.argv[1]=='follow-w4':
         sys.exit(follow_w4(int(sys.argv[2]),sys.argv[3],sys.argv[4]))
     if len(sys.argv)>1 and sys.argv[1]=='prior-summary':
