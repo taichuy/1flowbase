@@ -102,23 +102,23 @@ Its ordinary dev profile retains line-table debug information and the existing i
 ## Private test partitions / 私有测试分区
 
 原库测试按自然模块划分，原测试名、过滤器与私有绑定保留。
-其中 24 个 console route assembly 用例只由薄 `console_core_registry_tests` 目标发现，
-通过 `test-support` 调用 crate 内原断言；旧 private routes 目标不再重复发现这些用例。
-以下数量描述旧默认集合的静态分区，不代表已经完成运行验收或资源验收。
+其中 24 个 console route assembly 用例在原源码路径注册，由 `api_private_routes` 直接拥有；
+普通 `test-support` 库不再挂载或重导出这些断言体，`console_core_registry_tests` 保留既有 7 个公开契约测试。
+以下数量是源码分区参考，不代表已经完成运行验收或资源验收。
 
 | Selection / 目标选择 | Original test-name owner / 原测试名归属 | Default reference count / 默认参考数 |
 | --- | --- | ---: |
 | `--lib` | 非 `routes::` 且非 `_tests::` 的所属模块测试 | 312 |
 | `--test api_private_contracts` | 中央 `_tests::` | 522 |
 | `--test api_public_api` | `routes::application_public_api::` | 334 |
-| `--test api_private_routes` | 其余 `routes::`，除迁出的 console route assembly 用例 | 359 |
-| `--test console_core_registry_tests --features test-support` | 迁出的 console route assembly 用例（另保留既有 7 个公开契约测试） | 24 + 7 |
+| `--test api_private_routes` | 其余 `routes::`，含原路径的 console route assembly 用例 | 359 + 24 |
+| `--test console_core_registry_tests --features test-support` | 既有公开契约测试 | 7 |
 
 `src/lib.rs` 仍是同源生产文本；`src/lib_root.rs` 库入口与原生测试入口共享生产实现，
 只选择不同的测试挂载。既有七个公开 HTTP native targets 和其他原生契约目标继续保留。
 `root-1805-consumer-fixture` 保持原来的 `--lib` 专项入口，不按默认 `_tests::` 归属改写。
 Cargo 自动发现各目标；现有 self dev-dependency 启用 `test-support`，普通 package 测试
-继续发现这 24 个用例且只发现一次。定向 assembly 命令显式保留 `--features test-support`。
+通过 `api_private_routes` 发现这 24 个用例且只发现一次。定向 assembly 命令选择该目标，显式保留 `--features test-support`。
 
 ```bash
 node scripts/node/test-backend.js --workspace --test api_private_contracts --filter _tests::runtime_event_stream

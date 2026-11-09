@@ -1,5 +1,6 @@
 use super::*;
 
+#[test]
 pub fn data_model_docs_and_data_source_routes_compile_exact_operations() {
     let assembly = crate::routes::data_models::route_assembly()
         .merge(crate::routes::docs::route_assembly())
