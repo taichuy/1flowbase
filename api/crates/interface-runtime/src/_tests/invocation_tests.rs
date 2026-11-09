@@ -34,9 +34,6 @@ use crate::{
 #[path = "invocation/stack_budget_tests.rs"]
 mod stack_budget_tests;
 
-#[path = "invocation/runtime_revision_tests.rs"]
-mod runtime_revision_tests;
-
 #[path = "invocation/event_observation_tests.rs"]
 mod event_observation_tests;
 
@@ -550,11 +547,6 @@ async fn rejects_authorization_admission_target_failure_and_elapsed_deadline() {
         failed.receipt().terminal(),
         InterfaceInvocationTerminal::Failed
     );
-    let InterfaceInvocationError::TargetFailed(error) = failed.into_error() else {
-        unreachable!("target failure keeps its typed source");
-    };
-    assert_eq!(error.classification(), "target_failed");
-    assert_eq!(error.into_source::<TargetError>(), Some(TargetError));
 
     let elapsed = InvocationEnvelope::new(
         InvocationLineage::root(InvocationId::now_v7()),

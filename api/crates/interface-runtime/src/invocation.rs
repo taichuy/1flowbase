@@ -1181,7 +1181,6 @@ fn interruption_error(interruption: InvocationInterruption) -> InterfaceInvocati
 }
 
 mod kernel;
-mod unary;
 
 #[path = "invocation/event_observation.rs"]
 mod event_observation;
