@@ -34,6 +34,9 @@ use crate::{
 #[path = "invocation/stack_budget_tests.rs"]
 mod stack_budget_tests;
 
+#[path = "invocation/runtime_revision_tests.rs"]
+mod runtime_revision_tests;
+
 #[path = "invocation/event_observation_tests.rs"]
 mod event_observation_tests;
 

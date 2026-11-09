@@ -2,22 +2,25 @@
 use super::*;
 use crate::decision::{AdmissionContributions, AuthorizationContributions};
 use crate::hook::FailureObservers;
-use std::any::Any;
+use std::{
+    any::Any,
+    marker::PhantomData,
+    task::{Context, Poll},
+};
 
 mod bridge;
 use bridge::TypedUnaryBridge;
 
 type UnaryValue = Box<dyn Any + Send + Sync>;
-type UnaryTargetResult = Result<UnaryValue, UnaryValue>;
-type UnaryTargetFuture = Pin<Box<dyn Future<Output = UnaryTargetResult> + Send>>;
 type UnaryStageFuture<'a> = Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
 type UnaryFuture<'a> =
     Pin<Box<dyn Future<Output = Result<UnaryOutcome, InterfaceInvocationFailure>> + Send + 'a>>;
-type UnaryPreparation<'a> = Result<Box<PreparedUnary<'a>>, InterfaceInvocationFailure>;
+type UnaryPreparation<'a> = Result<PreparedUnary<'a>, InterfaceInvocationFailure>;
+type PrepareFuture<'a> = Pin<Box<dyn Future<Output = UnaryPreparation<'a>> + Send + 'a>>;
 
 // Only this module constructs erased values, from the matching typed handler.
 // The downcasts in the bridge and O-only mapper are private type invariants.
-trait UnaryBridge: Send + Sync {
+trait UnaryBridge: Send {
     fn summary(&self) -> PrincipalSummary;
     fn event_principal(&self) -> Option<crate::InterfaceEventPrincipal>;
     fn authorization_reference(&self) -> AuthorizationAdapterReference;
@@ -55,8 +58,9 @@ trait UnaryBridge: Send + Sync {
         registry: RegistryFingerprint,
         document: Option<crate::DocumentOperationSession>,
     );
-    fn begin_target(&mut self) -> UnaryTargetFuture;
-    fn finish_target(&mut self, result: UnaryTargetResult) -> bool;
+    fn begin_target(&mut self);
+    fn poll_target(&mut self, cx: &mut Context<'_>) -> Poll<bool>;
+    fn abort_target(&mut self);
     fn observe_success<'a>(
         &'a self,
         plan: &'a crate::CompiledInvocationPlan,
@@ -92,7 +96,7 @@ pub(super) fn invoke_typed<I, O, E, P>(
     snapshot: Arc<CompiledInterfaceRegistry>,
     envelope: InvocationEnvelope<I, P>,
     dispatch_target: Option<ExecutionTargetPin>,
-) -> Pin<Box<dyn Future<Output = InterfaceInvocationResult<O>> + Send + '_>>
+) -> MapOutput<'_, O>
 where
     I: InterfaceContract,
     O: InterfaceContract,
@@ -130,32 +134,92 @@ where
     map_output::<O>(start_unary(request, typed))
 }
 
-fn map_output<O: InterfaceContract>(
-    driver: UnaryFuture<'_>,
-) -> Pin<Box<dyn Future<Output = InterfaceInvocationResult<O>> + Send + '_>> {
-    Box::pin(async move {
-        let UnaryOutcome { value, receipt } = driver.await?;
-        let value = *value
-            .downcast::<O>()
-            .expect("private unary bridge returns its declared output type");
-        Ok(InterfaceInvocationOutcome { value, receipt })
-    })
+pub(super) struct MapOutput<'a, O: InterfaceContract> {
+    driver: UnaryDriver<'a>,
+    output: PhantomData<fn() -> O>,
 }
 
-// The shared poll/drop types are created inside these non-generic factories.
-fn start_unary<'a>(request: UnaryRequest<'a>, typed: Box<dyn UnaryBridge + 'a>) -> UnaryFuture<'a> {
-    Box::pin(async move {
-        // This awaited future must exit and drop before execute constructs a
-        // handler future. Nested same-task calls depend on these poll frames.
-        let prepared = prepare(request, typed).await?;
-        execute(prepared).await
-    })
+fn map_output<O: InterfaceContract>(driver: UnaryDriver<'_>) -> MapOutput<'_, O> {
+    MapOutput {
+        driver,
+        output: PhantomData,
+    }
+}
+
+impl<O: InterfaceContract> Future for MapOutput<'_, O> {
+    type Output = InterfaceInvocationResult<O>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        let outcome = std::task::ready!(Pin::new(&mut this.driver).poll(cx));
+        Poll::Ready(outcome.map(|UnaryOutcome { value, receipt }| {
+            let value = *value
+                .downcast::<O>()
+                .expect("private unary bridge returns its declared output type");
+            InterfaceInvocationOutcome { value, receipt }
+        }))
+    }
+}
+
+enum DriverPhase<'a> {
+    Unstarted(UnaryRequest<'a>, Box<dyn UnaryBridge + 'a>),
+    Preparing(PrepareFuture<'a>),
+    Executing(UnaryFuture<'a>),
+    Done,
+}
+
+struct UnaryDriver<'a> {
+    phase: DriverPhase<'a>,
+}
+
+fn start_unary<'a>(request: UnaryRequest<'a>, typed: Box<dyn UnaryBridge + 'a>) -> UnaryDriver<'a> {
+    UnaryDriver {
+        phase: DriverPhase::Unstarted(request, typed),
+    }
+}
+
+impl Future for UnaryDriver<'_> {
+    type Output = Result<UnaryOutcome, InterfaceInvocationFailure>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        loop {
+            match &mut this.phase {
+                DriverPhase::Unstarted(..) => {
+                    let DriverPhase::Unstarted(request, typed) =
+                        std::mem::replace(&mut this.phase, DriverPhase::Done)
+                    else {
+                        unreachable!("unstarted unary driver owns its request");
+                    };
+                    this.phase = DriverPhase::Preparing(prepare(request, typed));
+                }
+                DriverPhase::Preparing(future) => {
+                    let prepared = match std::task::ready!(future.as_mut().poll(cx)) {
+                        Ok(prepared) => prepared,
+                        Err(failure) => {
+                            this.phase = DriverPhase::Done;
+                            return Poll::Ready(Err(failure));
+                        }
+                    };
+                    // Drop the completed preparation poll frame before constructing a handler.
+                    this.phase = DriverPhase::Done;
+                    this.phase = DriverPhase::Executing(execute(prepared));
+                }
+                DriverPhase::Executing(future) => {
+                    let result = std::task::ready!(future.as_mut().poll(cx));
+                    this.phase = DriverPhase::Done;
+                    return Poll::Ready(result);
+                }
+                DriverPhase::Done => panic!("completed unary driver polled again"),
+            }
+        }
+    }
 }
 
 fn prepare<'a>(
     request: UnaryRequest<'a>,
     mut typed: Box<dyn UnaryBridge + 'a>,
-) -> Pin<Box<dyn Future<Output = UnaryPreparation<'a>> + Send + 'a>> {
+) -> PrepareFuture<'a> {
     Box::pin(async move {
         let UnaryRequest {
             snapshot,
@@ -519,14 +583,14 @@ fn prepare<'a>(
             snapshot.fingerprint().clone(),
             receipt.document_operation.clone(),
         );
-        Ok(Box::new(PreparedUnary {
+        Ok(PreparedUnary {
             snapshot,
             plan,
             receipt,
             hook_context,
             controls,
             typed,
-        }))
+        })
     })
 }
 
@@ -556,11 +620,19 @@ struct PreparedUnary<'a> {
     typed: Box<dyn UnaryBridge + 'a>,
 }
 
-#[expect(
-    clippy::boxed_local,
-    reason = "Keep the prepare/execute handoff pointer-sized in the driver poll frame."
-)]
-fn execute(prepared: Box<PreparedUnary<'_>>) -> UnaryFuture<'_> {
+struct UnaryTargetPoll<'s> {
+    typed: &'s mut dyn UnaryBridge,
+}
+
+impl Future for UnaryTargetPoll<'_> {
+    type Output = bool;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<bool> {
+        self.get_mut().typed.poll_target(cx)
+    }
+}
+
+fn execute(prepared: PreparedUnary<'_>) -> UnaryFuture<'_> {
     let PreparedUnary {
         snapshot,
         plan,
@@ -568,14 +640,19 @@ fn execute(prepared: Box<PreparedUnary<'_>>) -> UnaryFuture<'_> {
         hook_context,
         controls,
         mut typed,
-    } = *prepared;
+    } = prepared;
     // Synchronous construction, after the prepare future has left the stack.
-    let target = typed.begin_target();
+    typed.begin_target();
     Box::pin(async move {
         let _snapshot = snapshot;
-        let target = match await_in_flight(&controls, target).await {
-            Ok(target) => target,
+        let target = {
+            let target = UnaryTargetPoll { typed: &mut *typed };
+            await_in_flight(&controls, target).await
+        };
+        let success = match target {
+            Ok(success) => success,
             Err(interruption) => {
+                typed.abort_target();
                 return Err(receipt
                     .fail(
                         interruption_error(interruption),
@@ -584,7 +661,7 @@ fn execute(prepared: Box<PreparedUnary<'_>>) -> UnaryFuture<'_> {
                     .await);
             }
         };
-        if typed.finish_target(target) {
+        if success {
             if plan.event_observer.is_some()
                 || typed.has_hooks(&plan)
                 || receipt.document_operation.is_some()
