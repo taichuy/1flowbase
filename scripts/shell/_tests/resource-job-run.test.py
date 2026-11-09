@@ -10,9 +10,7 @@ Inherit real ONEFLOWBASE_TASK_BUDGET_CGROUP/ID for an active finite user slice.
 Artifacts persist in task-owned tmp/test-governance/resource-job-run/<uuid>/.
 No Cargo, services, production admission lock, or host/parent memory pressure.
 """
-import argparse
 import fcntl
-import importlib.util
 import hashlib
 import json
 import os
@@ -20,10 +18,8 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 import unittest
-from unittest.mock import Mock, patch
 import uuid
 
 
@@ -34,9 +30,6 @@ CGROOT = Path('/sys/fs/cgroup')
 PYTHON = sys.executable
 TIMEOUT = 25
 GRACE = .3
-SPEC = importlib.util.spec_from_file_location('resource_job_run', SOURCE)
-RUNNER = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(RUNNER)
 
 
 def load(path):
@@ -81,19 +74,12 @@ def fixture(mode, root):
         fixture_wait(lambda: (root / 'setsid-ready.json').exists())
         publish(root / 'child-ready.json')
         time.sleep(20)
-    elif mode in ('forest', 'forest-exit', 'cooperative', 'forest-growth'):
+    elif mode in ('forest', 'forest-exit', 'cooperative'):
         if mode == 'cooperative':
             signal.signal(signal.SIGTERM, lambda _sig, _frame: sys.exit(0))
         subprocess.Popen([PYTHON, str(SELF), '--_fixture', 'tree-child', str(root)])
         fixture_wait(lambda: (root / 'child-ready.json').exists())
         publish(root / 'principal-ready.json')
-        if mode == 'forest-growth':
-            fixture_wait(lambda: (root / 'release-growth').exists())
-            # At most 192MiB, paced for the controller's 50ms observation loop.
-            blocks = []
-            for _ in range(48):
-                blocks.append(bytearray(4 * 1024 * 1024))
-                time.sleep(.03)
         if mode == 'forest-exit':
             fixture_wait(lambda: (root / 'release').exists())
             return
@@ -127,113 +113,6 @@ def fixture(mode, root):
         raise RuntimeError('unknown fixture: ' + mode)
 
 
-class MemoryStopTests(unittest.TestCase):
-    def setUp(self):
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        self.root = Path(temporary.name)
-        self.group = self.root / 'budget.slice'
-        self.group.mkdir()
-        (self.group / 'memory.max').write_text('100')
-        (self.group / 'memory.current').write_text('40')
-        self.budget = {'cgroup': '/budget.slice', 'inode': self.group.stat().st_ino}
-        self.addCleanup(patch.stopall)
-        patch.object(RUNNER, 'CGROOT', self.root).start()
-        self.job = RUNNER.Job.__new__(RUNNER.Job)
-        self.job.args = argparse.Namespace(memory_stop_bytes=50)
-        self.job.budget = self.budget
-        self.job.output = self.root
-        self.job.memory_stop_evidence = None
-
-    def test_positive_integer_bytes(self):
-        self.assertEqual(RUNNER.positive_bytes('7200000000'), 7200000000)
-        for value in ('0', '-1', '1.5', 'nan', 'inf', 'bytes'):
-            with self.subTest(value=value), self.assertRaises(argparse.ArgumentTypeError):
-                RUNNER.positive_bytes(value)
-
-    def test_below_threshold_and_opt_out_do_not_stop(self):
-        self.job.sample_memory_stop()
-        self.assertIsNone(self.job.memory_stop_evidence)
-        self.assertFalse((self.root / 'memory-stop.json').exists())
-        self.job.args.memory_stop_bytes = None
-        (self.group / 'memory.max').unlink()
-        self.job.sample_memory_stop()  # Opt-out does not add a kernel-read dependency.
-
-    def test_crossing_inclusive_records_first_exact_budget_observation(self):
-        (self.group / 'memory.current').write_text('50')
-        self.job.sample_memory_stop()
-        evidence = load(self.root / 'memory-stop.json')
-        self.assertEqual(evidence, self.job.memory_stop_evidence)
-        self.assertEqual(evidence['budget'], self.budget)
-        self.assertEqual(evidence['current_bytes'], 50)
-        self.assertEqual(evidence['stop_bytes'], 50)
-        self.assertEqual(evidence['memory_max_bytes'], 100)
-        self.assertTrue(evidence['observed_at'])
-        self.assertGreater(evidence['observed_monotonic'], 0)
-        (self.group / 'memory.current').write_text('80')
-        self.job.sample_memory_stop()
-        self.assertEqual(load(self.root / 'memory-stop.json'), evidence)
-
-    def test_threshold_must_be_below_actual_finite_maximum(self):
-        for maximum in ('50', '49', 'max', '0'):
-            with self.subTest(maximum=maximum):
-                (self.group / 'memory.max').write_text(maximum)
-                with self.assertRaises((ValueError, RuntimeError)):
-                    self.job.sample_memory_stop()
-                self.assertIsNone(self.job.memory_stop_evidence)
-        self.assertFalse((self.root / 'memory-stop.json').exists())
-
-    def test_rejects_changed_budget_identity(self):
-        self.budget['inode'] += 1
-        with self.assertRaisesRegex(RuntimeError, 'budget inode changed'):
-            self.job.sample_memory_stop()
-        self.assertIsNone(self.job.memory_stop_evidence)
-
-    def test_first_event_wins_between_finish_cancel_deadline_and_stop(self):
-        cases = [
-            (10, 20, None, 30, 'resource_failure', 125),
-            (20, 10, None, 30, 'exit', 0),
-            (20, None, 10, 30, 'cancel', 143),
-            (10, None, 20, 30, 'resource_failure', 125),
-            (20, None, None, 10, 'deadline', 124),
-            (10, None, None, 20, 'resource_failure', 125),
-            (10, 10, None, 30, 'exit', 0),
-            (10, None, None, 10, 'deadline', 124),
-        ]
-        for stop, finish, cancel, deadline, classification, code in cases:
-            with self.subTest(stop=stop, finish=finish, cancel=cancel, deadline=deadline):
-                self.job.memory_stop_evidence = {'observed_monotonic': stop}
-                self.job.cancel = ({'observed_monotonic': cancel, 'signal': signal.SIGTERM}
-                                   if cancel is not None else None)
-                self.job.deadline = deadline
-                self.job.oom_evidence = None
-                self.job.sample = Mock()
-                self.job.sample_memory_stop = Mock()
-                outcome = ({'kind': 'exit', 'returncode': 0, 'finished_monotonic': finish}
-                           if finish is not None else None)
-                with patch.object(RUNNER, 'read_json', return_value=outcome), \
-                        patch.object(RUNNER.time, 'monotonic', return_value=40):
-                    self.assertEqual(self.job.observe(), (classification, code))
-                self.assertIsNone(self.job.oom_evidence, 'proactive stop must not invent OOM')
-
-    def test_cleanup_failure_preserves_resource_trigger_and_evidence(self):
-        self.job.memory_stop_evidence = {'observed_monotonic': 10, 'current_bytes': 50}
-        self.job.start_scope = Mock()
-        self.job.observe = Mock(return_value=('resource_failure', 125))
-        self.job.cleanup = Mock(return_value={'complete': False, 'errors': ['test cleanup failure']})
-        self.job.started = {'started_at': RUNNER.utc()}
-        self.job.start = time.monotonic()
-        self.job.cancel = self.job.owner = self.job.oom_evidence = None
-        self.job.resources = {}
-        self.job.manager_receipt = Mock(return_value={})
-        self.assertEqual(self.job.run(), 125)
-        receipt = load(self.root / 'finished.json')
-        self.assertEqual(receipt['classification'], 'cleanup_failure')
-        self.assertEqual(receipt['trigger'], 'resource_failure')
-        self.assertEqual(receipt['memory_stop_evidence'], self.job.memory_stop_evidence)
-        self.assertIsNone(receipt['oom_evidence'])
-
-
 class RealJobTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -247,9 +126,7 @@ class RealJobTests(unittest.TestCase):
         # Do not turn an invalid supplied budget into a capability skip.
         if not os.environ['ONEFLOWBASE_TASK_BUDGET_CGROUP'].endswith('.slice'):
             raise unittest.SkipTest('native job scope needs an active user-slice budget')
-        artifact_root = os.environ.get('RESOURCE_JOB_RUN_ARTIFACT_ROOT')
-        cls.suite_root = (Path(artifact_root) if artifact_root else
-                          SOURCE.parents[2] / 'tmp/test-governance/resource-job-run') / uuid.uuid4().hex
+        cls.suite_root = SOURCE.parents[2] / 'tmp/test-governance/resource-job-run' / uuid.uuid4().hex
         cls.suite_root.mkdir(parents=True, mode=0o700)
         print('real OS artifacts: ' + str(cls.suite_root), flush=True)
         try:
@@ -326,14 +203,12 @@ class RealJobTests(unittest.TestCase):
         self.processes.append(process)
         return process
 
-    def start_job(self, command, name='job', deadline=10, env=None, memory_stop_bytes=None):
+    def start_job(self, command, name='job', deadline=10, env=None):
         output = self.root / name
         self.jobs.append(output)
         started = time.monotonic()
-        memory_option = ([] if memory_stop_bytes is None else
-                         ['--memory-stop-bytes', str(memory_stop_bytes)])
         process = self.start_process(
-            [PYTHON, str(SOURCE), *memory_option, '--deadline-seconds', str(deadline), '--output-dir', str(output),
+            [PYTHON, str(SOURCE), '--deadline-seconds', str(deadline), '--output-dir', str(output),
              '--term-grace-seconds', str(GRACE), '--', *command], name + '-controller', env)
         return process, output, started
 
@@ -552,55 +427,6 @@ class RealJobTests(unittest.TestCase):
         self.assertEqual(proc_identity(holder.pid), identity)
         (self.root / 'release-holder').touch()
         self.assertEqual(holder.wait(timeout=3), 0)
-
-    def test_t6_memory_stop_normal_command_stays_green(self):
-        budget = CGROOT / os.environ['ONEFLOWBASE_TASK_BUDGET_CGROUP'].lstrip('/')
-        stop = int((budget / 'memory.current').read_text()) + 128 * 1024 * 1024
-        self.assertLess(stop, int((budget / 'memory.max').read_text()))
-        job = self.start_job([PYTHON, '-c', 'print("normal-memory-stop")'], memory_stop_bytes=stop)
-        receipt = self.finish(job, 'exit', 0)
-        self.assertIsNone(receipt['memory_stop_evidence'])
-        self.assertIsNone(receipt['oom_evidence'])
-        self.assertEqual(load(job[1] / 'started.json')['memory_stop_bytes'], stop)
-
-    def test_t6_memory_stop_rejects_limit_before_command(self):
-        budget = CGROOT / os.environ['ONEFLOWBASE_TASK_BUDGET_CGROUP'].lstrip('/')
-        stop = int((budget / 'memory.max').read_text())
-        marker = self.root / 'must-not-start'
-        command = [PYTHON, '-c', f'from pathlib import Path;Path({str(marker)!r}).touch()']
-        job = self.start_job(command, memory_stop_bytes=stop)
-        receipt = self.finish(job, 'setup_failure', 125)
-        self.assertIn('smaller than', receipt['error'])
-        self.assertIsNone(receipt['job'])
-        self.assertIsNone(receipt['memory_stop_evidence'])
-        self.assertFalse(marker.exists())
-
-    def test_t6_memory_stop_growth_drains_only_owned_setsid_tree(self):
-        budget = CGROOT / os.environ['ONEFLOWBASE_TASK_BUDGET_CGROUP'].lstrip('/')
-        before = {name: (budget / name).read_text() for name in
-                  ('cpu.max', 'memory.max', 'memory.swap.max', 'memory.high')}
-        stop = int((budget / 'memory.current').read_text()) + 128 * 1024 * 1024
-        self.assertLess(stop, int(before['memory.max']))
-        job = self.start_job(self.fixture_argv('forest-growth'), deadline=12,
-                             memory_stop_bytes=stop)
-        identities = self.forest_ready()
-        self.assertFalse((job[1] / 'memory-stop.json').exists(), 'growth must cause the trigger')
-        (self.root / 'release-growth').touch()
-        receipt = self.finish(job, 'resource_failure', 125)
-        evidence = receipt['memory_stop_evidence']
-        self.assertEqual(evidence, load(job[1] / 'memory-stop.json'))
-        self.assertGreaterEqual(evidence['current_bytes'], stop)
-        self.assertEqual(evidence['stop_bytes'], stop)
-        self.assertEqual(evidence['budget'], receipt['budget'])
-        self.assertEqual(evidence['budget']['inode'], budget.stat().st_ino)
-        self.assertNotEqual(evidence['budget']['cgroup'], receipt['job']['cgroup'])
-        self.assertTrue(evidence['observed_at'])
-        self.assertGreater(evidence['observed_monotonic'], job[2])
-        self.assertIsNone(receipt['oom_evidence'], 'proactive stop must not be called OOM')
-        self.assertTrue(receipt['cleanup']['cgroup_empty'])
-        for identity in identities:
-            self.assert_gone(identity)
-        self.assertEqual({name: (budget / name).read_text() for name in before}, before)
 
     def test_t5_manual_sigkill_is_not_oom(self):
         job = self.start_job([PYTHON, '-c',

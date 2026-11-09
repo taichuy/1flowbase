@@ -1,4 +1,4 @@
-name: Issue 2818 one-off paired feasibility
+name: Issue 2818 native-bound seed owner
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
       candidate_sha:
         description: Exact candidate SHA (optional until Root pushes)
         type: string
-        default: 1f3aa16782c34f244420bb55bd30292bf225b1c6
+        default: a9e85b53bb385349896a16eeaa32238093248626
       wait_seconds:
         description: Bounded candidate availability wait
         type: string
@@ -28,32 +28,12 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CI: 'true'
-  API_DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
-  DATABASE_URL: postgres://postgres:1flowbase@127.0.0.1:5432/1flowbase
-  PGHOST: 127.0.0.1
-  PGPORT: '5432'
-  PGUSER: postgres
-  PGPASSWORD: 1flowbase
-  CARGO_INCREMENTAL: '0'
   CARGO_TERM_COLOR: never
 
 jobs:
   first-pair:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
-    services:
-      postgres:
-        image: postgres:18.4
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: 1flowbase
-          POSTGRES_DB: 1flowbase
-        ports:
-          - 5432:5432
-        options: >-
-          --memory 400000000 --memory-swap 400000000 --cpus 0.5
-          --health-cmd "pg_isready -U postgres -d 1flowbase"
-          --health-interval 5s --health-timeout 5s --health-retries 12
+    timeout-minutes: 110
     steps:
       - uses: actions/checkout@v5
         with:
@@ -62,12 +42,11 @@ jobs:
         with:
           node-version-file: web/.nvmrc
       - uses: dtolnay/rust-toolchain@stable
-      - name: Create only this task's finite user slice and run one serial pair
+      - name: Validate exact seed dependency graph and execute the database-free owner
         shell: bash
         env:
-          ISSUE2818_PG_CONTAINER: ${{ job.services.postgres.id }}
           CANDIDATE_REF: ${{ inputs.candidate_ref || 'refs/heads/opt/2818-global-20261109' }}
-          CANDIDATE_SHA: ${{ inputs.candidate_sha || '1f3aa16782c34f244420bb55bd30292bf225b1c6' }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha || 'a9e85b53bb385349896a16eeaa32238093248626' }}
           CANDIDATE_WAIT: ${{ inputs.wait_seconds || '1200' }}
         run: |
           set -euo pipefail
@@ -76,13 +55,13 @@ jobs:
           sudo systemctl start "user@$task_uid.service"
           export XDG_RUNTIME_DIR="/run/user/$task_uid"
           export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
-          task_cpu_percent=$(( $(getconf _NPROCESSORS_ONLN) * 60 - 50 ))
-          systemctl --user set-property --runtime issue2818.slice MemoryMax=7600000000 MemoryHigh=6000000000 MemorySwapMax=0 "CPUQuota=$task_cpu_percent%"
+          task_cpu_percent=$(( $(getconf _NPROCESSORS_ONLN) * 60 ))
+          systemctl --user set-property --runtime issue2818.slice MemoryMax=8000000000 MemoryHigh=7200000000 MemorySwapMax=0 "CPUQuota=$task_cpu_percent%"
           systemctl --user start issue2818.slice
           task_group=$(systemctl --user show issue2818.slice --property=ControlGroup --value)
           task_inode=$(stat -c %i "/sys/fs/cgroup$task_group")
           systemd-run --user --scope --quiet --unit=issue2818-orchestrator --slice=issue2818.slice \
-            --property=RuntimeMaxSec=5000s --property=TimeoutStopSec=5s --property=KillMode=control-group \
+            --property=RuntimeMaxSec=5400s --property=TimeoutStopSec=5s --property=KillMode=control-group \
             --working-directory="$GITHUB_WORKSPACE" \
             env "ONEFLOWBASE_TASK_BUDGET_CGROUP=$task_group" "ONEFLOWBASE_TASK_BUDGET_ID=$task_inode" \
             python3 tmp/test-governance/issue2818/ci-preparation/experiment.py \
@@ -108,10 +87,12 @@ jobs:
           systemctl --user stop issue2818.slice
       - uses: actions/upload-artifact@v7
         if: always()
+        timeout-minutes: 5
         with:
-          name: issue2818-first-pair-${{ github.run_id }}-${{ github.run_attempt }}
+          name: issue2818-seed-owner-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             tmp/test-governance/issue2818/ci-evidence/**
             tmp/test-governance/issue2818/ci-preparation/**
           if-no-files-found: error
-          retention-days: 14
+          compression-level: 0
+          retention-days: 3

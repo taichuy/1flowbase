@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 import re
-import selectors
 import subprocess
 import sys
 import time
@@ -19,8 +18,7 @@ EVIDENCE = HOME_ROOT / 'tmp/test-governance/issue2818/ci-evidence'
 TEMP = Path(os.environ.get('RUNNER_TEMP', '/tmp')) / 'issue2818'
 RUNNER = HOME_ROOT / 'scripts/shell/resource-job-run.py'
 HEAVY = HOME_ROOT / 'scripts/shell/resource-heavy-run.py'
-STOP = 7_200_000_000
-END = time.monotonic() + 80 * 60
+END = time.monotonic() + 70 * 60
 SERIAL = 0
 RESULTS = []
 PG_GROUP = None
@@ -52,7 +50,7 @@ def stream_exec(argv, merged):
     child = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     with Path(merged).open('wb') as combined:
         while True:
-            chunk = child.stdout.read(65536)
+            chunk = os.read(child.stdout.fileno(), 65536)
             if not chunk:
                 break
             combined.write(chunk)
@@ -106,8 +104,7 @@ def run(label, argv, cwd=HOME_ROOT, env=None, heavy=False, seconds=1200, expecte
         raise RuntimeError('global controlled-experiment deadline exhausted')
     actual = ([sys.executable, str(HEAVY)] if heavy else []) + [
         sys.executable, str(SELF), 'exec', str(merged), *argv]
-    wrapper = [sys.executable, str(RUNNER), '--memory-stop-bytes', str(STOP),
-               '--deadline-seconds', str(limit), '--output-dir', str(folder), '--', *actual]
+    wrapper = [sys.executable, str(RUNNER), '--deadline-seconds', str(limit), '--output-dir', str(folder), '--', *actual]
     started = time.monotonic()
     child = subprocess.Popen(wrapper, cwd=cwd, env=env)
     peaks = {'tree_rss_sample':0,'max_process_vm_hwm':0,'aggregate_current':0}
@@ -191,7 +188,6 @@ def prepare(name, ref):
 def command_env(data, command, target):
     env = dict(os.environ, CARGO_TARGET_DIR=str(target),
                CARGO_BUILD_JOBS=str(data['runtime']['backend']['cargoJobs']),
-               RUST_TEST_THREADS=str(data['runtime']['backend']['cargoTestThreads']),
                CARGO_INCREMENTAL='0',CARGO_NET_OFFLINE='true',
                CARGO_TERM_COLOR='never',TERM='dumb')
     for key,value in command.get('env',{}).items():
@@ -237,16 +233,6 @@ def cases(log, roots, mode):
                 rows.append([active,match.group(1),match.group(2)])
     return rows
 
-def work(name,root,data):
-    target=TEMP/f'target-{name}'
-    assert not target.exists(), 'A/B must start with independent empty target dirs'
-    rows=[]
-    for index,command in enumerate(data['tests']+data['checks']):
-        rows.append(run(f'{name}-W-{index}',[command['command'],*command['args']],
-                        cwd=root/command['cwd'],env=command_env(data,command,target),heavy=True))
-    save(EVIDENCE/f'{name}-W.json',rows)
-    return target,rows
-
 def discover(name,root,data,metadata,target,executions):
     roots=root_names(root,metadata)
     out=[]
@@ -277,127 +263,87 @@ def discover(name,root,data,metadata,target,executions):
     save(EVIDENCE/f'{name}-target-qualified-cases.json',out)
     return out
 
-def wait_candidate(args):
-    assert re.fullmatch(r'[A-Za-z0-9_./-]+',args.candidate_ref), 'invalid ref'
-    stop=min(END,time.monotonic()+args.wait_seconds)
-    attempt=0
-    while time.monotonic()<stop:
-        attempt+=1
-        run(f'candidate-fetch-{attempt}',['git','fetch','--no-tags','origin',
-             '+'+args.candidate_ref+':refs/issue2818/candidate'],seconds=120)
-        sha=capture(['git','rev-parse','refs/issue2818/candidate'])
-        # Read the exact fetched revision without accepting an incomplete branch state.
-        backend=capture(['git','show',sha+':scripts/node/verify/backend.js'])
-        foundation=capture(['git','show',sha+':scripts/node/foundation-contracts/core.js'])
-        targets=capture(['git','show',sha+':scripts/node/verify/backend-targets.js'])
-        ready=('--all-targets' in backend and 'api-server-all-targets' in backend
-               and 'api_private_contracts' in foundation and 'api_application' in foundation
-               and 'api_private_contracts' in targets)
-        if args.candidate_sha and sha!=args.candidate_sha:
-            ready=False
-        if ready:
-            return sha
-        if stop-time.monotonic()<30:
-            break
-        time.sleep(30)  # Bounded remote availability, no busy polling or heavy retry.
-    raise RuntimeError('candidate source not ready within bounded wait; baseline remains evidence')
-
-def compile_negative(sources):
-    marker='ISSUE2818_UNSELECTED_ROOT_TYPE_NEGATIVE'
-    leaf=Path('api/apps/api-server/tests/http/api_identity.rs')
-    for name,root,data,target in sources:
-        original=(root/leaf).read_bytes()
-        # A fixed invalid type witness in an existing omitted root; no product/fixture changes.
-        (root/leaf).write_bytes(original+f'\nconst _: () = {{ compile_error!("{marker}"); }};\n'.encode())
-        try:
-            command=data['tests'][0] if name=='baseline' else next(
-                c for c in data['checks'] if '--all-targets' in c['args'])
-            evidence=run(f'{name}-compile-negative',[command['command'],*command['args']],
-                         cwd=root/command['cwd'],env=command_env(data,command,target),
-                         heavy=True,expected='nonzero')
-            assert marker in Path(evidence['merged_log']).read_text(), 'unrelated failure is not defect detection'
-            save(EVIDENCE/f'{name}-compile-negative.json',{'leaf':str(leaf),'marker':marker,
-                 'injected_sha256':hashlib.sha256((root/leaf).read_bytes()).hexdigest(),
-                 'owner_argv':evidence['argv'],'detected':True})
-        finally:
-            (root/leaf).write_bytes(original)
+def retain_seed_cache(source, target, metadata):
+    # One fixed archive, using the existing budget runner; no persistent cache service.
+    global END
+    END=max(END,time.monotonic()+360)
+    archive=EVIDENCE/'seed-target-and-source.tar.zst'
+    out=EVIDENCE/'seed-retention.json'
+    if not target.exists():
+        save(out,{'status':'no-target-created'})
+        return
+    import resource
+    cap=3_000_000_000
+    command=[sys.executable,'-c',
+        'import os,resource; resource.setrlimit(resource.RLIMIT_FSIZE,('+str(cap)+','+str(cap)+')); os.execvp("tar",'+repr(['tar','--exclude=seed-source/.git','-I','zstd -T1 -1','-cf',str(archive),'-C',str(TEMP),'seed-source','target-seed'])+')']
+    try:
+        row=run('retain-seed-target',command,seconds=300)
+        digest=hashlib.sha256()
+        with archive.open('rb') as stream:
+            for chunk in iter(lambda:stream.read(1024*1024),b''):
+                digest.update(chunk)
+        save(out,{'status':'archived','archive':str(archive),'bytes':archive.stat().st_size,
+                  'sha256':digest.hexdigest(),'compiler':capture(['rustc','-vV']),
+                  'source_sha':metadata['source_sha'],'root_paths':[str(source),str(target)],
+                  'cache_level':metadata,'note':'partial or complete as recorded; restore must revalidate Cargo freshness; source mtimes retained and .git excluded',
+                  'archive_cost_seconds':row['wall_seconds']})
+    except Exception as failure:
+        archive.unlink(missing_ok=True)
+        save(out,{'status':'archive-unavailable','reason':str(failure),'bounded_bytes':cap,'bounded_seconds':300})
 
 def main():
-    parser=argparse.ArgumentParser()
-    parser.add_argument('--candidate-ref',default='refs/heads/opt/2818-global-20261109')
-    parser.add_argument('--candidate-sha',default='')
-    parser.add_argument('--wait-seconds',type=int,default=1200)
-    args=parser.parse_args()
+    # Lowest-cost next evidence: one real database-free seed owner, not another full W.
     EVIDENCE.mkdir(parents=True,exist_ok=False)
     TEMP.mkdir(parents=True,exist_ok=False)
-    save(EVIDENCE/'environment.json',{'baseline':BASELINE,'host_cpu_count':os.cpu_count(),
-         'rustc':capture(['rustc','-vV']),'cargo':capture(['cargo','-vV']),
-         'node':capture(['node','--version']),'uname':capture(['uname','-a']),
-         'profile_overrides':{k:v for k,v in os.environ.items() if k.startswith(('CARGO_','RUST_'))},
-         'measurement_limit':'Controlled serial W, not natural PR job P50/P95. wait4 maxrss is not tree RSS.'})
-    global PG_GROUP
-    pgid=os.environ['ISSUE2818_PG_CONTAINER']
-    pgpid=capture(['docker','inspect','--format','{{.State.Pid}}',pgid])
-    pgpath=next(line[3:] for line in Path('/proc/'+pgpid+'/cgroup').read_text().splitlines() if line.startswith('0::'))
-    PG_GROUP=Path('/sys/fs/cgroup')/pgpath.lstrip('/')
-    pg_limits={name:(PG_GROUP/name).read_text().strip() for name in ('memory.max','memory.swap.max','cpu.max')}
-    assert int(pg_limits['memory.max'])<=400_000_000 and pg_limits['memory.swap.max']=='0'
-    pgq,pgp=map(int,pg_limits['cpu.max'].split())
-    assert pgq/pgp<=.5
-    save(EVIDENCE/'pg-budget.json',{'path':str(PG_GROUP),'inode':PG_GROUP.stat().st_ino,**pg_limits})
+    metadata={'source_sha':os.environ['CANDIDATE_SHA'],'normal_lib_complete':False,'seed_queries_complete':False}
+    source=TEMP/'seed-source'
+    target=TEMP/'target-seed'
     initial=budget_snapshot()
     save(EVIDENCE/'budget-before.json',initial)
-    assert int(initial['inode'])==int(os.environ['ONEFLOWBASE_TASK_BUDGET_ID'])
-    assert 0 <= 7_600_000_000-int(initial['memory.max']) < os.sysconf('SC_PAGESIZE')  # Kernel rounds limits down to whole pages; PG separately <=400 MB
-    assert int(initial['memory.high'])<=STOP and initial['memory.swap.max']=='0'
+    assert int(initial['memory.max'])==8_000_000_000 and initial['memory.swap.max']=='0'
     quota,period=map(int,initial['cpu.max'].split())
-    assert quota/period+.5<=os.cpu_count()*.60+.001  # Include PG's half-CPU cap
-    smoke=run('smoke', [sys.executable,'-c',
-         'import os,subprocess,sys; p=subprocess.Popen([sys.executable,"-c","import os,time; os.setsid(); time.sleep(60)"],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); print(p.pid,flush=True)'],
-         seconds=20)
-    child=int(Path(smoke['merged_log']).read_text().strip())
-    assert not Path(f'/proc/{child}').exists(), 'smoke descendant survived owned scope cleanup'
-    root,b,meta=prepare('baseline',BASELINE)
-    # Fetch registry/git inputs once, without a target cache; both W sides are offline.
-    run('registry-prefetch',['cargo','fetch','--locked','--manifest-path','api/Cargo.toml'],
-        cwd=root,heavy=True,seconds=900)
-    candidate_sha=wait_candidate(args)
-    aroot,a,ameta=prepare('candidate',candidate_sha)
-    assert frozen(root)==frozen(aroot), 'source/config/fixture changed outside frozen W1 selector scope'
-    assert b['runtime']==a['runtime'], 'runtime concurrency/config changed'
-    assert len(b['checks'])==1 and len(a['checks'])==2
-    assert b['checks'][0]==a['checks'][0], 'normal apps three-package check changed'
-    extra=a['checks'][1]
-    assert extra['args']==['check','--package','api-server','--all-targets','--jobs',
-                            str(a['runtime']['backend']['cargoJobs'])]
-    # Check API root mounting and labels from the concrete SHA-owned builders, never rewrite argv.
-    owners=['api_private_contracts']*3+['api_application']
-    for command,owner in zip(a['tests'],owners):
-        pos=command['args'].index('--test')
-        assert command['args'][pos+1]==owner
-    at,aw=work('candidate',aroot,a)
-    ac=discover('candidate',aroot,a,ameta,at,aw)
-    bt,bw=work('baseline',root,b)
-    bc=discover('baseline',root,b,meta,bt,bw)
-    for old,new in zip(bc,ac):
-        for key in ['list','actual']:
-            assert Counter(tuple(x) for x in old[key])==Counter(tuple(x) for x in new[key]), key+' multiplicity mismatch'
-    before=sum(x['wall_seconds'] for x in bw)
-    after=sum(x['wall_seconds'] for x in aw)
-    save(EVIDENCE/'paired-feasibility.json',{'baseline_sha':BASELINE,'candidate_sha':candidate_sha,
-         'pairs':1,'order':'candidate first after prior baseline resource stop; memory.high=6GB on both sides','W_definition':'official seed 2 original filters, MCP mcp_protocol_routes, application model_definition_routes_, apps normal three-package check; candidate adds API-only all-targets check',
-         'baseline_seconds':before,'candidate_seconds':after,'saved_seconds':before-after,
-         'saving_fraction':(before-after)/before,'extra_experiment_seconds':sum(x['wall_seconds'] for x in RESULTS)-before-after,
-         'sampling':'first pair feasibility only; no P95 claim; Root decides three pairs only after benefit',
-         'all_known_D':'Root-frozen complete D replay is separate and required before acceptance',
-         'link_limit':'API all-targets check preserves type checking, not universal omitted-root final native link checks'})
-    compile_negative([('baseline',root,b,bt),('candidate',aroot,a,at)])
-    summary=read(EVIDENCE/'paired-feasibility.json')
-    summary['extra_experiment_seconds']=sum(x['wall_seconds'] for x in RESULTS)-before-after
-    save(EVIDENCE/'paired-feasibility.json',summary)
-    save(EVIDENCE/'status.json',{'status':'FIRST_PAIR_EVIDENCE_COLLECTED',
-         'not_final_QA':True,'requires':'Root complete D matrix and threshold decision; independent centralized QA'})
-    return 0
+    assert quota/period<=os.cpu_count()*.6+.001
+    assert capture(['rustc','--version']).startswith('rustc 1.99.1 '), 'exact compiler pin required'
+    save(EVIDENCE/'environment.json',{'rustc':capture(['rustc','-vV']),'cargo':capture(['cargo','-vV']),
+         'host_cpu_count':os.cpu_count(),'source_sha':metadata['source_sha'],'postgres':False,
+         'phase':'seed-owner-only; no complete W performance claim','extra_G0_policy':False})
+    try:
+        source,data,cargo_meta=prepare('seed-source',metadata['source_sha'])
+        seed_data={**data,'tests':data['tests'][:2],'checks':[]}
+        env=command_env(data,seed_data['tests'][0],target)
+        run('registry-prefetch',['cargo','fetch','--locked','--manifest-path','api/Cargo.toml'],cwd=source,seconds=900)
+        graph_env={**env,'RUSTC_BOOTSTRAP':'1'}
+        original=seed_data['tests'][0]['args'];stop=original.index('--') if '--' in original else len(original)
+        qgraph=run('seed-query-unit-graph',['cargo',*original[:stop],'-Z','unstable-options','--unit-graph','--no-run'],cwd=source/'api',env=graph_env,seconds=60)
+        build=['cargo','build','--profile','test','--package','api-server','--features','test-support','--lib','--jobs',str(data['runtime']['backend']['cargoJobs'])]
+        bgraph=run('seed-lib-unit-graph',[*build,'-Z','unstable-options','--unit-graph'],cwd=source/'api',env=graph_env,seconds=60)
+        q=json.loads(Path(qgraph['stdout_log']).read_text());b=json.loads(Path(bgraph['stdout_log']).read_text())
+        def sig(u):
+            return json.dumps({k:u[k] for k in ('pkg_id','target','profile','platform','mode','features')},sort_keys=True)
+        def closure(g,i):
+            seen=set();todo=[i]
+            while todo:
+                k=todo.pop()
+                if k in seen:continue
+                seen.add(k);todo.extend(d['index'] for d in g['units'][k]['dependencies'])
+            return {sig(g['units'][k]) for k in seen}
+        r=b['roots'][0];matches=[i for i,u in enumerate(q['units']) if sig(u)==sig(b['units'][r])]
+        assert len(matches)==1 and closure(q,matches[0])==closure(b,r), 'prebuild not exact seed dependency'
+        save(EVIDENCE/'seed-prebuild-compatibility.json',{'exact_recursive_unit_equality':True,'units':len(closure(b,r)),
+             'compiler':capture(['rustc','--version']),'purpose':'one ordinary-lib heavy root before private-contracts root; unchanged jobs/features/profile'})
+        run('seed-normal-lib-prebuild',build,cwd=source/'api',env=env,heavy=True,seconds=2700)
+        metadata['normal_lib_complete']=True
+        executions=[]
+        for index,command in enumerate(seed_data['tests']):
+            executions.append(run('seed-query-'+str(index),[command['command'],*command['args']],
+                 cwd=source/command['cwd'],env=command_env(data,command,target),heavy=True,seconds=2700))
+        metadata['seed_queries_complete']=True
+        discover('candidate-seed',source,seed_data,cargo_meta,target,executions)
+        save(EVIDENCE/'status.json',{'status':'SEED_OWNER_EXECUTED','source_sha':metadata['source_sha'],
+             'not_final_QA':True,'not_full_W_or_performance_PASS':True,'remaining':'old/new complete sets, MCP/application, known D, additional API check cost, job-boundary A/B'})
+        return 0
+    finally:
+        retain_seed_cache(source,target,metadata)
 
 if __name__=='__main__':
     if len(sys.argv)>1 and sys.argv[1]=='exec':

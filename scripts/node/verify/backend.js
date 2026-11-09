@@ -145,23 +145,25 @@ function buildBackendCargoCommand({
   throw new Error(`Unsupported backend cargo target: ${target}`);
 }
 
-function buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads, incremental = false }) {
-  return IMAGE_LLM_VISION_GATE_TARGETS.map((target) => ({
+function buildBackendTestGateCommands({ targets, cargoJobs, cargoTestThreads, incremental = false }) {
+  return targets.map((target) => ({
+    ...buildBackendCargoCommand({
+      target: 'test',
+      cargoJobs,
+      cargoTestThreads,
+      incremental,
+      testSelection: {
+        packages: [target.packageName],
+        targetArgs: target.testTarget ? ['--test', target.testTarget] : [],
+        filter: target.filter,
+      },
+    }),
     label: target.label,
-    command: 'cargo',
-    args: [
-      'test',
-      '-p',
-      target.packageName,
-      '--jobs',
-      String(cargoJobs),
-      target.filter,
-      '--',
-      `--test-threads=${cargoTestThreads}`,
-    ],
-    cwd: 'api',
-    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: true }),
   }));
+}
+
+function buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads, incremental = false }) {
+  return buildBackendTestGateCommands({ targets: IMAGE_LLM_VISION_GATE_TARGETS, cargoJobs, cargoTestThreads, incremental });
 }
 
 function buildBackendTestCommands({
@@ -176,23 +178,6 @@ function buildBackendTestCommands({
     buildRustBackendStaticGateCommand({ repoRoot, env }),
     buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads, incremental, testSelection: selection }),
   ];
-}
-
-function buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads, incremental = false }) {
-  return OFFICIAL_I18N_SEED_GATE_TARGETS.map((target) => ({
-    ...buildBackendCargoCommand({
-      target: 'test',
-      cargoJobs,
-      cargoTestThreads,
-      incremental,
-      testSelection: {
-        packages: [target.packageName],
-        targetArgs: ['--test', target.testTarget],
-        filter: target.filter,
-      },
-    }),
-    label: target.label,
-  }));
 }
 
 function buildBackendFmtCommand({ cargoJobs, repoRoot }) {
@@ -259,7 +244,7 @@ function buildBackendCommands({
   }
 
   if (target === 'official-i18n-seed') {
-    return buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads, incremental });
+    return buildBackendTestGateCommands({ targets: OFFICIAL_I18N_SEED_GATE_TARGETS, cargoJobs, cargoTestThreads, incremental });
   }
 
   if (target === 'history-maintenance') {
