@@ -295,7 +295,7 @@ def main():
     initial=budget_snapshot()
     save(EVIDENCE/'budget-before.json',initial)
     assert int(initial['inode'])==int(os.environ['ONEFLOWBASE_TASK_BUDGET_ID'])
-    assert int(initial['memory.max'])==7_600_000_000  # PG service separately capped at 400 MB; sum <=8 GB
+    assert 0 <= 7_600_000_000-int(initial['memory.max']) < os.sysconf('SC_PAGESIZE')  # Kernel rounds limits down to whole pages; PG separately <=400 MB
     assert int(initial['memory.high'])<=STOP and initial['memory.swap.max']=='0'
     quota,period=map(int,initial['cpu.max'].split())
     assert quota/period+.5<=os.cpu_count()*.60+.001  # Include PG's half-CPU cap
