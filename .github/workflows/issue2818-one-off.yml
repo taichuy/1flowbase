@@ -1,4 +1,4 @@
-name: Issue 2818 W2 withdrawal API and native31 qualification
+name: Issue 2818 cached native31 recovery qualification
 
 on:
   push:
@@ -45,7 +45,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: '1.99.1' 
-      - name: Qualify intentional restored API rebuild then native31 only
+      - name: Execute cached native31 ignored and actual only no API build
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -94,7 +94,7 @@ jobs:
         if: always()
         timeout-minutes: 5
         with:
-          name: issue2818-w2-withdrawal-results-${{ github.run_id }}-${{ github.run_attempt }}
+          name: issue2818-native31-resume-results-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             tmp/test-governance/issue2818/ci-evidence/**
             tmp/test-governance/issue2818/ci-preparation/**
@@ -107,7 +107,7 @@ jobs:
         if: always()
         timeout-minutes: 5
         with:
-          name: issue2818-w2-withdrawal-cache-${{ github.run_id }}-${{ github.run_attempt }}
+          name: issue2818-native31-resume-cache-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             tmp/test-governance/issue2818/ci-evidence/seed-target-and-source.tar.zst
             tmp/test-governance/issue2818/ci-evidence/seed-retention.json
