@@ -1,4 +1,4 @@
-name: Issue 2818 W5 real fixture runtime cost
+name: Issue 2818 W5 cost environment recovery
 
 on:
   push:
@@ -31,7 +31,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: '1.99.1' 
-      - name: Compile four IR probe binaries and run only fixed exact ignored cost entries
+      - name: Fetch locked sources and run the unchanged fixed IR cost packet
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

@@ -125,6 +125,25 @@
     "RUSTC_WORKSPACE_WRAPPER": null,
     "RUSTFLAGS": null
   },
+  "environment_priming": {
+    "before_any_overlay": true,
+    "command": [
+      "cargo",
+      "fetch",
+      "--locked",
+      "--manifest-path",
+      "api/Cargo.toml"
+    ],
+    "deadline_seconds": 180,
+    "no_offline_wrapper_bootstrap_or_flags": true,
+    "no_retry_on_timeout_network_or_Fresh_failure": true,
+    "no_source_compile": true,
+    "required_tokio_git_rev": "0e5b2d73aa18dd9f0a50ee9ff199d5aef7594186",
+    "source_contract": "tmp/test-governance/issue2818/ci-preparation/w5-runtime-cost/prefetch-source-contract.json",
+    "source_contract_sha256": "0896a98fd5d38b6f731e99d83b0d6dcf05c405037728936bd4d05f990c29b740",
+    "source_path": "/home/runner/work/_temp/issue2818/seed-source",
+    "source_sha": "7bb249e47d29dce87a291677884bd42962aa2046"
+  },
   "exact_ignored_names": [
     "_tests::invocation_tests::w5_probe_empty_plan",
     "_tests::invocation_tests::event_observation_tests::document_operation_tests::w5_probe_document_before",
@@ -163,6 +182,7 @@
     "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
     "api/crates/interface-runtime/src/_tests/finalization_tests.rs"
   ],
+  "measurement_contract_sha256": "23cacb8691f01b8de43fce674efb887ae6508c9899cd7100508e74b3ac2cd6d0",
   "measurement_phase_grouping": "three resource-owned bounded120s stages (old-old noise, old-current timing, counts); each stage launches the frozen fresh exact test processes sequentially and retains per-process wall/raw receipts; no per-pair rebuild or persistent harness",
   "no_actions": [
     "no Rust",
@@ -272,6 +292,7 @@
       "sha256": "685d5e09d3ceb079b16c62f31d93d0da41c45076487be78d4e6c0c29e8b8b60d"
     }
   ],
+  "prior_failed_run": 42665929614,
   "reporting": "retain all W5_SAMPLE/checkpoints and W5_TOTAL per process; timing median/range and all five paired relative differences per case against frozen noise band; within-band/mixed outcomes unresolved; counts instrumented_window_nanos never latency",
   "root_file_original_bytes_unchanged": "four complete file-prefix temporary apply proof preserved; 16 original fixture/helper body receipt frozen; final independent actualVerifier pending Root",
   "root_invalidation": {
@@ -793,7 +814,7 @@
     }
   ],
   "shared_budget_helper_sha256": "77952af01b8bed3781782d09f5b028bb089ad5ccb68dce3f4454cf03a06df40e",
-  "status": "AUTHORIZED_SINGLE_W5_RUNTIME_COST_JOB",
+  "status": "AUTHORIZED_SINGLE_W5_ENVIRONMENT_PRIMING_RECOVERY",
   "test_flags": [
     "--exact",
     "--ignored",

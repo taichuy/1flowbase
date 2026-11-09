@@ -15,6 +15,7 @@ def check():
     assert sha(HERE.parent/'experiment.py')==b['shared_budget_helper_sha256']
     assert sha(ROOT/b['actual_verifier']['path'])==b['actual_verifier']['sha256'] and len(b['actual_verifier']['checks'])==14 and all(c['status']=='PASS' for c in b['actual_verifier']['checks'])
     assert b['cache']['id']==13682384755 and b['old_sha']=='ca19501827fdeac86b9f5d9fcba767715220f3dd' and b['current_sha']=='903971d5c3ddd37f93c1f7314e02dae4a2bb120c'
+    assert sha(ROOT/b['environment_priming']['source_contract'])==b['environment_priming']['source_contract_sha256']
     return b
 
 def batch(phase,evidence,source):
@@ -61,6 +62,32 @@ def main():
         archive,incoming=g.download_retained();g.run('checkout-cache-source',['git','worktree','add','--detach',str(source),b['cache']['source_sha']],seconds=120);g.run('restore-source-target',['tar','-I','zstd -T1','-xf',str(archive),'--no-same-owner','-C',str(g.TEMP)],seconds=180)
         save(e/'cache-resume.json',{'cache':b['cache'],'scope':'cloud restored source7bb/dependencies; W5 probe uses isolated old/current checkout, no API or new cache archive'})
         capture(['git','diff','--exit-code','HEAD','--'])
+        # Authorized source-only environment priming, before old/current overlays.
+        state['phase']='registry-prefetch'
+        assert capture(['git','rev-parse','HEAD']).decode().strip()==b['cache']['source_sha']
+        source_contract=read(ROOT/b['environment_priming']['source_contract'])
+        cargo_before={path:sha(source/path) for path in source_contract['file_hashes']}
+        assert all(digest==source_contract['file_hashes'][path]['cache'] for path,digest in cargo_before.items())
+        prefetch_env=dict(os.environ)
+        clear=['CARGO_NET_OFFLINE','RUSTC_WRAPPER','RUSTC_WORKSPACE_WRAPPER','RUSTC_BOOTSTRAP','RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS']
+        for key in clear:prefetch_env.pop(key,None)
+        os.environ['ISSUE2818_OBSERVED_SOURCE_SHA']=b['cache']['source_sha']
+        prefetch_result=None
+        try:
+            prefetch_result=g.run('registry-prefetch',b['environment_priming']['command'],cwd=source,env=prefetch_env,seconds=180)
+        finally:
+            cargo_after={path:sha(source/path) for path in source_contract['file_hashes']}
+            save(e/'prefetch-lock-source-proof.json',{'source_sha':b['cache']['source_sha'],'source_path':str(source),'before_overlay':True,'argv':b['environment_priming']['command'],'deadline_seconds':180,'effective_env':{key:prefetch_env.get(key) for key in clear},'Cargo_lock_before':cargo_before['api/Cargo.lock'],'Cargo_lock_after':cargo_after['api/Cargo.lock'],'all_manifest_lock_before':cargo_before,'all_manifest_lock_after':cargo_after,'all_files_unchanged':cargo_before==cargo_after,'prefetch_result':prefetch_result,'prior_failed_run':42665929614,'prior_failure_preserved':True})
+        assert cargo_before==cargo_after,'Cargo source or lock mutated during fetch --locked'
+        capture(['git','diff','--exit-code','HEAD','--'])
+        cargo_home=Path(prefetch_env.get('CARGO_HOME',str(Path.home()/'.cargo')))
+        checkout_proof=[]
+        for checkout in sorted((cargo_home/'git/checkouts').glob('tokio-tungstenite-*/*')):
+            if not (checkout/'Cargo.toml').is_file():continue
+            actual_rev=subprocess.check_output(['git','rev-parse','HEAD'],cwd=checkout,text=True,timeout=10).strip()
+            checkout_proof.append({'path':str(checkout),'git_rev':actual_rev,'Cargo_toml_exists':True,'Cargo_toml_sha256':sha(checkout/'Cargo.toml')})
+        save(e/'prefetched-Git-checkout-proof.json',{'required_repo':'https://github.com/openai-oss-forks/tokio-tungstenite','required_rev':b['environment_priming']['required_tokio_git_rev'],'checkout_evidence':checkout_proof,'no_compilation_in_priming':True})
+        assert any(row['git_rev']==b['environment_priming']['required_tokio_git_rev'] for row in checkout_proof),'required pinned Git checkout absent after fetch'
         for side in ['old','current']:
             revision=b['old_sha'] if side=='old' else b['current_sha'];state['phase']='source-'+side;capture(['git','checkout','--detach',revision]);assert capture(['git','rev-parse','HEAD']).decode().strip()==revision
             originals={f:capture(['git','show',revision+':'+f]) for f in manifest['maximum_write_set'] if f not in manifest['new_Rust_files']}

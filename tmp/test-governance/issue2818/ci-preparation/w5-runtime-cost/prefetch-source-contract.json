@@ -1,0 +1,162 @@
+{
+  "all_api_Cargo_toml_equal": true,
+  "file_hashes": {
+    "api/Cargo.lock": {
+      "cache": "2b8864b70e59ed21080ef64441e73e0a0cbd12898f3ad945eb4fdc13b6880ac9",
+      "current": "2b8864b70e59ed21080ef64441e73e0a0cbd12898f3ad945eb4fdc13b6880ac9",
+      "old": "2b8864b70e59ed21080ef64441e73e0a0cbd12898f3ad945eb4fdc13b6880ac9"
+    },
+    "api/Cargo.toml": {
+      "cache": "1d4ead1d4c89915ca70271a02368ecdfb99b089c80865f1773fa93bc06919d57",
+      "current": "1d4ead1d4c89915ca70271a02368ecdfb99b089c80865f1773fa93bc06919d57",
+      "old": "1d4ead1d4c89915ca70271a02368ecdfb99b089c80865f1773fa93bc06919d57"
+    },
+    "api/apps/api-server/Cargo.toml": {
+      "cache": "93f182d7e43fdc68d27918a0e3f207305beb5deca70930565c0ce1a0b7243c9d",
+      "current": "93f182d7e43fdc68d27918a0e3f207305beb5deca70930565c0ce1a0b7243c9d",
+      "old": "93f182d7e43fdc68d27918a0e3f207305beb5deca70930565c0ce1a0b7243c9d"
+    },
+    "api/apps/api-server/tests/local-command-platform/Cargo.toml": {
+      "cache": "03d158956dae96de0a96d51456d816de62711074d8aa84e0598a03028c6f6dee",
+      "current": "03d158956dae96de0a96d51456d816de62711074d8aa84e0598a03028c6f6dee",
+      "old": "03d158956dae96de0a96d51456d816de62711074d8aa84e0598a03028c6f6dee"
+    },
+    "api/apps/api-server/tests/transport-session-lifecycle/Cargo.toml": {
+      "cache": "9f8424a4878e78a0c2d27d70ebd3eac0bff04b73293f400eb5a397cc055caf15",
+      "current": "9f8424a4878e78a0c2d27d70ebd3eac0bff04b73293f400eb5a397cc055caf15",
+      "old": "9f8424a4878e78a0c2d27d70ebd3eac0bff04b73293f400eb5a397cc055caf15"
+    },
+    "api/crates/access-control/Cargo.toml": {
+      "cache": "7664dbefd95c1fa2a116ecf8dfdfb8485d2ee2f552196551bf0882010937ebbf",
+      "current": "7664dbefd95c1fa2a116ecf8dfdfb8485d2ee2f552196551bf0882010937ebbf",
+      "old": "7664dbefd95c1fa2a116ecf8dfdfb8485d2ee2f552196551bf0882010937ebbf"
+    },
+    "api/crates/api-test-selection/Cargo.toml": {
+      "cache": "48e5573c3c4f4ef07f1bee80e652761fc5fcfa36fa53b05df184945741c3a286",
+      "current": "48e5573c3c4f4ef07f1bee80e652761fc5fcfa36fa53b05df184945741c3a286",
+      "old": "48e5573c3c4f4ef07f1bee80e652761fc5fcfa36fa53b05df184945741c3a286"
+    },
+    "api/crates/control-plane-contracts/Cargo.toml": {
+      "cache": "dd4c4b579a021beed6af79b25210389459bcccfb99855cc60b688607d0cd07b3",
+      "current": "dd4c4b579a021beed6af79b25210389459bcccfb99855cc60b688607d0cd07b3",
+      "old": "dd4c4b579a021beed6af79b25210389459bcccfb99855cc60b688607d0cd07b3"
+    },
+    "api/crates/control-plane-postgres-tests/Cargo.toml": {
+      "cache": "6865560641586d0081aaeb7d1885083f5138c922790e8786f90c0bfa6efe0957",
+      "current": "6865560641586d0081aaeb7d1885083f5138c922790e8786f90c0bfa6efe0957",
+      "old": "6865560641586d0081aaeb7d1885083f5138c922790e8786f90c0bfa6efe0957"
+    },
+    "api/crates/control-plane-test-support/Cargo.toml": {
+      "cache": "3f43d281ff1ceb4d792547fb5390750add4a9367a83891e463f70604ec76bf3c",
+      "current": "3f43d281ff1ceb4d792547fb5390750add4a9367a83891e463f70604ec76bf3c",
+      "old": "3f43d281ff1ceb4d792547fb5390750add4a9367a83891e463f70604ec76bf3c"
+    },
+    "api/crates/control-plane/Cargo.toml": {
+      "cache": "9adc100b441bb147f7fbc84370907771a6352af089d48765430134021337724d",
+      "current": "9adc100b441bb147f7fbc84370907771a6352af089d48765430134021337724d",
+      "old": "9adc100b441bb147f7fbc84370907771a6352af089d48765430134021337724d"
+    },
+    "api/crates/domain/Cargo.toml": {
+      "cache": "4620b809a4cdf4d3642cef5e16f0ad00e8d81fbec8b32b47a728a6f5b88071d2",
+      "current": "4620b809a4cdf4d3642cef5e16f0ad00e8d81fbec8b32b47a728a6f5b88071d2",
+      "old": "4620b809a4cdf4d3642cef5e16f0ad00e8d81fbec8b32b47a728a6f5b88071d2"
+    },
+    "api/crates/extension-contracts/Cargo.toml": {
+      "cache": "aafecd6dcf401ccb4e0d1ca3cedac61f05ced8e96cf3fe9fe531eef7d2328e55",
+      "current": "aafecd6dcf401ccb4e0d1ca3cedac61f05ced8e96cf3fe9fe531eef7d2328e55",
+      "old": "aafecd6dcf401ccb4e0d1ca3cedac61f05ced8e96cf3fe9fe531eef7d2328e55"
+    },
+    "api/crates/extension-package-runtime/Cargo.toml": {
+      "cache": "7187f256d76e1b598c943ccb9e90e02beabf3625fa7f98883cc8fb4094266775",
+      "current": "7187f256d76e1b598c943ccb9e90e02beabf3625fa7f98883cc8fb4094266775",
+      "old": "7187f256d76e1b598c943ccb9e90e02beabf3625fa7f98883cc8fb4094266775"
+    },
+    "api/crates/interface-runtime/Cargo.toml": {
+      "cache": "b52f898672fd21ef76112406583893ee7f0c1a8fab5b7705a2c644c0e7790d4b",
+      "current": "b52f898672fd21ef76112406583893ee7f0c1a8fab5b7705a2c644c0e7790d4b",
+      "old": "b52f898672fd21ef76112406583893ee7f0c1a8fab5b7705a2c644c0e7790d4b"
+    },
+    "api/crates/observability/Cargo.toml": {
+      "cache": "10c17d8e34012abda5df92b60f23e1d96426c6518bdc01c2d60cf870bd640073",
+      "current": "10c17d8e34012abda5df92b60f23e1d96426c6518bdc01c2d60cf870bd640073",
+      "old": "10c17d8e34012abda5df92b60f23e1d96426c6518bdc01c2d60cf870bd640073"
+    },
+    "api/crates/orchestration-runtime/Cargo.toml": {
+      "cache": "40aa62a90b562a88cc5df7e8e1256362d0ae0f61a1ce6d62931dc54eee7ffc15",
+      "current": "40aa62a90b562a88cc5df7e8e1256362d0ae0f61a1ce6d62931dc54eee7ffc15",
+      "old": "40aa62a90b562a88cc5df7e8e1256362d0ae0f61a1ce6d62931dc54eee7ffc15"
+    },
+    "api/crates/plugin-framework/Cargo.toml": {
+      "cache": "e85e10f605f09abc8528c14b5443a3f8908d8f263c07b2f1a7b74eb586dd3223",
+      "current": "e85e10f605f09abc8528c14b5443a3f8908d8f263c07b2f1a7b74eb586dd3223",
+      "old": "e85e10f605f09abc8528c14b5443a3f8908d8f263c07b2f1a7b74eb586dd3223"
+    },
+    "api/crates/postgres-test-support/Cargo.toml": {
+      "cache": "35a2e6ba13ee90a5aa4f2246c254ecadccac5e9d6a450ca2b2b6bef025c29c90",
+      "current": "35a2e6ba13ee90a5aa4f2246c254ecadccac5e9d6a450ca2b2b6bef025c29c90",
+      "old": "35a2e6ba13ee90a5aa4f2246c254ecadccac5e9d6a450ca2b2b6bef025c29c90"
+    },
+    "api/crates/runtime-core/Cargo.toml": {
+      "cache": "98507621f8301a835d69108f33d527923637e70376683e801b1f381fd849d34b",
+      "current": "98507621f8301a835d69108f33d527923637e70376683e801b1f381fd849d34b",
+      "old": "98507621f8301a835d69108f33d527923637e70376683e801b1f381fd849d34b"
+    },
+    "api/crates/runtime-extension-host/Cargo.toml": {
+      "cache": "c64a8cdbaf00ec0c03458dadab56e84c1498c8ffc60ebf09119d3449f6e8d9f9",
+      "current": "c64a8cdbaf00ec0c03458dadab56e84c1498c8ffc60ebf09119d3449f6e8d9f9",
+      "old": "c64a8cdbaf00ec0c03458dadab56e84c1498c8ffc60ebf09119d3449f6e8d9f9"
+    },
+    "api/crates/runtime-extension-sdk/Cargo.toml": {
+      "cache": "68eda1f3032f216819da00323fdb6719aa3461202c2255c6213323940af5fe8d",
+      "current": "68eda1f3032f216819da00323fdb6719aa3461202c2255c6213323940af5fe8d",
+      "old": "68eda1f3032f216819da00323fdb6719aa3461202c2255c6213323940af5fe8d"
+    },
+    "api/crates/runtime-profile/Cargo.toml": {
+      "cache": "731abff3c78ae2c97e06c110b61188364ea99c422ca24742a2cba8706387c5a9",
+      "current": "731abff3c78ae2c97e06c110b61188364ea99c422ca24742a2cba8706387c5a9",
+      "old": "731abff3c78ae2c97e06c110b61188364ea99c422ca24742a2cba8706387c5a9"
+    },
+    "api/crates/storage/durable/core/Cargo.toml": {
+      "cache": "86fc5a51649a4fa41ff7294a2360a6b37dbf528299cc2752072bfd1053aaf8e1",
+      "current": "86fc5a51649a4fa41ff7294a2360a6b37dbf528299cc2752072bfd1053aaf8e1",
+      "old": "86fc5a51649a4fa41ff7294a2360a6b37dbf528299cc2752072bfd1053aaf8e1"
+    },
+    "api/crates/storage/durable/postgres/Cargo.toml": {
+      "cache": "5834a3fc7f50acefd792240ffbb977f2326b498a7b078a05ae30a470cbccd244",
+      "current": "5834a3fc7f50acefd792240ffbb977f2326b498a7b078a05ae30a470cbccd244",
+      "old": "5834a3fc7f50acefd792240ffbb977f2326b498a7b078a05ae30a470cbccd244"
+    },
+    "api/crates/storage/ephemeral/Cargo.toml": {
+      "cache": "af2185000dbddec644dd5c3712b39141d3d401af3f6e107ec08dfb6c34f8cf1e",
+      "current": "af2185000dbddec644dd5c3712b39141d3d401af3f6e107ec08dfb6c34f8cf1e",
+      "old": "af2185000dbddec644dd5c3712b39141d3d401af3f6e107ec08dfb6c34f8cf1e"
+    },
+    "api/crates/storage/object/Cargo.toml": {
+      "cache": "f3047d614f42068c09143240db6a1827d47e723885a95b18f5e6013e21e48812",
+      "current": "f3047d614f42068c09143240db6a1827d47e723885a95b18f5e6013e21e48812",
+      "old": "f3047d614f42068c09143240db6a1827d47e723885a95b18f5e6013e21e48812"
+    },
+    "api/crates/sync-js-runtime/Cargo.toml": {
+      "cache": "4bca5a0bd61e196dd40d8c0f6c6862e03a5c38ac472f87e1f4244e0f0204b4ca",
+      "current": "4bca5a0bd61e196dd40d8c0f6c6862e03a5c38ac472f87e1f4244e0f0204b4ca",
+      "old": "4bca5a0bd61e196dd40d8c0f6c6862e03a5c38ac472f87e1f4244e0f0204b4ca"
+    },
+    "api/vendor/tungstenite-0.27.0-openai-memory/Cargo.toml": {
+      "cache": "d83cc5d81bfbf9c793e261be449cb3e115894e49b3d35d5ca7e7bce3d7190817",
+      "current": "d83cc5d81bfbf9c793e261be449cb3e115894e49b3d35d5ca7e7bce3d7190817",
+      "old": "d83cc5d81bfbf9c793e261be449cb3e115894e49b3d35d5ca7e7bce3d7190817"
+    },
+    "api/vendor/tungstenite-0.29.0-memory/Cargo.toml": {
+      "cache": "71403686d95f9b517c04a3c7d50434613bcab363303fce427b1064184e597811",
+      "current": "71403686d95f9b517c04a3c7d50434613bcab363303fce427b1064184e597811",
+      "old": "71403686d95f9b517c04a3c7d50434613bcab363303fce427b1064184e597811"
+    }
+  },
+  "root_Cargo_lock_and_Cargo_toml_equal": true,
+  "source_revisions": {
+    "cache": "7bb249e47d29dce87a291677884bd42962aa2046",
+    "current": "903971d5c3ddd37f93c1f7314e02dae4a2bb120c",
+    "old": "ca19501827fdeac86b9f5d9fcba767715220f3dd"
+  },
+  "status": "ALL_CARGO_MANIFESTS_AND_LOCK_EQUAL"
+}
