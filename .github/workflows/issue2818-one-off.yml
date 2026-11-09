@@ -1,4 +1,4 @@
-name: Issue 2818 W4 ordinary API lib qualification
+name: Issue 2818 W5 unary lifecycle crate qualification
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
       candidate_sha:
         description: Exact candidate SHA (optional until Root pushes)
         type: string
-        default: ca19501827fdeac86b9f5d9fcba767715220f3dd
+        default: 489943b16401b2e4bc472b23699e9bfd2a3e811a
       wait_seconds:
         description: Bounded candidate availability wait
         type: string
@@ -45,12 +45,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: '1.99.1' 
-      - name: Qualify W4 ordinary API lib only at fixed 600s and 8GB
+      - name: Qualify ca195 with exact two-test overlay then candidate489 full existing lib suite
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_REF: ${{ inputs.candidate_ref || 'refs/heads/opt/2818-global-20261109' }}
-          CANDIDATE_SHA: ${{ inputs.candidate_sha || 'ca19501827fdeac86b9f5d9fcba767715220f3dd' }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha || '489943b16401b2e4bc472b23699e9bfd2a3e811a' }}
           CANDIDATE_WAIT: ${{ inputs.wait_seconds || '1200' }}
         run: |
           set -euo pipefail
@@ -94,7 +94,7 @@ jobs:
         if: always()
         timeout-minutes: 5
         with:
-          name: issue2818-w4-api-results-${{ github.run_id }}-${{ github.run_attempt }}
+          name: issue2818-w5-focused-results-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             tmp/test-governance/issue2818/ci-evidence/**
             tmp/test-governance/issue2818/ci-preparation/**
@@ -107,7 +107,7 @@ jobs:
         if: always()
         timeout-minutes: 5
         with:
-          name: issue2818-w4-api-cache-${{ github.run_id }}-${{ github.run_attempt }}
+          name: issue2818-w5-focused-cache-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             tmp/test-governance/issue2818/ci-evidence/seed-target-and-source.tar.zst
             tmp/test-governance/issue2818/ci-evidence/seed-retention.json
