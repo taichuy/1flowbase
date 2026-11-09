@@ -80,3 +80,28 @@ def prove_actual(text,entry):
         assert ('normal_nanos=None' in totals[0] and 'counts_timing_not_latency=true' in totals[0]) if entry['mode']=='counts' else ('normal_nanos=Some(' in totals[0] and 'counts_timing_not_latency=false' in totals[0])
     # Do not reject negative S1-to-S3 deltas or S4/S5 live!=0: process-global totals are not driver ownership.
     return {'sample_lines':samples,'requested_live_attribution':'unknown if negative absolute live or other-thread interference; retain raw checkpoints','instrumented_time_is_latency':False}
+
+
+def candidate_discovery_command(binary):return [str(binary),'--list']
+def prove_candidate_compiled_behavior(text,binding,behavior):
+    names=sorted(line[:-6] for line in text.splitlines() if line.endswith(': test'))
+    probes=set(binding['exact_ignored_names']);legacy=set(behavior['legacy_names']);guards=set(behavior['revision_guard_names']);expected=sorted(behavior['expected_names'])
+    assert len(legacy)==83 and len(guards)==5 and not legacy&guards and set(expected)==legacy|guards
+    assert len(names)==len(set(names))==behavior['expected_compiled_with_cost_probes']==91 and probes.issubset(names)
+    actual=[name for name in names if name not in probes]
+    assert actual==expected and len(actual)==behavior['expected_count']==88,'candidate names must be frozen83 plus exact5 guards; never relax set'
+    return {'compiled_all_names':names,'behavior_names':actual,'legacy83_names':sorted(legacy),'revision_guard_names':sorted(guards),'excluded_probe_names':sorted(probes),'old83_evidence_reused':True}
+def candidate_behavior_command(binary,binding):
+    assert len(binding['exact_ignored_names'])==3
+    return [str(binary),'--exact',*[arg for name in binding['exact_ignored_names'] for arg in ['--skip',name]],'--test-threads=1']
+def prove_candidate_actual_behavior(text,behavior):
+    import re
+    rows=re.findall(r'^test (.+?) \.\.\. (ok|FAILED|ignored)(?:$|[, ])',text,re.M)
+    expected=behavior['expected_count'];legacy=set(behavior['legacy_names']);guards=set(behavior['revision_guard_names'])
+    assert expected==88 and len(legacy)==83 and len(guards)==5 and not legacy&guards
+    assert len(rows)==expected and sorted(name for name,status in rows)==sorted(behavior['expected_names'])
+    assert all(status=='ok' for name,status in rows)
+    assert re.search(r'test result: ok\. '+str(expected)+r' passed; 0 failed; 0 ignored; 0 measured; 3 filtered out;',text)
+    assert 'W5_SAMPLE ' not in text and 'W5_TOTAL ' not in text,'cost probe executed in behavior gate'
+    actual=set(name for name,status in rows);assert actual&legacy==legacy and actual&guards==guards
+    return {'passed':expected,'legacy_passed':83,'revision_guards_passed':5,'failed':0,'ignored':0,'filtered_probe_count':3,'actual_names':sorted(actual),'legacy83_actual_names':sorted(actual&legacy),'revision_guard_actual_names':sorted(actual&guards),'reused_same_candidate_normal_binary':True,'extra_Rust_compiles':0,'old83_rerun':False}

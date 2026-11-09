@@ -1,8 +1,8 @@
 //! Typed projections and handler operations; no common lifecycle driver.
 use super::*;
 
-// The result boxes reuse the allocations returned by erase_target. I/P are
-// moved into the handler before O/E enter this state, without cloning values.
+// Native target/result pointer slots keep O/E boxed. I/P are moved into
+// the handler before its result enters this state, without cloning values.
 enum Phase<I, O, E, P>
 where
     I: InterfaceContract,
@@ -18,8 +18,10 @@ where
         context: InterfaceHandlerContext<P>,
         input: I,
     },
-    Result(Result<Box<O>, Box<InterfaceTargetFailure<E>>>),
-    Invoking,
+    Invoking {
+        target: Option<crate::InterfaceHandlerFuture<O, E>>,
+        result: Option<Result<Box<O>, Box<InterfaceTargetFailure<E>>>>,
+    },
 }
 
 pub(super) struct TypedUnaryBridge<'a, I, O, E, P>
@@ -68,7 +70,11 @@ where
     }
 
     fn output(&self) -> &O {
-        let Phase::Result(Ok(output)) = &self.phase else {
+        let Phase::Invoking {
+            result: Some(Ok(output)),
+            ..
+        } = &self.phase
+        else {
             unreachable!("private unary success owns the output");
         };
         output
@@ -163,11 +169,12 @@ where
     }
 
     fn observe_before<'a>(&'a self, receipt: &'a mut ReceiptBuilder) -> UnaryStageFuture<'a> {
+        let input = self.input();
         Box::pin(async move {
-            receipt.observe_event_before(self.input()).await;
+            receipt.observe_event_before(input).await;
             if let Some(session) = &receipt.document_operation {
                 if session.is_static() {
-                    let _ = session.observe_before(self.input()).await;
+                    let _ = session.observe_before(input).await;
                 }
             }
         })
@@ -186,8 +193,13 @@ where
         registry: RegistryFingerprint,
         document: Option<crate::DocumentOperationSession>,
     ) {
-        let Phase::Input { principal, input } = std::mem::replace(&mut self.phase, Phase::Invoking)
-        else {
+        let Phase::Input { principal, input } = std::mem::replace(
+            &mut self.phase,
+            Phase::Invoking {
+                target: None,
+                result: None,
+            },
+        ) else {
             unreachable!("private unary target preparation consumes its input once");
         };
         let mut context =
@@ -196,32 +208,55 @@ where
         self.phase = Phase::Prepared { context, input };
     }
 
-    fn begin_target(&mut self) -> UnaryTargetFuture {
-        let Phase::Prepared { context, input } =
-            std::mem::replace(&mut self.phase, Phase::Invoking)
-        else {
+    fn begin_target(&mut self) {
+        let Phase::Prepared { context, input } = std::mem::replace(
+            &mut self.phase,
+            Phase::Invoking {
+                target: None,
+                result: None,
+            },
+        ) else {
             unreachable!("private unary execution consumes its prepared input once");
         };
         let handler = self
             .handler
             .as_ref()
             .expect("validated typed unary handler");
-        // Invoke synchronously; the wrapper only polls the resulting target.
-        erase_target(handler.invoke(context, input))
+        let future = handler.invoke(context, input);
+        let Phase::Invoking { target, .. } = &mut self.phase else {
+            unreachable!("private unary execution initialized its target slot");
+        };
+        *target = Some(future);
     }
 
-    fn finish_target(&mut self, result: UnaryTargetResult) -> bool {
-        let result = match result {
-            Ok(output) => Ok(output
-                .downcast::<O>()
-                .expect("private unary target output type")),
-            Err(error) => Err(error
-                .downcast::<InterfaceTargetFailure<E>>()
-                .expect("private unary target error type")),
+    fn poll_target(&mut self, cx: &mut Context<'_>) -> Poll<bool> {
+        let Phase::Invoking { target, result } = &mut self.phase else {
+            unreachable!("private unary execution owns its target slot");
         };
-        let success = result.is_ok();
-        self.phase = Phase::Result(result);
-        success
+        assert!(
+            result.is_none(),
+            "private unary target and result slots cannot overlap"
+        );
+        let outcome = std::task::ready!(target
+            .as_mut()
+            .expect("private unary target is active")
+            .as_mut()
+            .poll(cx));
+        drop(target.take());
+        let success = outcome.is_ok();
+        *result = Some(match outcome {
+            Ok(output) => Ok(Box::new(output)),
+            Err(error) => Err(Box::new(error)),
+        });
+        Poll::Ready(success)
+    }
+
+    fn abort_target(&mut self) {
+        let Phase::Invoking { target, result } = &mut self.phase else {
+            unreachable!("private unary execution owns its abort slots");
+        };
+        drop(target.take());
+        drop(result.take());
     }
 
     fn observe_success<'a>(
@@ -230,52 +265,54 @@ where
         receipt: &'a mut ReceiptBuilder,
         context: &'a InterfaceHookContext,
     ) -> UnaryStageFuture<'a> {
+        let output = self.output();
         Box::pin(async move {
-            receipt.project_event_output(self.output()).await;
+            receipt.project_event_output(output).await;
             if let Some(hooks) = plan.hook_plan::<I, O>() {
                 hooks
-                    .run_after(&mut receipt.finalization, context, self.output())
+                    .run_after(&mut receipt.finalization, context, output)
                     .await;
             }
             if let Some(session) = &receipt.document_operation {
                 session
-                    .project_output(self.output(), &mut receipt.finalization)
+                    .project_output(output, &mut receipt.finalization)
                     .await;
             }
         })
     }
 
     fn error_classification(&self) -> &str {
-        let Phase::Result(Err(error)) = &self.phase else {
+        let Phase::Invoking {
+            result: Some(Err(error)),
+            ..
+        } = &self.phase
+        else {
             unreachable!("private unary failure owns its concrete error");
         };
         error.classification()
     }
 
     fn take_error(&mut self) -> InterfaceInvocationError {
-        let Phase::Result(Err(error)) = std::mem::replace(&mut self.phase, Phase::Invoking) else {
+        let Phase::Invoking { result, .. } = &mut self.phase else {
+            unreachable!("private unary failure owns its result slot");
+        };
+        let Some(Err(error)) = result.take() else {
             unreachable!("private unary failure consumes its concrete error once");
         };
         target_error(*error)
     }
 
     fn take_output(&mut self) -> UnaryValue {
-        let Phase::Result(Ok(output)) = std::mem::replace(&mut self.phase, Phase::Invoking) else {
+        let Phase::Invoking { result, .. } = &mut self.phase else {
+            unreachable!("private unary success owns its result slot");
+        };
+        let Some(Ok(output)) = result.take() else {
             unreachable!("private unary success consumes its output once");
         };
         output
     }
 }
 
-// This leaf is generic only in target O/E. It preserves the original concrete
-// source E until the driver finishes Failure and calls take_error.
-fn erase_target<O: InterfaceContract, E: InterfaceContract>(
-    target: crate::InterfaceHandlerFuture<O, E>,
-) -> UnaryTargetFuture {
-    Box::pin(async move {
-        match target.await {
-            Ok(output) => Ok(Box::new(output) as UnaryValue),
-            Err(error) => Err(Box::new(error) as UnaryValue),
-        }
-    })
-}
+#[cfg(test)]
+#[path = "_tests/runtime_revision_tests.rs"]
+mod runtime_revision_tests;

@@ -1,82 +1,7 @@
 {
-  "actual_verifier": {
-    "checks": [
-      {
-        "evidence": "Independent exact line-span signature/body hashes read from both immutable Git commits; all match prior source-map.",
-        "id": "V01_original_16_function_bindings",
-        "status": "PASS"
-      },
-      {
-        "evidence": "Exact canonical patch reconstructed independently from current immutable prefixes plus helper/fragments; all overlay-files equal. Existing actual old/current apply receipt reused, and old EOF contexts independently checked. No patch/production edit performed.",
-        "id": "V02_same_append_only_five_path_overlay",
-        "status": "PASS"
-      },
-      {
-        "evidence": "Exactly three new ignored entries, mounted at original private modules; no Cargo target, production export, type or trait implementation replacement.",
-        "id": "V03_three_ignored_current_thread_entries",
-        "status": "PASS"
-      },
-      {
-        "evidence": "Actual original Input(u8)/Output(u8)/ZST TargetError/UserPrincipal; original Input2 envelope, graph:one, increment3 and ready core auth/admission. Fresh registry/handler/fingerprint inspection handle prepared per call outside window.",
-        "id": "V04_empty_real_fixture_and_fresh_state",
-        "status": "PASS"
-      },
-      {
-        "evidence": "Original DocumentObserver/Codec/static descriptor, typed Before +4 and real RecordingHandler +3. Record/interested=true/legacy=false; Input2\u2192Before6\u2192Output9. Document/hook/legacy Vec length AND capacity are asserted zero, fingerprint None. Actual source original compiler uses Vec::new. Retained seen/calls/observer/hook/legacy inspection Arcs are identical additions in the same patch on both versions; they change measured fixture ownership, explicitly reported.",
-        "id": "V05_document_real_ports_and_fresh_buffers",
-        "status": "PASS"
-      },
-      {
-        "evidence": "begin precedes actual synchronous invoke, including current bridge/mapper construction; actual await and explicit outcome drop precede block exit, which ends actual invocation future storage, then finish. Correctness flags/black_box are allocation-free on successful path. Assertions, container inspection, formatting/reporting and teardown are outside primary window. Source lifetime reasoning only; no generated machine-code/drop timing proof.",
-        "id": "V06_empty_synchronous_construct_through_drop_window",
-        "status": "PASS"
-      },
-      {
-        "evidence": "begin precedes actual synchronous invoke, including current bridge/mapper construction; actual await and explicit outcome drop precede block exit, which ends actual invocation future storage, then finish. Correctness flags/black_box are allocation-free on successful path. Assertions, container inspection, formatting/reporting and teardown are outside primary window. Source lifetime reasoning only; no generated machine-code/drop timing proof.",
-        "id": "V06_document_synchronous_construct_through_drop_window",
-        "status": "PASS"
-      },
-      {
-        "evidence": "S3 follows result/future destruction. S4 takes+drops Vec allocations (not capacity-retaining clear) and fingerprint String while owners still exist; S5 drops remaining registry/kernel/inspection owners. Retained external observer data is not called driver leakage. Final-state tuples retain only lengths/capacities/counters, not container payload.",
-        "id": "V07_cleanup_is_explicit_and_separate",
-        "status": "PASS"
-      },
-      {
-        "evidence": "Real original unary Target captures only Business and awaits std::future::pending for Pending. Core review.authz future is immediately Ready; no core admission, contributions, Before entries, event/document observer or deadline wait. Original empty run_before completes immediately. First actual future poll therefore reaches selected business Pending; runtime Executing plus one Executed Completion and Cancelled/error guards reject an early-stage cancellation. Stack pin adds no wrapper allocation. No extra Hang/stream matrix and no P/I delayed-drop claim. Source path verified; actual reached checkpoint awaits execution.",
-        "id": "V08_pending_real_business_checkpoint_and_cancel",
-        "status": "PASS"
-      },
-      {
-        "evidence": "Instrumented-only System GlobalAlloc starts tracking at process startup. Successful alloc/zeroed allocations add requested size; dealloc removes original requested size; successful realloc adds full new/removes old, failure leaves counters/live unchanged. ACTIVE gates peak updates only; live/cumulative event tracking is never reset or window-gated. No pointer map/TLS tracker.",
-        "id": "V09_continuous_process_allocator_source",
-        "status": "PASS"
-      },
-      {
-        "evidence": "Finite model permits dealloc bytes above interval added bytes and negative S1\u2192S3 delta without negative absolute live; grow/shrink/failed realloc and alloc_zeroed covered. No assertion of window-end live=0 exists in probe; model zero is only this finite sequence result, not a runtime requirement.",
-        "id": "V10_preallocated_free_and_realloc_finite_arithmetic",
-        "status": "PASS"
-      },
-      {
-        "evidence": "Raw checkpoints are sequential atomic reads; any other process thread contributes. Numeric live/peak output is raw process-global data with validity/unknown attribution, not driver-exclusive exact storage. If absolute live is invalid, reported derived live/peak must remain UNKNOWN during analysis even though raw fields are retained. Counts mode normal_nanos=None; instrumented window time is separately named, including pending; normal pending has no latency.",
-        "id": "V11_counter_attribution_and_timing_limits",
-        "limits": "No concurrency linearizability, exclusive-driver attribution, allocator metadata/usable size, foreign malloc, System realloc internal copy peak, physical stack or RSS proof.",
-        "status": "PASS"
-      },
-      {
-        "evidence": "The source uses one cfg name and one byte-identical overlay on old/current. Normal branch removes allocator interception; counted branch includes it. Expected CI wrapper injects cfg exclusively for root interface_runtime --test invocation, with isolated normal/count root artifacts and copied independent binaries.",
-        "id": "V12_cfg_and_run_scope_contract",
-        "limits": "Actual compiler argv/cfg, wrapper implementation, compiler/features/profile equivalence, binary hashes, exact ignored discovery and nonzero run are NOT verified; CI owner has not published run code.",
-        "status": "PASS"
-      },
-      {
-        "evidence": "Assembly HEAD is 903971d5, tracked source clean, current full interface-runtime tree equals W5 489943b1. Source-only verification wrote only this evidence artifact; no Rust/Cargo/CI or service operations.",
-        "id": "V13_baseline_and_product_unchanged",
-        "status": "PASS"
-      }
-    ],
-    "path": "tmp/test-governance/issue2818/model/candidates/raw/w5-runtime-cost-probe/implemented-verifier.json",
-    "sha256": "c1e49959cbe8ded92fc58c437b6359f3189ea8302466a778fd42e326fff1ae0c",
-    "status": "SOURCE_BOUND_FINITE_PASS_RUNTIME_AND_COMPILER_UNVERIFIED"
+  "assembly_receipt": {
+    "path": "tmp/test-governance/issue2818/control/w5-runtime-revision-assembly-receipt.json",
+    "sha256": "b7418deffd166bcd185fad2374798580f3e3fb63a61b6d063f9babccd9710238"
   },
   "budget": {
     "compiler": "1.99.1",
@@ -96,14 +21,52 @@
     "run": "42633851815",
     "source_sha": "7bb249e47d29dce87a291677884bd42962aa2046"
   },
+  "candidate_actual_verifier": {
+    "blockers": [],
+    "candidate_sha": "9f35e154b6908eb54b51d1ceb504552b0a4e0eba",
+    "checks_count": 29,
+    "path": "tmp/test-governance/issue2818/model/candidates/raw/compile-responsibility-w5/runtime-revision/implemented-verifier.json",
+    "sha256": "b9b9bd32078b1149b09019761a2919d88d88c09e51a9b818a39c798b25d15998",
+    "status": "FINITE_ACTUAL_SOURCE_PASS_RUNTIME_UNQUALIFIED_AC006_FAIL"
+  },
+  "candidate_behavior_gate": {
+    "actual_command": "current-normal --exact --skip <probe1> --skip <probe2> --skip <probe3> --test-threads=1",
+    "actual_deadline_seconds": 120,
+    "candidate_discovery": "current-normal one full --list: exact83 legacy+5guards+3costprobes=91; other3 discoveries ignored-only",
+    "expected_actual": "88 passed/0 failed/0 ignored/3 filtered, exact83 legacy plus exact5 allowed guards",
+    "expected_compiled_count": 91,
+    "expected_count": 88,
+    "legacy_count": 83,
+    "legacy_manifest": "tmp/test-governance/issue2818/ci-preparation/w5-runtime-cost/followup/legacy83.json",
+    "legacy_manifest_sha256": "3b613a3724e7c3eb8a0c63d96961c9ff326609bdab6e9c7296d432a4c54d3f56",
+    "manifest": "tmp/test-governance/issue2818/ci-preparation/w5-runtime-cost/followup/candidate-behavior.json",
+    "manifest_sha256": "d0f7d7ac7f9f131477251b25af2642c4d2a7e8cd008b1d167320bca49a690d7a",
+    "new_Rust_compiles": 0,
+    "normal_binary": "current-normal",
+    "old83_reruns": 0,
+    "phase": "after four discovery gates, before cost/noise phases",
+    "revision_guard_count": 5,
+    "same_SHA_for83_and_normal_cost": true,
+    "whole_run_deadline_seconds": 1200
+  },
+  "candidate_source_contract_pending": false,
   "compile_deadline_seconds": 120,
-  "compile_helper_sha256": "9d23fcc23e12cbee9e6d3a4484a7c365397b64c6a4aecbb0e575e9340789345c",
+  "compile_helper_sha256": "dda240b6cbc74e21ba153e1e73c9706ad6b909e474b189f382a605a450c5f82e",
   "compile_order": [
     "old-normal",
     "old-counts",
     "current-normal",
     "current-counts"
   ],
+  "counts_expectations": {
+    "current_allocation_events": {
+      "document": 211,
+      "empty": 24,
+      "pending_storage_only": 41
+    },
+    "enforce_as_clock_or_correctness_gate": false,
+    "meaning": "prior declared per-window event expectations; capture actual comparison, not runtime latency or driver-exclusive ownership"
+  },
   "counts_interpretation": [
     "continuous process-global System, no live reset; all S0..S5/checkpoint/interval peaks raw",
     "S1-to-S3 live may be negative and dealloc bytes may exceed interval allocated bytes",
@@ -112,9 +75,11 @@
     "System internals/metadata/usable-size/RSS/physical stack/HTTP/API enum/MainDurableStore/large I-P/finalization-pending remain unknown"
   ],
   "counts_processes": 6,
-  "current_IR_equals": "489943b16401b2e4bc472b23699e9bfd2a3e811a",
-  "current_sha": "903971d5c3ddd37f93c1f7314e02dae4a2bb120c",
-  "discovery": "direct copied binary --list --ignored, exact three nonzero names; not the 83 actual suite",
+  "current_IR_equals": null,
+  "current_IR_source_sha": "9f35e154b6908eb54b51d1ceb504552b0a4e0eba",
+  "current_IR_tree": "9b7bc38348ba9b37630341aed21b759814331045",
+  "current_sha": "9f35e154b6908eb54b51d1ceb504552b0a4e0eba",
+  "discovery": "4 processes: current-normal full91 list validates83legacy+5guards+3cost; old-normal/old-counts/current-counts ignored-only3",
   "discovery_processes": 4,
   "env": {
     "CARGO_BUILD_JOBS": "1",
@@ -140,7 +105,7 @@
     "no_source_compile": true,
     "required_tokio_git_rev": "0e5b2d73aa18dd9f0a50ee9ff199d5aef7594186",
     "source_contract": "tmp/test-governance/issue2818/ci-preparation/w5-runtime-cost/prefetch-source-contract.json",
-    "source_contract_sha256": "0896a98fd5d38b6f731e99d83b0d6dcf05c405037728936bd4d05f990c29b740",
+    "source_contract_sha256": "cf434aa67bc6b89b68902564a3cf102d652a4d885a48be2c554d50471c5669ea",
     "source_path": "/home/runner/work/_temp/issue2818/seed-source",
     "source_sha": "7bb249e47d29dce87a291677884bd42962aa2046"
   },
@@ -152,13 +117,19 @@
   "exact_process_deadline_seconds": 120,
   "execution_authorized": true,
   "fixture_hashes": {
+    "tmp/test-governance/issue2818/ci-preparation/w5-runtime-cost/followup/candidate-behavior.json": "d0f7d7ac7f9f131477251b25af2642c4d2a7e8cd008b1d167320bca49a690d7a",
+    "tmp/test-governance/issue2818/ci-preparation/w5-runtime-cost/followup/candidate-probe-manifest.json": "6e2d1352a52f9beae8c450fc7ebe8fa221f66b7819c0322969da18dbe4222efb",
+    "tmp/test-governance/issue2818/ci-preparation/w5-runtime-cost/followup/layout-provenance.json": "9be901bdf39d9162398435fc03f4dcd35b2419cde25c8b5a78bfc95ca6845274",
+    "tmp/test-governance/issue2818/control/w5-runtime-revision-assembly-receipt.json": "b7418deffd166bcd185fad2374798580f3e3fb63a61b6d063f9babccd9710238",
+    "tmp/test-governance/issue2818/development/unary-runtime-revision/commit.json": "8e935bc620fbbf27ebaf67824a265c52b4f247ef1d26c2442cf1565609bd87ce",
     "tmp/test-governance/issue2818/development/w5-runtime-cost-probe/README.md": "cc68b5f95e15de5af1fa97bd3a24a9c63902af51d3f89b00f37df53730dace90",
     "tmp/test-governance/issue2818/development/w5-runtime-cost-probe/fixture-receipt.json": "32e511c2502496be120c5d8e5bf16bd7160f2bed14fb3a4c220ff2dbecadba6d",
     "tmp/test-governance/issue2818/development/w5-runtime-cost-probe/generate-overlay.py": "60f3de1ae3d21e331b8643497d20622e033fd4bc9a8351f2d87168335b3cd8e0",
     "tmp/test-governance/issue2818/development/w5-runtime-cost-probe/manifest.json": "2419f5394b3d4b2dc4b8a0a6e3c342acc9478e59edacc0d62a6f0e458424cd5b",
-    "tmp/test-governance/issue2818/development/w5-runtime-cost-probe/measurement-overlay.patch": "08e61faf2e25c27d5ba7a9a9398dbd34074151eb86b5de4a3d5cba130a434a3c"
+    "tmp/test-governance/issue2818/development/w5-runtime-cost-probe/measurement-overlay.patch": "08e61faf2e25c27d5ba7a9a9398dbd34074151eb86b5de4a3d5cba130a434a3c",
+    "tmp/test-governance/issue2818/model/candidates/raw/compile-responsibility-w5/runtime-revision/implemented-verifier.json": "b9b9bd32078b1149b09019761a2919d88d88c09e51a9b818a39c798b25d15998"
   },
-  "fixture_manifest": "tmp/test-governance/issue2818/development/w5-runtime-cost-probe/manifest.json",
+  "fixture_manifest": "tmp/test-governance/issue2818/ci-preparation/w5-runtime-cost/followup/candidate-probe-manifest.json",
   "frozen_focused_entry": {
     "command": [
       "cargo",
@@ -182,14 +153,14 @@
     "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
     "api/crates/interface-runtime/src/_tests/finalization_tests.rs"
   ],
-  "measurement_contract_sha256": "23cacb8691f01b8de43fce674efb887ae6508c9899cd7100508e74b3ac2cd6d0",
+  "measurement_contract_sha256": null,
   "measurement_phase_grouping": "three resource-owned bounded120s stages (old-old noise, old-current timing, counts); each stage launches the frozen fresh exact test processes sequentially and retains per-process wall/raw receipts; no per-pair rebuild or persistent harness",
   "no_actions": [
-    "no Rust",
-    "no push/dispatch/CI",
-    "no API/PG",
-    "no 83 suite",
-    "no new platform or dependency"
+    "no Rust or publication until Root new source/verifier/unique authorization",
+    "no old83 rerun",
+    "no fifth Rust compile",
+    "no API/PG/new cache archive",
+    "no product or Issue change"
   ],
   "noise": "per case max of all five old-old abs(a-b)/min(a,b), persisted before any old-current timing; within band unresolved; no tune/rerun",
   "normal_processes": 40,
@@ -292,7 +263,92 @@
       "sha256": "685d5e09d3ceb079b16c62f31d93d0da41c45076487be78d4e6c0c29e8b8b60d"
     }
   ],
+  "overlay_patch": "tmp/test-governance/issue2818/development/w5-runtime-cost-probe/measurement-overlay.patch",
+  "prior_current_IR_equals": "489943b16401b2e4bc472b23699e9bfd2a3e811a",
+  "prior_current_sha": "903971d5c3ddd37f93c1f7314e02dae4a2bb120c",
   "prior_failed_run": 42665929614,
+  "prior_fixture_manifest": "tmp/test-governance/issue2818/development/w5-runtime-cost-probe/manifest.json",
+  "prior_measurement_contract_sha256": "23cacb8691f01b8de43fce674efb887ae6508c9899cd7100508e74b3ac2cd6d0",
+  "prior_probe_fixture_verifier": {
+    "checks": [
+      {
+        "evidence": "Independent exact line-span signature/body hashes read from both immutable Git commits; all match prior source-map.",
+        "id": "V01_original_16_function_bindings",
+        "status": "PASS"
+      },
+      {
+        "evidence": "Exact canonical patch reconstructed independently from current immutable prefixes plus helper/fragments; all overlay-files equal. Existing actual old/current apply receipt reused, and old EOF contexts independently checked. No patch/production edit performed.",
+        "id": "V02_same_append_only_five_path_overlay",
+        "status": "PASS"
+      },
+      {
+        "evidence": "Exactly three new ignored entries, mounted at original private modules; no Cargo target, production export, type or trait implementation replacement.",
+        "id": "V03_three_ignored_current_thread_entries",
+        "status": "PASS"
+      },
+      {
+        "evidence": "Actual original Input(u8)/Output(u8)/ZST TargetError/UserPrincipal; original Input2 envelope, graph:one, increment3 and ready core auth/admission. Fresh registry/handler/fingerprint inspection handle prepared per call outside window.",
+        "id": "V04_empty_real_fixture_and_fresh_state",
+        "status": "PASS"
+      },
+      {
+        "evidence": "Original DocumentObserver/Codec/static descriptor, typed Before +4 and real RecordingHandler +3. Record/interested=true/legacy=false; Input2\u2192Before6\u2192Output9. Document/hook/legacy Vec length AND capacity are asserted zero, fingerprint None. Actual source original compiler uses Vec::new. Retained seen/calls/observer/hook/legacy inspection Arcs are identical additions in the same patch on both versions; they change measured fixture ownership, explicitly reported.",
+        "id": "V05_document_real_ports_and_fresh_buffers",
+        "status": "PASS"
+      },
+      {
+        "evidence": "begin precedes actual synchronous invoke, including current bridge/mapper construction; actual await and explicit outcome drop precede block exit, which ends actual invocation future storage, then finish. Correctness flags/black_box are allocation-free on successful path. Assertions, container inspection, formatting/reporting and teardown are outside primary window. Source lifetime reasoning only; no generated machine-code/drop timing proof.",
+        "id": "V06_empty_synchronous_construct_through_drop_window",
+        "status": "PASS"
+      },
+      {
+        "evidence": "begin precedes actual synchronous invoke, including current bridge/mapper construction; actual await and explicit outcome drop precede block exit, which ends actual invocation future storage, then finish. Correctness flags/black_box are allocation-free on successful path. Assertions, container inspection, formatting/reporting and teardown are outside primary window. Source lifetime reasoning only; no generated machine-code/drop timing proof.",
+        "id": "V06_document_synchronous_construct_through_drop_window",
+        "status": "PASS"
+      },
+      {
+        "evidence": "S3 follows result/future destruction. S4 takes+drops Vec allocations (not capacity-retaining clear) and fingerprint String while owners still exist; S5 drops remaining registry/kernel/inspection owners. Retained external observer data is not called driver leakage. Final-state tuples retain only lengths/capacities/counters, not container payload.",
+        "id": "V07_cleanup_is_explicit_and_separate",
+        "status": "PASS"
+      },
+      {
+        "evidence": "Real original unary Target captures only Business and awaits std::future::pending for Pending. Core review.authz future is immediately Ready; no core admission, contributions, Before entries, event/document observer or deadline wait. Original empty run_before completes immediately. First actual future poll therefore reaches selected business Pending; runtime Executing plus one Executed Completion and Cancelled/error guards reject an early-stage cancellation. Stack pin adds no wrapper allocation. No extra Hang/stream matrix and no P/I delayed-drop claim. Source path verified; actual reached checkpoint awaits execution.",
+        "id": "V08_pending_real_business_checkpoint_and_cancel",
+        "status": "PASS"
+      },
+      {
+        "evidence": "Instrumented-only System GlobalAlloc starts tracking at process startup. Successful alloc/zeroed allocations add requested size; dealloc removes original requested size; successful realloc adds full new/removes old, failure leaves counters/live unchanged. ACTIVE gates peak updates only; live/cumulative event tracking is never reset or window-gated. No pointer map/TLS tracker.",
+        "id": "V09_continuous_process_allocator_source",
+        "status": "PASS"
+      },
+      {
+        "evidence": "Finite model permits dealloc bytes above interval added bytes and negative S1\u2192S3 delta without negative absolute live; grow/shrink/failed realloc and alloc_zeroed covered. No assertion of window-end live=0 exists in probe; model zero is only this finite sequence result, not a runtime requirement.",
+        "id": "V10_preallocated_free_and_realloc_finite_arithmetic",
+        "status": "PASS"
+      },
+      {
+        "evidence": "Raw checkpoints are sequential atomic reads; any other process thread contributes. Numeric live/peak output is raw process-global data with validity/unknown attribution, not driver-exclusive exact storage. If absolute live is invalid, reported derived live/peak must remain UNKNOWN during analysis even though raw fields are retained. Counts mode normal_nanos=None; instrumented window time is separately named, including pending; normal pending has no latency.",
+        "id": "V11_counter_attribution_and_timing_limits",
+        "limits": "No concurrency linearizability, exclusive-driver attribution, allocator metadata/usable size, foreign malloc, System realloc internal copy peak, physical stack or RSS proof.",
+        "status": "PASS"
+      },
+      {
+        "evidence": "The source uses one cfg name and one byte-identical overlay on old/current. Normal branch removes allocator interception; counted branch includes it. Expected CI wrapper injects cfg exclusively for root interface_runtime --test invocation, with isolated normal/count root artifacts and copied independent binaries.",
+        "id": "V12_cfg_and_run_scope_contract",
+        "limits": "Actual compiler argv/cfg, wrapper implementation, compiler/features/profile equivalence, binary hashes, exact ignored discovery and nonzero run are NOT verified; CI owner has not published run code.",
+        "status": "PASS"
+      },
+      {
+        "evidence": "Assembly HEAD is 903971d5, tracked source clean, current full interface-runtime tree equals W5 489943b1. Source-only verification wrote only this evidence artifact; no Rust/Cargo/CI or service operations.",
+        "id": "V13_baseline_and_product_unchanged",
+        "status": "PASS"
+      }
+    ],
+    "path": "tmp/test-governance/issue2818/model/candidates/raw/w5-runtime-cost-probe/implemented-verifier.json",
+    "sha256": "c1e49959cbe8ded92fc58c437b6359f3189ea8302466a778fd42e326fff1ae0c",
+    "status": "SOURCE_BOUND_FINITE_PASS_RUNTIME_AND_COMPILER_UNVERIFIED"
+  },
+  "probe_schedule_contract_sha256": "ac2f5694a3a321ccad6641371811ecd55b97fb1acdeda6b13d106169f61c4c03",
   "reporting": "retain all W5_SAMPLE/checkpoints and W5_TOTAL per process; timing median/range and all five paired relative differences per case against frozen noise band; within-band/mixed outcomes unresolved; counts instrumented_window_nanos never latency",
   "root_file_original_bytes_unchanged": "four complete file-prefix temporary apply proof preserved; 16 original fixture/helper body receipt frozen; final independent actualVerifier pending Root",
   "root_invalidation": {
@@ -814,7 +870,11 @@
     }
   ],
   "shared_budget_helper_sha256": "77952af01b8bed3781782d09f5b028bb089ad5ccb68dce3f4454cf03a06df40e",
-  "status": "AUTHORIZED_SINGLE_W5_ENVIRONMENT_PRIMING_RECOVERY",
+  "source_commit_receipt": {
+    "path": "tmp/test-governance/issue2818/development/unary-runtime-revision/commit.json",
+    "sha256": "8e935bc620fbbf27ebaf67824a265c52b4f247ef1d26c2442cf1565609bd87ce"
+  },
+  "status": "AUTHORIZED_SINGLE_9F35_IR_QUALIFICATION_88_PLUS_FIXED_COSTS",
   "test_flags": [
     "--exact",
     "--ignored",

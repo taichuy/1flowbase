@@ -1,0 +1,20 @@
+{
+  "at": "2026-11-09T19:54:25.169673+00:00",
+  "base": "903971d5c3ddd37f93c1f7314e02dae4a2bb120c",
+  "head": "9f35e154b6908eb54b51d1ceb504552b0a4e0eba",
+  "ff_only": true,
+  "clean": true,
+  "source_hashes_exact": true,
+  "independent_verifier_path": "tmp/test-governance/issue2818/model/candidates/raw/compile-responsibility-w5/runtime-revision/implemented-verifier.json",
+  "independent_verifier_sha256": "b9b9bd32078b1149b09019761a2919d88d88c09e51a9b818a39c798b25d15998",
+  "total_diff": {
+    "files": 21,
+    "added": 3846,
+    "deleted": 1672,
+    "net": 2174
+  },
+  "beta_unchanged": "e3cdfefb7a5b85d1d7d9c2ef166e3b923c05de89",
+  "task_push": "success",
+  "origin_task_tracking_sha": "9f35e154b6908eb54b51d1ceb504552b0a4e0eba",
+  "push_confirmed_at": "2026-11-09T19:58:03.988576+00:00"
+}

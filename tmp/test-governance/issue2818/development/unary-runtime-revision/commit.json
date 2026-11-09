@@ -1,0 +1,106 @@
+{
+  "commit": "9f35e154b6908eb54b51d1ceb504552b0a4e0eba",
+  "input_sha": "903971d5c3ddd37f93c1f7314e02dae4a2bb120c",
+  "branch": "packet/2818-unary-runtime-revision-20261110",
+  "write_set": [
+    "A\tapi/crates/interface-runtime/src/_tests/invocation/runtime_revision_tests.rs",
+    "M\tapi/crates/interface-runtime/src/_tests/invocation_tests.rs",
+    "M\tapi/crates/interface-runtime/src/invocation/unary.rs",
+    "A\tapi/crates/interface-runtime/src/invocation/unary/_tests/runtime_revision_tests.rs",
+    "M\tapi/crates/interface-runtime/src/invocation/unary/bridge.rs"
+  ],
+  "source_hashes": {
+    "api/crates/interface-runtime/src/invocation/unary.rs": {
+      "before_lines": 617,
+      "after_lines": 694,
+      "before_sha256": "021739e1fe12a67ae21b8b7592581e1e368f714d68d489e0d41cf94acf56cab1",
+      "after_sha256": "8f849e92b4c01ca4e659dab1aaafe03ad0a43fa63541d6ce1b4ad8ee3998aed1"
+    },
+    "api/crates/interface-runtime/src/invocation/unary/bridge.rs": {
+      "before_lines": 281,
+      "after_lines": 318,
+      "before_sha256": "496deb4a33b4853b726b91980a5cca4dbc9436eb8f3848a4f0d00dfddaac492b",
+      "after_sha256": "9f3fee015f3f540f5730b9c77d606d5ccebbe27f203751778f0a47e778459ee0"
+    },
+    "api/crates/interface-runtime/src/invocation/unary/_tests/runtime_revision_tests.rs": {
+      "before_lines": 0,
+      "after_lines": 297,
+      "before_sha256": null,
+      "after_sha256": "db7ec20c99bd08dc19c463c3b0256f4213183ecd254e0f054cd3d6fa851c44d8"
+    },
+    "api/crates/interface-runtime/src/_tests/invocation_tests.rs": {
+      "before_lines": 1026,
+      "after_lines": 1029,
+      "before_sha256": "b4eeacd4faf42196926214a5cd81a3d647d2cd495acb87cc8e645f47c53f8d26",
+      "after_sha256": "dfdd30ea4d4de89c93e9d977af699121cb940bfb7441313cd01b2a9e3f983695"
+    },
+    "api/crates/interface-runtime/src/_tests/invocation/runtime_revision_tests.rs": {
+      "before_lines": 0,
+      "after_lines": 292,
+      "before_sha256": null,
+      "after_sha256": "3d6cefb1b7bdb3267a279e7c870c60f4f194c1e73c97c0091699a2f80d6d7a0d"
+    }
+  },
+  "net_diff": {
+    "added": 789,
+    "deleted": 83,
+    "net": 706,
+    "production_net": 114,
+    "guard_leaf_lines": 589,
+    "owner_mount_lines": 3,
+    "AC006": "still failed; no net reduction claim"
+  },
+  "guard_names": [
+    {
+      "name": "invocation::unary::bridge::runtime_revision_tests::runtime_revision_common_layout_send_unpin_and_lazy_start",
+      "path": "api/crates/interface-runtime/src/invocation/unary/_tests/runtime_revision_tests.rs",
+      "line": 174,
+      "body_sha256": "7fd8436611a203c7152eb6c4038df435ead9fbf4222e2c42639cadafa56cadf5"
+    },
+    {
+      "name": "invocation::unary::bridge::runtime_revision_tests::runtime_revision_native_pin_ready_and_error_source_survive_failure",
+      "path": "api/crates/interface-runtime/src/invocation/unary/_tests/runtime_revision_tests.rs",
+      "line": 226,
+      "body_sha256": "3b5cc3d3b992bc2c8c56ee76383ea15cd5af7c67f847f8b3306e0667cecc45ba"
+    },
+    {
+      "name": "invocation::unary::bridge::runtime_revision_tests::runtime_revision_target_slots_reject_overlap_and_abort_exactly_once",
+      "path": "api/crates/interface-runtime/src/invocation/unary/_tests/runtime_revision_tests.rs",
+      "line": 275,
+      "body_sha256": "5e619b1f24018a1a28f708af2aee13b2919b54acf98eb7bce5cf9dccbc5ba16b"
+    },
+    {
+      "name": "_tests::invocation_tests::runtime_revision_tests::runtime_revision_kernel_ready_cancel_and_completion_ownership",
+      "path": "api/crates/interface-runtime/src/_tests/invocation/runtime_revision_tests.rs",
+      "line": 232,
+      "body_sha256": "6428d3b4e8d731aeb9749762a5eaaf8465ff5fa8f9a41c317c5a9c63e5c9a34e"
+    },
+    {
+      "name": "_tests::invocation_tests::runtime_revision_tests::runtime_revision_kernel_outer_drop_pending_target_once",
+      "path": "api/crates/interface-runtime/src/_tests/invocation/runtime_revision_tests.rs",
+      "line": 279,
+      "body_sha256": "2be2361ee1a39443ad0992e11c71778f4e364bee589cfe296dfd071605b27c2b"
+    }
+  ],
+  "guard_assertion_map": "/home/taichuy/git/git_worktree/issue2818-global-20261109/tmp/test-governance/issue2818/development/unary-runtime-revision/guard-assertion-map.json",
+  "original83_hashes_and_16_probe_bindings": "/home/taichuy/git/git_worktree/issue2818-global-20261109/tmp/test-governance/issue2818/development/unary-runtime-revision/source-checks.json",
+  "same_probe_patch_sha256": "08e61faf2e25c27d5ba7a9a9398dbd34074151eb86b5de4a3d5cba130a434a3c",
+  "same_probe_patch_candidate_apply": "PASS evidence temporary directory only",
+  "allocation_H_R_retained_account": "/home/taichuy/git/git_worktree/issue2818-global-20261109/tmp/test-governance/issue2818/development/unary-runtime-revision/allocation-and-layout-account.json",
+  "handoff": "/home/taichuy/git/git_worktree/issue2818-global-20261109/tmp/test-governance/issue2818/development/unary-runtime-revision/handoff.md",
+  "developer_checks": {
+    "source_checks": 29,
+    "rustfmt_parser": "PASS",
+    "git_diff_cached_check": "PASS"
+  },
+  "not_run": [
+    "Rust/Cargo compilation",
+    "original83+new5 behavior",
+    "runtime cost probes",
+    "physical stack",
+    "independent actual Verifier",
+    "CI",
+    "API/resource qualification"
+  ],
+  "runtime_status": "current903 empty FAIL and document unresolved are preserved; revision unqualified"
+}

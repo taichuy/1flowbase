@@ -31,11 +31,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: '1.99.1' 
-      - name: Fetch locked sources and run the unchanged fixed IR cost packet
+      - name: Fetch locked sources, gate candidate legacy83 plus revision5, then run fixed IR costs
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          CANDIDATE_SHA: 903971d5c3ddd37f93c1f7314e02dae4a2bb120c
+          CANDIDATE_SHA: 9f35e154b6908eb54b51d1ceb504552b0a4e0eba
         run: |
           set -euo pipefail
           task_uid=$(id -u)

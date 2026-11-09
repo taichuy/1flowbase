@@ -1,0 +1,1311 @@
+{
+  "status": "FINITE_ACTUAL_SOURCE_PASS_RUNTIME_UNQUALIFIED_AC006_FAIL",
+  "candidate_sha": "9f35e154b6908eb54b51d1ceb504552b0a4e0eba",
+  "parent_sha": "903971d5c3ddd37f93c1f7314e02dae4a2bb120c",
+  "scope": "Same amended runtime-revision actual-source verifier only; independent Git source/guard/hash/construction/order checks, not fresh QA/Rust compile/runtime/stack/performance acceptance",
+  "checks": [
+    {
+      "id": "A01_commit_parent_and_exact_authorized_five_paths",
+      "pass": true,
+      "evidence": "Two production paths, private guard3-case leaf, explicitly authorized original fixture owner mount plus2-case child; no exports/other product paths."
+    },
+    {
+      "id": "A02_owner_only_three_line_import_area_mount_and_EOF",
+      "pass": true,
+      "evidence": "Removing exact3-line mount restores original entire file bytes; EOF/old test attributes and bodies preserved."
+    },
+    {
+      "id": "A03_unchanged_helpers_registry_public_facade_stream_and_old_mounts",
+      "pass": true,
+      "evidence": {
+        "api/crates/interface-runtime/src/finalization.rs": true,
+        "api/crates/interface-runtime/src/hook.rs": true,
+        "api/crates/interface-runtime/src/decision.rs": true,
+        "api/crates/interface-runtime/src/invocation/event_observation.rs": true,
+        "api/crates/interface-runtime/src/event_observation/document/session.rs": true,
+        "api/crates/interface-runtime/src/registry.rs": true,
+        "api/crates/interface-runtime/src/invocation/kernel.rs": true,
+        "api/crates/interface-runtime/src/invocation.rs": true,
+        "api/crates/interface-runtime/src/principal.rs": true,
+        "api/crates/interface-runtime/src/_tests/invocation/stack_budget_tests.rs": true,
+        "api/crates/interface-runtime/src/_tests/mod.rs": true,
+        "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs": true,
+        "api/crates/interface-runtime/src/_tests/finalization_tests.rs": true
+      }
+    },
+    {
+      "id": "A04_prepare_validation_and_reject_exact",
+      "pass": true,
+      "evidence": "Only final common handoff Box removed; entire validation/managed/auth/admission/Before/order/rejection body unchanged."
+    },
+    {
+      "id": "A05_original_success_Failure_E_Completion_tail_exact",
+      "pass": true,
+      "evidence": "Event output\u2192reverse After\u2192document\u2192PostProcessed\u2192Completion\u2192O; Failure reads classification before original take_error/Completion; all original tail bytes retained."
+    },
+    {
+      "id": "A06_before_input_reference_and_bridge_factory_exact",
+      "pass": true,
+      "evidence": "Before borrowed mutable input remains original; initial bridge construction/read-only input getter unchanged."
+    },
+    {
+      "id": "A07_exact_two_typed_reference_lookup_exceptions",
+      "pass": true,
+      "evidence": [
+        {
+          "function": "observe_before",
+          "expected_sha256": "1b020215246b9c1b857f16c58490c3280a08fdb8c592071dcb2d164a70cd312b",
+          "actual_sha256": "1b020215246b9c1b857f16c58490c3280a08fdb8c592071dcb2d164a70cd312b",
+          "exact": true
+        },
+        {
+          "function": "observe_success",
+          "expected_sha256": "83dddf3c8e8f8c1dac1fc140891e19ffd0deadecacf88668ebaf8523ba293392",
+          "actual_sha256": "83dddf3c8e8f8c1dac1fc140891e19ffd0deadecacf88668ebaf8523ba293392",
+          "exact": true
+        }
+      ]
+    },
+    {
+      "id": "A08_private_Send_only_and_native_contract_unchanged",
+      "pass": true,
+      "evidence": "Original native Future remains Send+static, no Sync/Unpin requirement; actual public kernel facade unchanged."
+    },
+    {
+      "id": "A09_fixed_common_handoff_and_O_only_mapper_fields",
+      "pass": true,
+      "evidence": "No concrete I/O/E/P field in common request/handoff/driver; output marker owns no O. H/R value ABI/poll stack remains fixed but unmeasured."
+    },
+    {
+      "id": "A10_named_MapOutput_and_two_large_dyn_poll_boundaries",
+      "pass": true,
+      "evidence": "Only small O mapper/manual lifetime-only driver outward; prepare/execute large futures remain non-generic factories and boxed dyn types."
+    },
+    {
+      "id": "A11_lazy_init_and_no_saved_handoff_or_busy_poll",
+      "pass": true,
+      "evidence": "Unstarted moves only common request/boxed bridge. Active Pending returns. No saved by-value handoff, scheduler or spin."
+    },
+    {
+      "id": "A12_completed_prepare_drop_before_synchronous_target",
+      "pass": true,
+      "evidence": "Completed boxed preparation explicitly drops before execute/actual begin_target; handler constructor remains synchronous outside execute async body."
+    },
+    {
+      "id": "A13_completed_execute_drop_before_O_mapping",
+      "pass": true,
+      "evidence": "Execution ownership ends before final O extraction; mapper has no async body or allocation."
+    },
+    {
+      "id": "A14_native_pointer_slots_no_inline_result_or_erasure_adapter",
+      "pass": true,
+      "evidence": "Original native Pin<Box> stored directly; O/E remain separate boxes and no target/finish Any adapter remains."
+    },
+    {
+      "id": "A15_native_constructor_and_Ready_drop_order",
+      "pass": true,
+      "evidence": "No result exists while polling target. Explicit native-future Drop before result boxing; native !Unpin pointee never moved out of Pin<Box>."
+    },
+    {
+      "id": "A16_target_borrow_ends_abort_before_cancelled_Completion",
+      "pass": true,
+      "evidence": "Interruption drops actual pending target and any ready result before original Completion; no Failure added."
+    },
+    {
+      "id": "A17_no_new_payload_sized_Phase_poll_abort_take_temporary",
+      "pass": true,
+      "evidence": "Only pointer Options are taken; the original Input\u2192Prepared and Prepared\u2192Invoking full moves remain at existing construction boundaries."
+    },
+    {
+      "id": "A18_original_E_source_and_pure_result_borrow",
+      "pass": true,
+      "evidence": "E remains boxed through Failure then original conversion; output getter is only valid-state read-only field/Box reference."
+    },
+    {
+      "id": "A19_four_deleted_Box_sites_and_remaining_BPS",
+      "pass": true,
+      "evidence": {
+        "mapper": 0,
+        "start": 0,
+        "prepare": 1,
+        "execute": 1,
+        "bridge": 1,
+        "result_O": 1,
+        "result_E": 1,
+        "B": 1,
+        "P": 1,
+        "S": 1
+      }
+    },
+    {
+      "id": "A20_no_production_unsafe_Mutex_clone_or_public_bound_expansion",
+      "pass": true,
+      "evidence": "Only two private production files; existing clone expressions unchanged, no unsafe/Mutex/additional type/future contract bound."
+    },
+    {
+      "id": "A21_original83_function_bytes_and_attributes_preserved",
+      "pass": true,
+      "evidence": "Independent Git fn-byte hashes match83 old identities; other source files exact, owner differs only authorized mount, so original attributes/ignored states remain."
+    },
+    {
+      "id": "A22_original16_real_probe_functions_and_EOF",
+      "pass": true,
+      "evidence": "Original real-fixture function bodies remain exact;3-line owner mount is separately charged, not claimed whole-file unchanged. Existing same-patch temp-apply receipt is source evidence only."
+    },
+    {
+      "id": "A23_exact_five_real_guard_cases_and_mounts",
+      "pass": true,
+      "evidence": "3 private cases plus2 explicit existing-fixture child cases; original owner fixture helpers not exported."
+    },
+    {
+      "id": "A24_direct_guard_pinned_Send_notSync_native_and_layout_laziness",
+      "pass": true,
+      "evidence": "Actual private bridge poll receives native Cell/PhantomPinned future via existing Send-only native alias. Large O/E guard checks pointer-only layout; future need not Sync. Printed H/R remains unexecuted."
+    },
+    {
+      "id": "A25_direct_guard_Ready_original_E_Failure_and_illegal_slots",
+      "pass": true,
+      "evidence": "Direct owner/Fault helper guard observes exact-once native Drop and original E source through actual Failure helper. Deliberately corrupt overlapping slot state must reject before abort clears both."
+    },
+    {
+      "id": "A26_full_kernel_guards_reuse_original_registry_ports_and_real_pipeline",
+      "pass": true,
+      "evidence": "No alternate Kernel/driver; isolated guard handler and Drop-visible Output use original contract identity and actual owner registry/ports. New field observations do not alter original/probe types."
+    },
+    {
+      "id": "A27_kernel_Ready_cancel_pendingCompletion_and_outerDrop_obligations",
+      "pass": true,
+      "evidence": "Real Completion constructor asserts native Drop already happened; pending Completion preserves O then outer-drop ends observer before O. Cancellation has real Failure registration but requires zero Failure; separate genuine target Pending outer-drop starts no Completion."
+    },
+    {
+      "id": "A28_all_lines_charged_AC006_still_FAIL",
+      "pass": true,
+      "evidence": "Actual Git numstat: production+114, guard leaves589, owner mount3, net+706. Root explicit owner-scope amendment is documented; no guard deletion/net-reduction or AC006 PASS claim."
+    },
+    {
+      "id": "A29_original_eight_source_negative_witnesses_detected",
+      "pass": true,
+      "evidence": [
+        {
+          "mutation": "omit abort before cancelled Completion",
+          "detected": true
+        },
+        {
+          "mutation": "construct handler before preparation Drop",
+          "detected": true
+        },
+        {
+          "mutation": "consume E before Failure",
+          "detected": true
+        },
+        {
+          "mutation": "inline O/E result slot",
+          "detected": true
+        },
+        {
+          "mutation": "whole typed Phase move in poll",
+          "detected": true
+        },
+        {
+          "mutation": "target/result overlap check removed",
+          "detected": true
+        },
+        {
+          "mutation": "typed payload added to common handoff",
+          "detected": true
+        },
+        {
+          "mutation": "erase document residual adapter cost",
+          "detected": true
+        }
+      ]
+    }
+  ],
+  "blockers": [],
+  "model23_obligation_map": [
+    {
+      "model_check": "M01_actual_W5_nonregression_failure_kept",
+      "actual_source_checks": [
+        "A28"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M02_complete_12_construction_site_reconciliation",
+      "actual_source_checks": [
+        "A19"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M03_document_three_residual_adapters",
+      "actual_source_checks": [
+        "A19"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M04_only_payload_erasure_boundaries_remain",
+      "actual_source_checks": [
+        "A09",
+        "A10"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M05_no_spin_or_saved_handoff",
+      "actual_source_checks": [
+        "A11"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M06_slot_exclusion",
+      "actual_source_checks": [
+        "A14",
+        "A15",
+        "A25"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M07_prepare_drop_precedes_handler_constructor",
+      "actual_source_checks": [
+        "A12"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M08_ready_native_future_drop_precedes_observers",
+      "actual_source_checks": [
+        "A15"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M09_cancel_drop_precedes_Completion",
+      "actual_source_checks": [
+        "A16",
+        "A27"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M10_E_source_lifetime",
+      "actual_source_checks": [
+        "A05",
+        "A18",
+        "A25"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M11_outer_drop_borrow_order_exact_once",
+      "actual_source_checks": [
+        "A13",
+        "A25",
+        "A27"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M12_common_handoff_and_external_future_payload_coefficients_zero",
+      "actual_source_checks": [
+        "A09",
+        "A17",
+        "A24"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M13_pinning_and_borrow_model",
+      "actual_source_checks": [
+        "A08",
+        "A24"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M14_negative_witnesses",
+      "actual_source_checks": [
+        "A29"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M15_probe_prefixes_and_original_helpers_protected",
+      "actual_source_checks": [
+        "A02",
+        "A03",
+        "A21",
+        "A22"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M16_outline_matches_selected_finite_type_graph",
+      "actual_source_checks": [
+        "A09",
+        "A10",
+        "A11"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M17_preserved_original_READY_and_concrete_blocker",
+      "actual_source_checks": [
+        "A01"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M18_original_native_and_public_future_have_no_Sync_guarantee",
+      "actual_source_checks": [
+        "A03",
+        "A08",
+        "A24"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M19_delete_Sync_alone_is_insufficient",
+      "actual_source_checks": [
+        "A07",
+        "A08"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M20_exact_two_adapter_reference_lookup_exception",
+      "actual_source_checks": [
+        "A07"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M21_lookup_purity_and_valid_phase_precondition",
+      "actual_source_checks": [
+        "A06",
+        "A07",
+        "A18"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M22_Send_closure_and_legal_notSync_pinned_guard",
+      "actual_source_checks": [
+        "A07",
+        "A08",
+        "A24",
+        "A26"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    },
+    {
+      "model_check": "M23_other_helper_bytes_and_original_Box_counts_preserved",
+      "actual_source_checks": [
+        "A06",
+        "A19",
+        "A20"
+      ],
+      "source_bound_pass": true,
+      "runtime_or_compiler_proof": false
+    }
+  ],
+  "source_hashes": {
+    "api/crates/interface-runtime/src/_tests/invocation/runtime_revision_tests.rs": "3d6cefb1b7bdb3267a279e7c870c60f4f194c1e73c97c0091699a2f80d6d7a0d",
+    "api/crates/interface-runtime/src/_tests/invocation_tests.rs": "dfdd30ea4d4de89c93e9d977af699121cb940bfb7441313cd01b2a9e3f983695",
+    "api/crates/interface-runtime/src/invocation/unary.rs": "8f849e92b4c01ca4e659dab1aaafe03ad0a43fa63541d6ce1b4ad8ee3998aed1",
+    "api/crates/interface-runtime/src/invocation/unary/_tests/runtime_revision_tests.rs": "db7ec20c99bd08dc19c463c3b0256f4213183ecd254e0f054cd3d6fa851c44d8",
+    "api/crates/interface-runtime/src/invocation/unary/bridge.rs": "9f3fee015f3f540f5730b9c77d606d5ccebbe27f203751778f0a47e778459ee0"
+  },
+  "unchanged_helper_hashes": {
+    "api/crates/interface-runtime/src/finalization.rs": "cf892d97b4fac76a510e9c62e6dd9fc63617f5f8e40e281d62325555be910ca4",
+    "api/crates/interface-runtime/src/hook.rs": "00b6e24ee82e170c981723476855f0f1a43fdc84fdaffcccf4a0f4801294179a",
+    "api/crates/interface-runtime/src/decision.rs": "b1b06844bc2499c2622b817aac9d4c98908ad6debc906ec9e0119e1d51bab823",
+    "api/crates/interface-runtime/src/invocation/event_observation.rs": "9e98d9d67cc3787a333968fb89af63faf16c6e263b7692eb062724fc55724320",
+    "api/crates/interface-runtime/src/event_observation/document/session.rs": "725d2254f298cf94d137d55a4a7727216d6d09c2ec0d38c741d508224578b056",
+    "api/crates/interface-runtime/src/registry.rs": "72edd48451d62a46d809ecef4beb2dbaa0b3dad56472f57672329c45fff5b4c9",
+    "api/crates/interface-runtime/src/invocation/kernel.rs": "f9062a67513dce43829d900480468b18365e44bbba74609b08bd934e6cf9934f",
+    "api/crates/interface-runtime/src/invocation.rs": "8815cbd2b47fa721ef0e4992fa77025398be839be2d5db30688bb38b6e7bbd37",
+    "api/crates/interface-runtime/src/principal.rs": "daf82eed50121b86ea143ae2e61edd7b3bd774ac55eaf7050ed58793baa01ba0",
+    "api/crates/interface-runtime/src/_tests/invocation/stack_budget_tests.rs": "a9efeada77d60fa90f36e87551fb86bc3e06f8ed9ac4e0228a1868af3883c316",
+    "api/crates/interface-runtime/src/_tests/mod.rs": "c6219e11f4e7d137a1ce103ae2be99164e7d079aeb7f05cbb5091bce7576d682",
+    "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs": "40a3770b885cd39a7c925e74d1d2d3f60be97e0d36398ca620381727d8de0d0e",
+    "api/crates/interface-runtime/src/_tests/finalization_tests.rs": "f46e3e2ef2149a98f3ac3cb126c7bc3fbdbb5f7e2f4b80f497d20fb9951a9e20"
+  },
+  "canonical_observer_bodies": [
+    {
+      "function": "observe_before",
+      "expected_sha256": "1b020215246b9c1b857f16c58490c3280a08fdb8c592071dcb2d164a70cd312b",
+      "actual_sha256": "1b020215246b9c1b857f16c58490c3280a08fdb8c592071dcb2d164a70cd312b",
+      "exact": true
+    },
+    {
+      "function": "observe_success",
+      "expected_sha256": "83dddf3c8e8f8c1dac1fc140891e19ffd0deadecacf88668ebaf8523ba293392",
+      "actual_sha256": "83dddf3c8e8f8c1dac1fc140891e19ffd0deadecacf88668ebaf8523ba293392",
+      "exact": true
+    }
+  ],
+  "original83_function_hashes": [
+    {
+      "path": "api/crates/interface-runtime/src/_tests/extension_tests.rs",
+      "name": "approved_points_bind_permission_and_typed_facts",
+      "sha256": "db526d514402151233361c2e9da885f98052dfa74c543afedfadcb8136a11194",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/extension_tests.rs",
+      "name": "runtime_and_capability_plugins_cannot_authenticate_or_escape_process_wire",
+      "sha256": "2a6193c5d6f0fd751323d0fc6c8ab26f649070e1ee64f9b8031240eeb8b60de5",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/extension_tests.rs",
+      "name": "mutation_illegal_facts_and_multiple_handlers_fail_closed",
+      "sha256": "1b2c117fdc3b4fae2bf3caf4ce04d4c73870dbd1fc8b242c2e86447bdd6ded95",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_driver_tests.rs",
+      "name": "observer_is_lazy_and_uses_the_remaining_shared_deadline",
+      "sha256": "24587896c8c8408b5fb616e9b5e7a50e496ad47422c1063d76fff86c2ab13225",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_driver_tests.rs",
+      "name": "observer_catches_a_second_poll_panic_with_the_original_reason",
+      "sha256": "4dc4ec0e0bbb0f1c3f6f2839816d422dfa5c652313ddcfa732dae6396a6ebda7",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_driver_tests.rs",
+      "name": "observer_drops_before_recording_and_preserves_outer_drop_and_drop_panics",
+      "sha256": "d3fb3e140dbec0f2b7398e952a706f13802e6b14483a5de2400a61eebb6bc344",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_driver_tests.rs",
+      "name": "observer_preserves_borrowed_mut_nonstatic_pinned_futures_and_send",
+      "sha256": "29309be36a1a730bef39595ee73786483e08808a0a3b08b743de8aac299f0f6c",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_tests.rs",
+      "name": "root_1998_cancellation_and_deadline_still_execute_completion",
+      "sha256": "685d5e09d3ceb079b16c62f31d93d0da41c45076487be78d4e6c0c29e8b8b60d",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_tests.rs",
+      "name": "root_1998_observers_never_replace_business_output_or_failure",
+      "sha256": "5d9262580bcc7d6aec0fbdba5cd475055d22d877ae14c2249f2b777fd6af39f1",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_tests.rs",
+      "name": "root_1998_resolved_plan_early_returns_finalize_once_without_typed_io",
+      "sha256": "7840a47bfb83b145710c751bfb82ca0d79cc1a000ffea1b98cfd559f94c4f1dd",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_tests.rs",
+      "name": "root_1998_authentication_rejection_uses_frozen_plan_and_absent_principal",
+      "sha256": "cea48eaacdb4a1f83720b9ab89c88fddde10cfd24e8312e6fabd085c3d7afde4",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/http_sibling_authentication_tests.rs",
+      "name": "root_1998_f9_http_sibling_keeps_lineage_snapshot_and_selected_kernel_plan",
+      "sha256": "0437fd3b45a9a29e12aa34c1ce6cabb01b9c20730551a21fb99b9102b22dd9fd",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/http_sibling_authentication_tests.rs",
+      "name": "root_1998_f9_http_sibling_rejects_unknown_carrier_authentication_and_typed_contract_mismatch",
+      "sha256": "3d5a664769846b9c2c1567e30493635c1e494e352dc428091bcff40083d25c5a",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/identity_tests.rs",
+      "name": "route_identity_accepts_static_external_protocol_paths",
+      "sha256": "35d3507c30e2544251f7471ef25415f7a7c13b39fd9e4d81572496c8084da740",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/identity_tests.rs",
+      "name": "route_identity_rejects_non_absolute_or_request_specific_paths",
+      "sha256": "1fd599c8caa7f0c9af8c7bccbb2cd8d0d9aa677f6affe72ad3fd39dc1fa43caa",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "document_channel_does_not_require_legacy_opt_in_and_coexists_without_changing_legacy_values",
+      "sha256": "f71941b1ceb116e0be82aa99735c4628a71d1e70bf11e7c57855fa9f256bcdd8",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "no_interest_or_missing_phase_schema_skips_codecs_without_fabricating_values",
+      "sha256": "1366a110dcdfea27888bae580b7ee36fe11f2099ea7c85227049ee24253a39b2",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "document_failure_denial_and_cancellation_never_project_success_output",
+      "sha256": "7f6f5fe671925e1155af10ce748100feb4dedf4b42e77fc1c63107de996fdfb2",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "document_registration_rejects_binding_interface_contract_and_generation_mismatch",
+      "sha256": "bdf639f47323d2a05c950b2d3b6d1ee61feaa6ba53f5a6f97cbbe5d12f2ae64c",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "dynamic_snapshot_selects_once_and_invalid_target_only_disables_observation",
+      "sha256": "471a76d75e15c189a8586769137fd27883699fd1841f4e1eaf234412ff1c8e67",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "document_observer_faults_preserve_primary_success_and_failure",
+      "sha256": "32760e783ceb609341dc876c2c8b30b9856691973bd8eb17dcfecd69e47612df",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "document_before_observes_mutated_typed_before_input",
+      "sha256": "fb0655f6783a27f0b0e209853c63f6caf2f8e02e5421472cf6834847d8e5c37f",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "document_stream_uses_unique_real_terminal_and_drop_does_not_fabricate_completion",
+      "sha256": "2f433c3cd5e4a62968bca6c827a3e48a32d9b5b2b31b1962c8d8708a817ce236",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "interest_faults_fail_closed_without_projecting_or_replacing_primary_result",
+      "sha256": "ede9662bb4b71e0f9cde91d7e5f9bf6c9359ae3774567464d9c0f05beed75e91",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "document_schema_and_codec_generation_change_registry_proof",
+      "sha256": "0e7751fe9debfe914585b81a64d57a97e7f2766c8198eca41ee19c4e24594aa9",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "rejected_authentication_has_static_identity_completion_without_business_data",
+      "sha256": "38873b217dbc78129e7701f8fa7ff465055711f2393f4e94515f00a00b8bda06",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "document_registration_rejects_a_codec_for_a_different_typed_input_contract",
+      "sha256": "9278e0ab1781f2e94e2bd9a8b8bef955b5d973dd270575761385a79a20ce0578",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "capture_context_panic_is_a_diagnostic_and_preserves_primary_result",
+      "sha256": "a87e18d21596a1a97c56a40f0c583aad0ac6c13af549ee7a95e81c84e7aae9f9",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "compiled_document_metadata_reports_static_dynamic_and_missing_bindings_without_codecs",
+      "sha256": "b64d0af2604a57e7387df2ac70f225c1a9b246940329e947b7c835acbab104db",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "absorbing_snapshot_or_interface_retains_document_registration_and_observer",
+      "sha256": "809c90ef3e0e9f2e3cdbe773ef7bfd5ca29c1a7a126bf1c6eec571ddccfae904",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "compiled_document_metadata_distinguishes_registered_codec_from_active_observer",
+      "sha256": "a36b45ab5ea509893bbdd85260f37bee80966c07893fda3ff2ad7e82cbd07f26",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "composition_metadata_refinement_rejects_cross_binding_generation_and_dynamic_replacement",
+      "sha256": "f2abda231a79aa3821c822845f4bb1242452799943f874bcae89710c494ea3b4",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "name": "opaque_owner_phase_reasons_disable_projection_without_kernel_policy_or_fault",
+      "sha256": "80a2550e516df13f4993cb541e700e45c1265cfd76de2d9064dbd9e1c2f73cfa",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/event_observation_tests.rs",
+      "name": "event_capability_is_explicit_and_independent_of_managed_hooks_and_subscriptions",
+      "sha256": "f6c1db9c428c212f53db554ee74ba0ecd2058155c1c6e1b5a5932773a8472ea7",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/event_observation_tests.rs",
+      "name": "undeclared_operations_produce_no_observations_even_with_registered_contract_projections",
+      "sha256": "a70b13023fe834eabacd3231eedcb0825594c5c7f7eb02af9b343770740008eb",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/event_observation_tests.rs",
+      "name": "core_deny_has_no_before_or_business_data_and_keeps_real_error_classification",
+      "sha256": "4417faf1da5212f1ffa61341c6d29a95c252b7e603e54356b9a975fd82451959",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/event_observation_tests.rs",
+      "name": "unary_completion_preserves_target_failure_cancellation_and_deadline",
+      "sha256": "1849aa45385b0f70f09e09601c1cb88af30d0f4ae4a32c03c5af305a915bdb55",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/event_observation_tests.rs",
+      "name": "observer_error_panic_and_timeout_never_replace_primary_result_or_typed_failure",
+      "sha256": "42abefc95c1c2c1eb248b285df460db3965827622df8c8e1a4b98f4d1c7bdaff",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/event_observation_tests.rs",
+      "name": "missing_event_schema_fails_closed_instead_of_using_managed_schema_or_first_sample",
+      "sha256": "79a25cee6813f032b96a0f2d23e50e7a2c49eeb0abfed101e028717d3e7e22a1",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/event_observation_tests.rs",
+      "name": "stream_completion_waits_for_real_complete_and_preserves_all_terminal_facts",
+      "sha256": "aa6cdb1a1626b22d1fea0225b68c9e626e56e2c6b0727941504261ffda418b89",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/event_observation_tests.rs",
+      "name": "stream_cancellation_and_deadline_complete_once_and_drop_does_not_claim_completion",
+      "sha256": "681242fae39edd814aa9a9b9ebfe7a33ee6b001c1de24d2f0160cda4e0268f22",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/event_observation_tests.rs",
+      "name": "authentication_rejection_retains_frozen_identity_without_fabricating_principal_or_input",
+      "sha256": "ccb461cc098368895d2da2565c2784d37f3e34984b976591aaadb09f78b726bb",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/event_observation_tests.rs",
+      "name": "before_observes_the_actual_prepared_input_after_compiled_typed_mutation",
+      "sha256": "993bab35ad4834bbb469e1d922b14b88d430c2398b01496d2968d8518faf1dde",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/stack_budget_tests.rs",
+      "name": "invocation_inline_state_has_bounded_stack_cost",
+      "sha256": "79a274ee3556a3d379f5d5197ae20c2346c40d253d5ae8205365fd79d095218a",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "name": "root_1998_ac_006_empty_plan_executes_core_and_records_terminal_receipt",
+      "sha256": "a3c05d5e8f0c8132e09dd8ad5a996873367b1661596029e662c3180e7e3ddcae",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "name": "rejects_authorization_admission_target_failure_and_elapsed_deadline",
+      "sha256": "6b75340147cb75541d77021a1395be1e9db5ce41b0f659fd894f44b46e33aa02",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "name": "deadline_cancels_each_in_flight_stage",
+      "sha256": "06a1136998a8a520121ff7c35785d1daa7b78224c2e6f96004a1b9d878689419",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "name": "active_invocation_uses_its_frozen_snapshot_after_candidate_publish",
+      "sha256": "d5139795af5585d1b494334481e24b660f7f083e7f75b2ed1b81dcec1d1a0086",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "name": "lcf_002_lcf_004_typed_hook_plan_runs_after_authorization_and_admission",
+      "sha256": "95b318d9f36394c9ec1b2e43a47c98e6c9d5f952d33c30b65a1b3a668c812ecc",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "name": "lcf_006_completion_is_emitted_once_for_target_failure",
+      "sha256": "7afc99e0fff5ddf06ed47cd011332f41fc1ecec6d81be833418f943dc7d73577",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "name": "parent_lineage_rejects_cycles",
+      "sha256": "4b2e6257065dd25b88134bff0367f8816db9d2dd188964c4a8890bda85ae330d",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "name": "stream_requires_exactly_one_terminal_and_rejects_events_after_terminal",
+      "sha256": "1990556de6538676937799ca7ce1fbbd9aa4eec86f5817b188b8d6f4526e5309",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "name": "dispatch_pin_retry_and_receipt_controls_are_immutable",
+      "sha256": "0c3bb71d90228f027523b02fd0225d3ecc8d3aaf7f089f04871c6536bb6bedcf",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "name": "explicit_cancellation_terminates_without_dispatch",
+      "sha256": "ae62eda2914a46668986ced5614ee977411863d9aff542ade940540cbaae6466",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/managed_context_tests.rs",
+      "name": "root_2007_ac_003_004_managed_context_completion_and_reporter_are_isolated",
+      "sha256": "1cdf1259b5e642d39b37b1a80c4ef903dba5e3319044f877a3b17ef3611c8897",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/managed_context_tests.rs",
+      "name": "root_2007_ac_003_004_managed_late_report_cannot_mark_another_observer_failed",
+      "sha256": "6d40927e007df386eb1758a3f99e55418014374ec2b040a2c4f04c541f5f153a",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/principal_tests.rs",
+      "name": "authenticated_session_is_a_sealed_user_fact_not_a_receipt_summary_field",
+      "sha256": "d76ac5a3b9f1445a671b91218f2a96821ade1c2b3acf7586b71211586ff9a766",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/principal_tests.rs",
+      "name": "public_user_and_application_profiles_expose_only_stable_summaries",
+      "sha256": "bea4f0b0ecbbfcdb3c207a8c8e075a9975e7aed84aeba91d85dd50b269faff30",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/principal_tests.rs",
+      "name": "application_profile_rejects_missing_or_mismatched_identity",
+      "sha256": "4b4869631b7a6a394d6232eb08e71a05376269fcef23cc9d252ed8de941d6acd",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/registry_schema_sharing.rs",
+      "name": "exact_schema_interning_preserves_registry_fingerprint_bytes_and_order",
+      "sha256": "8bd2c4ddcaf1ad5e806e8b9153eef3983d9c48231b0c1a66d03b5a561d369aed",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/registry_tests.rs",
+      "name": "compiles_definition_binding_and_plan_into_deterministic_snapshot",
+      "sha256": "0ac8619160522fcb99e3628904a9e1166178b422b02ef8893894f19ed8f0d363",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/registry_tests.rs",
+      "name": "rejects_duplicate_interface_binding_and_projection_identity",
+      "sha256": "f79567d4b2ccaae385e0e82374b337663df6ffd2d987536af1211db761391e20",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/registry_tests.rs",
+      "name": "rejects_missing_or_mismatched_typed_handler_and_missing_binding",
+      "sha256": "92fd0fc9d80b96900792e5687b3cd7650932406ff574fa0ac6f5a71cad452a4c",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/registry_tests.rs",
+      "name": "rejects_unknown_operation_inactive_owner_and_binding_contract_or_version_mismatch",
+      "sha256": "4c7187f4f28a58d6fb9b6fbdcf06afca9a61930eb42496f7e94c74845bfea96a",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/registry_tests.rs",
+      "name": "rejects_handler_bound_with_the_wrong_principal_profile",
+      "sha256": "fb081e4f81c0d26f111ad3b378dcd321cb1b53c57e458c3afbc1c001ec50b557",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests.rs",
+      "name": "rr12_hook_contract_mismatch_fails_registry_compilation_for_unary_and_stream",
+      "sha256": "a0b50d9f6ab7610c0d03d4ac8254f6d623fa429947a50acc7cae2ce45d7186f4",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests.rs",
+      "name": "review_binding_identity_drives_resolve_and_rejects_protocol_or_adapter_mismatch",
+      "sha256": "c615df9bf6c53e1f30eee7779c9980eca3d20401a28c7460cc48ff31c8e788d7",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests.rs",
+      "name": "review_registry_compiles_ordered_extension_plan_from_real_registrations",
+      "sha256": "c273399ee4da0d0506c48c72eddb12e4d92fda32a75ec372ef5160f106dd84d4",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests.rs",
+      "name": "review_compiled_completion_binding_is_mandatory_and_cannot_be_skipped_by_invoke",
+      "sha256": "589b264850e2f60ca583155bb7ff68af66772c2e4b53961fe6ac563ca34ab8e3",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests.rs",
+      "name": "review_host_extension_handler_is_the_real_exactly_one_effective_target",
+      "sha256": "33ff2676af447b1d7b06db0ce344c889b9ca460b0d10e914ab03fd661a937ea3",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests.rs",
+      "name": "review_live_server_stream_finishes_after_events_with_one_runtime_pinned_terminal",
+      "sha256": "7d36118615d7a6da1c2a7bd277418ffdb84e155819c7812323c4490d78f29d70",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests.rs",
+      "name": "rr13_definition_contribution_is_real_registry_input_and_metadata_only_fails",
+      "sha256": "ce67a89150186b27d6593bdfceb771dd07c90d4b8b029255a34832c3eff2c0b5",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests.rs",
+      "name": "rr14_authentication_activation_missing_duplicate_and_identity_mismatch_fail_closed",
+      "sha256": "3bf6de78ff4ef919619bbac21768d231beb531de20909af86de0991831a3de07",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs",
+      "name": "root_1998_ac_006_rr15_rr16_unary_and_stream_execute_core_then_ordered_veto_then_hook_handler",
+      "sha256": "0b783165bd0207d0ac5a07dd106b343ee7908c8ec7f2666e1bbab278622bc024",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs",
+      "name": "root_1998_ac_006_rr15_core_deny_dominates_plugin_allow_and_extension_failures_fail_closed",
+      "sha256": "959ff8bf4fb50adde07879acea047fa35eaced2e7b4184f909bec2a064b5f1f7",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs",
+      "name": "rr15_rr16_extension_timeout_and_admission_reject_fail_closed",
+      "sha256": "6f2e1b0e97e1ef1bf917b4c607bd586ba32f4c1cbb216dc529ac821c20800335",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs",
+      "name": "root_1998_ac_006_rr15_rr16_decision_bindings_fail_publish_when_missing_extra_or_contract_mismatched",
+      "sha256": "1901a17d74081649a317a48abc1132f704cfc0db0257e7055921f2eb99ff23c0",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs",
+      "name": "policy_boundary_drops_core_future_before_veto_or_failure_and_retains_rejection_sources",
+      "sha256": "eca8d46ab765bd1fc0474ff40b7f6e49e0e667a3dcb12a15b5887d06887a73d7",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs",
+      "name": "policy_boundary_checks_controls_after_core_construction_and_never_runs_failure_on_interrupt",
+      "sha256": "6ade9e459778e0f50f156ddd4928223277ff290b5278dfcb11fbe0cd4a6c060b",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs",
+      "name": "policy_boundary_retains_full_public_user_application_principals_and_freeze_precedes_construction",
+      "sha256": "d2b6fefe46e6d9d57ac4310778be4bdaea5115e40baf0fcecad2d7612d30d428",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs",
+      "name": "policy_boundary_skips_real_typed_none_even_when_contract_identities_match",
+      "sha256": "8394cbc85845238dc27bbc3ff49bee04d3e10d2216a9ec891a9b68a0c95947f2",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs",
+      "name": "policy_boundary_rejection_failure_and_completion_keep_one_budget",
+      "sha256": "11cf82b45756c05ed056d5b0aac5ab7e7e839fb0fe77ef9eea8009ee6464cba3",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/snapshot_acceptance_tests.rs",
+      "name": "root_1998_ac_006_in_flight_snapshot_keeps_plan_handler_and_completion_identity",
+      "sha256": "64d4dd261e96d0c391b3ce7a2fd58186cfff6343e6a7a6e94dcb77f085fca7ab",
+      "old_matches": 1,
+      "new_matches": 1
+    }
+  ],
+  "probe16_function_hashes": [
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "function": "root_1998_ac_006_empty_plan_executes_core_and_records_terminal_receipt",
+      "sha256": "a3c05d5e8f0c8132e09dd8ad5a996873367b1661596029e662c3180e7e3ddcae",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "function": "compile_snapshot",
+      "sha256": "379103759decbed84062049c0c4086256d6a9f63d7f3a046af9845248ade948c",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "function": "invoke",
+      "sha256": "1bfffa9bf7492621b6ccf1797c1a56a3f42760f2143c8318587b81b598b4c03b",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "function": "envelope",
+      "sha256": "29ca2a86f034895d388d67e16884cd070bd986182d23662cb8106365845cb8d5",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation_tests.rs",
+      "function": "before",
+      "sha256": "cdb78e6d3aa5f32e1580307fc3f0b82d9317053137461e516cc7d70c08dcf7f3",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/event_observation_tests.rs",
+      "function": "event_compiler",
+      "sha256": "662f47e59dcaa27e5975f793e0fd13f672eea2973ff7865ebebf20337e4f6bca",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/event_observation_tests.rs",
+      "function": "kernel",
+      "sha256": "7f9b741b411212829d12b999aba6dea6033814ebd0edcad087d64d6c4bba0a0d",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "document_before_observes_mutated_typed_before_input",
+      "sha256": "fb0655f6783a27f0b0e209853c63f6caf2f8e02e5421472cf6834847d8e5c37f",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "document_compiler",
+      "sha256": "1763de8296191e8d85d1efde367728d8429f2efa143f9856e7d85a49635d7a1a",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "register_static",
+      "sha256": "2e3c765c312b1d1619abc6ace2956949d86e673f76a98763fdae754e9fbade6d",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "bind_handler",
+      "sha256": "cb68426c66799d8c5e7e10fbd570af3a836b0fe29f171611cf36a596c08489a8",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "project_input",
+      "sha256": "1daee732975b43f3812b040619973297b4c429649459b85e1af1c605bf9be324",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/invocation/document_operation_tests.rs",
+      "function": "project_output",
+      "sha256": "6acf181f9c1507b2ccc6279a0a6cb98d87d3990e2321d82f4c485b14ff29768a",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_tests.rs",
+      "function": "snapshot",
+      "sha256": "2958b2df5310db0dcf2a64f20d0f6ede5e856921d36d028b153d960c0ee6e87d",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_tests.rs",
+      "function": "invoke",
+      "sha256": "746ccdaba452f3402fdee6f57e3771954338d0ef34ed771eb3b856a114acb54d",
+      "old_matches": 1,
+      "new_matches": 1
+    },
+    {
+      "path": "api/crates/interface-runtime/src/_tests/finalization_tests.rs",
+      "function": "root_1998_cancellation_and_deadline_still_execute_completion",
+      "sha256": "685d5e09d3ceb079b16c62f31d93d0da41c45076487be78d4e6c0c29e8b8b60d",
+      "old_matches": 1,
+      "new_matches": 1
+    }
+  ],
+  "actual_guard_bindings": [
+    {
+      "name": "invocation::unary::bridge::runtime_revision_tests::runtime_revision_common_layout_send_unpin_and_lazy_start",
+      "path": "api/crates/interface-runtime/src/invocation/unary/_tests/runtime_revision_tests.rs",
+      "line": 174,
+      "actual_sha256": "7fd8436611a203c7152eb6c4038df435ead9fbf4222e2c42639cadafa56cadf5",
+      "expected_sha256": "7fd8436611a203c7152eb6c4038df435ead9fbf4222e2c42639cadafa56cadf5",
+      "same": true
+    },
+    {
+      "name": "invocation::unary::bridge::runtime_revision_tests::runtime_revision_native_pin_ready_and_error_source_survive_failure",
+      "path": "api/crates/interface-runtime/src/invocation/unary/_tests/runtime_revision_tests.rs",
+      "line": 226,
+      "actual_sha256": "3b5cc3d3b992bc2c8c56ee76383ea15cd5af7c67f847f8b3306e0667cecc45ba",
+      "expected_sha256": "3b5cc3d3b992bc2c8c56ee76383ea15cd5af7c67f847f8b3306e0667cecc45ba",
+      "same": true
+    },
+    {
+      "name": "invocation::unary::bridge::runtime_revision_tests::runtime_revision_target_slots_reject_overlap_and_abort_exactly_once",
+      "path": "api/crates/interface-runtime/src/invocation/unary/_tests/runtime_revision_tests.rs",
+      "line": 275,
+      "actual_sha256": "5e619b1f24018a1a28f708af2aee13b2919b54acf98eb7bce5cf9dccbc5ba16b",
+      "expected_sha256": "5e619b1f24018a1a28f708af2aee13b2919b54acf98eb7bce5cf9dccbc5ba16b",
+      "same": true
+    },
+    {
+      "name": "_tests::invocation_tests::runtime_revision_tests::runtime_revision_kernel_ready_cancel_and_completion_ownership",
+      "path": "api/crates/interface-runtime/src/_tests/invocation/runtime_revision_tests.rs",
+      "line": 232,
+      "actual_sha256": "6428d3b4e8d731aeb9749762a5eaaf8465ff5fa8f9a41c317c5a9c63e5c9a34e",
+      "expected_sha256": "6428d3b4e8d731aeb9749762a5eaaf8465ff5fa8f9a41c317c5a9c63e5c9a34e",
+      "same": true
+    },
+    {
+      "name": "_tests::invocation_tests::runtime_revision_tests::runtime_revision_kernel_outer_drop_pending_target_once",
+      "path": "api/crates/interface-runtime/src/_tests/invocation/runtime_revision_tests.rs",
+      "line": 279,
+      "actual_sha256": "2be2361ee1a39443ad0992e11c71778f4e364bee589cfe296dfd071605b27c2b",
+      "expected_sha256": "2be2361ee1a39443ad0992e11c71778f4e364bee589cfe296dfd071605b27c2b",
+      "same": true
+    }
+  ],
+  "construction_counts": {
+    "mapper": 0,
+    "start": 0,
+    "prepare": 1,
+    "execute": 1,
+    "bridge": 1,
+    "result_O": 1,
+    "result_E": 1,
+    "B": 1,
+    "P": 1,
+    "S": 1
+  },
+  "clone_expression_counts": {
+    "api/crates/interface-runtime/src/invocation/unary.rs": {
+      "old": 31,
+      "new": 31
+    },
+    "api/crates/interface-runtime/src/invocation/unary/bridge.rs": {
+      "old": 1,
+      "new": 1
+    }
+  },
+  "source_negative_witnesses": [
+    {
+      "mutation": "omit abort before cancelled Completion",
+      "detected": true
+    },
+    {
+      "mutation": "construct handler before preparation Drop",
+      "detected": true
+    },
+    {
+      "mutation": "consume E before Failure",
+      "detected": true
+    },
+    {
+      "mutation": "inline O/E result slot",
+      "detected": true
+    },
+    {
+      "mutation": "whole typed Phase move in poll",
+      "detected": true
+    },
+    {
+      "mutation": "target/result overlap check removed",
+      "detected": true
+    },
+    {
+      "mutation": "typed payload added to common handoff",
+      "detected": true
+    },
+    {
+      "mutation": "erase document residual adapter cost",
+      "detected": true
+    }
+  ],
+  "Root_authorized_scope_amendment": "Existing fixture imports-area3-line child mount plus2-case child, in addition to original private3-case leaf; no exports; original83/EOF preserved",
+  "governance_AC006": {
+    "status": "FAIL",
+    "production_net_lines": 114,
+    "guard_leaf_lines": 589,
+    "owner_mount_lines": 3,
+    "net_lines": 706,
+    "not_a_source_semantic_blocker_for_explicitly_authorized_qualification": true,
+    "prior519_line_draft": "retained developer evidence; no effective guard removed to improve line metric"
+  },
+  "runtime_disposition_preserved": {
+    "source903_W5_empty": "FAIL above original frozen noise band",
+    "source903_W5_document": "UNRESOLVED",
+    "revision9f35": "NOT_RUN",
+    "predicted_total_alloc_counts": {
+      "empty": 24,
+      "document": 211,
+      "pending_storage_only": 41
+    },
+    "document_residual_BPS_adapters": 3
+  },
+  "still_unverified": [
+    "Rust compilation/borrow checking/auto traits; source guard assertions have not executed",
+    "actual compiled discovery original83+new5, ignored state and original real-probe execution",
+    "actual H/R/Driver/Map/bridge/generator/ABI sizes; physical nested poll stack",
+    "runtime timing, process-global events/live/peak and retained-capacity behavior; original bands remain",
+    "API/Jemalloc/HTTP/largeI-P/finalization-pending/all-target/C01/final resource and governance acceptance"
+  ],
+  "handoff": "No source blocker found: Root may assemble this exact commit and schedule one existing bounded IR qualification. AC006 remains FAIL; no overall nonregression or Root PASS. On actual failure return to Root without a new adapter loop.",
+  "recorder_correction": "Initial source-check recorder stopped at report ID join (A28 versus full check ID); prefix join fixed before this final receipt. No product/source check policy changed.",
+  "not_run": [
+    "Cargo/rustc/rustfmt",
+    "CI",
+    "new QA/agent",
+    "product edits"
+  ],
+  "script_sha256": "780a444a1642de296945605444a1cd1be0bc36c722c9cf10eeb04967dee225ea",
+  "input_evidence_hashes": {
+    "tmp/test-governance/issue2818/model/candidates/raw/compile-responsibility-w5/runtime-revision/model-result.json": "70e30a33414ce65dac654f1e7bda6759aa67cf075b55af031ac8fdaafd14c878",
+    "tmp/test-governance/issue2818/model/candidates/raw/compile-responsibility-w5/runtime-revision/source-map.json": "58705fced982f7817aaa8d1e2be581ac095d4ff6787e404e388d921cb7825ea2",
+    "tmp/test-governance/issue2818/development/unary-runtime-revision/commit.json": "8e935bc620fbbf27ebaf67824a265c52b4f247ef1d26c2442cf1565609bd87ce",
+    "tmp/test-governance/issue2818/development/unary-runtime-revision/guard-assertion-map.json": "6283eb8a3663832ff5f2efa601aabdb06a25140878a0429bfc93d1adfe19c829"
+  }
+}

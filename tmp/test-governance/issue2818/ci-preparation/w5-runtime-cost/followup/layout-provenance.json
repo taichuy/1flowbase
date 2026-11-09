@@ -1,0 +1,19 @@
+{
+  "candidate_layout_runtime_status": "not yet measured; candidate source-bound verifier and Rust pending",
+  "candidate_sha": "9f35e154b6908eb54b51d1ceb504552b0a4e0eba",
+  "correction": "UserPrincipal P was176B, not ZST; TargetError E was0B. Existing README/verifier ZST wording must not be applied to P.",
+  "measured_current_sha": "903971d5c3ddd37f93c1f7314e02dae4a2bb120c",
+  "measured_layout_all46_processes": {
+    "E": 0,
+    "I": 1,
+    "InterfaceHandlerContext_P": 480,
+    "O": 1,
+    "P": 176
+  },
+  "measured_old_sha": "ca19501827fdeac86b9f5d9fcba767715220f3dd",
+  "measured_run": 42668993780,
+  "prior_evidence_files_modified": false,
+  "raw_audit_path": "tmp/test-governance/issue2818/ci-w5-cost-recovery-42668993780/owner-audit.json",
+  "raw_audit_sha256": "b139719751dfad43ed28f6fb296daf1c9ce7d24391bcbc480691429512373088",
+  "status": "ADDITIONAL_PROVENANCE_NO_PRIOR_EVIDENCE_REWRITE"
+}
