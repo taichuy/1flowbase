@@ -13,11 +13,11 @@ import sys
 import time
 
 SEED_SHA = 'd9636d6ed9fe7122d78c52ccc9fd93d0c96a2abe'
-PRIOR_RUN = '42585752951'
-PRIOR_NAME = 'issue2818-seed-owner-42585752951-1'
-PRIOR_ARTIFACT_ID = 13658882036
-ARCHIVE_SHA = 'e755ee875c1b6f8ecc16cf4a21bd5248f0ba36fd2c87d354d044bbf70af0d613'
-ARCHIVE_BYTES = 746955340
+PRIOR_RUN = '42590751940'
+PRIOR_NAME = 'issue2818-api-cache-42590751940-1'
+PRIOR_ARTIFACT_ID = 13661098760
+ARCHIVE_SHA = 'ad7948d69e2798751334096309376c31425c20f34b74e60cfbc3a96738b7e75b'
+ARCHIVE_BYTES = 747063658
 BASELINE = 'e3cdfefb7a5b85d1d7d9c2ef166e3b923c05de89'
 W2_CANDIDATE = 'e0a2790bb08ec3b4c914b27e1bed9938c293d1fe'
 W2_ALLOWED = ['.agents/skills/qa-evaluation/references/backend/console-settings-registration-gate.md', '.github/workflows/notification-subscription.yml', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/data_model_and_docs.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/infrastructure_and_mcp.rs', 'api/apps/api-server/src/routes/_tests/console_route_assembly_tests/plugins_and_models.rs', 'api/apps/api-server/src/routes/_tests/file_console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/_tests/mod.rs', 'api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs', 'api/apps/api-server/src/routes/console_route_assembly.rs', 'api/apps/api-server/src/routes/console_route_assembly/_tests/assembly.rs', 'api/apps/api-server/src/routes/mod.rs', 'api/apps/api-server/src/test_support/mod.rs', 'api/apps/api-server/tests/README.md', 'api/apps/api-server/tests/console_core_registry_tests.rs', 'scripts/node/agent-logs-exchange/ci-api.cjs', 'scripts/node/console-operation-registry-hygiene/README.md', 'scripts/node/console-operation-registry-hygiene/_tests/core.test.js', 'scripts/node/console-operation-registry-hygiene/compiled-assembly-checks.js']
@@ -205,7 +205,7 @@ def run(label, argv, cwd=HOME_ROOT, env=None, heavy=False, seconds=1200, expecte
            'stderr_log':str(folder/'stderr.log'),'classification':receipt['classification']}
     RESULTS.append(row)
     counts=re.findall(r'test result: \w+\. (\d+) passed; (\d+) failed; (\d+) ignored;',merged.read_text(errors='replace') if merged.exists() else '')
-    summary={'source_sha':os.environ.get('CANDIDATE_SHA'),'phase':label,'exit':code,
+    summary={'source_sha':os.environ.get('ISSUE2818_OBSERVED_SOURCE_SHA',os.environ.get('CANDIDATE_SHA')),'requested_candidate':os.environ.get('CANDIDATE_SHA'),'phase':label,'exit':code,
         'classification':receipt['classification'],'elapsed_seconds':receipt['elapsed_seconds'],
         'scope_peak_bytes':receipt['resources'].get('fields',{}).get('memory.peak',{}).get('value'),
         'task_sample_peak_bytes':peaks['aggregate_current'],'oom':bool(receipt['oom_evidence']),
@@ -613,8 +613,8 @@ def collect_mono_files(source,target):
             files.append(row)
     save(EVIDENCE/'mono-stat-files.json',{'files':files,'meaning':'definition/instantiation attribution only; not RSS allocation percentages'})
 
-CRATE_CANDIDATE = 'd9636d6ed9fe7122d78c52ccc9fd93d0c96a2abe'
-CRATE_ALLOWED = ['api/crates/interface-runtime/src/_tests/finalization_driver_tests.rs', 'api/crates/interface-runtime/src/finalization.rs']
+CRATE_CANDIDATE = 'ca19501827fdeac86b9f5d9fcba767715220f3dd'
+CRATE_ALLOWED = ['api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs', 'api/crates/interface-runtime/src/decision.rs', 'api/crates/interface-runtime/src/hook.rs', 'api/crates/interface-runtime/src/invocation.rs', 'api/crates/interface-runtime/src/invocation/kernel.rs', 'api/crates/interface-runtime/src/invocation/policy.rs']
 
 def crate_artifacts(label=None):
     rows=[]
@@ -665,79 +665,180 @@ def qualify_interface_phase(side,source,target,env,argv,roots,identity,native):
     save(EVIDENCE/(side+'-crate-test-cases.json'),result)
     return result
 
+FOCUSED_TEST_FILE = 'api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs'
+CRATE_TEST_SHA256 = '415594bd8ad4c7b546a0bdbbdf06748864116cb3b1c1b09b8084ec5e3522ee2f'
+FOCUSED_FILTERS = ['_tests::review_remediation_tests::decision_order::','_tests::invocation_tests::','_tests::review_remediation_tests::finalization_tests::']
+
+def follow_w4(run_id,out_dir,control_sha):
+    # One authorized local lifecycle: watch, bounded light download, deterministic receipt.
+    from datetime import datetime,timezone
+    out=Path(out_dir).resolve();out.mkdir(parents=True,exist_ok=True)
+    def now():return datetime.now(timezone.utc).isoformat()
+    def command(argv,file,seconds):
+        start=time.monotonic()
+        with (out/file).open('wb') as log:
+            result=subprocess.run(argv,stdout=log,stderr=subprocess.STDOUT,timeout=seconds)
+        return {'argv':argv,'exit':result.returncode,'elapsed_seconds':time.monotonic()-start,'log':str(out/file)}
+    watched=command(['gh','run','watch',str(run_id),'--interval','30','--exit-status'],'watch.log',2400)
+    after_watch=now()
+    raw=subprocess.check_output(['gh','run','view',str(run_id),'--json',
+        'databaseId,status,conclusion,headSha,url,attempt,jobs'],text=True,timeout=45)
+    run=json.loads(raw);save(out/'run-final.json',run);save(out/'jobs.json',run['jobs'])
+    assert run['headSha']==control_sha and run['status']=='completed','watch transport failure is not a final CI result'
+    meta=json.loads(subprocess.check_output(['gh','api','repos/taichuy/1flowbase/actions/runs/'+str(run_id)+'/artifacts'],text=True,timeout=45))
+    save(out/'artifact-meta.json',meta)
+    name='issue2818-w4-results-'+str(run_id)+'-'+str(run['attempt'])
+    light=next(a for a in meta['artifacts'] if a['name']==name)
+    assert not light['expired'] and light['size_in_bytes']<=16_000_000,'bounded small-results guard; never download cache artifact'
+    fetched=command(['gh','run','download',str(run_id),'--name',name,'--dir',str(out/'results')],'download.log',180)
+    assert fetched['exit']==0,'light transport failed; do not confuse with Rust failure'
+    matches=list((out/'results').rglob('ci-evidence'));assert len(matches)==1
+    evidence=matches[0]
+    phases=[]
+    for path in sorted(evidence.glob('*.summary.json')):
+        phases.append(read(path))
+    state=read(evidence/'qualification-phase-state.json') if (evidence/'qualification-phase-state.json').exists() else {}
+    cases=[]
+    for side in ['baseline','candidate']:
+        for index in range(3):
+            prefix=side+'-q'+str(index)
+            path=evidence/(prefix+'-crate-test-cases.json')
+            if path.exists():
+                record=read(path)
+                cases.append({'side':side,'query':index,'filter':record.get('filter'),
+                    'passed':record['passed'],'failed':record['failed'],
+                    'ignored':sum(r[3] for r in record['list_with_ignored']),
+                    'test_artifact_fresh':record.get('test_artifact_fresh'),'raw_json':str(path)})
+    failure=read(evidence/'failure.json') if (evidence/'failure.json').exists() else None
+    receipt={'run_id':run_id,'control_sha':control_sha,'candidate_sha':CRATE_CANDIDATE,
+        'CI_conclusion':run['conclusion'],'source_state':state,'case_groups':cases,'phases':phases,
+        'failure':failure,'watch_finished_at':after_watch,'small_results_ready_at':now(),
+        'watch':watched,'light_download':fetched,'light_artifact':light,
+        'cache_artifacts_not_downloaded':[a for a in meta['artifacts'] if a['name']!=name],
+        'not_API_or_W3_78_retest_or_performance_PASS':True}
+    save(out/'attribution-receipt.json',receipt)
+    print(json.dumps({'run_id':run_id,'conclusion':run['conclusion'],'candidate':CRATE_CANDIDATE,
+        'groups':cases,'failure':failure,'receipt':str(out/'attribution-receipt.json')}),flush=True)
+    return 0
+
 def main():
-    # Authorized minimal packet: normal API lib only; no automatic test-tail/API expansion.
+    # W4 correctness only: same existing decision_order test bytes, three disjoint filters.
     candidate=os.environ['CANDIDATE_SHA']
-    assert candidate==SEED_SHA==CRATE_CANDIDATE
+    assert re.fullmatch(r'[0-9a-f]{40}',CRATE_CANDIDATE or '') and candidate==CRATE_CANDIDATE and candidate!=SEED_SHA
+    assert CRATE_ALLOWED and CRATE_TEST_SHA256
     EVIDENCE.mkdir(parents=True,exist_ok=False);TEMP.mkdir(parents=True,exist_ok=False)
     source,target=TEMP/'seed-source',TEMP/'target-seed'
-    metadata={'source_sha':candidate,'scope':'W3 ordinary API lib qualification only',
-        'normal_lib_complete':False,'resumed_from_run':PRIOR_RUN,
-        'tail_deferred_to_Root':True,'cache_start':'restored W3 source/target; not cold'}
+    metadata={'source_sha':candidate,'scope':'W4 focused crate baseline then candidate',
+        'baseline_passed':False,'candidate_started':False,'candidate_passed':False,
+        'active_phase':'prepare','source_state':'not restored','resumed_from_run':PRIOR_RUN,
+        'no_API_continuation':True,'cache_start':'restored partial W3 cache, then serial dependency reuse'}
     initial=budget_snapshot();save(EVIDENCE/'budget-before.json',initial)
     assert int(initial['memory.max'])==8_000_000_000 and initial['memory.high']=='max' and initial['memory.swap.max']=='0'
     q,p=map(int,initial['cpu.max'].split());assert q/p<=os.cpu_count()*.6+.001
     assert TEMP==Path('/home/runner/work/_temp/issue2818')
     assert capture(['rustc','--version']).startswith('rustc 1.99.1 ')
     assert not any(os.environ.get(k) for k in ['RUSTC_WRAPPER','RUSTC_WORKSPACE_WRAPPER','RUSTC_BOOTSTRAP','RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS'])
-    save(EVIDENCE/'environment.json',{'source_sha':candidate,'rustc':capture(['rustc','-vV']),
-        'cargo':capture(['cargo','-vV']),'phase':metadata['scope'],'host_cpu_count':os.cpu_count(),
-        'diagnostics':'same four root-only flags as 425781; dependency rustc transparently execs',
-        'not_cold_or_PR_AB':True})
+    save(EVIDENCE/'environment.json',{'baseline_sha':SEED_SHA,'candidate_sha':candidate,
+        'rustc':capture(['rustc','-vV']),'cargo':capture(['cargo','-vV']),'host_cpu_count':os.cpu_count(),
+        'filters':FOCUSED_FILTERS,'scope':metadata['scope'],'root_diagnostics':False,
+        'not_W3_observer_retest_or_API_PASS':True,'not_same_cache_performance_AB':True})
     try:
         archive,incoming=download_retained()
-        qualification=read(incoming/'status.json')
-        assert qualification['status']=='BASELINE_AND_CANDIDATE_CRATE_QUALIFIED'
-        for side in ['baseline','candidate']:
-            cases_in=read(incoming/(side+'-crate-test-cases.json'))
-            assert cases_in['passed']==78 and cases_in['failed']==0 and not any(r[3] for r in cases_in['list_with_ignored'])
-            rows=read(incoming/(side+'-interface-runtime-lib-artifacts.json'))['artifacts']
-            unit=[r for r in rows if r['target']['name']=='interface_runtime' and r['profile']['test'] and r['executable']]
-            assert len(unit)==1 and unit[0]['fresh'] is False
-        run('checkout-qualified-source',['git','worktree','add','--detach',str(source),candidate],seconds=120)
+        run('checkout-archive-source',['git','worktree','add','--detach',str(source),SEED_SHA],seconds=120)
         run('restore-retained-source-target',['tar','-I','zstd -T1','-xf',str(archive),'--no-same-owner','-C',str(TEMP)],seconds=180)
-        assert capture(['git','rev-parse','HEAD'],source)==candidate
+        assert capture(['git','rev-parse','HEAD'],source)==SEED_SHA
         capture(['git','diff','--exit-code','HEAD','--'],source)
-        assert target.is_dir() and any(target.rglob('*.rlib')), 'never fall back to empty target'
-        assert hashlib.sha256((source/BASELINE_MOUNT_FILE).read_bytes()).hexdigest()==CRATE_FILE_SHA256[BASELINE_MOUNT_FILE]
-        save(EVIDENCE/'source-identity.json',{'actual_sha':candidate,'clean_tracked_source':True,
-            'finalization_sha256':CRATE_FILE_SHA256[BASELINE_MOUNT_FILE],'prior_crate_qualification_run':PRIOR_RUN})
-        stale=source/'api/api_server.mono_items.json'
-        if stale.exists():
-            assert not capture(['git','ls-files','--','api/api_server.mono_items.json'],source)
-            save(EVIDENCE/'removed-stale-mono.json',{'path':str(stale),'bytes':stale.stat().st_size,
-                'sha256':hashlib.sha256(stale.read_bytes()).hexdigest(),'reason':'restored old W2 statistics cannot be relabelled as new candidate output'})
-            stale.unlink()
+        assert target.is_dir() and any(target.rglob('*.rlib'))
+        before=frozen(source)
+        changed=capture(['git','diff','--name-only',SEED_SHA,candidate],source).splitlines()
+        assert set(changed)==set(CRATE_ALLOWED)
+        test_path=source/FOCUSED_TEST_FILE
+        original_test=test_path.read_bytes()
+        test_bytes=subprocess.check_output(['git','show',candidate+':'+FOCUSED_TEST_FILE],cwd=source)
+        assert hashlib.sha256(test_bytes).hexdigest()==CRATE_TEST_SHA256 and test_bytes!=original_test
+        test_path.write_bytes(test_bytes)
+        baseline=frozen(source)
+        assert all(baseline.get(path)==digest for path,digest in before.items() if path!=FOCUSED_TEST_FILE)
+        assert capture(['git','diff','--name-only','HEAD','--'],source).splitlines()==[FOCUSED_TEST_FILE]
+        save(EVIDENCE/'baseline-fixture-proof.json',{'baseline_head':SEED_SHA,
+            'only_overlay':FOCUSED_TEST_FILE,'old_test_sha256':hashlib.sha256(original_test).hexdigest(),
+            'shared_test_sha256':CRATE_TEST_SHA256,'all_other_tracked_source_and_production_hashes_match':True,
+            'no_mount_or_toy_implementation':True,'not_model_mutants_or_Rust_D':True})
+        metadata['source_state']='d963 production unchanged; only exact existing decision_order test overlay'
+        os.environ['ISSUE2818_OBSERVED_SOURCE_SHA']=SEED_SHA
         run('registry-prefetch',['cargo','fetch','--locked','--manifest-path','api/Cargo.toml'],cwd=source,seconds=900)
+        meta=run('crate-metadata',['cargo','metadata','--no-deps','--format-version','1','--manifest-path','api/Cargo.toml'],cwd=source,seconds=60)
+        package=next(p for p in json.loads(Path(meta['stdout_log']).read_text())['packages'] if p['name']=='interface-runtime')
+        native=next(t for t in package['targets'] if t['kind']==['lib'] and t['test'])
+        identity='interface-runtime/lib/'+native['name']+'/'+str(Path(native['src_path']).relative_to(source))
+        roots={str(Path(native['src_path']).relative_to(base)):identity for base in [source/'api',Path(package['manifest_path']).parent]}
+        save(EVIDENCE/'crate-target.json',{'package_id':package['id'],'target':native,'identity':identity})
         env={**os.environ,'CARGO_TARGET_DIR':str(target),'CARGO_BUILD_JOBS':'1','CARGO_INCREMENTAL':'0',
              'CARGO_NET_OFFLINE':'true','CARGO_TERM_COLOR':'never','TERM':'dumb'}
-        diagnostic=install_stage_wrapper(source,env)
-        assert diagnostic.get('ISSUE2818_MONO_STATS')=='1', 'frozen comparison requires all four supported root diagnostics'
-        save(EVIDENCE/'effective-cargo-env.json',{k:diagnostic.get(k) for k in [
-            'CARGO_TARGET_DIR','CARGO_BUILD_JOBS','CARGO_INCREMENTAL','CARGO_NET_OFFLINE',
-            'RUSTC_WRAPPER','RUSTC_WORKSPACE_WRAPPER','RUSTC_BOOTSTRAP','RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS',
-            'ISSUE2818_RUSTC_MODE','ISSUE2818_MONO_STATS']})
-        build=['cargo','build','--profile','test','--package','api-server','--features','test-support','--lib','--jobs','1','--message-format=json']
-        run('seed-normal-lib-prebuild',build,cwd=source/'api',env=diagnostic,heavy=True,seconds=600)
-        metadata['normal_lib_complete']=True
-        assert stage_summary()['diagnostic_root_execs']==1
-        save(EVIDENCE/'status.json',{'status':'NORMAL_API_LIB_COMPLETED','source_sha':candidate,
-            'tail_not_run':True,'remaining':'default-Fresh guard and W2 private24/native7/seed remain Root follow-up',
-            'not_full_Root_PASS':True})
+        results={}
+        for side in ['baseline','candidate']:
+            if side=='candidate':
+                assert metadata['baseline_passed']
+                assert test_path.read_bytes()==test_bytes
+                run('remove-baseline-test-overlay',['git','restore','--source',SEED_SHA,'--worktree','--',FOCUSED_TEST_FILE],cwd=source,seconds=60)
+                run('checkout-crate-candidate',['git','checkout','--detach',candidate],cwd=source,seconds=60)
+                assert capture(['git','rev-parse','HEAD'],source)==candidate
+                capture(['git','diff','--exit-code','HEAD','--'],source)
+                after=frozen(source)
+                assert all(after.get(path)==digest for path,digest in before.items() if path not in CRATE_ALLOWED)
+                assert test_path.read_bytes()==test_bytes
+                save(EVIDENCE/'candidate-source-validation.json',{'actual_sha':candidate,
+                    'exact_changed_paths':changed,'protected_hashes_match':True,'shared_test_sha256':CRATE_TEST_SHA256,
+                    'W3_observer_and_fixture_not_changed':True})
+                metadata.update(candidate_started=True,source_state='clean candidate with same test bytes')
+                os.environ['ISSUE2818_OBSERVED_SOURCE_SHA']=candidate
+            results[side]=[]
+            seen=set()
+            for index,query in enumerate(FOCUSED_FILTERS):
+                label=side+'-q'+str(index)
+                metadata['active_phase']=label
+                argv=['cargo','test','-p','interface-runtime','--lib','--jobs','1','--message-format=json',query,'--','--test-threads=1']
+                result=qualify_interface_phase(label,source,target,env,argv,roots,identity,native)
+                keys={(r[0],r[1]) for r in result['list_with_ignored']}
+                assert not seen.intersection(keys),'focused filters overlap'
+                assert not any('finalization::driver_tests::' in r[1] for r in result['actual'])
+                seen.update(keys)
+                artifact_file=EVIDENCE/(label+'-interface-runtime-lib-artifacts.json')
+                units=[r for r in read(artifact_file)['artifacts'] if r['target']['name']==native['name'] and r['profile']['test'] and r['executable']]
+                assert len(units)==1
+                unit=units[0]
+                executable=Path(unit['executable'])
+                assert unit['package_id']==package['id'] and unit['target']==native
+                assert unit['profile']['test'] is True and unit['profile']['opt_level']=='0' and unit['profile']['debuginfo']==0
+                assert executable.is_file() and executable.parent==target/'debug/deps' and executable.name.startswith('interface_runtime-')
+                if side=='candidate' and index==0:
+                    assert units[0]['fresh'] is False,'first candidate test binary must really rebuild'
+                result['filter']=query;result['test_artifact_fresh']=units[0]['fresh']
+                save(EVIDENCE/(label+'-crate-test-cases.json'),result)
+                results[side].append(result)
+            metadata[side+'_passed']=True
+        for old,new in zip(results['baseline'],results['candidate']):
+            assert Counter(map(tuple,old['list_with_ignored']))==Counter(map(tuple,new['list_with_ignored']))
+            assert Counter(map(tuple,old['actual']))==Counter(map(tuple,new['actual']))
+        save(EVIDENCE/'status.json',{'status':'W4_FOCUSED_BASELINE_AND_CANDIDATE_QUALIFIED',
+            'source_sha':candidate,'filters':FOCUSED_FILTERS,'same_nonoverlapping_cases_ignored_actual':True,
+            'not_API_or_W3_78_retest_or_Rust_D_or_performance_PASS':True})
         return 0
     finally:
-        cargo_fresh_summary();stage_summary();collect_mono_files(source,target)
+        crate_artifacts();save(EVIDENCE/'qualification-phase-state.json',metadata)
         retain_seed_cache(source,target,metadata)
-        save(EVIDENCE/'qualification-phase-state.json',metadata)
-        save(EVIDENCE/'api-cost-summary.json',{'commands':RESULTS,
+        save(EVIDENCE/'crate-cost-summary.json',{'commands':RESULTS,
+            'baseline_command_seconds':sum(r['wall_seconds'] for r in RESULTS if r['label'].startswith('baseline-')),
+            'candidate_command_seconds':sum(r['wall_seconds'] for r in RESULTS if r['label'].startswith('candidate-')),
             'total_measured_command_seconds':sum(r['wall_seconds'] for r in RESULTS),
-            'scope':'ordinary API lib qualification only; restored cache and changed workspace dependencies; no crate55/13 or cold/PR benefit claim'})
-        save(EVIDENCE/'completion-summary.json',{'source_sha':candidate,'normal_lib_complete':metadata['normal_lib_complete'],
-            'tail_not_run':True,'phases':RESULTS})
-        print(json.dumps({'ci_completion':{'source_sha':candidate,'normal_lib_complete':metadata['normal_lib_complete'],
-             'tail_not_run':True,'command_count':len(RESULTS)}}),flush=True)
+            'scope':'shared restored cache; baseline may build missing dependency/test artifacts; candidate rebuilds changed crate; later filters may be Fresh; no same-cache build/PR gain; failure/retention costs included'})
 
 if __name__=='__main__':
+    if len(sys.argv)>1 and sys.argv[1] in ('--help','-h'):
+        print('CI entry: fixed W4 focused baseline/candidate. Local owner: follow-w4 RUN_ID OUT_DIR EXPECTED_CONTROL_SHA. Root must freeze candidate/test hash before publication.')
+        sys.exit(0)
+    if len(sys.argv)>1 and sys.argv[1]=='follow-w4':
+        sys.exit(follow_w4(int(sys.argv[2]),sys.argv[3],sys.argv[4]))
     if len(sys.argv)>1 and sys.argv[1]=='prior-summary':
         summarize_prior(sys.argv[2],sys.argv[3])
         sys.exit(0)
