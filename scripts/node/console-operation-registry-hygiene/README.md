@@ -10,14 +10,14 @@ node scripts/node/console-operation-registry-hygiene/cli.js
 
 The authoritative checks run serially:
 
-- `cargo test -p api-server --test console_core_registry_tests --features test-support migrated_assembly_contains_every_console_router_owner_assembly`
-- `cargo test -p api-server --test console_core_registry_tests --features test-support console_route_assembly`
+- `cargo test -p api-server --test api_private_routes --features test-support migrated_assembly_contains_every_console_router_owner_assembly`
+- `cargo test -p api-server --test api_private_routes --features test-support console_route_assembly`
 
-These filters discover 1 and 24 cases respectively (25 executions, 24 unique cases).
-The thin target links the ordinary `api_server` library. The original assertion bodies,
-independent router-owner list, exact route mappings, and negative cases remain crate-local
-behind `test-support`; only this target registers them as tests. Its seven existing public
-contract tests remain unchanged.
+The filters retain the original 1 and 24 case identities respectively (25 executions,
+24 unique cases). `api_private_routes` registers the assertions at their original source paths,
+including the independent router-owner list, exact route mappings, and negative cases.
+The ordinary `test-support` library no longer mounts or reexports their bodies.
+`console_core_registry_tests` retains its seven existing public contract tests.
 
 With no arguments, the gate runs the Rust `console_operation_inventory` exporter. The exporter
 uses `cargo run --profile test` to match the preceding assembly checks while building a normal

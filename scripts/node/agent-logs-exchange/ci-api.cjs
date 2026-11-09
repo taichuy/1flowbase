@@ -87,7 +87,7 @@ function buildApiTestCommands(cargoTestThreads) {
     ['native-reception', 'application_api_routes::log_reception::', 'api_application'],
     ['native-export', 'application_runtime_routes_logs_export_json_trace_dump_preserves_detail_and_error_payload', 'api_application'],
     ['native-archive', 'application_runtime_routes_logs_archive_returns_v1_manifest_and_restore_facts', 'api_application'],
-    ['operation-registry', 'console_route_assembly', 'console_core_registry_tests', 'test-support'],
+    ['operation-registry', 'console_route_assembly', 'api_private_routes', 'test-support'],
     ['operation-migration', 'console_policy_migration']
   ];
   return selectors.map(([label, selector, target, features]) => ({

@@ -47,17 +47,6 @@ pub(crate) use settings_group::{
 
 pub const PUBLIC_API_PATH_PREFIX: &str = "/api/public/";
 
-// Only these shared assertions are exposed to the thin integration target.
-#[cfg(all(feature = "test-support", not(test)))]
-#[path = "_tests/console_route_assembly_tests.rs"]
-pub(crate) mod console_route_assembly_assertions;
-#[cfg(all(feature = "test-support", not(test)))]
-#[path = "_tests/file_console_route_assembly_tests.rs"]
-pub(crate) mod file_console_route_assembly_assertions;
-#[cfg(all(feature = "test-support", not(test)))]
-#[path = "_tests/settings_owner_console_route_assembly_tests.rs"]
-pub(crate) mod settings_owner_console_route_assembly_assertions;
-
 #[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod _tests;
