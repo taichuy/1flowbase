@@ -74,7 +74,7 @@
     "scope": "six archive I/O labels only; no Cargo/rustc reclaim",
     "trigger_bytes": 4000000000
   },
-  "candidate": "862018221da3337b0793658231f89b9d0f3c7e03",
+  "candidate": "1547a4f1de65c132fe7263985aaf52894f8061dc",
   "clean_checks": [
     [
       "cargo",
@@ -98,7 +98,7 @@
       "1"
     ]
   ],
-  "control_base_sha": "cad73fc8c5e0db52c7eaf4c623d08f4c90e3b745",
+  "control_base_sha": "e29fec32ae5736d630b17ba209cec892d61217a4",
   "execution_authorized": true,
   "final_resource_requirements": {
     "all_original_obligations_preserved": true,
@@ -130,8 +130,10 @@
     }
   },
   "inputs": {
-    ".github/workflows/issue2818-one-off.yml": "19ad91487bfd2f5cc6db5782c4b43c4b7b6b504d825d11f3184094ac9c296153",
-    "tmp/test-governance/issue2818/ci-preparation/coupled-api/entry.py": "20d47f55bcac97de5d7225b50a59a6da214c491d9f4350e29fc497457076c0f3",
+    ".github/workflows/issue2818-one-off.yml": "df6028e5dbb9f32065696dc42156e01cb31567fdf9c7178643321814db8913f4",
+    "scripts/shell/_tests/resource-job-run.test.py": "9f0a9f2601709307e395e168ec7011bb749d4ffcf82d8b7f9efc4d7ca5cb1a8b",
+    "scripts/shell/resource-job-run.py": "823907fd793b760425d5a5a48fa74d9503cfc0ecf6052a75bcfad62fd59af14c",
+    "tmp/test-governance/issue2818/ci-preparation/coupled-api/entry.py": "bc2434f57d64efe5863d8e020364659866048cd25b320196aa33abd913c46a4f",
     "tmp/test-governance/issue2818/ci-preparation/coupled-api/root-wrapper.py": "2c0c11da5494a0d4f995f47c37778f668e6cd4842c9e146d31c00b6618e07d86",
     "tmp/test-governance/issue2818/ci-preparation/experiment.py": "6917281893feaa119f2bf6e025b592e4c61bcb8df6d70352486a671b454d759f"
   },
@@ -254,18 +256,29 @@
   "postgres_major": 16,
   "proposal_status": "READY_FOR_ROOT_APPROVED_EXECUTION",
   "rejected_candidate_reasons": {
+    "862018221da3337b0793658231f89b9d0f3c7e03": "Controlled run42757114259 stopped before Rust on owned cgroup ENODEV cleanup failure; application source unqualified, not a measured memory regression. Retry requires the tested runner repair.",
     "a9f69d24afb9160e5f8770fea5b816ee33ed2afd": "Ordinary API actual record-only rustc hard OOM at316s; later stages NotReached; unchanged configuration retry forbidden.",
     "df054e2036231a7f8a225cab0425e88d0ca4d105": "Observed unary poll physical stack97848 to102696 bytes (+4848) in three instances; rejected by Root. Future-size reduction alone did not pass runtime constraints."
   },
   "rejected_candidate_shas": [
     "df054e2036231a7f8a225cab0425e88d0ca4d105",
-    "a9f69d24afb9160e5f8770fea5b816ee33ed2afd"
+    "a9f69d24afb9160e5f8770fea5b816ee33ed2afd",
+    "862018221da3337b0793658231f89b9d0f3c7e03"
   ],
   "root_authorization": {
-    "basis": "user authorized ongoing optimization and beta validation; one isolated CI source trial after Root review",
+    "basis": "continued user-authorized optimization; one changed-runner validation after real-kernel RED/GREEN, no unchanged retry",
     "not_Root_acceptance": true,
     "owner": "ChatGPT /root",
-    "time_utc": "2026-11-10T04:37:39.114264+00:00"
+    "time_utc": "2026-11-10T04:54:49.799340+00:00"
+  },
+  "runner_repair": {
+    "actual_Rust_previously_reached": false,
+    "local_real_OS_methods_passed": 7,
+    "no_emptiness_or_ownership_gate_relaxation": true,
+    "prior_run": 42757114259,
+    "product_commit": "1547a4f1de65c132fe7263985aaf52894f8061dc",
+    "race_subcases": 7,
+    "runner_sha256": "823907fd793b760425d5a5a48fa74d9503cfc0ecf6052a75bcfad62fd59af14c"
   },
   "source_hashes": {
     ".agents/skills/qa-evaluation/references/backend/console-settings-registration-gate.md": "275b3637abadd1833821b5443194c583686ab0ce20b52bf1938104148c1d253b",
@@ -314,9 +327,12 @@
     "scripts/node/verify-backend/_tests/cli.test.js": "c360cc9274dd708569299bdc107d83d4ca47a3909b78453ce8c5e6f66a771d2f",
     "scripts/node/verify/_tests/history-maintenance.test.js": "6bfa997d542f76ac3ba8a3964735a84019d38c0a28843025db4055415799f904",
     "scripts/node/verify/backend-targets.js": "60e45437662f549127c9ce8ae56323d5ae83f3ef24267d6c2784e2efc64cda33",
-    "scripts/node/verify/backend.js": "2064460d572aec841b69a5d31d6868ba6011b6407635b17ebc781c7b36bf54b1"
+    "scripts/node/verify/backend.js": "2064460d572aec841b69a5d31d6868ba6011b6407635b17ebc781c7b36bf54b1",
+    "scripts/shell/_tests/resource-job-run.test.py": "9f0a9f2601709307e395e168ec7011bb749d4ffcf82d8b7f9efc4d7ca5cb1a8b",
+    "scripts/shell/resource-job-run.py": "823907fd793b760425d5a5a48fa74d9503cfc0ecf6052a75bcfad62fd59af14c"
   },
   "stage_order": [
+    "resource-runner-regression",
     "ordinary-API",
     "interface-runtime-74",
     "native31",
@@ -335,9 +351,9 @@
     "C01-new-alltargets"
   ],
   "tracked_diff_not_AC006": {
-    "added": 1461,
-    "deleted": 1516,
-    "net": -55,
+    "added": 1519,
+    "deleted": 1523,
+    "net": -4,
     "temporary_tooling_costs_not_yet_aggregated": true
   },
   "unresolved": [

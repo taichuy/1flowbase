@@ -10,17 +10,20 @@ Inherit real ONEFLOWBASE_TASK_BUDGET_CGROUP/ID for an active finite user slice.
 Artifacts persist in task-owned tmp/test-governance/resource-job-run/<uuid>/.
 No Cargo, services, production admission lock, or host/parent memory pressure.
 """
+import errno
 import fcntl
 import hashlib
 import json
 import os
 from pathlib import Path
+import runpy
 import signal
 import subprocess
 import sys
 import time
 import unittest
 import uuid
+from unittest.mock import patch
 
 
 SOURCE = Path(__file__).resolve().parents[1] / 'resource-job-run.py'
@@ -273,6 +276,40 @@ class RealJobTests(unittest.TestCase):
     def manager(self, argv):
         return subprocess.run(['/usr/bin/systemctl', '--user', *argv], capture_output=True,
                               timeout=3, text=True, check=True)
+
+    def test_t1_cgroup_removal_read_race_preserves_owned_identity(self):
+        job_type = runpy.run_path(str(SOURCE))['Job']
+        job = object.__new__(job_type)
+        group = CGROOT / proc_identity()['cgroup'].lstrip('/') / ('empty-race-' + uuid.uuid4().hex)
+        original_read = Path.read_text
+        for outcome in ('removed', 'replaced', 'read-replaced', errno.ENODEV, errno.ENOENT, errno.EACCES, errno.EIO):
+            with self.subTest(outcome=outcome):
+                group.mkdir()
+                job.owner = {'cgroup': '/' + str(group.relative_to(CGROOT)), 'inode': group.stat().st_ino}
+                def raced_read(path, *args, **kwargs):
+                    if path != group / 'cgroup.events':
+                        return original_read(path, *args, **kwargs)
+                    if isinstance(outcome, int):
+                        raise OSError(outcome, 'injected while the owned directory still exists')
+                    with path.open() as stream:
+                        before = stream.read() if outcome == 'read-replaced' else None
+                        group.rmdir()
+                        if 'replaced' in outcome:
+                            group.mkdir()
+                        return before if before is not None else stream.read()
+                try:
+                    with patch.object(Path, 'read_text', raced_read):
+                        if isinstance(outcome, int):
+                            with self.assertRaises(OSError):
+                                job.empty()
+                        elif 'replaced' in outcome:
+                            with self.assertRaisesRegex(RuntimeError, 'inode'):
+                                job.empty()
+                        else:
+                            self.assertTrue(job.empty())
+                finally:
+                    if group.exists():
+                        group.rmdir()
 
     def test_t1_natural_exit_raw_logs_and_exclusive_receipts(self):
         for code in (0, 7, 124):
