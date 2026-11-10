@@ -1182,6 +1182,7 @@ fn interruption_error(interruption: InvocationInterruption) -> InterfaceInvocati
 
 mod decisions;
 mod kernel;
+mod metadata;
 
 #[path = "invocation/event_observation.rs"]
 mod event_observation;

@@ -1,6 +1,7 @@
 use super::decisions::{
     admission_bindings, authorization_bindings, DecisionFailure, InvocationDecisions,
 };
+use super::metadata::InvocationMetadata;
 use super::*;
 
 impl<P> InterfaceInvocationKernel<P>
@@ -138,70 +139,28 @@ where
         )
         .with_extension_context(extension_context);
         receipt.resolve(&plan);
-        receipt.stage(InterfaceInvocationStage::Resolved);
-        if binding.projection().protocol() != protocol {
-            return Err(receipt
-                .fail(
-                    InterfaceInvocationError::ProtocolBindingMismatch,
-                    InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
+        let mut admission_reference = None;
+        let validation = InvocationMetadata {
+            plan: &plan,
+            definition: &definition,
+            binding: &binding,
+            protocol,
+            authentication_adapter: &authentication_adapter,
+            authentication_activation: &authentication_activation,
+            authorization_reference: &|| self.authorization.adapter_reference(),
+            target_admission: self.target_admission.as_deref(),
+            principal_profile: P::PROFILE,
+            contracts: [
+                contract_identity::<I>,
+                contract_identity::<O>,
+                contract_identity::<E>,
+            ],
+            stream_event: Some(contract_identity::<S>),
         }
-        if plan.adapter_plan().authentication() != &authentication_adapter {
+        .validate(&mut receipt, &mut admission_reference);
+        if let Err(error) = validation {
             return Err(receipt
-                .fail(
-                    InterfaceInvocationError::AuthenticationAdapterMismatch,
-                    InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
-        }
-        if plan.authentication().activation() != &authentication_activation {
-            return Err(receipt
-                .fail(
-                    InterfaceInvocationError::AuthenticationActivationMismatch,
-                    InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
-        }
-        if plan.adapter_plan().authorization() != &self.authorization.adapter_reference() {
-            return Err(receipt
-                .fail(
-                    InterfaceInvocationError::AuthorizationAdapterMismatch,
-                    InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
-        }
-        let admission_reference = self
-            .target_admission
-            .as_ref()
-            .map(|admission| admission.adapter_reference());
-        if plan.adapter_plan().admission() != admission_reference.as_ref() {
-            return Err(receipt
-                .fail(
-                    InterfaceInvocationError::AdmissionAdapterMismatch,
-                    InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
-        }
-        if definition.principal_profile() != P::PROFILE {
-            return Err(receipt
-                .fail(
-                    InterfaceInvocationError::PrincipalProfileMismatch,
-                    InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
-        }
-        receipt.stage(InterfaceInvocationStage::PrincipalEstablished);
-        if definition.input_contract() != &contract_identity::<I>()
-            || definition.stream_event_contract() != Some(&contract_identity::<S>())
-            || definition.output_contract() != &contract_identity::<O>()
-            || definition.target_error_contract() != &contract_identity::<E>()
-        {
-            return Err(receipt
-                .fail(
-                    InterfaceInvocationError::ContractMismatch,
-                    InterfaceInvocationTerminal::Rejected,
-                )
+                .fail(error, InterfaceInvocationTerminal::Rejected)
                 .await);
         }
         if let Some(factory) = &plan.managed_factory {
@@ -540,7 +499,7 @@ where
         let definition;
         let binding;
         let hook_plan;
-        let admission_reference;
+        let mut admission_reference = None;
         let mut authorization_decision = None;
         let (error, terminal) = 'preparation: {
             let initial_interruption = if controls.cancellation.is_cancelled() {
@@ -578,56 +537,26 @@ where
                 );
             }
             receipt.resolve(&plan);
-            receipt.stage(InterfaceInvocationStage::Resolved);
-            if binding.projection().protocol() != protocol {
-                break 'preparation (
-                    InterfaceInvocationError::ProtocolBindingMismatch,
-                    InterfaceInvocationTerminal::Rejected,
-                );
+            let validation = InvocationMetadata {
+                plan: &plan,
+                definition: &definition,
+                binding: &binding,
+                protocol,
+                authentication_adapter: &authentication_adapter,
+                authentication_activation: &authentication_activation,
+                authorization_reference: &|| self.authorization.adapter_reference(),
+                target_admission: self.target_admission.as_deref(),
+                principal_profile: P::PROFILE,
+                contracts: [
+                    contract_identity::<I>,
+                    contract_identity::<O>,
+                    contract_identity::<E>,
+                ],
+                stream_event: None,
             }
-            if plan.adapter_plan().authentication() != &authentication_adapter {
-                break 'preparation (
-                    InterfaceInvocationError::AuthenticationAdapterMismatch,
-                    InterfaceInvocationTerminal::Rejected,
-                );
-            }
-            if plan.authentication().activation() != &authentication_activation {
-                break 'preparation (
-                    InterfaceInvocationError::AuthenticationActivationMismatch,
-                    InterfaceInvocationTerminal::Rejected,
-                );
-            }
-            if plan.adapter_plan().authorization() != &self.authorization.adapter_reference() {
-                break 'preparation (
-                    InterfaceInvocationError::AuthorizationAdapterMismatch,
-                    InterfaceInvocationTerminal::Rejected,
-                );
-            }
-            admission_reference = self
-                .target_admission
-                .as_ref()
-                .map(|admission| admission.adapter_reference());
-            if plan.adapter_plan().admission() != admission_reference.as_ref() {
-                break 'preparation (
-                    InterfaceInvocationError::AdmissionAdapterMismatch,
-                    InterfaceInvocationTerminal::Rejected,
-                );
-            }
-            if definition.principal_profile() != P::PROFILE {
-                break 'preparation (
-                    InterfaceInvocationError::PrincipalProfileMismatch,
-                    InterfaceInvocationTerminal::Rejected,
-                );
-            }
-            receipt.stage(InterfaceInvocationStage::PrincipalEstablished);
-            if definition.input_contract() != &contract_identity::<I>()
-                || definition.output_contract() != &contract_identity::<O>()
-                || definition.target_error_contract() != &contract_identity::<E>()
-            {
-                break 'preparation (
-                    InterfaceInvocationError::ContractMismatch,
-                    InterfaceInvocationTerminal::Rejected,
-                );
+            .validate(&mut receipt, &mut admission_reference);
+            if let Err(error) = validation {
+                break 'preparation (error, InterfaceInvocationTerminal::Rejected);
             }
             if let Some(factory) = &plan.managed_factory {
                 let frozen = await_in_flight(
