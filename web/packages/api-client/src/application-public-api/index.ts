@@ -124,7 +124,7 @@ export interface ConsoleWorkflowScheduleTrigger {
 export interface ReplaceConsoleWorkflowScheduleTriggerInput {
   enabled: boolean;
   cron: string;
-  timezone: string;
+  timezone?: string;
   input_payload: unknown;
 }
 

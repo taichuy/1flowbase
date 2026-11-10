@@ -49,7 +49,7 @@ import {
   unpublishApplicationApiVersion,
   updateApplicationApiStatus
 } from '../../../applications/api/public-api';
-import { ApplicationFormModal } from '../../../applications/components/ApplicationFormModal';
+import { ApplicationFormDrawer } from '../../../applications/components/ApplicationFormDrawer';
 import { downloadApplicationArchive } from '../../../applications/lib/template-download';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';
 import {
@@ -1059,7 +1059,7 @@ export function ApplicationManagementPanel() {
         />
       </DataTableLayout>
 
-      <ApplicationFormModal
+      <ApplicationFormDrawer
         open={createOpen}
         csrfToken={csrfToken}
         intent={{
@@ -1069,7 +1069,7 @@ export function ApplicationManagementPanel() {
         onClose={() => setCreateOpen(false)}
       />
 
-      <ApplicationFormModal
+      <ApplicationFormDrawer
         open={Boolean(detailsApplication)}
         csrfToken={csrfToken}
         intent={{

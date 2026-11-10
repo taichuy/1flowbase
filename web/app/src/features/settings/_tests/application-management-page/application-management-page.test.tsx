@@ -727,7 +727,7 @@ describe('ApplicationManagementPanel', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('AC-001 AC-008 opens the shared edit modal and keeps extension registration read-only', async () => {
+  test('AC-001 AC-008 opens the shared edit drawer and keeps extension registration read-only', async () => {
     applicationsApi.fetchApplicationDetail.mockResolvedValue({
       id: 'app-extension',
       application_type: 'workflow',
@@ -803,8 +803,8 @@ describe('ApplicationManagementPanel', () => {
     const drawer = await screen.findByRole('dialog', {
       name: '编辑应用信息'
     });
-    expect(document.querySelector('.ant-modal-content')).not.toBeNull();
-    expect(document.querySelector('.ant-drawer')).toBeNull();
+    expect(document.querySelector('.ant-drawer')).not.toBeNull();
+    expect(document.querySelector('.ant-modal-content')).toBeNull();
     expect(document.querySelector('.ant-descriptions')).toBeNull();
     expect(
       await within(drawer).findByDisplayValue('Order Extension')
@@ -847,7 +847,10 @@ describe('ApplicationManagementPanel', () => {
     const drawer = await screen.findByRole('dialog', {
       name: '编辑应用信息'
     });
-    const cron = await within(drawer).findByDisplayValue('0 9 * * 1-5');
+    fireEvent.mouseDown(await within(drawer).findByRole('combobox', { name: '重复频率' }));
+    fireEvent.click(await screen.findByText('自定义 Cron', { selector: '.ant-select-item-option-content' }));
+    const cron = within(drawer).getByRole('textbox', { name: 'Cron 表达式' });
+    expect(cron).toHaveValue('0 9 * * 1-5');
     const customerId = await within(drawer).findByRole('textbox', {
       name: 'Customer ID · string'
     });

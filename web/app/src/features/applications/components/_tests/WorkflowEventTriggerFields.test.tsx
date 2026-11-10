@@ -3,7 +3,7 @@ import { Button, Form } from 'antd';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { AppProviders } from '../../../../app/AppProviders';
 import { WorkflowEventTriggerFields } from '../WorkflowEventTriggerFields';
-import { ApplicationFormModal } from '../ApplicationFormModal';
+import { ApplicationFormDrawer } from '../ApplicationFormDrawer';
 
 const api = vi.hoisted(() => ({
   fetchWorkflowEventCatalog: vi.fn(),
@@ -292,7 +292,7 @@ test.each([
     const onClose = vi.fn();
     render(
       <AppProviders>
-        <ApplicationFormModal
+        <ApplicationFormDrawer
           open
           csrfToken="test-csrf"
           intent={{ kind: 'edit', applicationId: 'event-application' }}
@@ -371,9 +371,11 @@ test('same-contract subtype leaves save complete backend filters and discover es
   const sourceSelect = screen.getByRole('combobox', { name: '监听事件' });
   fireEvent.mouseDown(sourceSelect);
   expect(
-    await screen.findByText(/billing \/ credits \/ reserved/)
+    await screen.findByText('reserved', { selector: '.ant-select-item-option-content' })
   ).toBeInTheDocument();
-  fireEvent.click(await screen.findByText(/billing \/ credits \/ settled/));
+  fireEvent.change(sourceSelect, { target: { value: 'SETT' } });
+  await waitFor(() => expect(screen.queryByText('reserved', { selector: '.ant-select-item-option-content' })).not.toBeInTheDocument());
+  fireEvent.click(await screen.findByText('settled', { selector: '.ant-select-item-option-content' }));
   const phaseSelect = screen.getByRole('combobox', { name: '监听时机' });
   fireEvent.mouseDown(phaseSelect);
   fireEvent.click(
@@ -467,6 +469,11 @@ test('new listeners default to publication and retain every supported phase with
   fireEvent.click(screen.getByRole('button', { name: 'Save listener' }));
   await waitFor(() =>
     expect(saved.mock.calls.at(-1)?.[0].event.trigger_phase).toBe('consumed')
+  );
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  fireEvent.mouseEnter(screen.getAllByRole('img', { name: 'question-circle' })[1]);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(
+    'Consumed 表示出队，不表示业务成功；消费者失败互不影响。'
   );
 });
 

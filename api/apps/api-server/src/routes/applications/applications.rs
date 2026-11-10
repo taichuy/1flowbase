@@ -109,7 +109,7 @@ pub struct CreateApplicationBody {
 pub struct CreateWorkflowTriggerConfigBody {
     /// Required for schedule triggers; standard cron expression.
     pub cron: Option<String>,
-    /// Required for schedule triggers; IANA timezone name.
+    /// Optional IANA timezone name. Omitted or empty follows the server system timezone.
     pub timezone: Option<String>,
     /// Optional schedule defaults keyed by Workflow Start input field key.
     pub input_payload: Option<serde_json::Value>,

@@ -55,16 +55,6 @@ export function WorkflowEventTriggerFields({
     (entry.origin === 'custom'
       ? entry.enabled !== false
       : Boolean(entry.source)) && entry.supported_phases.length > 0;
-  const scopeLabels = {
-    system: t('event.system_scope'),
-    unbound: t('event.unbound_scope')
-  };
-  const sourceLabel = (entry: EventCatalogEntry) =>
-    `${entry.group_path?.length ? `${entry.group_path.join(' / ')} / ` : ''}${entry.name}${
-      entry.source
-        ? ` · ${entry.source.selection.scope.kind === 'workspace' ? entry.source.selection.scope.workspace_id : scopeLabels[entry.source.selection.scope.kind]} · ${entry.source.selection.source_id}`
-        : ''
-    }`;
   const available = catalog.data?.filter(eligible) ?? [];
   const selected = catalog.data?.find(
     (entry) => identity(entry) === currentIdentity
@@ -72,13 +62,13 @@ export function WorkflowEventTriggerFields({
   const sourceAvailable = selected ? eligible(selected) : false;
   const sourceOptions = available.map((entry) => ({
     value: identity(entry),
-    label: sourceLabel(entry),
+    label: entry.name,
     disabled: false
   }));
   if (contract_id && !sourceAvailable) {
     sourceOptions.push({
       value: currentIdentity,
-      label: `${selected ? sourceLabel(selected) : contract_id} · ${t('event.source_unavailable')}`,
+      label: `${selected ? selected.name : contract_id} · ${t('event.source_unavailable')}`,
       disabled: true
     });
   }
@@ -107,15 +97,12 @@ export function WorkflowEventTriggerFields({
   }
   return (
     <>
-      <Alert type="info" showIcon title={t('event.listening_hint')} />
-      {trigger_phase === 'consumed' && (
-        <Alert type="info" showIcon title={t('event.lifecycle_hint')} />
-      )}
       {catalog.isError && (
         <Alert type="error" title={t('auto.trigger_load_failed')} />
       )}
       <Form.Item
         label={t('event.source')}
+        tooltip={t('event.listening_hint')}
         required
         validateStatus={
           contract_id && !sourceAvailable && !catalog.isPending
@@ -130,6 +117,8 @@ export function WorkflowEventTriggerFields({
       >
         <Select
           aria-label={t('event.source')}
+          showSearch
+          optionFilterProp="label"
           loading={catalog.isPending}
           value={contract_id ? currentIdentity : undefined}
           options={sourceOptions}
@@ -172,6 +161,7 @@ export function WorkflowEventTriggerFields({
       </Form.Item>
       <Form.Item
         label={t('event.phase')}
+        tooltip={t('event.lifecycle_hint')}
         name={['event', 'trigger_phase']}
         dependencies={[
           ['event', 'contract_id'],
@@ -187,7 +177,7 @@ export function WorkflowEventTriggerFields({
           }
         ]}
       >
-        <Select options={phaseOptions} />
+        <Select aria-label={t('event.phase')} options={phaseOptions} />
       </Form.Item>
       {/* Register the whole mapping even when no Start input controls exist.
           Disabling a stored source must retain mappings for historical inputs. */}
@@ -216,9 +206,10 @@ export function WorkflowEventTriggerFields({
                 message: t('event.pointer_invalid')
               }
             ]}
-            extra={t('event.pointer_hint')}
+            tooltip={t('event.pointer_hint')}
           >
             <AutoComplete
+              aria-label={`${field.label} · ${field.valueType}`}
               options={pointerOptions}
               filterOption={(input, option) =>
                 !!option?.value.toLowerCase().includes(input.toLowerCase())

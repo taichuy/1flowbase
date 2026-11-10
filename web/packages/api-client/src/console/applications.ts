@@ -9,7 +9,7 @@ export type ConsoleWorkflowTriggerType = 'extension' | 'schedule' | 'event';
 export type CreateConsoleWorkflowTriggerConfig =
   | {
       cron: string;
-      timezone: string;
+      timezone?: string;
       input_payload: unknown;
     }
   | {

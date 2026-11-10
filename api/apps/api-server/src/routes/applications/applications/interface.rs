@@ -1001,10 +1001,7 @@ fn parse_create_workflow_trigger_config(
                 .cron
                 .filter(|value| !value.trim().is_empty())
                 .ok_or(ControlPlaneError::InvalidInput("cron"))?;
-            let timezone = config
-                .timezone
-                .filter(|value| !value.trim().is_empty())
-                .ok_or(ControlPlaneError::InvalidInput("timezone"))?;
+            let timezone = config.timezone.unwrap_or_default().trim().to_owned();
             Ok(Some(CreateWorkflowTriggerConfig::Schedule {
                 cron,
                 timezone,
@@ -1099,6 +1096,25 @@ mod tests {
     use interface_runtime::BindingId;
 
     use super::*;
+
+    #[test]
+    fn schedule_creation_accepts_omitted_or_empty_timezone() {
+        for input in [
+            serde_json::json!({"cron": "0 9 * * *"}),
+            serde_json::json!({"cron": "0 9 * * *", "timezone": ""}),
+        ] {
+            let config = serde_json::from_value(input).unwrap();
+            let parsed = parse_create_workflow_trigger_config(
+                Some(domain::WorkflowTriggerType::Schedule),
+                Some(config),
+            )
+            .unwrap();
+            assert!(matches!(
+                parsed,
+                Some(CreateWorkflowTriggerConfig::Schedule { timezone, .. }) if timezone.is_empty()
+            ));
+        }
+    }
 
     #[test]
     fn f09a_registry_freezes_all_console_application_bindings() {

@@ -184,7 +184,8 @@ pub struct WorkflowScheduleTriggerBody {
     pub enabled: bool,
     /// Standard cron expression.
     pub cron: String,
-    /// IANA timezone used to evaluate cron.
+    /// IANA timezone used to evaluate cron. Omitted or empty follows the server system timezone.
+    #[serde(default)]
     pub timezone: String,
     /// Defaults keyed by Workflow Start input field key. HTTP source is irrelevant for schedules.
     pub input_payload: Value,
