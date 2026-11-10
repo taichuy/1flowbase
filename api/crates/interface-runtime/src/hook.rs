@@ -297,8 +297,7 @@ where
         context: &InterfaceHookContext,
         output: &O,
     ) {
-        for (plugin, hook) in self
-            .observer_plugins(InterfaceExtensionPoint::After)
+        for (plugin, hook) in observer_plugins(&self.bindings, InterfaceExtensionPoint::After)
             .into_iter()
             .zip(&self.after)
             .rev()
@@ -324,8 +323,7 @@ where
         context: &InterfaceHookContext,
         classification: &str,
     ) {
-        for (plugin, hook) in self
-            .observer_plugins(InterfaceExtensionPoint::Failure)
+        for (plugin, hook) in observer_plugins(&self.bindings, InterfaceExtensionPoint::Failure)
             .into_iter()
             .zip(&self.failure)
             .rev()
@@ -344,25 +342,31 @@ where
             }
         }
     }
+}
 
-    fn observer_plugins(&self, point: InterfaceExtensionPoint) -> Vec<&PluginIdentity> {
-        self.bindings
-            .iter()
-            .filter(|(_, p)| *p == point)
-            .map(|(plugin, _)| plugin)
-            .collect()
-    }
+fn observer_plugins(
+    bindings: &[(PluginIdentity, InterfaceExtensionPoint)],
+    point: InterfaceExtensionPoint,
+) -> Vec<&PluginIdentity> {
+    bindings
+        .iter()
+        .filter(|(_, p)| *p == point)
+        .map(|(plugin, _)| plugin)
+        .collect()
+}
 
-    pub(crate) async fn run_completion(
-        &self,
-        budget: &mut InvocationFinalization,
-        context: &InterfaceHookContext,
-        terminal: InterfaceInvocationTerminal,
-    ) {
-        for (plugin, hook) in self
-            .observer_plugins(InterfaceExtensionPoint::Completion)
+// A thin completion borrow avoids growing the boxed completion future.
+fn run_completion<'a>(
+    bindings: &'a [(PluginIdentity, InterfaceExtensionPoint)],
+    completion: &'a Vec<Arc<dyn InterfaceCompletionHook>>,
+    budget: &'a mut InvocationFinalization,
+    context: &'a InterfaceHookContext,
+    terminal: InterfaceInvocationTerminal,
+) -> InterfaceCompletionHookFuture<'a> {
+    Box::pin(async move {
+        for (plugin, hook) in observer_plugins(bindings, InterfaceExtensionPoint::Completion)
             .into_iter()
-            .zip(&self.completion)
+            .zip(completion)
             .rev()
         {
             let observed = context.observer_context();
@@ -378,7 +382,7 @@ where
                 budget.record_reported_failure(record);
             }
         }
-    }
+    })
 }
 
 pub(crate) trait ErasedInterfaceHookPlan: Send + Sync {
@@ -422,7 +426,13 @@ where
         context: &'a InterfaceHookContext,
         terminal: InterfaceInvocationTerminal,
     ) -> InterfaceCompletionHookFuture<'a> {
-        Box::pin(self.run_completion(budget, context, terminal))
+        run_completion(
+            &self.bindings,
+            &self.completion,
+            budget,
+            context,
+            terminal,
+        )
     }
 
     fn as_any(&self) -> &dyn Any {
