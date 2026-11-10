@@ -15,14 +15,8 @@ compile_unit=any(x.endswith('.rs') for x in args) and '-Zhelp' not in args and a
 if compile_unit and env.get('ISSUE2818_EXPECT_NO_RUST_COMPILE')=='1':
     with open(env['ISSUE2818_ROOT_LOG'],'a') as log:log.write(json.dumps({'unexpected_compile_blocked':True,'crate':crate,'original_argv':[real,*args]})+'\n')
     os._exit(86)
-allocator_policy=env.pop('ISSUE2818_RUSTC_MALLOC_CONF',None)
-if allocator_policy not in (None,'dirty_decay_ms:0,muzzy_decay_ms:0'):
-    raise RuntimeError('unexpected compiler allocator policy')
-if compile_unit and allocator_policy:
-    assert not env.get('MALLOC_CONF'), 'parent allocator configuration must remain unset'
-    env['MALLOC_CONF']=allocator_policy
 if compile_unit:
-    with open(env['ISSUE2818_ALL_RUSTC_LOG'],'a') as log:log.write(json.dumps({'crate':crate,'original_argv':[real,*args],'source_sha':env.get('ISSUE2818_OBSERVED_SOURCE_SHA'),'allocator_conf':env.get('MALLOC_CONF')})+'\n')
+    with open(env['ISSUE2818_ALL_RUSTC_LOG'],'a') as log:log.write(json.dumps({'crate':crate,'original_argv':[real,*args],'source_sha':env.get('ISSUE2818_OBSERVED_SOURCE_SHA')})+'\n')
 if match:
     mode=env.get('ISSUE2818_RUSTC_MODE','diagnostic')
     if mode=='diagnostic':
@@ -40,7 +34,7 @@ if match:
             fds[str(fd)]='closed'
     row={'pid':os.getpid(),'monotonic':time.monotonic(),'mode':mode,'probe':'-Zhelp' in args,
          'original_argv':[real,*args],'effective_argv':[real,*effective],
-         'bootstrap_for_this_exec':env.get('RUSTC_BOOTSTRAP'),'jobserver_fds':fds,'allocator_conf':env.get('MALLOC_CONF')}
+         'bootstrap_for_this_exec':env.get('RUSTC_BOOTSTRAP'),'jobserver_fds':fds}
     with open(env['ISSUE2818_ROOT_LOG'],'a') as log:
         log.write(json.dumps(row)+'\n')
         log.flush()
