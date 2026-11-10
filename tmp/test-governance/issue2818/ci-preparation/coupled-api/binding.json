@@ -48,7 +48,7 @@
     "status": "Incomplete",
     "unique_defects": 1
   },
-  "api_tree": "bbfd027d992352f2b4dbb5a61e034446b19b51fe",
+  "api_tree": "d4967c13b9887a49737587395c7581742f7db36b",
   "cache": {
     "archive_bytes": 1573913044,
     "archive_sha256": "ddd1249a9188d0ee1032f641b806b6c624752648837f9b5ade6e2d068d2e4151",
@@ -74,7 +74,7 @@
     "scope": "six archive I/O labels only; no Cargo/rustc reclaim",
     "trigger_bytes": 4000000000
   },
-  "candidate": "c4ab716e7a1acf7263e8d74162ad8be15b8bfd8f",
+  "candidate": "173eb7a034e988d6a2cabd677045be4fe7f1b6f9",
   "clean_checks": [
     [
       "cargo",
@@ -98,7 +98,7 @@
       "1"
     ]
   ],
-  "control_base_sha": "a516fd57c748358ea94be68171d8f838c9256904",
+  "control_base_sha": "b159bfd600972e2f02c08931f6ba258443dc5a9a",
   "execution_authorized": true,
   "final_resource_requirements": {
     "all_original_obligations_preserved": true,
@@ -130,7 +130,7 @@
     }
   },
   "inputs": {
-    ".github/workflows/issue2818-one-off.yml": "d7104adcf832be03a1602612263256ef41fcdc8070d53dd1d9f3d6e857e7bdae",
+    ".github/workflows/issue2818-one-off.yml": "62592f8dfde46616ba4c4e8c8463fbd2dbf0ef5679d177167b6252fe17075a10",
     "scripts/shell/_tests/resource-job-run.test.py": "9f0a9f2601709307e395e168ec7011bb749d4ffcf82d8b7f9efc4d7ca5cb1a8b",
     "scripts/shell/resource-job-run.py": "823907fd793b760425d5a5a48fa74d9503cfc0ecf6052a75bcfad62fd59af14c",
     "tmp/test-governance/issue2818/ci-preparation/coupled-api/entry.py": "bc2434f57d64efe5863d8e020364659866048cd25b320196aa33abd913c46a4f",
@@ -260,6 +260,14 @@
     "81a73a8d80c966f3bff9e97cf13c46455d7be2d2": "Run42773868545 ordinary API deadline600.724s, no API artifact, parent8e9B; not an OOM or acceptance. No unchanged retry.",
     "862018221da3337b0793658231f89b9d0f3c7e03": "Controlled run42757114259 stopped before Rust on owned cgroup ENODEV cleanup failure; application source unqualified, not a measured memory regression. Retry requires the tested runner repair.",
     "a9f69d24afb9160e5f8770fea5b816ee33ed2afd": "Ordinary API actual record-only rustc hard OOM at316s; later stages NotReached; unchanged configuration retry forbidden.",
+    "c4ab716e7a1acf7263e8d74162ad8be15b8bfd8f": {
+      "classification": "resource_failure",
+      "no_unchanged_retry": true,
+      "oom_kill": 1,
+      "ordinary_API_artifact": 0,
+      "run": 42783882534,
+      "task_peak_bytes": 8000000000
+    },
     "df054e2036231a7f8a225cab0425e88d0ca4d105": "Observed unary poll physical stack97848 to102696 bytes (+4848) in three instances; rejected by Root. Future-size reduction alone did not pass runtime constraints."
   },
   "rejected_candidate_shas": [
@@ -267,13 +275,14 @@
     "a9f69d24afb9160e5f8770fea5b816ee33ed2afd",
     "862018221da3337b0793658231f89b9d0f3c7e03",
     "1547a4f1de65c132fe7263985aaf52894f8061dc",
-    "81a73a8d80c966f3bff9e97cf13c46455d7be2d2"
+    "81a73a8d80c966f3bff9e97cf13c46455d7be2d2",
+    "c4ab716e7a1acf7263e8d74162ad8be15b8bfd8f"
   ],
   "root_authorization": {
-    "basis": "User-authorized continued optimization. W14v2 shares the complete non-generic decision phase for unary and stream; original74 behaviors/build/Clippy retained, measured runtime phase maxima reduce after rejecting W14v1 stack regression. Actual product changed; same allocator, cache, limits, workload and deadlines.",
+    "basis": "User-authorized continued optimization. W16 changes product source with shared synchronous metadata validation; original74 exact IDs/build/Clippy pass, actual repeated MIR/code shrinks including helper and shims, runtime heap/allocation counts unchanged and observed work stack lower. Same allocator/cache/resources/workload/deadlines. Prior c4 OOM is not retried unchanged.",
     "not_Root_acceptance": true,
     "owner": "ChatGPT /root",
-    "time_utc": "2026-11-10T08:34:40.436666+00:00"
+    "time_utc": "2026-11-10T09:38:58.282567+00:00"
   },
   "runner_repair": {
     "actual_Rust_previously_reached": false,
@@ -350,6 +359,40 @@
       ],
       "v1_rejected": "actual unary core-work stack increased5392B before any commit/CI"
     },
+    "W16": {
+      "commit": "173eb7a034e988d6a2cabd677045be4fe7f1b6f9",
+      "five_paired_heaptrack_original_cases": 3,
+      "full_evidence": "metadata-validation-sharing-20261110/local-admission.json",
+      "future_prepare_bytes": [
+        7888,
+        7888
+      ],
+      "future_stream_bytes": [
+        8776,
+        8776
+      ],
+      "heap_peaks_and_allocations_unchanged": true,
+      "main_and_new_related_text_bytes": [
+        200543,
+        184492
+      ],
+      "main_symbol_count": [
+        24,
+        24
+      ],
+      "net_source_lines": -10,
+      "normal_IR_rlib_validate_body_bytes": 1598,
+      "not_whole_API_RSS_or_workload_acceptance": true,
+      "observed_stack_max_stream": [
+        112128,
+        100944
+      ],
+      "observed_stack_max_unary": [
+        81472,
+        81008
+      ],
+      "original74": 74
+    },
     "not_global_or_Root_qualification": true
   },
   "source_hashes": {
@@ -385,9 +428,10 @@
     "api/crates/interface-runtime/src/decision.rs": "9a0cccbcef77a9c1d24097e8082d025d1f20f4111d318ecbb6e9e0f272580671",
     "api/crates/interface-runtime/src/finalization.rs": "933fcb4f7648f14aaa8fde646f9d09792340423a387b3883a7d4cf6d8654b656",
     "api/crates/interface-runtime/src/hook.rs": "2bc39d4b97fb0210c8f7bc367430fd578a6acca6b0ab9c18f85213eb7783fcb2",
-    "api/crates/interface-runtime/src/invocation.rs": "67c47bb16c3de2019371fab9a7e26edff5869dd20a8e3a5f9307b0043dff928f",
+    "api/crates/interface-runtime/src/invocation.rs": "f539c1f9d8e8f82a116742e0d8100840c9c9b5afa195310558f60e7dc24961b2",
     "api/crates/interface-runtime/src/invocation/decisions.rs": "3dbbf2ae4f434c929c3356ab79e19a2bc2b39503f99206ede7af8bd574062a1a",
-    "api/crates/interface-runtime/src/invocation/kernel.rs": "e85d1f1d99ce8e8e983f26610efa4c8cedb78c23d6f7d22b15aa2812b8f574e1",
+    "api/crates/interface-runtime/src/invocation/kernel.rs": "a0a37ce1d455994aaf5291945c8a4264dac87a4264209730eb66616a0c5bcc43",
+    "api/crates/interface-runtime/src/invocation/metadata.rs": "bc1a03c793900d35c0f90f813681c9105a78554e03fd8679ca86dedc0ddfbc34",
     "api/crates/interface-runtime/src/registry/compiler.rs": "73936fbd7980442979be50d959d0d786b9bbeb2ea7e76c3ec75a22fe5fa9e712",
     "scripts/node/agent-logs-exchange/ci-api.cjs": "ed0e940a94e2d8c2b25e4147a538d348661a5c20bd962c2e03a973a235512506",
     "scripts/node/console-operation-registry-hygiene/README.md": "26b6d2ad0e5467fd279ad60cc3f11341d505a92e99eafa2090ecb304f5c7307c",
@@ -424,10 +468,10 @@
     "C01-new-alltargets"
   ],
   "tracked_diff_not_AC006": {
-    "added": 1695,
-    "deleted": 1782,
-    "files": 18,
-    "net": -87,
+    "added": 1762,
+    "deleted": 1859,
+    "files": 19,
+    "net": -97,
     "temporary_tooling_costs_not_yet_aggregated": true
   },
   "unresolved": [
