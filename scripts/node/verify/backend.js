@@ -73,76 +73,51 @@ function buildBackendCargoCommand({
     ? testSelection.workspace ? ['--workspace'] : testSelection.packages.flatMap((packageName) => ['--package', packageName])
     : buildBackendPackageArgs(normalizedShard);
 
+  const nextest = target === 'test' && Boolean(normalizedShard?.nextestPartition);
+  let args;
   if (target === 'clippy') {
-    return {
-      label: `cargo-clippy${labelSuffix}`,
-      command: 'cargo',
-      args: ['clippy', ...packageArgs, '--all-targets', '--jobs', String(cargoJobs), '--', '-D', 'warnings'],
-      cwd: 'api',
-      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
-    };
+    args = ['clippy', ...packageArgs, '--all-targets', '--jobs', String(cargoJobs), '--', '-D', 'warnings'];
+  } else if (nextest) {
+    args = [
+      'nextest',
+      'run',
+      ...packageArgs,
+      '--partition',
+      normalizedShard.nextestPartition,
+      '--test-threads',
+      String(cargoTestThreads),
+      '--no-fail-fast',
+      '--no-tests=fail',
+    ];
+  } else if (target === 'test') {
+    args = [
+      'test', ...packageArgs, ...(testSelection?.targetArgs ?? []),
+      '--jobs', String(cargoJobs),
+      ...(testSelection?.filter ? [testSelection.filter] : []),
+      '--', `--test-threads=${cargoTestThreads}`,
+      ...(testSelection?.exact ? ['--exact'] : []),
+    ];
+  } else if (target === 'check') {
+    args = ['check', ...packageArgs, ...(allTargets ? ['--all-targets'] : []), '--jobs', String(cargoJobs)];
+  } else {
+    throw new Error(`Unsupported backend cargo target: ${target}`);
   }
 
-  if (target === 'test') {
-    if (normalizedShard?.nextestPartition) {
-      return {
-        label: `cargo-nextest${labelSuffix}`,
-        command: 'cargo',
-        args: [
-          'nextest',
-          'run',
-          ...packageArgs,
-          '--partition',
-          normalizedShard.nextestPartition,
-          '--test-threads',
-          String(cargoTestThreads),
-          '--no-fail-fast',
-          '--no-tests=fail',
-        ],
-        cwd: 'api',
-        env: {
-          ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: true }),
-          CARGO_PROFILE_TEST_DEBUG: '0',
-          ...(normalizedShard.key.startsWith('api-server-')
-            ? { RUST_MIN_STACK: String(8 * 1024 * 1024) }
-            : {}),
-        },
-      };
-    }
-
-    return {
-      label: `cargo-test${labelSuffix}`,
-      requireExecutedTests: true,
-      command: 'cargo',
-      args: [
-        'test', ...packageArgs, ...(testSelection?.targetArgs ?? []),
-        '--jobs', String(cargoJobs),
-        ...(testSelection?.filter ? [testSelection.filter] : []),
-        '--', `--test-threads=${cargoTestThreads}`,
-        ...(testSelection?.exact ? ['--exact'] : []),
-      ],
-      cwd: 'api',
-      env: {
-        ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: true }),
-        // Keep the monolithic API test harness inside the CI budget without changing test behavior.
-        ...(normalizedShard?.key === 'api-server'
-          ? { CARGO_PROFILE_TEST_DEBUG: '0' }
-          : {}),
-      },
-    };
+  const env = buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: target === 'test' });
+  if (target === 'test' && (nextest || normalizedShard?.key === 'api-server')) {
+    env.CARGO_PROFILE_TEST_DEBUG = '0';
   }
-
-  if (target === 'check') {
-    return {
-      label: `cargo-check${labelSuffix}`,
-      command: 'cargo',
-      args: ['check', ...packageArgs, ...(allTargets ? ['--all-targets'] : []), '--jobs', String(cargoJobs)],
-      cwd: 'api',
-      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
-    };
+  if (nextest && normalizedShard.key.startsWith('api-server-')) {
+    env.RUST_MIN_STACK = String(8 * 1024 * 1024);
   }
-
-  throw new Error(`Unsupported backend cargo target: ${target}`);
+  return {
+    label: `cargo-${nextest ? 'nextest' : target}${labelSuffix}`,
+    ...(target === 'test' && !nextest ? { requireExecutedTests: true } : {}),
+    command: 'cargo',
+    args,
+    cwd: 'api',
+    env,
+  };
 }
 
 function buildBackendTestGateCommands({ targets, cargoJobs, cargoTestThreads, incremental = false }) {
