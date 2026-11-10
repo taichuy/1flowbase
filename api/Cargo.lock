@@ -69,7 +69,6 @@ dependencies = [
  "anyhow",
  "api-server",
  "api-test-selection",
- "application-public-protocol",
  "argon2",
  "async-trait",
  "axum",
@@ -149,18 +148,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c049c0be4daef0b145cb3555416b3b8ef5b7888a38aea1a3a155801fe7b0810b"
 dependencies = [
  "rustversion",
-]
-
-[[package]]
-name = "application-public-protocol"
-version = "0.6.3"
-dependencies = [
- "axum",
- "control-plane",
- "serde",
- "serde_json",
- "utoipa",
- "uuid",
 ]
 
 [[package]]

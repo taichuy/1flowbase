@@ -186,7 +186,13 @@ pub(super) fn collect_blocking_response_output_item(
     }
 }
 
-pub(in super::super) use application_public_protocol::native_response_id;
+pub(in super::super) fn native_response_id(run: &NativeRunResult) -> String {
+    run.metadata
+        .get("response_round_id")
+        .and_then(Value::as_str)
+        .map(|round| format!("resp_{round}"))
+        .unwrap_or_else(|| response_id_from_run_id(run.id))
+}
 
 #[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
@@ -370,6 +376,44 @@ pub(super) fn callback_task_id_from_required_action(run: &NativeRunResult) -> Op
         .and_then(|value| Uuid::parse_str(value).ok())
 }
 
-pub(in super::super) use application_public_protocol::usage::openai_usage;
+pub(in super::super) fn openai_usage(
+    usage: Option<&control_plane::application_public_api::native::NativeUsage>,
+) -> OpenAiUsage {
+    let Some(usage) = usage else {
+        return OpenAiUsage::default();
+    };
+    OpenAiUsage {
+        prompt_tokens: usage.prompt_tokens.unwrap_or_default(),
+        completion_tokens: usage.completion_tokens.unwrap_or_default(),
+        total_tokens: usage.total_tokens.unwrap_or_default(),
+        prompt_tokens_details: usage
+            .cache_read_tokens
+            .or(usage.input_cache_hit_tokens)
+            .map(|cached_tokens| OpenAiPromptTokensDetails { cached_tokens }),
+        completion_tokens_details: usage
+            .reasoning_tokens
+            .map(|reasoning_tokens| OpenAiCompletionTokensDetails { reasoning_tokens }),
+    }
+}
 
-pub(in super::super) use application_public_protocol::usage::openai_responses_usage;
+pub(in super::super) fn openai_responses_usage(
+    usage: Option<&control_plane::application_public_api::native::NativeUsage>,
+) -> OpenAiResponsesUsage {
+    let Some(usage) = usage else {
+        return OpenAiResponsesUsage::default();
+    };
+    OpenAiResponsesUsage {
+        input_tokens: usage.prompt_tokens.unwrap_or_default(),
+        input_tokens_details: Some(OpenAiResponsesInputTokensDetails {
+            cached_tokens: usage
+                .cache_read_tokens
+                .or(usage.input_cache_hit_tokens)
+                .unwrap_or_default(),
+        }),
+        output_tokens: usage.completion_tokens.unwrap_or_default(),
+        output_tokens_details: Some(OpenAiResponsesOutputTokensDetails {
+            reasoning_tokens: usage.reasoning_tokens.unwrap_or_default(),
+        }),
+        total_tokens: usage.total_tokens.unwrap_or_default(),
+    }
+}

@@ -24,13 +24,13 @@ const BACKEND_SHARDS = [
   },
   {
     key: 'apps',
-    packages: ['control-plane', 'application-public-protocol', 'api-server', 'control-plane-postgres-tests'],
+    packages: ['control-plane', 'api-server', 'control-plane-postgres-tests'],
   },
 ];
 const BACKEND_APP_TEST_SHARDS = [
   {
     key: 'control-plane',
-    packages: ['control-plane', 'application-public-protocol'],
+    packages: ['control-plane'],
   },
   ...Array.from({ length: 4 }, (_, index) => ({
     key: `api-server-${index + 1}-of-4`,

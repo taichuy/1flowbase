@@ -190,4 +190,9 @@ pub(in super::super) fn is_public_terminal_runtime_event(event_type: &str) -> bo
     )
 }
 
-pub(in super::super) use application_public_protocol::is_answer_presentation_delta;
+pub(in super::super) fn is_answer_presentation_delta(envelope: &RuntimeEventEnvelope) -> bool {
+    matches!(
+        envelope.event_type.as_str(),
+        "reasoning_delta" | "text_delta"
+    ) && debug_stream_events::is_answer_presentation_delta_payload(&envelope.payload)
+}

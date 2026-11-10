@@ -131,9 +131,26 @@ pub struct OpenAiToolCallFunction {
     pub arguments: String,
 }
 
-pub use application_public_protocol::usage::{
-    OpenAiCompletionTokensDetails, OpenAiPromptTokensDetails, OpenAiUsage,
-};
+#[derive(Debug, Default, Serialize, ToSchema)]
+pub struct OpenAiUsage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<OpenAiPromptTokensDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completion_tokens_details: Option<OpenAiCompletionTokensDetails>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OpenAiPromptTokensDetails {
+    pub cached_tokens: u64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OpenAiCompletionTokensDetails {
+    pub reasoning_tokens: u64,
+}
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct OpenAiModelListResponse {
@@ -192,6 +209,23 @@ pub struct OpenAiResponsesIncompleteDetails {
     pub reason: &'static str,
 }
 
-pub use application_public_protocol::usage::{
-    OpenAiResponsesInputTokensDetails, OpenAiResponsesOutputTokensDetails, OpenAiResponsesUsage,
-};
+#[derive(Debug, Default, Serialize, ToSchema)]
+pub struct OpenAiResponsesUsage {
+    pub input_tokens: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens_details: Option<OpenAiResponsesInputTokensDetails>,
+    pub output_tokens: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens_details: Option<OpenAiResponsesOutputTokensDetails>,
+    pub total_tokens: u64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OpenAiResponsesInputTokensDetails {
+    pub cached_tokens: u64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OpenAiResponsesOutputTokensDetails {
+    pub reasoning_tokens: u64,
+}

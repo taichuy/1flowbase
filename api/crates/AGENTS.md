@@ -18,7 +18,6 @@
 
 | 目录 / crate | 唯一职责 | 允许的内部直接依赖 |
 | --- | --- | --- |
-| `../apps/application-public-protocol` | OpenAI Chat / Responses、Anthropic SSE 的具体同步投影状态机、事件 view 与直接纯投影依赖；只由 `api-server` 消费，不拥有调用或宿主状态 | `control-plane`（现有 Native result、runtime event 与纯协议 contract） |
 | `domain` | 领域对象、不变量、状态与作用域语义 | 无 |
 | `interface-runtime` | 协议无关的 Definition / Binding / compiled Plan、Registry snapshot、认证关联及 Invocation Kernel / Receipt / 有界收尾 | `domain` |
 | `extension-contracts` | Host / Runtime 稳定 wire type、Slot 与协议错误 | 无 |
