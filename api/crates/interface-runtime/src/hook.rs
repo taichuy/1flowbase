@@ -317,29 +317,45 @@ where
         }
     }
 
-    pub(crate) async fn run_failure(
-        &self,
-        budget: &mut InvocationFinalization,
-        context: &InterfaceHookContext,
-        classification: &str,
-    ) {
-        for (plugin, hook) in observer_plugins(&self.bindings, InterfaceExtensionPoint::Failure)
-            .into_iter()
-            .zip(&self.failure)
-            .rev()
+    pub(crate) fn failure_hooks(&self) -> FailureHooks<'_> {
+        FailureHooks {
+            bindings: &self.bindings,
+            failure: &self.failure,
+        }
+    }
+}
+
+// Borrow the original collections without cloning or changing their owners.
+pub(crate) struct FailureHooks<'a> {
+    bindings: &'a Vec<(PluginIdentity, InterfaceExtensionPoint)>,
+    failure: &'a Vec<Arc<dyn InterfaceFailureHook>>,
+}
+
+pub(crate) async fn run_failure(
+    budget: &mut InvocationFinalization,
+    hooks: Option<FailureHooks<'_>>,
+    context: &InterfaceHookContext,
+    classification: &str,
+) {
+    let Some(hooks) = hooks else {
+        return;
+    };
+    for (plugin, hook) in observer_plugins(hooks.bindings, InterfaceExtensionPoint::Failure)
+        .into_iter()
+        .zip(hooks.failure)
+        .rev()
+    {
+        let observed = context.observer_context();
+        let record = budget
+            .observe(plugin, InterfaceExtensionPoint::Failure, || {
+                hook.failed(observed.clone(), classification)
+            })
+            .await;
+        if observed
+            .observer_failed
+            .load(std::sync::atomic::Ordering::Relaxed)
         {
-            let observed = context.observer_context();
-            let record = budget
-                .observe(plugin, InterfaceExtensionPoint::Failure, || {
-                    hook.failed(observed.clone(), classification)
-                })
-                .await;
-            if observed
-                .observer_failed
-                .load(std::sync::atomic::Ordering::Relaxed)
-            {
-                budget.record_reported_failure(record);
-            }
+            budget.record_reported_failure(record);
         }
     }
 }
@@ -426,13 +442,7 @@ where
         context: &'a InterfaceHookContext,
         terminal: InterfaceInvocationTerminal,
     ) -> InterfaceCompletionHookFuture<'a> {
-        run_completion(
-            &self.bindings,
-            &self.completion,
-            budget,
-            context,
-            terminal,
-        )
+        run_completion(&self.bindings, &self.completion, budget, context, terminal)
     }
 
     fn as_any(&self) -> &dyn Any {

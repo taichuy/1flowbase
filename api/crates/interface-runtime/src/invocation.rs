@@ -936,18 +936,22 @@ where
     target_admission: Option<Arc<dyn InterfaceTargetAdmissionPort>>,
 }
 
-async fn run_failure_hooks<I, O>(
-    budget: &mut InvocationFinalization,
-    hook_plan: Option<&TypedInterfaceHookPlan<I, O>>,
-    context: &InterfaceHookContext,
-    classification: &str,
-) where
+fn run_failure_hooks<'a, I, O>(
+    budget: &'a mut InvocationFinalization,
+    hook_plan: Option<&'a TypedInterfaceHookPlan<I, O>>,
+    context: &'a InterfaceHookContext,
+    classification: &'a str,
+) -> impl Future<Output = ()> + 'a
+where
     I: InterfaceContract,
     O: InterfaceContract,
 {
-    if let Some(hook_plan) = hook_plan {
-        hook_plan.run_failure(budget, context, classification).await;
-    }
+    crate::hook::run_failure(
+        budget,
+        hook_plan.map(TypedInterfaceHookPlan::failure_hooks),
+        context,
+        classification,
+    )
 }
 
 struct ReceiptBuilder {
