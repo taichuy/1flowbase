@@ -1,7 +1,6 @@
 [workspace]
 members = [
   "apps/api-server",
-  "apps/model-definitions-http",
   "crates/api-test-selection",
   "crates/domain",
   "crates/control-plane-contracts",

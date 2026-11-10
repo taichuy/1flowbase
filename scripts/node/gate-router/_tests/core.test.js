@@ -21,10 +21,6 @@ test('routeChangedFiles recommends related gates for frontend and backend consis
     'repo-backend-check-runtime-storage',
     'backend-consistency',
   ]);
-  const wireRoutes = routeChangedFiles([
-    'api/apps/model-definitions-http/src/requests.rs',
-  ]);
-  assert(wireRoutes.some((route) => route.scope === 'backend-consistency'));
 });
 
 test('buildAdvisoryMessage produces an English ASCII non-blocking prompt', () => {

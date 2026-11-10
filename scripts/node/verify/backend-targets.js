@@ -6,7 +6,6 @@ const BACKEND_SHARDS = [
       'extension-contracts', 'extension-package-runtime', 'interface-runtime',
       'control-plane-contracts', 'control-plane-test-support', 'postgres-test-support',
       'api-test-selection',
-      'model-definitions-http',
     ],
   },
   {

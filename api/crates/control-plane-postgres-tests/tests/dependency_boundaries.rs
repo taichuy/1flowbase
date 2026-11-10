@@ -1,11 +1,6 @@
 use std::{collections::BTreeMap, fs, path::Path, process::Command};
 
 const FORBIDDEN_EDGES: &[(&str, &str)] = &[
-    ("model-definitions-http", "api-server"),
-    ("model-definitions-http", "control-plane"),
-    ("model-definitions-http", "domain"),
-    ("model-definitions-http", "runtime-extension-host"),
-    ("model-definitions-http", "storage-durable-postgres"),
     ("interface-runtime", "api-server"),
     ("interface-runtime", "access-control"),
     ("interface-runtime", "control-plane"),

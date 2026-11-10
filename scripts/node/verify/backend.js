@@ -122,7 +122,13 @@ function buildBackendCargoCommand({
         ...(testSelection?.exact ? ['--exact'] : []),
       ],
       cwd: 'api',
-      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: true }),
+      env: {
+        ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: true }),
+        // Keep the monolithic API test harness inside the CI budget without changing test behavior.
+        ...(normalizedShard?.key === 'api-server'
+          ? { CARGO_PROFILE_TEST_DEBUG: '0' }
+          : {}),
+      },
     };
   }
 
@@ -304,6 +310,8 @@ function runBackendCommandSequence(sequenceOptions) {
         return;
       }
       if (!command.requireExecutedTests
+        && !command.label.startsWith('cargo-test-image-llm-vision-')
+        && !command.label.startsWith('cargo-test-official-i18n-seed-')
         && !command.label.startsWith('cargo-test-history-maintenance-')) return;
       const counts = parseCargoTestCounts(`${result.stdout || ''}\n${result.stderr || ''}`);
       if (result.status === 0 && !(counts.passedCount > 0 && counts.failedCount === 0)) {

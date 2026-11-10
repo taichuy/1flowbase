@@ -765,10 +765,9 @@ pub fn validate_migrated_core_console_route_coverage(
     Ok(())
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
+#[cfg(all(feature = "test-support", not(test)))]
 #[path = "console_route_assembly/_tests/assembly.rs"]
-mod tests;
+pub(crate) mod test_assertions;
 
 #[path = "console_route_assembly/interface_metadata.rs"]
 mod interface_metadata;

@@ -28,7 +28,6 @@ where
         .collect()
 }
 
-#[test]
 pub fn migrated_assembly_contains_every_console_router_owner_assembly() {
     let expected = ConsoleRouteAssembly::new()
         .merge(console_health_route_assembly())
@@ -87,7 +86,6 @@ pub fn migrated_assembly_contains_every_console_router_owner_assembly() {
     );
 }
 
-#[test]
 pub fn complete_operation_specifications_match_the_production_route_set() {
     let settings = crate::app_state::compile_core_settings_feature_registry().unwrap();
     let bindings = migrated_core_console_contract_bindings();
@@ -95,7 +93,6 @@ pub fn complete_operation_specifications_match_the_production_route_set() {
     compile_complete_migrated_console_operation_registry(&settings, &bindings, &[]).unwrap();
 }
 
-#[test]
 pub fn operation_specification_exact_set_reports_every_difference() {
     let error = validate_operation_spec_exact_set(
         [

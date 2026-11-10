@@ -22,6 +22,7 @@ use control_plane::{
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
@@ -34,14 +35,106 @@ use crate::{
     runtime_registry_sync::ApiRuntimeRegistrySync,
 };
 
-pub use model_definitions_http::{
-    BatchDeleteModelDefinitionsBody, ConfirmationQuery, CreateModelDefinitionBody,
-    CreateModelFieldBody, CreateScopeGrantBody, ListModelsQuery, UpdateModelDefinitionBody,
-    UpdateModelFieldBody, UpdateScopeGrantBody,
-};
-
 #[path = "model_definitions_interface.rs"]
 pub(crate) mod interface;
+
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateModelDefinitionBody {
+    pub bound_storage_id: Option<Uuid>,
+    pub scope_kind: String,
+    pub template_provider: String,
+    pub template_code: String,
+    pub template_version: String,
+    pub code: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateModelDefinitionBody {
+    pub title: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "crate::routes::helpers::deserialize_present_optional"
+    )]
+    pub description: Option<Option<String>>,
+    pub status: Option<String>,
+    pub external_table_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
+pub struct CreateModelFieldBody {
+    pub code: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub external_field_key: Option<String>,
+    pub field_kind: String,
+    #[serde(default)]
+    pub is_required: bool,
+    pub api_required: Option<bool>,
+    #[serde(default)]
+    pub is_unique: bool,
+    pub default_value: Option<serde_json::Value>,
+    pub display_interface: Option<String>,
+    #[serde(default = "empty_json_object")]
+    pub display_options: serde_json::Value,
+    pub relation_target_model_id: Option<String>,
+    #[serde(default = "empty_json_object")]
+    pub relation_options: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
+pub struct UpdateModelFieldBody {
+    pub title: String,
+    pub description: Option<String>,
+    #[serde(default)]
+    pub is_required: bool,
+    pub api_required: Option<bool>,
+    #[serde(default)]
+    pub is_unique: bool,
+    pub default_value: Option<serde_json::Value>,
+    pub display_interface: Option<String>,
+    #[serde(default = "empty_json_object")]
+    pub display_options: serde_json::Value,
+    #[serde(default = "empty_json_object")]
+    pub relation_options: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
+pub struct CreateScopeGrantBody {
+    pub scope_kind: String,
+    pub scope_id: Uuid,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    pub permission_profile: String,
+    #[serde(default)]
+    pub confirm_unsafe_external_source_system_all: bool,
+}
+
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
+pub struct UpdateScopeGrantBody {
+    pub enabled: Option<bool>,
+    pub permission_profile: Option<String>,
+    #[serde(default)]
+    pub confirm_unsafe_external_source_system_all: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ConfirmationQuery {
+    pub confirmed: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams, Serialize)]
+#[into_params(parameter_in = Query)]
+pub struct ListModelsQuery {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_source_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+}
 
 #[derive(Debug, Deserialize, utoipa::IntoParams, Serialize)]
 pub struct CompatibleTemplateCatalogQuery {
@@ -120,6 +213,17 @@ fn compatible_template_response(
             })
             .collect(),
     }
+}
+
+#[derive(Debug, Deserialize, ToSchema, Serialize)]
+pub struct BatchDeleteModelDefinitionsBody {
+    #[serde(rename = "filterByTk")]
+    #[schema(value_type = Object)]
+    pub filter_by_tk: Option<serde_json::Value>,
+    #[schema(value_type = Object)]
+    pub filter: Option<serde_json::Value>,
+    #[serde(default)]
+    pub confirmed: bool,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -267,6 +371,14 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ConsoleOperation("agent_flow.data_model_options.list".to_string()),
         ),
     )
+}
+
+fn empty_json_object() -> serde_json::Value {
+    serde_json::json!({})
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn to_record_capabilities_response(
@@ -531,7 +643,7 @@ fn parse_field_kind(raw: &str) -> Result<domain::ModelFieldKind, ApiError> {
 pub async fn list_models(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    query: ListModelsQuery,
+    Query(query): Query<ListModelsQuery>,
 ) -> Result<helpers::ApiJson<Vec<ModelDefinitionResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
     let output = crate::routes::console_interface::invoke(
@@ -602,7 +714,7 @@ pub async fn list_agent_flow_options(
 pub async fn create_model(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    body: CreateModelDefinitionBody,
+    Json(body): Json<CreateModelDefinitionBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ModelDefinitionResponse>>), ApiError> {
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
@@ -676,7 +788,7 @@ pub async fn update_model(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(model_id): Path<String>,
-    body: UpdateModelDefinitionBody,
+    Json(body): Json<UpdateModelDefinitionBody>,
 ) -> Result<Json<ApiSuccess<ModelDefinitionResponse>>, ApiError> {
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
@@ -704,7 +816,7 @@ pub async fn delete_model(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(model_id): Path<String>,
-    query: ConfirmationQuery,
+    Query(query): Query<ConfirmationQuery>,
 ) -> Result<Json<ApiSuccess<serde_json::Value>>, ApiError> {
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
@@ -733,7 +845,7 @@ pub async fn delete_model(
 pub async fn batch_delete_models(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    body: BatchDeleteModelDefinitionsBody,
+    Json(body): Json<BatchDeleteModelDefinitionsBody>,
 ) -> Result<Json<ApiSuccess<BatchDeletedResponse>>, ApiError> {
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
@@ -759,7 +871,7 @@ pub async fn create_field(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(model_id): Path<String>,
-    body: CreateModelFieldBody,
+    Json(body): Json<CreateModelFieldBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ModelFieldResponse>>), ApiError> {
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
@@ -789,7 +901,7 @@ pub async fn update_field(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((model_id, field_id)): Path<(String, String)>,
-    body: UpdateModelFieldBody,
+    Json(body): Json<UpdateModelFieldBody>,
 ) -> Result<Json<ApiSuccess<ModelFieldResponse>>, ApiError> {
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
@@ -822,7 +934,7 @@ pub async fn delete_field(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((model_id, field_id)): Path<(String, String)>,
-    query: ConfirmationQuery,
+    Query(query): Query<ConfirmationQuery>,
 ) -> Result<Json<ApiSuccess<serde_json::Value>>, ApiError> {
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
@@ -855,7 +967,7 @@ pub async fn create_scope_grant(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(model_id): Path<String>,
-    body: CreateScopeGrantBody,
+    Json(body): Json<CreateScopeGrantBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ScopeGrantResponse>>), ApiError> {
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
@@ -885,7 +997,7 @@ pub async fn update_scope_grant(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((model_id, grant_id)): Path<(String, String)>,
-    body: UpdateScopeGrantBody,
+    Json(body): Json<UpdateScopeGrantBody>,
 ) -> Result<Json<ApiSuccess<ScopeGrantResponse>>, ApiError> {
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
