@@ -16,6 +16,7 @@ def check(execution=False):
  b=read(HERE/'binding.json')
  assert re.fullmatch(r'[0-9a-f]{40}',b['candidate'])
  assert b['managed_cases']==MANAGED_CASES and b['postgres_major']==16
+ assert b['compiler_allocator_policy']['value']=='dirty_decay_ms:0,muzzy_decay_ms:0'
  assert {'sdk-worker','managed-lifecycle','postgres-owned'}<=set(b['stage_order'])
  assert b['tracked_diff_not_AC006']['net'] < 0, 'tracked source reduction is necessary but not AC006 qualification'
  assert not execution or (b['execution_authorized'] and b['proposal_status']=='READY_FOR_ROOT_APPROVED_EXECUTION' and b['candidate'] not in b['rejected_candidate_shas'])
@@ -119,7 +120,13 @@ def main():
  try:
   initial=g.budget_snapshot();save(e/'budget-before.json',initial);assert initial['memory.max']=='8000000000' and initial['memory.high']=='max' and initial['memory.swap.max']=='0';q,period=map(int,initial['cpu.max'].split());assert q/period<=os.cpu_count()*.6+.001
   assert g.capture(['rustc','-vV'])==b['cache']['compiler'];assert not any(os.environ.get(k) for k in ['RUSTC_WRAPPER','RUSTC_WORKSPACE_WRAPPER','RUSTC_BOOTSTRAP','RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS'])
-  save(e/'compiler-allocator-policy.json',{'source_sha':b['candidate'],'MALLOC_CONF':os.environ.get('MALLOC_CONF'),'override_applied':False,'compiler_identity':b['cache']['compiler']});assert not os.environ.get('MALLOC_CONF'),'source trial must keep the default compiler allocator configuration'
+  assert not os.environ.get('MALLOC_CONF') and not os.environ.get('ISSUE2818_RUSTC_MALLOC_CONF'),'parent Cargo and runtime allocator environment must stay unchanged'
+  stage('compiler-allocator-preflight','Running');state['phase']='compiler-allocator-preflight';allocator_rustc=Path(g.capture(['rustup','which','rustc'])).resolve();assert allocator_rustc.is_file()
+  allocator_probe_program="import json,os,subprocess,sys;command=[sys.argv[1],'--version'];configuration=sys.argv[2];result=subprocess.run(command,env={**os.environ,'MALLOC_CONF':configuration},stdin=subprocess.DEVNULL,capture_output=True,text=True,timeout=10);print(json.dumps({'argv':command,'MALLOC_CONF':configuration,'returncode':result.returncode,'stdout':result.stdout,'stderr':result.stderr}));sys.exit(result.returncode)"
+  allocator_probe=g.run('compiler-allocator-version-probe',[sys.executable,'-c',allocator_probe_program,str(allocator_rustc),'confirm_conf:true,'+b['compiler_allocator_policy']['value']],cwd=ROOT,env=dict(os.environ),seconds=30)
+  allocator_payload=read(allocator_probe['stdout_log']);assert allocator_payload['argv']==[str(allocator_rustc),'--version'] and allocator_payload['MALLOC_CONF']=='confirm_conf:true,'+b['compiler_allocator_policy']['value'] and allocator_payload['returncode']==0
+  allocator_stdout=allocator_payload['stdout'].strip();allocator_stderr=allocator_payload['stderr'];assert allocator_stdout==b['cache']['compiler'].splitlines()[0] and all('Set conf value: '+value in allocator_stderr for value in ['confirm_conf:true','dirty_decay_ms:0','muzzy_decay_ms:0']),'actual cloud compiler did not confirm all requested allocator options'
+  save(e/'compiler-allocator-policy.json',{'source_sha':b['candidate'],'policy':b['compiler_allocator_policy'],'parent_MALLOC_CONF':os.environ.get('MALLOC_CONF'),'actual_compiler_path':str(allocator_rustc),'actual_compiler_sha256':sha(allocator_rustc),'compiler_identity':b['cache']['compiler'],'version_probe_receipt':allocator_probe['receipt'],'probe_actual_stdout':allocator_stdout,'probe_actual_stderr':allocator_stderr,'not_memory_benefit_evidence':True});state['completed'].append('compiler-allocator-preflight');stage('compiler-allocator-preflight','Passed');state['phase']='prepare'
   assert g.PG_GROUP is None and os.access(Path(initial['path'])/'memory.reclaim',os.W_OK),'owned same-budget archive reclaim is unavailable'
   stage('resource-runner-regression','Running');state['phase']='resource-runner-read-race-regression'
   regression=g.run('resource-runner-read-race-regression',[sys.executable,str(ROOT/'scripts/shell/_tests/resource-job-run.test.py'),'RealJobTests.test_t1_cgroup_removal_read_race_preserves_owned_identity','-v'],cwd=ROOT,env={**os.environ,'RESOURCE_JOB_RUN_OS_TESTS':'1'},seconds=60)
@@ -137,7 +144,7 @@ def main():
   env={**os.environ,'CARGO_TARGET_DIR':str(target),'CARGO_BUILD_JOBS':'1','CARGO_INCREMENTAL':'0','CARGO_NET_OFFLINE':'true','CARGO_TERM_COLOR':'never','RUST_TEST_THREADS':'1','TERM':'dumb','ISSUE2818_ALL_RUSTC_LOG':str(e/'all-rustc-invocations.jsonl')}
   for k in ['RUSTC_WRAPPER','RUSTC_WORKSPACE_WRAPPER','RUSTC_BOOTSTRAP','RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS']:env.pop(k,None)
   row=g.run('actual-cargo-metadata',['cargo','metadata','--locked','--format-version','1','--manifest-path','api/Cargo.toml'],cwd=source,env=env,seconds=120);metadata=json.loads(Path(row['stdout_log']).read_text());assert metadata['resolve'] and all(any(x['name']==name for x in metadata['packages']) for name in ['api-server','interface-runtime']);save(e/'actual-cargo-metadata.json',metadata);roots=g.root_names(source,metadata)
-  diagnostic=g.install_stage_wrapper(source,env);diagnostic['ISSUE2818_RUSTC_MODE']='record-only';diagnostic.pop('ISSUE2818_MONO_STATS',None);probe=read(e/'mono-stats-probe.json');probe.update(capability_probe_only=True,actual_compile_mode='record-only',active_compile_instrumentation=[]);save(e/'mono-stats-probe.json',probe);os.environ['ISSUE2818_FROZEN_RUNTIME']=json.dumps(b['frozen_runtime']);data=g.plan(source);save(e/'frozen-real-builder-plan.json',data)
+  diagnostic=g.install_stage_wrapper(source,env);diagnostic['ISSUE2818_RUSTC_MODE']='record-only';diagnostic['ISSUE2818_RUSTC_MALLOC_CONF']=b['compiler_allocator_policy']['value'];diagnostic.pop('ISSUE2818_MONO_STATS',None);probe=read(e/'mono-stats-probe.json');probe.update(capability_probe_only=True,actual_compile_mode='record-only',active_compile_instrumentation=[]);save(e/'mono-stats-probe.json',probe);os.environ['ISSUE2818_FROZEN_RUNTIME']=json.dumps(b['frozen_runtime']);data=g.plan(source);save(e/'frozen-real-builder-plan.json',data)
   # Ordinary API first: unchanged rustc argv, actual source/codegen, no -Z instrumentation.
   stage('ordinary-API','Running');before=len(rustc_rows());row=run('seed-normal-lib-prebuild',b['A'],diagnostic);items=artifacts(row)
   api=[x for x in items if x['target']['name']=='api_server' and x['target']['kind']==['lib'] and not x['profile']['test']]
@@ -147,6 +154,7 @@ def main():
   invoked=[json.loads(line) for line in (e/'root-rustc-invocations.jsonl').read_text().splitlines()]
   actual=[x for x in invoked if not x.get('probe') and x.get('mode')=='record-only']
   assert actual and all(x['effective_argv']==x['original_argv'] and not x.get('bootstrap_for_this_exec') for x in actual)
+  assert all(x.get('allocator_conf')==b['compiler_allocator_policy']['value'] for x in [*actual,*roots_actual]) and all(Path(x['original_argv'][0]).resolve()==allocator_rustc for x in roots_actual),'actual API compiler allocator or binary differs from preflight'
   receipt=read(row['receipt']);peak=receipt['resources'].get('fields',{}).get('memory.peak',{}).get('value');budget=g.budget_snapshot()
   save(e/'A-qualified.json',{'source_sha':b['candidate'],'API_artifact':api[0],'actual_root_rustc':roots_actual,'scope_peak_bytes':peak,'scope_6_4GB_pass':isinstance(peak,int) and peak<=6400000000,'full_task_budget':budget,'full_task_6_4GB_so_far':int(budget['memory.peak'])<=6400000000,'not_Root_PASS':True})
   assert isinstance(peak,int) and peak<=6400000000,'ordinary API scope exceeds original 6.4GB target; later heavy stages NotReached'
@@ -172,9 +180,9 @@ def main():
   prepared=[]
   for index,command in enumerate(data['tests']):
    stage('consumer-'+str(index),'Running')
-   argv=[command['command'],*command['args']];obs=json_argv(argv);ce={**g.command_env(data,command,target),'RUST_TEST_THREADS':'1','ISSUE2818_RUSTC_MODE':'record-only','RUSTC_WRAPPER':diagnostic['RUSTC_WRAPPER'],'ISSUE2818_ROOT_LOG':diagnostic['ISSUE2818_ROOT_LOG'],'ISSUE2818_ALL_RUSTC_LOG':env['ISSUE2818_ALL_RUSTC_LOG']}
+   argv=[command['command'],*command['args']];obs=json_argv(argv);ce={**g.command_env(data,command,target),'RUST_TEST_THREADS':'1','ISSUE2818_RUSTC_MODE':'record-only','RUSTC_WRAPPER':diagnostic['RUSTC_WRAPPER'],'ISSUE2818_ROOT_LOG':diagnostic['ISSUE2818_ROOT_LOG'],'ISSUE2818_ALL_RUSTC_LOG':env['ISSUE2818_ALL_RUSTC_LOG'],'ISSUE2818_RUSTC_MALLOC_CONF':diagnostic['ISSUE2818_RUSTC_MALLOC_CONF']}
    listing=run('consumer-'+str(index)+'-list',[*obs,'--list'],ce);emitted=artifacts(listing);apiunits=[x for x in emitted if x['target']['name']=='api_server' and x['target']['kind']==['lib'] and not x['profile']['test']];assert len(apiunits)==1 and apiunits[0]['fresh'] and apiunits[0]['features']==api[0]['features'] and apiunits[0]['profile']==api[0]['profile'],'actual resolved API unit not reused'
-   listed=g.cases(listing['merged_log'],roots,'list');assert listed;warm={**ce,'ISSUE2818_EXPECT_NO_RUST_COMPILE':'1'};ign=run('consumer-'+str(index)+'-ignored',[*obs,'--list','--ignored'],warm,120);ignored=g.cases(ign['merged_log'],roots,'list')
+   listed=g.cases(listing['merged_log'],roots,'list');assert listed;warm={**ce,'ISSUE2818_EXPECT_NO_RUST_COMPILE':'1'};warm.pop('ISSUE2818_RUSTC_MALLOC_CONF',None);ign=run('consumer-'+str(index)+'-ignored',[*obs,'--list','--ignored'],warm,120);ignored=g.cases(ign['merged_log'],roots,'list')
    prepared.append((index,command,obs,warm,listed,ignored,apiunits));save(e/('consumer-'+str(index)+'-prepared.json'),{'source_sha':b['candidate'],'original_builder':command,'list':listed,'ignored':ignored,'resolved_API_unit':apiunits[0],'actual':'NotReached'});stage('consumer-'+str(index),'NotReached')
   stage('sdk-worker','Running')
   worker_root,worker_binary=binary_compile('sdk-worker-codegen',['cargo','build','--profile','test','--locked','-p','runtime-extension-sdk','--example','managed_hook_worker','--jobs','1','--message-format=json'],'managed_hook_worker',diagnostic)

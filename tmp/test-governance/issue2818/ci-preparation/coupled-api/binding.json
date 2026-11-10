@@ -98,12 +98,22 @@
       "1"
     ]
   ],
-  "control_base_sha": "e29fec32ae5736d630b17ba209cec892d61217a4",
+  "compiler_allocator_policy": {
+    "configuration_probe": "actual cloud rustc --version with child-only confirm_conf:true plus policy",
+    "effect": "unproven until controlled full-workload peak and actual behavior",
+    "parent_Cargo_and_runtime_MALLOC_CONF": null,
+    "same_product_and_input_cache_as_default_trial": 42758874260,
+    "scope": "only actual rustc compile exec environment",
+    "value": "dirty_decay_ms:0,muzzy_decay_ms:0"
+  },
+  "control_base_sha": "e8f0f24866039c07abe104c6a139cce4f58ba596",
   "execution_authorized": true,
   "final_resource_requirements": {
     "all_original_obligations_preserved": true,
     "cache_retention_failure_is_failure": true,
-    "compiler_allocator_override": null,
+    "compiler_allocator_override": {
+      "only_rustc": "dirty_decay_ms:0,muzzy_decay_ms:0"
+    },
     "full_task_peak_bytes_at_most": 6400000000,
     "memory_limit_bytes": 8000000000,
     "no_peak_reset": true,
@@ -133,8 +143,8 @@
     ".github/workflows/issue2818-one-off.yml": "df6028e5dbb9f32065696dc42156e01cb31567fdf9c7178643321814db8913f4",
     "scripts/shell/_tests/resource-job-run.test.py": "9f0a9f2601709307e395e168ec7011bb749d4ffcf82d8b7f9efc4d7ca5cb1a8b",
     "scripts/shell/resource-job-run.py": "823907fd793b760425d5a5a48fa74d9503cfc0ecf6052a75bcfad62fd59af14c",
-    "tmp/test-governance/issue2818/ci-preparation/coupled-api/entry.py": "bc2434f57d64efe5863d8e020364659866048cd25b320196aa33abd913c46a4f",
-    "tmp/test-governance/issue2818/ci-preparation/coupled-api/root-wrapper.py": "2c0c11da5494a0d4f995f47c37778f668e6cd4842c9e146d31c00b6618e07d86",
+    "tmp/test-governance/issue2818/ci-preparation/coupled-api/entry.py": "c2b0f74ebb59dac8c27e67a50daee9a268b0fd7fd2b3703eaae3db34dbff630b",
+    "tmp/test-governance/issue2818/ci-preparation/coupled-api/root-wrapper.py": "d823531574dcfd6b5777fb6bb167fd253838b555a54ab1d3433b49335d2a8c84",
     "tmp/test-governance/issue2818/ci-preparation/experiment.py": "6917281893feaa119f2bf6e025b592e4c61bcb8df6d70352486a671b454d759f"
   },
   "ir_names": [
@@ -254,6 +264,19 @@
   ],
   "postgres_environment_note": "Original runner exact image20261101.360.1 documents16.15 native PG, actual pg_config/server/ltree required; not PG18 production equivalence. Owned isolated cluster under same8e9/swap0/CPU budget, default durability; no system service.",
   "postgres_major": 16,
+  "previous_failed_configuration": {
+    "OOM": true,
+    "all_owned_cleanup_complete": true,
+    "archive_restore_parent_peak_bytes": 4059414528,
+    "candidate": "1547a4f1de65c132fe7263985aaf52894f8061dc",
+    "compiler_allocator": "default, no MALLOC_CONF override",
+    "control_sha": "e8f0f24866039c07abe104c6a139cce4f58ba596",
+    "no_ordinary_API_artifact": true,
+    "ordinary_API_scope_peak_bytes": 7960936448,
+    "ordinary_API_seconds": 505.932297128,
+    "run_id": 42758874260,
+    "task_peak_bytes": 8000000000
+  },
   "proposal_status": "READY_FOR_ROOT_APPROVED_EXECUTION",
   "rejected_candidate_reasons": {
     "862018221da3337b0793658231f89b9d0f3c7e03": "Controlled run42757114259 stopped before Rust on owned cgroup ENODEV cleanup failure; application source unqualified, not a measured memory regression. Retry requires the tested runner repair.",
@@ -266,10 +289,10 @@
     "862018221da3337b0793658231f89b9d0f3c7e03"
   ],
   "root_authorization": {
-    "basis": "continued user-authorized optimization; one changed-runner validation after real-kernel RED/GREEN, no unchanged retry",
+    "basis": "user authorized compile memory optimization; changed allocator resource algorithm with identical source/cache and original gates after bounded Root review",
     "not_Root_acceptance": true,
     "owner": "ChatGPT /root",
-    "time_utc": "2026-11-10T04:54:49.799340+00:00"
+    "time_utc": "2026-11-10T05:24:32.421382+00:00"
   },
   "runner_repair": {
     "actual_Rust_previously_reached": false,
@@ -332,6 +355,7 @@
     "scripts/shell/resource-job-run.py": "823907fd793b760425d5a5a48fa74d9503cfc0ecf6052a75bcfad62fd59af14c"
   },
   "stage_order": [
+    "compiler-allocator-preflight",
     "resource-runner-regression",
     "ordinary-API",
     "interface-runtime-74",
@@ -359,11 +383,11 @@
   "unresolved": [
     "Root acceptance/merge not granted by this proposal.",
     "Full-task <=6.4e9 including archive and PG remains required; proactive reclaim is experimental and never resets peak.",
-    "Ordinary API default allocator remains unchanged for this source trial; local decay option parse is not compiler-memory evidence.",
     "Old/new four-filter compiled target-qualified multiset/ignored retention and C01 remain incomplete until real evidence.",
     "Managed cases use real SDK worker and owned PG16; no sha2 profile override or deadline weakening.",
     "Governance/proof/CI preparation costs remain unaggregated; tracked net-55 is not AC006 PASS.",
-    "Local1.99.0 tests/layout are not cloud1.99.1 performance evidence."
+    "Local1.99.0 tests/layout are not cloud1.99.1 performance evidence.",
+    "Source1547a4f and inputcache13732900725 stay identical to default run42758874260; allocator-only resource algorithm changes are not source optimization credit. Compiler1.99.1 parse and actual env must be proved first."
   ],
   "worker_profile": "test"
 }
