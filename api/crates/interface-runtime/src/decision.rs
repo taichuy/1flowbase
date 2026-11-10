@@ -220,6 +220,9 @@ macro_rules! typed_decision_plan {
             pub fn output_contract(&self) -> &ContractIdentity {
                 &self.output
             }
+            pub(crate) fn contributions(&self) -> &Vec<(PluginIdentity, Arc<dyn $contribution>)> {
+                &self.bindings
+            }
             pub(crate) fn plugin_bindings(&self) -> Vec<PluginIdentity> {
                 self.bindings
                     .iter()
@@ -236,35 +239,9 @@ typed_decision_plan!(
 );
 typed_decision_plan!(TypedInterfaceAdmissionPlan, InterfaceAdmissionContribution);
 
-impl<I, O> TypedInterfaceAuthorizationPlan<I, O>
-where
-    I: InterfaceContract,
-    O: InterfaceContract,
-{
-    pub(crate) fn run(
-        &self,
-        request: InterfaceAuthorizationContributionRequest,
-    ) -> impl Future<Output = Result<(), InterfaceAuthorizationContributionError>> + '_ {
-        run_authorization(&self.bindings, request)
-    }
-}
-
-impl<I, O> TypedInterfaceAdmissionPlan<I, O>
-where
-    I: InterfaceContract,
-    O: InterfaceContract,
-{
-    pub(crate) fn run(
-        &self,
-        request: InterfaceAdmissionContributionRequest,
-    ) -> impl Future<Output = Result<(), InterfaceAdmissionContributionError>> + '_ {
-        run_admission(&self.bindings, request)
-    }
-}
-
 // Execution does not depend on the typed plan contracts. Keep the thin Vec borrow
 // and the original per-contribution request/await/drop sequence.
-async fn run_authorization(
+pub(crate) async fn run_authorization(
     bindings: &Vec<(PluginIdentity, Arc<dyn InterfaceAuthorizationContribution>)>,
     request: InterfaceAuthorizationContributionRequest,
 ) -> Result<(), InterfaceAuthorizationContributionError> {
@@ -274,7 +251,7 @@ async fn run_authorization(
     Ok(())
 }
 
-async fn run_admission(
+pub(crate) async fn run_admission(
     bindings: &Vec<(PluginIdentity, Arc<dyn InterfaceAdmissionContribution>)>,
     request: InterfaceAdmissionContributionRequest,
 ) -> Result<(), InterfaceAdmissionContributionError> {
