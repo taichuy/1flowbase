@@ -12,7 +12,7 @@ on:
       candidate_sha:
         description: Exact candidate SHA (optional until Root pushes)
         type: string
-        default: 173eb7a034e988d6a2cabd677045be4fe7f1b6f9
+        default: ed53ef2df072ca095840e28a3c87a17f1c7c3e08
       wait_seconds:
         description: Bounded candidate availability wait
         type: string
@@ -50,7 +50,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_REF: ${{ inputs.candidate_ref || 'refs/heads/opt/2818-global-20261109' }}
-          CANDIDATE_SHA: ${{ inputs.candidate_sha || '173eb7a034e988d6a2cabd677045be4fe7f1b6f9' }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha || 'ed53ef2df072ca095840e28a3c87a17f1c7c3e08' }}
           CANDIDATE_WAIT: ${{ inputs.wait_seconds || '1200' }}
         run: |
           set -euo pipefail
