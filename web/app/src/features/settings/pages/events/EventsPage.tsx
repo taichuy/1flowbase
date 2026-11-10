@@ -181,7 +181,7 @@ export function EventsPage() {
       width: 220,
       render: (_, row) =>
         row.scope.kind === 'workspace'
-          ? `${t('workspace_scope')} · ${row.scope.workspace_id}`
+          ? `${t('workspace_id')} · ${row.scope.workspace_id}`
           : t(row.scope.kind)
     },
     {
@@ -246,7 +246,14 @@ export function EventsPage() {
   ];
   return (
     <SettingsSectionSurface heightMode="fill">
-      <Flex vertical gap={16} style={{ height: '100%', minHeight: 0 }}>
+      <Flex
+        vertical
+        gap={16}
+        style={{
+          height: tab === 'catalog' ? '100%' : 'max-content',
+          minHeight: 0
+        }}
+      >
         <Tabs
           activeKey={tab}
           onChange={(next) => navigateEventTab(next as EventTab)}

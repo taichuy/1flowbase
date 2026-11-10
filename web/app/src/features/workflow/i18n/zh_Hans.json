@@ -40,9 +40,9 @@
   "event": {
     "enabled": "订阅已启用",
     "disabled": "订阅已停用",
-    "subscribed": "订阅时",
-    "published": "发布时",
-    "consumed": "消费时（出队）",
+    "subscribed": "订阅",
+    "published": "发布",
+    "consumed": "消费",
     "debug_delivery": "事件工作流调试运行",
     "debug_hint": "直接测试标量 Start 输入；此调试不发布事件，也不验证事件投递。"
   }

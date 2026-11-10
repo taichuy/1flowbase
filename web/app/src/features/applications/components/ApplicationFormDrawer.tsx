@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Button,
+  Flex,
   Form,
   Input,
   InputNumber,
@@ -14,6 +15,8 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { WorkflowEventTriggerFields } from './WorkflowEventTriggerFields';
+import { ScheduleCronEditor } from './schedule/ScheduleCronEditor';
+import { DEFAULT_SCHEDULE_CRON } from './schedule/schedule-cron';
 import type {
   ReplaceConsoleWorkflowEventTriggerInput,
   ConsoleApplicationType,
@@ -21,7 +24,7 @@ import type {
   ConsoleWorkflowExtensionResponseMode,
   ConsoleWorkflowTriggerType
 } from '@1flowbase/api-client';
-import { FixedHeightModal } from '../../../shared/ui/fixed-height-modal/FixedHeightModal';
+import { ResizableDrawer } from '../../../shared/ui/resizable-drawer/ResizableDrawer';
 import {
   fetchOrchestrationState,
   orchestrationQueryKey
@@ -69,7 +72,7 @@ interface ApplicationFormValues {
   extension_response_mode: ConsoleWorkflowExtensionResponseMode;
   schedule_enabled: boolean;
   schedule_cron: string;
-  schedule_timezone: string;
+  schedule_timezone?: string;
   schedule_input_payload?: object;
   event: ReplaceConsoleWorkflowEventTriggerInput;
   name: string;
@@ -78,8 +81,9 @@ interface ApplicationFormValues {
 }
 
 const APPLICATION_FORM_ID = 'application-form';
+const SCHEDULE_TIMEZONES = ['UTC', ...Intl.supportedValuesOf('timeZone')];
 
-export function ApplicationFormModal({
+export function ApplicationFormDrawer({
   open,
   csrfToken,
   intent,
@@ -149,6 +153,13 @@ export function ApplicationFormModal({
     enabled: open && isSchedule,
     retry: false
   });
+  const timezoneOptions = useMemo(() => {
+    const timezones = new Set(SCHEDULE_TIMEZONES);
+    if (scheduleQuery.data?.timezone) {
+      timezones.add(scheduleQuery.data.timezone);
+    }
+    return Array.from(timezones, (value) => ({ value, label: value }));
+  }, [scheduleQuery.data?.timezone]);
   const orchestrationQuery = useQuery({
     queryKey: orchestrationQueryKey(applicationId),
     queryFn: () => fetchOrchestrationState(applicationId),
@@ -179,8 +190,8 @@ export function ApplicationFormModal({
           input_mapping: {}
         },
         schedule_enabled: false,
-        schedule_cron: '',
-        schedule_timezone: 'Asia/Shanghai',
+        schedule_cron: DEFAULT_SCHEDULE_CRON,
+        schedule_timezone: undefined,
         schedule_input_payload: {},
         name: '',
         description: '',
@@ -222,7 +233,7 @@ export function ApplicationFormModal({
     form.setFieldsValue({
       schedule_enabled: scheduleQuery.data.enabled,
       schedule_cron: scheduleQuery.data.cron,
-      schedule_timezone: scheduleQuery.data.timezone,
+      schedule_timezone: scheduleQuery.data.timezone || undefined,
       schedule_input_payload:
         typeof scheduleQuery.data.input_payload === 'object' &&
         scheduleQuery.data.input_payload !== null
@@ -280,7 +291,7 @@ export function ApplicationFormModal({
                 ? values.trigger_type === 'schedule'
                   ? {
                       cron: values.schedule_cron,
-                      timezone: values.schedule_timezone,
+                      timezone: values.schedule_timezone ?? '',
                       input_payload: {}
                     }
                   : values.trigger_type === 'extension'
@@ -333,7 +344,7 @@ export function ApplicationFormModal({
           {
             enabled: values.schedule_enabled,
             cron: values.schedule_cron.trim(),
-            timezone: values.schedule_timezone.trim(),
+            timezone: values.schedule_timezone?.trim() ?? '',
             input_payload: values.schedule_input_payload ?? {}
           },
           csrfToken
@@ -367,28 +378,31 @@ export function ApplicationFormModal({
     orchestrationQuery.isError;
 
   return (
-    <FixedHeightModal
+    <ResizableDrawer
       open={open}
       title={
         isEdit
           ? t('auto.edit_application_information')
           : t('auto.new_application')
       }
-      destroyOnHidden
+      destroyOnClose
+      resizeLabel={t('auto.resize_application_drawer')}
       footer={
         loading ? null : (
-          <Button
-            type="primary"
-            htmlType="submit"
-            form={APPLICATION_FORM_ID}
-            disabled={triggerLoadFailed || (isEvent && eventQuery.isPending)}
-            loading={mutation.isPending}
-          >
-            {isEdit ? t('auto.save_changes') : t('auto.create_application')}
-          </Button>
+          <Flex justify="flex-end">
+            <Button
+              type="primary"
+              htmlType="submit"
+              form={APPLICATION_FORM_ID}
+              disabled={triggerLoadFailed || (isEvent && eventQuery.isPending)}
+              loading={mutation.isPending}
+            >
+              {isEdit ? t('auto.save_changes') : t('auto.create_application')}
+            </Button>
+          </Flex>
         )
       }
-      onCancel={onClose}
+      onClose={onClose}
     >
       {loading ? (
         <Typography.Text type="secondary">{t('auto.loading')}</Typography.Text>
@@ -610,33 +624,28 @@ export function ApplicationFormModal({
                 >
                   <Switch />
                 </Form.Item>
-              ) : (
-                <Alert
-                  type="info"
-                  showIcon
-                  title={t('auto.schedule_disabled_hint')}
-                />
-              )}
+              ) : null}
               <Form.Item
-                label={t('auto.schedule_cron')}
+                label={t('schedule.plan')}
+                tooltip={!isEdit ? t('auto.schedule_disabled_hint') : undefined}
                 name="schedule_cron"
                 rules={[
                   { required: true, message: t('auto.schedule_cron_required') }
                 ]}
               >
-                <Input placeholder="0 9 * * 1-5" />
+                <ScheduleCronEditor />
               </Form.Item>
               <Form.Item
                 label={t('auto.schedule_timezone')}
                 name="schedule_timezone"
-                rules={[
-                  {
-                    required: true,
-                    message: t('auto.schedule_timezone_required')
-                  }
-                ]}
               >
-                <Input />
+                <Select
+                  allowClear
+                  showSearch
+                  placeholder={t('auto.schedule_timezone_system')}
+                  optionFilterProp="label"
+                  options={timezoneOptions}
+                />
               </Form.Item>
               {extensionContract.requestFields
                 .filter((field) =>
@@ -708,7 +717,7 @@ export function ApplicationFormModal({
           </Form.Item>
         </Form>
       )}
-    </FixedHeightModal>
+    </ResizableDrawer>
   );
 }
 

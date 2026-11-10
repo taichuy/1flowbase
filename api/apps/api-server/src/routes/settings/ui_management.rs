@@ -1,3 +1,5 @@
+pub mod custom_blocks;
+pub(crate) mod custom_blocks_interface;
 use std::sync::Arc;
 
 use axum::{
@@ -313,6 +315,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
     let owner = |operation_id: &str| ConsoleOperation(operation_id.to_string());
     ConsoleRouteAssembly::new()
+        .merge(custom_blocks::route_assembly())
         .route(
             "/settings/ui-management/plugin-settings-page",
             console_get(

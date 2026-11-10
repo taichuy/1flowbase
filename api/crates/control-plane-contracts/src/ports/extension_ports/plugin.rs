@@ -557,6 +557,8 @@ pub struct FrontendBlockCatalogRegistryInput {
     pub runtime: String,
     pub entry: String,
     pub ui_registration: String,
+    /// Explicit opt-in to block management and page creation, independent of reusable UI registration.
+    pub block_registration: bool,
     pub code_template: Option<String>,
     pub code_template_version: Option<String>,
     pub code_template_language: Option<String>,

@@ -1,4 +1,5 @@
 //! Latest payload-free state, bounded by the current listener configuration set.
+use domain::event_center::{EventSourceSelection, EventTriggerPhase};
 use serde::Serialize;
 use std::{
     collections::BTreeMap,
@@ -11,6 +12,11 @@ pub struct EventWorkflowStatus {
     pub workspace_id: Uuid,
     pub application_id: Uuid,
     pub subscription_id: Uuid,
+    pub contract_id: String,
+    #[schema(value_type = String)]
+    pub trigger_phase: EventTriggerPhase,
+    #[schema(value_type = Option<Object>)]
+    pub source: Option<EventSourceSelection>,
     pub activation: &'static str,
     pub reason: Option<String>,
     pub last_signal_id: Option<Uuid>,
@@ -101,6 +107,9 @@ impl EventWorkflowStatuses {
                 workspace_id: trigger.workspace_id,
                 application_id: trigger.application_id,
                 subscription_id: trigger.id,
+                contract_id: trigger.configuration.contract_id.clone(),
+                trigger_phase: trigger.configuration.trigger_phase,
+                source: trigger.configuration.source.clone(),
                 activation: state,
                 reason: None,
                 last_signal_id: None,
@@ -110,6 +119,9 @@ impl EventWorkflowStatuses {
             });
         row.workspace_id = trigger.workspace_id;
         row.subscription_id = trigger.id;
+        row.contract_id = trigger.configuration.contract_id.clone();
+        row.trigger_phase = trigger.configuration.trigger_phase;
+        row.source = trigger.configuration.source.clone();
         row.activation = state;
         row.reason = reason.map(str::to_owned);
     }

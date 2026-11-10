@@ -271,6 +271,12 @@ fn prepare_installation_commit_blocking(
     }
     let settings_templates =
         plugin_settings_templates::prepare_settings_templates(package_root, manifest)?;
+    // Resolve from the staged package, after comparing the original native declarations.
+    // Projections persist source text; neither the signed YAML nor file paths become UI data.
+    let mut resolved_manifest = manifest.clone();
+    plugin_framework::resolve_plugin_frontend_sources(package_root, &mut resolved_manifest)
+        .map_err(map_framework_error)?;
+    let manifest = &resolved_manifest;
     let package_kind = route_plugin_package(manifest)?;
     let category = match &package_kind {
         RoutedPluginPackageKind::HostExtension => domain::ExtensionCategory::HostExtensions,

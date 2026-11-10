@@ -208,7 +208,7 @@ export const settingsSectionDefinitions: SettingsSectionDefinition[] = [
   {
     key: 'ui-management',
     label_key: 'auto.ui_management',
-    to: '/settings/ui-management/code-templates'
+    to: '/settings/ui-management/blocks'
   },
   {
     key: 'members',

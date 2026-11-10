@@ -6,62 +6,19 @@
   min-height: 0;
   flex: 1 1 auto;
 }
-.event-runtime-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.event-runtime-scope {
-  min-width: 140px;
-}
-.event-runtime-toolbar-actions {
-  display: flex;
-  gap: 8px;
-  margin-left: auto;
+.event-runtime .data-table__scroll-area {
+  overflow-y: hidden;
 }
 .event-runtime-freshness {
   font-size: 12px;
 }
-.event-runtime-master-detail {
-  display: grid;
-  grid-template-columns: minmax(310px, 0.8fr) minmax(0, 1.3fr);
-  gap: 20px;
-  height: clamp(320px, 49vh, 540px);
-  min-height: 320px;
-}
-.event-runtime-source-list,
-.event-runtime-source-queues {
+
+.event-runtime-workbench {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-height: 0;
+  gap: 14px;
   min-width: 0;
-}
-.event-runtime-source-queues {
-  padding-left: 20px;
-  border-left: 1px solid var(--border-subtle);
-}
-.event-runtime-section-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
-}
-.event-runtime-section-heading > div {
-  min-width: 0;
-}
-.event-runtime-source-list h5,
-.event-runtime-section-heading h5 {
-  margin: 0;
-}
-.event-runtime-selection {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
+  flex: none;
 }
 .event-runtime-source-button {
   max-width: 100%;
@@ -110,6 +67,8 @@
   min-width: 0;
 }
 .event-runtime-filters {
+  flex: 1 1 520px;
+  min-width: 0;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
@@ -137,30 +96,59 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
 @media (max-width: 767px) {
-  .event-runtime-master-detail {
-    grid-template-columns: minmax(0, 1fr);
-    height: auto;
-  }
-  .event-runtime-source-list {
-    min-height: 260px;
-    max-height: 400px;
-  }
-  .event-runtime-source-queues {
-    padding-left: 0;
-    padding-top: 16px;
-    border-left: 0;
-    border-top: 1px solid var(--border-subtle);
-    min-height: 260px;
-  }
-  .event-runtime-toolbar-actions {
-    margin-left: 0;
-  }
   .event-runtime-filter-select {
     flex: 1 1 140px;
     min-width: 0;
   }
   .event-runtime-activity {
     min-height: 440px;
+  }
+}
+
+/* Event-first queue overview; detail tables keep the shared DataTable shell. */
+.event-runtime-event-search {
+  flex: 1 1 230px;
+  max-width: 370px;
+  min-width: 180px;
+}
+.event-runtime-event-row {
+  cursor: pointer;
+}
+.event-runtime-event-row:hover > td {
+  background: var(--bg-hover);
+}
+.event-runtime-event-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.event-runtime-detail-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 16px;
+  padding-top: 8px;
+}
+.event-runtime-detail-heading h5 {
+  margin: 0;
+}
+.event-runtime-detail-heading > .ant-typography {
+  font-size: 12px;
+}
+.event-runtime-receiver {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+}
+@media (max-width: 767px) {
+  .event-runtime-event-search {
+    max-width: none;
+    width: 100%;
+    flex: 1 1 100%;
   }
 }

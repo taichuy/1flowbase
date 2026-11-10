@@ -37,6 +37,7 @@ export function useDataBlockMetadata(
   return useQuery({
     queryKey: dataBlockMetadataKey(ctx, binding?.model_code ?? ''),
     enabled: Boolean(binding?.model_code),
+    refetchOnWindowFocus: false,
     queryFn: () =>
       fetchRuntimeDataModelMetadata(
         binding!.model_code,
@@ -84,6 +85,7 @@ export function useDataBlockRecords(
   return useQuery({
     queryKey: [...dataBlockRecordsKey(ctx, binding?.model_code), 'list', input],
     enabled: Boolean(binding?.model_code) && enabled,
+    refetchOnWindowFocus: false,
     queryFn: () =>
       ctx.api.get<ConsoleRuntimeRecordPreview>(
         modelPath(binding!.model_code, 'list'),
@@ -106,6 +108,7 @@ export function useDataBlockRecord(
       recordId
     ],
     enabled: Boolean(binding?.model_code && recordId) && enabled,
+    refetchOnWindowFocus: false,
     queryFn: () =>
       ctx.api.get<ConsoleRuntimeModelRecord>(
         modelPath(binding!.model_code, 'get/{id}'),

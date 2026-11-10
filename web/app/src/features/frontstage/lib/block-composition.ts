@@ -175,6 +175,7 @@ function createBlockFromInput(
 
   return {
     id,
+    ...(input.title !== undefined ? { title: input.title } : {}),
     rendererVersion:
       input.rendererVersion ?? FRONTSTAGE_BLOCK_RENDERER_VERSION_V1,
     sourceId: input.sourceId ?? null,

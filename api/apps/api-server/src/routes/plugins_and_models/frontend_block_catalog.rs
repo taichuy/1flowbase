@@ -1,7 +1,11 @@
 use crate::openapi_interface::json_contract::{JsonApiInput, JsonApiOutput};
 use std::{collections::BTreeMap, sync::Arc};
 
-use axum::{extract::State, http::HeaderMap, Json, Router};
+use axum::{
+    extract::{Query, State},
+    http::HeaderMap,
+    Json, Router,
+};
 use control_plane::frontend_block_catalog::{
     FrontendBlockCatalogService, FrontendContributionBinding, ListFrontendBlockCatalogQuery,
 };
@@ -40,6 +44,8 @@ pub struct IsolatedFrontendBlockEntryAssetResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FrontendBlockCatalogResponse {
+    pub custom_block_id: Option<String>,
+    pub registration_targets: Vec<String>,
     pub installation_id: String,
     pub provider_code: String,
     pub plugin_id: String,
@@ -123,7 +129,10 @@ pub(crate) fn to_response(
     } else {
         None
     };
+    let registration_targets = entry.registration_targets();
     Ok(FrontendBlockCatalogResponse {
+        custom_block_id: None,
+        registration_targets,
         installation_id: entry.installation_id.to_string(),
         provider_code: entry.provider_code,
         plugin_id: entry.plugin_id,
@@ -172,6 +181,7 @@ pub(crate) fn to_response(
 #[utoipa::path(
     get,
     path = "/api/console/frontend-blocks",
+    params(FrontendBlocksInput),
     responses(
         (status = 200, body = [FrontendBlockCatalogResponse]),
         (status = 401, body = crate::error_response::ErrorBody),
@@ -181,13 +191,14 @@ pub(crate) fn to_response(
 pub async fn list_frontend_blocks(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    Query(query): Query<FrontendBlocksInput>,
 ) -> Result<Json<ApiSuccess<Vec<FrontendBlockCatalogResponse>>>, ApiError> {
     let snapshot_state = Arc::clone(&state);
     let output: FrontendBlocksOutput = crate::routes::console_interface::invoke(
         snapshot_state,
         "http.console.frontend-blocks.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
-        FrontendBlocksInput,
+        query,
     )
     .await?;
     Ok(Json(ApiSuccess::new(output.0)))
@@ -200,28 +211,38 @@ pub(crate) struct FrontendBlockDependencies {
     pub(crate) graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
 }
 
-#[derive(serde::Serialize)]
-pub(crate) struct FrontendBlocksInput;
-impl JsonApiInput for FrontendBlocksInput {}
+#[derive(Default, serde::Serialize, serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct FrontendBlocksInput {
+    /// Filter by an explicitly registered target: block, component or code_template.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registration_target: Option<String>,
+}
+impl JsonApiInput for FrontendBlocksInput {
+    const LOCATION: crate::openapi_interface::json_contract::JsonInputLocation =
+        crate::openapi_interface::json_contract::JsonInputLocation::Query;
+}
 
 impl InterfaceContract for FrontendBlocksInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::object_schema([(
-            "kind",
-            mp::tag_schema("FrontendBlocksInput"),
+            "registration_target",
+            serde_json::json!({"anyOf":[mp::text_schema(),{"type":"null"}]}),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::object_value([(
-            "kind",
-            serde_json::Value::String("FrontendBlocksInput".to_owned()),
+            "registration_target",
+            match &self.registration_target {
+                Some(value) => mp::text(value)?,
+                None => serde_json::Value::Null,
+            },
         )]))
     }
-
     const CONTRACT_ID: &'static str = "console-frontend-blocks-input";
-    const CONTRACT_VERSION: &'static str = "1";
+    const CONTRACT_VERSION: &'static str = "2";
 }
 
 #[derive(serde::Serialize)]
@@ -234,7 +255,7 @@ impl InterfaceContract for FrontendBlocksOutput {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::object_schema([(
             "0",
-            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("installation_id",mp::text_schema()), ("provider_code",mp::text_schema()), ("plugin_id",mp::text_schema()), ("plugin_version",mp::text_schema()), ("contribution_code",mp::text_schema()), ("title",mp::object_schema([("byte_count",mp::count_schema())])), ("runtime",mp::object_schema([("byte_count",mp::count_schema())])), ("entry",mp::object_schema([("byte_count",mp::count_schema())])), ("code_template",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("code_template_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("code_template_language",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("isolated_entry_asset",serde_json::json!({"anyOf": [mp::object_schema([("media_type",mp::text_schema()), ("sha256",mp::object_schema([("byte_count",mp::count_schema())])), ("integrity",mp::object_schema([("byte_count",mp::count_schema())]))]), {"type":"null"}]})), ("context_contract",mp::object_schema([("primitives",mp::object_schema([("item_count",mp::count_schema())])), ("input_schema",mp::json_summary_schema())])), ("permissions",mp::object_schema([("network",mp::object_schema([("byte_count",mp::count_schema())])), ("storage",mp::object_schema([("byte_count",mp::count_schema())]))])), ("ui_capabilities",mp::object_schema([("item_count",mp::count_schema())])), ("frontend_contribution_id",mp::text_schema()), ("frontend_block_id",mp::text_schema()), ("frontend_block_version",mp::text_schema()), ("runtime_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("execution_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("isolation_requirement",mp::object_schema([("byte_count",mp::count_schema())])), ("requested_permissions",mp::object_schema([("item_count",mp::count_schema())])), ("granted_permissions",mp::object_schema([("item_count",mp::count_schema())])), ("workspace_id",mp::text_schema()), ("lifecycle_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("graph_fingerprint",mp::object_schema([("byte_count",mp::count_schema())])), ("provenance",mp::object_schema([("module_id",mp::text_schema()), ("module_version",mp::text_schema()), ("module_kind",mp::object_schema([("byte_count",mp::count_schema())]))])), ("disable_reason",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}))])}),
+            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("registration_targets",mp::object_schema([("item_count",mp::count_schema())])), ("installation_id",mp::text_schema()), ("provider_code",mp::text_schema()), ("plugin_id",mp::text_schema()), ("plugin_version",mp::text_schema()), ("contribution_code",mp::text_schema()), ("title",mp::object_schema([("byte_count",mp::count_schema())])), ("runtime",mp::object_schema([("byte_count",mp::count_schema())])), ("entry",mp::object_schema([("byte_count",mp::count_schema())])), ("code_template",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("code_template_version",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("code_template_language",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("isolated_entry_asset",serde_json::json!({"anyOf": [mp::object_schema([("media_type",mp::text_schema()), ("sha256",mp::object_schema([("byte_count",mp::count_schema())])), ("integrity",mp::object_schema([("byte_count",mp::count_schema())]))]), {"type":"null"}]})), ("context_contract",mp::object_schema([("primitives",mp::object_schema([("item_count",mp::count_schema())])), ("input_schema",mp::json_summary_schema())])), ("permissions",mp::object_schema([("network",mp::object_schema([("byte_count",mp::count_schema())])), ("storage",mp::object_schema([("byte_count",mp::count_schema())]))])), ("ui_capabilities",mp::object_schema([("item_count",mp::count_schema())])), ("frontend_contribution_id",mp::text_schema()), ("frontend_block_id",mp::text_schema()), ("frontend_block_version",mp::text_schema()), ("runtime_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("execution_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("isolation_requirement",mp::object_schema([("byte_count",mp::count_schema())])), ("requested_permissions",mp::object_schema([("item_count",mp::count_schema())])), ("granted_permissions",mp::object_schema([("item_count",mp::count_schema())])), ("workspace_id",mp::text_schema()), ("lifecycle_kind",mp::object_schema([("byte_count",mp::count_schema())])), ("graph_fingerprint",mp::object_schema([("byte_count",mp::count_schema())])), ("provenance",mp::object_schema([("module_id",mp::text_schema()), ("module_version",mp::text_schema()), ("module_kind",mp::object_schema([("byte_count",mp::count_schema())]))])), ("disable_reason",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}))])}),
         )]))
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
@@ -249,6 +270,13 @@ impl InterfaceContract for FrontendBlocksOutput {
                     .iter()
                     .map(|item| {
                         Some(mp::object_value([
+                            (
+                                "registration_targets",
+                                mp::object_value([(
+                                    "item_count",
+                                    serde_json::json!((item).registration_targets.len()),
+                                )]),
+                            ),
                             ("installation_id", mp::text(&(item).installation_id)?),
                             ("provider_code", mp::text(&(item).provider_code)?),
                             ("plugin_id", mp::text(&(item).plugin_id)?),
@@ -478,9 +506,23 @@ impl
     fn execute<'a>(
         &'a self,
         principal: &'a UserPrincipal,
-        _input: FrontendBlocksInput,
+        input: FrontendBlocksInput,
     ) -> crate::routes::console_interface::ConsoleInterfaceFuture<'a, FrontendBlocksOutput> {
         Box::pin(async move {
+            if input
+                .registration_target
+                .as_deref()
+                .is_some_and(|target| !matches!(target, "block" | "component" | "code_template"))
+            {
+                return Err(
+                    crate::routes::console_interface::ConsoleInterfaceTargetError(ApiError(
+                        control_plane::errors::ControlPlaneError::InvalidInput(
+                            "invalid_frontend_registration_target",
+                        )
+                        .into(),
+                    )),
+                );
+            }
             let entries = FrontendBlockCatalogService::new(
                 self.0.store.for_actor(principal.actor().clone()),
                 self.0.api_node_id.clone(),
@@ -494,12 +536,47 @@ impl
             .await
             .map_err(ApiError)
             .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
-            let output = entries
+            let definitions =
+                control_plane::frontend_block_catalog::custom_blocks::CustomFrontendBlockService(
+                    self.0.store.for_actor(principal.actor().clone()),
+                )
+                .list(principal.actor().current_workspace_id)
+                .await
+                .map_err(ApiError)
+                .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
+            let custom =
+                control_plane::frontend_block_catalog::custom_blocks::resolve_custom_blocks(
+                    &entries.entries,
+                    definitions,
+                );
+            let mut output = entries
                 .entries
                 .into_iter()
+                .filter(|binding| {
+                    input.registration_target.as_ref().map_or(true, |target| {
+                        binding
+                            .catalog_entry
+                            .registration_targets()
+                            .contains(target)
+                    })
+                })
                 .map(to_response)
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
+            for (definition, binding) in custom {
+                if input
+                    .registration_target
+                    .as_deref()
+                    .is_some_and(|target| target != "block")
+                {
+                    continue;
+                }
+                let mut response = to_response(binding)
+                    .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
+                response.custom_block_id = Some(definition.id.to_string());
+                response.registration_targets = vec!["block".to_owned()];
+                output.push(response);
+            }
             Ok(FrontendBlocksOutput(output))
         })
     }

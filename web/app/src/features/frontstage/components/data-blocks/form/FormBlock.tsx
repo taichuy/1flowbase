@@ -1,5 +1,8 @@
 import { FormBlockInitializer } from './FormBlockInitializer';
-import { DATA_BLOCK_DESIGN_THEME } from '../shared/data-block-design-theme';
+import {
+  BLOCK_DESIGN_THEME,
+  BLOCK_BUTTON_THEME
+} from '../../../lib/native-modules/block-design/theme';
 import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -68,7 +71,7 @@ export function FormBlock({ ctx }: DataBlockComponentProps) {
     );
   return (
     <ConfigProvider
-      theme={host?.design_mode ? DATA_BLOCK_DESIGN_THEME : undefined}
+      theme={host?.design_mode ? BLOCK_DESIGN_THEME : BLOCK_BUTTON_THEME}
       getPopupContainer={popupContainer}
     >
       {config.initialized === false ? (

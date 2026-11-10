@@ -26,6 +26,7 @@ fn components(actor: Uuid, version: &str) -> CommitPluginInstallationInput {
             runtime: "native_react".into(),
             entry: format!("View{index}"),
             ui_registration: "component".into(),
+            block_registration: false,
             code_template: Some(format!(
                 "export default function View{index}() {{ return <p>{version}</p>; }}"
             )),

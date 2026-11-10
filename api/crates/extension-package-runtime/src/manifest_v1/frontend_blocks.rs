@@ -46,51 +46,15 @@ pub(crate) fn validate_frontend_block_contributions(
             &["code_template", "component"],
         )?;
         if contribution.ui_registration == "component"
-            && (contribution.runtime != "native_react" || contribution.code_template.is_none())
+            && (contribution.runtime != "native_react"
+                || (contribution.code_template.is_none()
+                    && contribution.code_template_file.is_none()))
         {
             return Err(PluginFrameworkError::invalid_provider_package(
-                "block_contributions[].ui_registration component requires native_react and code_template",
+                "block_contributions[].ui_registration component requires native_react and code_template or code_template_file",
             ));
         }
-        match (
-            contribution.code_template.as_deref(),
-            contribution.code_template_version.as_deref(),
-            contribution.code_template_language.as_deref(),
-        ) {
-            (Some(code_template), Some(code_template_version), Some(code_template_language)) => {
-                validate_non_empty(code_template, "block_contributions[].code_template")?;
-                validate_non_empty(
-                    code_template_version,
-                    "block_contributions[].code_template_version",
-                )?;
-                validate_allowed(
-                    code_template_language,
-                    "block_contributions[].code_template_language",
-                    &["jsx", "tsx"],
-                )?;
-                if code_template.len() > 256 * 1024 {
-                    return Err(PluginFrameworkError::invalid_provider_package(
-                        "block_contributions[].code_template exceeds 262144 bytes",
-                    ));
-                }
-            }
-            (Some(_), None, _) => {
-                return Err(PluginFrameworkError::invalid_provider_package(
-                    "block_contributions[].code_template_version is required when code_template is set",
-                ));
-            }
-            (None, Some(_), _) | (None, None, Some(_)) => {
-                return Err(PluginFrameworkError::invalid_provider_package(
-                    "block_contributions[].code_template is required when code_template_version is set",
-                ));
-            }
-            (Some(_), Some(_), None) => {
-                return Err(PluginFrameworkError::invalid_provider_package(
-                    "block_contributions[].code_template_language is required when code_template is set",
-                ));
-            }
-            (None, None, None) => {}
-        }
+        super::frontend_sources::validate_template_source(contribution)?;
         validate_allowed(
             &contribution.runtime,
             "block_contributions[].runtime",
@@ -217,10 +181,7 @@ fn validate_frontend_code_modules_with_identities<'a>(
                 }
             }
         }
-        validate_non_empty(
-            &code_module.type_declarations,
-            "block_contributions[].code_modules[].type_declarations",
-        )?;
+        super::frontend_sources::validate_module_type_source(code_module)?;
     }
     Ok(())
 }

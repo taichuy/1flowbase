@@ -1,3 +1,4 @@
+import { BlockDesignButton } from '../../../lib/native-modules/block-design/runtime';
 import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import { DataBlockModal as Modal } from '../shared/DataBlockModal';
 import { useState, type ReactNode } from 'react';
@@ -15,11 +16,7 @@ import {
   Switch,
   Typography
 } from 'antd';
-import {
-  DeleteOutlined,
-  PlusOutlined,
-  SettingOutlined
-} from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type { BlockContext } from '@1flowbase/page-protocol';
 import { i18nText } from '../../../../../shared/i18n/text';
 import {
@@ -133,9 +130,7 @@ export function FormDesignControls(props: Props) {
             ]
           }}
         >
-          <Button
-            size="small"
-            icon={<SettingOutlined />}
+          <BlockDesignButton
             disabled={saving}
             aria-label={i18nText(
               'frontstage',
@@ -192,9 +187,9 @@ export function FormDesignControls(props: Props) {
             </div>
           )}
         >
-          <Button type="dashed" icon={<SettingOutlined />} disabled={saving}>
+          <BlockDesignButton variant="initializer" disabled={saving}>
             {i18nText('frontstage', 'data_blocks.form.configure_fields')}
-          </Button>
+          </BlockDesignButton>
         </Dropdown>
       </div>
       <div className="data-form-config-actions">
@@ -234,9 +229,9 @@ export function FormDesignControls(props: Props) {
             ]
           }}
         >
-          <Button type="dashed" icon={<SettingOutlined />} disabled={saving}>
+          <BlockDesignButton variant="initializer" disabled={saving}>
             {i18nText('frontstage', 'data_blocks.form.configure_actions')}
-          </Button>
+          </BlockDesignButton>
         </Dropdown>
       </div>
       {dialog && (

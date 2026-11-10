@@ -49,6 +49,7 @@ export function useEventTab(): EventTab {
 export function navigateEventTab(tab: EventTab, replace = false) {
   const url = new URL(window.location.href);
   url.searchParams.set('tab', tab);
+  if (tab !== 'activity') url.searchParams.delete('observation');
   const href = `${url.pathname}${url.search}${url.hash}`;
   if (
     href ===
@@ -71,14 +72,18 @@ export function useEventScope(): string | null {
 export function navigateEventScope(scope: string) {
   navigateEventState({
     scope,
+    // Clear stale URL parameters from the retired source-inspector UI.
     source: null,
     queue: null,
-    record: null,
     source_details: null,
+    source_observation: null,
+    record: null,
     workflow_queue: null,
-    sources_page: null,
-    'source-queues_page': null,
     queues_page: null,
-    activity_page: null
+    activity_page: null,
+    event: null,
+    subscription: null,
+    queue_query: null,
+    'event-groups_page': null
   });
 }

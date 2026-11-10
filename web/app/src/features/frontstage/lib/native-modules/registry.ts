@@ -234,18 +234,47 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
     }
   ),
   registration(
+    '@1flowbase/block-design',
+    [
+      'useRegisterBlockSettings',
+      'BlockDesignButton',
+      'BlockDesignToolbar',
+      'BlockDesignMenu',
+      'BLOCK_DESIGN_THEME'
+    ],
+    async () => ({
+      module: await import('./block-design/runtime'),
+      styles: [
+        {
+          css:
+            (await import('./block-design/block-design.css?inline')).default +
+            (
+              await import('../../components/frontstage-node-action-button.css?inline')
+            ).default
+        }
+      ]
+    })
+  ),
+  registration(
     '@1flowbase/data-blocks',
     ['TableBlock', 'FormBlock'],
     async () => {
-      const [table, form, tableStyle, formStyle] = await Promise.all([
-        import('../../components/data-blocks/table/TableBlock'),
-        import('../../components/data-blocks/form/FormBlock'),
-        import('../../components/data-blocks/table/table-block.css?inline'),
-        import('../../components/data-blocks/form/form-block.css?inline')
-      ]);
+      const [table, form, tableStyle, formStyle, designStyle, nodeActionStyle] =
+        await Promise.all([
+          import('../../components/data-blocks/table/TableBlock'),
+          import('../../components/data-blocks/form/FormBlock'),
+          import('../../components/data-blocks/table/table-block.css?inline'),
+          import('../../components/data-blocks/form/form-block.css?inline'),
+          import('./block-design/block-design.css?inline'),
+          import('../../components/frontstage-node-action-button.css?inline')
+        ]);
       return {
         module: { TableBlock: table.TableBlock, FormBlock: form.FormBlock },
-        styles: [tableStyle, formStyle].map((style) => ({ css: style.default }))
+        styles: [tableStyle, formStyle, designStyle, nodeActionStyle].map(
+          (style) => ({
+            css: style.default
+          })
+        )
       };
     }
   ),

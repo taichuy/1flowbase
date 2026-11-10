@@ -184,7 +184,10 @@ pub struct FrontendBlockCodeModuleManifest {
     pub binding: FrontendModuleBindingManifest,
     #[serde(default)]
     pub assets: Vec<FrontendModuleAssetManifest>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub type_declarations: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub type_declarations_file: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -229,8 +232,13 @@ pub struct FrontendBlockContributionManifest {
     /// Management destination, independent of source used to mount the block.
     #[serde(default = "default_frontend_ui_registration")]
     pub ui_registration: String,
+    /// Explicit opt-in to block management and page creation, independent of reusable UI registration.
+    #[serde(default)]
+    pub block_registration: bool,
     #[serde(default)]
     pub code_template: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code_template_file: Option<String>,
     #[serde(default)]
     pub code_template_version: Option<String>,
     #[serde(default)]
@@ -1159,9 +1167,12 @@ fn validate_required_auth(required_auth: &[String]) -> FrameworkResult<()> {
 }
 
 mod frontend_blocks;
+mod frontend_sources;
 pub(crate) use frontend_blocks::{
     validate_frontend_block_contributions, validate_frontend_code_modules,
 };
+pub(crate) use frontend_sources::read_package_source;
+pub use frontend_sources::{resolve_frontend_code_modules, resolve_plugin_frontend_sources};
 
 #[path = "manifest_v1/capability_validation.rs"]
 mod capability_validation;

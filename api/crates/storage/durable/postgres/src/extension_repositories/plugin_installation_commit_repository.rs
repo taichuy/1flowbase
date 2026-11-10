@@ -486,10 +486,10 @@ async fn write_installation(
                     id, scope_id, installation_id, provider_code, plugin_id, plugin_version,
                     contribution_code, title, runtime, entry, code_template,
                     code_template_version, code_template_language, code_modules, context_contract,
-                    permission_network, permission_storage, permission_secrets, ui_capabilities, ui_registration
+                    permission_network, permission_storage, permission_secrets, ui_capabilities, ui_registration, block_registration
                 ) values (
                     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                    $14, $15, $16, $17, $18, $19, $20
+                    $14, $15, $16, $17, $18, $19, $20, $21
                 )
                 "#,
         )
@@ -513,6 +513,7 @@ async fn write_installation(
         .bind(&entry.permissions.secrets)
         .bind(serde_json::to_value(&entry.ui_capabilities)?)
         .bind(&entry.ui_registration)
+        .bind(entry.block_registration)
         .execute(&mut *connection)
         .await?;
     }

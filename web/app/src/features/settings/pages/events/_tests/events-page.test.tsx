@@ -27,6 +27,11 @@ const api = vi.hoisted(() => ({
   listApiEventOperations: vi.fn(),
   getApiEventOperation: vi.fn()
 }));
+vi.mock('@1flowbase/charts', () => ({
+  EChart: ({ ariaLabel }: { ariaLabel?: string }) => (
+    <div role="img" aria-label={ariaLabel} />
+  )
+}));
 const clipboard = vi.hoisted(() => ({ copy: vi.fn() }));
 vi.mock('../../../../../shared/ui/clipboard/use-clipboard-copy', () => ({
   useClipboardCopy: () => ({ copied: false, copy: clipboard.copy })
@@ -492,9 +497,7 @@ describe('event center configuration and observations', () => {
     window.history.replaceState({}, '', `/settings/events?tab=${tab}`);
     const view = renderPage();
     await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'Observation details' })
-      ).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
     );
     expect(screen.getByRole('tab', { name: label })).toHaveAttribute(
       'aria-selected',
@@ -504,9 +507,7 @@ describe('event center configuration and observations', () => {
     view.unmount();
     renderPage();
     await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'Observation details' })
-      ).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
     );
     expect(screen.getByRole('tab', { name: label })).toHaveAttribute(
       'aria-selected',
@@ -520,18 +521,14 @@ describe('event center configuration and observations', () => {
     expect(window.location.search).toBe('?tab=queues');
     fireEvent.click(screen.getByRole('tab', { name: 'Recent activity' }));
     expect(window.location.search).toBe('?tab=activity');
-    await act(async () => {
-      window.history.back();
-      await waitFor(() => expect(window.location.search).toBe('?tab=queues'));
-    });
+    window.history.back();
+    await waitFor(() => expect(window.location.search).toBe('?tab=queues'));
     expect(screen.getByRole('tab', { name: 'Current queues' })).toHaveAttribute(
       'aria-selected',
       'true'
     );
-    await act(async () => {
-      window.history.forward();
-      await waitFor(() => expect(window.location.search).toBe('?tab=activity'));
-    });
+    window.history.forward();
+    await waitFor(() => expect(window.location.search).toBe('?tab=activity'));
     expect(
       screen.getByRole('tab', { name: 'Recent activity' })
     ).toHaveAttribute('aria-selected', 'true');
@@ -832,14 +829,19 @@ describe('event center configuration and observations', () => {
     renderPage();
     fireEvent.click(screen.getByRole('tab', { name: 'Current queues' }));
     await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'Observation details' })
-      ).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
     );
-    expect(
-      screen.getByText(/Events are broadcast across subscriptions/)
-    ).toHaveTextContent('consumers compete within that queue');
     fireEvent.click(screen.getByRole('button', { name: 'custom.order' }));
+    expect(
+      within(screen.getByRole('dialog')).getByText(
+        /An event can fan out to independent subscriptions/
+      )
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Details'
+      })
+    );
     expect(
       within(screen.getByRole('dialog')).getByText('Dequeued deliveries')
     ).toBeInTheDocument();
@@ -847,12 +849,6 @@ describe('event center configuration and observations', () => {
       screen.getByText(/does not indicate workflow success or failure/)
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Observation details' })
-    );
-    expect(
-      screen.getByText('Rejections retained in activity window')
-    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(
       screen.queryByRole('button', { name: /^consume(?: event)?$/i })
@@ -885,38 +881,41 @@ describe('event center configuration and observations', () => {
       await screen.findByRole('button', { name: 'Create event' })
     ).toBeEnabled();
   });
-  test('shows scoped observation loss counts with their coverage window', async () => {
+  test('exposes the previous raw diagnostics as readable metrics and a cleanup report', async () => {
     renderPage();
     fireEvent.click(screen.getByRole('tab', { name: 'Recent activity' }));
-    await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'Observation details' })
-      ).toBeEnabled()
-    );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Observation details' })
-    );
+    const expired = await screen.findByRole('button', {
+      name: 'Expired records'
+    });
     expect(
-      await screen.findByText('Records expired in window')
-    ).toBeInTheDocument();
-    const descriptions = screen
-      .getByText('Records expired in window')
-      .closest('tr');
-    expect(descriptions).not.toBeNull();
-    expect(
-      within(descriptions as HTMLElement).getByText('11')
-    ).toBeInTheDocument();
-    expect(screen.getByText('Records evicted in window')).toBeInTheDocument();
-    expect(
-      screen.getByText('Oversized records dropped in window')
+      within(
+        expired.closest<HTMLElement>('.event-observation-metric')!
+      ).getByText('11')
     ).toBeInTheDocument();
     expect(
-      screen.getByText(
-        /Counts cover observation records lost in this source scope/
-      )
+      within(
+        screen
+          .getByRole('button', { name: 'Evicted for space' })
+          .closest<HTMLElement>('.event-observation-metric')!
+      ).getByText('8')
     ).toBeInTheDocument();
+    expect(
+      within(
+        screen
+          .getByRole('button', { name: 'Oversized records dropped' })
+          .closest<HTMLElement>('.event-observation-metric')!
+      ).getByText('6')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: 'Record cleanup by scope' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Retained for 1 min')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Record diagnostics' })
+    ).not.toBeInTheDocument();
   });
-  test('unavailable accounting is shown explicitly instead of zero loss', async () => {
+  test('unavailable cleanup statistics remain unknown in the report', async () => {
     api.getEventRuntime.mockResolvedValue(
       withWorkspaceView({
         ...snapshot,
@@ -932,17 +931,15 @@ describe('event center configuration and observations', () => {
     );
     renderPage();
     fireEvent.click(screen.getByRole('tab', { name: 'Recent activity' }));
+    const expired = await screen.findByRole('button', {
+      name: 'Expired records'
+    });
+    const metric = expired.closest<HTMLElement>('.event-observation-metric')!;
+    expect(within(metric).getByText('—')).toBeInTheDocument();
     expect(
-      await screen.findByText(
-        /No observation loss accounting window is available/
-      )
+      within(metric).getByText('No cleanup statistics')
     ).toBeInTheDocument();
-    expect(
-      screen.queryByText('Records expired in window')
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText('Loss accounting started')
-    ).not.toBeInTheDocument();
+    expect(within(metric).queryByText('0')).not.toBeInTheDocument();
   });
   test('reports inactive workflow subscriptions without interpreting consumer execution as consumption', async () => {
     api.getEventRuntime.mockResolvedValue(
@@ -954,6 +951,8 @@ describe('event center configuration and observations', () => {
             workspace_id: 'workspace',
             application_id: 'needs-attention-app',
             subscription_id: 'inactive-subscription',
+            contract_id: 'custom.order',
+            trigger_phase: 'published',
             activation: 'unavailable',
             reason: 'activation_failed',
             last_signal_id: 'hidden-signal',
@@ -965,6 +964,8 @@ describe('event center configuration and observations', () => {
             workspace_id: 'workspace',
             application_id: 'unknown-reason-app',
             subscription_id: 'unknown-reason-subscription',
+            contract_id: 'custom.order',
+            trigger_phase: 'published',
             activation: 'stopping',
             reason: 'future_activation_reason',
             last_signal_id: null,
@@ -976,6 +977,8 @@ describe('event center configuration and observations', () => {
             workspace_id: 'workspace',
             application_id: 'active-app',
             subscription_id: 'active-subscription',
+            contract_id: 'custom.order',
+            trigger_phase: 'published',
             activation: 'active',
             reason: null,
             last_signal_id: null,
@@ -988,9 +991,9 @@ describe('event center configuration and observations', () => {
     );
     renderPage();
     fireEvent.click(screen.getByRole('tab', { name: 'Current queues' }));
-    expect(
-      await screen.findByText('inactive-subscription')
-    ).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'custom.order' })
+    );
     expect(screen.getByText('needs-attention-app')).toBeInTheDocument();
     expect(screen.getByText('Unavailable')).toBeInTheDocument();
     expect(
@@ -998,19 +1001,14 @@ describe('event center configuration and observations', () => {
         'Workflow subscriptions could not be refreshed. Retry with Refresh.'
       )
     ).toBeInTheDocument();
+    const inactiveRow = screen.getByText('needs-attention-app').closest('tr');
+    fireEvent.click(
+      within(inactiveRow!).getByRole('button', { name: 'Details' })
+    );
     expect(
       screen.getByText('Subscription activation failed.')
     ).toBeInTheDocument();
     expect(screen.queryByText('activation_failed')).not.toBeInTheDocument();
-    expect(screen.queryByText('active-app')).not.toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'The subscription cannot currently accept new events. Check its application configuration and permissions.'
-      )
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText('future_activation_reason')
-    ).not.toBeInTheDocument();
     for (const value of [
       'hidden-signal',
       'hidden-run',
@@ -1018,14 +1016,18 @@ describe('event center configuration and observations', () => {
       'hidden-execution-reason'
     ])
       expect(screen.queryByText(value)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'custom.order' }));
-    expect(
-      within(screen.getByRole('dialog')).getByText('Dequeued deliveries')
-    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getAllByRole('button', {
+        name: 'Details'
+      })[0]
+    );
+    expect(screen.getByText('Dequeued deliveries')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(
       screen.queryByRole('button', { name: /^consume(?: event)?$/i })
     ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Recent activity' }));
     expect(screen.queryByText('inactive-subscription')).not.toBeInTheDocument();
   });
@@ -1088,7 +1090,7 @@ describe('event center configuration and observations', () => {
   });
 });
 
-test('source scope keeps native identities and unknown original queue counts without mixing observation windows', async () => {
+test('source scope retains activity identities and separate observation windows without native queue navigation', async () => {
   const workspace = withWorkspaceView(snapshot);
   const systemView = {
     ...workspace.source_views[0],
@@ -1138,6 +1140,7 @@ test('source scope keeps native identities and unknown original queue counts wit
     activity: [
       {
         ...snapshot.activity[0],
+        event_id: 'native-event',
         source_context: {
           registration_id: 'native-registration',
           source_id: 'native.source',
@@ -1161,26 +1164,25 @@ test('source scope keeps native identities and unknown original queue counts wit
     '/settings/events?tab=queues&scope=system'
   );
   renderPage();
-  expect(await screen.findByText('native-queue')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'native-queue' }));
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
+  );
   expect(
-    within(screen.getByRole('dialog')).getAllByText('Unknown')
-  ).toHaveLength(4);
-  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Observation details' }));
-  expect(screen.getByText('777')).toBeInTheDocument();
-  expect(screen.queryByText('11')).not.toBeInTheDocument();
-  expect(screen.getByText('987 / 2000')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    screen.queryByRole('button', { name: 'native.contract' })
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText('native-queue')).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: 'Record diagnostics' })
+  ).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('tab', { name: 'Recent activity' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Details' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Native source' }));
   expect(await screen.findByText('native:event:non-uuid')).toBeInTheDocument();
   expect(screen.getByText('native-producer')).toBeInTheDocument();
   expect(screen.getByText('native-subscriber')).toBeInTheDocument();
   expect(window.location.search).toContain('scope=system');
 });
 
-test('unbound original queues retain request errors without displaying adapter status', async () => {
+test('unbound source metadata and native queue errors do not enter the subscription UI', async () => {
   const workspace = withWorkspaceView(snapshot);
   api.getEventRuntime.mockResolvedValue({
     ...workspace,
@@ -1221,16 +1223,14 @@ test('unbound original queues retain request errors without displaying adapter s
     '/settings/events?tab=queues&scope=unbound'
   );
   renderPage();
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
+  );
+  expect(screen.queryByText('Unbound source')).not.toBeInTheDocument();
+  expect(screen.queryByText(/Source diagnostics/)).not.toBeInTheDocument();
   expect(
-    await screen.findByRole('button', { name: 'Unbound source' })
-  ).toBeInTheDocument();
-  expect(screen.queryByText('Declaration only')).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole('columnheader', { name: 'Observation coverage' })
+    screen.queryByText(/Source queue observations could not be refreshed/)
   ).not.toBeInTheDocument();
-  expect(
-    screen.getByText(/Source queue observations could not be refreshed/)
-  ).toBeInTheDocument();
   expect(
     screen.queryByText('source_queue_observer_unavailable')
   ).not.toBeInTheDocument();
@@ -1241,7 +1241,7 @@ test.each([
   { complete: false, observedQueue: true },
   { complete: true, observedQueue: false }
 ])(
-  'reports queue observation completeness=$complete with observed queue=$observedQueue',
+  'native source completeness=$complete and queued=$observedQueue do not generate subscriptions',
   async ({ complete, observedQueue }) => {
     const workspace = withWorkspaceView(snapshot);
     const source = {
@@ -1284,49 +1284,20 @@ test.each([
     });
     window.history.replaceState({}, '', '/settings/events?tab=queues');
     renderPage();
-    const sourceButton = await screen.findByRole('button', {
-      name: 'Budgeted runtime source'
-    });
-    const sourceRow = sourceButton.closest('tr');
-    expect(sourceRow).not.toBeNull();
-    expect(
-      within(sourceRow!).getByText(complete ? 'Complete' : 'Incomplete')
-    ).toBeInTheDocument();
-    const warning = screen.queryByText(
-      /The observation budget prevented recording/
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
     );
-    if (complete) {
-      expect(warning).not.toBeInTheDocument();
-    } else {
-      expect(warning).toBeInTheDocument();
-      expect(warning).toHaveTextContent(
-        'an empty list does not establish that no queues exist'
-      );
-      expect(warning).toHaveTextContent(
-        'This does not indicate a delivery failure in the original queues'
-      );
-    }
-    if (observedQueue) {
-      expect(screen.getByText('observed-original-queue')).toBeInTheDocument();
-      fireEvent.click(
-        screen.getByRole('button', { name: 'observed-original-queue' })
-      );
-      expect(
-        within(screen.getByRole('dialog')).getAllByText('Unknown')
-      ).toHaveLength(4);
-      expect(
-        within(screen.getByRole('dialog')).getByText('4')
-      ).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-      const queueRow = screen
-        .getByText('observed-original-queue')
-        .closest('tr');
-      expect(queueRow).not.toBeNull();
-      expect(within(queueRow!).getAllByText('Unknown')).toHaveLength(2);
-    } else {
-      expect(
-        screen.queryByText('observed-original-queue')
-      ).not.toBeInTheDocument();
-    }
+    expect(
+      screen.queryByRole('button', { name: 'Budgeted runtime source' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('observed-original-queue')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'runtime.event' })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Source diagnostics/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Source metadata bytes/)).not.toBeInTheDocument();
   }
 );

@@ -185,6 +185,10 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
     setSelectedBlockId
   });
   const blockCatalog = useFrontstageBlockCatalog({ workspaceId });
+  const creatableBlockCatalog = useFrontstageBlockCatalog({
+    workspaceId: isDesignMode ? workspaceId : null,
+    registrationTarget: 'block'
+  });
   const displayedPageContent = savedPageContent ?? pageContent;
   const hasLoadedSelectedPageContent = Boolean(
     selectedPageId && displayedPageContent?.page.id === selectedPageId
@@ -1090,13 +1094,13 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       {canEnterDesignMode && isDesignMode && selectedPageNode ? (
         <CreateDataBlockMenu
           workspaceId={workspaceId}
-          entries={blockCatalog.items}
-          error={blockCatalog.error}
+          entries={creatableBlockCatalog.items}
+          error={creatableBlockCatalog.error}
           onRetry={() => {
-            void blockCatalog.refetch();
+            void creatableBlockCatalog.refetch();
           }}
-          disabled={!canAddBlock || blockCatalog.loading}
-          loading={isBlockSavePending || blockCatalog.loading}
+          disabled={!canAddBlock || creatableBlockCatalog.loading}
+          loading={isBlockSavePending || creatableBlockCatalog.loading}
           onCreate={handleAddBlock}
         />
       ) : null}

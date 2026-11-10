@@ -1,4 +1,4 @@
-.frontstage-node-action-button.ant-btn {
+.frontstage-node-action-button {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -19,20 +19,20 @@
     transform 100ms ease;
 }
 
-.frontstage-node-action-button.ant-btn:hover {
+.frontstage-node-action-button:hover {
   color: #ffffff !important;
   background: #2563eb !important;
   transform: scale(1.05);
 }
 
-.frontstage-node-action-button.ant-btn:active {
+.frontstage-node-action-button:active {
   color: #ffffff !important;
   background: #1d4ed8 !important;
   transform: scale(0.95);
 }
 
-.frontstage-node-action-button.ant-btn .anticon,
-.frontstage-node-action-button.ant-btn > span {
+.frontstage-node-action-button .anticon,
+.frontstage-node-action-button > span {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -44,15 +44,15 @@
   vertical-align: 0 !important;
 }
 
-.frontstage-node-action-button.ant-btn .anticon,
-.frontstage-node-action-button.ant-btn .anticon svg,
-.frontstage-node-action-button.ant-btn .anticon svg path {
+.frontstage-node-action-button .anticon,
+.frontstage-node-action-button .anticon svg,
+.frontstage-node-action-button .anticon svg path {
   color: #ffffff !important;
   fill: currentColor !important;
   opacity: 1 !important;
 }
 
-.frontstage-node-action-button.ant-btn .anticon svg {
+.frontstage-node-action-button .anticon svg {
   width: 8px !important;
   height: 8px !important;
 }
@@ -82,8 +82,9 @@
   z-index: 20;
   display: flex;
   flex-direction: column;
-  width: 168px;
-  padding: 4px;
+  width: 208px;
+  box-sizing: border-box;
+  padding: 8px;
   background: #fff;
   border: 1px solid var(--border-default, #d5ddd8);
   border-radius: 6px;
@@ -94,7 +95,8 @@
   justify-content: flex-start;
   height: 28px;
   padding-inline: 8px;
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 400;
   text-align: left;
 }
 
@@ -107,10 +109,10 @@
   display: inline-flex;
 }
 
-.frontstage-block-drag-handle.ant-btn {
+.frontstage-block-drag-handle {
   cursor: grab;
 }
 
-.frontstage-block-drag-handle.ant-btn:active {
+.frontstage-block-drag-handle:active {
   cursor: grabbing;
 }

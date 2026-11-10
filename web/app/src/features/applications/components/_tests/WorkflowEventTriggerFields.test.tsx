@@ -3,7 +3,7 @@ import { Button, Form } from 'antd';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { AppProviders } from '../../../../app/AppProviders';
 import { WorkflowEventTriggerFields } from '../WorkflowEventTriggerFields';
-import { ApplicationFormModal } from '../ApplicationFormModal';
+import { ApplicationFormDrawer } from '../ApplicationFormDrawer';
 
 const api = vi.hoisted(() => ({
   fetchWorkflowEventCatalog: vi.fn(),
@@ -195,9 +195,9 @@ test('same-contract source scopes remain distinct and save canonical source with
   const selects = screen.getAllByRole('combobox');
   fireEvent.mouseDown(selects[1]);
   // Only the source adapter's published phase is offered.
-  expect(screen.queryByText('消费时（出队）')).not.toBeInTheDocument();
+  expect(screen.queryByText('消费')).not.toBeInTheDocument();
   fireEvent.click(
-    await screen.findByText('事件发布时', {
+    await screen.findByText('发布', {
       selector: '.ant-select-item-option-content'
     })
   );
@@ -292,7 +292,7 @@ test.each([
     const onClose = vi.fn();
     render(
       <AppProviders>
-        <ApplicationFormModal
+        <ApplicationFormDrawer
           open
           csrfToken="test-csrf"
           intent={{ kind: 'edit', applicationId: 'event-application' }}
@@ -371,13 +371,15 @@ test('same-contract subtype leaves save complete backend filters and discover es
   const sourceSelect = screen.getByRole('combobox', { name: '监听事件' });
   fireEvent.mouseDown(sourceSelect);
   expect(
-    await screen.findByText(/billing \/ credits \/ reserved/)
+    await screen.findByText('reserved', { selector: '.ant-select-item-option-content' })
   ).toBeInTheDocument();
-  fireEvent.click(await screen.findByText(/billing \/ credits \/ settled/));
+  fireEvent.change(sourceSelect, { target: { value: 'SETT' } });
+  await waitFor(() => expect(screen.queryByText('reserved', { selector: '.ant-select-item-option-content' })).not.toBeInTheDocument());
+  fireEvent.click(await screen.findByText('settled', { selector: '.ant-select-item-option-content' }));
   const phaseSelect = screen.getByRole('combobox', { name: '监听时机' });
   fireEvent.mouseDown(phaseSelect);
   fireEvent.click(
-    await screen.findByText('事件发布时', {
+    await screen.findByText('发布', {
       selector: '.ant-select-item-option-content'
     })
   );
@@ -443,7 +445,7 @@ test('new listeners default to publication and retain every supported phase with
   await waitFor(() =>
     expect(
       screen.getByRole('combobox', { name: '监听时机' }).closest('.ant-select')
-    ).toHaveTextContent('事件发布时')
+    ).toHaveTextContent('发布')
   );
   fireEvent.click(screen.getByRole('button', { name: 'Save listener' }));
   await waitFor(() => expect(saved).toHaveBeenCalled());
@@ -454,19 +456,24 @@ test('new listeners default to publication and retain every supported phase with
   });
   expect(saved.mock.calls[0][0].event).not.toHaveProperty('enabled');
   fireEvent.mouseDown(screen.getByRole('combobox', { name: '监听时机' }));
-  for (const label of ['监听生效时', '事件发布时', '消费时（出队）']) {
+  for (const label of ['订阅', '发布', '消费']) {
     expect(
       screen.getByText(label, { selector: '.ant-select-item-option-content' })
     ).toBeInTheDocument();
   }
   fireEvent.click(
-    screen.getByText('消费时（出队）', {
+    screen.getByText('消费', {
       selector: '.ant-select-item-option-content'
     })
   );
   fireEvent.click(screen.getByRole('button', { name: 'Save listener' }));
   await waitFor(() =>
     expect(saved.mock.calls.at(-1)?.[0].event.trigger_phase).toBe('consumed')
+  );
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  fireEvent.mouseEnter(screen.getAllByRole('img', { name: 'question-circle' })[1]);
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(
+    'Consumed 表示出队，不表示业务成功；消费者失败互不影响。'
   );
 });
 

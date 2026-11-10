@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use serde_json::{json, Value};
 use time::OffsetDateTime;
+use time_tz::TimeZone;
 use uuid::Uuid;
 
 use super::{
@@ -199,7 +200,7 @@ where
                 application_id: application.id,
                 enabled: command.enabled,
                 cron: command.cron,
-                timezone: command.timezone,
+                timezone: command.timezone.trim().to_owned(),
                 input_payload: command.input_payload,
             })
             .await
@@ -305,11 +306,11 @@ where
                 reason: "trigger_type_mismatch",
             });
         }
-        if resolve_workflow_schedule_local_time(&trigger.timezone, command.scheduled_at).is_none() {
+        let Some(timezone) = resolve_workflow_schedule_timezone(&trigger.timezone) else {
             return Ok(WorkflowScheduleDispatchOutcome::Skipped {
                 reason: "invalid_timezone",
             });
-        }
+        };
         let Some(publication) = self
             .repository
             .load_active_application_publication(trigger.application_id)
@@ -358,7 +359,11 @@ where
                 trigger: WorkflowInvocationTrigger::Schedule {
                     trigger_id: trigger.id,
                     cron: trigger.cron.clone(),
-                    timezone: trigger.timezone.clone(),
+                    timezone: if trigger.timezone.is_empty() {
+                        timezone.name().to_owned()
+                    } else {
+                        trigger.timezone.clone()
+                    },
                     scheduled_at,
                     idempotency_key: idempotency_key.clone(),
                 },
@@ -406,16 +411,41 @@ pub struct WorkflowScheduleTickEntry {
     pub outcome: WorkflowScheduleDispatchOutcome,
 }
 
-/// Resolves the wall-clock time for a trigger timezone; `None` means the
+/// Resolves the wall-clock time for a trigger timezone (empty follows the server); `None` means the
 /// timezone cannot be resolved and the trigger must be skipped.
 pub fn resolve_workflow_schedule_local_time(
     timezone: &str,
     now_utc: OffsetDateTime,
 ) -> Option<OffsetDateTime> {
-    use time_tz::{timezones, OffsetDateTimeExt};
+    use time_tz::OffsetDateTimeExt;
 
-    let tz = timezones::get_by_name(timezone)?;
+    let tz = resolve_workflow_schedule_timezone(timezone)?;
     Some(now_utc.to_timezone(tz))
+}
+
+fn resolve_workflow_schedule_timezone(timezone: &str) -> Option<&'static time_tz::Tz> {
+    let timezone = timezone.trim();
+    if !timezone.is_empty() {
+        return time_tz::timezones::get_by_name(timezone);
+    }
+
+    // The server's TZ takes precedence over the Linux system zone files.
+    let system_timezone = std::env::var("TZ").ok().or_else(|| {
+        std::fs::read_link("/etc/localtime")
+            .ok()
+            .and_then(|path| {
+                path.to_str()?
+                    .rsplit_once("/zoneinfo/")
+                    .map(|(_, name)| name.to_owned())
+            })
+            .or_else(|| std::fs::read_to_string("/etc/timezone").ok())
+    })?;
+    let name = system_timezone.trim().trim_start_matches(':');
+    let name = name
+        .rsplit_once("/zoneinfo/")
+        .map_or(name, |(_, name)| name);
+    // An explicitly empty TZ selects UTC, as in the operating system.
+    time_tz::timezones::get_by_name(if name.is_empty() { "UTC" } else { name })
 }
 
 /// Matches a five-field cron expression (minute hour day-of-month month
@@ -491,7 +521,9 @@ fn validate_schedule_cron(cron: &str) -> Result<()> {
 }
 
 fn validate_schedule_timezone(timezone: &str) -> Result<()> {
-    let valid = timezone == "UTC"
+    let timezone = timezone.trim();
+    let valid = timezone.is_empty()
+        || timezone == "UTC"
         || timezone == "Etc/UTC"
         || timezone.split_once('/').is_some_and(|(region, name)| {
             matches!(

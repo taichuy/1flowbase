@@ -2,6 +2,7 @@ import {
   getDefaultApiBaseUrl,
   listConsoleFrontendBlocks,
   type ApiBaseUrlLocation,
+  type FrontendUiRegistrationTarget,
   type ConsoleFrontendBlockCatalogEntry
 } from '@1flowbase/api-client';
 
@@ -19,17 +20,20 @@ export const frontstageBlockCatalogQueryKeyPrefix = [
 export function frontstageBlockCatalogQueryKey({
   workspaceId,
   actorId,
-  permissionFingerprint
+  permissionFingerprint,
+  registrationTarget
 }: {
   workspaceId: string;
   actorId: string;
   permissionFingerprint: string;
+  registrationTarget?: FrontendUiRegistrationTarget;
 }) {
   return [
     ...frontstageBlockCatalogQueryKeyPrefix,
     workspaceId,
     actorId,
-    permissionFingerprint
+    permissionFingerprint,
+    ...(registrationTarget ? [{ registration_target: registrationTarget }] : [])
   ] as const;
 }
 
@@ -43,10 +47,15 @@ export function getFrontstageBlockCatalogApiBaseUrl(
   );
 }
 
-export async function fetchFrontstageBlockCatalog(): Promise<FrontstageBlockCatalogSnapshot> {
+export async function fetchFrontstageBlockCatalog(
+  registrationTarget?: FrontendUiRegistrationTarget
+): Promise<FrontstageBlockCatalogSnapshot> {
   return {
     entries: await listConsoleFrontendBlocks(
-      getFrontstageBlockCatalogApiBaseUrl()
+      getFrontstageBlockCatalogApiBaseUrl(),
+      registrationTarget
+        ? { registration_target: registrationTarget }
+        : undefined
     )
   };
 }

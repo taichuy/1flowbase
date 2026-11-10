@@ -69,6 +69,9 @@ pub struct FrontendBlockCatalogEntry {
     pub runtime: String,
     pub entry: String,
     pub ui_registration: String,
+    /// Explicit opt-in to block management and page creation, independent of reusable UI registration.
+    #[serde(default)]
+    pub block_registration: bool,
     pub code_template: Option<String>,
     pub code_template_version: Option<String>,
     pub code_template_language: Option<String>,
@@ -76,4 +79,15 @@ pub struct FrontendBlockCatalogEntry {
     pub context_contract: FrontendBlockContextContract,
     pub permissions: FrontendBlockPermissions,
     pub ui_capabilities: Vec<String>,
+}
+
+impl FrontendBlockCatalogEntry {
+    pub fn registration_targets(&self) -> Vec<String> {
+        let mut targets = Vec::new();
+        if self.block_registration {
+            targets.push("block".to_owned());
+        }
+        targets.push(self.ui_registration.clone());
+        targets
+    }
 }

@@ -16,6 +16,7 @@ export function EventsTable<T extends object>({
   rowKey,
   tableKey,
   loading = false,
+  toolbarStart,
   toolbar,
   urlState = false,
   emptyText,
@@ -28,6 +29,7 @@ export function EventsTable<T extends object>({
   rowKey: keyof T | ((row: T) => string);
   tableKey: string;
   loading?: boolean;
+  toolbarStart?: ReactNode;
   toolbar?: ReactNode;
   urlState?: boolean;
   emptyText?: ReactNode;
@@ -88,6 +90,7 @@ export function EventsTable<T extends object>({
         mobileList={
           showRecords
             ? {
+                scrollMode: 'page',
                 resetKey: mobileRecords,
                 hasMore: currentPage * effectiveSize < rows.length,
                 loading,
@@ -98,12 +101,20 @@ export function EventsTable<T extends object>({
             : undefined
         }
         toolbar={
-          <Flex justify="flex-end" gap={8} wrap>
-            {toolbar}
-            <DataTableColumnSettings
-              columns={columns}
-              configuration={configuration}
-            />
+          <Flex justify="space-between" align="center" gap={12} wrap>
+            {toolbarStart}
+            <Flex
+              align="center"
+              gap={8}
+              wrap
+              style={{ marginInlineStart: 'auto' }}
+            >
+              {toolbar}
+              <DataTableColumnSettings
+                columns={columns}
+                configuration={configuration}
+              />
+            </Flex>
           </Flex>
         }
         emptyText={emptyText ?? t('empty')}

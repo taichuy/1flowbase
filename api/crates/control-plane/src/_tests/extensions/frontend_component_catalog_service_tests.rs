@@ -342,6 +342,7 @@ async fn component_registration_is_not_a_code_template_in_either_catalog() {
         runtime: "native_react".into(),
         entry: "default".into(),
         ui_registration: "component".into(),
+        block_registration: false,
         code_template: Some("export default () => <p />".into()),
         code_template_version: Some("1.0.0".into()),
         code_template_language: Some("tsx".into()),
