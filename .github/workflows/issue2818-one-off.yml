@@ -1,4 +1,4 @@
-name: Issue 2818 unary preparation validation
+name: Issue 2818 shared runtime and managed validation
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
       candidate_sha:
         description: Exact candidate SHA (optional until Root pushes)
         type: string
-        default: a9f69d24afb9160e5f8770fea5b816ee33ed2afd
+        default: 862018221da3337b0793658231f89b9d0f3c7e03
       wait_seconds:
         description: Bounded candidate availability wait
         type: string
@@ -45,12 +45,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: '1.99.1' 
-      - name: Frozen API IR native31 consumers checks and true-source C01
+      - name: Frozen API IR native31 managed behaviors consumers and C01
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_REF: ${{ inputs.candidate_ref || 'refs/heads/opt/2818-global-20261109' }}
-          CANDIDATE_SHA: ${{ inputs.candidate_sha || 'a9f69d24afb9160e5f8770fea5b816ee33ed2afd' }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha || '862018221da3337b0793658231f89b9d0f3c7e03' }}
           CANDIDATE_WAIT: ${{ inputs.wait_seconds || '1200' }}
         run: |
           set -euo pipefail

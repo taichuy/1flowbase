@@ -48,18 +48,33 @@
     "status": "Incomplete",
     "unique_defects": 1
   },
-  "api_tree": "d340372195c163908297ee03fbf96507d333d4f9",
+  "api_tree": "6a6992b3cbb45812439122cf3bd322533e1e040e",
   "cache": {
-    "archive_bytes": 1574361027,
-    "archive_sha256": "f5eaf7c7603a43a1df8638a2102b55b5d5739aebb47131524b4563cf31ada10c",
+    "archive_bytes": 1573913044,
+    "archive_sha256": "ddd1249a9188d0ee1032f641b806b6c624752648837f9b5ade6e2d068d2e4151",
     "compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
-    "id": 13722039245,
-    "name": "issue2818-coupled-api-cache-42726388043-1",
-    "qualified_scope": "ordinary API partial; only withdrawn owner guards completed",
-    "run": 42726388043,
-    "source_sha": "f580c4b45ef3eaf9a86de0f13c2f8346c76adbbf"
+    "id": 13732900725,
+    "name": "issue2818-coupled-api-cache-42747510926-1",
+    "qualified_scope": "partial target after actual ordinary API OOM; no API or test qualification",
+    "run": 42747510926,
+    "source_sha": "a9f69d24afb9160e5f8770fea5b816ee33ed2afd"
   },
-  "candidate": "a9f69d24afb9160e5f8770fea5b816ee33ed2afd",
+  "cache_policy": {
+    "OS_cache_warmth": "controlled; not comparable to earlier hot OS cache",
+    "artifact_contents_and_metadata_unchanged": true,
+    "effect": "unproven until actual full-task peak; no cache exemption",
+    "kind": "bounded task-owned proactive file-cache reclaim during archive IO only",
+    "limits_and_peak_unchanged": true,
+    "maximum_request_bytes": 1000000000,
+    "minimum_seconds_after_request": 1,
+    "not_maximum_actual_reclaim": true,
+    "phase_end_file_floor_bytes": 128000000,
+    "phase_end_max_requests": 10,
+    "phase_end_threshold_bytes": 512000000,
+    "scope": "six archive I/O labels only; no Cargo/rustc reclaim",
+    "trigger_bytes": 4000000000
+  },
+  "candidate": "862018221da3337b0793658231f89b9d0f3c7e03",
   "clean_checks": [
     [
       "cargo",
@@ -83,8 +98,18 @@
       "1"
     ]
   ],
-  "control_base_sha": "f58a416f0131cdebd349c3f35ba5650d8d29e544",
+  "control_base_sha": "cad73fc8c5e0db52c7eaf4c623d08f4c90e3b745",
   "execution_authorized": true,
+  "final_resource_requirements": {
+    "all_original_obligations_preserved": true,
+    "cache_retention_failure_is_failure": true,
+    "compiler_allocator_override": null,
+    "full_task_peak_bytes_at_most": 6400000000,
+    "memory_limit_bytes": 8000000000,
+    "no_peak_reset": true,
+    "postgres_cleanup_failure_is_failure": true,
+    "swap_limit_bytes": 0
+  },
   "frozen_runtime": {
     "backend": {
       "cargoJobs": 1,
@@ -105,10 +130,10 @@
     }
   },
   "inputs": {
-    ".github/workflows/issue2818-one-off.yml": "8c4ec40d5099b872b287a436767cfa0480d29925a0f1934ec0bbbf8623fde6fb",
-    "tmp/test-governance/issue2818/ci-preparation/coupled-api/entry.py": "bbf3e940aa930782d8957aaa83af516b16faabd037adf27365998263fd233936",
+    ".github/workflows/issue2818-one-off.yml": "19ad91487bfd2f5cc6db5782c4b43c4b7b6b504d825d11f3184094ac9c296153",
+    "tmp/test-governance/issue2818/ci-preparation/coupled-api/entry.py": "20d47f55bcac97de5d7225b50a59a6da214c491d9f4350e29fc497457076c0f3",
     "tmp/test-governance/issue2818/ci-preparation/coupled-api/root-wrapper.py": "2c0c11da5494a0d4f995f47c37778f668e6cd4842c9e146d31c00b6618e07d86",
-    "tmp/test-governance/issue2818/ci-preparation/experiment.py": "77952af01b8bed3781782d09f5b028bb089ad5ccb68dce3f4454cf03a06df40e"
+    "tmp/test-governance/issue2818/ci-preparation/experiment.py": "6917281893feaa119f2bf6e025b592e4c61bcb8df6d70352486a671b454d759f"
   },
   "ir_names": [
     "_tests::extension_tests::approved_points_bind_permission_and_typed_facts",
@@ -186,6 +211,12 @@
     "_tests::review_remediation_tests::rr14_authentication_activation_missing_duplicate_and_identity_mismatch_fail_closed",
     "registry::compiler::schema_sharing_tests::exact_schema_interning_preserves_registry_fingerprint_bytes_and_order"
   ],
+  "managed_cases": [
+    "_tests::interface_lifecycle_acceptance::managed_create_pair::root_2007_ac_003_004_managed_create_pair",
+    "_tests::interface_lifecycle_acceptance::managed_interfaces::root_2014_ac_001_complete_compiled_profiles",
+    "_tests::interface_lifecycle_acceptance::managed_interfaces::root_2014_ac_002_installed_two_interface_plugin",
+    "_tests::interface_lifecycle_acceptance::managed_interfaces::root_2014_ac_003_unary_stream_terminals"
+  ],
   "native31_names": [
     "ac_002_009_operation_semantics_are_explicit_before_legacy_mapping",
     "ac_002_console_health_is_compiled_and_not_exposed_by_the_base_router",
@@ -219,18 +250,22 @@
     "routes::console_route_assembly::tests::migrated_assembly_contains_every_console_router_owner_assembly",
     "routes::console_route_assembly::tests::operation_specification_exact_set_reports_every_difference"
   ],
+  "postgres_environment_note": "Original runner exact image20261101.360.1 documents16.15 native PG, actual pg_config/server/ltree required; not PG18 production equivalence. Owned isolated cluster under same8e9/swap0/CPU budget, default durability; no system service.",
+  "postgres_major": 16,
   "proposal_status": "READY_FOR_ROOT_APPROVED_EXECUTION",
   "rejected_candidate_reasons": {
+    "a9f69d24afb9160e5f8770fea5b816ee33ed2afd": "Ordinary API actual record-only rustc hard OOM at316s; later stages NotReached; unchanged configuration retry forbidden.",
     "df054e2036231a7f8a225cab0425e88d0ca4d105": "Observed unary poll physical stack97848 to102696 bytes (+4848) in three instances; rejected by Root. Future-size reduction alone did not pass runtime constraints."
   },
   "rejected_candidate_shas": [
-    "df054e2036231a7f8a225cab0425e88d0ca4d105"
+    "df054e2036231a7f8a225cab0425e88d0ca4d105",
+    "a9f69d24afb9160e5f8770fea5b816ee33ed2afd"
   ],
   "root_authorization": {
-    "basis": "user authorized ongoing optimization and beta validation; reversible isolated CI validation only",
+    "basis": "user authorized ongoing optimization and beta validation; one isolated CI source trial after Root review",
     "not_Root_acceptance": true,
     "owner": "ChatGPT /root",
-    "time_utc": "2026-11-10T03:07:55.550517+00:00"
+    "time_utc": "2026-11-10T04:37:39.114264+00:00"
   },
   "source_hashes": {
     ".agents/skills/qa-evaluation/references/backend/console-settings-registration-gate.md": "275b3637abadd1833821b5443194c583686ab0ce20b52bf1938104148c1d253b",
@@ -253,6 +288,7 @@
     "api/apps/api-server/src/routes/console_route_assembly/_tests/assembly.rs": "70d1d7a5c6a140c317e291f79ecab442ad6bc2960d454a9bc0e9492b0885614a",
     "api/apps/api-server/src/routes/mod.rs": "e2e97f2acbfadf0c23fc528139142fabc0daefec91333cf91dfca3142b823e90",
     "api/apps/api-server/src/routes/plugins_and_models/model_definitions.rs": "83203403055512292f0d84ebeba2917e74d16a8c70d6377841610578c4698f5e",
+    "api/apps/api-server/src/routes/plugins_and_models/model_definitions_managed_hooks.rs": "7dd1c7a966175cf3c5ccb7f60c97da71f0e731df5c467f59825ba25ba320acbe",
     "api/apps/api-server/src/test_support/mod.rs": "ed07072559c153bd6dc6f9d91f9ea86f54ca9a8298ffe44efaa647cdbbe2ec9e",
     "api/apps/api-server/tests/README.md": "24d84cbb7b08085e266f9de20920ae39a0605d471d7f71cae71d2d0a50f6e57e",
     "api/apps/api-server/tests/console_core_registry_tests.rs": "65506395803782702d76adf3582fb0875121fb2120962c93414234bea1edfea0",
@@ -263,9 +299,10 @@
     "api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs": "ac175ff3e08ca4adb594f5f4ef92e222d8c60d74068ed18b9c42cc0f75b9bb4e",
     "api/crates/interface-runtime/src/decision.rs": "ef1a1d097b109dedd69822be7cb18b6904dde84248b4c8fc3fb35c6ae01d5df2",
     "api/crates/interface-runtime/src/finalization.rs": "933fcb4f7648f14aaa8fde646f9d09792340423a387b3883a7d4cf6d8654b656",
-    "api/crates/interface-runtime/src/hook.rs": "9ee701e15c22164d8dd39097c00748771ee7a3ab884477488395bb013b25e3f2",
+    "api/crates/interface-runtime/src/hook.rs": "2bc39d4b97fb0210c8f7bc367430fd578a6acca6b0ab9c18f85213eb7783fcb2",
     "api/crates/interface-runtime/src/invocation.rs": "3c908bd2121d0ec4744a776f71e14258699a3622d5fac2ed3cb9b1f1fe27beb5",
     "api/crates/interface-runtime/src/invocation/kernel.rs": "e97e5932fedd550ebaa87fcb745981bb372f10a16eb6ef3ea0539f3a96c7f5ac",
+    "api/crates/interface-runtime/src/registry/compiler.rs": "73936fbd7980442979be50d959d0d786b9bbeb2ea7e76c3ec75a22fe5fa9e712",
     "scripts/node/agent-logs-exchange/ci-api.cjs": "ed0e940a94e2d8c2b25e4147a538d348661a5c20bd962c2e03a973a235512506",
     "scripts/node/console-operation-registry-hygiene/README.md": "26b6d2ad0e5467fd279ad60cc3f11341d505a92e99eafa2090ecb304f5c7307c",
     "scripts/node/console-operation-registry-hygiene/_tests/core.test.js": "2b9f0d6b8b52b1ba4998a5c798bab4d74d4f7f226c413f50084d2f2d99ffed59",
@@ -284,6 +321,9 @@
     "interface-runtime-74",
     "native31",
     "contracts-root",
+    "sdk-worker",
+    "postgres-owned",
+    "managed-lifecycle",
     "consumer-0",
     "consumer-1",
     "consumer-2",
@@ -295,16 +335,19 @@
     "C01-new-alltargets"
   ],
   "tracked_diff_not_AC006": {
-    "added": 1285,
-    "deleted": 1373,
-    "net": -88,
+    "added": 1461,
+    "deleted": 1516,
+    "net": -55,
     "temporary_tooling_costs_not_yet_aggregated": true
   },
   "unresolved": [
-    "Root reviewed and authorized this bounded candidate validation; no Root or beta acceptance is implied.",
-    "Retained cache restore/retention previously pushed full-task memory above6.4GB; no cache exemption/reclaim fix proposed.",
-    "Old/new four-filter compiled target-qualified multiset and ignored retention remain incomplete; candidate-only nonzero is not that denominator.",
-    "True e3 C01 literal may fail before marker from resources/another error: Incomplete/NoEvidence without D credit.",
-    "Local Rust1.99.0 evidence is not cloud Rust1.99.1 performance evidence."
-  ]
+    "Root acceptance/merge not granted by this proposal.",
+    "Full-task <=6.4e9 including archive and PG remains required; proactive reclaim is experimental and never resets peak.",
+    "Ordinary API default allocator remains unchanged for this source trial; local decay option parse is not compiler-memory evidence.",
+    "Old/new four-filter compiled target-qualified multiset/ignored retention and C01 remain incomplete until real evidence.",
+    "Managed cases use real SDK worker and owned PG16; no sha2 profile override or deadline weakening.",
+    "Governance/proof/CI preparation costs remain unaggregated; tracked net-55 is not AC006 PASS.",
+    "Local1.99.0 tests/layout are not cloud1.99.1 performance evidence."
+  ],
+  "worker_profile": "test"
 }

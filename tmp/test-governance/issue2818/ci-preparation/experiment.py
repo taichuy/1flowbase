@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Issue 2818 one-off controlled W. Not a product runner or natural PR latency."""
 import argparse
+import errno
+import select
 from collections import Counter
 import hashlib
 import gzip
@@ -61,11 +63,114 @@ def read(path):
 def capture(argv, cwd=HOME_ROOT):
     return subprocess.check_output(argv, cwd=cwd, text=True, timeout=30).strip()
 
-def stream_exec(argv, merged):
+
+ARCHIVE_RECLAIM_STAGES = frozenset({
+    'download-prior-artifact', 'verify-retained-archive',
+    'validate-retained-members', 'restore-source-target',
+    'retain-seed-target', 'hash-retained-archive',
+})
+
+
+def archive_reclaim_tick(stage, merged, state, finishing=False):
+    # Called only inside the existing owned job scope. The outer sampler and
+    # resource-job-run deadline/cleanup stay independent of this blocking write.
+    now = time.monotonic()
+    if now < state.get('next_check', 0):
+        return finishing
+    state['next_check'] = now + .1
+    task = os.environ['ONEFLOWBASE_TASK_BUDGET_CGROUP'].rstrip('/')
+    inode = int(os.environ['ONEFLOWBASE_TASK_BUDGET_ID'])
+    if (not task.startswith('/') or '..' in task.split('/')
+            or Path(task).name != 'issue2818.slice'):
+        raise RuntimeError('archive reclaim requires the declared issue2818 task slice')
+    group = Path('/sys/fs/cgroup') / task.lstrip('/')
+    scope = next(line[3:] for line in Path('/proc/self/cgroup').read_text().splitlines()
+                 if line.startswith('0::'))
+    if not scope.startswith(task + '/'):
+        raise RuntimeError('archive reclaim command is not inside the task child scope')
+    directory = os.open(group, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    def read_at(name):
+        with os.fdopen(os.open(name, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+                               dir_fd=directory)) as stream:
+            return stream.read().strip()
+    def note(row):
+        with Path(str(merged) + '.reclaim.jsonl').open('a') as log:
+            log.write(json.dumps({'stage':stage, **row}) + '\n')
+    try:
+        if os.fstat(directory).st_ino != inode or group.stat().st_ino != inode:
+            raise RuntimeError('archive reclaim task inode changed')
+        limits = {name:read_at(name) for name in
+                  ('memory.max', 'memory.high', 'memory.swap.max', 'cpu.max')}
+        if (limits['memory.max'], limits['memory.high'], limits['memory.swap.max']) != (
+                '8000000000', 'max', '0'):
+            raise RuntimeError('archive reclaim requires unchanged frozen cloud memory limits')
+        if not state.get('observed'):
+            note({'event':'enabled', 'monotonic':now, 'task':task, 'inode':inode,
+                  'scope':scope, 'limits':limits, 'trigger_bytes':4_000_000_000,
+                  'check_seconds':.1, 'minimum_seconds_after_request':1,
+                  'measurement':'current/stat are sequential reads, not an atomic snapshot'})
+            state['observed'] = True
+        current = int(read_at('memory.current'))
+        stat = dict(line.split() for line in read_at('memory.stat').splitlines())
+        page = os.sysconf('SC_PAGE_SIZE')
+        threshold = 512_000_000 if finishing else 4_000_000_000
+        target = 256_000_000 if finishing else 3_000_000_000
+        reclaimable = max(0, int(stat['file']) - (128_000_000 if finishing else 0))
+        request = (min(1_000_000_000, max(0, current-target), reclaimable) // page) * page
+        if current < threshold or request < page:
+            if finishing:
+                note({'event':'phase-end', 'monotonic':now, 'current':current,
+                      'file':int(stat['file']), 'anon':int(stat['anon'])})
+            return False
+        started = time.monotonic()
+        note({'event':'request-start', 'monotonic':started, 'requested_bytes':request,
+              'before_current':current, 'before_file':int(stat['file']),
+              'phase_end_drain':finishing})
+        failure = None
+        try:
+            fd = os.open('memory.reclaim', os.O_WRONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+                         dir_fd=directory)
+            try:
+                payload = (str(request) + '\n').encode()
+                if os.write(fd, payload) != len(payload):
+                    raise OSError(errno.EIO, 'short memory.reclaim write')
+            finally:
+                os.close(fd)
+        except OSError as error:
+            failure = error
+        ended = time.monotonic()
+        # Record errors before any subsequent observation can itself fail.
+        note({'event':'request-end', 'monotonic':ended,
+              'wall_seconds':ended-started,
+              'result':('partial' if failure and failure.errno == errno.EAGAIN else
+                        'error' if failure else 'request-completed'),
+              'errno':failure.errno if failure else None,
+              'error':str(failure) if failure else None})
+        state['next_check'] = ended + 1
+        if failure is not None and failure.errno != errno.EAGAIN:
+            raise failure
+        after_current = int(read_at('memory.current'))
+        after_file = int(dict(line.split() for line in read_at('memory.stat').splitlines())['file'])
+        note({'event':'after-observation', 'monotonic':time.monotonic(),
+              'current':after_current, 'file':after_file, 'phase_end_drain':finishing})
+        return after_current >= threshold and after_file > (128_000_000 if finishing else 0)
+    finally:
+        os.close(directory)
+
+
+def stream_exec(argv, merged, archive_stage=None):
     # One kernel pipe preserves Cargo target headers before their child output.
+    if archive_stage is not None and archive_stage not in ARCHIVE_RECLAIM_STAGES:
+        raise RuntimeError('archive reclaim stage is not allowed')
+    reclaim_state = {}
     child = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     with Path(merged).open('wb') as combined:
         while True:
+            if archive_stage is not None:
+                if child.poll() is None:
+                    archive_reclaim_tick(archive_stage, merged, reclaim_state)
+                if not select.select([child.stdout], [], [], .1)[0]:
+                    continue
             chunk = os.read(child.stdout.fileno(), 65536)
             if not chunk:
                 break
@@ -73,7 +178,19 @@ def stream_exec(argv, merged):
             combined.flush()
             sys.stdout.buffer.write(chunk)
             sys.stdout.buffer.flush()
-    return child.wait()
+    status = child.wait()
+    if status == 0 and archive_stage in {'restore-source-target', 'hash-retained-archive'}:
+        # Reclaim after the producer exits too; all waits remain inside this same
+        # measured scope. This does not reset the earlier full-task peak.
+        for _ in range(10):
+            pause = max(0, reclaim_state.get('next_check', 0) - time.monotonic())
+            if pause:
+                time.sleep(pause)
+            if not archive_reclaim_tick(archive_stage, merged, reclaim_state, finishing=True):
+                break
+        else:
+            raise RuntimeError('archive phase-end reclaim did not settle within10 requests')
+    return status
 
 def rustc_thread_sample(processes, now):
     if now < THREAD_STATE['next']:
@@ -163,8 +280,13 @@ def run(label, argv, cwd=HOME_ROOT, env=None, heavy=False, seconds=1200, expecte
     limit = min(seconds, END-time.monotonic())
     if limit <= 0:
         raise RuntimeError('global controlled-experiment deadline exhausted')
+    archive_io = label in ARCHIVE_RECLAIM_STAGES
+    if archive_io and heavy:
+        raise RuntimeError('archive reclaim cannot be enabled for a heavy compiler gate')
+    execution = (['archive-exec', label, str(merged)] if archive_io
+                 else ['exec', str(merged)])
     actual = ([sys.executable, str(HEAVY)] if heavy else []) + [
-        sys.executable, str(SELF), 'exec', str(merged), *argv]
+        sys.executable, str(SELF), *execution, *argv]
     wrapper = [sys.executable, str(RUNNER), '--deadline-seconds', str(limit), '--output-dir', str(folder), '--', *actual]
     started = time.monotonic()
     next_report = started
@@ -443,15 +565,15 @@ def retain_seed_cache(source, target, metadata):
         'import os,resource; resource.setrlimit(resource.RLIMIT_FSIZE,('+str(cap)+','+str(cap)+')); os.execvp("tar",'+repr(['tar','--exclude=seed-source/.git','-I','zstd -T1 -1','-cf',str(archive),'-C',str(TEMP),'seed-source','target-seed'])+')']
     try:
         row=run('retain-seed-target',command,seconds=300)
-        digest=hashlib.sha256()
-        with archive.open('rb') as stream:
-            for chunk in iter(lambda:stream.read(1024*1024),b''):
-                digest.update(chunk)
+        checksum=run('hash-retained-archive',['sha256sum',str(archive)],seconds=60)
+        digest=Path(checksum['stdout_log']).read_text().split()[0]
+        assert re.fullmatch(r'[0-9a-f]{64}',digest), 'invalid retained archive SHA-256 output'
         save(out,{'status':'archived','archive':str(archive),'bytes':archive.stat().st_size,
-                  'sha256':digest.hexdigest(),'compiler':capture(['rustc','-vV']),
+                  'sha256':digest,'compiler':capture(['rustc','-vV']),
                   'source_sha':metadata.get('actual_source_sha',metadata['source_sha']),'root_paths':[str(source),str(target)],
                   'cache_level':metadata,'note':'partial or complete as recorded; restore must revalidate Cargo freshness; source mtimes retained and .git excluded',
-                  'archive_cost_seconds':row['wall_seconds']})
+                  'archive_cost_seconds':row['wall_seconds'],
+                  'archive_sha_cost_seconds':checksum['wall_seconds']})
     except Exception as failure:
         archive.unlink(missing_ok=True)
         save(out,{'status':'archive-unavailable','reason':str(failure),'bounded_bytes':cap,'bounded_seconds':300})
@@ -941,6 +1063,8 @@ if __name__=='__main__':
         sys.exit(0)
     if len(sys.argv)>1 and sys.argv[1]=='follow-clean-checks':
         sys.exit(follow_withdrawal(int(sys.argv[2]),sys.argv[3],sys.argv[4]))
+    if len(sys.argv)>1 and sys.argv[1]=='archive-exec':
+        sys.exit(stream_exec(sys.argv[4:],sys.argv[3],sys.argv[2]))
     if len(sys.argv)>1 and sys.argv[1]=='exec':
         sys.exit(stream_exec(sys.argv[3:],sys.argv[2]))
     try:
