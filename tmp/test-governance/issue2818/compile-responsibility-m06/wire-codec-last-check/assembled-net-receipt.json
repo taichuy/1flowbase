@@ -1,0 +1,278 @@
+{
+  "at": "2026-11-09T23:56:36.592068+00:00",
+  "baseline": "e3cdfefb7a5b85d1d7d9c2ef166e3b923c05de89",
+  "head": "f580c4b45ef3eaf9a86de0f13c2f8346c76adbbf",
+  "rows": [
+    {
+      "path": ".agents/skills/qa-evaluation/references/backend/console-settings-registration-gate.md",
+      "added": 2,
+      "deleted": 2,
+      "net": 0
+    },
+    {
+      "path": ".github/workflows/event-lifecycle.yml",
+      "added": 3,
+      "deleted": 3,
+      "net": 0
+    },
+    {
+      "path": ".github/workflows/notification-subscription.yml",
+      "added": 1,
+      "deleted": 1,
+      "net": 0
+    },
+    {
+      "path": "api/AGENTS.md",
+      "added": 1,
+      "deleted": 0,
+      "net": 1
+    },
+    {
+      "path": "api/Cargo.lock",
+      "added": 14,
+      "deleted": 0,
+      "net": 14
+    },
+    {
+      "path": "api/Cargo.toml",
+      "added": 1,
+      "deleted": 0,
+      "net": 1
+    },
+    {
+      "path": "api/apps/api-server/Cargo.toml",
+      "added": 1,
+      "deleted": 0,
+      "net": 1
+    },
+    {
+      "path": "api/apps/api-server/src/routes/_tests/console_route_assembly_tests.rs",
+      "added": 6,
+      "deleted": 0,
+      "net": 6
+    },
+    {
+      "path": "api/apps/api-server/src/routes/_tests/console_route_assembly_tests/data_model_and_docs.rs",
+      "added": 1,
+      "deleted": 0,
+      "net": 1
+    },
+    {
+      "path": "api/apps/api-server/src/routes/_tests/console_route_assembly_tests/infrastructure_and_mcp.rs",
+      "added": 1,
+      "deleted": 0,
+      "net": 1
+    },
+    {
+      "path": "api/apps/api-server/src/routes/_tests/console_route_assembly_tests/plugins_and_models.rs",
+      "added": 1,
+      "deleted": 0,
+      "net": 1
+    },
+    {
+      "path": "api/apps/api-server/src/routes/_tests/file_console_route_assembly_tests.rs",
+      "added": 3,
+      "deleted": 0,
+      "net": 3
+    },
+    {
+      "path": "api/apps/api-server/src/routes/_tests/mod.rs",
+      "added": 3,
+      "deleted": 0,
+      "net": 3
+    },
+    {
+      "path": "api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs",
+      "added": 9,
+      "deleted": 0,
+      "net": 9
+    },
+    {
+      "path": "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads/managed_projection/application_runtime_reads_output.rs",
+      "added": 4,
+      "deleted": 1001,
+      "net": -997
+    },
+    {
+      "path": "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads/managed_projection/application_runtime_reads_schema.rs",
+      "added": 867,
+      "deleted": 0,
+      "net": 867
+    },
+    {
+      "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
+      "added": 3,
+      "deleted": 2,
+      "net": 1
+    },
+    {
+      "path": "api/apps/api-server/src/routes/console_route_assembly/_tests/assembly.rs",
+      "added": 3,
+      "deleted": 0,
+      "net": 3
+    },
+    {
+      "path": "api/apps/api-server/src/routes/mod.rs",
+      "added": 0,
+      "deleted": 11,
+      "net": -11
+    },
+    {
+      "path": "api/apps/api-server/src/routes/plugins_and_models/model_definitions.rs",
+      "added": 16,
+      "deleted": 128,
+      "net": -112
+    },
+    {
+      "path": "api/apps/api-server/src/test_support/mod.rs",
+      "added": 0,
+      "deleted": 38,
+      "net": -38
+    },
+    {
+      "path": "api/apps/api-server/tests/README.md",
+      "added": 6,
+      "deleted": 6,
+      "net": 0
+    },
+    {
+      "path": "api/apps/api-server/tests/console_core_registry_tests.rs",
+      "added": 0,
+      "deleted": 152,
+      "net": -152
+    },
+    {
+      "path": "api/apps/model-definitions-http/Cargo.toml",
+      "added": 16,
+      "deleted": 0,
+      "net": 16
+    },
+    {
+      "path": "api/apps/model-definitions-http/src/_tests/extractor_parity.rs",
+      "added": 101,
+      "deleted": 0,
+      "net": 101
+    },
+    {
+      "path": "api/apps/model-definitions-http/src/body.rs",
+      "added": 33,
+      "deleted": 0,
+      "net": 33
+    },
+    {
+      "path": "api/apps/model-definitions-http/src/lib.rs",
+      "added": 10,
+      "deleted": 0,
+      "net": 10
+    },
+    {
+      "path": "api/apps/model-definitions-http/src/query.rs",
+      "added": 29,
+      "deleted": 0,
+      "net": 29
+    },
+    {
+      "path": "api/apps/model-definitions-http/src/requests.rs",
+      "added": 125,
+      "deleted": 0,
+      "net": 125
+    },
+    {
+      "path": "api/crates/AGENTS.md",
+      "added": 1,
+      "deleted": 0,
+      "net": 1
+    },
+    {
+      "path": "api/crates/control-plane-postgres-tests/tests/dependency_boundaries.rs",
+      "added": 5,
+      "deleted": 0,
+      "net": 5
+    },
+    {
+      "path": "scripts/node/agent-logs-exchange/ci-api.cjs",
+      "added": 1,
+      "deleted": 1,
+      "net": 0
+    },
+    {
+      "path": "scripts/node/console-operation-registry-hygiene/README.md",
+      "added": 8,
+      "deleted": 8,
+      "net": 0
+    },
+    {
+      "path": "scripts/node/console-operation-registry-hygiene/_tests/core.test.js",
+      "added": 2,
+      "deleted": 2,
+      "net": 0
+    },
+    {
+      "path": "scripts/node/console-operation-registry-hygiene/compiled-assembly-checks.js",
+      "added": 1,
+      "deleted": 1,
+      "net": 0
+    },
+    {
+      "path": "scripts/node/foundation-contracts/_tests/core.test.js",
+      "added": 24,
+      "deleted": 17,
+      "net": 7
+    },
+    {
+      "path": "scripts/node/foundation-contracts/core.js",
+      "added": 3,
+      "deleted": 1,
+      "net": 2
+    },
+    {
+      "path": "scripts/node/gate-router/_tests/core.test.js",
+      "added": 4,
+      "deleted": 0,
+      "net": 4
+    },
+    {
+      "path": "scripts/node/gate-router/core.js",
+      "added": 1,
+      "deleted": 0,
+      "net": 1
+    },
+    {
+      "path": "scripts/node/verify-backend/_tests/cli.test.js",
+      "added": 69,
+      "deleted": 2,
+      "net": 67
+    },
+    {
+      "path": "scripts/node/verify/_tests/history-maintenance.test.js",
+      "added": 2,
+      "deleted": 1,
+      "net": 1
+    },
+    {
+      "path": "scripts/node/verify/backend-targets.js",
+      "added": 3,
+      "deleted": 0,
+      "net": 3
+    },
+    {
+      "path": "scripts/node/verify/backend.js",
+      "added": 32,
+      "deleted": 45,
+      "net": -13
+    }
+  ],
+  "added": 1416,
+  "deleted": 1422,
+  "net": -6,
+  "threshold_source_only": true,
+  "root_acceptance": false,
+  "budget_breakdown": {
+    "prewave": -58,
+    "codec": 233,
+    "frozenW2": -173,
+    "exact_a9": -8
+  },
+  "one_off_work": "Charged separately under original frozen account; not erased or certified PASS by this permanent-source receipt",
+  "runtime_and_wholeW": "not qualified"
+}

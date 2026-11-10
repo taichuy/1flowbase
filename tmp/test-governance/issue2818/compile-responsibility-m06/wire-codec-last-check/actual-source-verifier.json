@@ -1,0 +1,450 @@
+{
+  "status": "ACTUAL_SOURCE_PASS_ONLY",
+  "checks": [
+    {
+      "name": "normal_dependencies_only_exact_existing_workspace",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "dev_dependencies_only_existing_workspace",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "concrete_package_name",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "request_dto_tokens_preserved",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "original_helper_empty_json_object",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "original_helper_default_true",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "original_helper_deserialize_present_optional",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "concrete_codec_tokens_body.rs",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "concrete_codec_tokens_query.rs",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "module_and_test_mount_preserved",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "all_parity_assertions_and_cases_retained",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "no_new_heap_clone_state_or_unsafe",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "only_ten_request_structs",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "unchanged_argument_slots_list_models",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "business_body_unchanged_list_models",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "unchanged_argument_slots_create_model",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "business_body_unchanged_create_model",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "unchanged_argument_slots_update_model",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "business_body_unchanged_update_model",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "unchanged_argument_slots_delete_model",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "business_body_unchanged_delete_model",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "unchanged_argument_slots_batch_delete_models",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "business_body_unchanged_batch_delete_models",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "unchanged_argument_slots_create_field",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "business_body_unchanged_create_field",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "unchanged_argument_slots_update_field",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "business_body_unchanged_update_field",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "unchanged_argument_slots_delete_field",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "business_body_unchanged_delete_field",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "unchanged_argument_slots_create_scope_grant",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "business_body_unchanged_create_scope_grant",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "unchanged_argument_slots_update_scope_grant",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "business_body_unchanged_update_scope_grant",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "excluded_compatible_query_dto_unchanged",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "excluded_compatible_handler_unchanged",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_utoipa_attrs_list_models",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_utoipa_attrs_create_model",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_utoipa_attrs_update_model",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_utoipa_attrs_delete_model",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_utoipa_attrs_batch_delete_models",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_utoipa_attrs_create_field",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_utoipa_attrs_update_field",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_utoipa_attrs_delete_field",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_utoipa_attrs_create_scope_grant",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_utoipa_attrs_update_scope_grant",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_utoipa_attrs_list_compatible_templates",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "request_serde_structs_removed_from_api",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "no_old_json_query_request_instantiation_in_api_owner",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "same_public_request_names_reexported",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_other_owner_api/apps/api-server/src/routes/plugins_and_models/model_definitions_interface.rs",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_other_owner_api/apps/api-server/src/routes/plugins_and_models/model_definitions_managed_hooks.rs",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_other_owner_api/apps/api-server/src/routes/plugins_and_models/model_definitions_interface/managed_projection.rs",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_other_owner_api/apps/api-server/src/routes/plugins_and_models/model_definitions_interface/managed_projection/model_definitions_input.rs",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_other_owner_api/apps/api-server/src/routes/plugins_and_models/model_definitions_interface/managed_projection/model_definitions_output.rs",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_other_owner_api/apps/api-server/src/routes/console_interface.rs",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_other_owner_api/apps/api-server/src/routes/settings/host_infrastructure/interface_operation.rs",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_other_owner_api/apps/api-server/src/error_response.rs",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_other_owner_api/apps/api-server/src/response.rs",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_other_owner_api/apps/api-server/src/openapi/console.rs",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "frozen_other_owner_api/apps/api-server/src/openapi/mod.rs",
+      "pass": true,
+      "detail": ""
+    }
+  ],
+  "passed": 60,
+  "total": 60,
+  "actual_files": [
+    {
+      "path": "api/apps/model-definitions-http/Cargo.toml",
+      "sha256": "c7f5c339f905f553ff9b641659336cc1de1eed2225413a99d924cbfd96b62ff6",
+      "lines": 16
+    },
+    {
+      "path": "api/apps/model-definitions-http/src/lib.rs",
+      "sha256": "369a8543478aefdbc13d1ea9dd4c975ac231a5fa45bf921d00af89fd98db32eb",
+      "lines": 10
+    },
+    {
+      "path": "api/apps/model-definitions-http/src/requests.rs",
+      "sha256": "efc88b9e87769995aee69741ec43d5cb85b0b8c1ac7e224000656aac247827ca",
+      "lines": 125
+    },
+    {
+      "path": "api/apps/model-definitions-http/src/body.rs",
+      "sha256": "accc8a7ff1f4ceb37455f9f82015edf2d8038a14b02222a8d4b035d7ac732193",
+      "lines": 33
+    },
+    {
+      "path": "api/apps/model-definitions-http/src/query.rs",
+      "sha256": "f18959fc1ca6d73412f7b1cd4c3a68f6c3228bde204f7b51978346be898645dc",
+      "lines": 29
+    },
+    {
+      "path": "api/apps/model-definitions-http/src/_tests/extractor_parity.rs",
+      "sha256": "60aa305a463a0b7f455201be67289d7b5e94af6817384fd97b877b15dc4a4a6c",
+      "lines": 101
+    }
+  ],
+  "codec_source_map": [
+    {
+      "dto": "CreateModelDefinitionBody",
+      "kind": "body",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs",
+      "non_generic_function": "decode_create_model_definition",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_create_model_definition::{closure#0}",
+      "concrete_original_axum_call": "<Json<CreateModelDefinitionBody> as FromRequest<()>>::from_request",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    },
+    {
+      "dto": "UpdateModelDefinitionBody",
+      "kind": "body",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs",
+      "non_generic_function": "decode_update_model_definition",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_update_model_definition::{closure#0}",
+      "concrete_original_axum_call": "<Json<UpdateModelDefinitionBody> as FromRequest<()>>::from_request",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    },
+    {
+      "dto": "CreateModelFieldBody",
+      "kind": "body",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs",
+      "non_generic_function": "decode_create_model_field",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_create_model_field::{closure#0}",
+      "concrete_original_axum_call": "<Json<CreateModelFieldBody> as FromRequest<()>>::from_request",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    },
+    {
+      "dto": "UpdateModelFieldBody",
+      "kind": "body",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs",
+      "non_generic_function": "decode_update_model_field",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_update_model_field::{closure#0}",
+      "concrete_original_axum_call": "<Json<UpdateModelFieldBody> as FromRequest<()>>::from_request",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    },
+    {
+      "dto": "CreateScopeGrantBody",
+      "kind": "body",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs",
+      "non_generic_function": "decode_create_scope_grant",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_create_scope_grant::{closure#0}",
+      "concrete_original_axum_call": "<Json<CreateScopeGrantBody> as FromRequest<()>>::from_request",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    },
+    {
+      "dto": "UpdateScopeGrantBody",
+      "kind": "body",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs",
+      "non_generic_function": "decode_update_scope_grant",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_update_scope_grant::{closure#0}",
+      "concrete_original_axum_call": "<Json<UpdateScopeGrantBody> as FromRequest<()>>::from_request",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    },
+    {
+      "dto": "BatchDeleteModelDefinitionsBody",
+      "kind": "body",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs",
+      "non_generic_function": "decode_batch_delete_models",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_batch_delete_models::{closure#0}",
+      "concrete_original_axum_call": "<Json<BatchDeleteModelDefinitionsBody> as FromRequest<()>>::from_request",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    },
+    {
+      "dto": "ListModelsQuery",
+      "kind": "query",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/query.rs",
+      "non_generic_function": "decode_list_models_query",
+      "expected_owned_coroutine_symbol": "model_definitions_http::query::decode_list_models_query::{closure#0}",
+      "concrete_original_axum_call": "<Query<ListModelsQuery> as FromRequestParts<()>>::from_request_parts",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    },
+    {
+      "dto": "ConfirmationQuery",
+      "kind": "query",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/query.rs",
+      "non_generic_function": "decode_confirmation_query",
+      "expected_owned_coroutine_symbol": "model_definitions_http::query::decode_confirmation_query::{closure#0}",
+      "concrete_original_axum_call": "<Query<ConfirmationQuery> as FromRequestParts<()>>::from_request_parts",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    }
+  ],
+  "not_proved": [
+    "Rust syntax/lifetimes/Send",
+    "actual mono and opaque future poll emission owner",
+    "runtime/lazy/drop/allocator/retained-byte evidence",
+    "standard formatted aggregate net<0",
+    "W2 24+native7 completion",
+    "20%RSS/Root acceptance"
+  ],
+  "no_product_writes": true,
+  "no_builds": true
+}

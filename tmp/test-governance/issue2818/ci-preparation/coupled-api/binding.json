@@ -1,0 +1,298 @@
+{
+  "A": [
+    "cargo",
+    "build",
+    "--profile",
+    "test",
+    "-p",
+    "api-server",
+    "--features",
+    "test-support",
+    "--lib",
+    "--jobs",
+    "1",
+    "--message-format=json"
+  ],
+  "C01": {
+    "append": "\ncompile_error!(\"ISSUE2818_UNSELECTED_ROOT_TYPE_NEGATIVE\");\n",
+    "id": "C01",
+    "kind": "unselected API integration root compile_error!",
+    "marker": "ISSUE2818_UNSELECTED_ROOT_TYPE_NEGATIVE",
+    "new": [
+      "cargo",
+      "check",
+      "--package",
+      "api-server",
+      "--all-targets",
+      "--jobs",
+      "1"
+    ],
+    "new_expected": "new API-only all-targets check fails for same marker",
+    "old_expected": "original unqualified first seed cargo test fails for marker",
+    "old_literal": [
+      "cargo",
+      "test",
+      "-p",
+      "api-server",
+      "--jobs",
+      "1",
+      "ac_002_decodes_digest_verified_build_time_official_seed",
+      "--",
+      "--test-threads=1"
+    ],
+    "path": "api/apps/api-server/tests/http/api_identity.rs",
+    "status": "not-executed",
+    "unique_defects": 1
+  },
+  "W2_names": [
+    "routes::console_route_assembly::tests::migrated_assembly_contains_every_console_router_owner_assembly",
+    "routes::console_route_assembly::tests::complete_operation_specifications_match_the_production_route_set",
+    "routes::console_route_assembly::tests::operation_specification_exact_set_reports_every_difference",
+    "routes::_tests::console_route_assembly_tests::console_route_assembly_unclassified_route_fails_coverage",
+    "routes::_tests::console_route_assembly_tests::console_route_assembly_duplicate_ownership_fails_coverage",
+    "routes::_tests::console_route_assembly_tests::migrated_real_core_console_route_assembly_has_compiled_coverage",
+    "routes::_tests::console_route_assembly_tests::applications_routes_compile_exact_operations_and_resource_metadata",
+    "routes::_tests::console_route_assembly_tests::applications_closed_set_rejects_duplicate_or_missing_binding",
+    "routes::_tests::console_route_assembly_tests::application_api_orchestration_runtime_routes_compile_exact_operations",
+    "routes::_tests::file_console_route_assembly_tests::file_owner_routes_compile_from_exact_assemblies",
+    "routes::_tests::file_console_route_assembly_tests::file_owner_routes_preserve_authenticated_data_acl_and_settings_operations",
+    "routes::_tests::file_console_route_assembly_tests::temporary_file_contracts_compile_without_projecting_credentials",
+    "routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_members_route_bindings_are_explicit_and_stable",
+    "routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_permissions_route_binding_is_explicit_and_stable",
+    "routes::_tests::settings_owner_console_route_assembly_tests::ac_001_ui_management_route_bindings_are_explicit_and_granular",
+    "routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_roles_route_bindings_are_explicit_and_stable",
+    "routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_workspace_route_bindings_are_explicit_and_stable",
+    "routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_workspaces_route_binding_is_explicit_and_stable",
+    "routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_auth_center_route_bindings_are_explicit_and_stable",
+    "routes::_tests::settings_owner_console_route_assembly_tests::ac_002_013_system_route_bindings_are_explicit_and_stable",
+    "routes::_tests::settings_owner_console_route_assembly_tests::organization_console_route_assembly_keeps_each_operation_independent",
+    "routes::_tests::console_route_assembly_tests::data_model_and_docs::data_model_docs_and_data_source_routes_compile_exact_operations",
+    "routes::_tests::console_route_assembly_tests::infrastructure_and_mcp::infrastructure_mcp_and_user_api_key_routes_compile_exact_operations",
+    "routes::_tests::console_route_assembly_tests::plugins_and_models::ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_ownership"
+  ],
+  "api_tree": "9d4ca1208e1ca104024d55957fce1d54bb99dbec",
+  "cache": {
+    "archive_bytes": 1505509591,
+    "archive_sha256": "e23d06fbb17031eded089288d12d997596283275dc22a7d917573c98852a6f31",
+    "compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+    "id": 13709278365,
+    "name": "issue2818-w5r-w6-api-cache-42695629912-1",
+    "run": 42695629912,
+    "source_sha": "9f35e154b6908eb54b51d1ceb504552b0a4e0eba"
+  },
+  "candidate": "f580c4b45ef3eaf9a86de0f13c2f8346c76adbbf",
+  "clean_checks": [
+    [
+      "cargo",
+      "check",
+      "--package",
+      "control-plane",
+      "--package",
+      "api-server",
+      "--package",
+      "control-plane-postgres-tests",
+      "--jobs",
+      "1"
+    ],
+    [
+      "cargo",
+      "check",
+      "--package",
+      "api-server",
+      "--all-targets",
+      "--jobs",
+      "1"
+    ]
+  ],
+  "codec_source_map": [
+    {
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact.",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "concrete_original_axum_call": "<Json<CreateModelDefinitionBody> as FromRequest<()>>::from_request",
+      "dto": "CreateModelDefinitionBody",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_create_model_definition::{closure#0}",
+      "kind": "body",
+      "non_generic_function": "decode_create_model_definition",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs"
+    },
+    {
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact.",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "concrete_original_axum_call": "<Json<UpdateModelDefinitionBody> as FromRequest<()>>::from_request",
+      "dto": "UpdateModelDefinitionBody",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_update_model_definition::{closure#0}",
+      "kind": "body",
+      "non_generic_function": "decode_update_model_definition",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs"
+    },
+    {
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact.",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "concrete_original_axum_call": "<Json<CreateModelFieldBody> as FromRequest<()>>::from_request",
+      "dto": "CreateModelFieldBody",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_create_model_field::{closure#0}",
+      "kind": "body",
+      "non_generic_function": "decode_create_model_field",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs"
+    },
+    {
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact.",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "concrete_original_axum_call": "<Json<UpdateModelFieldBody> as FromRequest<()>>::from_request",
+      "dto": "UpdateModelFieldBody",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_update_model_field::{closure#0}",
+      "kind": "body",
+      "non_generic_function": "decode_update_model_field",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs"
+    },
+    {
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact.",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "concrete_original_axum_call": "<Json<CreateScopeGrantBody> as FromRequest<()>>::from_request",
+      "dto": "CreateScopeGrantBody",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_create_scope_grant::{closure#0}",
+      "kind": "body",
+      "non_generic_function": "decode_create_scope_grant",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs"
+    },
+    {
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact.",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "concrete_original_axum_call": "<Json<UpdateScopeGrantBody> as FromRequest<()>>::from_request",
+      "dto": "UpdateScopeGrantBody",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_update_scope_grant::{closure#0}",
+      "kind": "body",
+      "non_generic_function": "decode_update_scope_grant",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs"
+    },
+    {
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact.",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "concrete_original_axum_call": "<Json<BatchDeleteModelDefinitionsBody> as FromRequest<()>>::from_request",
+      "dto": "BatchDeleteModelDefinitionsBody",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_batch_delete_models::{closure#0}",
+      "kind": "body",
+      "non_generic_function": "decode_batch_delete_models",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs"
+    },
+    {
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact.",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "concrete_original_axum_call": "<Query<ListModelsQuery> as FromRequestParts<()>>::from_request_parts",
+      "dto": "ListModelsQuery",
+      "expected_owned_coroutine_symbol": "model_definitions_http::query::decode_list_models_query::{closure#0}",
+      "kind": "query",
+      "non_generic_function": "decode_list_models_query",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/query.rs"
+    },
+    {
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact.",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "concrete_original_axum_call": "<Query<ConfirmationQuery> as FromRequestParts<()>>::from_request_parts",
+      "dto": "ConfirmationQuery",
+      "expected_owned_coroutine_symbol": "model_definitions_http::query::decode_confirmation_query::{closure#0}",
+      "kind": "query",
+      "non_generic_function": "decode_confirmation_query",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/query.rs"
+    }
+  ],
+  "execution_authorized": true,
+  "frozen_runtime": {
+    "backend": {
+      "cargoJobs": 1,
+      "cargoTestThreads": 1,
+      "incremental": false
+    },
+    "frontend": {
+      "turboConcurrency": 1,
+      "vitestMaxWorkers": 1
+    },
+    "locks": {
+      "pollIntervalMs": 5000,
+      "waitTimeoutMinutes": 30,
+      "waitTimeoutMs": 1800000
+    },
+    "scripts": {
+      "testConcurrency": 1
+    }
+  },
+  "inputs": {
+    "tmp/test-governance/issue2818/ci-preparation/coupled-api/root-wrapper.py": "2c0c11da5494a0d4f995f47c37778f668e6cd4842c9e146d31c00b6618e07d86",
+    "tmp/test-governance/issue2818/ci-preparation/experiment.py": "77952af01b8bed3781782d09f5b028bb089ad5ccb68dce3f4454cf03a06df40e",
+    "tmp/test-governance/issue2818/compile-responsibility-m06/wire-codec-last-check/actual-source-verifier.json": "12a8f495682c14ea4f7b520bb5eac4836b52a3727654572e05c5081d160a6ede",
+    "tmp/test-governance/issue2818/compile-responsibility-m06/wire-codec-last-check/assembled-net-receipt.json": "9675e1f9336531e0266e918e88ad6e1de641e3e433093f6da956de94cb4afc43",
+    "tmp/test-governance/issue2818/compile-responsibility-m06/wire-codec-last-check/assembled-w2-source.json": "ca0a3ca8a4ec3fc57e4c9dd6cc16c9335e46086479206bd1dffe7b502275f950",
+    "tmp/test-governance/issue2818/compile-responsibility-m06/wire-codec-last-check/coupled-packet.json": "044604a68c9d0f5ece9a2a3bcfe294b4057d741be1f9f3cf737f14e4be18e66d",
+    "tmp/test-governance/issue2818/compile-responsibility-m06/wire-codec-last-check/source-verdict.json": "56003e5be8eb2adb07d010dcaa078b3d150004aec0fd40889dfb1828b249e716"
+  },
+  "native7_names": [
+    "ac_002_console_health_is_compiled_and_not_exposed_by_the_base_router",
+    "ac_003_unknown_core_operation_metadata_fails_instead_of_becoming_other",
+    "ac_003_every_console_route_is_owned_by_a_compiled_authorization_operation",
+    "ac_003_005_all_console_routes_have_distinct_static_english_interface_metadata",
+    "ac_009_core_compiled_catalog_resolves_every_active_display_reference_in_both_locales",
+    "ac_002_009_operation_semantics_are_explicit_before_legacy_mapping",
+    "ac_013_role_console_policy_workers_have_explicit_interface_metadata"
+  ],
+  "net": -6,
+  "net_receipt": "tmp/test-governance/issue2818/compile-responsibility-m06/wire-codec-last-check/assembled-net-receipt.json",
+  "owner_guard_names": [
+    "extractor_parity::body_boundary_preserves_original_axum_status_headers_bytes_and_error_paths",
+    "extractor_parity::query_boundary_preserves_original_axum_status_headers_bytes_and_error_paths"
+  ],
+  "source_hashes": {
+    ".agents/skills/qa-evaluation/references/backend/console-settings-registration-gate.md": "dbb2ee4d4102f6dff92628a71eaebe387a2b42211e6758f5dec772ca9c836e29",
+    ".github/workflows/notification-subscription.yml": "b8b4e33e9e3665566404e955f5f4f9c1a5180bcc8aef492862ef060d326aacb9",
+    "api/AGENTS.md": "76fdc533ca39c00e2a89a9af9d4d8d9a8686612304c45868f6e5c3a6911a88f7",
+    "api/Cargo.lock": "4b944715dec1a6dbabc2d8c4489ef9c480ff1b7c3c8489abbe8260e523dcd9e6",
+    "api/Cargo.toml": "d96869a1e6f876a945210191893ee846cd898133589e3cd660f0f8454145a60f",
+    "api/apps/api-server/Cargo.toml": "a44d930e8297a634742197f8e45e776bcdae354f5c5324bb2d383e50716552f6",
+    "api/apps/api-server/src/routes/_tests/console_route_assembly_tests.rs": "6163a6f9ec09f1da5f8cdf64d97a87d70ddacefcc4271fb073e663fc0a5662d9",
+    "api/apps/api-server/src/routes/_tests/console_route_assembly_tests/data_model_and_docs.rs": "d9c3028b4b8f9d505e3c2cf346e366d80ac5569b156d2af75a927c880ae103e5",
+    "api/apps/api-server/src/routes/_tests/console_route_assembly_tests/infrastructure_and_mcp.rs": "be553496bc98b30968f213b7258a67720c903af0fa819cb8cf16af54aeba14bd",
+    "api/apps/api-server/src/routes/_tests/console_route_assembly_tests/plugins_and_models.rs": "1b6cc2e3d0341b2ef29c4e98ba4ef1035a94aa27ef8d03c8381ac3ae0e9e40a8",
+    "api/apps/api-server/src/routes/_tests/file_console_route_assembly_tests.rs": "d37f6525b39d776b09af1078283b65a52c5a27c82d9b077da8d41ef9316b511a",
+    "api/apps/api-server/src/routes/_tests/mod.rs": "7989b5d5348b63b2a31a56a80d8b8e624ff6c215517492295201019fe6b71601",
+    "api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs": "367bf77d9f4c720c4c96d3a97296278a4f87ad7981966f002d56f2cfd51e5722",
+    "api/apps/api-server/src/routes/console_route_assembly.rs": "1e0fbf2ef2087f10683fcf593a41062506ffff528be216a77aedfae9d8af2126",
+    "api/apps/api-server/src/routes/console_route_assembly/_tests/assembly.rs": "b662ca63e7ae84902feff696db80467dc95183782a6a7d03cb72343a51fed525",
+    "api/apps/api-server/src/routes/mod.rs": "bb11f86c2cef95fd325e6e1d8df250471d917e46d860407ab04b0b8c5df729c3",
+    "api/apps/api-server/src/routes/plugins_and_models/model_definitions.rs": "148326d14ca3e8ea6ee92be0e2967f4aa005d0175422a3d58135cbc2d6cf19ac",
+    "api/apps/api-server/src/test_support/mod.rs": "fa44348eb5c423f80476bccdae4e95ed203974f9693a18ac91f8b8a203c6c38e",
+    "api/apps/api-server/tests/README.md": "754cd4ce1686e6d77ce7bdf4fdda03f6654542e91319c026389994500a5e66af",
+    "api/apps/api-server/tests/console_core_registry_tests.rs": "1ce1feb2208103a79d3817675eb12e44c1623bab23725744df4a7fe10e9bb87d",
+    "api/apps/model-definitions-http/Cargo.toml": "c7f5c339f905f553ff9b641659336cc1de1eed2225413a99d924cbfd96b62ff6",
+    "api/apps/model-definitions-http/src/_tests/extractor_parity.rs": "60aa305a463a0b7f455201be67289d7b5e94af6817384fd97b877b15dc4a4a6c",
+    "api/apps/model-definitions-http/src/body.rs": "accc8a7ff1f4ceb37455f9f82015edf2d8038a14b02222a8d4b035d7ac732193",
+    "api/apps/model-definitions-http/src/lib.rs": "369a8543478aefdbc13d1ea9dd4c975ac231a5fa45bf921d00af89fd98db32eb",
+    "api/apps/model-definitions-http/src/query.rs": "f18959fc1ca6d73412f7b1cd4c3a68f6c3228bde204f7b51978346be898645dc",
+    "api/apps/model-definitions-http/src/requests.rs": "efc88b9e87769995aee69741ec43d5cb85b0b8c1ac7e224000656aac247827ca",
+    "api/crates/AGENTS.md": "2e21cf108a366d1881901c191bb8a8d2871b733dcf96ed9ef72fe144bc3cbbc0",
+    "api/crates/control-plane-postgres-tests/tests/dependency_boundaries.rs": "fc0becdcfa4972209bc033273d6cb9ea400013e028f4472edd8756121bb608fa",
+    "api/crates/interface-runtime/src/_tests/invocation_tests.rs": "9164b4b1fb0d3926588ffa5470ccd0f5b60d54c7501bee271a2b5f20d93ed9f8",
+    "api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs": "ac175ff3e08ca4adb594f5f4ef92e222d8c60d74068ed18b9c42cc0f75b9bb4e",
+    "api/crates/interface-runtime/src/decision.rs": "ef1a1d097b109dedd69822be7cb18b6904dde84248b4c8fc3fb35c6ae01d5df2",
+    "api/crates/interface-runtime/src/finalization.rs": "933fcb4f7648f14aaa8fde646f9d09792340423a387b3883a7d4cf6d8654b656",
+    "api/crates/interface-runtime/src/hook.rs": "9ee701e15c22164d8dd39097c00748771ee7a3ab884477488395bb013b25e3f2",
+    "api/crates/interface-runtime/src/invocation.rs": "3c908bd2121d0ec4744a776f71e14258699a3622d5fac2ed3cb9b1f1fe27beb5",
+    "api/crates/interface-runtime/src/invocation/kernel.rs": "f25242c791de0218dd48f64cacd8b868b84e8e7d9bd6c9f2a3da08e65f01a25a",
+    "scripts/node/agent-logs-exchange/ci-api.cjs": "0d620baf12e1a1bf885b6be338827db625387abeff0b8d59a3e1773b99b80d1d",
+    "scripts/node/console-operation-registry-hygiene/README.md": "5371a73f5bd4a8265248e52d2babfa649d6d19450e3b99d959e2758c3b0caf23",
+    "scripts/node/console-operation-registry-hygiene/_tests/core.test.js": "5d069e60ecdaa3248a3cb13255d674a5463b1b3226282e600c0d5e0dfac4094f",
+    "scripts/node/console-operation-registry-hygiene/compiled-assembly-checks.js": "96dad3a01084fbbf0c7549b09de9fdd3a49ae4bbb4807db882c1f936a36d14c7",
+    "scripts/node/gate-router/_tests/core.test.js": "e47bf1aeb9cc596e6d9392da7e8fb4e5b96aeaf852ce414811c174dacd32f2af",
+    "scripts/node/gate-router/core.js": "1bca3f8573e0a2c17a609b7d138a8aa4ef97ba23f85a41bfd6a9b66d45ab9e58",
+    "scripts/node/verify-backend/_tests/cli.test.js": "aa576e11e014879419257a01b8d30a89348b2bbe9e9b71dc4f2181c73bc13e49",
+    "scripts/node/verify/backend-targets.js": "1ee3998a2ff1a61185d603faf6e92912146a696631a9852c602fb7b04b78b32b",
+    "scripts/node/verify/backend.js": "591e97fe03aa205aad0283f489c4237fc027be9e903e12f96b6659d672d0c039"
+  }
+}

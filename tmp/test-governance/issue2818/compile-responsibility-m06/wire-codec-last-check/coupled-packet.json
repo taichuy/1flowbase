@@ -1,0 +1,102 @@
+{
+  "status": "CONDITIONAL_READY_FOR_COUPLED_PACKET",
+  "root_authorization_provenance": "Latest Root instruction accepts one inseparable source wave; this artifact does not itself execute product changes.",
+  "freeze": "Request-only codec owner; full modelDefinitions owner/schema expansion remains INELIGIBLE.",
+  "source": "9f35e154b6908eb54b51d1ceb504552b0a4e0eba",
+  "sequence": [
+    "codec production source and actual-source Verifier",
+    "Root already frozen W2 mechanical migration preserving original 24+native7",
+    "standard formatting and complete actual aggregate source net <0; optional exact a9 8-line delta only if needed",
+    "one joint qualification: owner guards + ordinary API + original private root/discovery + actual original seed/MCP/application obligations",
+    "credit W2 and integrate beta only after all Root acceptance; otherwise stop this configuration"
+  ],
+  "line_budget": {
+    "codec_complete_readable_preview_increment": 234,
+    "root_current": -58,
+    "w2_conditional_not_earned": -173,
+    "root_coupled_prediction": 3,
+    "optional_a9_verified_current_deletion": -8,
+    "root_if_exact_a9_needed": -5,
+    "max_codec_actual_increment_without_a9": 230,
+    "max_codec_actual_increment_with_a9": 238,
+    "source_must_be_standard_formatted": true,
+    "all_guards_manifests_lock_rules_counted": true,
+    "a9_required_by_current_complete_model": true
+  },
+  "frozen_w2_boundary": "Reuse Root already frozen mechanical W2 packet unchanged; no additional wrapper/assertion retirement or new target partition. Failure retains source/functional evidence but earns no optimization/integration credit.",
+  "new_owner": {
+    "package": "model-definitions-http",
+    "path": "api/apps/model-definitions-http",
+    "role": "Nine existing HTTP request DTOs and nine concrete original-Axum decode entrypoints; Compatible query stays API",
+    "internal_dependencies": [],
+    "current_consumers": "Ten extraction slots, plus existing Input/docs consumers",
+    "third_party": "Only existing exact locked workspace axum/serde/serde_json/utoipa/uuid and tokio/tower dev versions"
+  },
+  "finite_write_set": [
+    "api/apps/model-definitions-http/Cargo.toml",
+    "api/apps/model-definitions-http/src/lib.rs",
+    "api/apps/model-definitions-http/src/requests.rs",
+    "api/apps/model-definitions-http/src/body.rs",
+    "api/apps/model-definitions-http/src/query.rs",
+    "api/apps/model-definitions-http/src/_tests/extractor_parity.rs",
+    "api/apps/api-server/src/routes/plugins_and_models/model_definitions.rs",
+    "api/Cargo.toml",
+    "api/apps/api-server/Cargo.toml",
+    "api/Cargo.lock",
+    "api/AGENTS.md",
+    "api/crates/AGENTS.md",
+    "api/crates/control-plane-postgres-tests/tests/dependency_boundaries.rs",
+    "Root exact already frozen W2 mechanical write set",
+    "scripts/node/verify/backend.js only optional exact reviewed 8-line delta",
+    "scripts/node/verify/backend-targets.js existing core-libs package membership",
+    "scripts/node/verify-backend/_tests/cli.test.js existing core-libs exact args assertion",
+    "scripts/node/gate-router/core.js exact request-owner prefix in original consumer matcher",
+    "scripts/node/gate-router/_tests/core.test.js independent consumer-path assertion in existing test"
+  ],
+  "unchanged": [
+    "ApiState",
+    "ApiError",
+    "business handler bodies and service/transaction logic",
+    "response DTO ownership/ApiSuccess and response serialization",
+    "ModelDefinitionsInput/Output and managed projection schema/dynamic projection",
+    "Kernel and typed registry/permission/CSRF/freeze lifecycle",
+    "frontend/database/migrations/CI/workflow/Issue",
+    "CompatibleTemplateCatalogQuery, its original Query parameter and original Utoipa attrs"
+  ],
+  "qualification_must_establish": [
+    "original Json/Query status+headers+bytes/error paths/limits/content type on actual owner guards",
+    "source-verifier exact DTO/default/nullable preservation and all 10 argument extraction slots",
+    "lazy construction, same borrowed Parts/original owned Request, same Send and direct drop of pending original extractor; no detached owner/Box/clone/unsafe",
+    "new owner contains all nine concrete codec/future bodies and actual heavy HTTP Serde/Json/Query instances; API only thin S shims and explicitly different Value/docs/test residuals",
+    "original private root and original24+native7 tests/assertions/ignored identities preserved and actually nonzero executed",
+    "actual whole-wave CPU/RSS/storage/time and runtime/retained-byte non-regression under unchanged hard8e9/swap0/CPU60% and existing concurrency;20%/6.4e9 remains final objective"
+  ],
+  "stop": [
+    "actual aggregate net >=0 after standard formatting and at most exact8-line reuse",
+    "unexpected dependency/field/type/permission/lifecycle change",
+    "heavy HTTP serde/codecs still generated in API",
+    "new heap owner/clone/unsafe/type-erased codec platform required",
+    "hardOOM/time/identity/semantic/test retention or one actual benefit qualification fails; preserve cache and do not tune/retry same configuration"
+  ],
+  "not_run": [
+    "Rust",
+    "Cargo",
+    "Node",
+    "CI",
+    "HTTP",
+    "product edits",
+    "new agents"
+  ],
+  "documentation_evidence": "f0-openapi-receipt.json: 7 explicit bodies, explicit Query List, 2 explicit Query confirmations; excluded Compatible stays entirely original; no added nullable/query declaration.",
+  "selector_evidence": "selector-consumer-receipt.json: existing owner/CLI +3, original consumer matcher/test +5; actual new own-target tests and unchanged model_definition_routes lane, no new rule/lane/framework.",
+  "dependency_evidence": "dependency-delta.json: baseline local manifest closure18 already includes CP/storage-object/AWS; only new local package, exact Uuid/Value/std fields, no new CP reexport; new axum/tower requirements and unmeasured feature units charged.",
+  "guard_source_lines": 96,
+  "behavior_guards": {
+    "body_cases": 8,
+    "query_cases": 3,
+    "old_new_success_independently_asserted": true,
+    "old_new_failure_status_independently_asserted": true,
+    "typed_canaries_checked_in_each_success_handler": true,
+    "status_headers_bytes_compared": true
+  }
+}

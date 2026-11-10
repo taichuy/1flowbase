@@ -1,0 +1,120 @@
+name: Issue 2818 frozen coupled codec W2 qualification
+
+on:
+  push:
+    branches: ['ci/2818-target-evidence-20261109']
+  workflow_dispatch:
+    inputs:
+      candidate_ref:
+        description: Branch fetched after the baseline completes
+        type: string
+        default: refs/heads/opt/2818-global-20261109
+      candidate_sha:
+        description: Exact candidate SHA (optional until Root pushes)
+        type: string
+        default: f580c4b45ef3eaf9a86de0f13c2f8346c76adbbf
+      wait_seconds:
+        description: Bounded candidate availability wait
+        type: string
+        default: '1200'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: issue2818-one-off-feasibility
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CI: 'true'
+  CARGO_TERM_COLOR: never
+
+jobs:
+  first-pair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: web/.nvmrc
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.99.1' 
+      - name: Frozen owner guards API private retained cases consumers checks and C01
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_REF: ${{ inputs.candidate_ref || 'refs/heads/opt/2818-global-20261109' }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha || 'f580c4b45ef3eaf9a86de0f13c2f8346c76adbbf' }}
+          CANDIDATE_WAIT: ${{ inputs.wait_seconds || '1200' }}
+        run: |
+          set -euo pipefail
+          task_uid=$(id -u)
+          sudo loginctl enable-linger "$(id -un)"
+          sudo systemctl start "user@$task_uid.service"
+          export XDG_RUNTIME_DIR="/run/user/$task_uid"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          task_cpu_percent=$(( $(getconf _NPROCESSORS_ONLN) * 60 ))
+          systemctl --user set-property --runtime issue2818.slice MemoryMax=8000000000 MemoryHigh=infinity MemorySwapMax=0 "CPUQuota=$task_cpu_percent%"
+          systemctl --user start issue2818.slice
+          task_group=$(systemctl --user show issue2818.slice --property=ControlGroup --value)
+          task_inode=$(stat -c %i "/sys/fs/cgroup$task_group")
+          systemd-run --user --scope --quiet --unit=issue2818-orchestrator --slice=issue2818.slice \
+            --property=RuntimeMaxSec=4560s --property=TimeoutStopSec=5s --property=KillMode=control-group \
+            --working-directory="$GITHUB_WORKSPACE" \
+            env "ONEFLOWBASE_TASK_BUDGET_CGROUP=$task_group" "ONEFLOWBASE_TASK_BUDGET_ID=$task_inode" \
+            python3 tmp/test-governance/issue2818/ci-preparation/coupled-api/entry.py
+      - name: Confirm owned slice is empty and preserve final limits
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          evidence=tmp/test-governance/issue2818/ci-evidence
+          mkdir -p "$evidence"
+          systemctl --user show issue2818.slice --property=Id,ControlGroup,ActiveState,MemoryMax,MemoryHigh,MemorySwapMax,CPUQuotaPerSecUSec > "$evidence/final-slice.txt"
+          task_group=$(systemctl --user show issue2818.slice --property=ControlGroup --value)
+          if test -n "$task_group" && test -e "/sys/fs/cgroup$task_group/cgroup.events"; then
+            cat "/sys/fs/cgroup$task_group/cgroup.events" > "$evidence/final-cgroup.events"
+            if ! grep -qx 'populated 0' "$evidence/final-cgroup.events"; then
+              systemctl --user stop issue2818.slice
+              exit 1
+            fi
+          fi
+          systemctl --user stop issue2818.slice
+      - name: Upload small results and raw logs
+        uses: actions/upload-artifact@v7
+        if: always()
+        timeout-minutes: 5
+        with:
+          name: issue2818-coupled-api-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tmp/test-governance/issue2818/ci-evidence/**
+            tmp/test-governance/issue2818/ci-preparation/**
+            tmp/test-governance/issue2818/compile-responsibility-m06/wire-codec-last-check/assembled-net-receipt.json
+            tmp/test-governance/issue2818/compile-responsibility-m06/wire-codec-last-check/assembled-w2-source.json
+            tmp/test-governance/issue2818/compile-responsibility-m06/wire-codec-last-check/actual-source-verifier.json
+            tmp/test-governance/issue2818/compile-responsibility-m06/wire-codec-last-check/source-verdict.json
+            tmp/test-governance/issue2818/compile-responsibility-m06/wire-codec-last-check/coupled-packet.json
+            !tmp/test-governance/issue2818/ci-evidence/seed-target-and-source.tar.zst
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 3
+      - name: Upload retained source and target cache
+        uses: actions/upload-artifact@v7
+        if: always()
+        timeout-minutes: 5
+        with:
+          name: issue2818-coupled-api-cache-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tmp/test-governance/issue2818/ci-evidence/seed-target-and-source.tar.zst
+            tmp/test-governance/issue2818/ci-evidence/seed-retention.json
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 3

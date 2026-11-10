@@ -1,0 +1,697 @@
+{
+  "status": "CONDITIONAL_READY_FOR_COUPLED_PACKET",
+  "source": "9f35e154b6908eb54b51d1ceb504552b0a4e0eba",
+  "unique_candidate": "request-only wire DTO and concrete Json/Query decode owner, excluding unchanged CompatibleTemplateCatalogQuery",
+  "response_candidate": "Excluded from minimal packet. No ApiSuccess move or duplication, no response/schema/handler/Kernel/registration change. ModelDefinitionResponse has a real second HTTP serializer consumer; remaining response serializer work is explicit residual.",
+  "stable_existing_owner": "No existing workspace package owns console request DTOs/HTTP codecs; extension-contracts owns host/runtime wire and interface-runtime owns protocol-independent invocation, so neither absorbs Axum request policy. New local library has one narrow protocol responsibility and an immediate API-server consumer.",
+  "body_types": [
+    "CreateModelDefinitionBody",
+    "UpdateModelDefinitionBody",
+    "CreateModelFieldBody",
+    "UpdateModelFieldBody",
+    "CreateScopeGrantBody",
+    "UpdateScopeGrantBody",
+    "BatchDeleteModelDefinitionsBody"
+  ],
+  "query_types": [
+    "ListModelsQuery",
+    "ConfirmationQuery"
+  ],
+  "concrete_codec_source_map": [
+    {
+      "dto": "CreateModelDefinitionBody",
+      "kind": "body",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs",
+      "non_generic_function": "decode_create_model_definition",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_create_model_definition::{closure#0}",
+      "concrete_original_axum_call": "<Json<CreateModelDefinitionBody> as FromRequest<()>>::from_request",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    },
+    {
+      "dto": "UpdateModelDefinitionBody",
+      "kind": "body",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs",
+      "non_generic_function": "decode_update_model_definition",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_update_model_definition::{closure#0}",
+      "concrete_original_axum_call": "<Json<UpdateModelDefinitionBody> as FromRequest<()>>::from_request",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    },
+    {
+      "dto": "CreateModelFieldBody",
+      "kind": "body",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs",
+      "non_generic_function": "decode_create_model_field",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_create_model_field::{closure#0}",
+      "concrete_original_axum_call": "<Json<CreateModelFieldBody> as FromRequest<()>>::from_request",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    },
+    {
+      "dto": "UpdateModelFieldBody",
+      "kind": "body",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs",
+      "non_generic_function": "decode_update_model_field",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_update_model_field::{closure#0}",
+      "concrete_original_axum_call": "<Json<UpdateModelFieldBody> as FromRequest<()>>::from_request",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    },
+    {
+      "dto": "CreateScopeGrantBody",
+      "kind": "body",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs",
+      "non_generic_function": "decode_create_scope_grant",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_create_scope_grant::{closure#0}",
+      "concrete_original_axum_call": "<Json<CreateScopeGrantBody> as FromRequest<()>>::from_request",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    },
+    {
+      "dto": "UpdateScopeGrantBody",
+      "kind": "body",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs",
+      "non_generic_function": "decode_update_scope_grant",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_update_scope_grant::{closure#0}",
+      "concrete_original_axum_call": "<Json<UpdateScopeGrantBody> as FromRequest<()>>::from_request",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    },
+    {
+      "dto": "BatchDeleteModelDefinitionsBody",
+      "kind": "body",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/body.rs",
+      "non_generic_function": "decode_batch_delete_models",
+      "expected_owned_coroutine_symbol": "model_definitions_http::body::decode_batch_delete_models::{closure#0}",
+      "concrete_original_axum_call": "<Json<BatchDeleteModelDefinitionsBody> as FromRequest<()>>::from_request",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    },
+    {
+      "dto": "ListModelsQuery",
+      "kind": "query",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/query.rs",
+      "non_generic_function": "decode_list_models_query",
+      "expected_owned_coroutine_symbol": "model_definitions_http::query::decode_list_models_query::{closure#0}",
+      "concrete_original_axum_call": "<Query<ListModelsQuery> as FromRequestParts<()>>::from_request_parts",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    },
+    {
+      "dto": "ConfirmationQuery",
+      "kind": "query",
+      "owner_package": "model-definitions-http",
+      "owner_source": "api/apps/model-definitions-http/src/query.rs",
+      "non_generic_function": "decode_confirmation_query",
+      "expected_owned_coroutine_symbol": "model_definitions_http::query::decode_confirmation_query::{closure#0}",
+      "concrete_original_axum_call": "<Query<ConfirmationQuery> as FromRequestParts<()>>::from_request_parts",
+      "api_residual": "Only generic S trait shim returns this concrete function future; no generic Json/Query/serde call in the shim",
+      "actual_mono_ownership": "Unmeasured; joint actual qualification must show owner emission and absence of these heavy HTTP combinations in normal API artifact."
+    }
+  ],
+  "call_sites": [
+    {
+      "handler": "list_models",
+      "request_dto": [
+        "ListModelsQuery"
+      ],
+      "original_argument_slots_and_return": [
+        "State(state): State<Arc<ApiState>>",
+        "headers: HeaderMap",
+        "Query(query): Query<ListModelsQuery>"
+      ],
+      "change": "Replace only matching Json(body):Json<T>/Query(query):Query<T> parameter at the same slot with body:T/query:T; return/handler body unchanged."
+    },
+    {
+      "handler": "create_model",
+      "request_dto": [
+        "CreateModelDefinitionBody"
+      ],
+      "original_argument_slots_and_return": [
+        "State(state): State<Arc<ApiState>>",
+        "headers: HeaderMap",
+        "Json(body): Json<CreateModelDefinitionBody>"
+      ],
+      "change": "Replace only matching Json(body):Json<T>/Query(query):Query<T> parameter at the same slot with body:T/query:T; return/handler body unchanged."
+    },
+    {
+      "handler": "update_model",
+      "request_dto": [
+        "UpdateModelDefinitionBody"
+      ],
+      "original_argument_slots_and_return": [
+        "State(state): State<Arc<ApiState>>",
+        "headers: HeaderMap",
+        "Path(model_id): Path<String>",
+        "Json(body): Json<UpdateModelDefinitionBody>"
+      ],
+      "change": "Replace only matching Json(body):Json<T>/Query(query):Query<T> parameter at the same slot with body:T/query:T; return/handler body unchanged."
+    },
+    {
+      "handler": "delete_model",
+      "request_dto": [
+        "ConfirmationQuery"
+      ],
+      "original_argument_slots_and_return": [
+        "State(state): State<Arc<ApiState>>",
+        "headers: HeaderMap",
+        "Path(model_id): Path<String>",
+        "Query(query): Query<ConfirmationQuery>"
+      ],
+      "change": "Replace only matching Json(body):Json<T>/Query(query):Query<T> parameter at the same slot with body:T/query:T; return/handler body unchanged."
+    },
+    {
+      "handler": "batch_delete_models",
+      "request_dto": [
+        "BatchDeleteModelDefinitionsBody"
+      ],
+      "original_argument_slots_and_return": [
+        "State(state): State<Arc<ApiState>>",
+        "headers: HeaderMap",
+        "Json(body): Json<BatchDeleteModelDefinitionsBody>"
+      ],
+      "change": "Replace only matching Json(body):Json<T>/Query(query):Query<T> parameter at the same slot with body:T/query:T; return/handler body unchanged."
+    },
+    {
+      "handler": "create_field",
+      "request_dto": [
+        "CreateModelFieldBody"
+      ],
+      "original_argument_slots_and_return": [
+        "State(state): State<Arc<ApiState>>",
+        "headers: HeaderMap",
+        "Path(model_id): Path<String>",
+        "Json(body): Json<CreateModelFieldBody>"
+      ],
+      "change": "Replace only matching Json(body):Json<T>/Query(query):Query<T> parameter at the same slot with body:T/query:T; return/handler body unchanged."
+    },
+    {
+      "handler": "update_field",
+      "request_dto": [
+        "UpdateModelFieldBody"
+      ],
+      "original_argument_slots_and_return": [
+        "State(state): State<Arc<ApiState>>",
+        "headers: HeaderMap",
+        "Path((model_id, field_id)): Path<(String, String)>",
+        "Json(body): Json<UpdateModelFieldBody>"
+      ],
+      "change": "Replace only matching Json(body):Json<T>/Query(query):Query<T> parameter at the same slot with body:T/query:T; return/handler body unchanged."
+    },
+    {
+      "handler": "delete_field",
+      "request_dto": [
+        "ConfirmationQuery"
+      ],
+      "original_argument_slots_and_return": [
+        "State(state): State<Arc<ApiState>>",
+        "headers: HeaderMap",
+        "Path((model_id, field_id)): Path<(String, String)>",
+        "Query(query): Query<ConfirmationQuery>"
+      ],
+      "change": "Replace only matching Json(body):Json<T>/Query(query):Query<T> parameter at the same slot with body:T/query:T; return/handler body unchanged."
+    },
+    {
+      "handler": "create_scope_grant",
+      "request_dto": [
+        "CreateScopeGrantBody"
+      ],
+      "original_argument_slots_and_return": [
+        "State(state): State<Arc<ApiState>>",
+        "headers: HeaderMap",
+        "Path(model_id): Path<String>",
+        "Json(body): Json<CreateScopeGrantBody>"
+      ],
+      "change": "Replace only matching Json(body):Json<T>/Query(query):Query<T> parameter at the same slot with body:T/query:T; return/handler body unchanged."
+    },
+    {
+      "handler": "update_scope_grant",
+      "request_dto": [
+        "UpdateScopeGrantBody"
+      ],
+      "original_argument_slots_and_return": [
+        "State(state): State<Arc<ApiState>>",
+        "headers: HeaderMap",
+        "Path((model_id, grant_id)): Path<(String, String)>",
+        "Json(body): Json<UpdateScopeGrantBody>"
+      ],
+      "change": "Replace only matching Json(body):Json<T>/Query(query):Query<T> parameter at the same slot with body:T/query:T; return/handler body unchanged."
+    }
+  ],
+  "references": [
+    {
+      "path": "api/apps/api-server/src/openapi/console.rs",
+      "types": [
+        "CreateModelDefinitionBody",
+        "UpdateModelDefinitionBody",
+        "CreateModelFieldBody",
+        "UpdateModelFieldBody",
+        "CreateScopeGrantBody",
+        "UpdateScopeGrantBody",
+        "BatchDeleteModelDefinitionsBody"
+      ],
+      "exact_json_query_sites": []
+    },
+    {
+      "path": "api/apps/api-server/src/routes/_tests/model_definition_template_identity_tests.rs",
+      "types": [
+        "CreateModelDefinitionBody",
+        "UpdateModelDefinitionBody"
+      ],
+      "exact_json_query_sites": []
+    },
+    {
+      "path": "api/apps/api-server/src/routes/plugins_and_models/model_definitions.rs",
+      "types": [
+        "CreateModelDefinitionBody",
+        "UpdateModelDefinitionBody",
+        "CreateModelFieldBody",
+        "UpdateModelFieldBody",
+        "CreateScopeGrantBody",
+        "UpdateScopeGrantBody",
+        "BatchDeleteModelDefinitionsBody",
+        "ListModelsQuery",
+        "ConfirmationQuery"
+      ],
+      "exact_json_query_sites": [
+        "Query(query): Query<ListModelsQuery>,",
+        "Json(body): Json<CreateModelDefinitionBody>,",
+        "Json(body): Json<UpdateModelDefinitionBody>,",
+        "Query(query): Query<ConfirmationQuery>,",
+        "Json(body): Json<BatchDeleteModelDefinitionsBody>,",
+        "Json(body): Json<CreateModelFieldBody>,",
+        "Json(body): Json<UpdateModelFieldBody>,",
+        "Query(query): Query<ConfirmationQuery>,",
+        "Json(body): Json<CreateScopeGrantBody>,",
+        "Json(body): Json<UpdateScopeGrantBody>,"
+      ]
+    },
+    {
+      "path": "api/apps/api-server/src/routes/plugins_and_models/model_definitions_interface.rs",
+      "types": [
+        "CreateModelDefinitionBody",
+        "UpdateModelDefinitionBody",
+        "CreateModelFieldBody",
+        "UpdateModelFieldBody",
+        "CreateScopeGrantBody",
+        "UpdateScopeGrantBody",
+        "BatchDeleteModelDefinitionsBody",
+        "ListModelsQuery",
+        "ConfirmationQuery"
+      ],
+      "exact_json_query_sites": []
+    },
+    {
+      "path": "api/apps/api-server/src/routes/plugins_and_models/model_definitions_interface/managed_projection/_tests/event_projection.rs",
+      "types": [
+        "CreateModelFieldBody",
+        "BatchDeleteModelDefinitionsBody",
+        "ListModelsQuery"
+      ],
+      "exact_json_query_sites": []
+    },
+    {
+      "path": "api/apps/api-server/src/_tests/interface_lifecycle_acceptance/managed_create_pair.rs",
+      "types": [
+        "CreateModelDefinitionBody"
+      ],
+      "exact_json_query_sites": []
+    },
+    {
+      "path": "api/apps/api-server/src/_tests/interface_lifecycle_acceptance/create_pair.rs",
+      "types": [
+        "CreateModelDefinitionBody"
+      ],
+      "exact_json_query_sites": []
+    }
+  ],
+  "upstream_source_provenance": [
+    {
+      "path": "/home/taichuy/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/axum-0.8.9/src/json.rs",
+      "sha256": "feaad1fce714c48cad69b3a1e6ccac9a49966e7c6b5f85f7d8a7c392af667f7a",
+      "archive": "/home/taichuy/.cargo/registry/cache/rsproxy.cn-e3de039b2554c837/axum-0.8.9.crate",
+      "lock_archive_sha256": "31b698c5f9a010f6573133b09e0de5408834d0c82f8d7475a89fc1867a71cd90"
+    },
+    {
+      "path": "/home/taichuy/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/axum-0.8.9/src/extract/query.rs",
+      "sha256": "26854506503a90152ed25dae4c3b7594c8521cc17ed2d96f3126bcc780c426bb",
+      "archive": "/home/taichuy/.cargo/registry/cache/rsproxy.cn-e3de039b2554c837/axum-0.8.9.crate",
+      "lock_archive_sha256": "31b698c5f9a010f6573133b09e0de5408834d0c82f8d7475a89fc1867a71cd90"
+    },
+    {
+      "path": "/home/taichuy/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/axum-core-0.5.6/src/extract/request_parts.rs",
+      "sha256": "5e791539e708afde58143eb82c7a61c6a4dfc5c61cbde87429165e03b33d29b1",
+      "archive": "/home/taichuy/.cargo/registry/cache/rsproxy.cn-e3de039b2554c837/axum-core-0.5.6.crate",
+      "lock_archive_sha256": "08c78f31d7b1291f7ee735c1c6780ccde7785daae9a9206026862dab7d8792d1"
+    },
+    {
+      "path": "/home/taichuy/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/axum-core-0.5.6/src/ext_traits/request.rs",
+      "sha256": "630a931c1c4ee0f6232e7934a0ff4d08a2cc1854587e48c87af12cb93611b935",
+      "archive": "/home/taichuy/.cargo/registry/cache/rsproxy.cn-e3de039b2554c837/axum-core-0.5.6.crate",
+      "lock_archive_sha256": "08c78f31d7b1291f7ee735c1c6780ccde7785daae9a9206026862dab7d8792d1"
+    },
+    {
+      "path": "/home/taichuy/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/axum-core-0.5.6/src/extract/mod.rs",
+      "sha256": "d636b894e6a90cb3ac74f0e5f551a2a87a549c12a49d7ccea5a7422da66d71b2",
+      "archive": "/home/taichuy/.cargo/registry/cache/rsproxy.cn-e3de039b2554c837/axum-core-0.5.6.crate",
+      "lock_archive_sha256": "08c78f31d7b1291f7ee735c1c6780ccde7785daae9a9206026862dab7d8792d1"
+    }
+  ],
+  "preview_line_counts": {
+    "lib.rs": 10,
+    "api-reexports.rs": 5,
+    "body.rs": 33,
+    "requests.rs": 130,
+    "query.rs": 29,
+    "extractor_parity.rs": 96,
+    "Cargo.toml": 16
+  },
+  "source_budget": [
+    {
+      "path": "new crate body.rs/query.rs/lib.rs/Cargo.toml/parity guard",
+      "net": 184,
+      "basis": "Exact readable previews; no old assertions removed."
+    },
+    {
+      "path": "requests.rs imports",
+      "net": 3,
+      "basis": "Three imports plus separator, minus the API uuid::Uuid import now unused after moving its only two DTO field references; this is part of the same move."
+    },
+    {
+      "path": "requests.rs deserialize_present_optional",
+      "net": 11,
+      "basis": "Existing API helper remains for other owners; exact body duplication is charged."
+    },
+    {
+      "path": "api model_definitions.rs concrete request reexports",
+      "net": 5,
+      "basis": "Actual five-line conventional formatted import-list preview, nine explicit names; no packed statements or assertion removal."
+    },
+    {
+      "path": "workspace + API manifest edges",
+      "net": 2,
+      "basis": "One workspace member and one normal local dependency."
+    },
+    {
+      "path": "Cargo.lock new local package + API edge",
+      "net": 14,
+      "basis": "Exact local-package header/name/version/7 existing dependencies/closing separator (13 lines), plus one API dependency edge; no new third-party version."
+    },
+    {
+      "path": "api/crates/AGENTS.md owner row / app-host rule",
+      "net": 2,
+      "basis": "One stable protocol-request owner row and one placement sentence, no lengthy AGENTS."
+    },
+    {
+      "path": "dependency boundary test",
+      "net": 5,
+      "basis": "Five forbidden reverse/implementation edges for the new request owner in the existing pairwise test."
+    },
+    {
+      "path": "existing selector/test-owner and API consumer matcher guards",
+      "net": 8,
+      "basis": "Exact in-memory previews: core-libs package +1, existing CLI expected package pair +2, exact original consumer path matcher +1, independent assertion in existing router test +4."
+    }
+  ],
+  "candidate_increment_net": 234,
+  "current_root_net": -58,
+  "root_if_applied_now": 176,
+  "conditional_w2_credit": {
+    "net": -173,
+    "not_earned": true,
+    "required": "Part of the same indivisible wave, after codec production implementation/verifier. Original private root and all 24+native7 identities/assertions must pass the same qualification before any credit or beta integration. It is not a prerequisite for codec implementation."
+  },
+  "root_only_after_actual_w2": 3,
+  "actual_diff_before_build_required": true,
+  "coupled_order": [
+    "Implement only request codec production source and actual-source Verifier",
+    "Apply only the already frozen W2 mechanical migration preserving 24+native7 identities/assertions",
+    "Run standard formatting and verify actual aggregate source net <0 before any heavy qualification",
+    "Only if needed apply the exact separately verified a9 8-line redundancy deletion; if actual net still >=0 stop",
+    "One joint qualification, credit W2 only on actual private-root/24+native7 success and integrate beta only after all Root acceptance"
+  ],
+  "candidate_is_implementation_authorized_by_this_artifact": false,
+  "excluded_f0_owner": {
+    "dto": "CompatibleTemplateCatalogQuery",
+    "handler": "list_compatible_templates",
+    "preserve": "Original DTO, Query<T> argument, serde/IntoParams attrs and automatic Utoipa Query provider remain in API verbatim. No nullable or metadata compatibility layer."
+  },
+  "candidate_rust_runtime_net_acceptance_passed": false,
+  "actual_net_stop_limits": {
+    "without_a9_max_wire_increment": 230,
+    "with_exact_a9_max_wire_increment": 238,
+    "extra_unmodelled_lines_require_actual_negative_aggregate_net": true
+  },
+  "counterexamples": [
+    {
+      "change": "buffer before ContentType",
+      "witness": "wrong ContentType plus over-limit body changes 415 into 413",
+      "rejected": true
+    },
+    {
+      "change": "rebuild Request without extensions",
+      "witness": "DefaultBodyLimit::max(4) becomes the implicit default limit",
+      "rejected": true
+    },
+    {
+      "change": "call serde_json::from_str directly",
+      "witness": "JsonDataError/JsonSyntaxError and serde_path_to_error path mapping are lost",
+      "rejected": true
+    },
+    {
+      "change": "wrap rejection in ApiError",
+      "witness": "extractor status/message/path/body changes before business handler",
+      "rejected": true
+    },
+    {
+      "change": "generic decode<T,S> from API",
+      "witness": "heavy Serde/Json generic body remains instantiated in API",
+      "rejected": true
+    },
+    {
+      "change": "place Json extraction inside generic async fn from_request<S>",
+      "witness": "future poll body remains parameterized by API state and is no longer the concrete owner boundary",
+      "rejected": true
+    },
+    {
+      "change": "parse query eagerly before returning a Ready future",
+      "witness": "constructing and dropping an unpolled extractor now performs parsing/allocation that the original lazy async extractor never performed",
+      "rejected": true
+    },
+    {
+      "change": "detach pending body read into a task or heap token",
+      "witness": "dropping the outer extractor no longer directly drops the same owned Request/Bytes future; release/cancel semantics change",
+      "rejected": true
+    },
+    {
+      "change": "move response DTO without all serializer consumers",
+      "witness": "dataSources still serializes ModelDefinitionResponse with Json<ApiSuccess<_>> in API",
+      "rejected": true
+    },
+    {
+      "change": "advance query/body ahead of Path/State/HeaderMap",
+      "witness": "multiple invalid inputs change rejection priority and header-clone timing",
+      "rejected": true
+    }
+  ],
+  "checks": [
+    {
+      "name": "body_macro_fixed_seven_types",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "query_macro_fixed_two_types",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "generic_state_impls_only_delegate",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "no_custom_drop_or_background_owner",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "decode_remains_lazy_async_only",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "not_async_generic_trait_impl",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "concrete_body_fixed_unit_state",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "concrete_query_fixed_unit_state",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "no_api_reverse_type_or_lifetime",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "no_unsafe_keyword",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "rejections_unchanged",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "request_parts_not_reconstructed",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "all_moved_serde_definitions_exact_except_helper_path",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "defaults_original_bodies_preserved",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "nested_optional_original_body_preserved",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "axum-0.8.9_archive_matches_lock",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "axum-0.8.9/src/json.rs_archive_equals_source",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "axum-0.8.9/src/extract/query.rs_archive_equals_source",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "axum-core-0.5.6_archive_matches_lock",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "axum-core-0.5.6/src/extract/request_parts.rs_archive_equals_source",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "axum-core-0.5.6/src/ext_traits/request.rs_archive_equals_source",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "axum-core-0.5.6/src/extract/mod.rs_archive_equals_source",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "upstream_query_state_ignored",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "upstream_bytes_state_ignored",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "upstream_json_state_only_forwarded",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "content_type_precedes_buffer_and_decode",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "body_limit_comes_from_original_extensions",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "serde_error_path_mapping_delegated",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "only_original_dto_uuid_import_is_moved",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "positive_cases_assert_both_original_and_new_success",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "positive_typed_values_asserted_before_echo",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "negative_cases_have_explicit_expected_status",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "ten_actual_decode_calls",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "all_nine_types_have_current_http_consumer",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "no_other_api_json_query_decode_combination",
+      "pass": true,
+      "detail": "[]"
+    },
+    {
+      "name": "nine_concrete_source_mappings",
+      "pass": true,
+      "detail": ""
+    }
+  ],
+  "checks_passed": 36,
+  "checks_total": 36,
+  "limits": [
+    "No Rust/Cargo/CI/HTTP execution",
+    "No product files written",
+    "No future layout/peak-byte/latency claim from source",
+    "Concrete helper coroutine poll ownership must be verified in the one authorized actual mono result; if it still emits heavy Json/Serde instances in API, stop rather than use Box/unsafe/platform fixes",
+    "No 20%/RSS prediction or prerequisite"
+  ]
+}

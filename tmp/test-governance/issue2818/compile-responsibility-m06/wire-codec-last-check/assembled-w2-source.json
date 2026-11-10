@@ -1,0 +1,123 @@
+{
+  "at": "2026-11-09T23:54:43.085374+00:00",
+  "frozen_patch_commit": "e0a2790",
+  "actual19": [
+    {
+      "path": "api/apps/api-server/src/routes/console_route_assembly/_tests/assembly.rs",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "b662ca63e7ae84902feff696db80467dc95183782a6a7d03cb72343a51fed525"
+    },
+    {
+      "path": "api/apps/api-server/src/routes/_tests/console_route_assembly_tests.rs",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "6163a6f9ec09f1da5f8cdf64d97a87d70ddacefcc4271fb073e663fc0a5662d9"
+    },
+    {
+      "path": "api/apps/api-server/src/routes/_tests/file_console_route_assembly_tests.rs",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "d37f6525b39d776b09af1078283b65a52c5a27c82d9b077da8d41ef9316b511a"
+    },
+    {
+      "path": "api/apps/api-server/src/routes/_tests/settings_owner_console_route_assembly_tests.rs",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "367bf77d9f4c720c4c96d3a97296278a4f87ad7981966f002d56f2cfd51e5722"
+    },
+    {
+      "path": "api/apps/api-server/src/routes/_tests/console_route_assembly_tests/data_model_and_docs.rs",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "d9c3028b4b8f9d505e3c2cf346e366d80ac5569b156d2af75a927c880ae103e5"
+    },
+    {
+      "path": "api/apps/api-server/src/routes/_tests/console_route_assembly_tests/infrastructure_and_mcp.rs",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "be553496bc98b30968f213b7258a67720c903af0fa819cb8cf16af54aeba14bd"
+    },
+    {
+      "path": "api/apps/api-server/src/routes/_tests/console_route_assembly_tests/plugins_and_models.rs",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "1b6cc2e3d0341b2ef29c4e98ba4ef1035a94aa27ef8d03c8381ac3ae0e9e40a8"
+    },
+    {
+      "path": "api/apps/api-server/src/routes/mod.rs",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "bb11f86c2cef95fd325e6e1d8df250471d917e46d860407ab04b0b8c5df729c3"
+    },
+    {
+      "path": "api/apps/api-server/src/routes/console_route_assembly.rs",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "1e0fbf2ef2087f10683fcf593a41062506ffff528be216a77aedfae9d8af2126"
+    },
+    {
+      "path": "api/apps/api-server/src/routes/_tests/mod.rs",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "7989b5d5348b63b2a31a56a80d8b8e624ff6c215517492295201019fe6b71601"
+    },
+    {
+      "path": "api/apps/api-server/src/test_support/mod.rs",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "fa44348eb5c423f80476bccdae4e95ed203974f9693a18ac91f8b8a203c6c38e"
+    },
+    {
+      "path": "api/apps/api-server/tests/console_core_registry_tests.rs",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "1ce1feb2208103a79d3817675eb12e44c1623bab23725744df4a7fe10e9bb87d"
+    },
+    {
+      "path": "scripts/node/console-operation-registry-hygiene/compiled-assembly-checks.js",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "96dad3a01084fbbf0c7549b09de9fdd3a49ae4bbb4807db882c1f936a36d14c7"
+    },
+    {
+      "path": "scripts/node/agent-logs-exchange/ci-api.cjs",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "0d620baf12e1a1bf885b6be338827db625387abeff0b8d59a3e1773b99b80d1d"
+    },
+    {
+      "path": ".github/workflows/notification-subscription.yml",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "b8b4e33e9e3665566404e955f5f4f9c1a5180bcc8aef492862ef060d326aacb9"
+    },
+    {
+      "path": "scripts/node/console-operation-registry-hygiene/_tests/core.test.js",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "5d069e60ecdaa3248a3cb13255d674a5463b1b3226282e600c0d5e0dfac4094f"
+    },
+    {
+      "path": "api/apps/api-server/tests/README.md",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "754cd4ce1686e6d77ce7bdf4fdda03f6654542e91319c026389994500a5e66af"
+    },
+    {
+      "path": "scripts/node/console-operation-registry-hygiene/README.md",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "5371a73f5bd4a8265248e52d2babfa649d6d19450e3b99d959e2758c3b0caf23"
+    },
+    {
+      "path": ".agents/skills/qa-evaluation/references/backend/console-settings-registration-gate.md",
+      "exact_frozen_e0_bytes": true,
+      "sha256": "dbb2ee4d4102f6dff92628a71eaebe387a2b42211e6758f5dec772ca9c836e29"
+    }
+  ],
+  "leaf7_assertions24_exact_except_test_attribute": true,
+  "native7_exact_prefix_frozen_e0": true,
+  "protected_unchanged": [
+    "api/apps/api-server/src/_tests/application/application_runtime_routes.rs",
+    "api/apps/api-server/src/test_support/resources.rs",
+    "api/apps/api-server/src/_tests/support/mod.rs",
+    "api/apps/api-server/src/_tests/support/applications.rs",
+    "api/apps/api-server/src/_tests/support/auth.rs",
+    "api/apps/api-server/src/_tests/support/packages.rs",
+    "api/apps/api-server/src/_tests/support/plugins.rs",
+    "api/apps/api-server/src/provider_runtime/mod.rs",
+    "api/apps/api-server/src/app_state.rs",
+    "api/apps/api-server/src/private_routes_test.rs",
+    "api/apps/api-server/src/lib_root.rs",
+    "api/apps/api-server/src/private_contracts_test.rs",
+    "api/crates/api-test-selection/src/lib.rs"
+  ],
+  "approved_exceptions": [
+    "test_support trailing assembly reexports removed exactly e0",
+    "2Cargo edges in codec actual-source gate"
+  ],
+  "runtime_discovery_execution": "NOT_RUN"
+}
