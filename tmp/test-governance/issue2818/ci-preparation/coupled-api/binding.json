@@ -48,7 +48,7 @@
     "status": "Incomplete",
     "unique_defects": 1
   },
-  "api_tree": "fffb8057fc2648744af2132c2736b59a33fc9482",
+  "api_tree": "84c3b4257c01f0d500ed3ca4d473f1bd290f6af0",
   "cache": {
     "archive_bytes": 1573913044,
     "archive_sha256": "ddd1249a9188d0ee1032f641b806b6c624752648837f9b5ade6e2d068d2e4151",
@@ -74,7 +74,7 @@
     "scope": "six archive I/O labels only; no Cargo/rustc reclaim",
     "trigger_bytes": 4000000000
   },
-  "candidate": "ed53ef2df072ca095840e28a3c87a17f1c7c3e08",
+  "candidate": "24b444c78739b714fef55bca8900b5e5b98b681d",
   "clean_checks": [
     [
       "cargo",
@@ -98,7 +98,19 @@
       "1"
     ]
   ],
-  "control_base_sha": "08ffe3f411774fc0b3a37e3cc26a301ef3921f78",
+  "control_base_sha": "8b2b157c5099bcf65aa9475d433d27a8fa95ce9d",
+  "diagnostic_contract": {
+    "cache_export": false,
+    "compiler_commit": "58cf8f9c35b355199727627d07ae34a4e2846d67",
+    "fields": "specific mono->CGU/linkage; membership counts only, not size/RSS attribution",
+    "final_qa": "not the once-only assembled QA",
+    "id": "CGU-1",
+    "normal_acceptance": false,
+    "original_workload": "ordinary API lib build original argv; root-only no-codegen/mono instrumentation appended",
+    "source_sha": "24b444c78739b714fef55bca8900b5e5b98b681d",
+    "stop": "same API600s, hard8e9B/swap0/CPU60%; no unchanged retry on resourcefailure"
+  },
+  "diagnostic_only": true,
   "execution_authorized": true,
   "final_resource_requirements": {
     "all_original_obligations_preserved": true,
@@ -130,9 +142,10 @@
     }
   },
   "inputs": {
-    ".github/workflows/issue2818-one-off.yml": "8fe2d5aa80cdfeba6e72e3c926a5178c70d550517c781a8e4333bf5de7b89a9e",
+    ".github/workflows/issue2818-one-off.yml": "42d05ec8085b16c5a781e2892c412adafa6fc6ecc6c5e756c816c6354fb2c289",
     "scripts/shell/_tests/resource-job-run.test.py": "9f0a9f2601709307e395e168ec7011bb749d4ffcf82d8b7f9efc4d7ca5cb1a8b",
     "scripts/shell/resource-job-run.py": "823907fd793b760425d5a5a48fa74d9503cfc0ecf6052a75bcfad62fd59af14c",
+    "tmp/test-governance/issue2818/ci-preparation/cgu-diagnostic.py": "3b7fe371f7608b5e4edb4958b857b75aaff5b4b24af7bd572569239113214402",
     "tmp/test-governance/issue2818/ci-preparation/coupled-api/entry.py": "bc2434f57d64efe5863d8e020364659866048cd25b320196aa33abd913c46a4f",
     "tmp/test-governance/issue2818/ci-preparation/coupled-api/root-wrapper.py": "2c0c11da5494a0d4f995f47c37778f668e6cd4842c9e146d31c00b6618e07d86",
     "tmp/test-governance/issue2818/ci-preparation/experiment.py": "6917281893feaa119f2bf6e025b592e4c61bcb8df6d70352486a671b454d759f"
@@ -269,7 +282,8 @@
       "run": 42783882534,
       "task_peak_bytes": 8000000000
     },
-    "df054e2036231a7f8a225cab0425e88d0ca4d105": "Observed unary poll physical stack97848 to102696 bytes (+4848) in three instances; rejected by Root. Future-size reduction alone did not pass runtime constraints."
+    "df054e2036231a7f8a225cab0425e88d0ca4d105": "Observed unary poll physical stack97848 to102696 bytes (+4848) in three instances; rejected by Root. Future-size reduction alone did not pass runtime constraints.",
+    "ed53ef2df072ca095840e28a3c87a17f1c7c3e08": "Run42801400662 ordinary API OOM; no unchanged resource retry."
   },
   "rejected_candidate_shas": [
     "df054e2036231a7f8a225cab0425e88d0ca4d105",
@@ -278,7 +292,8 @@
     "1547a4f1de65c132fe7263985aaf52894f8061dc",
     "81a73a8d80c966f3bff9e97cf13c46455d7be2d2",
     "c4ab716e7a1acf7263e8d74162ad8be15b8bfd8f",
-    "173eb7a034e988d6a2cabd677045be4fe7f1b6f9"
+    "173eb7a034e988d6a2cabd677045be4fe7f1b6f9",
+    "ed53ef2df072ca095840e28a3c87a17f1c7c3e08"
   ],
   "root_authorization": {
     "basis": "User-authorized continued optimization. New W17 non-generic failure hook driver and W18v2 fixed output schema change actual repeated compiler structure. Original IR74/build/Clippy and exact failure-case heap/stack pass; W18 complete Value/byte/freshness plus five paired CPU/allocation/peak and sampled stack pass. V1 heap regression rejected/restored. Frozen allocator/cache/resources/workload/deadlines unchanged. Prior173 OOM is not retried unchanged.",
@@ -498,6 +513,7 @@
     "api/crates/interface-runtime/src/_tests/invocation_tests.rs": "9164b4b1fb0d3926588ffa5470ccd0f5b60d54c7501bee271a2b5f20d93ed9f8",
     "api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs": "ac175ff3e08ca4adb594f5f4ef92e222d8c60d74068ed18b9c42cc0f75b9bb4e",
     "api/crates/interface-runtime/src/decision.rs": "9a0cccbcef77a9c1d24097e8082d025d1f20f4111d318ecbb6e9e0f272580671",
+    "api/crates/interface-runtime/src/event_observation/document/session.rs": "977b15444193f6293968b66828b30a7e6996cd30b4d5d62f1e767781287b97a6",
     "api/crates/interface-runtime/src/finalization.rs": "933fcb4f7648f14aaa8fde646f9d09792340423a387b3883a7d4cf6d8654b656",
     "api/crates/interface-runtime/src/hook.rs": "0edabc4f0fc572b43cd3091319f08bffbbf4f48b72187e7fcc34b3eee2b778ed",
     "api/crates/interface-runtime/src/invocation.rs": "cad5bf1757bdaf5ededf66aef72a0460175d8123f3fe94d728ce5d0d717e0b7a",
@@ -540,10 +556,10 @@
     "C01-new-alltargets"
   ],
   "tracked_diff_not_AC006": {
-    "added": 2395,
-    "deleted": 2543,
-    "files": 21,
-    "net": -148,
+    "added": 2407,
+    "deleted": 2547,
+    "files": 22,
+    "net": -140,
     "temporary_tooling_costs_not_yet_aggregated": true
   },
   "unresolved": [
