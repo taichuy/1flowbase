@@ -647,248 +647,168 @@ where
             }
             receipt.resolve(plan);
         }
-        let initial_interruption = if controls.cancellation.is_cancelled() {
-            Some(InvocationInterruption::Cancelled)
-        } else if controls
-            .deadline
-            .is_some_and(|deadline| deadline <= SystemTime::now())
-        {
-            Some(InvocationInterruption::DeadlineElapsed)
-        } else {
-            None
-        };
-        if let Some(interruption) = initial_interruption {
-            return Err(receipt
-                .fail(
+        // Preserve ownership through the shared failure finalization await.
+        let plan;
+        let definition;
+        let binding;
+        let hook_plan;
+        let admission_reference;
+        let authorization_decision;
+        let (receipt, error, terminal) = 'preparation: {
+            let initial_interruption = if controls.cancellation.is_cancelled() {
+                Some(InvocationInterruption::Cancelled)
+            } else if controls
+                .deadline
+                .is_some_and(|deadline| deadline <= SystemTime::now())
+            {
+                Some(InvocationInterruption::DeadlineElapsed)
+            } else {
+                None
+            };
+            if let Some(interruption) = initial_interruption {
+                break 'preparation (
+                    receipt,
                     interruption_error(interruption),
                     InterfaceInvocationTerminal::Cancelled,
-                )
-                .await);
-        }
-        let Some(plan) = snapshot.plan(&binding_id).cloned() else {
-            return Err(receipt
-                .fail(
-                    InterfaceInvocationError::UnknownBinding,
-                    InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
-        };
-        let definition = plan.definition().clone();
-        let binding = plan.binding().clone();
-        let hook_plan = plan.hook_plan::<I, O>();
-        if plan.has_executable_extensions() && hook_plan.is_none() {
-            return Err(receipt
-                .fail(
+                );
+            }
+            plan = match snapshot.plan(&binding_id).cloned() {
+                Some(plan) => plan,
+                None => {
+                    break 'preparation (
+                        receipt,
+                        InterfaceInvocationError::UnknownBinding,
+                        InterfaceInvocationTerminal::Rejected,
+                    );
+                }
+            };
+            definition = plan.definition().clone();
+            binding = plan.binding().clone();
+            hook_plan = plan.hook_plan::<I, O>();
+            if plan.has_executable_extensions() && hook_plan.is_none() {
+                break 'preparation (
+                    receipt,
                     InterfaceInvocationError::ContractMismatch,
                     InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
-        }
-        receipt.resolve(&plan);
-        receipt.stage(InterfaceInvocationStage::Resolved);
-        if binding.projection().protocol() != protocol {
-            return Err(receipt
-                .fail(
+                );
+            }
+            receipt.resolve(&plan);
+            receipt.stage(InterfaceInvocationStage::Resolved);
+            if binding.projection().protocol() != protocol {
+                break 'preparation (
+                    receipt,
                     InterfaceInvocationError::ProtocolBindingMismatch,
                     InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
-        }
-        if plan.adapter_plan().authentication() != &authentication_adapter {
-            return Err(receipt
-                .fail(
+                );
+            }
+            if plan.adapter_plan().authentication() != &authentication_adapter {
+                break 'preparation (
+                    receipt,
                     InterfaceInvocationError::AuthenticationAdapterMismatch,
                     InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
-        }
-        if plan.authentication().activation() != &authentication_activation {
-            return Err(receipt
-                .fail(
+                );
+            }
+            if plan.authentication().activation() != &authentication_activation {
+                break 'preparation (
+                    receipt,
                     InterfaceInvocationError::AuthenticationActivationMismatch,
                     InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
-        }
-        if plan.adapter_plan().authorization() != &self.authorization.adapter_reference() {
-            return Err(receipt
-                .fail(
+                );
+            }
+            if plan.adapter_plan().authorization() != &self.authorization.adapter_reference() {
+                break 'preparation (
+                    receipt,
                     InterfaceInvocationError::AuthorizationAdapterMismatch,
                     InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
-        }
-        let admission_reference = self
-            .target_admission
-            .as_ref()
-            .map(|admission| admission.adapter_reference());
-        if plan.adapter_plan().admission() != admission_reference.as_ref() {
-            return Err(receipt
-                .fail(
+                );
+            }
+            admission_reference = self
+                .target_admission
+                .as_ref()
+                .map(|admission| admission.adapter_reference());
+            if plan.adapter_plan().admission() != admission_reference.as_ref() {
+                break 'preparation (
+                    receipt,
                     InterfaceInvocationError::AdmissionAdapterMismatch,
                     InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
-        }
-        if definition.principal_profile() != P::PROFILE {
-            return Err(receipt
-                .fail(
+                );
+            }
+            if definition.principal_profile() != P::PROFILE {
+                break 'preparation (
+                    receipt,
                     InterfaceInvocationError::PrincipalProfileMismatch,
                     InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
-        }
-        receipt.stage(InterfaceInvocationStage::PrincipalEstablished);
-        if definition.input_contract() != &contract_identity::<I>()
-            || definition.output_contract() != &contract_identity::<O>()
-            || definition.target_error_contract() != &contract_identity::<E>()
-        {
-            return Err(receipt
-                .fail(
+                );
+            }
+            receipt.stage(InterfaceInvocationStage::PrincipalEstablished);
+            if definition.input_contract() != &contract_identity::<I>()
+                || definition.output_contract() != &contract_identity::<O>()
+                || definition.target_error_contract() != &contract_identity::<E>()
+            {
+                break 'preparation (
+                    receipt,
                     InterfaceInvocationError::ContractMismatch,
                     InterfaceInvocationTerminal::Rejected,
+                );
+            }
+            if let Some(factory) = &plan.managed_factory {
+                let frozen = await_in_flight(
+                    &controls,
+                    factory.freeze(crate::ManagedInterfaceFreezeRequest {
+                        definition: definition.clone(),
+                        context: hook_context.clone(),
+                        input: crate::ManagedInterfaceProjection::from_contract(&input),
+                        deadline: controls.deadline(),
+                    }),
                 )
-                .await);
-        }
-        if let Some(factory) = &plan.managed_factory {
-            let frozen = await_in_flight(
-                &controls,
-                factory.freeze(crate::ManagedInterfaceFreezeRequest {
-                    definition: definition.clone(),
-                    context: hook_context.clone(),
-                    input: crate::ManagedInterfaceProjection::from_contract(&input),
-                    deadline: controls.deadline(),
-                }),
-            )
-            .await;
-            match frozen {
-                Ok(Ok(invocation)) => {
-                    let context = crate::hook::ManagedInvocationContext(invocation);
-                    hook_context.managed_invocation = Some(context.clone());
-                    receipt.managed_invocation = Some(context);
-                }
-                Ok(Err(classification)) => {
-                    return Err(receipt
-                        .fail(
+                .await;
+                match frozen {
+                    Ok(Ok(invocation)) => {
+                        let context = crate::hook::ManagedInvocationContext(invocation);
+                        hook_context.managed_invocation = Some(context.clone());
+                        receipt.managed_invocation = Some(context);
+                    }
+                    Ok(Err(classification)) => {
+                        break 'preparation (
+                            receipt,
                             InterfaceInvocationError::BeforeHookRejected(
                                 crate::InterfaceBeforeHookError::classified(classification),
                             ),
                             InterfaceInvocationTerminal::Rejected,
-                        )
-                        .await);
-                }
-                Err(interruption) => {
-                    return Err(receipt
-                        .fail(
+                        );
+                    }
+                    Err(interruption) => {
+                        break 'preparation (
+                            receipt,
                             interruption_error(interruption),
                             InterfaceInvocationTerminal::Cancelled,
-                        )
-                        .await);
+                        );
+                    }
                 }
             }
-        }
 
-        let authorization = await_in_flight(
-            &controls,
-            self.authorization
-                .authorize(InterfaceAuthorizationRequest::new(
-                    principal.clone(),
-                    definition.clone(),
-                    binding.clone(),
-                    protocol,
-                )),
-        )
-        .await;
-        let authorization = match authorization {
-            Ok(authorization) => authorization,
-            Err(interruption) => {
-                return Err(receipt
-                    .fail(
-                        interruption_error(interruption),
-                        InterfaceInvocationTerminal::Cancelled,
-                    )
-                    .await);
-            }
-        };
-        if let Err(error) = authorization {
-            run_failure_hooks(
-                &mut receipt.finalization,
-                hook_plan,
-                &hook_context,
-                error.classification(),
-            )
-            .await;
-            return Err(receipt
-                .fail(
-                    InterfaceInvocationError::AuthorizationRejected(error),
-                    InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
-        }
-        if let Some(extensions) = plan.authorization_plan::<I, O>() {
             let authorization = await_in_flight(
                 &controls,
-                extensions.run(InterfaceAuthorizationContributionRequest::new(
-                    principal.summary(),
-                    definition.clone(),
-                    binding.clone(),
-                    protocol,
-                    hook_context.clone(),
-                )),
+                self.authorization
+                    .authorize(InterfaceAuthorizationRequest::new(
+                        principal.clone(),
+                        definition.clone(),
+                        binding.clone(),
+                        protocol,
+                    )),
             )
             .await;
-            match authorization {
+            let authorization = match authorization {
+                Ok(authorization) => authorization,
                 Err(interruption) => {
-                    return Err(receipt
-                        .fail(
-                            interruption_error(interruption),
-                            InterfaceInvocationTerminal::Cancelled,
-                        )
-                        .await);
-                }
-                Ok(Err(error)) => {
-                    run_failure_hooks(
-                        &mut receipt.finalization,
-                        hook_plan,
-                        &hook_context,
-                        error.classification(),
-                    )
-                    .await;
-                    return Err(receipt
-                        .fail(
-                            InterfaceInvocationError::AuthorizationContributionRejected(error),
-                            InterfaceInvocationTerminal::Rejected,
-                        )
-                        .await);
-                }
-                Ok(Ok(())) => {}
-            }
-        }
-        let authorization_decision = authorization_decision_fingerprint(&plan);
-        receipt.authorized(authorization_decision.clone());
-        if let Some(target_admission) = &self.target_admission {
-            let admission = await_in_flight(
-                &controls,
-                target_admission.admit(InterfaceTargetAdmissionRequest::new(
-                    principal.summary(),
-                    definition.clone(),
-                    binding.clone(),
-                    protocol,
-                )),
-            )
-            .await;
-            let admission = match admission {
-                Ok(admission) => admission,
-                Err(interruption) => {
-                    return Err(receipt
-                        .fail(
-                            interruption_error(interruption),
-                            InterfaceInvocationTerminal::Cancelled,
-                        )
-                        .await);
+                    break 'preparation (
+                        receipt,
+                        interruption_error(interruption),
+                        InterfaceInvocationTerminal::Cancelled,
+                    );
                 }
             };
-            if let Err(error) = admission {
+            if let Err(error) = authorization {
                 run_failure_hooks(
                     &mut receipt.finalization,
                     hook_plan,
@@ -896,37 +816,73 @@ where
                     error.classification(),
                 )
                 .await;
-                return Err(receipt
-                    .fail(
-                        InterfaceInvocationError::AdmissionRejected(error),
-                        InterfaceInvocationTerminal::Rejected,
-                    )
-                    .await);
+                break 'preparation (
+                    receipt,
+                    InterfaceInvocationError::AuthorizationRejected(error),
+                    InterfaceInvocationTerminal::Rejected,
+                );
             }
-        }
-        if let Some(extensions) = plan.admission_plan::<I, O>() {
-            let admission = await_in_flight(
-                &controls,
-                extensions.run(InterfaceAdmissionContributionRequest::new(
-                    principal.summary(),
-                    definition.clone(),
-                    binding.clone(),
-                    protocol,
-                    authorization_decision,
-                    hook_context.clone(),
-                )),
-            )
-            .await;
-            match admission {
-                Err(interruption) => {
-                    return Err(receipt
-                        .fail(
+            if let Some(extensions) = plan.authorization_plan::<I, O>() {
+                let authorization = await_in_flight(
+                    &controls,
+                    extensions.run(InterfaceAuthorizationContributionRequest::new(
+                        principal.summary(),
+                        definition.clone(),
+                        binding.clone(),
+                        protocol,
+                        hook_context.clone(),
+                    )),
+                )
+                .await;
+                match authorization {
+                    Err(interruption) => {
+                        break 'preparation (
+                            receipt,
                             interruption_error(interruption),
                             InterfaceInvocationTerminal::Cancelled,
+                        );
+                    }
+                    Ok(Err(error)) => {
+                        run_failure_hooks(
+                            &mut receipt.finalization,
+                            hook_plan,
+                            &hook_context,
+                            error.classification(),
                         )
-                        .await);
+                        .await;
+                        break 'preparation (
+                            receipt,
+                            InterfaceInvocationError::AuthorizationContributionRejected(error),
+                            InterfaceInvocationTerminal::Rejected,
+                        );
+                    }
+                    Ok(Ok(())) => {}
                 }
-                Ok(Err(error)) => {
+            }
+            authorization_decision = authorization_decision_fingerprint(&plan);
+            receipt.authorized(authorization_decision.clone());
+            if let Some(target_admission) = &self.target_admission {
+                let admission = await_in_flight(
+                    &controls,
+                    target_admission.admit(InterfaceTargetAdmissionRequest::new(
+                        principal.summary(),
+                        definition.clone(),
+                        binding.clone(),
+                        protocol,
+                    )),
+                )
+                .await;
+                let admission = match admission {
+                    Ok(admission) => admission,
+                    Err(interruption) => {
+                        break 'preparation (
+                            receipt,
+                            interruption_error(interruption),
+                            InterfaceInvocationTerminal::Cancelled,
+                        );
+                    }
+                };
+                if let Err(error) = admission {
                     run_failure_hooks(
                         &mut receipt.finalization,
                         hook_plan,
@@ -934,96 +890,131 @@ where
                         error.classification(),
                     )
                     .await;
-                    return Err(receipt
-                        .fail(
-                            InterfaceInvocationError::AdmissionContributionRejected(error),
-                            InterfaceInvocationTerminal::Rejected,
-                        )
-                        .await);
+                    break 'preparation (
+                        receipt,
+                        InterfaceInvocationError::AdmissionRejected(error),
+                        InterfaceInvocationTerminal::Rejected,
+                    );
                 }
-                Ok(Ok(())) => {}
             }
-        }
-        receipt.stage(InterfaceInvocationStage::Admitted);
-        if let Some(hook_plan) = hook_plan {
-            let before =
-                await_in_flight(&controls, hook_plan.run_before(&hook_context, &mut input)).await;
-            match before {
-                Err(interruption) => {
-                    return Err(receipt
-                        .fail(
+            if let Some(extensions) = plan.admission_plan::<I, O>() {
+                let admission = await_in_flight(
+                    &controls,
+                    extensions.run(InterfaceAdmissionContributionRequest::new(
+                        principal.summary(),
+                        definition.clone(),
+                        binding.clone(),
+                        protocol,
+                        authorization_decision,
+                        hook_context.clone(),
+                    )),
+                )
+                .await;
+                match admission {
+                    Err(interruption) => {
+                        break 'preparation (
+                            receipt,
                             interruption_error(interruption),
                             InterfaceInvocationTerminal::Cancelled,
+                        );
+                    }
+                    Ok(Err(error)) => {
+                        run_failure_hooks(
+                            &mut receipt.finalization,
+                            hook_plan,
+                            &hook_context,
+                            error.classification(),
                         )
-                        .await);
+                        .await;
+                        break 'preparation (
+                            receipt,
+                            InterfaceInvocationError::AdmissionContributionRejected(error),
+                            InterfaceInvocationTerminal::Rejected,
+                        );
+                    }
+                    Ok(Ok(())) => {}
                 }
-                Ok(Err(error)) => {
-                    run_failure_hooks(
-                        &mut receipt.finalization,
-                        Some(hook_plan),
-                        &hook_context,
-                        error.classification(),
-                    )
-                    .await;
-                    return Err(receipt
-                        .fail(
+            }
+            receipt.stage(InterfaceInvocationStage::Admitted);
+            if let Some(hook_plan) = hook_plan {
+                let before =
+                    await_in_flight(&controls, hook_plan.run_before(&hook_context, &mut input))
+                        .await;
+                match before {
+                    Err(interruption) => {
+                        break 'preparation (
+                            receipt,
+                            interruption_error(interruption),
+                            InterfaceInvocationTerminal::Cancelled,
+                        );
+                    }
+                    Ok(Err(error)) => {
+                        run_failure_hooks(
+                            &mut receipt.finalization,
+                            Some(hook_plan),
+                            &hook_context,
+                            error.classification(),
+                        )
+                        .await;
+                        break 'preparation (
+                            receipt,
                             InterfaceInvocationError::BeforeHookRejected(error),
                             InterfaceInvocationTerminal::Rejected,
-                        )
-                        .await);
+                        );
+                    }
+                    Ok(Ok(())) => {}
                 }
-                Ok(Ok(())) => {}
             }
-        }
-        receipt.observe_event_before(&input).await;
-        if let Some(session) = &receipt.document_operation {
-            if session.is_static() {
-                let _ = session.observe_before(&input).await;
+            receipt.observe_event_before(&input).await;
+            if let Some(session) = &receipt.document_operation {
+                if session.is_static() {
+                    let _ = session.observe_before(&input).await;
+                }
             }
-        }
-        receipt.stage(InterfaceInvocationStage::Prepared);
-        let Some(handler) = snapshot.handler::<I, O, E, P>(definition.interface_id()) else {
-            return Err(receipt
-                .fail(
+            receipt.stage(InterfaceInvocationStage::Prepared);
+            let Some(handler) = snapshot.handler::<I, O, E, P>(definition.interface_id()) else {
+                break 'preparation (
+                    receipt,
                     InterfaceInvocationError::ContractMismatch,
                     InterfaceInvocationTerminal::Rejected,
-                )
-                .await);
+                );
+            };
+            let attempt = ExecutionAttempt::first(dispatch_target.unwrap_or_else(|| {
+                if plan.effective_handler().plugin().as_str() == "builtin.interface-handler" {
+                    ExecutionTargetPin::BuiltIn {
+                        handler: plan.effective_handler().handler().clone(),
+                        target: plan.effective_handler().target().clone(),
+                    }
+                } else {
+                    ExecutionTargetPin::HostExtension {
+                        handler: plan.effective_handler().handler().clone(),
+                        target: plan.effective_handler().target().clone(),
+                        plugin: plan.effective_handler().plugin().clone(),
+                    }
+                }
+            }));
+            receipt.dispatch(attempt.clone());
+            receipt.stage(InterfaceInvocationStage::Executing);
+            let mut context = InterfaceHandlerContext::new(
+                principal,
+                attempt,
+                lineage.invocation_id(),
+                snapshot.graph_fingerprint().clone(),
+                snapshot.fingerprint().clone(),
+            );
+            context.document_operation = receipt.document_operation.clone();
+            return Ok(Box::new(PreparedUnaryInvocation {
+                snapshot,
+                plan,
+                receipt,
+                hook_context,
+                controls,
+                handler,
+                context,
+                input,
+            }));
         };
-        let attempt = ExecutionAttempt::first(dispatch_target.unwrap_or_else(|| {
-            if plan.effective_handler().plugin().as_str() == "builtin.interface-handler" {
-                ExecutionTargetPin::BuiltIn {
-                    handler: plan.effective_handler().handler().clone(),
-                    target: plan.effective_handler().target().clone(),
-                }
-            } else {
-                ExecutionTargetPin::HostExtension {
-                    handler: plan.effective_handler().handler().clone(),
-                    target: plan.effective_handler().target().clone(),
-                    plugin: plan.effective_handler().plugin().clone(),
-                }
-            }
-        }));
-        receipt.dispatch(attempt.clone());
-        receipt.stage(InterfaceInvocationStage::Executing);
-        let mut context = InterfaceHandlerContext::new(
-            principal,
-            attempt,
-            lineage.invocation_id(),
-            snapshot.graph_fingerprint().clone(),
-            snapshot.fingerprint().clone(),
-        );
-        context.document_operation = receipt.document_operation.clone();
-        Ok(Box::new(PreparedUnaryInvocation {
-            snapshot,
-            plan,
-            receipt,
-            hook_context,
-            controls,
-            handler,
-            context,
-            input,
-        }))
+        Err(receipt.fail(error, terminal).await)
     }
 }
 
