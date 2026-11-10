@@ -31,7 +31,13 @@ export type ConsoleFrontendContributionDisableReason =
   | 'permission_denied'
   | 'asset_invalid';
 
+export type FrontendUiRegistrationTarget =
+  | 'block'
+  | 'component'
+  | 'code_template';
+
 export interface ConsoleFrontendBlockCatalogEntry {
+  registration_targets?: FrontendUiRegistrationTarget[];
   custom_block_id?: string | null;
   installation_id: string;
   provider_code: string;
@@ -70,10 +76,13 @@ export interface ConsoleFrontendBlockCatalogEntry {
 }
 
 export function listConsoleFrontendBlocks(
-  baseUrl?: string
+  baseUrl?: string,
+  query?: { registration_target?: FrontendUiRegistrationTarget }
 ): Promise<ConsoleFrontendBlockCatalogEntry[]> {
   return apiFetch<ConsoleFrontendBlockCatalogEntry[]>({
-    path: '/api/console/frontend-blocks',
+    path: query?.registration_target
+      ? `/api/console/frontend-blocks?${new URLSearchParams({ registration_target: query.registration_target })}`
+      : '/api/console/frontend-blocks',
     method: 'GET',
     baseUrl
   });

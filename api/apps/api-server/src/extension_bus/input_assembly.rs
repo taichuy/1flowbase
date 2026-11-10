@@ -701,8 +701,14 @@ fn load_package_manifest(
             manifest_path.display()
         )
     })?;
-    let manifest = parse_plugin_manifest(&raw)
+    let mut manifest = parse_plugin_manifest(&raw)
         .with_context(|| format!("failed to parse {}", manifest_path.display()))?;
+    plugin_framework::resolve_plugin_frontend_sources(
+        manifest_path
+            .parent()
+            .context("listed plugin package root missing")?,
+        &mut manifest,
+    )?;
     let manifest_id = manifest.plugin_code()?;
     if manifest_id != listed_module_id {
         bail!(
@@ -730,7 +736,7 @@ fn load_host_contribution(
         .join(&manifest.runtime.entry);
     let raw = fs::read_to_string(&contribution_path)
         .with_context(|| format!("failed to read {}", contribution_path.display()))?;
-    let contribution = parse_host_extension_contribution_manifest(&raw)
+    let mut contribution = parse_host_extension_contribution_manifest(&raw)
         .with_context(|| format!("failed to parse {}", contribution_path.display()))?;
     if contribution.extension_id != listed_module_id {
         bail!(
@@ -745,10 +751,13 @@ fn load_host_contribution(
             contribution.version
         );
     }
-    contribution.validate_package_settings_pages(manifest)?;
     let package_root = api_workspace_root
         .join("plugins/host-extensions")
         .join(listed_module_id);
+    for page in &mut contribution.settings_pages {
+        plugin_framework::resolve_frontend_code_modules(&package_root, &mut page.code_modules)?;
+    }
+    contribution.validate_package_settings_pages(manifest)?;
     plugin_framework::validate_frontend_module_assets(&package_root, manifest)?;
     for page in &manifest.settings_pages {
         plugin_framework::read_plugin_settings_page_source(&package_root, page)?;

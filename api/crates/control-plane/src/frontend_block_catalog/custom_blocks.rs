@@ -92,6 +92,7 @@ pub fn resolve_custom_blocks(
                         && base.disable_reason.is_none()
                 })?
                 .clone();
+            binding.catalog_entry.block_registration = true;
             binding.catalog_entry.title = definition.title.clone();
             binding.catalog_entry.code_template = Some(definition.source.clone());
             binding.catalog_entry.code_template_language = Some(definition.language.clone());

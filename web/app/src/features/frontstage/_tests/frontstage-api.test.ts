@@ -399,6 +399,25 @@ describe('frontstage page content feature api', () => {
 });
 
 describe('frontstage block catalog feature api', () => {
+  test('keeps runtime and creation catalog caches separate and forwards the target', async () => {
+    const context = {
+      workspaceId: 'workspace-1', actorId: 'actor-1', permissionFingerprint: 'root'
+    };
+    const runtimeKey = frontstageBlockCatalogQueryKey(context);
+    const creationKey = frontstageBlockCatalogQueryKey({ ...context, registrationTarget: 'block' });
+    expect(creationKey).not.toEqual(runtimeKey);
+    expect(creationKey).toEqual([...runtimeKey, { registration_target: 'block' }]);
+    const listSpy = vi.spyOn(apiClient, 'listConsoleFrontendBlocks').mockResolvedValue([]);
+    try {
+      await fetchFrontstageBlockCatalog('block');
+      expect(listSpy).toHaveBeenLastCalledWith(expect.any(String), { registration_target: 'block' });
+      await fetchFrontstageBlockCatalog();
+      expect(listSpy).toHaveBeenLastCalledWith(expect.any(String), undefined);
+    } finally {
+      listSpy.mockRestore();
+    }
+  });
+
   test('isolates block catalog keys by workspace, actor, and permissions', () => {
     expect(frontstageBlockCatalogQueryKeyPrefix).toEqual([
       'frontstage',
@@ -526,7 +545,7 @@ describe('frontstage block catalog feature api', () => {
           }
         ]
       });
-      expect(listSpy).toHaveBeenCalledWith(expect.any(String));
+      expect(listSpy).toHaveBeenCalledWith(expect.any(String), undefined);
     } finally {
       listSpy.mockRestore();
       fetchSpy.mockRestore();

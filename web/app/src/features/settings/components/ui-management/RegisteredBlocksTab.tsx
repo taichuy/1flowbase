@@ -80,8 +80,9 @@ function RegisteredBlocksContent({ scope }: { scope: string }) {
     null
   );
   const query = useQuery({
-    queryKey: [...settingsUiBlocksQueryKey, 'catalog', scope],
-    queryFn: () => fetchSettingsUiBlocks(),
+    queryKey: [...settingsUiBlocksQueryKey, 'catalog', 'block', scope],
+    queryFn: () =>
+      fetchSettingsUiBlocks(undefined, { registration_target: 'block' }),
     enabled: canView,
     retry: false
   });

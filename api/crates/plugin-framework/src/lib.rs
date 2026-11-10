@@ -63,7 +63,8 @@ pub use host_extension_registry::{HostExtensionRegistry, RegisteredHostExtension
 pub use installation::*;
 pub use managed_schema::*;
 pub use manifest_v1::{
-    parse_legacy_installed_plugin_manifest, parse_plugin_manifest, FrontendBlockCodeModuleManifest,
+    parse_legacy_installed_plugin_manifest, parse_plugin_manifest, resolve_frontend_code_modules,
+    resolve_plugin_frontend_sources, FrontendBlockCodeModuleManifest,
     FrontendBlockContextContractManifest, FrontendBlockContributionManifest,
     FrontendBlockPermissionsManifest, FrontendModuleAssetManifest, FrontendModuleAssetRoleManifest,
     FrontendModuleBindingManifest, LegacyInstalledManifestEligibility,

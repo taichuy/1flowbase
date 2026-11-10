@@ -60,31 +60,7 @@ pub fn read_plugin_settings_page_source(
     package_root: &Path,
     page: &PluginSettingsPageManifest,
 ) -> FrameworkResult<String> {
-    let root = package_root
-        .canonicalize()
-        .map_err(|error| invalid(&error.to_string()))?;
-    let source_path = root
-        .join(&page.source_file)
-        .canonicalize()
-        .map_err(|error| invalid(&error.to_string()))?;
-    if !source_path.starts_with(&root) {
-        return Err(invalid("settings page source escapes its package"));
-    }
-    // Bound the read itself, including packages changed concurrently with loading.
-    use std::io::Read;
-    let file = std::fs::File::open(source_path).map_err(|error| invalid(&error.to_string()))?;
-    let mut bytes = Vec::new();
-    file.take(262145)
-        .read_to_end(&mut bytes)
-        .map_err(|error| invalid(&error.to_string()))?;
-    if bytes.len() > 262144 {
-        return Err(invalid("settings page source exceeds 262144 bytes"));
-    }
-    let source = String::from_utf8(bytes).map_err(|error| invalid(&error.to_string()))?;
-    if source.trim().is_empty() {
-        return Err(invalid("settings page source is empty"));
-    }
-    Ok(source)
+    crate::manifest_v1::read_package_source(package_root, &page.source_file, 262144)
 }
 
 fn invalid(message: &str) -> PluginFrameworkError {

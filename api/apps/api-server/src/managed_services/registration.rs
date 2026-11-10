@@ -192,7 +192,7 @@ pub(crate) async fn load_installations(
                 .local_path()
                 .context("managed service artifact missing")?,
         );
-        let manifest: PluginManifestV1 = plugin_framework::parse_plugin_manifest(
+        let mut manifest: PluginManifestV1 = plugin_framework::parse_plugin_manifest(
             &tokio::fs::read_to_string(root.join("manifest.yaml")).await?,
         )?;
         let code = manifest.plugin_code()?.to_string();
@@ -209,6 +209,7 @@ pub(crate) async fn load_installations(
             "duplicate active managed service owner"
         );
         plugin_framework::validate_frontend_module_assets(root, &manifest)?;
+        plugin_framework::resolve_plugin_frontend_sources(root, &mut manifest)?;
         for page in &manifest.settings_pages {
             plugin_framework::read_plugin_settings_page_source(root, page)?;
         }

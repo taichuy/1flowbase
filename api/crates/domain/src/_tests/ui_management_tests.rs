@@ -4,6 +4,27 @@ use crate::{
 };
 
 #[test]
+fn frontend_registration_targets_require_independent_block_opt_in() {
+    let mut entry: crate::FrontendBlockCatalogEntry = serde_json::from_value(serde_json::json!({
+        "installation_id": uuid::Uuid::nil(), "provider_code": "calendar", "plugin_id": "calendar",
+        "plugin_version": "1.0.0", "contribution_code": "Calendar", "title": "Calendar",
+        "runtime": "native_react", "entry": "default", "ui_registration": "component",
+        "code_modules": [], "context_contract": {"primitives": [], "input_schema": {}},
+        "permissions": {"network": "none", "storage": "none", "secrets": "none"},
+        "ui_capabilities": []
+    }))
+    .unwrap();
+    assert!(!entry.block_registration);
+    assert_eq!(entry.registration_targets(), ["component"]);
+    entry.ui_registration = "code_template".into();
+    assert_eq!(entry.registration_targets(), ["code_template"]);
+    entry.block_registration = true;
+    assert_eq!(entry.registration_targets(), ["block", "code_template"]);
+    entry.ui_registration = "component".into();
+    assert_eq!(entry.registration_targets(), ["block", "component"]);
+}
+
+#[test]
 fn ac_002_ui_code_template_rejects_empty_and_oversized_source() {
     assert_eq!(
         validate_ui_code_template("Default", " "),

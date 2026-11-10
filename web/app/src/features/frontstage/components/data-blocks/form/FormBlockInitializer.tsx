@@ -23,7 +23,8 @@ export function FormBlockInitializer({
 }) {
   const host = useDataBlockHost();
   const catalog = useFrontstageBlockCatalog({
-    workspaceId: host?.design_mode ? ctx.workspace.id : null
+    workspaceId: host?.design_mode ? ctx.workspace.id : null,
+    registrationTarget: 'block'
   });
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
