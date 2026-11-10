@@ -654,7 +654,7 @@ where
         let hook_plan;
         let admission_reference;
         let authorization_decision;
-        let (receipt, error, terminal) = 'preparation: {
+        let (error, terminal) = 'preparation: {
             let initial_interruption = if controls.cancellation.is_cancelled() {
                 Some(InvocationInterruption::Cancelled)
             } else if controls
@@ -667,7 +667,6 @@ where
             };
             if let Some(interruption) = initial_interruption {
                 break 'preparation (
-                    receipt,
                     interruption_error(interruption),
                     InterfaceInvocationTerminal::Cancelled,
                 );
@@ -676,7 +675,6 @@ where
                 Some(plan) => plan,
                 None => {
                     break 'preparation (
-                        receipt,
                         InterfaceInvocationError::UnknownBinding,
                         InterfaceInvocationTerminal::Rejected,
                     );
@@ -687,7 +685,6 @@ where
             hook_plan = plan.hook_plan::<I, O>();
             if plan.has_executable_extensions() && hook_plan.is_none() {
                 break 'preparation (
-                    receipt,
                     InterfaceInvocationError::ContractMismatch,
                     InterfaceInvocationTerminal::Rejected,
                 );
@@ -696,28 +693,24 @@ where
             receipt.stage(InterfaceInvocationStage::Resolved);
             if binding.projection().protocol() != protocol {
                 break 'preparation (
-                    receipt,
                     InterfaceInvocationError::ProtocolBindingMismatch,
                     InterfaceInvocationTerminal::Rejected,
                 );
             }
             if plan.adapter_plan().authentication() != &authentication_adapter {
                 break 'preparation (
-                    receipt,
                     InterfaceInvocationError::AuthenticationAdapterMismatch,
                     InterfaceInvocationTerminal::Rejected,
                 );
             }
             if plan.authentication().activation() != &authentication_activation {
                 break 'preparation (
-                    receipt,
                     InterfaceInvocationError::AuthenticationActivationMismatch,
                     InterfaceInvocationTerminal::Rejected,
                 );
             }
             if plan.adapter_plan().authorization() != &self.authorization.adapter_reference() {
                 break 'preparation (
-                    receipt,
                     InterfaceInvocationError::AuthorizationAdapterMismatch,
                     InterfaceInvocationTerminal::Rejected,
                 );
@@ -728,14 +721,12 @@ where
                 .map(|admission| admission.adapter_reference());
             if plan.adapter_plan().admission() != admission_reference.as_ref() {
                 break 'preparation (
-                    receipt,
                     InterfaceInvocationError::AdmissionAdapterMismatch,
                     InterfaceInvocationTerminal::Rejected,
                 );
             }
             if definition.principal_profile() != P::PROFILE {
                 break 'preparation (
-                    receipt,
                     InterfaceInvocationError::PrincipalProfileMismatch,
                     InterfaceInvocationTerminal::Rejected,
                 );
@@ -746,7 +737,6 @@ where
                 || definition.target_error_contract() != &contract_identity::<E>()
             {
                 break 'preparation (
-                    receipt,
                     InterfaceInvocationError::ContractMismatch,
                     InterfaceInvocationTerminal::Rejected,
                 );
@@ -769,17 +759,17 @@ where
                         receipt.managed_invocation = Some(context);
                     }
                     Ok(Err(classification)) => {
-                        break 'preparation (
-                            receipt,
-                            InterfaceInvocationError::BeforeHookRejected(
-                                crate::InterfaceBeforeHookError::classified(classification),
-                            ),
-                            InterfaceInvocationTerminal::Rejected,
-                        );
+                        return Err(receipt
+                            .fail(
+                                InterfaceInvocationError::BeforeHookRejected(
+                                    crate::InterfaceBeforeHookError::classified(classification),
+                                ),
+                                InterfaceInvocationTerminal::Rejected,
+                            )
+                            .await);
                     }
                     Err(interruption) => {
                         break 'preparation (
-                            receipt,
                             interruption_error(interruption),
                             InterfaceInvocationTerminal::Cancelled,
                         );
@@ -802,7 +792,6 @@ where
                 Ok(authorization) => authorization,
                 Err(interruption) => {
                     break 'preparation (
-                        receipt,
                         interruption_error(interruption),
                         InterfaceInvocationTerminal::Cancelled,
                     );
@@ -817,7 +806,6 @@ where
                 )
                 .await;
                 break 'preparation (
-                    receipt,
                     InterfaceInvocationError::AuthorizationRejected(error),
                     InterfaceInvocationTerminal::Rejected,
                 );
@@ -837,7 +825,6 @@ where
                 match authorization {
                     Err(interruption) => {
                         break 'preparation (
-                            receipt,
                             interruption_error(interruption),
                             InterfaceInvocationTerminal::Cancelled,
                         );
@@ -851,7 +838,6 @@ where
                         )
                         .await;
                         break 'preparation (
-                            receipt,
                             InterfaceInvocationError::AuthorizationContributionRejected(error),
                             InterfaceInvocationTerminal::Rejected,
                         );
@@ -876,7 +862,6 @@ where
                     Ok(admission) => admission,
                     Err(interruption) => {
                         break 'preparation (
-                            receipt,
                             interruption_error(interruption),
                             InterfaceInvocationTerminal::Cancelled,
                         );
@@ -891,7 +876,6 @@ where
                     )
                     .await;
                     break 'preparation (
-                        receipt,
                         InterfaceInvocationError::AdmissionRejected(error),
                         InterfaceInvocationTerminal::Rejected,
                     );
@@ -913,7 +897,6 @@ where
                 match admission {
                     Err(interruption) => {
                         break 'preparation (
-                            receipt,
                             interruption_error(interruption),
                             InterfaceInvocationTerminal::Cancelled,
                         );
@@ -927,7 +910,6 @@ where
                         )
                         .await;
                         break 'preparation (
-                            receipt,
                             InterfaceInvocationError::AdmissionContributionRejected(error),
                             InterfaceInvocationTerminal::Rejected,
                         );
@@ -943,7 +925,6 @@ where
                 match before {
                     Err(interruption) => {
                         break 'preparation (
-                            receipt,
                             interruption_error(interruption),
                             InterfaceInvocationTerminal::Cancelled,
                         );
@@ -957,7 +938,6 @@ where
                         )
                         .await;
                         break 'preparation (
-                            receipt,
                             InterfaceInvocationError::BeforeHookRejected(error),
                             InterfaceInvocationTerminal::Rejected,
                         );
@@ -974,7 +954,6 @@ where
             receipt.stage(InterfaceInvocationStage::Prepared);
             let Some(handler) = snapshot.handler::<I, O, E, P>(definition.interface_id()) else {
                 break 'preparation (
-                    receipt,
                     InterfaceInvocationError::ContractMismatch,
                     InterfaceInvocationTerminal::Rejected,
                 );
