@@ -48,7 +48,7 @@
     "status": "Incomplete",
     "unique_defects": 1
   },
-  "api_tree": "604144d0db320554d38f8557f133331d5a731936",
+  "api_tree": "bbfd027d992352f2b4dbb5a61e034446b19b51fe",
   "cache": {
     "archive_bytes": 1573913044,
     "archive_sha256": "ddd1249a9188d0ee1032f641b806b6c624752648837f9b5ade6e2d068d2e4151",
@@ -74,7 +74,7 @@
     "scope": "six archive I/O labels only; no Cargo/rustc reclaim",
     "trigger_bytes": 4000000000
   },
-  "candidate": "81a73a8d80c966f3bff9e97cf13c46455d7be2d2",
+  "candidate": "c4ab716e7a1acf7263e8d74162ad8be15b8bfd8f",
   "clean_checks": [
     [
       "cargo",
@@ -98,7 +98,7 @@
       "1"
     ]
   ],
-  "control_base_sha": "0e26d0ce600e2bd2eca596a63140a2a9e3007b52",
+  "control_base_sha": "a516fd57c748358ea94be68171d8f838c9256904",
   "execution_authorized": true,
   "final_resource_requirements": {
     "all_original_obligations_preserved": true,
@@ -130,7 +130,7 @@
     }
   },
   "inputs": {
-    ".github/workflows/issue2818-one-off.yml": "88382c0d7e54208df98505ce43d890c3a0fcc202b787a642c17d58234a7a37a0",
+    ".github/workflows/issue2818-one-off.yml": "d7104adcf832be03a1602612263256ef41fcdc8070d53dd1d9f3d6e857e7bdae",
     "scripts/shell/_tests/resource-job-run.test.py": "9f0a9f2601709307e395e168ec7011bb749d4ffcf82d8b7f9efc4d7ca5cb1a8b",
     "scripts/shell/resource-job-run.py": "823907fd793b760425d5a5a48fa74d9503cfc0ecf6052a75bcfad62fd59af14c",
     "tmp/test-governance/issue2818/ci-preparation/coupled-api/entry.py": "bc2434f57d64efe5863d8e020364659866048cd25b320196aa33abd913c46a4f",
@@ -257,6 +257,7 @@
   "proposal_status": "READY_FOR_ROOT_APPROVED_EXECUTION",
   "rejected_candidate_reasons": {
     "1547a4f1de65c132fe7263985aaf52894f8061dc": "Default run42758874260 and compiler-only decay0 run42761956154 both OOM before API artifact; no unchanged retry or allocator benefit.",
+    "81a73a8d80c966f3bff9e97cf13c46455d7be2d2": "Run42773868545 ordinary API deadline600.724s, no API artifact, parent8e9B; not an OOM or acceptance. No unchanged retry.",
     "862018221da3337b0793658231f89b9d0f3c7e03": "Controlled run42757114259 stopped before Rust on owned cgroup ENODEV cleanup failure; application source unqualified, not a measured memory regression. Retry requires the tested runner repair.",
     "a9f69d24afb9160e5f8770fea5b816ee33ed2afd": "Ordinary API actual record-only rustc hard OOM at316s; later stages NotReached; unchanged configuration retry forbidden.",
     "df054e2036231a7f8a225cab0425e88d0ca4d105": "Observed unary poll physical stack97848 to102696 bytes (+4848) in three instances; rejected by Root. Future-size reduction alone did not pass runtime constraints."
@@ -265,13 +266,14 @@
     "df054e2036231a7f8a225cab0425e88d0ca4d105",
     "a9f69d24afb9160e5f8770fea5b816ee33ed2afd",
     "862018221da3337b0793658231f89b9d0f3c7e03",
-    "1547a4f1de65c132fe7263985aaf52894f8061dc"
+    "1547a4f1de65c132fe7263985aaf52894f8061dc",
+    "81a73a8d80c966f3bff9e97cf13c46455d7be2d2"
   ],
   "root_authorization": {
-    "basis": "User-authorized continued optimization; changed product W12 shares decision futures, W13 removes duplicate command assembly with6396 exact old/new comparisons and31 original tests. W11 was withdrawn for physical stack regression. Same default allocator/input cache/workload/limits/C01 as42758874260; no identical retry.",
+    "basis": "User-authorized continued optimization. W14v2 shares the complete non-generic decision phase for unary and stream; original74 behaviors/build/Clippy retained, measured runtime phase maxima reduce after rejecting W14v1 stack regression. Actual product changed; same allocator, cache, limits, workload and deadlines.",
     "not_Root_acceptance": true,
     "owner": "ChatGPT /root",
-    "time_utc": "2026-11-10T07:00:53.380228+00:00"
+    "time_utc": "2026-11-10T08:34:40.436666+00:00"
   },
   "runner_repair": {
     "actual_Rust_previously_reached": false,
@@ -315,6 +317,39 @@
       ],
       "unchanged_node_tests_passed": 31
     },
+    "W14": {
+      "actual_original_IR_tests": 74,
+      "commit": "c4ab716e7a1acf7263e8d74162ad8be15b8bfd8f",
+      "files": 4,
+      "full_evidence": "decision-phase-sharing-20261110/compiler-comparison.json",
+      "future_prepare_bytes": [
+        7936,
+        7888
+      ],
+      "future_stream_bytes": [
+        9000,
+        8776
+      ],
+      "local_toolchain": "1.99.0",
+      "net_source_lines": -74,
+      "new_allocations_or_clones": false,
+      "observed_phase_stack_max_stream_bytes": [
+        125152,
+        112128
+      ],
+      "observed_phase_stack_max_unary_bytes": [
+        82224,
+        81472
+      ],
+      "ordinary_dependency_phase_poll_owner": false,
+      "shared_phase_test_poll_count": 1,
+      "stack_scope": "original positive unary/stream test work/request/loop points; not every instruction or failure path",
+      "unary_request_constructor_entry_increase_bytes": [
+        1520,
+        2400
+      ],
+      "v1_rejected": "actual unary core-work stack increased5392B before any commit/CI"
+    },
     "not_global_or_Root_qualification": true
   },
   "source_hashes": {
@@ -347,11 +382,12 @@
     "api/crates/control-plane-postgres-tests/tests/dependency_boundaries.rs": "5c913808a8b953e5456403d33936995c4e4b25e36429a5db8810a332fc54615f",
     "api/crates/interface-runtime/src/_tests/invocation_tests.rs": "9164b4b1fb0d3926588ffa5470ccd0f5b60d54c7501bee271a2b5f20d93ed9f8",
     "api/crates/interface-runtime/src/_tests/review_remediation_tests/decision_order.rs": "ac175ff3e08ca4adb594f5f4ef92e222d8c60d74068ed18b9c42cc0f75b9bb4e",
-    "api/crates/interface-runtime/src/decision.rs": "58180c59e995dfc6c5d2c443ceb2505a7e33fd8daab7a1f60517b8ce3ea4ceef",
+    "api/crates/interface-runtime/src/decision.rs": "9a0cccbcef77a9c1d24097e8082d025d1f20f4111d318ecbb6e9e0f272580671",
     "api/crates/interface-runtime/src/finalization.rs": "933fcb4f7648f14aaa8fde646f9d09792340423a387b3883a7d4cf6d8654b656",
     "api/crates/interface-runtime/src/hook.rs": "2bc39d4b97fb0210c8f7bc367430fd578a6acca6b0ab9c18f85213eb7783fcb2",
-    "api/crates/interface-runtime/src/invocation.rs": "3c908bd2121d0ec4744a776f71e14258699a3622d5fac2ed3cb9b1f1fe27beb5",
-    "api/crates/interface-runtime/src/invocation/kernel.rs": "e97e5932fedd550ebaa87fcb745981bb372f10a16eb6ef3ea0539f3a96c7f5ac",
+    "api/crates/interface-runtime/src/invocation.rs": "67c47bb16c3de2019371fab9a7e26edff5869dd20a8e3a5f9307b0043dff928f",
+    "api/crates/interface-runtime/src/invocation/decisions.rs": "3dbbf2ae4f434c929c3356ab79e19a2bc2b39503f99206ede7af8bd574062a1a",
+    "api/crates/interface-runtime/src/invocation/kernel.rs": "e85d1f1d99ce8e8e983f26610efa4c8cedb78c23d6f7d22b15aa2812b8f574e1",
     "api/crates/interface-runtime/src/registry/compiler.rs": "73936fbd7980442979be50d959d0d786b9bbeb2ea7e76c3ec75a22fe5fa9e712",
     "scripts/node/agent-logs-exchange/ci-api.cjs": "ed0e940a94e2d8c2b25e4147a538d348661a5c20bd962c2e03a973a235512506",
     "scripts/node/console-operation-registry-hygiene/README.md": "26b6d2ad0e5467fd279ad60cc3f11341d505a92e99eafa2090ecb304f5c7307c",
@@ -388,10 +424,10 @@
     "C01-new-alltargets"
   ],
   "tracked_diff_not_AC006": {
-    "added": 1586,
-    "deleted": 1599,
-    "files": 16,
-    "net": -13,
+    "added": 1695,
+    "deleted": 1782,
+    "files": 18,
+    "net": -87,
     "temporary_tooling_costs_not_yet_aggregated": true
   },
   "unresolved": [
@@ -400,11 +436,12 @@
     "Ordinary API default allocator remains unchanged for this source trial; local decay option parse is not compiler-memory evidence.",
     "Old/new four-filter compiled target-qualified multiset/ignored retention and C01 remain incomplete until real evidence.",
     "Managed cases use real SDK worker and owned PG16; no sha2 profile override or deadline weakening.",
-    "Governance/proof/CI preparation costs remain unaggregated; tracked net-13 is not AC006 PASS.",
+    "Governance/proof/CI preparation costs remain unaggregated; tracked net-87 is not AC006 PASS.",
     "Local1.99.0 tests/layout are not cloud1.99.1 performance evidence.",
     "W12 local74 cases/layout/individual poll stack are development evidence; real ordinary API/full consumers/global runtime and resource obligations remain.",
     "Node native CLI tests31 passed after correcting only the test job PATH; first environment ENOENT failure and both costs retained.",
-    "W11 temporary selector prototype rejected and byte-for-byte restored; no W11 code or compiler allocator override is in this candidate."
+    "W11 temporary selector prototype rejected and byte-for-byte restored; no W11 code or compiler allocator override is in this candidate.",
+    "W14 local selected stack maxima and emitted-code reduction do not establish cloud API memory, every failure-path stack, C01, F0/AC009 or Root acceptance."
   ],
   "worker_profile": "test"
 }
