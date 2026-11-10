@@ -143,7 +143,14 @@ impl DocumentOperationSession {
 
     /// Actual post typed-Before input. Dynamic owners call this only after their own target
     /// authorization, before side effects. Observation errors are diagnostic, never a veto.
-    pub async fn observe_before<I: InterfaceContract>(&self, input: &I) -> Result<(), Arc<str>> {
+    pub fn observe_before<'a, I: InterfaceContract>(
+        &'a self,
+        input: &'a I,
+    ) -> impl std::future::Future<Output = Result<(), Arc<str>>> + 'a {
+        self.observe_before_erased(input)
+    }
+
+    async fn observe_before_erased(&self, input: &(dyn Any + Send + Sync)) -> Result<(), Arc<str>> {
         let (projection, context) = {
             let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
             if state.closed || state.before_started {
@@ -171,12 +178,13 @@ impl DocumentOperationSession {
             return Ok(());
         }
         let mut failed = false;
-        let mut projected = None;
+        // Only success is observed here; state.input below owns the retained value.
+        let mut projected = false;
         let token = budget
             .observe(&identity(), InterfaceExtensionPoint::Before, || async {
                 match projection.codec.input(input) {
                     Ok(input) => {
-                        projected = Some(input.clone());
+                        projected = true;
                         // Store before awaiting: cancellation of the business future must retain it.
                         self.state.lock().unwrap_or_else(|e| e.into_inner()).input =
                             Some(input.clone());
@@ -197,7 +205,7 @@ impl DocumentOperationSession {
         if failed {
             budget.record_reported_failure(token);
         }
-        let ok = projected.is_some()
+        let ok = projected
             && !failed
             && budget
                 .records
