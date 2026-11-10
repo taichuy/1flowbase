@@ -130,7 +130,7 @@
     }
   },
   "inputs": {
-    ".github/workflows/issue2818-one-off.yml": "df6028e5dbb9f32065696dc42156e01cb31567fdf9c7178643321814db8913f4",
+    ".github/workflows/issue2818-one-off.yml": "88382c0d7e54208df98505ce43d890c3a0fcc202b787a642c17d58234a7a37a0",
     "scripts/shell/_tests/resource-job-run.test.py": "9f0a9f2601709307e395e168ec7011bb749d4ffcf82d8b7f9efc4d7ca5cb1a8b",
     "scripts/shell/resource-job-run.py": "823907fd793b760425d5a5a48fa74d9503cfc0ecf6052a75bcfad62fd59af14c",
     "tmp/test-governance/issue2818/ci-preparation/coupled-api/entry.py": "bc2434f57d64efe5863d8e020364659866048cd25b320196aa33abd913c46a4f",
