@@ -36,6 +36,7 @@ path = "src/bin/responses_history_migrate/main.rs"
 required-features = ["responses-history-migration"]
 
 [dependencies]
+application-public-protocol = { path = "../application-public-protocol" }
 postgres-test-support = { path = "../../crates/postgres-test-support", optional = true }
 ed25519-dalek = { version = "3.0.0", features = ["pem"], optional = true }
 rand.workspace = true

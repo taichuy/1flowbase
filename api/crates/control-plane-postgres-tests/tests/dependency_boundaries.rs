@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, fs, path::Path, process::Command};
 
 const FORBIDDEN_EDGES: &[(&str, &str)] = &[
+    ("application-public-protocol", "api-server"),
     ("interface-runtime", "api-server"),
     ("interface-runtime", "access-control"),
     ("interface-runtime", "control-plane"),
@@ -171,8 +172,62 @@ fn dependency_policy_violations(metadata: &serde_json::Value) -> Vec<String> {
             }
         }
     }
+    violations.extend(public_projection_dependency_violations(metadata));
     violations.sort();
     violations
+}
+
+fn public_projection_dependency_violations(metadata: &serde_json::Value) -> Vec<String> {
+    let local = metadata["packages"]
+        .as_array()
+        .expect("metadata packages should be an array")
+        .iter()
+        .filter(|package| package["source"].is_null())
+        .map(|package| package["name"].as_str().expect("package name"))
+        .collect::<Vec<_>>();
+    let mut violations = Vec::new();
+    for source in &local {
+        for dependency in resolved_dependencies(metadata, source) {
+            let invalid_outgoing = *source == "application-public-protocol"
+                && local.contains(&dependency.package.as_str())
+                && dependency.package != "control-plane";
+            let invalid_consumer =
+                dependency.package == "application-public-protocol" && *source != "api-server";
+            if invalid_outgoing || invalid_consumer {
+                violations.push(format!(
+                    "public projection boundary: {source} -> {} (crate alias {})",
+                    dependency.package, dependency.crate_name
+                ));
+            }
+        }
+    }
+    violations
+}
+
+#[test]
+fn public_projection_boundary_rejects_renamed_host_dependencies_and_core_consumers() {
+    let fixture = serde_json::json!({
+        "packages": [
+            {"id":"projection", "name":"application-public-protocol", "source":null},
+            {"id":"api", "name":"api-server", "source":null},
+            {"id":"control", "name":"control-plane", "source":null}
+        ],
+        "resolve":{"nodes":[
+            {"id":"projection", "deps":[
+                {"pkg":"control", "name":"native_contract"},
+                {"pkg":"api", "name":"hidden_host"}
+            ]},
+            {"id":"api", "deps":[{"pkg":"projection", "name":"protocol"}]},
+            {"id":"control", "deps":[{"pkg":"projection", "name":"hidden_projection"}]}
+        ]}
+    });
+    assert_eq!(
+        public_projection_dependency_violations(&fixture),
+        vec![
+            "public projection boundary: application-public-protocol -> api-server (crate alias hidden_host)",
+            "public projection boundary: control-plane -> application-public-protocol (crate alias hidden_projection)",
+        ]
+    );
 }
 
 fn source_dependency_violations(

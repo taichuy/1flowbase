@@ -1,52 +1,30 @@
 use super::*;
-use crate::routes::application_public_api::compat_sse::event_forwarding::is_answer_presentation_delta;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum OpenAiChatStreamState {
-    Streaming,
-    Terminal,
-}
-
-pub(crate) struct OpenAiChatStreamMapper {
-    model: String,
-    chat_completion_id: String,
-    state: OpenAiChatStreamState,
-    usage_baseline: crate::routes::application_public_api::openai::usage::ResponseUsageBaseline,
-}
+// No additional projection state; preserve API call sites and test selectors.
+#[repr(transparent)]
+pub(crate) struct OpenAiChatStreamMapper(
+    application_public_protocol::protocol_mappers::OpenAiChatStreamMapper,
+);
 
 impl OpenAiChatStreamMapper {
     pub(in crate::routes::application_public_api::compat_sse) fn new(
         model: String,
         chat_completion_id: String,
     ) -> Self {
-        Self {
-            model,
-            chat_completion_id,
-            state: OpenAiChatStreamState::Streaming,
-            usage_baseline: Default::default(),
-        }
+        Self(
+            application_public_protocol::protocol_mappers::OpenAiChatStreamMapper::new(
+                model,
+                chat_completion_id,
+            ),
+        )
     }
 
     pub(in crate::routes::application_public_api::compat_sse) fn with_usage_baseline(
         mut self,
         baseline: crate::routes::application_public_api::openai::usage::ResponseUsageBaseline,
     ) -> Self {
-        self.usage_baseline = baseline;
+        self.0 = self.0.with_usage_baseline(baseline);
         self
-    }
-
-    fn finish_payload(&self, run: &NativeRunResult, reason: &'static str) -> Value {
-        let mut payload =
-            openai_finish_chunk_payload(run, &self.model, &self.chat_completion_id, reason);
-        match self.usage_baseline.project(run.usage.as_ref()) {
-            Some(usage) => payload["usage"] = json!(usage),
-            None => {
-                if let Value::Object(fields) = &mut payload {
-                    fields.remove("usage");
-                }
-            }
-        }
-        payload
     }
 
     pub(in crate::routes::application_public_api::compat_sse) fn runtime_event_to_sse(
@@ -54,213 +32,12 @@ impl OpenAiChatStreamMapper {
         initial_run: &NativeRunResult,
         event: impl Into<CompatibleRuntimeEventView>,
     ) -> Vec<Result<Event, Infallible>> {
-        if self.state == OpenAiChatStreamState::Terminal {
-            return Vec::new();
-        }
-
-        let envelope = event.into().into_envelope();
-        match envelope.event_type.as_str() {
-            "flow_started" => vec![json_sse(json!({
-                "id": self.chat_completion_id,
-                "object": "chat.completion.chunk",
-                "created": initial_run.created_at.unix_timestamp(),
-                "model": self.model,
-                "choices": [{
-                    "index": 0,
-                    "delta": { "role": "assistant" },
-                    "finish_reason": null
-                }]
-            }))],
-            "text_delta" | "reasoning_delta" if is_answer_presentation_delta(&envelope) => {
-                openai_delta_chunk_payload(
-                    initial_run,
-                    &self.model,
-                    &self.chat_completion_id,
-                    envelope.event_type.as_str(),
-                    envelope.text.unwrap_or_default(),
-                )
-                .map(json_sse)
-                .into_iter()
-                .collect()
-            }
-            "text_delta" | "reasoning_delta" => Vec::new(),
-            "flow_finished" => self.finish(initial_run, "stop"),
-            "flow_incomplete" => self.finish(initial_run, "length"),
-            "flow_failed" => {
-                self.state = OpenAiChatStreamState::Terminal;
-                let error = initial_run
-                    .error
-                    .as_ref()
-                    .and_then(|error| error.upstream_error())
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        json!({
-                            "message": canonical_runtime_error_message(initial_run),
-                            "type": "server_error",
-                            "param": null,
-                            "code": canonical_runtime_error_code(initial_run)
-                        })
-                    });
-                vec![json_sse(json!({"error": error}))]
-            }
-            "flow_cancelled" => {
-                self.state = OpenAiChatStreamState::Terminal;
-                vec![json_sse(json!({
-                    "error": {
-                        "message": "published run cancelled",
-                        "type": "invalid_request_error",
-                        "param": null,
-                        "code": "run_cancelled"
-                    }
-                }))]
-            }
-            "waiting_callback" => {
-                self.state = OpenAiChatStreamState::Terminal;
-                if let Some(payload) = openai_tool_call_chunk_payload(
-                    initial_run,
-                    &self.model,
-                    &self.chat_completion_id,
-                    &envelope.payload,
-                ) {
-                    vec![
-                        json_sse(payload),
-                        json_sse(self.finish_payload(initial_run, "tool_calls")),
-                        done_sse(),
-                    ]
-                } else {
-                    required_action_not_supported_sse()
-                }
-            }
-            "waiting_human" => {
-                self.state = OpenAiChatStreamState::Terminal;
-                required_action_not_supported_sse()
-            }
-            _ => Vec::new(),
-        }
-    }
-
-    fn finish(
-        &mut self,
-        initial_run: &NativeRunResult,
-        finish_reason: &'static str,
-    ) -> Vec<Result<Event, Infallible>> {
-        self.state = OpenAiChatStreamState::Terminal;
-        vec![
-            json_sse(self.finish_payload(initial_run, finish_reason)),
-            done_sse(),
-        ]
+        self.0.runtime_event_to_sse(initial_run, event.into())
     }
 }
 
-pub(in crate::routes::application_public_api::compat_sse) fn openai_delta_chunk_payload(
-    initial_run: &NativeRunResult,
-    model: &str,
-    chat_completion_id: &str,
-    event_type: &str,
-    text: String,
-) -> Option<Value> {
-    let delta = match event_type {
-        "text_delta" => json!({ "content": text }),
-        "reasoning_delta" => json!({ "reasoning_content": text }),
-        _ => return None,
-    };
-
-    Some(json!({
-        "id": chat_completion_id,
-        "object": "chat.completion.chunk",
-        "created": initial_run.created_at.unix_timestamp(),
-        "model": model,
-        "choices": [{
-            "index": 0,
-            "delta": delta,
-            "finish_reason": null
-        }]
-    }))
-}
-
-pub(in crate::routes::application_public_api::compat_sse) fn openai_tool_call_chunk_payload(
-    initial_run: &NativeRunResult,
-    model: &str,
-    chat_completion_id: &str,
-    payload: &Value,
-) -> Option<Value> {
-    let callback_task_id = llm_tool_callback_task_id(payload)?;
-    let calls = llm_tool_calls(payload)?;
-    let tool_calls = calls
-        .iter()
-        .enumerate()
-        .filter_map(|(index, call)| {
-            let name = call.get("name").and_then(Value::as_str)?;
-            let original_id = call
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or("tool_call")
-                .to_string();
-            let arguments = call.get("arguments").cloned().unwrap_or_else(|| json!({}));
-            Some(json!({
-                "index": index,
-                "id": encode_openai_callback_tool_call_id(callback_task_id, &original_id),
-                "type": "function",
-                "function": {
-                    "name": name,
-                    "arguments": tool_call_arguments_string(arguments)
-                }
-            }))
-        })
-        .collect::<Vec<_>>();
-    if tool_calls.is_empty() {
-        return None;
-    }
-
-    Some(json!({
-        "id": chat_completion_id,
-        "object": "chat.completion.chunk",
-        "created": initial_run.created_at.unix_timestamp(),
-        "model": model,
-        "choices": [{
-            "index": 0,
-            "delta": { "tool_calls": tool_calls },
-            "finish_reason": null
-        }]
-    }))
-}
-
-pub(in crate::routes::application_public_api::compat_sse) fn openai_finish_chunk_payload(
-    initial_run: &NativeRunResult,
-    model: &str,
-    chat_completion_id: &str,
-    finish_reason: &'static str,
-) -> Value {
-    json!({
-        "id": chat_completion_id,
-        "object": "chat.completion.chunk",
-        "created": initial_run.created_at.unix_timestamp(),
-        "model": model,
-        "choices": [{
-            "index": 0,
-            "delta": {
-                "content": "",
-                "role": null
-            },
-            "finish_reason": finish_reason
-        }],
-        "usage": openai_chat_usage_payload(initial_run.usage.as_ref())
-    })
-}
-
-fn openai_chat_usage_payload(usage: Option<&NativeUsage>) -> Value {
-    json!(crate::routes::application_public_api::openai::openai_usage(
-        usage
-    ))
-}
-
-fn required_action_not_supported_sse() -> Vec<Result<Event, Infallible>> {
-    vec![json_sse(json!({
-        "error": {
-            "message": "waiting states are not supported by compatible endpoints; use the Native API to inspect and resume required_action runs",
-            "type": "invalid_request_error",
-            "param": null,
-            "code": "required_action_not_supported"
-        }
-    }))]
-}
+#[cfg_attr(test, api_test_selection::group(public_api))]
+#[cfg(test)]
+pub(in crate::routes::application_public_api::compat_sse) use application_public_protocol::protocol_mappers::{
+    openai_delta_chunk_payload, openai_finish_chunk_payload, openai_tool_call_chunk_payload,
+};

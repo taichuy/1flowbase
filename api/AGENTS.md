@@ -17,6 +17,7 @@
 
 - `apps/api-server` 是 Axum HTTP API 宿主，负责 public / console / runtime route、middleware、response、OpenAPI、loader、policy、inventory、infra bootstrap、route mount 与 boot assembly。
 - `apps/api-server` 是唯一 Backend composition root，在进程内创建、注入并关闭唯一 `RuntimeExtensionHost`；不得恢复独立 Runtime 服务或端口。
+- `apps/application-public-protocol` 只拥有兼容 SSE 的同步投影状态机和直接纯投影依赖；API 保留 ingress、认证、调用、持久化、传输、回调编排、取消恢复及 snapshot / generation 生命周期。
 - `crates/` 承载协议无关的调用内核、业务、执行与存储模块；完整 crate owner、允许依赖与代码归属只维护在 [crates/AGENTS.md](crates/AGENTS.md)，修改库代码前读取该文件及对应局部规则。
 - 总体调用关系：Protocol Adapter → `interface-runtime` 冻结计划 → typed Handler → Business / Execution；这是调用关系，不授予 crate 反向依赖实现层的权限。
 - `plugins` 是插件源码工作区和包工作区；`host-extensions`、`sets`、`templates`、`packages`、`installed` 的生命周期以 `api/plugins/README.md` 为准。

@@ -1,4 +1,7 @@
-use super::openai::native_response_id;
+#[cfg_attr(test, api_test_selection::group(public_api))]
+#[cfg(test)]
+use control_plane::application_public_api::native::NativeUsage;
+
 use std::{convert::Infallible, sync::Arc, time::Duration};
 
 use control_plane::ports::OrchestrationRuntimeRepository;
@@ -20,7 +23,7 @@ use control_plane::application_public_api::{
     native::NativeRunStatus,
 };
 use control_plane::{
-    application_public_api::native::{NativeRunResult, NativeUsage},
+    application_public_api::native::NativeRunResult,
     orchestration_runtime::{
         debug_stream_events, start_runtime_debug_event_persister,
         wait_for_runtime_debug_event_persister, OrchestrationRuntimeService,
@@ -41,9 +44,6 @@ use tracing::warn;
 #[cfg(test)]
 use tracing::{debug, info};
 
-use crate::routes::application_public_api::tool_callback_ids::{
-    encode_anthropic_callback_tool_use_id, encode_openai_callback_tool_call_id,
-};
 use crate::{
     app_state::ApiState,
     routes::application_public_api::{
@@ -92,24 +92,7 @@ use protocol_mappers::anthropic_completed_run_to_sse;
 
 use protocol_mappers::{AnthropicStreamMapper, OpenAiChatStreamMapper, OpenAiResponseStreamMapper};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ResponsesProjectionMode {
-    TransparentProviderResponses,
-    SemanticNativeResponses,
-    AwaitingHostSelection,
-}
-
-impl ResponsesProjectionMode {
-    pub(crate) fn from_transport(
-        payload: Option<&control_plane::ports::ProviderTransportPayload>,
-    ) -> Self {
-        match payload {
-            None => Self::SemanticNativeResponses,
-            Some(payload) if payload.is_preferred() => Self::AwaitingHostSelection,
-            Some(_) => Self::TransparentProviderResponses,
-        }
-    }
-}
+pub(crate) use application_public_protocol::ResponsesProjectionMode;
 
 pub(crate) struct CompatibleResumePlan {
     pub(crate) initial_run: NativeRunResult,
@@ -327,71 +310,11 @@ pub(crate) enum CompatibleProtocolProjection {
     AnthropicMessages(AnthropicStreamMapper),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CompatibleAnswerDeltaKind {
-    Reasoning,
-    Text,
-}
+use application_public_protocol::CompatibleRuntimeEventView;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CompatibleTerminalKind {
-    Finished,
-    Incomplete,
-    Failed,
-    Cancelled,
-    WaitingHuman,
-    WaitingCallback,
-}
-
-struct CompatibleRuntimeEventView {
-    envelope: RuntimeEventEnvelope,
-    answer_delta: Option<CompatibleAnswerDeltaKind>,
-    terminal: Option<CompatibleTerminalKind>,
-}
-
-impl CompatibleRuntimeEventView {
-    fn answer_delta(&self) -> Option<CompatibleAnswerDeltaKind> {
-        self.answer_delta
-    }
-
-    fn terminal(&self) -> Option<CompatibleTerminalKind> {
-        self.terminal
-    }
-
-    fn envelope(&self) -> &RuntimeEventEnvelope {
-        &self.envelope
-    }
-
-    fn into_envelope(self) -> RuntimeEventEnvelope {
-        self.envelope
-    }
-}
-
-impl From<RuntimeEventEnvelope> for CompatibleRuntimeEventView {
-    fn from(envelope: RuntimeEventEnvelope) -> Self {
-        let answer_delta = is_answer_presentation_delta(&envelope)
-            .then_some(match envelope.event_type.as_str() {
-                "reasoning_delta" => Some(CompatibleAnswerDeltaKind::Reasoning),
-                "text_delta" => Some(CompatibleAnswerDeltaKind::Text),
-                _ => None,
-            })
-            .flatten();
-        let terminal = match envelope.event_type.as_str() {
-            "flow_finished" => Some(CompatibleTerminalKind::Finished),
-            "flow_incomplete" => Some(CompatibleTerminalKind::Incomplete),
-            "flow_failed" => Some(CompatibleTerminalKind::Failed),
-            "flow_cancelled" => Some(CompatibleTerminalKind::Cancelled),
-            "waiting_human" => Some(CompatibleTerminalKind::WaitingHuman),
-            "waiting_callback" => Some(CompatibleTerminalKind::WaitingCallback),
-            _ => None,
-        };
-        Self {
-            envelope,
-            answer_delta,
-            terminal,
-        }
-    }
-}
+#[cfg_attr(test, api_test_selection::group(public_api))]
+#[cfg(test)]
+use application_public_protocol::{CompatibleAnswerDeltaKind, CompatibleTerminalKind};
 
 impl CompatibleProtocolProjection {
     pub(crate) fn runtime_event_to_sse(
