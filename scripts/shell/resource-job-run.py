@@ -15,6 +15,7 @@ commands deliberately migrating themselves to other cgroups.
 """
 import argparse
 import ctypes
+import errno
 from datetime import datetime, timezone
 import json
 import math
@@ -313,13 +314,26 @@ class Job:
         if not self.owner:
             return False
         group = CGROOT / self.owner['cgroup'].lstrip('/')
-        try:
-            if group.stat().st_ino != self.owner['inode']:
-                raise RuntimeError('refusing changed cgroup inode')
-            events = dict(line.split() for line in (group / 'cgroup.events').read_text().splitlines())
-            return events.get('populated') == '0'
-        except FileNotFoundError:
-            return True
+        for attempt in range(2):
+            try:
+                if group.stat().st_ino != self.owner['inode']:
+                    raise RuntimeError('refusing changed cgroup inode')
+                events = dict(line.split() for line in (group / 'cgroup.events').read_text().splitlines())
+                if group.stat().st_ino != self.owner['inode']:
+                    raise RuntimeError('refusing changed cgroup inode after reading')
+                return events.get('populated') == '0'
+            except OSError as error:
+                if error.errno not in (errno.ENOENT, errno.ENODEV):
+                    raise
+                try:
+                    inode = group.stat().st_ino
+                except FileNotFoundError:
+                    return True  # A deleted cgroup cannot still contain live processes.
+                if inode != self.owner['inode']:
+                    raise RuntimeError('refusing changed cgroup inode after read error')
+                if attempt:
+                    raise  # An unreadable existing scope is not proof of emptiness.
+                time.sleep(POLL)
 
     def start_scope(self):
         self.budget = validate_budget(self.log, self.remaining())
