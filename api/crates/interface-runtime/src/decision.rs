@@ -241,14 +241,11 @@ where
     I: InterfaceContract,
     O: InterfaceContract,
 {
-    pub(crate) async fn run(
+    pub(crate) fn run(
         &self,
         request: InterfaceAuthorizationContributionRequest,
-    ) -> Result<(), InterfaceAuthorizationContributionError> {
-        for (_, contribution) in &self.bindings {
-            contribution.authorize(request.clone()).await?;
-        }
-        Ok(())
+    ) -> impl Future<Output = Result<(), InterfaceAuthorizationContributionError>> + '_ {
+        run_authorization(&self.bindings, request)
     }
 }
 
@@ -257,15 +254,34 @@ where
     I: InterfaceContract,
     O: InterfaceContract,
 {
-    pub(crate) async fn run(
+    pub(crate) fn run(
         &self,
         request: InterfaceAdmissionContributionRequest,
-    ) -> Result<(), InterfaceAdmissionContributionError> {
-        for (_, contribution) in &self.bindings {
-            contribution.admit(request.clone()).await?;
-        }
-        Ok(())
+    ) -> impl Future<Output = Result<(), InterfaceAdmissionContributionError>> + '_ {
+        run_admission(&self.bindings, request)
     }
+}
+
+// Execution does not depend on the typed plan contracts. Keep the thin Vec borrow
+// and the original per-contribution request/await/drop sequence.
+async fn run_authorization(
+    bindings: &Vec<(PluginIdentity, Arc<dyn InterfaceAuthorizationContribution>)>,
+    request: InterfaceAuthorizationContributionRequest,
+) -> Result<(), InterfaceAuthorizationContributionError> {
+    for (_, contribution) in bindings {
+        contribution.authorize(request.clone()).await?;
+    }
+    Ok(())
+}
+
+async fn run_admission(
+    bindings: &Vec<(PluginIdentity, Arc<dyn InterfaceAdmissionContribution>)>,
+    request: InterfaceAdmissionContributionRequest,
+) -> Result<(), InterfaceAdmissionContributionError> {
+    for (_, contribution) in bindings {
+        contribution.admit(request.clone()).await?;
+    }
+    Ok(())
 }
 
 pub(crate) trait ErasedInterfaceDecisionPlan: Send + Sync {
