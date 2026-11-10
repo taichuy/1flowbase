@@ -32,6 +32,8 @@ export interface DataBlockAction {
   target_block_id?: string;
   presentation?: DataBlockPresentation;
   size?: 'small' | 'middle' | 'large';
+  filter_fields?: string[];
+  default_filter?: DataFilterGroup;
 }
 
 export interface DataBlockColumn {
@@ -61,6 +63,7 @@ export interface DataFilterCondition {
   field_code: string;
   operator: DataFilterOperator;
   value?: unknown;
+  value_source?: 'literal' | 'variable';
 }
 export interface DataFilterGroup {
   id: string;
@@ -87,6 +90,7 @@ export interface TableBlockConfig extends DataBlockCommon {
   columns: DataBlockColumn[];
   actions: DataBlockAction[];
   row_actions: DataBlockAction[];
+  action_column?: { hidden: boolean; position: number };
   page_size: number;
   density: 'small' | 'middle' | 'large';
   show_index: boolean;
@@ -158,6 +162,7 @@ export function createTableBlockConfig(
     columns: [],
     actions: [],
     row_actions: [],
+    action_column: { hidden: true, position: 0 },
     page_size: 20,
     density: 'small',
     show_index: true,

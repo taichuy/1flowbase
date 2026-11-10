@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Button, Dropdown, Input, type MenuProps } from 'antd';
+import { Button, Dropdown, Input, theme, type MenuProps } from 'antd';
 import {
   fetchConsoleDataModels,
   fetchConsoleDataSources
@@ -15,6 +15,45 @@ import {
   type DataBlockBinding
 } from '../../lib/data-blocks/types';
 import { FRONTSTAGE_DESIGN_BLUE } from '../../lib/design-mode-theme';
+
+const MENU_WIDTH: CSSProperties = {
+  width: 280,
+  minWidth: 0,
+  maxWidth: 'calc(100dvw - 24px)'
+};
+const MENU_PANEL: CSSProperties = {
+  ...MENU_WIDTH,
+  maxHeight: 'min(480px, calc(100dvh - 24px))',
+  overflowY: 'auto',
+  overflowX: 'hidden',
+  overscrollBehavior: 'contain'
+};
+const SUBMENU_PLACEMENTS: MenuProps['builtinPlacements'] = {
+  rightTop: {
+    points: ['tl', 'tr'],
+    overflow: { adjustX: 1, adjustY: 1, shiftX: true, shiftY: true }
+  },
+  leftTop: {
+    points: ['tr', 'tl'],
+    overflow: { adjustX: 1, adjustY: 1, shiftX: true, shiftY: true }
+  }
+};
+
+function menuLabel(text: string) {
+  return (
+    <span
+      title={text}
+      style={{
+        display: 'block',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      }}
+    >
+      {text}
+    </span>
+  );
+}
 
 export function CreateDataBlockMenu({
   workspaceId,
@@ -42,6 +81,7 @@ export function CreateDataBlockMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const { token } = theme.useToken();
   const actor = useAuthStore((state) => state.actor);
   const models = useQuery({
     queryKey: ['frontstage-design-models', workspaceId, actor?.id],
@@ -87,12 +127,13 @@ export function CreateDataBlockMenu({
         const sourceGroups = (sources.data ?? [])
           .map((source) => ({
             key: `${entry.id}:${source.id}`,
-            label: source.display_name,
+            label: menuLabel(source.display_name),
+            popupStyle: MENU_PANEL,
             children: available
               .filter((model) => (model.data_source_id ?? 'main') === source.id)
               .map((model) => ({
                 key: `${entry.id}:${model.id}`,
-                label: model.title,
+                label: menuLabel(model.title),
                 onClick: () =>
                   choose(entry, {
                     model_id: model.id,
@@ -105,6 +146,13 @@ export function CreateDataBlockMenu({
         const children: MenuProps['items'] = [
           {
             key: `${entry.id}:search`,
+            style: {
+              position: 'sticky',
+              top: 0,
+              zIndex: 1,
+              background: token.colorBgElevated,
+              cursor: 'default'
+            },
             label: (
               <Input
                 aria-label={i18nText('frontstage', 'data_blocks.create.search')}
@@ -155,8 +203,10 @@ export function CreateDataBlockMenu({
         ];
         return {
           key: entry.id,
-          label:
-            entry.contributionCode === TABLE_BLOCK_CONTRIBUTION
+          popupStyle: MENU_PANEL,
+          label: entry.raw.custom_block_id
+            ? menuLabel(entry.title)
+            : entry.contributionCode === TABLE_BLOCK_CONTRIBUTION
               ? i18nText('frontstage', 'data_blocks.table.table')
               : i18nText('frontstage', 'data_blocks.form.form'),
           children: currentBinding
@@ -173,6 +223,7 @@ export function CreateDataBlockMenu({
                   ? [
                       {
                         key: `${entry.id}:other`,
+                        popupStyle: MENU_PANEL,
                         label: i18nText(
                           'frontstage',
                           'data_blocks.create.other_models'
@@ -195,16 +246,17 @@ export function CreateDataBlockMenu({
       children: codeEntries.map((entry) => ({
         key: entry.id,
         label:
+          !entry.raw.custom_block_id &&
           entry.contributionCode === 'frontstage.js-ui-block'
             ? i18nText('frontstage', 'data_blocks.create.js')
-            : entry.title,
+            : menuLabel(entry.title),
         onClick: () => choose(entry)
       }))
     });
   if (error)
     items.unshift({
       key: 'catalog-error',
-      label: error.message,
+      label: menuLabel(error.message),
       onClick: onRetry
     });
   if (!items.length)
@@ -218,7 +270,21 @@ export function CreateDataBlockMenu({
       open={open}
       onOpenChange={setOpen}
       trigger={['hover', 'click']}
-      menu={{ items }}
+      autoAdjustOverflow
+      align={{
+        offset: [0, 0],
+        overflow: { adjustX: 1, adjustY: 1, shiftX: true, shiftY: true }
+      }}
+      styles={{
+        root: MENU_WIDTH,
+        itemTitle: { minWidth: 0 },
+        itemContent: { minWidth: 0, overflow: 'hidden', flex: 1 }
+      }}
+      menu={{
+        items,
+        style: MENU_PANEL,
+        builtinPlacements: SUBMENU_PLACEMENTS
+      }}
       disabled={disabled}
     >
       <Button

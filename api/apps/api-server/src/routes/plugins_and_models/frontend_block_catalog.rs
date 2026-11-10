@@ -40,6 +40,7 @@ pub struct IsolatedFrontendBlockEntryAssetResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FrontendBlockCatalogResponse {
+    pub custom_block_id: Option<String>,
     pub installation_id: String,
     pub provider_code: String,
     pub plugin_id: String,
@@ -124,6 +125,7 @@ pub(crate) fn to_response(
         None
     };
     Ok(FrontendBlockCatalogResponse {
+        custom_block_id: None,
         installation_id: entry.installation_id.to_string(),
         provider_code: entry.provider_code,
         plugin_id: entry.plugin_id,
@@ -494,12 +496,20 @@ impl
             .await
             .map_err(ApiError)
             .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
-            let output = entries
+            let definitions = control_plane::frontend_block_catalog::custom_blocks::CustomFrontendBlockService(self.0.store.for_actor(principal.actor().clone()))
+                .list(principal.actor().current_workspace_id).await.map_err(ApiError).map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
+            let custom = control_plane::frontend_block_catalog::custom_blocks::resolve_custom_blocks(&entries.entries, definitions);
+            let mut output = entries
                 .entries
                 .into_iter()
                 .map(to_response)
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
+            for (definition, binding) in custom {
+                let mut response = to_response(binding).map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
+                response.custom_block_id = Some(definition.id.to_string());
+                output.push(response);
+            }
             Ok(FrontendBlocksOutput(output))
         })
     }

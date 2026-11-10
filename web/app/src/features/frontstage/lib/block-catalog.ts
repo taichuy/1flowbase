@@ -133,7 +133,9 @@ export function normalizeFrontstageBlockCatalog(
       code_template_language: entry.code_template_language
     });
     items.push({
-      id: `${entry.provider_code}:${entry.contribution_code}`,
+      id: entry.custom_block_id
+        ? `custom:${entry.custom_block_id}`
+        : `${entry.provider_code}:${entry.contribution_code}`,
       runtimeKind,
       installationId: entry.installation_id,
       providerCode: entry.provider_code,

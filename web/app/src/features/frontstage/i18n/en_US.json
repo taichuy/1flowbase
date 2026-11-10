@@ -283,7 +283,7 @@
       "action_unavailable": "This action has no configured destination.",
       "apply": "Apply",
       "awaiting_source": "Select a source record to view related data.",
-      "configure_row_actions": "Row actions",
+      "configure_row_actions": "Action column",
       "confirm_delete": "Confirm deletion",
       "delete_description": "Delete the {{count}} selected records individually. This cannot be undone.",
       "delete_partial": "Deleted {{deleted}} records; {{failed}} failed. Failed records remain selected for retry.",
@@ -337,7 +337,8 @@
       "surface_size": "Surface size",
       "target_field": "Match field in this model",
       "width": "Column width (pixels)",
-      "relation": "Parent and child records"
+      "relation": "Parent and child records",
+      "display_fields": "Display fields"
     },
     "form": {
       "action_settings": "Action settings",
@@ -475,7 +476,25 @@
       "field": "Field",
       "operator": "Operator",
       "add_condition": "Add condition",
-      "add_group": "Add group"
+      "add_group": "Add group",
+      "value_source": "Value source",
+      "literal": "Value",
+      "variable": "Variable",
+      "select_variable": "Select a variable",
+      "incomplete": "Complete each field, operator and value before applying or saving.",
+      "save_conditions": "Save conditions",
+      "filterable_fields": "Filterable fields",
+      "current_user": "Current user",
+      "workspace": "Current workspace",
+      "application": "Current application",
+      "page": "Current page",
+      "inputs": "Block inputs",
+      "params": "Page parameters",
+      "id": "ID",
+      "display_name": "Display name",
+      "is_empty": "Is empty",
+      "is_not_empty": "Is not empty",
+      "conditions_saved": "Filter conditions saved"
     }
   }
 }

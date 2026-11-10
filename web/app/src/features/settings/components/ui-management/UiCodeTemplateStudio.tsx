@@ -35,6 +35,8 @@ import type {
 export type UiCodeTemplateStudioMode = 'create' | 'copy' | 'edit' | 'view';
 
 export function UiCodeTemplateStudio({
+  resourceKind = 'template',
+  documentId,
   initialValue,
   managedTemplate,
   mode,
@@ -45,6 +47,8 @@ export function UiCodeTemplateStudio({
   onClose,
   onSave
 }: {
+  resourceKind?: 'template' | 'block';
+  documentId?: string;
   initialValue: SettingsUiTemplateInput;
   managedTemplate?: SettingsUiManagedTemplate;
   mode: UiCodeTemplateStudioMode;
@@ -79,7 +83,18 @@ export function UiCodeTemplateStudio({
     [catalogEntry]
   );
   const monacoExtraLibs = projection.monacoExtraLibs;
-  const canSave = can(mode === 'edit' || (mode === 'view' && managedTemplate) ? 'ui_management.templates.update' : 'ui_management.templates.create');
+  const canSave =
+    resourceKind === 'block'
+      ? can(
+          mode === 'edit'
+            ? 'ui_management.blocks.update'
+            : 'ui_management.blocks.create'
+        )
+      : can(
+          mode === 'edit' || (mode === 'view' && managedTemplate)
+            ? 'ui_management.templates.update'
+            : 'ui_management.templates.create'
+        );
   const readOnly = mode === 'view' || !canSave;
   const contributionIdentity = templateIdentity(
     draft.provider_code,
@@ -213,11 +228,23 @@ export function UiCodeTemplateStudio({
       return;
     }
     if (!draft.name.trim()) {
-      void message.error(t('template_name_required'));
+      void message.error(
+        t(
+          resourceKind === 'block'
+            ? 'block_name_required'
+            : 'template_name_required'
+        )
+      );
       return;
     }
     if (!draft.source.trim()) {
-      void message.error(t('template_source_required'));
+      void message.error(
+        t(
+          resourceKind === 'block'
+            ? 'block_source_required'
+            : 'template_source_required'
+        )
+      );
       return;
     }
     onSave({ ...draft, name: draft.name.trim() });
@@ -319,8 +346,12 @@ export function UiCodeTemplateStudio({
       initialSection="configuration"
       loading={catalog.loading}
       open={open}
-      owner="settings:ui-management:code-templates"
-      path={`file:///settings/ui-code-templates/${encodeURIComponent(contributionIdentity || 'new')}.${draft.language}`}
+      owner={
+        resourceKind === 'block'
+          ? 'settings:ui-management:blocks'
+          : 'settings:ui-management:code-templates'
+      }
+      path={`file:///settings/${resourceKind === 'block' ? 'ui-blocks' : 'ui-code-templates'}/${encodeURIComponent(documentId ?? (contributionIdentity || 'new'))}.${draft.language}`}
       readOnly={readOnly}
       canRun={canSave}
       saving={saving}
@@ -330,8 +361,12 @@ export function UiCodeTemplateStudio({
           : ['code', 'configuration', 'run']
       }
       source={draft.source}
-      testId="ui-code-template-studio"
-      windowId="ui-code-template-studio"
+      testId={
+        resourceKind === 'block' ? 'ui-block-studio' : 'ui-code-template-studio'
+      }
+      windowId={
+        resourceKind === 'block' ? 'ui-block-studio' : 'ui-code-template-studio'
+      }
       onChange={(source) => setDraft((current) => ({ ...current, source }))}
       onClose={onClose}
       onEditorMount={(editor) => {
@@ -365,7 +400,11 @@ export function UiCodeTemplateStudio({
           ) : (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={t('template_preview_idle')}
+              description={t(
+                resourceKind === 'block'
+                  ? 'block_preview_idle'
+                  : 'template_preview_idle'
+              )}
             />
           )
         ) : !workspaceId ? (

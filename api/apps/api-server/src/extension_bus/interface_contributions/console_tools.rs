@@ -7,6 +7,17 @@ pub(super) fn contributions(
     Ok(vec![
 
         InterfaceRegistryContribution::new(
+            "api-server.console-custom-frontend-blocks",
+            &["ui_management.blocks.list", "ui_management.blocks.create", "ui_management.blocks.update", "ui_management.blocks.delete"],
+            &["api-server.console-custom-frontend-blocks"],
+            crate::routes::ui_management::custom_blocks_interface::compile_registry(
+                crate::routes::frontend_block_catalog::FrontendBlockDependencies {
+                    store: state.store.clone(), api_node_id: state.api_node_id.clone(),
+                    graph: Arc::clone(state.extension_boot_snapshot.as_ref().expect("production interface publication requires ExtensionBootSnapshot").graph_arc()),
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-mcp-debug",
             &["mcp.debug.execute"],
             &["api-server.console-mcp-debug"],

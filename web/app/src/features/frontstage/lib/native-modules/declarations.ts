@@ -102,6 +102,25 @@ export function createFrontendModuleExtraLib(
   moduleSource: string,
   exports: readonly string[]
 ): BlockSourceExtraLib {
+  if (moduleSource === '@1flowbase/block-design') {
+    return {
+      source: moduleSource,
+      filePath: 'file:///node_modules/@1flowbase/block-design/index.d.ts',
+      content: `declare module '@1flowbase/block-design' {
+  import type { ReactElement, ReactNode, HTMLAttributes, Ref } from 'react';
+  import type { ThemeConfig, ButtonProps, DropdownProps } from 'antd';
+  export const BLOCK_DESIGN_THEME: ThemeConfig;
+  export interface BlockSettingsItem { id: string; label: string; disabled?: boolean; onSelect(): void; }
+  export function useRegisterBlockSettings(items: readonly BlockSettingsItem[]): void;
+  export type BlockDesignButtonProps = Omit<ButtonProps, 'variant'> & {
+    variant?: 'settings' | 'initializer'; ref?: Ref<HTMLButtonElement | HTMLAnchorElement>;
+  };
+  export function BlockDesignButton(props: BlockDesignButtonProps): ReactElement;
+  export function BlockDesignMenu(props: DropdownProps): ReactElement;
+  export function BlockDesignToolbar(props: HTMLAttributes<HTMLSpanElement> & { children: ReactNode; tools: ReactNode; disabled?: boolean }): ReactElement;
+}`
+    };
+  }
   if (moduleSource === '@1flowbase/data-blocks') {
     return {
       source: moduleSource,

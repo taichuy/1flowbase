@@ -32,19 +32,21 @@ function ActivatedRuntimeLifecycles() {
 }
 
 export function AppProviders({ children }: PropsWithChildren) {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            retry: false
-          },
-          mutations: {
-            retry: false
-          }
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false
+        },
+        mutations: {
+          retry: false
         }
-      })
-  );
+      }
+    });
+    // Retained canvases refresh after edits or explicit refresh, not on window focus.
+    client.setQueryDefaults(['frontstage'], { refetchOnWindowFocus: false });
+    return client;
+  });
 
   return (
     <AppThemeProvider>

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { RouteManagementTab } from './RouteManagementTab';
 import { CodeTemplatesTab } from './CodeTemplatesTab';
 import { ComponentRecordsTab } from './ComponentRecordsTab';
+import { RegisteredBlocksTab } from './RegisteredBlocksTab';
 
 export function UiManagementPanel(_props: { canManage?: boolean } = {}) {
   const { t } = useTranslation('settingsUiManagement');
@@ -17,7 +18,9 @@ export function UiManagementPanel(_props: { canManage?: boolean } = {}) {
     ? 'components'
     : pathname.endsWith('/routes')
       ? 'routes'
-      : 'code-templates';
+      : pathname.endsWith('/code-templates')
+        ? 'code-templates'
+        : 'blocks';
   const fillStyle =
     screens.lg !== false ? { height: '100%', minHeight: 0 } : undefined;
 
@@ -33,10 +36,18 @@ export function UiManagementPanel(_props: { canManage?: boolean } = {}) {
               ? '/settings/ui-management/routes'
               : key === 'components'
                 ? '/settings/ui-management/components'
-                : '/settings/ui-management/code-templates'
+                : key === 'code-templates'
+                  ? '/settings/ui-management/code-templates'
+                  : '/settings/ui-management/blocks'
         })
       }
       items={[
+        {
+          key: 'blocks',
+          label: t('blocks'),
+          style: fillStyle,
+          children: <RegisteredBlocksTab />
+        },
         {
           key: 'code-templates',
           label: t('code_templates'),

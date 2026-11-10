@@ -27,7 +27,8 @@ export function tableRecordId(
 export function tableQueryScope(
   config: TableBlockConfig,
   userFilter: DataFilterGroup,
-  inputs: Readonly<Record<string, unknown>>
+  inputs: Readonly<Record<string, unknown>>,
+  variables: Readonly<Record<string, unknown>> = {}
 ) {
   const parentId = relationRecordId(config.relation, inputs);
   const linked = inputs.linked_value;
@@ -51,8 +52,8 @@ export function tableQueryScope(
   return {
     enabled: (!config.relation || parentId !== null) && linkageReady,
     filter: intersectDataFilters(
-      dataFilterToRequest(config.filter),
-      dataFilterToRequest(userFilter),
+      dataFilterToRequest(config.filter, variables),
+      dataFilterToRequest(userFilter, variables),
       config.relation && parentId !== null
         ? { [config.relation.field_code]: { $eq: parentId } }
         : null,

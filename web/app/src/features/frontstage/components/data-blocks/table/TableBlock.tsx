@@ -1,4 +1,7 @@
-import { DATA_BLOCK_DESIGN_THEME } from '../shared/data-block-design-theme';
+import {
+  BLOCK_DESIGN_THEME,
+  BLOCK_BUTTON_THEME
+} from '../../../lib/native-modules/block-design/theme';
 import { FRONTSTAGE_DESIGN_BLUE } from '../../../lib/design-mode-theme';
 import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import { DataBlockModal as Modal } from '../shared/DataBlockModal';
@@ -34,7 +37,6 @@ import {
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import {
   SortableContext,
-  arrayMove,
   horizontalListSortingStrategy
 } from '@dnd-kit/sortable';
 import type { ConsoleRuntimeModelRecord } from '@1flowbase/api-client';
@@ -67,6 +69,13 @@ import {
   tableQueryScope,
   tableRecordId
 } from './table-model';
+import { BlockDesignToolbar } from '../../../lib/native-modules/block-design/runtime';
+import {
+  dataFilterVariables,
+  restrictDataFilter,
+  validDataFilter
+} from '../../../lib/data-blocks/filter-variables';
+import { moveTableColumn, tableColumnEntries } from './table-columns';
 import { actionTitle } from './table-labels';
 import {
   SortableTableColumnTitle,
@@ -119,9 +128,15 @@ function ConfiguredTableBlock({
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(config.page_size);
   const [sort, setSort] = useState(config.sort);
-  const [filter, setFilter] = useState(emptyDataFilter);
+  const defaultFilter = config.actions.find(
+    (action) => action.kind === 'filter' && action.enabled
+  )?.default_filter;
+  const [filter, setFilter] = useState(
+    () => defaultFilter ?? emptyDataFilter()
+  );
   const [filterDraft, setFilterDraft] = useState(emptyDataFilter);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [filterSaved, setFilterSaved] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [deleteIds, setDeleteIds] = useState<string[] | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -134,7 +149,19 @@ function ConfiguredTableBlock({
   const actionParent = tableActionParentContext(config, fields, ctx.inputs);
   const capabilities = metadata.data?.record_capabilities;
   const writes = useDataBlockWrites(ctx, config.binding);
-  const scope = tableQueryScope(config, filter, ctx.inputs);
+  const variables = dataFilterVariables(ctx);
+  const scope = tableQueryScope(
+    config,
+    filter,
+    ctx.inputs,
+    Object.fromEntries(
+      variables.map((variable) => [variable.value, variable.resolved])
+    )
+  );
+  const defaultFilterKey = JSON.stringify(defaultFilter);
+  useEffect(() => {
+    setFilter(defaultFilter ?? emptyDataFilter());
+  }, [defaultFilterKey]);
   const scopeKey = JSON.stringify(scope.filter);
   const invalidFields = metadata.data
     ? config.columns.filter(
@@ -149,13 +176,15 @@ function ConfiguredTableBlock({
     );
   const invalidQuery = Boolean(
     metadata.data &&
-    [
-      ...filterFields(config.filter),
-      ...filterFields(filter),
-      ...(sort ? [sort.field] : []),
-      ...(config.relation ? [config.relation.field_code] : []),
-      ...(config.linkage ? [config.linkage.field_code] : [])
-    ].some((code) => !fields.some((field) => field.code === code))
+    (!validDataFilter(config.filter, fields, variables) ||
+      !validDataFilter(filter, fields, variables) ||
+      [
+        ...filterFields(config.filter),
+        ...filterFields(filter),
+        ...(sort ? [sort.field] : []),
+        ...(config.relation ? [config.relation.field_code] : []),
+        ...(config.linkage ? [config.linkage.field_code] : [])
+      ].some((code) => !fields.some((field) => field.code === code)))
   );
   const records = useDataBlockRecords(
     ctx,
@@ -385,9 +414,9 @@ function ConfiguredTableBlock({
   const fieldMenu = design && (
     <TableFieldMenu
       fields={fields}
-      columns={config.columns}
+      config={config}
       disabled={disabled || !metadata.data}
-      onChange={(columns) => saveConfig({ ...config, columns })}
+      onChange={saveConfig}
       canCreate={canCreateField}
       onCreate={() => setCreateField(true)}
     />
@@ -411,7 +440,20 @@ function ConfiguredTableBlock({
       <FilterOutlined />
     );
     return (
-      <span className="data-table-action" key={action.id}>
+      <BlockDesignToolbar
+        className="data-table-action"
+        key={action.id}
+        disabled={!design}
+        tools={
+          <TableActionSettings
+            action={action}
+            fields={fields}
+            variables={variables}
+            disabled={disabled}
+            onSave={(next) => saveAction(next, row)}
+          />
+        }
+      >
         <Button
           size="small"
           type={row ? 'link' : action.kind === 'create' ? 'primary' : 'default'}
@@ -430,14 +472,7 @@ function ConfiguredTableBlock({
         >
           {actionTitle(action)}
         </Button>
-        {design && (
-          <TableActionSettings
-            action={action}
-            disabled={disabled}
-            onSave={(next) => saveAction(next, row)}
-          />
-        )}
-      </span>
+      </BlockDesignToolbar>
     );
   };
   const columns: TableColumnsType<ConsoleRuntimeModelRecord> = [];
@@ -449,30 +484,40 @@ function ConfiguredTableBlock({
       render: (_, __, index) => (page - 1) * pageSize + index + 1
     });
   const rowActions = config.row_actions.filter((action) => action.enabled);
+  const actionEntry = tableColumnEntries(config).find(
+    (entry) => entry.kind === 'actions'
+  );
+  const showActionColumn =
+    actionEntry?.kind === 'actions' && !actionEntry.hidden;
   if (
-    design ||
-    (canAddressRecords &&
-      rowActions.some((action) => tableActionAllowed(action, capabilities)))
+    showActionColumn &&
+    (design ||
+      (canAddressRecords &&
+        rowActions.some((action) => tableActionAllowed(action, capabilities))))
   )
     columns.push({
       key: '__actions',
-      width: design ? 200 : 160,
+      width: 160,
       title: (
-        <div className="data-table-row-actions-title">
-          <span>{i18nText('frontstage', 'files.actions')}</span>
-          {design && (
+        <SortableTableColumnTitle
+          fieldCode="actions"
+          disabled={!design || disabled}
+          tools={
             <TableActionMenu
               actions={config.row_actions}
               kinds={['view', 'edit', 'delete', 'open']}
               disabled={disabled}
+              variant="settings"
               label={i18nText(
                 'frontstage',
-                'data_blocks.table.configure_row_actions'
+                'data_blocks.form.configure_actions'
               )}
               onChange={(action) => saveAction(action, true)}
             />
-          )}
-        </div>
+          }
+        >
+          <span>{i18nText('frontstage', 'files.actions')}</span>
+        </SortableTableColumnTitle>
       ),
       render: (_, record) => (
         <Space size={0} wrap>
@@ -498,20 +543,20 @@ function ConfiguredTableBlock({
           : null,
       title: (
         <SortableTableColumnTitle
-          fieldCode={column.field_code}
+          fieldCode={`field:${column.field_code}`}
           disabled={!design || disabled}
-        >
-          <Tooltip title={column.tooltip || field.description}>
-            <span>{title}</span>
-          </Tooltip>
-          {design && (
+          tools={
             <TableColumnSettings
               column={column}
               title={title}
               disabled={disabled}
               onSave={saveColumn}
             />
-          )}
+          }
+        >
+          <Tooltip title={column.tooltip || field.description}>
+            <span>{title}</span>
+          </Tooltip>
         </SortableTableColumnTitle>
       ),
       render: (value, record) => {
@@ -533,23 +578,86 @@ function ConfiguredTableBlock({
       }
     });
   }
-  if (design) columns.push({ key: '__fields', title: fieldMenu, width: 160 });
+  const order = tableColumnEntries(config).map((entry) =>
+    entry.kind === 'actions' ? '__actions' : entry.column.field_code
+  );
+  columns.sort(
+    (a, b) =>
+      (a.key === '__index' ? -1 : order.indexOf(String(a.key))) -
+      (b.key === '__index' ? -1 : order.indexOf(String(b.key)))
+  );
+  if (design)
+    columns.push({
+      key: '__fields',
+      title: fieldMenu,
+      width: 128,
+      align: 'right'
+    });
 
   const filterActions = config.actions.filter(
     (action) => action.enabled && action.kind === 'filter'
   );
+  const filterAction = filterActions[0];
+  const filterableFields = fields.filter(
+    (field) =>
+      !filterAction?.filter_fields ||
+      filterAction.filter_fields.includes(field.code)
+  );
+  const filterValid = validDataFilter(filterDraft, filterableFields, variables);
+  const filterFieldsKey = JSON.stringify(filterAction?.filter_fields);
+  useEffect(() => {
+    if (filterAction?.filter_fields)
+      setFilter((current) =>
+        restrictDataFilter(current, filterAction.filter_fields!)
+      );
+  }, [filterFieldsKey]);
   const filterContent = (
     <div className="data-table-filter-panel">
       <DataBlockFilterEditor
         value={filterDraft}
-        fields={fields}
-        onChange={setFilterDraft}
+        fields={filterableFields}
+        variables={variables}
+        onChange={(value) => {
+          setFilterDraft(value);
+          setFilterSaved(false);
+        }}
       />
+      {filterSaved && (
+        <Typography.Text type="success">
+          {i18nText('frontstage', 'data_blocks.filter.conditions_saved')}
+        </Typography.Text>
+      )}
+      {!filterValid && (
+        <Typography.Text type="secondary">
+          {i18nText('frontstage', 'data_blocks.filter.incomplete')}
+        </Typography.Text>
+      )}
       <div className="data-table-filter-buttons">
+        {design && filterAction && (
+          <Button
+            size="small"
+            type="dashed"
+            disabled={disabled || !filterValid}
+            onClick={async () => {
+              if (
+                await saveAction(
+                  { ...filterAction, default_filter: filterDraft },
+                  false
+                )
+              ) {
+                setFilter(filterDraft);
+                setFilterSaved(true);
+                setPage(1);
+              }
+            }}
+          >
+            {i18nText('frontstage', 'data_blocks.filter.save_conditions')}
+          </Button>
+        )}
         <Button
           size="small"
           onClick={() => {
-            const empty = emptyDataFilter();
+            const empty = filterAction?.default_filter ?? emptyDataFilter();
             setFilterDraft(empty);
             setFilter(empty);
             setPage(1);
@@ -560,6 +668,7 @@ function ConfiguredTableBlock({
         <Button
           size="small"
           type="primary"
+          disabled={!filterValid}
           onClick={() => {
             setFilter(filterDraft);
             setPage(1);
@@ -636,7 +745,7 @@ function ConfiguredTableBlock({
 
   return (
     <ConfigProvider
-      theme={design ? DATA_BLOCK_DESIGN_THEME : undefined}
+      theme={design ? BLOCK_DESIGN_THEME : BLOCK_BUTTON_THEME}
       getPopupContainer={popupContainer}
     >
       <section
@@ -654,7 +763,7 @@ function ConfiguredTableBlock({
           } as CSSProperties
         }
       >
-        {(config.title || config.description || design) && (
+        {(config.title || config.description) && (
           <div className="data-table-block-heading">
             <div>
               {config.title && (
@@ -666,17 +775,18 @@ function ConfiguredTableBlock({
                 </Typography.Paragraph>
               )}
             </div>
-            {design && host && (
-              <TableBlockSettings
-                config={config}
-                fields={fields}
-                targets={host.targets}
-                blockId={host.block_id}
-                disabled={disabled}
-                onSave={saveConfig}
-              />
-            )}
           </div>
+        )}
+        {design && host && (
+          <TableBlockSettings
+            config={config}
+            fields={fields}
+            variables={variables}
+            targets={host.targets}
+            blockId={host.block_id}
+            disabled={disabled}
+            onSave={saveConfig}
+          />
         )}
         {feedback && (
           <Alert
@@ -715,7 +825,14 @@ function ConfiguredTableBlock({
                     placement="bottomLeft"
                     open={filterOpen}
                     onOpenChange={(open) => {
-                      if (open) setFilterDraft(filter);
+                      if (open)
+                        setFilterDraft(
+                          restrictDataFilter(
+                            filter,
+                            filterableFields.map((field) => field.code)
+                          )
+                        );
+                      setFilterSaved(false);
                       setFilterOpen(open);
                     }}
                     content={filterContent}
@@ -743,7 +860,7 @@ function ConfiguredTableBlock({
             )}
           </Space>
         </div>
-        {!state && !visibleColumns.length && (
+        {!state && !visibleColumns.length && !showActionColumn && (
           <div className="data-table-empty-columns">
             <Typography.Text type="secondary">
               {i18nText('frontstage', 'data_blocks.table.empty_columns')}
@@ -759,21 +876,19 @@ function ConfiguredTableBlock({
             collisionDetection={closestCenter}
             onDragEnd={({ active, over }) => {
               if (!design || disabled || !over || active.id === over.id) return;
-              const from = config.columns.findIndex(
-                (column) => column.field_code === active.id
+              void saveConfig(
+                moveTableColumn(config, String(active.id), String(over.id))
               );
-              const to = config.columns.findIndex(
-                (column) => column.field_code === over.id
-              );
-              if (from >= 0 && to >= 0)
-                void saveConfig({
-                  ...config,
-                  columns: arrayMove(config.columns, from, to)
-                });
             }}
           >
             <SortableContext
-              items={visibleColumns.map((column) => column.field_code)}
+              items={tableColumnEntries(config)
+                .filter((entry) =>
+                  entry.kind === 'actions'
+                    ? !entry.hidden
+                    : !entry.column.hidden
+                )
+                .map((entry) => entry.id)}
               strategy={horizontalListSortingStrategy}
             >
               <Table<ConsoleRuntimeModelRecord>
@@ -785,7 +900,7 @@ function ConfiguredTableBlock({
                     ? tableRecordId(record, idField)!
                     : displayKeys.get(record)!
                 }
-                loading={records.isFetching}
+                loading={records.isPending && records.isFetching}
                 scroll={{
                   x: 'max-content',
                   ...(config.height ? { y: config.height } : {})

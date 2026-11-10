@@ -3,7 +3,7 @@ import { DataBlockModal as Modal } from '../shared/DataBlockModal';
 import { useState } from 'react';
 import {
   Button,
-  Dropdown,
+  Checkbox,
   Form,
   Input,
   InputNumber,
@@ -11,7 +11,16 @@ import {
   Space,
   Switch
 } from 'antd';
-import { SettingOutlined } from '@ant-design/icons';
+import {
+  BlockDesignButton,
+  useRegisterBlockSettings,
+  BlockDesignMenu as Dropdown
+} from '../../../lib/native-modules/block-design/runtime';
+import {
+  restrictDataFilter,
+  validDataFilter,
+  type DataFilterVariable
+} from '../../../lib/data-blocks/filter-variables';
 import { i18nText } from '../../../../../shared/i18n/text';
 import type { DataBlockTarget } from '../../../lib/data-blocks/host-context';
 import type {
@@ -29,6 +38,7 @@ export type SaveTableConfig = (config: TableBlockConfig) => Promise<boolean>;
 export function TableBlockSettings({
   config,
   fields,
+  variables,
   targets,
   blockId,
   disabled,
@@ -36,12 +46,12 @@ export function TableBlockSettings({
 }: {
   config: TableBlockConfig;
   fields: DataBlockField[];
+  variables?: readonly DataFilterVariable[];
   targets: readonly DataBlockTarget[];
   blockId: string;
   disabled: boolean;
   onSave: SaveTableConfig;
 }) {
-  const popupContainer = useDataBlockPopupContainer();
   const [section, setSection] = useState<string | null>(null);
   const [draft, setDraft] = useState(config);
   const items = [
@@ -70,266 +80,272 @@ export function TableBlockSettings({
       label: i18nText('frontstage', 'data_blocks.table.linkage')
     }
   ];
+  useRegisterBlockSettings(
+    items.map((item) => ({
+      id: `table:${item.key}`,
+      label: item.label,
+      disabled,
+      onSelect: () => {
+        setDraft(config);
+        setSection(item.key);
+      }
+    }))
+  );
   const fieldOptions = fields.map((field) => ({
     label: field.title,
     value: field.code
   }));
   return (
     <>
-      <Dropdown
-        trigger={['hover', 'click']}
-        getPopupContainer={popupContainer}
-        menu={{
-          items,
-          onClick: ({ key }) => {
-            setDraft(config);
-            setSection(key);
-          }
-        }}
-      >
-        <Button
-          className="data-table-design-button"
-          size="small"
-          icon={<SettingOutlined />}
-          disabled={disabled}
-          aria-label={i18nText('frontstage', 'auto.configuration')}
-        />
-      </Dropdown>
-      <Modal
-        getContainer={false}
-        open={section !== null}
-        title={items.find((item) => item.key === section)?.label}
-        onCancel={() => setSection(null)}
-        confirmLoading={disabled}
-        okButtonProps={{
-          disabled: Boolean(draft.linkage && !draft.linkage.field_code)
-        }}
-        okText={i18nText('frontstage', 'files.save')}
-        cancelText={i18nText('frontstage', 'auto.cancel')}
-        onOk={async () => {
-          if (await onSave(draft)) setSection(null);
-        }}
-      >
-        <Form layout="vertical" disabled={disabled}>
-          {section === 'title' && (
-            <>
-              <Form.Item label={i18nText('frontstage', 'auto.title')}>
-                <Input
-                  value={draft.title}
-                  onChange={(event) =>
-                    setDraft({ ...draft, title: event.target.value })
-                  }
-                />
-              </Form.Item>
-              <Form.Item label={i18nText('frontstage', 'auto.description')}>
-                <Input.TextArea
-                  value={draft.description}
-                  onChange={(event) =>
-                    setDraft({ ...draft, description: event.target.value })
-                  }
-                />
-              </Form.Item>
-            </>
-          )}
-          {section === 'layout' && (
-            <>
-              <Form.Item
-                label={i18nText('frontstage', 'data_blocks.table.height')}
-              >
-                <InputNumber
-                  min={120}
-                  max={4000}
-                  value={draft.height}
-                  onChange={(height) => setDraft({ ...draft, height })}
-                />
-              </Form.Item>
-              <Form.Item
-                label={i18nText('frontstage', 'data_blocks.table.page_size')}
-              >
-                <Select
-                  value={draft.page_size}
-                  options={[10, 20, 50, 100].map((value) => ({
-                    label: value,
-                    value
-                  }))}
-                  onChange={(page_size) => setDraft({ ...draft, page_size })}
-                />
-              </Form.Item>
-              <Form.Item
-                label={i18nText('frontstage', 'data_blocks.table.density')}
-              >
-                <Select
-                  value={draft.density}
-                  options={sizeOptions()}
-                  onChange={(density) => setDraft({ ...draft, density })}
-                />
-              </Form.Item>
-              <Form.Item
-                label={i18nText('frontstage', 'data_blocks.table.show_index')}
-              >
-                <Switch
-                  checked={draft.show_index}
-                  onChange={(show_index) => setDraft({ ...draft, show_index })}
-                />
-              </Form.Item>
-            </>
-          )}
-          {section === 'filter' && (
-            <DataBlockFilterEditor
-              value={draft.filter}
-              onChange={(filter) => setDraft({ ...draft, filter })}
-              fields={fields}
-            />
-          )}
-          {section === 'sort' && (
-            <>
-              <Form.Item
-                label={i18nText('frontstage', 'data_blocks.table.sort_field')}
-              >
-                <Select
-                  allowClear
-                  value={draft.sort?.field}
-                  options={fieldOptions}
-                  onChange={(field) =>
-                    setDraft({
-                      ...draft,
-                      sort: field
-                        ? { field, direction: draft.sort?.direction ?? 'asc' }
-                        : null
-                    })
-                  }
-                />
-              </Form.Item>
-              {draft.sort && (
+      {section !== null && (
+        <Modal
+          focusTriggerAfterClose={false}
+          getContainer={false}
+          open={section !== null}
+          title={items.find((item) => item.key === section)?.label}
+          onCancel={() => setSection(null)}
+          confirmLoading={disabled}
+          okButtonProps={{
+            disabled:
+              Boolean(draft.linkage && !draft.linkage.field_code) ||
+              (section === 'filter' &&
+                !validDataFilter(draft.filter, fields, variables))
+          }}
+          okText={i18nText('frontstage', 'files.save')}
+          cancelText={i18nText('frontstage', 'auto.cancel')}
+          onOk={async () => {
+            if (await onSave(draft)) setSection(null);
+          }}
+        >
+          <Form layout="vertical" disabled={disabled}>
+            {section === 'title' && (
+              <>
+                <Form.Item label={i18nText('frontstage', 'auto.title')}>
+                  <Input
+                    value={draft.title}
+                    onChange={(event) =>
+                      setDraft({ ...draft, title: event.target.value })
+                    }
+                  />
+                </Form.Item>
+                <Form.Item label={i18nText('frontstage', 'auto.description')}>
+                  <Input.TextArea
+                    value={draft.description}
+                    onChange={(event) =>
+                      setDraft({ ...draft, description: event.target.value })
+                    }
+                  />
+                </Form.Item>
+              </>
+            )}
+            {section === 'layout' && (
+              <>
                 <Form.Item
-                  label={i18nText(
-                    'frontstage',
-                    'data_blocks.table.sort_direction'
-                  )}
+                  label={i18nText('frontstage', 'data_blocks.table.height')}
+                >
+                  <InputNumber
+                    min={120}
+                    max={4000}
+                    value={draft.height}
+                    onChange={(height) => setDraft({ ...draft, height })}
+                  />
+                </Form.Item>
+                <Form.Item
+                  label={i18nText('frontstage', 'data_blocks.table.page_size')}
                 >
                   <Select
-                    value={draft.sort.direction}
-                    options={[
-                      {
-                        value: 'asc',
-                        label: i18nText(
-                          'frontstage',
-                          'data_blocks.table.ascending'
-                        )
-                      },
-                      {
-                        value: 'desc',
-                        label: i18nText(
-                          'frontstage',
-                          'data_blocks.table.descending'
-                        )
-                      }
-                    ]}
-                    onChange={(direction) =>
+                    value={draft.page_size}
+                    options={[10, 20, 50, 100].map((value) => ({
+                      label: value,
+                      value
+                    }))}
+                    onChange={(page_size) => setDraft({ ...draft, page_size })}
+                  />
+                </Form.Item>
+                <Form.Item
+                  label={i18nText('frontstage', 'data_blocks.table.density')}
+                >
+                  <Select
+                    value={draft.density}
+                    options={sizeOptions()}
+                    onChange={(density) => setDraft({ ...draft, density })}
+                  />
+                </Form.Item>
+                <Form.Item
+                  label={i18nText('frontstage', 'data_blocks.table.show_index')}
+                >
+                  <Switch
+                    checked={draft.show_index}
+                    onChange={(show_index) =>
+                      setDraft({ ...draft, show_index })
+                    }
+                  />
+                </Form.Item>
+              </>
+            )}
+            {section === 'filter' && (
+              <DataBlockFilterEditor
+                value={draft.filter}
+                variables={variables}
+                onChange={(filter) => setDraft({ ...draft, filter })}
+                fields={fields}
+              />
+            )}
+            {section === 'sort' && (
+              <>
+                <Form.Item
+                  label={i18nText('frontstage', 'data_blocks.table.sort_field')}
+                >
+                  <Select
+                    allowClear
+                    value={draft.sort?.field}
+                    options={fieldOptions}
+                    onChange={(field) =>
                       setDraft({
                         ...draft,
-                        sort: { field: draft.sort!.field, direction }
+                        sort: field
+                          ? { field, direction: draft.sort?.direction ?? 'asc' }
+                          : null
                       })
                     }
                   />
                 </Form.Item>
-              )}
-            </>
-          )}
-          {section === 'relation' && (
-            <DataRelationEditor
-              value={draft.relation}
-              fields={fields}
-              onChange={(relation) => setDraft({ ...draft, relation })}
-            />
-          )}
-          {section === 'linkage' && (
-            <>
-              <Form.Item
-                label={i18nText('frontstage', 'data_blocks.table.source_block')}
-              >
-                <Select
-                  allowClear
-                  value={draft.linkage?.source_block_id}
-                  options={targets
-                    .filter((target) => target.block_id !== blockId)
-                    .map((target) => ({
-                      label: target.title,
-                      value: target.block_id
-                    }))}
-                  onChange={(source_block_id) =>
-                    setDraft({
-                      ...draft,
-                      linkage: source_block_id
-                        ? {
-                            source_block_id,
-                            source_output:
-                              draft.linkage?.source_output ?? 'record_id',
-                            field_code:
-                              draft.linkage?.field_code ?? fields[0]?.code ?? ''
-                          }
-                        : undefined
-                    })
-                  }
-                />
-              </Form.Item>
-              {draft.linkage && (
-                <>
+                {draft.sort && (
                   <Form.Item
                     label={i18nText(
                       'frontstage',
-                      'data_blocks.table.source_output'
+                      'data_blocks.table.sort_direction'
                     )}
                   >
                     <Select
-                      value={draft.linkage.source_output}
+                      value={draft.sort.direction}
                       options={[
                         {
-                          value: 'record_id',
+                          value: 'asc',
                           label: i18nText(
                             'frontstage',
-                            'data_blocks.table.current_record'
+                            'data_blocks.table.ascending'
                           )
                         },
                         {
-                          value: 'selected_record_ids',
+                          value: 'desc',
                           label: i18nText(
                             'frontstage',
-                            'data_blocks.table.selected_records'
+                            'data_blocks.table.descending'
                           )
                         }
                       ]}
-                      onChange={(source_output) =>
+                      onChange={(direction) =>
                         setDraft({
                           ...draft,
-                          linkage: { ...draft.linkage!, source_output }
+                          sort: { field: draft.sort!.field, direction }
                         })
                       }
                     />
                   </Form.Item>
-                  <Form.Item
-                    label={i18nText(
-                      'frontstage',
-                      'data_blocks.table.target_field'
-                    )}
-                  >
-                    <Select
-                      value={draft.linkage.field_code}
-                      options={fieldOptions}
-                      onChange={(field_code) =>
-                        setDraft({
-                          ...draft,
-                          linkage: { ...draft.linkage!, field_code }
-                        })
-                      }
-                    />
-                  </Form.Item>
-                </>
-              )}
-            </>
-          )}
-        </Form>
-      </Modal>
+                )}
+              </>
+            )}
+            {section === 'relation' && (
+              <DataRelationEditor
+                value={draft.relation}
+                fields={fields}
+                onChange={(relation) => setDraft({ ...draft, relation })}
+              />
+            )}
+            {section === 'linkage' && (
+              <>
+                <Form.Item
+                  label={i18nText(
+                    'frontstage',
+                    'data_blocks.table.source_block'
+                  )}
+                >
+                  <Select
+                    allowClear
+                    value={draft.linkage?.source_block_id}
+                    options={targets
+                      .filter((target) => target.block_id !== blockId)
+                      .map((target) => ({
+                        label: target.title,
+                        value: target.block_id
+                      }))}
+                    onChange={(source_block_id) =>
+                      setDraft({
+                        ...draft,
+                        linkage: source_block_id
+                          ? {
+                              source_block_id,
+                              source_output:
+                                draft.linkage?.source_output ?? 'record_id',
+                              field_code:
+                                draft.linkage?.field_code ??
+                                fields[0]?.code ??
+                                ''
+                            }
+                          : undefined
+                      })
+                    }
+                  />
+                </Form.Item>
+                {draft.linkage && (
+                  <>
+                    <Form.Item
+                      label={i18nText(
+                        'frontstage',
+                        'data_blocks.table.source_output'
+                      )}
+                    >
+                      <Select
+                        value={draft.linkage.source_output}
+                        options={[
+                          {
+                            value: 'record_id',
+                            label: i18nText(
+                              'frontstage',
+                              'data_blocks.table.current_record'
+                            )
+                          },
+                          {
+                            value: 'selected_record_ids',
+                            label: i18nText(
+                              'frontstage',
+                              'data_blocks.table.selected_records'
+                            )
+                          }
+                        ]}
+                        onChange={(source_output) =>
+                          setDraft({
+                            ...draft,
+                            linkage: { ...draft.linkage!, source_output }
+                          })
+                        }
+                      />
+                    </Form.Item>
+                    <Form.Item
+                      label={i18nText(
+                        'frontstage',
+                        'data_blocks.table.target_field'
+                      )}
+                    >
+                      <Select
+                        value={draft.linkage.field_code}
+                        options={fieldOptions}
+                        onChange={(field_code) =>
+                          setDraft({
+                            ...draft,
+                            linkage: { ...draft.linkage!, field_code }
+                          })
+                        }
+                      />
+                    </Form.Item>
+                  </>
+                )}
+              </>
+            )}
+          </Form>
+        </Modal>
+      )}
     </>
   );
 }
@@ -352,7 +368,7 @@ export function TableColumnSettings({
     <>
       <Dropdown
         getPopupContainer={popupContainer}
-        trigger={['hover', 'click']}
+        trigger={['click']}
         menu={{
           items: [
             {
@@ -374,11 +390,7 @@ export function TableColumnSettings({
           }
         }}
       >
-        <Button
-          className="data-table-column-config"
-          size="small"
-          type="text"
-          icon={<SettingOutlined />}
+        <BlockDesignButton
           disabled={disabled}
           aria-label={`${i18nText('frontstage', 'data_blocks.table.column_settings')} ${title}`}
           onClick={(event) => event.stopPropagation()}
@@ -522,10 +534,14 @@ export function ActionPresentation({
 
 export function TableActionSettings({
   action,
+  fields,
+  variables,
   disabled,
   onSave
 }: {
   action: DataBlockAction;
+  fields: DataBlockField[];
+  variables?: readonly DataFilterVariable[];
   disabled: boolean;
   onSave: (action: DataBlockAction) => Promise<boolean>;
 }) {
@@ -535,7 +551,7 @@ export function TableActionSettings({
   return (
     <>
       <Dropdown
-        trigger={['hover', 'click']}
+        trigger={['click']}
         getPopupContainer={popupContainer}
         disabled={disabled}
         menu={{
@@ -544,6 +560,17 @@ export function TableActionSettings({
               key: 'edit',
               label: i18nText('frontstage', 'data_blocks.table.action_title')
             },
+            ...(action.kind === 'filter'
+              ? [
+                  {
+                    key: 'filter_fields',
+                    label: i18nText(
+                      'frontstage',
+                      'data_blocks.filter.filterable_fields'
+                    )
+                  }
+                ]
+              : []),
             ...(['create', 'view', 'edit', 'open'].includes(action.kind)
               ? [
                   {
@@ -578,7 +605,7 @@ export function TableActionSettings({
           ],
           onClick: ({ key, domEvent }) => {
             domEvent.stopPropagation();
-            if (key === 'edit') {
+            if (key === 'edit' || key === 'filter_fields') {
               setDraft(action);
               setOpen(true);
             } else if (key === 'disable')
@@ -596,11 +623,8 @@ export function TableActionSettings({
           }
         }}
       >
-        <Button
-          className="data-table-action-config"
-          size="small"
-          type="text"
-          icon={<SettingOutlined />}
+        <BlockDesignButton
+          onClick={(event) => event.stopPropagation()}
           disabled={disabled}
           aria-label={i18nText(
             'frontstage',
@@ -614,6 +638,12 @@ export function TableActionSettings({
         title={i18nText('frontstage', 'data_blocks.form.action_settings')}
         onCancel={() => setOpen(false)}
         confirmLoading={disabled}
+        okButtonProps={{
+          disabled:
+            action.kind === 'filter' &&
+            Boolean(draft.default_filter) &&
+            !validDataFilter(draft.default_filter!, fields, variables)
+        }}
         okText={i18nText('frontstage', 'files.save')}
         cancelText={i18nText('frontstage', 'auto.cancel')}
         onOk={async () => {
@@ -631,6 +661,40 @@ export function TableActionSettings({
               }
             />
           </Form.Item>
+          {action.kind === 'filter' && (
+            <Form.Item
+              label={i18nText(
+                'frontstage',
+                'data_blocks.filter.filterable_fields'
+              )}
+            >
+              <Checkbox.Group
+                value={draft.filter_fields ?? fields.map((field) => field.code)}
+                options={fields.map((field) => ({
+                  value: field.code,
+                  label: field.title
+                }))}
+                onChange={(filter_fields) =>
+                  setDraft({
+                    ...draft,
+                    filter_fields: filter_fields.map(String),
+                    default_filter: draft.default_filter
+                      ? restrictDataFilter(
+                          draft.default_filter,
+                          filter_fields.map(String)
+                        )
+                      : undefined
+                  })
+                }
+                style={{
+                  display: 'grid',
+                  gap: 8,
+                  maxHeight: 320,
+                  overflow: 'auto'
+                }}
+              />
+            </Form.Item>
+          )}
           {['create', 'view', 'edit', 'open'].includes(action.kind) && (
             <ActionPresentation action={draft} onChange={setDraft} />
           )}

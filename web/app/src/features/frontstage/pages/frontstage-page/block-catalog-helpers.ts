@@ -16,6 +16,7 @@ function createCatalogBlockInput(
 
   return {
     id: blockId,
+    ...(entry.raw.custom_block_id ? { title: entry.title } : {}),
     rendererVersion: FRONTSTAGE_BLOCK_RENDERER_VERSION_V1,
     codeRef: `${blockId}-code`,
     catalog: {
@@ -62,7 +63,4 @@ function findMatchingFrontstageBlockCatalogEntry(
   );
 }
 
-export {
-  createCatalogBlockInput,
-  findMatchingFrontstageBlockCatalogEntry
-};
+export { createCatalogBlockInput, findMatchingFrontstageBlockCatalogEntry };

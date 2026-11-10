@@ -12,12 +12,20 @@ export function isDataFilterGroup(
 
 /** Local editor state is translated to the existing backend filter contract. */
 export function dataFilterToRequest(
-  group: DataFilterGroup
+  group: DataFilterGroup,
+  variables: Readonly<Record<string, unknown>> = {}
 ): Record<string, unknown> {
   const conditions = group.conditions.map((item) =>
     isDataFilterGroup(item)
-      ? dataFilterToRequest(item)
-      : { [item.field_code]: { [item.operator]: item.value ?? null } }
+      ? dataFilterToRequest(item, variables)
+      : {
+          [item.field_code]: {
+            [item.operator]:
+              (item.value_source === 'variable'
+                ? variables[String(item.value)]
+                : item.value) ?? null
+          }
+        }
   );
   return { [group.conjunction === 'and' ? '$and' : '$or']: conditions };
 }
@@ -51,6 +59,7 @@ export function matchesDataFilter(
 ): boolean {
   const match = (item: DataFilterCondition | DataFilterGroup): boolean => {
     if (isDataFilterGroup(item)) return matchesDataFilter(item, values);
+    if (!item.field_code || item.value === undefined) return false;
     const actual = values[item.field_code];
     const expected = item.value;
     switch (item.operator) {

@@ -1,3 +1,4 @@
+mod custom_blocks;
 pub(crate) mod plugin_components;
 
 use anyhow::Result;

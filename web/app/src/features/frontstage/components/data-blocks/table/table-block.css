@@ -32,26 +32,20 @@
   align-items: flex-start;
   margin-bottom: 8px;
 }
-.data-table-design-button {
-  color: var(--data-table-design-color);
-  border-color: var(--data-table-design-color);
-  border-style: dashed;
-}
 .data-table-column-title {
   white-space: nowrap;
 }
-.data-table-column-config,
-.data-table-action-config,
-.data-table-column-title > .data-table-drag-handle {
-  visibility: hidden;
+.data-table-column-title > .block-design-surface {
+  flex: 1;
+  min-height: 24px;
+  width: 100%;
 }
-.data-table-column-title:hover > .data-table-column-config,
-.data-table-column-title:focus-within > .data-table-column-config,
-.data-table-column-title:hover > .data-table-drag-handle,
-.data-table-column-title:focus-within > .data-table-drag-handle,
-.data-table-action:hover > .data-table-action-config,
-.data-table-action:focus-within > .data-table-action-config {
-  visibility: visible;
+.data-table-column-move {
+  cursor: grab;
+  touch-action: none;
+}
+.data-table-column-move:active {
+  cursor: grabbing;
 }
 .data-table-action {
   display: inline-flex;
@@ -116,10 +110,5 @@
   }
   .data-table-toolbar {
     align-items: flex-start;
-  }
-  .data-table-column-config,
-  .data-table-action-config,
-  .data-table-column-title > .data-table-drag-handle {
-    visibility: visible;
   }
 }

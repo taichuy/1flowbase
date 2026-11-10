@@ -1,4 +1,5 @@
 import { useDataBlockHost } from '../../../lib/data-blocks/host-context';
+import { BlockDesignButton } from '../../../lib/native-modules/block-design/runtime';
 import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import {
   useCallback,
@@ -19,8 +20,8 @@ import {
   type DragEndEvent
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { Button, Dropdown } from 'antd';
-import { HolderOutlined, SettingOutlined } from '@ant-design/icons';
+import { Dropdown } from 'antd';
+import { HolderOutlined } from '@ant-design/icons';
 import { i18nText } from '../../../../../shared/i18n/text';
 import type { DataFormItem } from '../../../lib/data-blocks/types';
 import { moveFormItem } from './form-state';
@@ -213,9 +214,7 @@ function FormLayoutItem({
             enabled={dragging && !isDragging}
           />
           <div className="data-form-field-tools">
-            <Button
-              size="small"
-              type="text"
+            <BlockDesignButton
               icon={<HolderOutlined />}
               {...attributes}
               {...listeners}
@@ -247,10 +246,7 @@ function FormLayoutItem({
                 ]
               }}
             >
-              <Button
-                size="small"
-                type="text"
-                icon={<SettingOutlined />}
+              <BlockDesignButton
                 disabled={saving}
                 aria-label={i18nText(
                   'frontstage',

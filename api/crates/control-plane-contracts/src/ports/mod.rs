@@ -1,3 +1,4 @@
+pub mod custom_frontend_blocks;
 #[path = "resource_ports/application_lifecycle.rs"]
 pub mod application_lifecycle;
 pub use application_lifecycle::*;

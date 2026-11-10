@@ -32,6 +32,7 @@ export type ConsoleFrontendContributionDisableReason =
   | 'asset_invalid';
 
 export interface ConsoleFrontendBlockCatalogEntry {
+  custom_block_id?: string | null;
   installation_id: string;
   provider_code: string;
   plugin_id: string;

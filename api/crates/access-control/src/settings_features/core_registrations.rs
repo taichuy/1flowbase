@@ -96,7 +96,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
-            feature_id: SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_ID.to_string(),
+            feature_id: "system.ui-management".to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
                 owner_id: "boot-core".to_string(),
@@ -139,6 +139,10 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("GET", "/api/console/settings/ui-management/components/catalog/update-status"),
                 ("POST", "/api/console/settings/ui-management/components/catalog/{component_code}/download"),
                 ("POST", "/api/console/settings/ui-management/components/catalog/groups/{source}/{group}/sync"),
+                ("GET", "/api/console/settings/ui-management/blocks"),
+                ("POST", "/api/console/settings/ui-management/blocks"),
+                ("PUT", "/api/console/settings/ui-management/blocks/{id}"),
+                ("DELETE", "/api/console/settings/ui-management/blocks/{id}"),
             ]),
         },
         SettingsFeatureRegistration {

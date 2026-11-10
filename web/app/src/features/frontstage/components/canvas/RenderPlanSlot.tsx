@@ -19,6 +19,7 @@ import {
 
 import type { FrontstagePageContent } from '../../api/page-content';
 import { BlockHoverToolbar } from '../BlockHoverToolbar';
+import { BlockSettingsProvider } from '../../lib/block-settings/registry';
 
 import { type FrontstageBlockRenderPlanItem } from '../../lib/page-canvas/render-plan';
 import { i18nText } from '../../../../shared/i18n/text';
@@ -482,125 +483,129 @@ export const RenderPlanSlot = memo(function RenderPlanSlot({
   };
 
   return (
-    <div
-      ref={blockRef}
-      style={{
-        ...blockFrameBaseStyle,
-        height: fillsPageViewport
-          ? '100%'
-          : `calc(100% - ${FRONTSTAGE_GRID_ROW_GAP}px)`,
-        overflow: isFixedHeight ? 'hidden' : 'visible',
-        ...borderStyle,
-        position: 'relative',
-        transition: 'border-color 0.15s, background 0.15s',
-        contentVisibility: 'auto',
-        containIntrinsicSize: `auto ${Math.max(
-          1,
+    <BlockSettingsProvider>
+      <div
+        ref={blockRef}
+        style={{
+          ...blockFrameBaseStyle,
+          height: fillsPageViewport
+            ? '100%'
+            : `calc(100% - ${FRONTSTAGE_GRID_ROW_GAP}px)`,
+          overflow: isFixedHeight ? 'hidden' : 'visible',
+          ...borderStyle,
+          position: 'relative',
+          transition: 'border-color 0.15s, background 0.15s',
+          contentVisibility: 'auto',
+          containIntrinsicSize: `auto ${Math.max(
+            1,
+            intrinsicHeight ?? FRONTSTAGE_DEFAULT_AUTO_HEIGHT_PX
+          )}px`
+        }}
+        data-testid={`block-slot-${item.blockId}`}
+        data-flowbase-frontstage-block-id={item.blockId}
+        data-flowbase-frontstage-render-status={
+          rendererVersionError || isolatedPreparationError
+            ? 'failed'
+            : (runtimePreparation?.status ??
+              (isolatedPreparation ? 'ready' : 'loading'))
+        }
+        data-flowbase-frontstage-generation={
+          runtimePreparation?.generation ?? 0
+        }
+        data-flowbase-frontstage-intrinsic-height={
           intrinsicHeight ?? FRONTSTAGE_DEFAULT_AUTO_HEIGHT_PX
-        )}px`
-      }}
-      data-testid={`block-slot-${item.blockId}`}
-      data-flowbase-frontstage-block-id={item.blockId}
-      data-flowbase-frontstage-render-status={
-        rendererVersionError || isolatedPreparationError
-          ? 'failed'
-          : (runtimePreparation?.status ??
-            (isolatedPreparation ? 'ready' : 'loading'))
-      }
-      data-flowbase-frontstage-generation={runtimePreparation?.generation ?? 0}
-      data-flowbase-frontstage-intrinsic-height={
-        intrinsicHeight ?? FRONTSTAGE_DEFAULT_AUTO_HEIGHT_PX
-      }
-      data-flowbase-frontstage-allocation-epoch={allocatedHeightEpoch}
-      data-flowbase-frontstage-render-error={
-        rendererVersionError?.description ??
-        isolatedPreparationError?.message ??
-        (runtimePreparation?.status === 'failed'
-          ? runtimePreparation.error.message
-          : undefined)
-      }
-      aria-label={
-        isDesignMode
-          ? i18nText('frontstage', 'auto.block_with_id', {
-              value1: item.blockId
-            })
-          : undefined
-      }
-      onMouseEnter={isDesignMode ? () => setIsHovered(true) : undefined}
-      onMouseLeave={isDesignMode ? () => setIsHovered(false) : undefined}
-      onClick={(event) => {
-        // Keyboard/assistive activation belongs to the originating control.
-        // Pointer selection keeps the existing design-canvas behavior.
-        if (
-          event.defaultPrevented ||
-          (event.detail === 0 &&
-            event.nativeEvent.composedPath()[0] !== event.currentTarget)
-        )
-          return;
-        handleSelect();
-      }}
-      role={isDesignMode ? 'button' : undefined}
-      tabIndex={isDesignMode ? 0 : -1}
-      onKeyDown={(event) => {
-        // The slot owns only its own activation, never keys from runtime
-        // controls or portals. composedPath avoids Shadow DOM retargeting;
-        // unprevented input events still belong to the browser, not the canvas.
-        if (
-          !isDesignMode ||
-          event.defaultPrevented ||
-          event.nativeEvent.isComposing ||
-          event.nativeEvent.keyCode === 229 ||
-          event.ctrlKey ||
-          event.metaKey ||
-          event.altKey ||
-          event.shiftKey ||
-          event.nativeEvent.composedPath()[0] !== event.currentTarget ||
-          (event.key !== 'Enter' && event.key !== ' ')
-        )
-          return;
-        event.preventDefault();
-        handleSelect();
-      }}
-    >
-      {isDesignMode ? (
-        <span style={blockLabelStyle}>
-          {item.title != null
-            ? (runtimeContext?.i18n?.t(item.title) ?? item.title)
-            : item.blockId}
-        </span>
-      ) : null}
-      {isFixedHeight ? (
-        renderBlockContent()
-      ) : (
-        <div
-          ref={intrinsicContentRef}
-          data-flowbase-frontstage-intrinsic-content={item.blockId}
-          style={{
-            width: '100%',
-            maxWidth: '100%',
-            minWidth: 0,
-            height: fillsAvailableHeight ? '100%' : undefined
-          }}
-        >
-          {renderBlockContent()}
-        </div>
-      )}
+        }
+        data-flowbase-frontstage-allocation-epoch={allocatedHeightEpoch}
+        data-flowbase-frontstage-render-error={
+          rendererVersionError?.description ??
+          isolatedPreparationError?.message ??
+          (runtimePreparation?.status === 'failed'
+            ? runtimePreparation.error.message
+            : undefined)
+        }
+        aria-label={
+          isDesignMode
+            ? i18nText('frontstage', 'auto.block_with_id', {
+                value1: item.blockId
+              })
+            : undefined
+        }
+        onMouseEnter={isDesignMode ? () => setIsHovered(true) : undefined}
+        onMouseLeave={isDesignMode ? () => setIsHovered(false) : undefined}
+        onClick={(event) => {
+          // Keyboard/assistive activation belongs to the originating control.
+          // Pointer selection keeps the existing design-canvas behavior.
+          if (
+            event.defaultPrevented ||
+            (event.detail === 0 &&
+              event.nativeEvent.composedPath()[0] !== event.currentTarget)
+          )
+            return;
+          handleSelect();
+        }}
+        role={isDesignMode ? 'button' : undefined}
+        tabIndex={isDesignMode ? 0 : -1}
+        onKeyDown={(event) => {
+          // The slot owns only its own activation, never keys from runtime
+          // controls or portals. composedPath avoids Shadow DOM retargeting;
+          // unprevented input events still belong to the browser, not the canvas.
+          if (
+            !isDesignMode ||
+            event.defaultPrevented ||
+            event.nativeEvent.isComposing ||
+            event.nativeEvent.keyCode === 229 ||
+            event.ctrlKey ||
+            event.metaKey ||
+            event.altKey ||
+            event.shiftKey ||
+            event.nativeEvent.composedPath()[0] !== event.currentTarget ||
+            (event.key !== 'Enter' && event.key !== ' ')
+          )
+            return;
+          event.preventDefault();
+          handleSelect();
+        }}
+      >
+        {isDesignMode ? (
+          <span style={blockLabelStyle}>
+            {item.title != null
+              ? (runtimeContext?.i18n?.t(item.title) ?? item.title)
+              : item.blockId}
+          </span>
+        ) : null}
+        {isFixedHeight ? (
+          renderBlockContent()
+        ) : (
+          <div
+            ref={intrinsicContentRef}
+            data-flowbase-frontstage-intrinsic-content={item.blockId}
+            style={{
+              width: '100%',
+              maxWidth: '100%',
+              minWidth: 0,
+              height: fillsAvailableHeight ? '100%' : undefined
+            }}
+          >
+            {renderBlockContent()}
+          </div>
+        )}
 
-      {isDesignMode && designActions && isToolbarVisible && (
-        <BlockHoverToolbar
-          blockId={item.blockId}
-          onEditCode={() => designActions.onEditCode(item.blockId)}
-          onDelete={() => designActions.onDelete(item.blockId)}
-          onRefresh={
-            item.renderMode === 'native_react' && onRuntimeRefresh
-              ? () => onRuntimeRefresh(item.blockId)
-              : undefined
-          }
-          isVisible={isToolbarVisible}
-          disabled={toolbarDisabled}
-        />
-      )}
-    </div>
+        {isDesignMode && designActions && isToolbarVisible && (
+          <BlockHoverToolbar
+            blockId={item.blockId}
+            onEditCode={() => designActions.onEditCode(item.blockId)}
+            onDelete={() => designActions.onDelete(item.blockId)}
+            onRefresh={
+              item.renderMode === 'native_react' && onRuntimeRefresh
+                ? () => onRuntimeRefresh(item.blockId)
+                : undefined
+            }
+            isVisible={isToolbarVisible}
+            disabled={toolbarDisabled}
+          />
+        )}
+      </div>
+    </BlockSettingsProvider>
   );
 });
 

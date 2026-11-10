@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { i18nText } from '../../../shared/i18n/text';
 import { copyTextToClipboard } from '../../../shared/ui/clipboard/copy-text';
 import { FrontstageNodeActionButton } from './FrontstageNodeActionButton';
+import { useBlockSettings } from '../lib/block-settings/registry';
 
 type BlockHoverToolbarProps = {
   blockId: string;
@@ -31,6 +32,7 @@ export const BlockHoverToolbar: FC<BlockHoverToolbarProps> = ({
   const { message } = AntdApp.useApp();
   const { modal } = AntdApp.useApp();
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const settings = useBlockSettings();
 
   const copyBlockUid = () => {
     void copyTextToClipboard(blockId).then(
@@ -85,6 +87,19 @@ export const BlockHoverToolbar: FC<BlockHoverToolbarProps> = ({
         />
         {isMoreMenuOpen ? (
           <div className="frontstage-block-hover-actions__menu" role="menu">
+            {settings.map((setting) => (
+              <Button
+                key={setting.id}
+                block
+                type="text"
+                role="menuitem"
+                disabled={disabled || setting.disabled}
+                onClick={menuAction(setting.onSelect)}
+              >
+                {setting.label}
+              </Button>
+            ))}
+            {settings.length > 0 && <Divider />}
             <Button
               block
               type="text"
