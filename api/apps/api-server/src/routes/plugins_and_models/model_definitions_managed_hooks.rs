@@ -5,7 +5,9 @@ use extension_contracts::{
     ManagedHookOutcome, ManagedHookTerminal,
 };
 use interface_runtime::*;
-use plugin_framework::extension_bus::{ContributionId, ContributionResolutionStatus};
+use plugin_framework::extension_bus::{
+    ContributionId, ContributionResolutionStatus, EffectiveExtensionGraph,
+};
 use runtime_core::runtime_backend::RuntimeExecutionPrincipal;
 use std::{
     any::Any,
@@ -105,77 +107,11 @@ pub(crate) async fn freeze<I: InterfaceContract>(
                     .extension_boot_snapshot
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("Create boot graph missing"))?;
-                // Compare the host baseline provenance and exact point contracts before combining views.
-                for provenance in boot.graph().module_provenance() {
-                    if !snapshot.graph.module_provenance().contains(provenance) {
-                        return Err(anyhow::anyhow!(
-                            "managed Create graph has a different host baseline"
-                        )
-                        .into());
-                    }
-                }
-                let mut stages = BTreeMap::new();
-                for phase in PHASES {
-                    let point_id = match phase {
-                        HookPhase::Authorization => {
-                            "1flowbase.model-definitions.create.authorization"
-                        }
-                        HookPhase::Admission => "1flowbase.model-definitions.create.admission",
-                        HookPhase::Before => "1flowbase.model-definitions.create.before",
-                        HookPhase::After => "1flowbase.model-definitions.create.after",
-                        HookPhase::Failure => "1flowbase.model-definitions.create.failure",
-                        HookPhase::Completion => "1flowbase.model-definitions.create.completion",
-                    };
-                    let point = snapshot
-                        .graph
-                        .points()
-                        .iter()
-                        .find(|point| point.descriptor().point_id.as_str() == point_id)
-                        .ok_or_else(|| anyhow::anyhow!("managed Create point is missing"))?;
-                    let host_point = boot
-                        .graph()
-                        .points()
-                        .iter()
-                        .find(|point| point.descriptor().point_id.as_str() == point_id)
-                        .ok_or_else(|| anyhow::anyhow!("host Create point is missing"))?;
-                    if point.descriptor() != host_point.descriptor()
-                        || point.provenance() != host_point.provenance()
-                    {
-                        return Err(anyhow::anyhow!(
-                            "managed Create point contract differs from the host baseline"
-                        )
-                        .into());
-                    }
-                    let mut ids = Vec::new();
-                    for contribution in point.contributions() {
-                        let id = &contribution.descriptor().contribution_id;
-                        if !snapshot.authority.contributions.contains_key(id) {
-                            continue;
-                        }
-                        let binding = snapshot.bindings.get(id).ok_or_else(|| {
-                            anyhow::anyhow!("managed Create executable binding missing")
-                        })?;
-                        if binding.handle.identity().workspace_id().as_str()
-                            != actor.current_workspace_id.to_string()
-                            || &binding.descriptor != contribution.descriptor()
-                            || !snapshot
-                                .graph
-                                .contribution_receipts()
-                                .iter()
-                                .any(|receipt| {
-                                    &receipt.descriptor().contribution_id == id
-                                        && receipt.status() == &ContributionResolutionStatus::Active
-                                })
-                        {
-                            return Err(anyhow::anyhow!(
-                                "managed Create binding does not match the effective plan"
-                            )
-                            .into());
-                        }
-                        ids.push(id.clone());
-                    }
-                    stages.insert(phase, ids);
-                }
+                let stages = managed_create_stages(
+                    boot.graph(),
+                    snapshot.as_ref(),
+                    &actor.current_workspace_id,
+                )?;
                 frozen.workspace = Some(FrozenWorkspaceHooks {
                     _invocation_reference: Box::new(invocation_reference),
                     composition: composition.clone(),
@@ -194,6 +130,84 @@ pub(crate) async fn freeze<I: InterfaceContract>(
     envelope
         .freeze_extension_context(Arc::new(frozen))
         .map_err(|_| anyhow::anyhow!("Create invocation was already frozen").into())
+}
+
+fn managed_create_stages(
+    host_graph: &EffectiveExtensionGraph,
+    snapshot: &ManagedWorkspaceSnapshot,
+    workspace_id: &uuid::Uuid,
+) -> Result<BTreeMap<HookPhase, Vec<ContributionId>>, ApiError> {
+    // Compare the host baseline provenance and exact point contracts before combining views.
+    for provenance in host_graph.module_provenance() {
+        if !snapshot.graph.module_provenance().contains(provenance) {
+            return Err(anyhow::anyhow!(
+                "managed Create graph has a different host baseline"
+            )
+            .into());
+        }
+    }
+    let mut stages = BTreeMap::new();
+    for phase in PHASES {
+        let point_id = match phase {
+            HookPhase::Authorization => {
+                "1flowbase.model-definitions.create.authorization"
+            }
+            HookPhase::Admission => "1flowbase.model-definitions.create.admission",
+            HookPhase::Before => "1flowbase.model-definitions.create.before",
+            HookPhase::After => "1flowbase.model-definitions.create.after",
+            HookPhase::Failure => "1flowbase.model-definitions.create.failure",
+            HookPhase::Completion => "1flowbase.model-definitions.create.completion",
+        };
+        let point = snapshot
+            .graph
+            .points()
+            .iter()
+            .find(|point| point.descriptor().point_id.as_str() == point_id)
+            .ok_or_else(|| anyhow::anyhow!("managed Create point is missing"))?;
+        let host_point = host_graph
+            .points()
+            .iter()
+            .find(|point| point.descriptor().point_id.as_str() == point_id)
+            .ok_or_else(|| anyhow::anyhow!("host Create point is missing"))?;
+        if point.descriptor() != host_point.descriptor()
+            || point.provenance() != host_point.provenance()
+        {
+            return Err(anyhow::anyhow!(
+                "managed Create point contract differs from the host baseline"
+            )
+            .into());
+        }
+        let mut ids = Vec::new();
+        for contribution in point.contributions() {
+            let id = &contribution.descriptor().contribution_id;
+            if !snapshot.authority.contributions.contains_key(id) {
+                continue;
+            }
+            let binding = snapshot.bindings.get(id).ok_or_else(|| {
+                anyhow::anyhow!("managed Create executable binding missing")
+            })?;
+            if binding.handle.identity().workspace_id().as_str()
+                != workspace_id.to_string()
+                || &binding.descriptor != contribution.descriptor()
+                || !snapshot
+                    .graph
+                    .contribution_receipts()
+                    .iter()
+                    .any(|receipt| {
+                        &receipt.descriptor().contribution_id == id
+                            && receipt.status() == &ContributionResolutionStatus::Active
+                    })
+            {
+                return Err(anyhow::anyhow!(
+                    "managed Create binding does not match the effective plan"
+                )
+                .into());
+            }
+            ids.push(id.clone());
+        }
+        stages.insert(phase, ids);
+    }
+    Ok(stages)
 }
 
 fn phase_input(phase: HookPhase, create: &ManagedCreateView) -> ManagedCreateHookInput {

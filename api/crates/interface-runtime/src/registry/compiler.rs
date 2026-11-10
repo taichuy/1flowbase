@@ -1140,15 +1140,70 @@ impl RegistryCompiler {
         self
     }
 
+    fn register_managed_extensions(
+        &mut self,
+        id: &InterfaceId,
+    ) -> Result<(), RegistryCompilationError> {
+        use crate::hook::managed_bridge_identity;
+        use crate::{
+            InterfaceExtensionFact as Fact, InterfaceExtensionIsolation,
+            InterfaceExtensionPermission as Permission, InterfaceExtensionTier,
+        };
+        let scope = self.definitions[id].scope();
+        for (point, permission, fact) in [
+            (
+                InterfaceExtensionPoint::Authorization,
+                Permission::Authorize,
+                Fact::PrincipalSummary,
+            ),
+            (
+                InterfaceExtensionPoint::Admission,
+                Permission::Admit,
+                Fact::AuthorizationDecision,
+            ),
+            (
+                InterfaceExtensionPoint::Before,
+                Permission::ObserveInput,
+                Fact::TypedInput,
+            ),
+            (
+                InterfaceExtensionPoint::After,
+                Permission::ObserveOutput,
+                Fact::TypedOutput,
+            ),
+            (
+                InterfaceExtensionPoint::Failure,
+                Permission::ObserveFailure,
+                Fact::FailureClassification,
+            ),
+            (
+                InterfaceExtensionPoint::Completion,
+                Permission::ObserveCompletion,
+                Fact::Terminal,
+            ),
+        ] {
+            self.register_extension(
+                id,
+                u32::MAX,
+                InterfaceExtensionRegistration::new(
+                    managed_bridge_identity(point),
+                    InterfaceExtensionTier::HostExtension,
+                    point,
+                    permission,
+                    scope,
+                    InterfaceExtensionIsolation::TrustedInProcess,
+                    vec![fact],
+                )?,
+            )?;
+        }
+        Ok(())
+    }
+
     pub(super) fn install_managed_typed<I: InterfaceContract, O: InterfaceContract>(
         &mut self,
         id: &InterfaceId,
     ) -> Result<(), RegistryCompilationError> {
         use crate::hook::{managed_bridge_identity, ManagedLifecycleBridge};
-        use crate::{
-            InterfaceExtensionFact as Fact, InterfaceExtensionIsolation,
-            InterfaceExtensionPermission as Permission, InterfaceExtensionTier,
-        };
         let already_bound = self
             .extensions
             .get(id)
@@ -1201,53 +1256,7 @@ impl RegistryCompiler {
             })
             .transpose()?
             .unwrap_or_else(|| TypedInterfaceAdmissionPlan::new(graph));
-        let scope = self.definitions[id].scope();
-        for (point, permission, fact) in [
-            (
-                InterfaceExtensionPoint::Authorization,
-                Permission::Authorize,
-                Fact::PrincipalSummary,
-            ),
-            (
-                InterfaceExtensionPoint::Admission,
-                Permission::Admit,
-                Fact::AuthorizationDecision,
-            ),
-            (
-                InterfaceExtensionPoint::Before,
-                Permission::ObserveInput,
-                Fact::TypedInput,
-            ),
-            (
-                InterfaceExtensionPoint::After,
-                Permission::ObserveOutput,
-                Fact::TypedOutput,
-            ),
-            (
-                InterfaceExtensionPoint::Failure,
-                Permission::ObserveFailure,
-                Fact::FailureClassification,
-            ),
-            (
-                InterfaceExtensionPoint::Completion,
-                Permission::ObserveCompletion,
-                Fact::Terminal,
-            ),
-        ] {
-            self.register_extension(
-                id,
-                u32::MAX,
-                InterfaceExtensionRegistration::new(
-                    managed_bridge_identity(point),
-                    InterfaceExtensionTier::HostExtension,
-                    point,
-                    permission,
-                    scope,
-                    InterfaceExtensionIsolation::TrustedInProcess,
-                    vec![fact],
-                )?,
-            )?;
-        }
+        self.register_managed_extensions(id)?;
         self.hook_bindings.insert(
             id.clone(),
             Arc::new(
