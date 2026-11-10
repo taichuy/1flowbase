@@ -71,11 +71,19 @@
     "scripts/shell/resource-job-run.py": "823907fd793b760425d5a5a48fa74d9503cfc0ecf6052a75bcfad62fd59af14c",
     "tmp/test-governance/issue2818/ci-preparation/coupled-api/binding.json": "04cfcbb6b29d63cbbfb2c57ab0ab3681fdf5bf167f0ddd1d7ac20f6381abc1b5",
     "tmp/test-governance/issue2818/ci-preparation/experiment.py": "6917281893feaa119f2bf6e025b592e4c61bcb8df6d70352486a671b454d759f",
-    "tmp/test-governance/issue2818/ci-preparation/p1-projection/entry.py": "c0972c2bdca832928ace9dcaccd146d78a6b962404f1b6b035d92d640dd7659b",
+    "tmp/test-governance/issue2818/ci-preparation/p1-projection/entry.py": "a3ac6f7a3abda581cc5ed164ba6644b7b060f11e4a28fd386b60fd3257a5ebee",
     "tmp/test-governance/issue2818/ci-preparation/p1-projection/root-wrapper.py": "5ac420426801af67c08c9b848b47c0b91467f2919bb78dea1b9fbb571aaa51ee"
   },
   "kind": "P1_MINIMAL_EXPERIMENT_NOT_FULL_QUALIFICATION",
   "patch_sha256": "a467f1440f2bb557fa909f71a867cfc3afd2bd660b2408cbe429f030b149975d",
+  "preparation_correction": {
+    "cause": "An additional guard classified two fixed archived mono JSON reports as source inputs. Only these exact non-input paths are recorded and allowed after reference verification.",
+    "ordinary_API_status": "NotReached",
+    "prior_run": 42843585049,
+    "prior_task_peak_bytes": 4055552000,
+    "prior_task_wall_seconds": 142.31405085,
+    "same_candidate_cache_and_budget": true
+  },
   "source_hashes": {
     "api/AGENTS.md": "4bede7df51b06cbe3227f1ac1019e3378783922682d3a43729e10e9c7ff04035",
     "api/Cargo.lock": "a60e92457e535610a0acd7f4e5b063f5c3de2312ac1388058688048c718ecc4a",

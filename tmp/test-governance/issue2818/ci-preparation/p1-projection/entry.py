@@ -111,7 +111,17 @@ def main():
         cap(['git','diff','--exit-code','HEAD','--'])
         untracked=cap(['git','ls-files','--others','--exclude-standard']).splitlines()
         save(e/'restored-untracked-paths.json',untracked)
-        assert not any(x.startswith(('api/','scripts/')) for x in untracked), 'untracked source under compiler or runner inputs'
+        legacy_reports={'api/api_server.mono_items.json','api/model_definitions_http.mono_items.json'}
+        assert not any(x.startswith(('api/','scripts/')) and x not in legacy_reports for x in untracked), 'unexpected untracked compiler or runner input'
+        references=subprocess.run(['git','grep','-n','-F','-e','api_server.mono_items.json',
+                                   '-e','model_definitions_http.mono_items.json','HEAD','--','api','scripts'],
+                                  cwd=source,text=True,capture_output=True,timeout=30)
+        assert references.returncode==1 and not references.stdout and not references.stderr
+        save(e/'legacy-non-input-reports.json',{'paths':[
+             {'path':x,'sha256':sha(source/x),'bytes':(source/x).stat().st_size} for x in sorted(legacy_reports) if x in untracked],
+             'bound_by_original_archive_sha256':b['cache']['archive_sha256'],
+             'candidate_tracked_api_scripts_reference_search_exit':references.returncode,
+             'not_compiler_artifacts_or_current_mechanism_evidence':True,'files_left_unchanged':True})
         assert cap(['git','rev-parse','HEAD:api'])==b['api_tree']
         assert all(sha(source/p)==h for p,h in b['source_hashes'].items())
         os.environ['ISSUE2818_OBSERVED_SOURCE_SHA']=b['candidate']
