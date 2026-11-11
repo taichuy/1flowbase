@@ -31,7 +31,7 @@ description: Choose risk-proportionate tests and verification evidence for 1flow
 ## Development and Acceptance
 
 - 同一行为族批量实现与验证，不按每个字段或断言建立微循环。
-- 默认完成本次开发后集中 QA；开发中允许能消除具体不确定性的廉价语法、类型或定向反馈，不把这些检查升级成逐段验收。
+- 开发中按当前改动风险选择最小编译、行为测试、必要红绿与相关回归，无需逐项预列 handoff；按实际成本和共享预算执行，不逐包启动 reviewer、QA 或完整验收套件。全部装配冻结后进行独立集中 QA。
 - Issue Tree 的 fixture、assembly 和集中 QA 边界遵循 [long-running-work.md](../problem-framing/references/long-running-work.md)。已有证据可复用，最终由冻结 assembly 的集中 QA 结算 AC，不逐 Packet 启动 QA。
 - 只补当前变更与直接风险需要的回归；既有测试债不自动纳入修复。
 
@@ -44,7 +44,8 @@ description: Choose risk-proportionate tests and verification evidence for 1flow
 - 预计昂贵的命令启动前明确本次要取得的证据、可承受资源与转向条件，复用已知环境记录即可，不为估算成本另开大规模调查。
 - 资源失败或运行成本明显超出预期时，先区分产品、fixture、工具和资源问题。停止当前任务拥有且已无法合理完成的验证进程；只有构建范围、资源条件或入口实质变化才重试。换测试名或 feature 本身不是成本下降的证据。
 - 切换到能回答同一问题的低成本入口；没有等价入口时标明未验证及适合执行的 CI / 专门环境，继续独立开发。不得把计划在 CI 执行写成 CI 已通过。
-- 同一 worktree 同时只运行一条 Cargo 命令。沿用仓库资源配置；从仓库根使用现有包装入口，或显式指定 `api/Cargo.toml` 并使用 `scripts/node/testing/verify-runtime.js cargo-jobs` 解析并行度。先确认辅助命令成功，避免路径错误后仍启动昂贵构建。
+- 整批 agent、worktree 与 wrapper 子进程共享用户 CPU / 内存预算，wrapper 不得迁出预算，也不因新 Packet 重置额度；不重试条件未变的相同资源失败。 任务 runner 进入有限预算 scope 后，可声明 `ONEFLOWBASE_TASK_BUDGET_CGROUP`（cgroup-v2 祖先路径）和 `ONEFLOWBASE_TASK_BUDGET_ID`（该目录 inode）；当前仓库生成的包装器核对实际祖先、身份与有限 CPU / 内存后才继承，声明本身不等于已受限。
+- 同一 worktree 同时只运行一条 Cargo 命令；Issue Tree 整批仍遵循单个重型进程上限。沿用仓库资源配置；从仓库根使用现有包装入口，或显式指定 `api/Cargo.toml` 并使用 `scripts/node/testing/verify-runtime.js cargo-jobs` 解析并行度。先确认辅助命令成功，避免路径错误后仍启动昂贵构建。
 
 ## Evidence Reuse and Context
 
@@ -55,13 +56,13 @@ description: Choose risk-proportionate tests and verification evidence for 1flow
 `Δ` 是本次代码、fixture、预期、工具或环境变化；`D(e)` 是证据 e 的相关依赖，前提是原证据有效且依赖已核实。不确定依赖时先定向核对，不能把未识别依赖当作空集。
 
 - 在已有交付记录或 artifact 中保留命令、代码状态（SHA 或 diff 标识）、覆盖范围、结果和日志路径；无需为小任务另建账本。
-- 代码、fixture、预期、依赖、工具或环境的相关变化才使证据失效。收尾、换 agent、上下文压缩或无关文件变化不自动触发重跑；排查不稳定性时可有目的地重复并说明要验证的假设。
+- 代码、fixture、预期、依赖、工具或环境的相关变化才使证据失效。收尾、换 agent、上下文压缩或无关文件变化不自动触发重跑；排查不稳定性时可有目的地重复并说明要验证的假设。Issue Tree 的首次及修复后仍由 fresh 独立 QA 验收，复用对象是依赖核实未变的原始 receipt，不能继承旧 PASS 或开发者背书；fixture 语义变化须验证仍能拒绝原缺陷。
 - 长输出完整落到 `tmp/test-governance/`，保留原命令退出码；完成后只回传耗时、结果摘要、新失败与日志路径，诊断时再读取有界错误上下文。不把运行命令直接接到 `head`，避免截断进程或误读管道退出码。
 - 等待使用已有进程句柄和有界状态查询，不反复输出完整编译命令、相同 warning 或大段日志。状态未变时不重新探索或扩大验证范围；进度沟通只说明新信息和待取得证据。
 
 ## Test Authenticity
 
-- 预期来自已确认需求、协议、DTO 或领域不变量，不能仅从当前实现反推。测试绑定真实 route / service / component 或领域入口；mock 调用次数、占位元素和固定字符串不能单独结算业务行为。
+- 预期来自原始用户目标、明确批准的变化、协议、DTO 或领域不变量，不能仅从当前实现反推。受影响的最终实际消费者契约进入原 AC，例如 MCP 公开 schema → 构造请求 → 业务结果；直调 API 通过不能代替该消费链路。测试绑定真实 route / service / component 或领域入口；mock 调用次数、占位元素和固定字符串不能单独结算业务行为。
 - 回归与高风险测试用旧行为失败、受控错误分支或适当的 mutation 验证识错能力；不默认运行全量 mutation，也不要求每个低影响改动制造红灯。
 - 后端 API 变化覆盖受影响的 status、响应字段、错误 shape、权限与状态副作用；未变化的中间件契约可复用既有证据。纯领域规则用单元测试，跨 DTO / 认证 / 错误映射边界时优先 route / service integration。
 - 认证测试复用项目 session / CSRF fixture，不绕过 ACL；运行态认证取证遵循项目 `page-debug` / `api-debug` 规则。字段断言沿用后端 DTO 原名。
@@ -69,4 +70,4 @@ description: Choose risk-proportionate tests and verification evidence for 1flow
 
 ## Delivery Evidence
 
-说明覆盖了哪些目标、实际运行或复用了什么证据、关键测试如何识错，以及未验证范围和原因。区分源码门禁、编译检查、行为测试和运行态结果；测试已编写、已编译或进程退出成功但未执行目标用例，都不等于行为测试通过。进入验收时使用 `qa-evaluation`，复用仍有效的证据。
+说明覆盖了哪些目标、实际运行或复用了什么证据、关键测试如何识错，以及未验证范围和原因。区分源码门禁、编译检查、行为测试和运行态结果；测试已编写、已编译、零用例、未挂载 target 或进程退出成功但未执行目标用例，都不等于行为测试通过。进入验收时使用 `qa-evaluation`，复用仍有效的证据。

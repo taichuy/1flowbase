@@ -39,7 +39,8 @@ function resolveScriptsNodeCliEntry(repoRoot, entryName) {
 function usageBackend(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
     "Usage: node scripts/node/test-backend.js [--workspace | --package <crate> ...] [--lib | --test <target> | --bin <target>] [--filter <name>] [--exact]\n" +
-      "No arguments: Rust static gate and full Cargo workspace tests.\n" +
+      "All selections (including --package/--lib/--filter) run the full Rust static gate before Cargo; no arguments select workspace tests.\n" +
+      "For component-only feedback, use native Cargo under the current budget with jobs/test threads from the runtime configuration, or node scripts/node/verify.js backend test <shard> when its scope fits.\n" +
       "Selection requires --workspace or --package (or -p), mutually exclusive; --filter is a substring, --exact matches its full test name.\n" +
       "Cargo jobs and test threads always use the repository runtime configuration.\n" +
       "Choose --test <target> to limit compilation; --filter only selects tests after that target is built.\n",

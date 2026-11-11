@@ -15,8 +15,7 @@ use crate::{
     },
 };
 
-#[test]
-fn file_owner_routes_compile_from_exact_assemblies() {
+pub fn file_owner_routes_compile_from_exact_assemblies() {
     let assembly = crate::routes::files::route_assembly()
         .merge(crate::routes::file_storages::route_assembly())
         .merge(crate::routes::file_tables::route_assembly());
@@ -95,8 +94,7 @@ fn file_owner_routes_compile_from_exact_assemblies() {
     );
 }
 
-#[test]
-fn file_owner_routes_preserve_authenticated_data_acl_and_settings_operations() {
+pub fn file_owner_routes_preserve_authenticated_data_acl_and_settings_operations() {
     let settings = compile_core_settings_feature_registry().unwrap();
     let assembly = migrated_core_console_route_assembly();
     let bindings = migrated_core_console_contract_bindings();
@@ -183,8 +181,7 @@ fn file_owner_routes_preserve_authenticated_data_acl_and_settings_operations() {
     }));
 }
 
-#[test]
-fn temporary_file_contracts_compile_without_projecting_credentials() {
+pub fn temporary_file_contracts_compile_without_projecting_credentials() {
     use crate::routes::files::public::interface::{
         TemporaryFileInput, TemporaryFileOutput, TemporaryFileTargetError,
     };

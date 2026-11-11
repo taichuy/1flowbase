@@ -111,6 +111,7 @@ debug = 0
 [profile.test.package.api-server]
 incremental = false
 debug = 0
+codegen-units = 256
 
 # Managed hook admission hashes installed worker bytes inside the invocation's
 # 1 s observer finalization budget. Keep that SHA-256 path representative of
