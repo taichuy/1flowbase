@@ -1,3 +1,4 @@
+import '../../../../../test/fixtures/rc-util-unique-ids';
 import { useAuthStore } from '../../../../../state/auth-store';
 import {
   fireEvent,
@@ -131,6 +132,31 @@ describe('ThirdPartyMcpTab', () => {
       ]
     });
     upstreamApi.importSettingsMcpUpstreamTools.mockResolvedValue([]);
+  });
+
+  test('pages connections and keeps row actions bound to the visible connection', async () => {
+    upstreamApi.fetchSettingsMcpUpstreamConnections.mockResolvedValue(
+      Array.from({ length: 41 }, (_, index) => ({
+        ...connection,
+        connection_id: `connection-${index + 1}`,
+        name: `Connection ${index + 1}`
+      }))
+    );
+    renderTab();
+    await screen.findByText('Connection 1');
+    expect(screen.queryByText('Connection 21')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTitle('2'));
+    expect(screen.queryByText('Connection 1')).not.toBeInTheDocument();
+    const row = screen.getByText('Connection 21').closest('tr')!;
+    fireEvent.click(
+      within(row).getByRole('button', { name: '编辑连接 Connection 21' })
+    );
+    const dialog = await screen.findByRole('dialog', {
+      name: '编辑第三方 MCP 连接'
+    });
+    expect(
+      within(dialog).getByDisplayValue('Connection 21')
+    ).toBeInTheDocument();
   });
 
   test('AC-1993-004 uses the shared loading state for the initial connection request', () => {

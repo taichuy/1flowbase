@@ -139,11 +139,7 @@ export function McpInstancesTab({
     ? buildMcpChildGroupPath(watchedGroupPath, watchedToolId)
     : normalizeMcpDirectoryPath(watchedGroupPath);
   return (
-    <Space
-      orientation="vertical"
-      size="middle"
-      className="mcp-management__stack"
-    >
+    <div className="mcp-management__table-tab">
       <McpInstanceTable
         onCreate={() => {
           setEditingInstance(null);
@@ -827,6 +823,6 @@ export function McpInstancesTab({
         onClose={() => setInstanceModalOpen(false)}
         onSave={(values) => saveInstanceMutation.mutate(values)}
       />
-    </Space>
+    </div>
   );
 }

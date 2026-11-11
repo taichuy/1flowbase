@@ -1,17 +1,23 @@
-.mcp-management {
+.mcp-management__table-tab {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.mcp-management--tools {
+.mcp-management {
+  min-height: 0;
   display: flex;
   height: 100%;
   flex-direction: column;
   overflow: hidden;
 }
 
-.mcp-management--tools > .ant-tabs-body-holder,
-.mcp-management--tools > .ant-tabs-body-holder > .ant-tabs-body,
-.mcp-management--tools
+.mcp-management > .ant-tabs-body-holder,
+.mcp-management > .ant-tabs-body-holder > .ant-tabs-body,
+.mcp-management
   > .ant-tabs-body-holder
   > .ant-tabs-body
   > .ant-tabs-content-active {

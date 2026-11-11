@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { authenticateEditor } from '../../../../agent-flow/_tests/fixtures/editor-auth';
 
@@ -10,6 +10,52 @@ beforeEach(() =>
 );
 
 describe('McpInstanceTable', () => {
+  test('pages instances and clamps the page after the last page is removed', () => {
+    const instances = Array.from({ length: 41 }, (_, index) => ({
+      id: `instance-${index + 1}`,
+      instance_id: `instance_${index + 1}`,
+      name: `Instance ${index + 1}`,
+      workspace_id: 'workspace-1',
+      description_short: null,
+      status: 'enabled',
+      default_entry_path: '/',
+      webmcp_exposure: 'disabled' as const,
+      managed_by: null,
+      created_by: 'user-1',
+      updated_by: 'user-1',
+      created_at: '2026-11-11T00:00:00Z',
+      updated_at: '2026-11-11T00:00:00Z',
+      llm_tool_registration: { prefix: '', tools: [] }
+    }));
+    const onEdit = vi.fn();
+    const props = {
+      instances,
+      groupCounts: new Map<string, number>(),
+      toolCounts: new Map<string, number>(),
+      onCreate: vi.fn(),
+      onEdit,
+      onOpenDirectory: vi.fn(),
+      onConnect: vi.fn(),
+      onEditDiscoveryPolicy: vi.fn(),
+      onCopy: vi.fn(),
+      onExport: vi.fn(),
+      onRestoreDefault: vi.fn(),
+      onDelete: vi.fn(async () => undefined)
+    };
+    const { rerender } = render(<McpInstanceTable {...props} />);
+    expect(screen.getByText('instance_1')).toBeInTheDocument();
+    expect(screen.queryByText('instance_21')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTitle('2'));
+    expect(screen.queryByText('instance_1')).not.toBeInTheDocument();
+    const row = screen.getByText('instance_21').closest('tr')!;
+    fireEvent.click(within(row).getByLabelText('编辑'));
+    expect(onEdit).toHaveBeenCalledWith(instances[20]);
+    rerender(
+      <McpInstanceTable {...props} instances={instances.slice(0, 20)} />
+    );
+    expect(screen.getByText('instance_1')).toBeInTheDocument();
+  });
+
   test('shows instance_id without rendering the derived LLM registration column', () => {
     const { container } = render(
       <McpInstanceTable

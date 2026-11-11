@@ -39,6 +39,13 @@ import { useAuthStore } from '../../../../../state/auth-store';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { LoadingState } from '../../../../../shared/ui/loading-state/LoadingState';
 import {
+  DataTable,
+  DataTableColumnSettings,
+  type DataTableColumn
+} from '../../../../../shared/ui/data-table/DataTable';
+import { DataTableLayout } from '../../../../../shared/ui/data-table/DataTableLayout';
+import { useUserPreferenceDataTableConfiguration } from '../../../../../shared/ui/data-table/user-preference-data-table';
+import {
   createSettingsMcpUpstreamConnection,
   deleteSettingsMcpUpstreamConnection,
   deleteSettingsMcpUpstreamConnectionCredentials,
@@ -306,9 +313,26 @@ function useUpstreamMcpController({
 
   const saveMutation = useMutation({
     mutationFn: async (values: ConnectionFormValues) => {
-      if (!can(editingConnection ? 'mcp.upstream_connections.update' : 'mcp.upstream_connections.create')) return;
-      if ((values.token || values.header_value) && !can('mcp.upstream_credentials.update')) return;
-      if (editingConnection && values.auth_type === 'none' && editingConnection.auth_type !== 'none' && !can('mcp.upstream_credentials.delete')) return;
+      if (
+        !can(
+          editingConnection
+            ? 'mcp.upstream_connections.update'
+            : 'mcp.upstream_connections.create'
+        )
+      )
+        return;
+      if (
+        (values.token || values.header_value) &&
+        !can('mcp.upstream_credentials.update')
+      )
+        return;
+      if (
+        editingConnection &&
+        values.auth_type === 'none' &&
+        editingConnection.auth_type !== 'none' &&
+        !can('mcp.upstream_credentials.delete')
+      )
+        return;
       validateConnectionCredential(values);
       const body: SaveConsoleMcpUpstreamConnectionBody = {
         name: values.name,
@@ -444,23 +468,47 @@ function useUpstreamMcpController({
       if (!editingConnection || !can('mcp.upstream_credentials.update')) return;
       const values = form.getFieldsValue();
       if (editingConnection.auth_type === 'bearer' && values.token) {
-        await saveSettingsMcpUpstreamConnectionCredentials(editingConnection.connection_id, { kind: 'bearer', token: values.token }, csrfToken);
-      } else if (editingConnection.auth_type === 'custom_header' && values.header_value && editingConnection.custom_header_name) {
-        await saveSettingsMcpUpstreamConnectionCredentials(editingConnection.connection_id, { kind: 'custom_header', header_name: editingConnection.custom_header_name, header_value: values.header_value }, csrfToken);
+        await saveSettingsMcpUpstreamConnectionCredentials(
+          editingConnection.connection_id,
+          { kind: 'bearer', token: values.token },
+          csrfToken
+        );
+      } else if (
+        editingConnection.auth_type === 'custom_header' &&
+        values.header_value &&
+        editingConnection.custom_header_name
+      ) {
+        await saveSettingsMcpUpstreamConnectionCredentials(
+          editingConnection.connection_id,
+          {
+            kind: 'custom_header',
+            header_name: editingConnection.custom_header_name,
+            header_value: values.header_value
+          },
+          csrfToken
+        );
       }
     },
     onSuccess: async () => {
       form.setFieldsValue({ token: undefined, header_value: undefined });
-      await queryClient.invalidateQueries({ queryKey: settingsMcpUpstreamConnectionsQueryKey });
+      await queryClient.invalidateQueries({
+        queryKey: settingsMcpUpstreamConnectionsQueryKey
+      });
     }
   });
   const deleteCredentialsMutation = useMutation({
     mutationFn: async () => {
       if (editingConnection && can('mcp.upstream_credentials.delete')) {
-        await deleteSettingsMcpUpstreamConnectionCredentials(editingConnection.connection_id, csrfToken);
+        await deleteSettingsMcpUpstreamConnectionCredentials(
+          editingConnection.connection_id,
+          csrfToken
+        );
       }
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: settingsMcpUpstreamConnectionsQueryKey })
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: settingsMcpUpstreamConnectionsQueryKey
+      })
   });
 
   const testCurrentForm = async () => {
@@ -505,7 +553,7 @@ function useUpstreamMcpController({
     }
   };
 
-  const columns = useMemo<TableColumnsType<ConsoleMcpUpstreamConnection>>(
+  const columns = useMemo<Array<DataTableColumn<ConsoleMcpUpstreamConnection>>>(
     () => [
       {
         title: text('upstream_connection_name'),
@@ -517,6 +565,8 @@ function useUpstreamMcpController({
         title: 'Endpoint',
         dataIndex: 'endpoint',
         key: 'endpoint',
+        width: 320,
+        sizing: 'fill',
         ellipsis: true
       },
       {
@@ -574,7 +624,6 @@ function useUpstreamMcpController({
         title: text('upstream_actions'),
         key: 'actions',
         width: 190,
-        fixed: 'right',
         render: (_, record) => (
           <Space size="small">
             <Tooltip title={text('upstream_edit_connection')}>
@@ -704,22 +753,77 @@ function useUpstreamMcpController({
     }
   ];
   return {
-    connectionsQuery, can, setEditingConnection, form, setConnectionModalOpen,
-    columns, connectionModalOpen, editingConnection, saveMutation, testMutation,
-    testCurrentForm, saveCredentialsMutation, deleteCredentialsMutation, authType, testResultOpen, setTestResultOpen, message,
-    discoverConnection, selectedToolNames, importMutation, setDiscoverConnection,
-    discoverMutation, toolKeyword, setToolKeyword, discoveryColumns, filteredTools
+    connectionsQuery,
+    can,
+    setEditingConnection,
+    form,
+    setConnectionModalOpen,
+    columns,
+    connectionModalOpen,
+    editingConnection,
+    saveMutation,
+    testMutation,
+    testCurrentForm,
+    saveCredentialsMutation,
+    deleteCredentialsMutation,
+    authType,
+    testResultOpen,
+    setTestResultOpen,
+    message,
+    discoverConnection,
+    selectedToolNames,
+    importMutation,
+    setDiscoverConnection,
+    discoverMutation,
+    toolKeyword,
+    setToolKeyword,
+    discoveryColumns,
+    filteredTools
   };
 }
 
-export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpController>[0]) {
+export function ThirdPartyMcpTab(
+  props: Parameters<typeof useUpstreamMcpController>[0]
+) {
   const {
-    connectionsQuery, can, setEditingConnection, form, setConnectionModalOpen,
-    columns, connectionModalOpen, editingConnection, saveMutation, testMutation,
-    testCurrentForm, saveCredentialsMutation, deleteCredentialsMutation, authType, testResultOpen, setTestResultOpen,
-    discoverConnection, selectedToolNames, importMutation, setDiscoverConnection,
-    discoverMutation, toolKeyword, setToolKeyword, discoveryColumns, filteredTools
+    connectionsQuery,
+    can,
+    setEditingConnection,
+    form,
+    setConnectionModalOpen,
+    columns,
+    connectionModalOpen,
+    editingConnection,
+    saveMutation,
+    testMutation,
+    testCurrentForm,
+    saveCredentialsMutation,
+    deleteCredentialsMutation,
+    authType,
+    testResultOpen,
+    setTestResultOpen,
+    discoverConnection,
+    selectedToolNames,
+    importMutation,
+    setDiscoverConnection,
+    discoverMutation,
+    toolKeyword,
+    setToolKeyword,
+    discoveryColumns,
+    filteredTools
   } = useUpstreamMcpController(props);
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const connections = connectionsQuery.data ?? [];
+  const currentPage = Math.min(
+    page,
+    Math.max(1, Math.ceil(connections.length / pageSize))
+  );
+  const configuration = useUserPreferenceDataTableConfiguration({
+    columns,
+    preferenceKey: 'settings.mcp-management.upstream-connections.v1'
+  });
 
   if (connectionsQuery.isLoading) {
     return <LoadingState compact />;
@@ -731,40 +835,53 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
   }
 
   return (
-    <Space
-      orientation="vertical"
-      size="middle"
-      className="mcp-management__stack"
-    >
-      <Flex justify="flex-end">
-        <Button
-          aria-label={text('upstream_new_connection')}
-          type="primary"
-          icon={<PlusOutlined />}
-          disabled={!can('mcp.upstream_connections.create')}
-          onClick={() => {
-            setEditingConnection(null);
-            form.resetFields();
-            form.setFieldsValue({
-              transport: 'streamable_http',
-              auth_type: 'none',
-              status: 'enabled'
-            });
-            setConnectionModalOpen(true);
+    <div className="mcp-management__table-tab">
+      <DataTableLayout>
+        <DataTable
+          columns={columns}
+          configuration={configuration}
+          dataSource={connections.slice(
+            (currentPage - 1) * pageSize,
+            currentPage * pageSize
+          )}
+          rowKey="connection_id"
+          emptyText={text('upstream_no_connections')}
+          page={currentPage}
+          pageSize={pageSize}
+          pageSizeOptions={[10, 20, 50, 100]}
+          total={connections.length}
+          onPageChange={(nextPage, nextSize) => {
+            setPage(nextSize === pageSize ? nextPage : 1);
+            setPageSize(nextSize);
           }}
-        >
-          {text('upstream_new_connection')}
-        </Button>
-      </Flex>
-
-      <Table
-        columns={columns}
-        dataSource={connectionsQuery.data}
-        pagination={false}
-        rowKey="connection_id"
-        scroll={{ x: 1560 }}
-        locale={{ emptyText: text('upstream_no_connections') }}
-      />
+          toolbar={
+            <Flex justify="flex-end" align="center" gap={8} wrap>
+              <Button
+                aria-label={text('upstream_new_connection')}
+                type="primary"
+                icon={<PlusOutlined />}
+                disabled={!can('mcp.upstream_connections.create')}
+                onClick={() => {
+                  setEditingConnection(null);
+                  form.resetFields();
+                  form.setFieldsValue({
+                    transport: 'streamable_http',
+                    auth_type: 'none',
+                    status: 'enabled'
+                  });
+                  setConnectionModalOpen(true);
+                }}
+              >
+                {text('upstream_new_connection')}
+              </Button>
+              <DataTableColumnSettings
+                columns={columns}
+                configuration={configuration}
+              />
+            </Flex>
+          }
+        />
+      </DataTableLayout>
 
       <Modal
         open={connectionModalOpen}
@@ -792,12 +909,24 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
             {text('upstream_test')}
           </Button>,
           editingConnection && editingConnection.auth_type !== 'none' ? (
-            <Button key="credentials" disabled={!can('mcp.upstream_credentials.update')} loading={saveCredentialsMutation.isPending} onClick={() => saveCredentialsMutation.mutate()}>
+            <Button
+              key="credentials"
+              disabled={!can('mcp.upstream_credentials.update')}
+              loading={saveCredentialsMutation.isPending}
+              onClick={() => saveCredentialsMutation.mutate()}
+            >
               {text('upstream_save_credentials')}
             </Button>
           ) : null,
-          editingConnection && editingConnection.credentials_status === 'configured' ? (
-            <Button key="clear-credentials" danger disabled={!can('mcp.upstream_credentials.delete')} loading={deleteCredentialsMutation.isPending} onClick={() => deleteCredentialsMutation.mutate()}>
+          editingConnection &&
+          editingConnection.credentials_status === 'configured' ? (
+            <Button
+              key="clear-credentials"
+              danger
+              disabled={!can('mcp.upstream_credentials.delete')}
+              loading={deleteCredentialsMutation.isPending}
+              onClick={() => deleteCredentialsMutation.mutate()}
+            >
               {text('clear_credential')}
             </Button>
           ) : null,
@@ -805,7 +934,13 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
             key="save"
             aria-label={i18nText('settings', 'auto.save')}
             type="primary"
-            disabled={!can(editingConnection ? 'mcp.upstream_connections.update' : 'mcp.upstream_connections.create') || testMutation.isPending}
+            disabled={
+              !can(
+                editingConnection
+                  ? 'mcp.upstream_connections.update'
+                  : 'mcp.upstream_connections.create'
+              ) || testMutation.isPending
+            }
             loading={saveMutation.isPending}
             onClick={() => form.submit()}
           >
@@ -818,7 +953,13 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
         <Form
           form={form}
           layout="vertical"
-          disabled={!can(editingConnection ? 'mcp.upstream_connections.update' : 'mcp.upstream_connections.create')}
+          disabled={
+            !can(
+              editingConnection
+                ? 'mcp.upstream_connections.update'
+                : 'mcp.upstream_connections.create'
+            )
+          }
           onFinish={(values) => saveMutation.mutate(values)}
         >
           <Form.Item
@@ -863,7 +1004,16 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
                   'bearer',
                   'custom_header'
                 ] as ConsoleMcpUpstreamAuthType[]
-              ).map((value) => ({ value, label: value, disabled: value === 'none' && Boolean(editingConnection && editingConnection.auth_type !== 'none') && !can('mcp.upstream_credentials.delete') }))}
+              ).map((value) => ({
+                value,
+                label: value,
+                disabled:
+                  value === 'none' &&
+                  Boolean(
+                    editingConnection && editingConnection.auth_type !== 'none'
+                  ) &&
+                  !can('mcp.upstream_credentials.delete')
+              }))}
             />
           </Form.Item>
           {authType === 'bearer' ? (
@@ -878,7 +1028,10 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
                 }
               ]}
             >
-              <Input.Password disabled={!can('mcp.upstream_credentials.update')} autoComplete="new-password" />
+              <Input.Password
+                disabled={!can('mcp.upstream_credentials.update')}
+                autoComplete="new-password"
+              />
             </Form.Item>
           ) : null}
           {authType === 'custom_header' ? (
@@ -901,7 +1054,10 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
                   }
                 ]}
               >
-                <Input.Password disabled={!can('mcp.upstream_credentials.update')} autoComplete="new-password" />
+                <Input.Password
+                  disabled={!can('mcp.upstream_credentials.update')}
+                  autoComplete="new-password"
+                />
               </Form.Item>
             </>
           ) : null}
@@ -976,7 +1132,10 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
         title={text('upstream_discover_import_title')}
         okText={text('upstream_import_selected')}
         cancelText={i18nText('settings', 'auto.cancel')}
-        okButtonProps={{ disabled: selectedToolNames.length === 0 || !can('mcp.upstream_tools.import') }}
+        okButtonProps={{
+          disabled:
+            selectedToolNames.length === 0 || !can('mcp.upstream_tools.import')
+        }}
         confirmLoading={importMutation.isPending}
         onOk={() => importMutation.mutate()}
         onCancel={() => setDiscoverConnection(null)}
@@ -1041,6 +1200,6 @@ export function ThirdPartyMcpTab(props: Parameters<typeof useUpstreamMcpControll
           </Space>
         ) : null}
       </Modal>
-    </Space>
+    </div>
   );
 }

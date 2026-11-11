@@ -1,3 +1,4 @@
+import '../../../../../../../test/fixtures/rc-util-unique-ids';
 import { installDirectorySnapshotApi } from './directory-snapshot';
 import type { ConsoleMcpCatalog } from '@1flowbase/api-client';
 import { fireEvent, render, screen, within } from '@testing-library/react';
