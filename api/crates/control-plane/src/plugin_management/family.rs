@@ -2,7 +2,10 @@ use super::*;
 use super::{
     catalog_projection::refresh_provider_package_catalog_projection,
     filesystem::{remove_path_if_exists, restore_artifact_removals, stage_artifact_removals},
-    install::{load_actor_context_for_user, map_catalog_source, map_model_discovery_mode},
+    install::{
+        is_system_managed_service, load_actor_context_for_user, map_catalog_source,
+        map_model_discovery_mode,
+    },
 };
 
 pub struct EnablePluginCommand {
@@ -139,6 +142,24 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
         self.ensure_model_provider_target(&installation)?;
+        if let Some(current) = self
+            .active_system_managed_family_installation(&installation)
+            .await?
+        {
+            if current.id != installation.id {
+                // Enabling another version replaces the family owner through the existing
+                // candidate publication transaction; never publish two active service owners.
+                return Box::pin(self.switch_family_installation(
+                    &actor,
+                    &installation.provider_code,
+                    &current,
+                    &installation,
+                    command.actor_user_id,
+                    None,
+                ))
+                .await;
+            }
+        }
         let requires_restart = is_host_extension_installation(&installation);
         let local_installation = self
             .ready_current_node_installation(command.installation_id)
@@ -594,6 +615,38 @@ where
             self.ensure_model_provider_target(&installation)?;
         }
         Ok(task)
+    }
+
+    pub(super) async fn active_system_managed_family_installation(
+        &self,
+        target: &domain::PluginInstallationRecord,
+    ) -> Result<Option<domain::PluginInstallationRecord>> {
+        if target.contract_version != "1flowbase.extension-bus/v1"
+            || is_host_extension_installation(target)
+            || !is_system_managed_service(target)
+        {
+            return Ok(None);
+        }
+        let mut active = self
+            .repository
+            .list_installations()
+            .await?
+            .into_iter()
+            .filter(|candidate| {
+                candidate.category == target.category
+                    && candidate.organization == target.organization
+                    && candidate.provider_code == target.provider_code
+                    && candidate.contract_version == target.contract_version
+                    && is_system_managed_service(candidate)
+                    && candidate.desired_state == domain::PluginDesiredState::ActiveRequested
+            });
+        let current = active.next();
+        if active.next().is_some() {
+            return Err(
+                ControlPlaneError::Conflict("managed_active_installation_ambiguous").into(),
+            );
+        }
+        Ok(current)
     }
 
     pub(super) async fn load_current_family_installation(

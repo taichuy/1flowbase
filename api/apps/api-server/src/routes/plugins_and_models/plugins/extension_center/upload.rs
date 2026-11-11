@@ -406,7 +406,7 @@ pub(crate) async fn install_uploaded_artifact(
         }
         // A previous upload may have committed installation before schema application failed.
         // Re-admit the same archive before using its schema: identity alone is not content proof.
-        let recover_managed_schema = if artifact.node_plugin && artifact.managed_schema.is_some() {
+        let recover_managed_installation = if artifact.node_plugin {
             control_plane::ports::PluginRepository::get_installation(
                 &dependencies.store,
                 installation.id,
@@ -419,7 +419,7 @@ pub(crate) async fn install_uploaded_artifact(
         } else {
             false
         };
-        let (managed_schema_preview, managed_schema_receipt) = if recover_managed_schema {
+        let (managed_schema_preview, managed_schema_receipt) = if recover_managed_installation {
             service(dependencies, actor, "extension_center.install.upload")
                 .install_extension_node_plugin(InstallExtensionNodePluginCommand {
                     actor_user_id,
@@ -443,6 +443,18 @@ pub(crate) async fn install_uploaded_artifact(
             (preview, receipt)
         } else {
             (None, None)
+        };
+        // Re-admission can switch an active managed family to this version. Return the
+        // committed inventory state rather than the pre-upload disabled snapshot.
+        let installation = if recover_managed_installation {
+            install_service
+                .find_local_installation_by_id(&dependencies.api_node_id, installation.id)
+                .await?
+                .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                    "extension_installation",
+                ))?
+        } else {
+            installation
         };
         let node_plugin_installation_id = if artifact.node_plugin {
             Some(installation.id.to_string())

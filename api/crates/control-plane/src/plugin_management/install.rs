@@ -225,7 +225,7 @@ use projections::{
 };
 
 // The contract and declaration identify a system service; legacy records may also use nil scope.
-fn is_system_managed_service(installation: &domain::PluginInstallationRecord) -> bool {
+pub(super) fn is_system_managed_service(installation: &domain::PluginInstallationRecord) -> bool {
     domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
         == domain::SYSTEM_SCOPE_ID
 }
