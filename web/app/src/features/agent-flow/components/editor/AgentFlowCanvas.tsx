@@ -18,7 +18,7 @@ import {
   type Edge
 } from '@xyflow/react';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
-import { memo, useEffect, useMemo } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useRef } from 'react';
 
 import { useCanvasInteractions } from '../../hooks/interactions/use-canvas-interactions';
@@ -27,6 +27,10 @@ import { useNodeInteractions } from '../../hooks/interactions/use-node-interacti
 import { useSelectionInteractions } from '../../hooks/interactions/use-selection-interactions';
 import { toCanvasEdges } from '../../lib/adapters/to-canvas-edges';
 import { toCanvasNodes } from '../../lib/adapters/to-canvas-nodes';
+import {
+  syncCanvasEdges,
+  syncCanvasNodes
+} from '../../lib/adapters/sync-canvas-elements';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import {
   selectActiveContainerId,
@@ -203,6 +207,7 @@ function AgentFlowCanvasInner({
   const can = useConsoleOperationAccess();
   const readOnly = !can('save_draft');
   const canvasRef = useRef<HTMLDivElement>(null);
+  const connectionGestureRef = useRef(false);
   const reactFlow = useReactFlow<AgentFlowCanvasNode, AgentFlowCanvasEdge>();
   const document = useAgentFlowEditorStore(selectWorkingDocument);
   const activeContainerId = useAgentFlowEditorStore(selectActiveContainerId);
@@ -220,6 +225,36 @@ function AgentFlowCanvasInner({
   const nodeInteractions = useNodeInteractions();
   const edgeInteractions = useEdgeInteractions();
   const selectionInteractions = useSelectionInteractions();
+  const actionsRef = useRef({ nodeInteractions, edgeInteractions, onRunNode });
+  useLayoutEffect(() => {
+    actionsRef.current = { nodeInteractions, edgeInteractions, onRunNode };
+  });
+  // Canvas objects retain their callbacks while actions read the latest draft.
+  const actions = useMemo(
+    () => ({
+      onOpenPicker: (nodeId: string, handleId?: string | null) =>
+        actionsRef.current.nodeInteractions.openNodePicker(nodeId, handleId),
+      onClosePicker: () => actionsRef.current.nodeInteractions.closeNodePicker(),
+      onOpenContainer: (nodeId: string) =>
+        actionsRef.current.nodeInteractions.openContainer(nodeId),
+      onSelectNode: (nodeId: string) =>
+        actionsRef.current.nodeInteractions.selectNode(nodeId),
+      onInsertNode: (
+        nodeId: string,
+        option: NodePickerOption,
+        handleId?: string | null
+      ) => actionsRef.current.nodeInteractions.insertAfterNode(nodeId, option, handleId),
+      onReplaceNode: (nodeId: string, option: NodePickerOption) =>
+        actionsRef.current.nodeInteractions.replaceNode(nodeId, option),
+      onDeleteNode: (nodeId: string) =>
+        actionsRef.current.nodeInteractions.deleteNode(nodeId),
+      onRunNode: (nodeId: string) => actionsRef.current.onRunNode?.(nodeId),
+      onInsertOnEdge: (edgeId: string, option: NodePickerOption) =>
+        actionsRef.current.edgeInteractions.insertOnEdge(edgeId, option),
+      ignore: () => {}
+    }),
+    []
+  );
   const baseNodes = useMemo(
     () =>
       toCanvasNodes(
@@ -233,15 +268,15 @@ function AgentFlowCanvasInner({
         issueCountByNodeId,
         {
           readOnly,
-          onOpenPicker: readOnly ? () => {} : nodeInteractions.openNodePicker,
-          onClosePicker: nodeInteractions.closeNodePicker,
-          onOpenContainer: nodeInteractions.openContainer,
-          onSelectNode: nodeInteractions.selectNode,
-          onInsertNode: readOnly ? () => {} : nodeInteractions.insertAfterNode,
-          onRunNode,
+          onOpenPicker: readOnly ? actions.ignore : actions.onOpenPicker,
+          onClosePicker: actions.onClosePicker,
+          onOpenContainer: actions.onOpenContainer,
+          onSelectNode: actions.onSelectNode,
+          onInsertNode: readOnly ? actions.ignore : actions.onInsertNode,
+          onRunNode: onRunNode ? actions.onRunNode : undefined,
           workflowTriggerContext,
-          onReplaceNode: readOnly ? () => {} : nodeInteractions.replaceNode,
-          onDeleteNode: readOnly ? () => {} : nodeInteractions.deleteNode,
+          onReplaceNode: readOnly ? actions.ignore : actions.onReplaceNode,
+          onDeleteNode: readOnly ? actions.ignore : actions.onDeleteNode,
           onResizeContainer: readOnly
             ? undefined
             : canvasInteractions.commitContainerResize,
@@ -254,7 +289,7 @@ function AgentFlowCanvasInner({
       canvasInteractions.commitContainerResize,
       document,
       issueCountByNodeId,
-      nodeInteractions,
+      actions,
       nodePickerOptions,
       onRunNode,
       workflowTriggerContext,
@@ -269,28 +304,34 @@ function AgentFlowCanvasInner({
     () =>
       toCanvasEdges(document, activeContainerId, selectedEdgeId, {
         nodePickerOptions,
-        onInsertNode: readOnly ? undefined : edgeInteractions.insertOnEdge
+        onInsertNode: readOnly ? undefined : actions.onInsertOnEdge
       }),
     [
       readOnly,
       activeContainerId,
       document,
-      edgeInteractions.insertOnEdge,
+      actions,
       nodePickerOptions,
       selectedEdgeId
     ]
   );
 
   useEffect(() => {
-    reactFlow.setNodes(baseNodes);
+    reactFlow.setNodes((current) => syncCanvasNodes(current, baseNodes));
   }, [baseNodes, reactFlow]);
 
   useEffect(() => {
-    reactFlow.setEdges(edges);
+    reactFlow.setEdges((current) => syncCanvasEdges(current, edges));
   }, [edges, reactFlow]);
 
   return (
-    <div className="agent-flow-canvas" ref={canvasRef}>
+    <div
+      className="agent-flow-canvas"
+      ref={canvasRef}
+      onPointerDownCapture={() => {
+        connectionGestureRef.current = false;
+      }}
+    >
       <ReactFlow
         defaultEdges={edges}
         defaultNodes={baseNodes}
@@ -302,7 +343,12 @@ function AgentFlowCanvasInner({
         multiSelectionKeyCode={null}
         selectionOnDrag={false}
         selectionKeyCode={null}
-        onPaneClick={selectionInteractions.clearSelection}
+        onPaneClick={() => {
+          // Mouseup after a connection drag can also produce a pane click.
+          // Keep its picker open; the next pointer gesture clears this flag.
+          if (connectionGestureRef.current) return;
+          selectionInteractions.clearSelection();
+        }}
         onNodeClick={(_, node) => nodeInteractions.selectNode(node.id)}
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
@@ -310,6 +356,7 @@ function AgentFlowCanvasInner({
         onConnect={readOnly ? undefined : edgeInteractions.connect}
         onConnectStart={(_, payload) => {
           if (readOnly) return;
+          connectionGestureRef.current = true;
           edgeInteractions.startConnection(payload);
         }}
         onConnectEnd={(event) => {

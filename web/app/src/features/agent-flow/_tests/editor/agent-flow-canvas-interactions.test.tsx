@@ -205,7 +205,7 @@ function renderCanvas(
 ) {
   let latestState: ObservedEditorState | null = null;
 
-  render(
+  const { container } = render(
     <AgentFlowEditorStoreProvider initialState={createInitialState(document)}>
       <StoreObserver
         onChange={(state) => {
@@ -220,6 +220,7 @@ function renderCanvas(
   );
 
   return {
+    container,
     getState() {
       if (!latestState) {
         throw new Error('editor state not observed');
@@ -333,14 +334,28 @@ vi.mock('@xyflow/react', () => ({
   useReactFlow: () => ({
     fitView: vi.fn(),
     screenToFlowPosition: ({ x, y }: { x: number; y: number }) => ({ x, y }),
-    setEdges: (edges: MockReactFlowProps['edges']) => {
+    setEdges: (
+      edges: MockReactFlowEdge[] | ((current: MockReactFlowEdge[]) => MockReactFlowEdge[])
+    ) => {
       if (latestReactFlowProps) {
-        latestReactFlowProps = { ...latestReactFlowProps, edges };
+        latestReactFlowProps = {
+          ...latestReactFlowProps,
+          edges: typeof edges === 'function'
+            ? edges(latestReactFlowProps.edges ?? [])
+            : edges
+        };
       }
     },
-    setNodes: (nodes: MockReactFlowProps['nodes']) => {
+    setNodes: (
+      nodes: MockReactFlowNode[] | ((current: MockReactFlowNode[]) => MockReactFlowNode[])
+    ) => {
       if (latestReactFlowProps) {
-        latestReactFlowProps = { ...latestReactFlowProps, nodes };
+        latestReactFlowProps = {
+          ...latestReactFlowProps,
+          nodes: typeof nodes === 'function'
+            ? nodes(latestReactFlowProps.nodes ?? [])
+            : nodes
+        };
       }
     },
     zoomIn: vi.fn(),
@@ -759,6 +774,7 @@ describe('AgentFlowCanvas interactions', () => {
         clientY: 260,
         target: document.createElement('div')
       });
+      latestReactFlowProps?.onPaneClick?.();
     });
 
     expect(getState().nodePickerState).toEqual({
@@ -791,7 +807,7 @@ describe('AgentFlowCanvas interactions', () => {
   });
 
   test('opens the shared node picker when a dragged connection stops on the pane', () => {
-    const { getState } = renderCanvas();
+    const { getState, container } = renderCanvas();
 
     expect(latestReactFlowProps?.onConnectStart).toBeTypeOf('function');
     expect(latestReactFlowProps?.onConnectEnd).toBeTypeOf('function');
@@ -807,6 +823,8 @@ describe('AgentFlowCanvas interactions', () => {
         clientY: 260,
         target: document.createElement('div')
       });
+      // Browsers can emit a click on the pane after the drag's mouseup.
+      latestReactFlowProps?.onPaneClick?.();
     });
 
     expect(getState().nodePickerState).toEqual({
@@ -815,6 +833,10 @@ describe('AgentFlowCanvas interactions', () => {
       anchorEdgeId: null,
       anchorCanvasPosition: { x: 420, y: 260 }
     });
+
+    fireEvent.pointerDown(container.querySelector('.agent-flow-canvas')!);
+    act(() => latestReactFlowProps?.onPaneClick?.());
+    expect(getState().nodePickerState.open).toBe(false);
   });
 
   test('creates a branched node from the dragged connection without rewriting the original outgoing edge', async () => {

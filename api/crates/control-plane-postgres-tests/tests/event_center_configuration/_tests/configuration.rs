@@ -26,6 +26,8 @@ fn declared_service<R: EventCenterRepository>(
     actor: &ActorContext,
 ) -> EventCenterConfigurationService<R> {
     let entry = EventCatalogEntry {
+        created_at: None,
+        updated_at: None,
         interface_event: Some(input().interface_event),
         group_path: vec!["interfaces".into(), "orders".into()],
         source: None,

@@ -102,6 +102,30 @@ impl EventCenterRepository for MemoryRepository {
             .collect())
     }
 }
+#[async_trait]
+impl EventCatalogRepository for MemoryRepository {
+    async fn event_catalog_workspaces(&self) -> anyhow::Result<Vec<domain::ScopeContext>> {
+        Ok(Vec::new())
+    }
+    async fn synchronize_event_catalog(&self, _: &EventCatalogSnapshot) -> anyhow::Result<()> {
+        anyhow::bail!("source reconciliation is outside this rule fixture")
+    }
+    async fn list_event_catalog(
+        &self,
+        actor: &ActorContext,
+        query: EventCatalogQuery,
+    ) -> anyhow::Result<Vec<EventCatalogEntry>> {
+        let mut entries = self
+            .list_event_definitions(actor.current_workspace_id)
+            .await?
+            .into_iter()
+            .map(EventCatalogEntry::from)
+            .collect::<Vec<_>>();
+        query.sort(&mut entries);
+        Ok(entries)
+    }
+}
+
 fn actor() -> ActorContext {
     ActorContext::root(Uuid::now_v7(), Uuid::now_v7(), "root")
 }

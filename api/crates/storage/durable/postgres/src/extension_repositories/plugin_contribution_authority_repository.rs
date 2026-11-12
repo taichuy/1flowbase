@@ -50,6 +50,7 @@ impl ManagedInstallationSwitchLease for PgManagedInstallationSwitchLease {
         audit_log: domain::AuditLogRecord,
         catalog: Option<control_plane_contracts::CompiledConsolePolicyCatalog>,
         compatible_notification_types: Vec<String>,
+        event_catalog: Option<domain::event_center::EventCatalogSnapshot>,
     ) -> Pin<Box<dyn Future<Output = Result<u64>> + Send>> {
         Box::pin(async move {
             let revision = self
@@ -106,6 +107,13 @@ impl ManagedInstallationSwitchLease for PgManagedInstallationSwitchLease {
                 crate::role_repository::sync_console_permission_catalog_in_transaction(
                     transaction,
                     &catalog,
+                )
+                .await?;
+            }
+            if let Some(event_catalog) = event_catalog {
+                crate::event_center_repository::catalog::synchronize_in_transaction(
+                    transaction,
+                    &event_catalog,
                 )
                 .await?;
             }
@@ -384,6 +392,7 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
         mut self: Box<Self>,
         installation_ids: Vec<Uuid>,
         catalog: Option<control_plane_contracts::CompiledConsolePolicyCatalog>,
+        event_catalog: Option<domain::event_center::EventCatalogSnapshot>,
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> {
         Box::pin(async move {
             for id in installation_ids
@@ -416,6 +425,13 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
                 crate::role_repository::sync_console_permission_catalog_in_transaction(
                     &mut self.transaction,
                     &catalog,
+                )
+                .await?;
+            }
+            if let Some(event_catalog) = event_catalog {
+                crate::event_center_repository::catalog::synchronize_in_transaction(
+                    &mut self.transaction,
+                    &event_catalog,
                 )
                 .await?;
             }

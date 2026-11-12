@@ -4,6 +4,7 @@
   "activity": "近期动态",
   "create": "新建事件",
   "name": "名称",
+  "updated_at": "更新时间",
   "contract_id": "事件标识",
   "description": "说明",
   "payload_schema": "事件正文结构",

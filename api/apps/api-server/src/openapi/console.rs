@@ -280,6 +280,8 @@ use utoipa::OpenApi;
         crate::routes::network_center::pools::add_provider_egresses_to_pool,
     ),
     components(schemas(
+        domain::event_center::EventCatalogSortBy,
+        domain::event_center::EventCatalogSortOrder,
         crate::HealthResponse,
         crate::error_response::ErrorBody,
         crate::routes::user_api_keys::CreateUserApiKeyRequest,

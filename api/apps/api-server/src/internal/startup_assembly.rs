@@ -493,6 +493,13 @@ pub(super) async fn app_and_runtime_host_from_config(
     )?;
     managed_composition.refresh_boot_snapshots().await?;
     extension_boot_snapshot.set_pinned_managed_snapshots(managed_composition.current_snapshots().await)?;
+    let event_catalog = crate::event_center::persistence::snapshot(
+        &state, &managed_composition.current_snapshots().await,
+    ).await?;
+    control_plane_contracts::ports::EventCatalogRepository::synchronize_event_catalog(
+        &state.store, &event_catalog,
+    ).await?;
+
     let builtin_mcp_interfaces =
         openapi_interface::build_openapi_capability_catalog(&state, bootstrap_result.workspace_id)
             .await

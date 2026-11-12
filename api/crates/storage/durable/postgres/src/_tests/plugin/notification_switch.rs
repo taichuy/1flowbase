@@ -114,6 +114,7 @@ async fn notification_switch_preserves_channel_credentials_history_and_scope() {
             audit(actor, command.target_installation_id),
             None,
             vec!["fixture/private".into()],
+            None,
         )
         .await
         .unwrap();
@@ -189,6 +190,7 @@ async fn notification_switch_rejects_incompatible_channels_and_rolls_back_audit_
             audit(actor, command.target_installation_id),
             None,
             vec!["fixture/private".into()],
+            None,
         )
         .await
         .unwrap_err();
@@ -235,6 +237,7 @@ async fn notification_switch_serializes_creation_and_rejects_stale_installation(
             audit(actor, command.target_installation_id),
             None,
             vec!["fixture/private".into()],
+            None,
         )
         .await
         .unwrap();

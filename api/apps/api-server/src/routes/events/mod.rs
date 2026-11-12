@@ -1,11 +1,13 @@
 //! Event configuration and process-local observation through canonical console interfaces.
 use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::HeaderMap,
     Json,
 };
-use domain::event_center::{CreateEventDefinitionInput, UpdateEventDefinitionInput};
+use domain::event_center::{
+    CreateEventDefinitionInput, EventCatalogQuery, UpdateEventDefinitionInput,
+};
 use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -70,13 +72,22 @@ async fn invoke(
 }
 
 #[utoipa::path(get, path="/api/console/events", tag="Events", operation_id="events.catalog.list",
-    summary="List registered event definitions", description="Lists custom definitions and visible registered event contracts in the current workspace, with their supported trigger phases.",
+    summary="List registered event definitions", description="Lists custom definitions and visible registered event contracts in the current workspace, with supported trigger phases and nullable creation/update timestamps. Defaults to most recently updated first; entries without timestamps follow dated entries in either direction.",
+    params(EventCatalogQuery),
     responses((status=200,body=Value)))]
 pub(crate) async fn catalog(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    Query(query): Query<EventCatalogQuery>,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
-    invoke(state, headers, "events.catalog.list", Input::Catalog, false).await
+    invoke(
+        state,
+        headers,
+        "events.catalog.list",
+        Input::Catalog(query),
+        false,
+    )
+    .await
 }
 
 #[utoipa::path(post, path="/api/console/events", tag="Events", operation_id="events.definitions.create",

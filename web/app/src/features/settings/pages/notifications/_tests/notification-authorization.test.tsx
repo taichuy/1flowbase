@@ -5,6 +5,7 @@ import {
   screen,
   waitFor
 } from '@testing-library/react';
+import { App } from 'antd';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type {
   NotificationAuthorizationView,
@@ -322,7 +323,7 @@ test('legacy null authorization preserves schema editing and normal save-and-clo
   await change(screen.getByRole('textbox', { name: '服务地址' }), {
     target: { value: 'https://example.com/edited' }
   });
-  await click(screen.getByRole('button', { name: '保存修改' }));
+  await click(screen.getByRole('button', { name: '统一保存' }));
   await waitFor(() => expect(saved).toHaveBeenCalledWith());
   expect(commands[0]?.body).toEqual({
     display_name: '我的渠道',
@@ -562,7 +563,8 @@ test('failed Maintain preserves authorization and subscription evidence without 
 async function renderSettled(...args: Parameters<typeof render>) {
   let view!: ReturnType<typeof render>;
   await act(async () => {
-    view = render(...args);
+    const [ui, options] = args;
+    view = render(<App>{ui}</App>, options);
   });
   return view;
 }
@@ -601,7 +603,7 @@ test('viewing a pending authorization cannot begin, poll or cancel without its o
 test('authorization-only permission allows authorization while instance save stays disabled', async () => {
   setOperations(['notifications.instances.get', 'notifications.instances.authorization']);
   await renderSettled(<NotificationInstanceDrawer instance={instance} types={[type]} onClose={vi.fn()} onSaved={saved} />);
-  expect(screen.getByRole('button', { name: '保存修改' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '统一保存' })).toBeDisabled();
   expect(screen.getByRole('textbox', { name: '渠道名称' })).toBeDisabled();
   await click(screen.getByRole('button', { name: '扫码授权' }));
   expect(commands[0]?.body).toEqual({ type: 'begin', action: 'scan' });

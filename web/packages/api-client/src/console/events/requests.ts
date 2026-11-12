@@ -5,13 +5,22 @@ import type {
   CreateEventDefinitionInput,
   UpdateEventDefinitionInput,
   EventCatalogEntry,
+  EventCatalogQuery,
   EventDefinitionRecord,
   EventRuntimeSnapshot
 } from './types';
 
 const BASE_PATH = '/api/console/events';
-export const listEventCatalog = (baseUrl?: string) =>
-  apiFetch<EventCatalogEntry[]>({ path: BASE_PATH, baseUrl });
+export const listEventCatalog = (
+  baseUrl?: string,
+  query?: EventCatalogQuery
+) => {
+  const search = query ? `?${new URLSearchParams({ ...query })}` : '';
+  return apiFetch<EventCatalogEntry[]>({
+    path: `${BASE_PATH}${search}`,
+    baseUrl
+  });
+};
 export const getEventRuntime = (baseUrl?: string) =>
   apiFetch<EventRuntimeSnapshot>({ path: `${BASE_PATH}/runtime`, baseUrl });
 export const createEventDefinition = (

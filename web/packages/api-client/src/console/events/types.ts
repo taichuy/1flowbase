@@ -120,7 +120,14 @@ export interface ApiEventOperationDetails extends ApiEventOperationSummary {
   before_schema: Record<string, unknown> | boolean | null;
   completion_schema: Record<string, unknown> | boolean | null;
 }
+export interface EventCatalogQuery {
+  sort_by: 'created_at' | 'updated_at';
+  sort_order: 'asc' | 'desc';
+}
 export interface EventCatalogEntry {
+  /** Registered declarations have no persisted creation or update time. */
+  created_at?: string | null;
+  updated_at?: string | null;
   interface_event?: InterfaceEventBinding;
   /** The backend omits empty paths. */
   group_path?: string[];

@@ -113,3 +113,30 @@ impl EventCenterRepository for ApplicationPublicApiTestRepository {
             .collect())
     }
 }
+
+#[async_trait]
+impl control_plane_contracts::ports::EventCatalogRepository for ApplicationPublicApiTestRepository {
+    async fn event_catalog_workspaces(&self) -> Result<Vec<domain::ScopeContext>> {
+        Ok(Vec::new())
+    }
+    async fn synchronize_event_catalog(
+        &self,
+        _: &domain::event_center::EventCatalogSnapshot,
+    ) -> Result<()> {
+        anyhow::bail!("source reconciliation is outside this invocation fixture")
+    }
+    async fn list_event_catalog(
+        &self,
+        actor: &ActorContext,
+        query: domain::event_center::EventCatalogQuery,
+    ) -> Result<Vec<domain::event_center::EventCatalogEntry>> {
+        let mut entries = self
+            .list_event_definitions(actor.current_workspace_id)
+            .await?
+            .into_iter()
+            .map(domain::event_center::EventCatalogEntry::from)
+            .collect::<Vec<_>>();
+        query.sort(&mut entries);
+        Ok(entries)
+    }
+}

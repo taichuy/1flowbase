@@ -139,6 +139,9 @@ impl ManagedExtensionComposition {
             let prepared_host = self
                 .prepare_host_generation(services, generation_snapshots)
                 .await?;
+            let event_catalog = prepared_host
+                .as_ref()
+                .map(|(_, prepared)| prepared.event_catalog.clone());
             let permission_catalog = prepared_host
                 .as_ref()
                 .map(|(_, prepared)| prepared.permission_catalog.clone());
@@ -161,7 +164,7 @@ impl ManagedExtensionComposition {
             // All fallible compilation and activation precedes this durable commit.
             // The owned task cannot be cancelled by a dropped request while committing.
             let migrated = lease
-                .commit_with_catalog(audit, permission_catalog, compatible_types)
+                .commit_with_catalog(audit, permission_catalog, compatible_types, event_catalog)
                 .await?;
             let retained = visible
                 .retained

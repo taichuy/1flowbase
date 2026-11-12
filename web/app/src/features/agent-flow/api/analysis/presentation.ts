@@ -13,7 +13,7 @@ function pointerSegments(path: string) {
 }
 
 export function analysisIssues(
-  analysis: FlowDocumentAnalysis | null,
+  analysis: Pick<FlowDocumentAnalysis, 'diagnostics'> | null,
   document: FlowAuthoringDocument
 ): AgentFlowIssue[] {
   return (analysis?.diagnostics ?? []).map((diagnostic, index) => {

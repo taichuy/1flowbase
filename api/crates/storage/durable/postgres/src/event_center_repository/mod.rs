@@ -1,3 +1,4 @@
+pub(crate) mod catalog;
 use crate::PgControlPlaneStore;
 use async_trait::async_trait;
 use control_plane_contracts::{ports::EventCenterRepository, ControlPlaneContractError as Error};

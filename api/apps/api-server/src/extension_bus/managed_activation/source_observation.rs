@@ -76,6 +76,24 @@ impl ManagedExtensionComposition {
         }
     }
 
+    /// Definition inventory from the candidate graph, excluding retained runtime receivers.
+    pub(crate) fn event_catalog_declarations(
+        workspace: Uuid,
+        snapshot: &ManagedWorkspaceSnapshot,
+    ) -> Vec<EventCatalogEntry> {
+        let mut sources = BTreeMap::new();
+        Self::collect_snapshot_sources(&mut sources, workspace, snapshot, true);
+        sources
+            .into_values()
+            .map(|(descriptor, _)| {
+                let mut entry: EventCatalogEntry = descriptor.into();
+                entry.group_path =
+                    vec!["plugins".into(), entry.owner_id.clone().unwrap_or_default()];
+                entry
+            })
+            .collect()
+    }
+
     fn collect_snapshot_sources(
         sources: &mut BTreeMap<
             (EventSourceScope, String, String),

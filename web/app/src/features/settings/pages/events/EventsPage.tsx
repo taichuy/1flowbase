@@ -5,6 +5,7 @@ import {
   updateEventDefinition,
   type CreateEventDefinitionInput,
   type EventCatalogEntry,
+  type EventCatalogQuery,
   type EventTriggerPhase
 } from '@1flowbase/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -14,6 +15,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../../state/auth-store';
 import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
+import { formatDateTime } from '../../../../shared/i18n/format';
 import type { DataTableColumn } from '../../../../shared/ui/data-table/DataTable';
 import { DataTableRowActions } from '../../../../shared/ui/data-table/DataTableRowActions';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
@@ -38,6 +40,12 @@ export function EventsPage() {
     mode: 'view' | 'edit';
   } | null>(null);
   const [group, setGroup] = useState<string>();
+  const [sort, setSort] = useState<EventCatalogQuery | null>({
+    sort_by: 'updated_at',
+    sort_order: 'desc'
+  });
+  const effectiveSort =
+    sort ?? ({ sort_by: 'updated_at', sort_order: 'desc' } as const);
   const canList = can('events.catalog.list');
   const canObserve = can('events.runtime.get');
   const tab = canObserve ? requestedTab : 'catalog';
@@ -46,8 +54,8 @@ export function EventsPage() {
       navigateEventTab('catalog', true);
   }, [canObserve, requestedTab]);
   const catalog = useQuery({
-    queryKey: ['events', 'catalog'],
-    queryFn: () => listEventCatalog(),
+    queryKey: ['events', 'catalog', effectiveSort],
+    queryFn: () => listEventCatalog(undefined, effectiveSort),
     enabled: canList && tab === 'catalog'
   });
   const editable =
@@ -56,6 +64,7 @@ export function EventsPage() {
       ? drawer.entry.origin === 'custom' &&
         drawer.entry.id !== null &&
         !!drawer.entry.interface_event &&
+        drawer.entry.supported_phases.length > 0 &&
         can('events.definitions.update')
       : can('events.definitions.create'));
   const save = useMutation({
@@ -176,26 +185,18 @@ export function EventsPage() {
       )
     },
     {
-      key: 'scope',
-      title: t('scope'),
-      width: 220,
-      render: (_, row) =>
-        row.scope.kind === 'workspace'
-          ? `${t('workspace_id')} · ${row.scope.workspace_id}`
-          : t(row.scope.kind)
-    },
-    {
       key: 'enabled',
       title: t('enabled'),
       width: 120,
       render: (_, row) => (
         <Switch
           aria-label={t('enabled')}
-          checked={row.origin !== 'custom' || row.enabled === true}
+          checked={row.enabled !== false}
           disabled={
             row.origin !== 'custom' ||
             !row.id ||
             !row.interface_event ||
+            row.supported_phases.length === 0 ||
             !csrfToken ||
             !can('events.definitions.update') ||
             toggleEnabled.isPending
@@ -218,6 +219,21 @@ export function EventsPage() {
           : t('unsupported')
     },
     {
+      key: 'updated_at',
+      title: t('updated_at'),
+      dataIndex: 'updated_at',
+      width: 190,
+      sorter: true,
+      sortOrder:
+        sort?.sort_by === 'updated_at'
+          ? sort.sort_order === 'asc'
+            ? 'ascend'
+            : 'descend'
+          : null,
+      render: (_, row) =>
+        row.updated_at ? formatDateTime(row.updated_at) : '—'
+    },
+    {
       key: 'actions',
       title: t('actions'),
       width: 180,
@@ -229,6 +245,7 @@ export function EventsPage() {
             ...(row.origin === 'custom' &&
             row.interface_event &&
             row.id &&
+            row.supported_phases.length > 0 &&
             can('events.definitions.update')
               ? [
                   {
@@ -292,6 +309,18 @@ export function EventsPage() {
                   JSON.stringify([eventCatalogIdentity(row), row.scope])
                 }
                 tableKey="catalog"
+                onChange={(_, __, sorter) => {
+                  const selected = Array.isArray(sorter) ? sorter[0] : sorter;
+                  setSort(
+                    selected?.order && selected.columnKey === 'updated_at'
+                      ? {
+                          sort_by: selected.columnKey,
+                          sort_order:
+                            selected.order === 'ascend' ? 'asc' : 'desc'
+                        }
+                      : null
+                  );
+                }}
                 loading={catalog.isPending}
                 toolbar={
                   <>

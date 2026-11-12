@@ -22,7 +22,8 @@ export function EventsTable<T extends object>({
   emptyText,
   onRow,
   rowClassName,
-  mobileRecords
+  mobileRecords,
+  onChange
 }: {
   columns: DataTableColumn<T>[];
   rows: T[];
@@ -36,6 +37,7 @@ export function EventsTable<T extends object>({
   onRow?: TableProps<T>['onRow'];
   rowClassName?: (record: T, index: number) => string;
   mobileRecords?: string;
+  onChange?: TableProps<T>['onChange'];
 }) {
   const { t } = useTranslation('settingsEvents');
   const screens = Grid.useBreakpoint();
@@ -87,6 +89,10 @@ export function EventsTable<T extends object>({
         loading={loading}
         onRow={onRow}
         rowClassName={rowClassName}
+        onChange={(pagination, filters, sorter, extra) => {
+          if (extra.action === 'sort') changePage(1, effectiveSize);
+          onChange?.(pagination, filters, sorter, extra);
+        }}
         mobileList={
           showRecords
             ? {

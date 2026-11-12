@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn event_catalog_preserves_bound_and_unbound_views_without_retaining_boot() {
+async fn event_catalog_reads_durable_definitions_without_retaining_boot() {
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let actor = domain::ActorContext::root(Uuid::now_v7(), domain::DEFAULT_SCOPE_ID, "root");
     let principal = UserPrincipal::server_delegation(actor.clone());
@@ -26,10 +26,10 @@ async fn event_catalog_preserves_bound_and_unbound_views_without_retaining_boot(
     .await
     .unwrap();
     let Output(value) = dependencies
-        .execute(&principal, Input::Catalog)
+        .execute(&principal, Input::Catalog(Default::default()))
         .await
         .unwrap_or_else(|error| panic!("catalog failed: {:?}", error.0));
-    assert_eq!(value, serde_json::to_value(expected).unwrap());
+    assert_eq!(value, catalog_value(expected).unwrap());
 
     let mut unbound_state = (*state).clone();
     unbound_state.extension_boot_snapshot = None;
@@ -45,17 +45,20 @@ async fn event_catalog_preserves_bound_and_unbound_views_without_retaining_boot(
     .await
     .unwrap();
     let Output(value) = unbound
-        .execute(&principal, Input::Catalog)
+        .execute(&principal, Input::Catalog(Default::default()))
         .await
         .unwrap_or_else(|error| panic!("unbound catalog failed: {:?}", error.0));
-    assert_eq!(value, serde_json::to_value(expected).unwrap());
+    assert_eq!(value, catalog_value(expected).unwrap());
     drop(unbound_state);
     drop(state);
     assert!(
         probe.upgrade().is_none(),
         "event dependencies must not retain a retired generation"
     );
-    let error = match dependencies.execute(&principal, Input::Catalog).await {
+    let error = match dependencies
+        .execute(&principal, Input::Catalog(Default::default()))
+        .await
+    {
         Err(error) => error,
         Ok(_) => panic!("expired Boot must not look like an intentionally unbound catalog"),
     };

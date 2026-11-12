@@ -74,10 +74,29 @@ impl EventSourceCatalog {
         runtime: &control_plane::event_center::EventCenterRuntime,
         registry: Option<&interface_runtime::CompiledInterfaceRegistry>,
     ) -> Vec<EventCatalogEntry> {
+        self.catalog_entries(actor, runtime, registry, true)
+    }
+
+    pub(crate) fn declared_events_with_interfaces(
+        &self,
+        actor: &ActorContext,
+        runtime: &control_plane::event_center::EventCenterRuntime,
+        registry: Option<&interface_runtime::CompiledInterfaceRegistry>,
+    ) -> Vec<EventCatalogEntry> {
+        self.catalog_entries(actor, runtime, registry, false)
+    }
+
+    fn catalog_entries(
+        &self,
+        actor: &ActorContext,
+        runtime: &control_plane::event_center::EventCenterRuntime,
+        registry: Option<&interface_runtime::CompiledInterfaceRegistry>,
+        runtime_instances: bool,
+    ) -> Vec<EventCatalogEntry> {
         let scopes = visible_scopes(actor);
         let configured = runtime.configured();
         let mut entries = BTreeMap::new();
-        if configured && self.runtime_bound {
+        if !runtime_instances || (configured && self.runtime_bound) {
             if let Some(registry) = registry {
                 for entry in super::interface::catalog(registry, actor) {
                     insert(&mut entries, entry);
@@ -99,7 +118,7 @@ impl EventSourceCatalog {
                 }
                 insert(&mut entries, source.into());
             }
-            if configured && self.runtime_bound {
+            if !runtime_instances || (configured && self.runtime_bound) {
                 for entry in super::business::catalog(scope.clone()) {
                     insert(&mut entries, entry);
                 }
@@ -118,15 +137,21 @@ impl EventSourceCatalog {
         }
         // Actual scoped registrations contribute capabilities to the same definition.
         // Historical Unbound queue owners remain exclusively in the runtime projection.
-        for scope in scopes {
-            for source in runtime.snapshot_sources(scope).sources {
-                insert(&mut entries, source.descriptor.into());
+        if runtime_instances {
+            for scope in scopes {
+                for source in runtime.snapshot_sources(scope).sources {
+                    insert(&mut entries, source.descriptor.into());
+                }
             }
         }
         entries
             .into_values()
-            .filter(|entry| !entry.supported_phases.is_empty())
+            .filter(|entry| !runtime_instances || !entry.supported_phases.is_empty())
             .map(|mut entry| {
+                if !configured || !self.runtime_bound {
+                    entry.enabled = Some(false);
+                    entry.supported_phases.clear();
+                }
                 if entry.group_path.is_empty() {
                     entry.group_path = if entry.contract_id.starts_with("runtime-event-") {
                         vec!["runtime".into()]
@@ -159,7 +184,7 @@ fn unavailable(source: &mut EventSourceDescriptor) {
 }
 type Key = (EventSourceScope, String, BTreeMap<String, String>);
 fn insert(entries: &mut BTreeMap<Key, EventCatalogEntry>, entry: EventCatalogEntry) {
-    if entry.scope == EventSourceScope::Unbound || entry.supported_phases.is_empty() {
+    if entry.scope == EventSourceScope::Unbound {
         return;
     }
     let key = (

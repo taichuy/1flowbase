@@ -4,6 +4,7 @@
   "activity": "Recent activity",
   "create": "Create event",
   "name": "Name",
+  "updated_at": "Updated at",
   "contract_id": "Event ID",
   "description": "Description",
   "payload_schema": "Payload schema",

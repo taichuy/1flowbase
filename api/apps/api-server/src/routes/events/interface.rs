@@ -8,7 +8,8 @@ use crate::{
 };
 use control_plane::event_center::{EventCenterConfigurationService, EventCenterRuntime};
 use domain::event_center::{
-    CreateEventDefinitionInput, EventDefinitionRecord, UpdateEventDefinitionInput,
+    CreateEventDefinitionInput, EventCatalogEntry, EventCatalogQuery, EventDefinitionRecord,
+    UpdateEventDefinitionInput,
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde_json::{json, Value};
@@ -46,7 +47,7 @@ impl Dependencies {
     }
 }
 pub(crate) enum Input {
-    Catalog,
+    Catalog(EventCatalogQuery),
     ApiOperations,
     ApiOperation(String),
     Create(CreateEventDefinitionInput),
@@ -65,7 +66,7 @@ impl InterfaceContract for Input {
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         Some(
-            json!({"operation": match self { Self::Catalog=>"catalog", Self::ApiOperations=>"api_operations", Self::ApiOperation(_)=>"api_operation", Self::Create(_)=>"create",Self::Update(..)=>"update",Self::Runtime=>"runtime" }}),
+            json!({"operation": match self { Self::Catalog(_)=>"catalog", Self::ApiOperations=>"api_operations", Self::ApiOperation(_)=>"api_operation", Self::Create(_)=>"create",Self::Update(..)=>"update",Self::Runtime=>"runtime" }}),
         )
     }
 }
@@ -108,11 +109,15 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
                     .as_ref()
                     .and_then(|boot| boot.external_endpoint_catalog())
                     .map(Arc::as_ref);
-                let entries = self.sources.registered_events_with_interfaces(
-                    actor,
-                    &self.runtime,
-                    registry.as_deref(),
-                );
+                let entries = if matches!(&input, Input::Create(_) | Input::Update(..)) {
+                    self.sources.registered_events_with_interfaces(
+                        actor,
+                        &self.runtime,
+                        registry.as_deref(),
+                    )
+                } else {
+                    Vec::new()
+                };
                 let mut api_catalog = self.api_catalog.clone();
                 api_catalog.interface_registry = registry.clone();
                 let mut service = EventCenterConfigurationService::with_registered_events(
@@ -174,7 +179,9 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
                         )?;
                         Ok(serde_json::to_value(details)?)
                     }
-                    Input::Catalog => Ok(serde_json::to_value(service.catalog(actor).await?)?),
+                    Input::Catalog(query) => {
+                        catalog_value(service.catalog_with_query(actor, query).await?)
+                    }
                     Input::Create(input) => {
                         definition_value(service.create_definition(actor, input).await?)
                     }
@@ -227,6 +234,31 @@ struct RuntimeResponse {
     workflow_subscriptions: Vec<crate::workers::event_workflow::EventWorkflowStatus>,
     workflow_refresh_error: Option<String>,
 }
+fn catalog_value(entries: Vec<EventCatalogEntry>) -> Result<Value, ApiError> {
+    entries
+        .into_iter()
+        .map(|entry| {
+            let timestamps = [
+                ("created_at", entry.created_at),
+                ("updated_at", entry.updated_at),
+            ];
+            let mut value = serde_json::to_value(entry)?;
+            for (field, timestamp) in timestamps {
+                value[field] = match timestamp {
+                    Some(timestamp) => Value::String(
+                        timestamp
+                            .format(&time::format_description::well_known::Rfc3339)
+                            .map_err(anyhow::Error::from)?,
+                    ),
+                    None => Value::Null,
+                };
+            }
+            Ok(value)
+        })
+        .collect::<Result<Vec<_>, ApiError>>()
+        .map(Value::Array)
+}
+
 fn definition_value(record: EventDefinitionRecord) -> Result<Value, ApiError> {
     let created = record
         .created_at
@@ -311,7 +343,8 @@ impl crate::openapi_interface::contract::ApiInput for Input {
     ) -> Result<Value, Arc<str>> {
         use crate::openapi_interface::contract::to_value;
         Ok(match self {
-            Self::Catalog | Self::Runtime | Self::ApiOperations => json!({}),
+            Self::Catalog(query) => json!({"query":to_value(query)?}),
+            Self::Runtime | Self::ApiOperations => json!({}),
             Self::ApiOperation(operation_id) => json!({"path":{"operation_id":operation_id}}),
             Self::Create(input) => json!({"body":to_value(input)?}),
             Self::Update(id, input) => {

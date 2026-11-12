@@ -1,4 +1,7 @@
-use control_plane_contracts::{ports::EventCenterRepository, ControlPlaneContractError as Error};
+use control_plane_contracts::{
+    ports::{EventCatalogRepository, EventCenterRepository},
+    ControlPlaneContractError as Error,
+};
 use domain::{event_center::*, ActorContext};
 use serde_json::Value;
 use time::OffsetDateTime;
@@ -73,28 +76,23 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
             .ok_or_else(|| Error::NotFound("event_definition").into())
     }
 
-    pub async fn catalog(&self, actor: &ActorContext) -> anyhow::Result<Vec<EventCatalogEntry>> {
-        let mut entries = if self.registered_workspace_id == Some(actor.current_workspace_id) {
-            self.registered_events
-                .iter()
-                .filter(|entry| {
-                    entry
-                        .source
-                        .as_ref()
-                        .is_none_or(|source| source_visible(actor, &source.selection.scope))
-                })
-                .cloned()
-                .collect()
-        } else {
-            Vec::new()
-        };
-        entries.extend(
-            self.list_definitions(actor)
-                .await?
-                .into_iter()
-                .map(EventCatalogEntry::from),
-        );
-        Ok(entries)
+    pub async fn catalog(&self, actor: &ActorContext) -> anyhow::Result<Vec<EventCatalogEntry>>
+    where
+        R: EventCatalogRepository,
+    {
+        self.catalog_with_query(actor, EventCatalogQuery::default())
+            .await
+    }
+
+    pub async fn catalog_with_query(
+        &self,
+        actor: &ActorContext,
+        query: EventCatalogQuery,
+    ) -> anyhow::Result<Vec<EventCatalogEntry>>
+    where
+        R: EventCatalogRepository,
+    {
+        self.repository.list_event_catalog(actor, query).await
     }
 
     pub async fn create_definition(

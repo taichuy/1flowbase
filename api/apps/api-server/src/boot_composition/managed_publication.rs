@@ -30,6 +30,7 @@ pub(crate) struct PreparedGeneration {
     stream_generation: String,
     state: Weak<ApiState>,
     pub(crate) permission_catalog: control_plane_contracts::CompiledConsolePolicyCatalog,
+    pub(crate) event_catalog: domain::event_center::EventCatalogSnapshot,
 }
 
 struct PublishedGeneration {
@@ -184,7 +185,7 @@ impl ManagedGenerationPublisher {
                 .extension_boot_snapshot
                 .as_ref()
                 .ok_or_else(|| anyhow::anyhow!("host generation template has no boot snapshot"))?
-                .fork_generation(snapshots)?,
+                .fork_generation(snapshots.clone())?,
         );
         let host_extensions = self
             .host_contributions
@@ -248,7 +249,9 @@ impl ManagedGenerationPublisher {
             control_plane::role::console_policy_migration::compiled_catalog_from_inventory(
                 state.console_operation_registry.inventory(),
             )?;
+        let event_catalog = crate::event_center::persistence::snapshot(&state, &snapshots).await?;
         Ok(PreparedGeneration {
+            event_catalog,
             owner,
             state: Arc::downgrade(&state),
             stream_generation: crate::managed_services::stream_ticket::generation(&state)

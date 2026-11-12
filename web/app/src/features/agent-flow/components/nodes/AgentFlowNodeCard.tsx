@@ -369,6 +369,10 @@ function useNodeCardInteractionController({
     handle: { id: string; title: string },
     index: number
   ) {
+    const pickerOpen =
+      data.pickerOpen && data.pickerSourceHandleId === handle.id;
+    const ariaLabel = `${handle.title} ${i18nText('agentFlow', 'auto.tool_connector')}`;
+
     return (
       <div
         className="agent-flow-node-card__tool-handle"
@@ -376,33 +380,70 @@ function useNodeCardInteractionController({
         key={handle.id}
         style={{ left: getToolConnectorLeft(index) }}
       >
-        <Tooltip
-          title={handle.title}
+        <NodePickerPopover
+          ariaLabel={ariaLabel}
+          open={pickerOpen && !data.readOnly}
+          options={data.nodePickerOptions}
           placement="bottom"
-          color="#ffffff"
-          styles={{
-            container: {
-              color: '#333',
-              borderRadius: 8,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+          onOpenChange={(open) => {
+            if (open && !data.readOnly) {
+              data.onOpenPicker(data.nodeId, handle.id);
+            } else {
+              data.onClosePicker();
+            }
+          }}
+          onPickNode={(option) => {
+            if (!data.readOnly) {
+              data.onInsertNode(data.nodeId, option, handle.id);
             }
           }}
         >
-          <CanvasHandle
-            id={handle.id}
-            type="source"
-            position={Position.Bottom}
-            isConnectable={!data.readOnly}
-            aria-label={`${handle.title} ${i18nText('agentFlow', 'auto.tool_connector')}`}
-            className="agent-flow-node-handle agent-flow-node-handle--tool"
+          <Tooltip
+            title={handle.title}
+            open={pickerOpen ? false : undefined}
+            placement="bottom"
+            color="#ffffff"
+            styles={{
+              container: {
+                color: '#333',
+                borderRadius: 8,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+              }
+            }}
           >
-            <MergeOutlined
-              aria-hidden="true"
-              className="agent-flow-node-handle__tool-icon"
-              data-testid="agent-flow-node-tool-connector-icon"
-            />
-          </CanvasHandle>
-        </Tooltip>
+            <CanvasHandle
+              id={handle.id}
+              type="source"
+              position={Position.Bottom}
+              isConnectable={!data.readOnly}
+              aria-label={ariaLabel}
+              aria-expanded={pickerOpen}
+              aria-disabled={data.readOnly}
+              aria-haspopup="menu"
+              role="button"
+              tabIndex={0}
+              className="agent-flow-node-handle agent-flow-node-handle--tool"
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                event.stopPropagation();
+                if (data.readOnly) return;
+                if (pickerOpen) {
+                  data.onClosePicker();
+                } else {
+                  data.onOpenPicker(data.nodeId, handle.id);
+                }
+              }}
+            >
+              <MergeOutlined
+                aria-hidden="true"
+                className="agent-flow-node-handle__tool-icon"
+                data-testid="agent-flow-node-tool-connector-icon"
+              />
+            </CanvasHandle>
+          </Tooltip>
+        </NodePickerPopover>
       </div>
     );
   }

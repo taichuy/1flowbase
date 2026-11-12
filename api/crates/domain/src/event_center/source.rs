@@ -91,6 +91,8 @@ pub struct EventCatalogSource {
 impl From<EventSourceDescriptor> for super::EventCatalogEntry {
     fn from(source: EventSourceDescriptor) -> Self {
         Self {
+            created_at: None,
+            updated_at: None,
             id: None,
             interface_event: None,
             group_path: Vec::new(),

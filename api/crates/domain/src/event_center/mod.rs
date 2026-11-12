@@ -43,6 +43,10 @@ pub struct EventDefinitionRecord {
 /// Read-only projection of registered sources. Empty phases mean no source adapter is available.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EventCatalogEntry {
+    #[serde(default)]
+    pub created_at: Option<OffsetDateTime>,
+    #[serde(default)]
+    pub updated_at: Option<OffsetDateTime>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interface_event: Option<InterfaceEventBinding>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -64,6 +68,8 @@ pub struct EventCatalogEntry {
 impl From<EventDefinitionRecord> for EventCatalogEntry {
     fn from(value: EventDefinitionRecord) -> Self {
         Self {
+            created_at: Some(value.created_at),
+            updated_at: Some(value.updated_at),
             source: None,
             interface_event: value.interface_event,
             group_path: vec!["interface_events".into()],
@@ -152,6 +158,9 @@ mod tests;
 
 mod source;
 pub use source::*;
+
+mod catalog;
+pub use catalog::*;
 
 mod interface;
 pub use interface::*;
