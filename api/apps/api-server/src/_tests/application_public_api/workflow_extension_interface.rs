@@ -19,6 +19,7 @@ impl WorkflowExtensionPort for UnavailableWorkflowExtension {
     fn invoke_authorized<'a>(
         &'a self,
         _authorized:control_plane::application_public_api::workflow_extension::AuthorizedPublishedWorkflowOperation,
+        _actor: domain::ActorContext,
         _principal:control_plane::application_public_api::workflow_extension::WorkflowHttpPrincipal,
         _input: WorkflowExtensionInput,
         _observation: Option<interface_runtime::DocumentOperationSession>,

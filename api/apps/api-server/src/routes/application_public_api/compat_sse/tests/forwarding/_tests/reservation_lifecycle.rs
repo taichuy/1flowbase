@@ -36,8 +36,12 @@ struct NoToolsFactory;
 impl crate::routes::application_public_api::native_read_interface::NativeRuntimeInvokerFactory
     for NoToolsFactory
 {
-    fn without_mcp(&self) -> Result<Arc<dyn RuntimeInternalToolInvoker>, NativeApiError> {
-        Ok(Arc::new(NoTools) as Arc<dyn RuntimeInternalToolInvoker>)
+    fn without_mcp<'a>(
+        &'a self,
+        _actor: &'a domain::ActorContext,
+    ) -> crate::routes::application_public_api::native_read_interface::RuntimeInvokerFuture<'a>
+    {
+        Box::pin(async { Ok(Arc::new(NoTools) as Arc<dyn RuntimeInternalToolInvoker>) })
     }
 
     fn for_actor<'a>(
@@ -542,13 +546,12 @@ struct PreclaimInvokerFailure {
 impl crate::routes::application_public_api::native_read_interface::NativeRuntimeInvokerFactory
     for PreclaimInvokerFailure
 {
-    fn without_mcp(
-        &self,
-    ) -> Result<
-        Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>,
-        NativeApiError,
-    > {
-        panic!("callback resume must use the actor factory")
+    fn without_mcp<'a>(
+        &'a self,
+        _actor: &'a domain::ActorContext,
+    ) -> crate::routes::application_public_api::native_read_interface::RuntimeInvokerFuture<'a>
+    {
+        Box::pin(async { panic!("callback resume must use the actor factory") })
     }
 
     fn for_actor<'a>(

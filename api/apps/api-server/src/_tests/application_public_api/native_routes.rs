@@ -1216,3 +1216,6 @@ async fn generation_native_and_responses_ws_connection_and_first_turn_keep_froze
     server.abort();
     let _ = server.await;
 }
+
+#[path = "native_routes/workflow_credentials.rs"]
+mod workflow_credentials;

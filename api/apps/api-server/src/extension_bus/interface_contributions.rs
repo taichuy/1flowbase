@@ -1236,6 +1236,7 @@ pub(crate) fn production_interface_contributions(
                     state.infrastructure.task_queue(),
                     Arc::clone(&state.runtime_event_stream),
                     state.notification_service.clone(),
+                    Arc::clone(&native_runtime_invoker_factory),
                 ),
             )?,
         ),

@@ -29,6 +29,7 @@ use crate::{
     extension_bus::ConsoleAuthenticationCredential,
     provider_runtime::ApiProviderRuntime,
     routes::application_public_api::native::{service_error, NativeApiError},
+    routes::application_public_api::native_read_interface::NativeRuntimeInvokerFactory,
     routes::application_public_api::workflow_extension_interface::{
         self, WorkflowExtensionAuthorizeFuture, WorkflowExtensionFuture, WorkflowExtensionInput,
         WorkflowExtensionOutput, WorkflowExtensionPort, WorkflowExtensionTargetError,
@@ -138,6 +139,7 @@ struct WorkflowExtensionAdapter {
     task_queue: Arc<dyn TaskQueue>,
     runtime_event_stream: Arc<dyn RuntimeEventStream>,
     notification_sender: Arc<dyn control_plane::notifications::NotificationSenderPort>,
+    runtime_invoker_factory: Arc<dyn NativeRuntimeInvokerFactory>,
 }
 
 impl WorkflowExtensionPort for WorkflowExtensionAdapter {
@@ -158,6 +160,7 @@ impl WorkflowExtensionPort for WorkflowExtensionAdapter {
     fn invoke_authorized<'a>(
         &'a self,
         authorized: AuthorizedPublishedWorkflowOperation,
+        actor: domain::ActorContext,
         principal: WorkflowHttpPrincipal,
         input: WorkflowExtensionInput,
         observation: Option<interface_runtime::DocumentOperationSession>,
@@ -178,6 +181,11 @@ impl WorkflowExtensionPort for WorkflowExtensionAdapter {
             if let Some(session) = observation {
                 let _ = session.observe_before(&input).await;
             }
+            let runtime_invoker = dependencies
+                .runtime_invoker_factory
+                .without_mcp(&actor)
+                .await
+                .map_err(WorkflowExtensionTargetError)?;
             let run = service
                 .create_prepared_run(prepared)
                 .await
@@ -190,6 +198,8 @@ impl WorkflowExtensionPort for WorkflowExtensionAdapter {
                 dependencies.clone(),
                 run.application_id,
                 run.id,
+                actor,
+                runtime_invoker,
             );
 
             if run.response_mode == WorkflowExtensionResponseMode::Async {
@@ -239,6 +249,7 @@ pub(crate) fn workflow_extension_port(
     task_queue: Arc<dyn TaskQueue>,
     runtime_event_stream: Arc<dyn RuntimeEventStream>,
     notification_sender: Arc<dyn control_plane::notifications::NotificationSenderPort>,
+    runtime_invoker_factory: Arc<dyn NativeRuntimeInvokerFactory>,
 ) -> Arc<dyn WorkflowExtensionPort> {
     Arc::new(WorkflowExtensionAdapter {
         store,
@@ -256,6 +267,7 @@ pub(crate) fn workflow_extension_port(
         task_queue,
         runtime_event_stream,
         notification_sender,
+        runtime_invoker_factory,
     })
 }
 
@@ -272,6 +284,8 @@ fn spawn_workflow_extension_execution(
     dependencies: WorkflowExtensionAdapter,
     application_id: uuid::Uuid,
     flow_run_id: uuid::Uuid,
+    actor: domain::ActorContext,
+    runtime_invoker: Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>,
 ) -> tokio::task::JoinHandle<anyhow::Result<domain::ApplicationRunDetail>> {
     tokio::spawn(async move {
         let _execution_activity = dependencies.runtime_activity.start(
@@ -279,13 +293,14 @@ fn spawn_workflow_extension_execution(
             ApplicationActivityKind::ApplicationExecution,
         );
         let runtime_service = OrchestrationRuntimeService::new(
-            dependencies.store.clone(),
+            dependencies.store.for_actor(actor),
             dependencies.provider_runtime.clone(),
             dependencies.runtime_engine.clone(),
             dependencies.provider_secret_master_key.clone(),
             dependencies.provider_transport_store.clone(),
             dependencies.model_billing_require_provider_usage,
         )
+        .with_runtime_internal_tool_invoker(runtime_invoker)
         .with_published_plan_cache(dependencies.published_plan_cache.clone())
         .with_node_artifact_context(
             dependencies.api_node_id.clone(),

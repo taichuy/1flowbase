@@ -364,8 +364,8 @@ pub(crate) type RuntimeInvokerFuture<'a> = Pin<
 >;
 
 pub(crate) trait NativeRuntimeInvokerFactory: Send + Sync + 'static {
-    /// Lease the selected generation without loading the MCP catalog.
-    fn without_mcp(&self) -> Result<Arc<dyn RuntimeInternalToolInvoker>, NativeApiError>;
+    /// Bind the credential host to the actual actor and selected generation without loading MCP.
+    fn without_mcp<'a>(&'a self, actor: &'a domain::ActorContext) -> RuntimeInvokerFuture<'a>;
 
     fn for_actor<'a>(
         &'a self,
