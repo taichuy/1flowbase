@@ -379,3 +379,131 @@ async fn published_execution_completion_active_llm_abort_finishes_running_node()
         );
     }
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn published_execution_completion_handoff_revokes_initial_root_cleanup() {
+    use crate::ports::{
+        AppendRuntimeEventInput, ApplicationRepository, PersistWaitingCallbackTaskInput,
+        PersistWaitingKind, PersistWaitingStateInput, UpdateFlowRunInput,
+    };
+    let (service, run, stream) = published_fixture!();
+    let (gate, _release) = service.repository.gate_llm_selection_append(false);
+    let root = tokio::spawn({
+        let service = service.clone();
+        let command = command(&run);
+        async move { service.start_published_flow_run(command).await }
+    });
+    entered(&gate).await;
+    let active = service
+        .repository
+        .get_application_run_detail(run.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let node = active
+        .node_runs
+        .iter()
+        .find(|node| node.status == domain::NodeRunStatus::Running)
+        .expect("actual initial root must own a Running node");
+    let actor =
+        ApplicationRepository::load_actor_context_for_user(&service.repository, run.created_by)
+            .await
+            .unwrap();
+    let waiting = service
+        .repository
+        .persist_waiting_state(&PersistWaitingStateInput {
+            checkpoint_id: Uuid::now_v7(),
+            scope_id: actor.current_workspace_id,
+            application_id: run.application_id,
+            flow_run_id: run.id,
+            node_run_id: node.id,
+            expected_status: FlowRunStatus::Running,
+            output_payload: json!({"answer": "handoff output"}),
+            checkpoint_status: "waiting_callback".into(),
+            checkpoint_reason: "completion_guard_handoff".into(),
+            locator_payload: json!({"node_id": node.node_id}),
+            variable_snapshot: json!({"variable_pool": {}}),
+            checkpoint_external_ref_payload: None,
+            context_content: json!({"format": "runtime_snapshot_v1", "variable_pool": {}}),
+            parent_context_version_id: None,
+            context_transition_kind: domain::ContextTransitionKind::Callback,
+            recovery_idempotency_key: "completion_guard_handoff".into(),
+            resume_claim_id: None,
+            resume_claim_token: None,
+            waiting_event: AppendRuntimeEventInput {
+                flow_run_id: run.id,
+                node_run_id: Some(node.id),
+                span_id: None,
+                parent_span_id: None,
+                event_type: "flow_waiting_callback".into(),
+                layer: domain::RuntimeEventLayer::AgentTransition,
+                source: domain::RuntimeEventSource::Host,
+                trust_level: domain::RuntimeTrustLevel::HostFact,
+                item_id: None,
+                ledger_ref: None,
+                payload: json!({"type": "flow_waiting_callback"}),
+                visibility: domain::RuntimeEventVisibility::Workspace,
+                durability: domain::RuntimeEventDurability::Durable,
+            },
+            tool_delivery_events: Vec::new(),
+            kind: PersistWaitingKind::Callback(PersistWaitingCallbackTaskInput {
+                id: Uuid::now_v7(),
+                callback_kind: "completion_guard_handoff".into(),
+                request_payload: json!({}),
+                external_ref_payload: None,
+            }),
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(waiting.flow_run.status, FlowRunStatus::WaitingCallback);
+    // The persisted checkpoint remains an ownership fence even when a new owner
+    // reactivates the same root row and repeats its previous status.
+    service
+        .repository
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: run.id,
+            status: FlowRunStatus::Running,
+            output_payload: waiting.flow_run.output_payload,
+            error_payload: None,
+            finished_at: None,
+        })
+        .await
+        .unwrap();
+    let before = service
+        .repository
+        .get_application_run_detail(run.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let events_before = service.list_runtime_events(run.id, 0).await;
+    let stream_before = stream.events();
+    let closes_before = stream.close_calls();
+    root.abort();
+    assert!(root.await.unwrap_err().is_cancelled());
+    // On this single-thread runtime, the spawned cleanup uses only ready in-memory
+    // repository futures; yielding lets that independently owned task finish.
+    tokio::task::yield_now().await;
+    let after = service
+        .repository
+        .get_application_run_detail(run.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.flow_run, before.flow_run);
+    assert_eq!(after.node_runs, before.node_runs);
+    assert_eq!(service.list_runtime_events(run.id, 0).await, events_before);
+    assert_eq!(stream.events(), stream_before);
+    assert_eq!(stream.close_calls(), closes_before);
+    let terminal = service
+        .finalize_published_run_missing_stream_terminal(
+            FinalizePublishedRunMissingStreamTerminalCommand {
+                application_id: run.application_id,
+                flow_run_id: run.id,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(terminal.status, FlowRunStatus::Failed);
+    assert!(stream.is_closed(run.id));
+}

@@ -287,7 +287,37 @@ async fn initial_execution_cannot_fail_resumed_owner_with_same_status() {
             .unwrap(),
         reactivated
     );
-    let mut business_failure = stale_failure(&reactivated);
+    let before_nodes = store
+        .get_application_run_detail(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .node_runs;
+    let mut interrupted = stale_failure(&reactivated);
+    interrupted.result = CommitFlowRunTerminalResult::InterruptedExecution {
+        output_payload: reactivated.output_payload.clone(),
+        error_payload: json!({"code": "stream_terminal_missing"}),
+    };
+    assert!(matches!(
+        store.commit_flow_run_terminal(&interrupted).await.unwrap(),
+        CommitFlowRunTerminalReceipt::Loser
+    ));
+    let preserved = store
+        .get_application_run_detail(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(preserved.flow_run, reactivated);
+    assert_eq!(preserved.node_runs, before_nodes);
+    let failure_count: i64 = sqlx::query_scalar(
+        "select count(*) from runtime_events where flow_run_id=$1 and event_type='flow_failed'",
+    )
+    .bind(run.id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(failure_count, 0);
+    let mut business_failure = interrupted;
     business_failure.require_initial_execution = false;
     assert!(matches!(
         store
