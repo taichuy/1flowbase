@@ -190,9 +190,7 @@ pub(crate) fn refresh_owned_anthropic_context(
 ) -> Result<()> {
     let refresh_pool = |pool: &mut serde_json::Map<String, Value>| {
         let prompt_context = pool
-            .entry(
-                plugin_framework::provider_contract::NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY.into(),
-            )
+            .entry(plugin_framework::provider_contract::NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY)
             .or_insert_with(|| json!({"system":[],"messages":[]}));
         if let Some(prompt_context) = prompt_context.as_object_mut() {
             prompt_context.insert("system".into(), continuation.system.clone());

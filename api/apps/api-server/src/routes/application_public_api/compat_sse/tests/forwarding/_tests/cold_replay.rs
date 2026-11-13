@@ -302,16 +302,26 @@ async fn legacy_callback_without_marker_replays_only_explicit_round_generation_o
     assert_cold_callback_replay_with_late_foreign_terminal(false, true).await;
 }
 
+#[tokio::test]
+async fn cold_anthropic_follower_accepts_sdk_retry_counter_without_rewriting_receipt() {
+    assert_cold_callback_scope(true, false, true, true).await;
+}
+
 async fn assert_cold_callback_replay_with_late_foreign_terminal(
     delayed_identity: bool,
     missing_marker: bool,
 ) {
     for tool_wait in [false, true] {
-        assert_cold_callback_scope(delayed_identity, missing_marker, tool_wait).await;
+        assert_cold_callback_scope(delayed_identity, missing_marker, tool_wait, false).await;
     }
 }
 
-async fn assert_cold_callback_scope(delayed_identity: bool, missing_marker: bool, tool_wait: bool) {
+async fn assert_cold_callback_scope(
+    delayed_identity: bool,
+    missing_marker: bool,
+    tool_wait: bool,
+    anthropic_retry: bool,
+) {
     use control_plane::application_public_api::{
         api_keys::ApplicationApiKeyActor,
         callback_resume::{
@@ -458,7 +468,7 @@ async fn assert_cold_callback_scope(delayed_identity: bool, missing_marker: bool
         workspace_id: Uuid::nil(),
         actor: domain::ActorContext::root(Uuid::nil(), Uuid::nil(), "root"),
     };
-    let command = ResumePublishedCallbackCommand {
+    let mut command = ResumePublishedCallbackCommand {
         bearer_token: String::new(),
         target: PublishedCallbackResumeTarget::CallbackTask { callback_task_id },
         source: PublishedCallbackResumeSource::OpenAiResponses,
@@ -470,6 +480,33 @@ async fn assert_cold_callback_scope(delayed_identity: bool, missing_marker: bool
         transport_connection_scope: None,
         observation_context: None,
         reserved_attempt_id: None,
+    };
+
+    let frozen_payload = if anthropic_retry {
+        command.source = PublishedCallbackResumeSource::AnthropicMessages;
+        command.response_payload = json!({"tool_results":[],"anthropic_continuation":{
+            "ordered_messages":[{"role":"user","content":"current instruction"}],"system":[],"model_tool_context":{"tools":[]},"model_parameters":{},
+            "client_protocol_envelope":{"source_protocol":"anthropic_messages","headers":{"x-stainless-retry-count":["0"]},"source_request":{"body":{"messages":[{"role":"user","content":"current instruction"}]}}}
+        }});
+        let frozen = command.response_payload.clone();
+        state
+            .store
+            .record_flow_run_callback_resume_attempt(
+                &control_plane::ports::RecordFlowRunCallbackResumeAttemptInput {
+                    flow_run_id: run.id,
+                    callback_task_id,
+                    source: "anthropic_messages".into(),
+                    response_payload: frozen.clone(),
+                    idempotency_key: format!("callback_task:{callback_task_id}"),
+                },
+            )
+            .await
+            .unwrap();
+        command.response_payload["anthropic_continuation"]["client_protocol_envelope"]["headers"]
+            ["x-stainless-retry-count"] = json!(["1"]);
+        Some(frozen)
+    } else {
+        None
     };
 
     let mut pending_attachment = if delayed_identity {
@@ -672,9 +709,18 @@ async fn assert_cold_callback_scope(delayed_identity: bool, missing_marker: bool
     .await
     .unwrap();
     assert_eq!(
-        attempt_count, 0,
+        attempt_count,
+        i64::from(anthropic_retry),
         "cold callback replay must not reserve another attempt"
     );
+    if let Some(frozen_payload) = frozen_payload {
+        let stored: Value = sqlx::query_scalar("select runtime_original_json(response_payload,raw_json_payloads,'response_payload') from flow_run_callback_resume_attempts where callback_task_id=$1")
+            .bind(callback_task_id).fetch_one(state.store.pool()).await.unwrap();
+        assert_eq!(
+            stored, frozen_payload,
+            "following an SDK retry must preserve its original durable receipt"
+        );
+    }
     assert!(
         stream.replay(run.id, None, 1).await.is_err(),
         "cold callback replay must not open a producer"

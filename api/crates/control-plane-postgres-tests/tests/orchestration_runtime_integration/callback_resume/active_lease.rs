@@ -323,3 +323,243 @@ async fn aged_native_receipt_attaches_with_live_execution_lease_and_reclaims_onl
         attempt_id
     );
 }
+
+#[tokio::test]
+async fn verified_anthropic_reclaim_preserves_receipt_and_ownership_across_sdk_retries() {
+    use control_plane::application_public_api::{
+        anthropic_continuation::verify_anthropic_continuation,
+        client_protocol_envelope::{
+            capture_source_protocol_request_body, ClientProtocolIngressPolicy,
+        },
+    };
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let started_at = OffsetDateTime::now_utc();
+    let run = seed_flow_run_with_mode(
+        &store,
+        &seeded,
+        &compiled,
+        started_at,
+        FlowRunMode::PublishedApiRun,
+        None,
+    )
+    .await;
+    let api_key_id = seed_application_api_key(&store, &seeded).await;
+    let node = seed_node_run(&store, &run, started_at).await;
+    let waiting = persist_callback_wait(&store, &seeded, &run, &node, 1, None, None).await;
+    let callback = waiting.callback_task.as_ref().unwrap();
+    sqlx::query("update flow_runs set api_key_id=$2 where id=$1")
+        .bind(run.id)
+        .bind(api_key_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    let actor = ApplicationApiKeyActor {
+        api_key_id,
+        application_id: seeded.application_id,
+        creator_user_id: seeded.actor_user_id,
+        tenant_id: root_tenant_id(&store).await,
+        workspace_id: seeded.workspace_id,
+        actor: domain::ActorContext::scoped_in_scope(
+            seeded.actor_user_id,
+            Uuid::nil(),
+            seeded.workspace_id,
+            "application_api_key",
+            Vec::<String>::new(),
+        ),
+    };
+    let source = json!({"model":"fixture","max_tokens":100,"system":"current system","messages":[
+        {"role":"user","content":"Read files"},
+        {"role":"assistant","content":[{"type":"tool_use","id":"call-1-0","name":"Bash","input":{}}]},
+        {"role":"user","content":[{"type":"tool_result","tool_use_id":"call-1-0","content":"ok"},{"type":"text","text":"current instruction"}]}
+    ]});
+    let results = json!([{"tool_call_id":"call-1-0","content":"ok"}]);
+    let mut commands = Vec::new();
+    for retry_count in ["0", "1"] {
+        let mut envelope = capture_source_protocol_request_body(
+            ClientProtocolIngressPolicy::AnthropicMessages,
+            &source,
+        )
+        .unwrap();
+        envelope
+            .headers
+            .insert("x-stainless-retry-count".into(), vec![retry_count.into()]);
+        let grant = verify_anthropic_continuation(
+            &store,
+            &actor,
+            callback.id,
+            results.clone(),
+            source.clone(),
+            envelope,
+            None,
+        )
+        .await
+        .unwrap();
+        commands.push(ResumePublishedCallbackCommand {
+            response_payload: grant.payload().clone(),
+            anthropic_continuation: Some(grant),
+            responses_continuation: None,
+            transport_connection_scope: None,
+            observation_context: None,
+            reserved_attempt_id: None,
+            native_transport: None,
+            bearer_token: String::new(),
+            target: PublishedCallbackResumeTarget::CallbackTask {
+                callback_task_id: callback.id,
+            },
+            source: PublishedCallbackResumeSource::AnthropicMessages,
+            response_mode: Some("streaming".into()),
+        });
+    }
+    let original_payload = commands[0].response_payload.clone();
+    let retry_payload = commands[1].response_payload.clone();
+    let (runtime, provider, _package) = semantic_runtime::seed_runtime_consumer(
+        &store,
+        &seeded,
+        &compiled,
+        Some(&waiting.checkpoint),
+    )
+    .await;
+    let service = ApplicationPublishedCallbackResumeService::new(store.clone(), runtime);
+    let PublishedCallbackReservation::Acquired(first) = service
+        .reserve_native_callback_reservation_for_actor(actor.clone(), &commands[0])
+        .await
+        .unwrap()
+    else {
+        panic!("original owner must be admitted")
+    };
+    assert!(service
+        .release_unstarted_native_callback(&first)
+        .await
+        .unwrap());
+    let PublishedCallbackReservation::Acquired(second) = service
+        .reserve_native_callback_reservation_for_actor(actor.clone(), &commands[1])
+        .await
+        .unwrap()
+    else {
+        panic!("Received retry with changed counter must reclaim")
+    };
+    let attempt_id = second.attempt_id();
+    assert_eq!(first.attempt_id(), attempt_id);
+    // Fresh Processing owners cannot be stolen merely because there is no stream.
+    assert!(store
+        .reclaim_expired_callback_resume_attempt(attempt_id, retry_payload.clone())
+        .await
+        .unwrap()
+        .is_none());
+    let committed = store
+        .commit_tool_callback_results(&CommitToolCallbackResultsInput {
+            anthropic_continuation: Some(
+                serde_json::from_value(original_payload["anthropic_continuation"].clone()).unwrap(),
+            ),
+            responses_continuation: None,
+            scope_id: seeded.workspace_id,
+            application_id: seeded.application_id,
+            flow_run_id: run.id,
+            checkpoint_id: waiting.checkpoint.id,
+            callback_task_id: callback.id,
+            results: vec![tool_result("call-1-0", json!("ok"))],
+        })
+        .await
+        .unwrap();
+    let claim = committed.claim.unwrap();
+    sqlx::query("update flow_run_callback_resume_attempts set updated_at=now()-interval '6 minutes' where id=$1").bind(attempt_id).execute(store.pool()).await.unwrap();
+    assert!(
+        store
+            .reclaim_expired_callback_resume_attempt(attempt_id, retry_payload.clone())
+            .await
+            .unwrap()
+            .is_none(),
+        "active execution lease must fence stale attempts"
+    );
+    sqlx::query(
+        "update flow_run_resume_claims set lease_expires_at=now()-interval '1 second' where id=$1",
+    )
+    .bind(claim.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    for pointer in [
+        "/anthropic_continuation/ordered_messages/0/content",
+        "/anthropic_continuation/client_protocol_envelope/source_request/body/system",
+    ] {
+        let mut changed = retry_payload.clone();
+        *changed.pointer_mut(pointer).unwrap() = json!("changed semantic context");
+        assert!(store
+            .reclaim_expired_callback_resume_attempt(attempt_id, changed)
+            .await
+            .unwrap()
+            .is_none());
+    }
+    let mut changed_beta = retry_payload.clone();
+    changed_beta["anthropic_continuation"]["client_protocol_envelope"]["headers"]
+        ["anthropic-beta"] = json!(["different-semantic-beta"]);
+    assert!(store
+        .reclaim_expired_callback_resume_attempt(attempt_id, changed_beta)
+        .await
+        .unwrap()
+        .is_none());
+    sqlx::query("update flow_run_callback_resume_attempts set source='native_agent' where id=$1")
+        .bind(attempt_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    assert!(
+        store
+            .reclaim_expired_callback_resume_attempt(attempt_id, retry_payload.clone())
+            .await
+            .unwrap()
+            .is_none(),
+        "a different source cannot claim Anthropic continuation authority"
+    );
+    sqlx::query(
+        "update flow_run_callback_resume_attempts set source='anthropic_messages' where id=$1",
+    )
+    .bind(attempt_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    let acquired = store
+        .reclaim_expired_callback_resume_attempt(attempt_id, retry_payload)
+        .await
+        .unwrap()
+        .expect("expired Processing retry must reclaim after lease expiry");
+    assert_eq!(acquired.id, attempt_id);
+    assert_eq!(
+        acquired.response_payload, original_payload,
+        "retry transport counters must not overwrite the frozen receipt"
+    );
+    assert_eq!(
+        provider
+            .executions
+            .load(std::sync::atomic::Ordering::SeqCst),
+        0
+    );
+    assert!(provider.inputs.lock().unwrap().is_empty());
+    // Controlled negative: a source label alone is not a verified continuation.
+    let unverified_payload = json!({"tool_results":results});
+    sqlx::query("update flow_run_callback_resume_attempts set status='received',response_payload=$2,raw_json_payloads=raw_json_payloads-'response_payload' where id=$1")
+        .bind(attempt_id).bind(unverified_payload.clone()).execute(store.pool()).await.unwrap();
+    assert!(store
+        .reclaim_expired_callback_resume_attempt(attempt_id, unverified_payload.clone())
+        .await
+        .unwrap()
+        .is_none());
+    // Preserve the existing OpenAI completed-tool qualification without an
+    // Anthropic continuation marker through the same real repository path.
+    sqlx::query(
+        "update flow_run_callback_resume_attempts set source='openai_responses' where id=$1",
+    )
+    .bind(attempt_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    assert!(store
+        .reclaim_expired_callback_resume_attempt(attempt_id, unverified_payload)
+        .await
+        .unwrap()
+        .is_some());
+}

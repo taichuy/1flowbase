@@ -308,8 +308,10 @@ pub(super) async fn follow_missing_compatible_round_events(
             .await
             .map_err(service_error)?;
         if let Some(attempt) = &attempt {
-            if attempt.response_payload != command.response_payload
-                || attempt.source != command.source.as_str()
+            if !domain::orchestration::callback_resume_payloads_match(
+                &attempt.response_payload,
+                &command.response_payload,
+            ) || attempt.source != command.source.as_str()
             {
                 return Err(service_error(anyhow::anyhow!(
                     "callback resume attempt changed while following"
