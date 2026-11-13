@@ -19,6 +19,29 @@ import { getStartInputFields } from '../lib/variables/start-node-variables';
 import { appI18n } from '../../../shared/i18n/app-i18n';
 
 describe('start node variables', () => {
+  test('new Agent Flow and Workflow expose both default credentials without editable start fields', () => {
+    for (const document of [
+      createDefaultAgentFlowDocument({ flowId: 'agent-credentials' }),
+      createDefaultWorkflowDocument({ flowId: 'workflow-credentials' })
+    ]) {
+      const start = document.graph.nodes.find((node) =>
+        ['start', 'workflow_start'].includes(node.type)
+      )!;
+      const target = document.graph.nodes.find((node) =>
+        ['answer', 'workflow_end'].includes(node.type)
+      )!;
+      const options = listVisibleSelectorOptions(document, target.id).map(
+        (option) => option.value
+      );
+      for (const key of ['creator_credential', 'executor_credential']) {
+        expect(options).toContainEqual(['sys', key]);
+        expect(
+          getStartInputFields(start).map((field) => field.key)
+        ).not.toContain(key);
+      }
+    }
+  });
+
   beforeEach(async () => {
     await appI18n.changeLanguage('zh_Hans');
   });
@@ -373,6 +396,14 @@ describe('start node variables', () => {
         {
           value: ['sys', 'workflow_run_id'],
           label: 'sys.workflow_run_id'
+        },
+        {
+          value: ['sys', 'creator_credential'],
+          label: 'sys.creator_credential'
+        },
+        {
+          value: ['sys', 'executor_credential'],
+          label: 'sys.executor_credential'
         }
       ])
     );

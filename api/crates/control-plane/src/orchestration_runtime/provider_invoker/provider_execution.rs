@@ -12,6 +12,24 @@ where
         + 'static,
     H: ProviderRuntimePort + Clone + Send + Sync,
 {
+    async fn invoke_workflow_internal_http(
+        &self,
+        credential_reference: &str,
+        request: orchestration_runtime::execution_engine::WorkflowInternalHttpRequest,
+    ) -> Result<orchestration_runtime::execution_engine::WorkflowInternalHttpResponse> {
+        let flow_run_id = self
+            .flow_run_id
+            .ok_or_else(|| anyhow!("workflow credential requires an active run"))?;
+        let invoker = self
+            .flow_execution_context
+            .as_ref()
+            .and_then(|context| context.workflow_credential_invoker.as_ref())
+            .ok_or_else(|| anyhow!("workflow credential host is not configured"))?;
+        invoker
+            .invoke_workflow_internal_http(flow_run_id, credential_reference, request)
+            .await
+    }
+
     async fn materialize_native_continuation(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,

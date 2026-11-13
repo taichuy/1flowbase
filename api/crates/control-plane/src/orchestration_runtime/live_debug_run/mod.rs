@@ -1,7 +1,9 @@
 pub(in crate::orchestration_runtime) mod container;
 mod continuation;
 mod preparation;
-pub(super) use continuation::{compiled_plan_start_node_id, inject_system_variables};
+pub(super) use continuation::{
+    compiled_plan_start_node_id, inject_system_variables, inject_workflow_credentials,
+};
 pub(super) use preparation::freeze_run_input_environment;
 mod run_detail;
 mod runtime_events;

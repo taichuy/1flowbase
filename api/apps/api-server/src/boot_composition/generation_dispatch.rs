@@ -178,7 +178,7 @@ impl McpInterfaceDispatchPort for GenerationDispatch {
         &self,
         request: orchestration_runtime::execution_engine::WorkflowInternalHttpRequest,
     ) -> anyhow::Result<orchestration_runtime::execution_engine::WorkflowInternalHttpResponse> {
-        let ports = self.ports.get().ok_or_else(unavailable)?;
+        let ports = self.ports.get().ok_or_else(|| unavailable().0)?;
         ports.mcp.execute_workflow_http(request).await
     }
 
@@ -226,7 +226,7 @@ impl McpInterfaceDispatchPort for WeakGenerationDispatch {
         &self,
         request: orchestration_runtime::execution_engine::WorkflowInternalHttpRequest,
     ) -> anyhow::Result<orchestration_runtime::execution_engine::WorkflowInternalHttpResponse> {
-        let owner = self.0.upgrade().ok_or_else(unavailable)?;
+        let owner = self.0.upgrade().ok_or_else(|| unavailable().0)?;
         owner.execute_workflow_http(request).await
     }
 

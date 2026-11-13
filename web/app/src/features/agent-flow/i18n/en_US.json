@@ -759,6 +759,8 @@
     "tracking_nodes": "Tracking nodes",
     "loading_failed": "Loading failed",
     "system_variable_workflow_run_id": "Workflow run ID",
+    "system_variable_creator_credential": "Creator API credential (current run only)",
+    "system_variable_executor_credential": "Executor API credential (current run only)",
     "wait_manual_input_continue_process": "Wait for manual input to continue the process.",
     "node_any_valid_incoming_edges": "The current node does not have any valid incoming edges.",
     "no_model_yet": "No model yet",

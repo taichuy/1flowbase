@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 
 use super::helpers::{
     compiled_plan_start_node_id, inject_application_environment_variables, inject_system_variables,
+    inject_workflow_credentials,
 };
 use super::*;
 use crate::orchestration_runtime::live_debug_run::PersistedNodeLifecycle;
@@ -113,6 +114,18 @@ where
         &compiled_plan,
         &mut variable_pool,
     );
+
+    // Recovery selects a different pool. Refresh read-only system values there
+    // as well, including a successor run's new credential references.
+    if let Some(snapshot) = recovery_snapshot.as_mut() {
+        inject_workflow_credentials(&mut snapshot.variable_pool, flow_run.id);
+        if let Some(container) = snapshot.container_state.as_mut() {
+            inject_workflow_credentials(&mut container.root_variable_pool, flow_run.id);
+        }
+    }
+    if let Some(host) = &service.runtime_internal_tool_invoker {
+        host.prepare_workflow_credentials(flow_run.id).await?;
+    }
 
     // Keep fallback preparation and its errors in order; recovery only needs a
     // read of the snapshot here, not a second owned copy of its variable pool.

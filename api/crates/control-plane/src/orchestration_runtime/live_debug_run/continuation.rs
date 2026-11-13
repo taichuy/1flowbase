@@ -19,7 +19,7 @@ use super::super::{
 mod engine;
 mod helpers;
 pub(in crate::orchestration_runtime) use helpers::{
-    compiled_plan_start_node_id, inject_system_variables,
+    compiled_plan_start_node_id, inject_system_variables, inject_workflow_credentials,
 };
 mod native_recovery;
 

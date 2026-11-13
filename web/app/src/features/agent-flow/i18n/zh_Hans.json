@@ -759,6 +759,8 @@
     "tracking_nodes": "追踪节点",
     "loading_failed": "加载失败",
     "system_variable_workflow_run_id": "工作流运行 ID",
+    "system_variable_creator_credential": "创建者接口凭证（仅当前运行可用）",
+    "system_variable_executor_credential": "执行者接口凭证（仅当前运行可用）",
     "wait_manual_input_continue_process": "等待人工补充输入后继续流程。",
     "node_any_valid_incoming_edges": "当前节点没有任何有效入边。",
     "no_model_yet": "暂无模型",

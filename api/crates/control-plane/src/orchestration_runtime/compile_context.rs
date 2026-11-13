@@ -216,6 +216,11 @@ fn application_run_level_variables(
             run_level_variable("sys", "workflow_run_id", "string"),
         ],
     };
+    if application_type != domain::ApplicationType::AgentLogs {
+        for name in ["creator_credential", "executor_credential"] {
+            declarations.push(run_level_variable("sys", name, "string"));
+        }
+    }
     declarations.extend(
         environment_variables
             .iter()
@@ -746,6 +751,11 @@ mod tests {
         assert!(!agent.iter().any(
             |declaration| declaration.selector.first().map(String::as_str) == Some("trigger")
         ));
+        for key in ["creator_credential", "executor_credential"] {
+            assert!(agent.iter().any(|declaration| declaration.selector
+                == ["sys", key].map(str::to_string)
+                && declaration.value_type == "string"));
+        }
 
         let workflow = application_run_level_variables(
             domain::ApplicationType::Workflow,
@@ -754,6 +764,8 @@ mod tests {
         );
         for selector in [
             ["sys", "workflow_run_id"],
+            ["sys", "creator_credential"],
+            ["sys", "executor_credential"],
             ["trigger", "type"],
             ["trigger", "scheduled_at"],
             ["trigger", "timezone"],

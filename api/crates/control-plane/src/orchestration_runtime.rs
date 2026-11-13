@@ -354,6 +354,8 @@ struct RuntimeProviderInvoker<R, H> {
 }
 
 struct RuntimeFlowExecutionContext {
+    workflow_credential_invoker:
+        Option<Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>>,
     notification_sender: Option<Arc<dyn crate::notifications::NotificationSenderPort>>,
     user_account: Option<String>,
     require_provider_usage_for_billing: bool,
@@ -585,6 +587,7 @@ where
         active_node: Option<RuntimeActiveNode>,
     ) -> Arc<RuntimeFlowExecutionContext> {
         Arc::new(RuntimeFlowExecutionContext {
+            workflow_credential_invoker: self.runtime_internal_tool_invoker.clone(),
             notification_sender: self.notification_sender.clone(),
             user_account,
             require_provider_usage_for_billing: self.require_provider_usage_for_billing,
