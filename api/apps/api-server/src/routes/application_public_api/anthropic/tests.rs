@@ -218,10 +218,12 @@ fn anthropic_resume_rejects_mixed_callback_groups() {
 }
 
 #[test]
-fn ac_001_anthropic_tool_result_mixed_with_new_text_starts_a_new_run() {
+fn ac_001_anthropic_tool_result_mixed_with_new_text_resumes_same_callback() {
     let callback_task_id = Uuid::from_u128(0x33333333333333333333333333333333);
     let tool_use_id = encode_anthropic_callback_tool_use_id(callback_task_id, "toolu_read");
     let request = json!({
+        "model":"claude-fixture",
+        "max_tokens":64,
         "messages": [
             {
                 "role": "assistant",
@@ -249,11 +251,21 @@ fn ac_001_anthropic_tool_result_mixed_with_new_text_starts_a_new_run() {
         ]
     });
 
-    let resume = correlate_anthropic_callback(&request).expect("request should parse");
-
-    assert!(
-        resume.is_none(),
-        "mixed new user text must create a new run"
+    let resume = correlate_anthropic_callback(&request)
+        .expect("request should parse")
+        .expect("mixed context belongs to the current callback turn");
+    assert_eq!(resume.callback_task_id, callback_task_id);
+    assert_eq!(
+        resume.tool_results,
+        json!([{"tool_call_id":"toolu_read","content":"old result"}])
+    );
+    // The continuation consumes the whole translated request in addition to
+    // its tool receipts; the caller's new text remains model input.
+    let translated = translate_messages_request_with_context_window(request.clone(), None).unwrap();
+    assert_eq!(translated.request.query, "please answer the new question");
+    assert_eq!(
+        request["messages"][1]["content"][1]["text"],
+        "please answer the new question"
     );
 }
 

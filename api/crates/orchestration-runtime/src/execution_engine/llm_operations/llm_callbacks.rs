@@ -500,6 +500,9 @@ pub(super) fn append_llm_tool_result_messages(
     if let Some(system) = system {
         callback_state.insert("system".to_string(), system);
     }
+    if resume_payload.get("anthropic_continuation").is_some() {
+        callback_state.insert("verified_anthropic_context".into(), Value::Bool(true));
+    }
     callback_state.insert("history".to_string(), Value::Array(history));
     if resume_payload.get("anthropic_continuation").is_none() {
         if let Some(response_id) = response_id {
@@ -717,10 +720,25 @@ pub(super) fn pending_llm_tool_callback_delta_messages(
         .cloned()
 }
 
+pub(super) fn pending_llm_tool_callback_uses_rebuilt_system(
+    node: &CompiledNode,
+    variable_pool: &Map<String, Value>,
+) -> bool {
+    pending_llm_tool_callback_state(variable_pool, &node.node_id)
+        .and_then(|state| state.get("verified_anthropic_context"))
+        == Some(&Value::Bool(true))
+}
+
 pub(super) fn pending_llm_tool_callback_system(
     node: &CompiledNode,
     variable_pool: &Map<String, Value>,
 ) -> Result<Option<Vec<NativePromptBlock>>, Value> {
+    // The current binding/context policy already rebuilt all instruction
+    // owners, including an intentionally empty effective system. Falling back
+    // to the stored transcript would bypass that policy.
+    if pending_llm_tool_callback_uses_rebuilt_system(node, variable_pool) {
+        return Ok(None);
+    }
     if let Some(system) = pending_llm_tool_callback_state(variable_pool, &node.node_id)
         .and_then(|state| state.get("system"))
     {

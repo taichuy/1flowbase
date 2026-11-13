@@ -255,7 +255,7 @@ async fn dispatch_message(
             anthropic_protocol_context_from_ingress(uri.query(), &headers, &restored_source, None)
                 .expect("captured Anthropic source always has protocol context");
         match control_plane::application_public_api::anthropic_continuation::verify_anthropic_continuation(
-            &state.store, &actor, resume.callback_task_id, command.response_payload["tool_results"].clone(), restored_source, envelope,
+            &state.store, &actor, resume.callback_task_id, command.response_payload["tool_results"].clone(), restored_source, envelope, anthropic_context_window_request(&headers),
         ).await {
             Ok(grant) => {
                 command.response_payload = grant.payload().clone();

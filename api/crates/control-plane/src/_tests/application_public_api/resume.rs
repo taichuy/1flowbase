@@ -1023,7 +1023,7 @@ mod tests {
             .authenticate_bearer_token(&token)
             .await
             .unwrap();
-        let source = json!({"model":"claude-fixture[1M]","max_tokens":100,"system":"current system",
+        let source = json!({"model":"claude-fixture","max_tokens":100,"system":"current system",
         "tools":[{"name":"Read","input_schema":{"type":"object"}}],
         "messages":[
             {"role":"user","content":"read source"},
@@ -1032,6 +1032,9 @@ mod tests {
             {"role":"user","content":"new instruction"}
         ]});
         let results = json!([{"tool_call_id":"a","content":"file"}]);
+        let ingress_context_window = crate::application_public_api::compat::anthropic::AnthropicContextWindowRequest::from_beta_values(["context-1m-2025-08-07"]);
+        assert!(ingress_context_window.is_some());
+
         let envelope = capture_source_protocol_request_body(
             ClientProtocolIngressPolicy::AnthropicMessages,
             &source,
@@ -1044,6 +1047,7 @@ mod tests {
             results.clone(),
             source.clone(),
             envelope,
+            ingress_context_window,
         )
         .await
         .unwrap();
@@ -1075,7 +1079,8 @@ mod tests {
             callback.id,
             results.clone(),
             source.clone(),
-            envelope
+            envelope,
+            ingress_context_window,
         )
         .await
         .unwrap_err()
@@ -1113,6 +1118,7 @@ mod tests {
             results.clone(),
             source.clone(),
             retry_envelope,
+            ingress_context_window,
         )
         .await
         .unwrap();
@@ -1135,6 +1141,7 @@ mod tests {
             results,
             changed,
             envelope,
+            ingress_context_window,
         )
         .await
         .unwrap();

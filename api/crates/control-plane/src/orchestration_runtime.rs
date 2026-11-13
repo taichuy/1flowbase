@@ -678,10 +678,12 @@ where
             input.waiting_node_run_id,
         )
         .await?;
-        let mut continuation_snapshot = input.snapshot.clone();
-        if let Some(value) = input.resume_payload.get("anthropic_continuation") {
+        let continuation_snapshot = if let Some(value) =
+            input.resume_payload.get("anthropic_continuation")
+        {
             let continuation: domain::orchestration::AnthropicContinuation =
                 serde_json::from_value(value.clone())?;
+            let mut snapshot = input.snapshot.clone();
             let start_node_ids = input
                 .compiled_plan
                 .nodes
@@ -690,14 +692,17 @@ where
                 .map(|node| node.node_id.clone())
                 .collect::<Vec<_>>();
             crate::application_public_api::anthropic_continuation::refresh_owned_anthropic_context(
-                &mut continuation_snapshot,
+                &mut snapshot,
                 &start_node_ids,
                 scoped_execution_id,
                 &continuation,
             )?;
-        }
+            Some(snapshot)
+        } else {
+            None
+        };
         let input = ResumeExecutionSegmentInput {
-            snapshot: &continuation_snapshot,
+            snapshot: continuation_snapshot.as_ref().unwrap_or(input.snapshot),
             ..input
         };
         let waiting_variable_pool =

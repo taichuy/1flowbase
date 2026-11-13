@@ -91,6 +91,7 @@ pub async fn verify_anthropic_continuation<R: ApplicationPublishedRunControlRepo
     tool_results: Value,
     source_body: Value,
     client_protocol_envelope: ProtocolContextEnvelope,
+    ingress_context_window: Option<super::compat::anthropic::AnthropicContextWindowRequest>,
 ) -> Result<VerifiedAnthropicContinuation> {
     let callback = repository
         .get_published_callback_task(callback_task_id)
@@ -131,8 +132,11 @@ pub async fn verify_anthropic_continuation<R: ApplicationPublishedRunControlRepo
         return Err(ControlPlaneError::Conflict("anthropic_callback_call_set_mismatch").into());
     }
     // Validate the entire request, including fields ignored by callback matching.
-    let translated = super::compat::anthropic::translate_messages_request(source_body.clone())
-        .map_err(|_| ControlPlaneError::InvalidInput("anthropic_continuation_request"))?;
+    let translated = super::compat::anthropic::translate_messages_request_with_context_window(
+        source_body.clone(),
+        ingress_context_window,
+    )
+    .map_err(|_| ControlPlaneError::InvalidInput("anthropic_continuation_request"))?;
     // Use the same Native prompt shape as a newly translated request; the
     // supplier's guarded source projection can then restore exact wire order.
     let mut ordered_messages = translated.request.history.clone();
@@ -185,6 +189,14 @@ pub(crate) fn refresh_owned_anthropic_context(
     continuation: &AnthropicContinuation,
 ) -> Result<()> {
     let refresh_pool = |pool: &mut serde_json::Map<String, Value>| {
+        let prompt_context = pool
+            .entry(
+                plugin_framework::provider_contract::NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY.into(),
+            )
+            .or_insert_with(|| json!({"system":[],"messages":[]}));
+        if let Some(prompt_context) = prompt_context.as_object_mut() {
+            prompt_context.insert("system".into(), continuation.system.clone());
+        }
         pool.insert(
             plugin_framework::provider_contract::NATIVE_MODEL_TOOL_CONTEXT_PAYLOAD_KEY.into(),
             continuation.model_tool_context.clone(),
@@ -201,6 +213,7 @@ pub(crate) fn refresh_owned_anthropic_context(
         }
         for node_id in start_node_ids {
             if let Some(start) = pool.get_mut(node_id).and_then(Value::as_object_mut) {
+                start.insert("system".into(), continuation.system.clone());
                 start.insert(
                     "tools".into(),
                     continuation.model_tool_context["tools"].clone(),
