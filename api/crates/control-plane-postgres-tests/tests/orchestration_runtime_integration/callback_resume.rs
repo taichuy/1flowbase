@@ -490,6 +490,7 @@ async fn tool_callback_inbox_replays_same_result_conflicts_on_difference_and_wai
             .await;
     let callback = waiting.callback_task.unwrap();
     let input = |results| CommitToolCallbackResultsInput {
+        anthropic_continuation: None,
         responses_continuation: None,
         scope_id: seeded.workspace_id,
         application_id: seeded.application_id,
@@ -569,6 +570,7 @@ async fn concurrent_identical_tool_results_have_one_round_advancement_owner() {
     let waiting = persist_callback_wait(&store, &seeded, &run, &node_run, 1, None, None).await;
     let callback = waiting.callback_task.unwrap();
     let input = CommitToolCallbackResultsInput {
+        anthropic_continuation: None,
         responses_continuation: None,
         scope_id: seeded.workspace_id,
         application_id: seeded.application_id,
@@ -968,6 +970,7 @@ async fn semantic_receipt_conflict_and_crash_retry_preserve_context_and_one_clai
             .is_none()
     );
     let command = ResumePublishedCallbackCommand {
+        anthropic_continuation: None,
         responses_continuation: Some(grant.clone()),
         transport_connection_scope: None,
         observation_context: None,
@@ -1018,6 +1021,7 @@ async fn semantic_receipt_conflict_and_crash_retry_preserve_context_and_one_clai
         .unwrap()
         .id;
     let input = CommitToolCallbackResultsInput {
+        anthropic_continuation: None,
         responses_continuation: Some(
             serde_json::from_value(grant.payload()["responses_continuation"].clone()).unwrap(),
         ),

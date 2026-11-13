@@ -142,6 +142,7 @@ async fn callback_cache_hit_and_miss_execute_frozen_old_plan() {
         let service = service.with_published_plan_cache(cache.clone());
         let completed = service
             .complete_callback_task(CompleteCallbackTaskCommand {
+                anthropic_continuation: None,
                 responses_continuation: None,
                 transport_connection_scope: None,
                 observation_context: None,
@@ -175,6 +176,7 @@ async fn callback_cache_hit_and_miss_execute_frozen_old_plan() {
         }
         let duplicate = service
             .complete_callback_task(CompleteCallbackTaskCommand {
+                anthropic_continuation: None,
                 responses_continuation: None,
                 transport_connection_scope: None,
                 observation_context: None,
@@ -286,6 +288,7 @@ async fn warm_callback_cache_does_not_bypass_permission() {
     cache.plans.lock().unwrap().insert(id, Arc::new(frozen));
     let service = service.with_published_plan_cache(cache);
     let command = CompleteCallbackTaskCommand {
+        anthropic_continuation: None,
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,
@@ -337,6 +340,7 @@ async fn callback_cache_error_propagates_before_completing_pending_task() {
     let service = service.with_published_plan_cache(Arc::new(FailingCache));
     let error = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            anthropic_continuation: None,
             responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,

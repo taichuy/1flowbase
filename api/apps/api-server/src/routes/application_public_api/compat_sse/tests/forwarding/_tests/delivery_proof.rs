@@ -59,6 +59,7 @@ pub(in super::super) async fn resume_waiting_callback(
         let resumed = state
             .store
             .commit_tool_callback_results(&control_plane::ports::CommitToolCallbackResultsInput {
+                anthropic_continuation: None,
                 responses_continuation: None,
                 scope_id,
                 application_id: run.application_id,
@@ -1208,6 +1209,7 @@ async fn inference_successor_selected_run_is_start_even_when_prior_callback_auth
         response_payload: json!({"tool_results":[]}),
         response_mode: Some("streaming".into()),
         native_transport: None,
+        anthropic_continuation: None,
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,

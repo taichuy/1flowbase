@@ -1,3 +1,5 @@
+mod anthropic_continuation;
+pub use anthropic_continuation::{callback_resume_payloads_match, AnthropicContinuation};
 mod responses_continuation;
 pub use responses_continuation::{
     ResponsesContinuation, ResponsesHistoryProof, ResponsesRoundEvidence,

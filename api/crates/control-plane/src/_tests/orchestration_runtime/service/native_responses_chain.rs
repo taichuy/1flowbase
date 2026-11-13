@@ -574,6 +574,7 @@ async fn semantic_callback_resume_with_preferred_sidecar_keeps_selected_semantic
         domain::FlowRunStatus::WaitingCallback
     );
     let completed = service.complete_callback_task(CompleteCallbackTaskCommand {
+        anthropic_continuation: None,
         responses_continuation:None, transport_connection_scope:None, observation_context:None,
         native_transport:Some(preferred_notice()), actor_user_id:seeded.actor_user_id,
         application_id:seeded.application_id, callback_task_id:waiting.callback_tasks[0].id,

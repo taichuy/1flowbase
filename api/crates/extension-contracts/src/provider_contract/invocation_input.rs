@@ -322,6 +322,12 @@ impl ProviderInvocationInput {
                 .insert(ProviderGenerateTranslationDecision::OmittedEndUserReference);
         }
 
+        super::protocol_context::validate_source_tool_projection(
+            invocation.client_protocol_envelope.as_ref(),
+            &declared_capabilities,
+        )
+        .map_err(|message| ProviderGenerateProjectionError::InvalidContract { message })?;
+
         if project_protocol_context_envelope(
             &mut invocation.client_protocol_envelope,
             &mut invocation.required_capabilities,

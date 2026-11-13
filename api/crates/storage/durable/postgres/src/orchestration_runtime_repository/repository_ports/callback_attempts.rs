@@ -68,20 +68,31 @@ impl ApplicationPublishedCallbackAttemptRepository for PgControlPlaneStore {
         .bind(attempt_id)
         .fetch_optional(&mut *tx)
         .await?;
-        if stored.as_ref() != Some(&response_payload) {
+        if !stored.as_ref().is_some_and(|stored| {
+            domain::orchestration::callback_resume_payloads_match(stored, &response_payload)
+        }) {
             tx.rollback().await?;
             return Ok(None);
         }
         let row = sqlx::query(r#"
             update flow_run_callback_resume_attempts a set status = 'processing', updated_at = greatest(clock_timestamp(), a.updated_at + interval '1 microsecond'), completed_at = null
             where a.id = $1
-              and a.source = 'openai_responses'
-              and (a.response_payload ? 'responses_continuation' or exists (
-                  select 1 from flow_run_callback_tasks task
-                  where task.id = a.callback_task_id
-                    and task.callback_kind = 'llm_tool_calls'
-                    and task.status = 'completed'
-              ))
+              and ((a.source = 'openai_responses'
+                    and (a.response_payload ? 'responses_continuation' or exists (
+                        select 1 from flow_run_callback_tasks task
+                        where task.id = a.callback_task_id
+                          and task.callback_kind = 'llm_tool_calls'
+                          and task.status = 'completed'
+                    )))
+                   or (a.source = 'anthropic_messages'
+                       and jsonb_typeof(a.response_payload -> 'anthropic_continuation') = 'object'
+                       and exists (
+                           select 1 from flow_run_callback_tasks task
+                           where task.id = a.callback_task_id
+                             and task.flow_run_id = a.flow_run_id
+                             and task.callback_kind = 'llm_tool_calls'
+                             and task.status in ('pending', 'completed')
+                       )))
               and (a.status = 'received' or (a.status = 'processing' and a.updated_at <= now() - interval '5 minutes'))
               and not exists (select 1 from flow_run_resume_claims c where c.callback_task_id = a.callback_task_id
                               and c.status = 'processing' and c.lease_expires_at > now())

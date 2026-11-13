@@ -218,10 +218,12 @@ fn anthropic_resume_rejects_mixed_callback_groups() {
 }
 
 #[test]
-fn ac_001_anthropic_tool_result_mixed_with_new_text_starts_a_new_run() {
+fn ac_001_anthropic_tool_result_mixed_with_new_text_resumes_same_callback() {
     let callback_task_id = Uuid::from_u128(0x33333333333333333333333333333333);
     let tool_use_id = encode_anthropic_callback_tool_use_id(callback_task_id, "toolu_read");
     let request = json!({
+        "model":"claude-fixture",
+        "max_tokens":64,
         "messages": [
             {
                 "role": "assistant",
@@ -249,11 +251,21 @@ fn ac_001_anthropic_tool_result_mixed_with_new_text_starts_a_new_run() {
         ]
     });
 
-    let resume = correlate_anthropic_callback(&request).expect("request should parse");
-
-    assert!(
-        resume.is_none(),
-        "mixed new user text must create a new run"
+    let resume = correlate_anthropic_callback(&request)
+        .expect("request should parse")
+        .expect("mixed context belongs to the current callback turn");
+    assert_eq!(resume.callback_task_id, callback_task_id);
+    assert_eq!(
+        resume.tool_results,
+        json!([{"tool_call_id":"toolu_read","content":"old result"}])
+    );
+    // The continuation consumes the whole translated request in addition to
+    // its tool receipts; the caller's new text remains model input.
+    let translated = translate_messages_request_with_context_window(request.clone(), None).unwrap();
+    assert_eq!(translated.request.query, "please answer the new question");
+    assert_eq!(
+        request["messages"][1]["content"][1]["text"],
+        "please answer the new question"
     );
 }
 
@@ -617,4 +629,103 @@ fn anthropic_title_prompt_is_regular_protocol_content() {
     .expect("client title prompts are ordinary Anthropic content");
     assert_eq!(translated.request.query, "continue");
     assert_eq!(translated.request.system.len(), 1);
+}
+
+#[test]
+fn anthropic_blocking_callback_usage_does_not_recount_prior_round() {
+    use crate::routes::application_public_api::openai::usage::ResponseUsageBaseline;
+    use control_plane::application_public_api::native::NativeUsage;
+    let mut run = blocking_run(NativeRunStatus::Succeeded);
+    run.usage = Some(NativeUsage {
+        prompt_tokens: Some(30606),
+        completion_tokens: Some(684),
+        cache_write_tokens: Some(6129),
+        cache_read_tokens: Some(1500),
+        ..Default::default()
+    });
+    let baseline = ResponseUsageBaseline::from_callback_payload(&json!({
+        "native_usage_baseline_source":"usage_ledger", "native_usage_baseline":{
+            "prompt_tokens":15187, "completion_tokens":604,
+            "cache_write_tokens":6129, "cache_read_tokens":500
+        }
+    }));
+    for _ in 0..2 {
+        let response =
+            to_anthropic_response_for_round(&run, "claude-fable-5-2".into(), &baseline).unwrap();
+        assert_eq!(response.usage.input_tokens, 15419);
+        assert_eq!(response.usage.output_tokens, 80);
+        assert_eq!(response.usage.cache_creation_input_tokens, 0);
+        assert_eq!(response.usage.cache_read_input_tokens, 1000);
+    }
+    assert_eq!(run.usage.unwrap().prompt_tokens, Some(30606));
+}
+
+#[test]
+fn anthropic_normal_ingress_projects_historical_callback_ids_without_rewriting_opaque_values() {
+    let first = encode_anthropic_callback_tool_use_id(Uuid::from_u128(91), "toolu_first");
+    let second = encode_anthropic_callback_tool_use_id(Uuid::from_u128(92), "toolu_second");
+    let source = json!({
+        "model":"claude-fixture","max_tokens":128,
+        "system":[{"type":"text","text":"source system","cache_control":{"type":"ephemeral"}}],
+        "messages":[
+            {"role":"user","content":"first question"},
+            {"role":"assistant","content":[{"type":"tool_use","id":first,"name":"Read","input":{"id":first,"tool_use_id":second,"opaque":{"type":"tool_use","id":second}}}]},
+            {"role":"user","content":[{"type":"tool_result","tool_use_id":first,"content":first}]},
+            {"role":"assistant","content":[{"type":"tool_use","id":second,"name":"Read","input":{"id":second}}]},
+            {"role":"user","content":[{"type":"tool_result","tool_use_id":second,"content":[{"type":"text","text":second}]}]},
+            {"role":"assistant","content":"prior rounds complete"},
+            {"role":"user","content":"new ordinary turn"}
+        ]
+    });
+    let original_ingress = source.clone();
+    assert!(
+        correlate_anthropic_callback(&source).unwrap().is_none(),
+        "historical receipts must remain a normal new-turn request"
+    );
+    let translated = translate_messages_request_with_context_window(source.clone(), None).unwrap();
+    let report_before_projection = serde_json::to_value(&translated.report).unwrap();
+    let envelope = anthropic_protocol_context_from_ingress(
+        None,
+        &HeaderMap::new(),
+        &source,
+        translated.request.client_protocol_envelope.clone(),
+    )
+    .unwrap();
+    let projected = envelope
+        .source_request
+        .as_ref()
+        .unwrap()
+        .body
+        .as_ref()
+        .unwrap();
+    let mut expected = source.clone();
+    expected["messages"][1]["content"][0]["id"] = json!("toolu_first");
+    expected["messages"][2]["content"][0]["tool_use_id"] = json!("toolu_first");
+    expected["messages"][3]["content"][0]["id"] = json!("toolu_second");
+    expected["messages"][4]["content"][0]["tool_use_id"] = json!("toolu_second");
+    assert_eq!(projected,&expected, "only protocol tool identity fields may change; opaque input/result text and all other source fields stay exact");
+    assert_eq!(
+        source, original_ingress,
+        "observation retains the original request body"
+    );
+    assert_eq!(
+        serde_json::to_value(&translated.report).unwrap(),
+        report_before_projection,
+        "source projection must not rewrite the translation receipt"
+    );
+    let repeated =
+        anthropic_protocol_context_from_ingress(None, &HeaderMap::new(), projected, None).unwrap();
+    assert_eq!(
+        repeated.source_request.as_ref().unwrap().body.as_ref(),
+        Some(projected),
+        "callback-resume and new-turn source projection share an idempotent codec"
+    );
+    assert_eq!(
+        translated.request.history[1]["tool_calls"][0]["id"],
+        "toolu_first"
+    );
+    assert_eq!(
+        translated.request.history[4]["tool_call_id"],
+        "toolu_second"
+    );
 }

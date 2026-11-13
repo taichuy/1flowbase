@@ -473,6 +473,15 @@ pub(crate) fn anthropic_interface_projection(model: String) -> CompatibleProtoco
     CompatibleProtocolProjection::AnthropicMessages(AnthropicStreamMapper::new(model))
 }
 
+pub(crate) fn anthropic_resume_interface_projection(
+    model: String,
+    baseline: super::openai::usage::ResponseUsageBaseline,
+) -> CompatibleProtocolProjection {
+    CompatibleProtocolProjection::AnthropicMessages(
+        AnthropicStreamMapper::new(model).with_usage_baseline(baseline),
+    )
+}
+
 pub(crate) async fn prepare_compatible_resume_for_actor(
     state: Arc<ApiState>,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
@@ -519,6 +528,7 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
                 if native_tool_resume
                     || command.native_transport.is_some()
                     || command.responses_continuation.is_some()
+                    || command.anthropic_continuation.is_some()
                 {
                     match service
                         .reserve_native_callback_reservation_for_actor(actor.clone(), &command)
@@ -538,9 +548,10 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
                         }
                         Err(error)
                             if !retried_reservation_race
-                                && command.source
+                                && ((command.source
                                     == PublishedCallbackResumeSource::OpenAiResponses
-                                && command.native_transport.is_some()
+                                    && command.native_transport.is_some())
+                                    || command.anthropic_continuation.is_some())
                                 && error
                                     .downcast_ref::<control_plane::errors::ControlPlaneError>()
                                     .is_some_and(|error| {

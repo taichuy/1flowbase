@@ -120,5 +120,6 @@ use request_metadata::*;
 use validation::*;
 
 pub use content_mapping::anthropic_content_is_tool_result_only;
+pub(crate) use content_mapping::anthropic_history_entries;
 #[cfg(test)]
 mod tests;

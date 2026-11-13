@@ -971,11 +971,18 @@ impl PgControlPlaneStore {
         };
 
         let flow_run = map_flow_run_record(row)?;
-        if flow_run.status == domain::FlowRunStatus::Cancelled {
+        let unfinished_node_status = match &input.result {
+            CommitFlowRunTerminalResult::Cancelled { .. } => Some("cancelled"),
+            CommitFlowRunTerminalResult::InterruptedExecution { .. } => Some("failed"),
+            _ => None,
+        };
+        if let Some(node_status) = unfinished_node_status {
+            // Only the terminal CAS winner owns these writes. Preserve all node
+            // payloads (including lossless upstream errors) and completed traces.
             sqlx::query(
                 r#"
                 update node_runs
-                set status = 'cancelled',
+                set status = $3,
                     finished_at = coalesce(finished_at, $2)
                 where flow_run_id = $1
                   and status not in ('succeeded', 'failed', 'cancelled', 'skipped')
@@ -983,6 +990,7 @@ impl PgControlPlaneStore {
             )
             .bind(flow_run.id)
             .bind(input.finished_at)
+            .bind(node_status)
             .execute(&mut *tx)
             .await?;
         }
