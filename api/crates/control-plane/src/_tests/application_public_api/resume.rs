@@ -1124,8 +1124,17 @@ mod tests {
         .unwrap();
         command.response_payload = retry_grant.payload().clone();
         command.anthropic_continuation = Some(retry_grant);
+        assert!(matches!(
+            service.prepare_callback_resume(&command).await.unwrap(),
+            PreparedPublishedCallbackResume::Resume { .. }
+        ));
         let second = service.resume_callback(command.clone()).await.unwrap();
         assert_eq!(first.attempt.id, second.attempt.id);
+        assert_eq!(
+            second.attempt.response_payload, first.attempt.response_payload,
+            "SDK retry transport headers must not overwrite the original receipt"
+        );
+
         assert_eq!(consumer.call_count(), 1);
         let mut changed = source;
         changed["messages"][3]["content"] = json!("different instruction");

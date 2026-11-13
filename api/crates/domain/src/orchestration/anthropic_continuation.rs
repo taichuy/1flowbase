@@ -25,6 +25,20 @@ pub fn callback_resume_payloads_match(left: &Value, right: &Value) -> bool {
         {
             headers.retain(|name, _| !name.eq_ignore_ascii_case("x-stainless-retry-count"));
         }
+        // Typed envelopes omit empty header maps. A retry counter added to
+        // an otherwise headerless request must normalize back to that shape.
+        if let Some(envelope) = normalized
+            .pointer_mut("/anthropic_continuation/client_protocol_envelope")
+            .and_then(Value::as_object_mut)
+        {
+            if envelope
+                .get("headers")
+                .and_then(Value::as_object)
+                .is_some_and(serde_json::Map::is_empty)
+            {
+                envelope.remove("headers");
+            }
+        }
         normalized
     }
     left == right || semantic_payload(left) == semantic_payload(right)
@@ -63,6 +77,36 @@ mod tests {
             original["anthropic_continuation"]["client_protocol_envelope"]["headers"]
                 ["x-stainless-retry-count"],
             json!(["0"])
+        );
+    }
+    #[test]
+    fn sdk_counter_only_headers_match_an_original_headerless_envelope() {
+        let original = json!({"tool_results":[],"anthropic_continuation":{
+            "ordered_messages":[{"role":"user","content":"current instruction"}],
+            "client_protocol_envelope":{"source_protocol":"anthropic_messages"}
+        }});
+        let mut retry = original.clone();
+        retry["anthropic_continuation"]["client_protocol_envelope"]["headers"] =
+            json!({"x-stainless-retry-count":["1"]});
+        assert!(callback_resume_payloads_match(&original, &retry));
+        assert!(callback_resume_payloads_match(&retry, &original));
+        let mut changed = retry.clone();
+        changed["anthropic_continuation"]["client_protocol_envelope"]["headers"]
+            ["anthropic-beta"] = json!(["semantic-beta"]);
+        assert!(!callback_resume_payloads_match(&original, &changed));
+        let mut changed = retry.clone();
+        changed["anthropic_continuation"]["ordered_messages"][0]["content"] =
+            json!("different instruction");
+        assert!(!callback_resume_payloads_match(&original, &changed));
+        assert!(
+            original["anthropic_continuation"]["client_protocol_envelope"]
+                .get("headers")
+                .is_none()
+        );
+        assert_eq!(
+            retry["anthropic_continuation"]["client_protocol_envelope"]["headers"]
+                ["x-stainless-retry-count"],
+            json!(["1"])
         );
     }
 }
