@@ -297,6 +297,7 @@ async fn assert_terminal_callback_attach_scenario(
         response_payload: json!({"tool_results": []}),
         response_mode: Some("streaming".into()),
         native_transport: None,
+        anthropic_continuation: None,
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,

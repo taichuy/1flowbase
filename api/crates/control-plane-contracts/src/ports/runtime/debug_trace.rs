@@ -603,6 +603,7 @@ fn canonical_json(value: &serde_json::Value) -> String {
 
 #[derive(Debug, Clone)]
 pub struct CommitToolCallbackResultsInput {
+    pub anthropic_continuation: Option<domain::orchestration::AnthropicContinuation>,
     pub responses_continuation: Option<domain::orchestration::ResponsesContinuation>,
     pub scope_id: Uuid,
     pub application_id: Uuid,

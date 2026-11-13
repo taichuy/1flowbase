@@ -1,6 +1,7 @@
 /** Subscription activation, event publication, or delivery dequeue/handoff (not business completion). */
 export type EventTriggerPhase = 'subscribed' | 'published' | 'consumed';
 export type EventDefinitionOrigin = 'custom' | 'core' | 'plugin';
+export type EventDefinitionKind = 'interface' | 'communication_command';
 export type EventSourceScope =
   | { kind: 'workspace'; workspace_id: string }
   | { kind: 'system' }
@@ -128,6 +129,7 @@ export interface EventCatalogEntry {
   /** Registered declarations have no persisted creation or update time. */
   created_at?: string | null;
   updated_at?: string | null;
+  event_kind?: EventDefinitionKind;
   interface_event?: InterfaceEventBinding;
   /** The backend omits empty paths. */
   group_path?: string[];
@@ -144,13 +146,15 @@ export interface EventCatalogEntry {
   supported_phases: EventTriggerPhase[];
 }
 export interface CreateEventDefinitionInput {
+  event_kind?: EventDefinitionKind;
   name: string;
   description: string;
-  interface_event: InterfaceEventBinding;
+  interface_event?: InterfaceEventBinding;
   enabled: boolean;
 }
 export type UpdateEventDefinitionInput = CreateEventDefinitionInput;
 export interface EventDefinitionRecord {
+  event_kind?: EventDefinitionKind;
   interface_event?: InterfaceEventBinding;
   contract_id: string;
   payload_schema: Record<string, unknown> | boolean | null;

@@ -8,6 +8,8 @@ use control_plane_contracts::ports::{
 pub(super) struct SendAttemptObservation {
     pub result_kind: CommunicationSendResultKind,
     pub failure_code: Option<String>,
+    pub archive: bool,
+    pub receipt: Option<extension_contracts::NotificationSendReceipt>,
 }
 
 impl SendAttemptObservation {
@@ -15,6 +17,8 @@ impl SendAttemptObservation {
         Self {
             result_kind: CommunicationSendResultKind::Unknown,
             failure_code: Some("provider_result_unknown".into()),
+            archive: false,
+            receipt: None,
         }
     }
 }
@@ -28,6 +32,7 @@ impl<R: NotificationRepository> NotificationService<R> {
         source: NotificationSource,
         target: Option<extension_contracts::NotificationSendTarget>,
         attempt: SendAttemptObservation,
+        context: Option<control_plane_contracts::ports::CommunicationSendContext>,
     ) {
         let Some(observer) = &self.communication_lifecycle_observer else {
             return;
@@ -45,9 +50,11 @@ impl<R: NotificationRepository> NotificationService<R> {
                 workspace_id: actor.current_workspace_id,
                 instance_id,
                 send_log_id: Some(log_id),
-                input_id: None,
+                input_id: context.as_ref().map(|context| context.input_id),
                 turn_id: None,
-                conversation_id: None,
+                conversation_id: context
+                    .as_ref()
+                    .map(|context| context.scope.conversation_id),
                 type_code: log.as_ref().and_then(|log| log.type_code.clone()),
                 source: Some(source),
                 result_kind: attempt.result_kind,

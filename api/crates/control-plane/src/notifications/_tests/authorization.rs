@@ -1,6 +1,158 @@
 use super::*;
 
 #[test]
+fn correlated_send_receipt_projects_declared_identity_without_exempting_credentials() {
+    let mut descriptor = system_notification_descriptor();
+    descriptor.authorization = Some(
+        serde_json::from_value(json!({
+            "actions":[{"code":"qr","label":"Scan","kind":"qr_code"}],
+            "managed_secret_keys":["account_identity","bot_token"],
+            "managed_identity_keys":["account_identity"]
+        }))
+        .unwrap(),
+    );
+    descriptor.receive = Some(
+        serde_json::from_value(json!({
+            "contribution_id":"fixture.receive","supports_send_receipts":true,
+            "default_system_prompt":"Read channel history with scoped tools.","mcp_tools":[]
+        }))
+        .unwrap(),
+    );
+    let request_id = Uuid::now_v7().to_string();
+    let identity = "fixture-recipient";
+    let mut input: NotificationRuntimeInput = serde_json::from_value(json!({
+        "operation":{"type":"send","request_id":request_id,"input_payload":{"text":"Hello"},
+            "target":{"sender_id":identity,"conversation_id":identity,"provider_message_id":"inbound-1"}}
+    })).unwrap();
+    let managed = BTreeMap::from([
+        ("account_identity".into(), json!(identity)),
+        ("bot_token".into(), json!("private-bot-token")),
+    ]);
+    let empty = BTreeMap::new();
+    let public = json!({"receipt":{"request_id":request_id,"recipient_id":identity,
+        "conversation_id":identity,"client_message_id":"client-1"},"result":{"accepted":true}});
+    // The old whole-envelope guard falsely rejects a valid correlated send.
+    assert!(public_contains_credentials(
+        &public,
+        &descriptor,
+        &json!({}),
+        &managed,
+        &empty
+    ));
+    assert!(!send_result_contains_credentials(
+        &public,
+        &descriptor,
+        &json!({}),
+        &managed,
+        &empty,
+        &input
+    ));
+    assert!(!send_result_contains_credentials(
+        &public,
+        &descriptor,
+        &json!({}),
+        &empty,
+        &managed,
+        &input
+    ));
+    let mut legacy = descriptor.clone();
+    legacy
+        .authorization
+        .as_mut()
+        .unwrap()
+        .managed_identity_keys
+        .clear();
+    assert!(send_result_contains_credentials(
+        &public,
+        &legacy,
+        &json!({}),
+        &managed,
+        &empty,
+        &input
+    ));
+    for (path, value) in [
+        ("/receipt/client_message_id", identity),
+        ("/receipt/provider_message_id", identity),
+        ("/result/text", identity),
+        ("/receipt/client_message_id", "private-bot-token"),
+        ("/receipt/recipient_id", "private-bot-token"),
+    ] {
+        let mut unsafe_output = public.clone();
+        let (parent, key) = path.rsplit_once('/').unwrap();
+        unsafe_output
+            .pointer_mut(parent)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .insert(key.into(), json!(value));
+        assert!(
+            send_result_contains_credentials(
+                &unsafe_output,
+                &descriptor,
+                &json!({}),
+                &managed,
+                &empty,
+                &input
+            ),
+            "{path}"
+        );
+    }
+    let mut wrong = public.clone();
+    wrong["receipt"]["request_id"] = json!(Uuid::now_v7());
+    assert!(send_result_contains_credentials(
+        &wrong,
+        &descriptor,
+        &json!({}),
+        &managed,
+        &empty,
+        &input
+    ));
+    wrong = public.clone();
+    wrong["receipt"]["conversation_id"] = json!("another-conversation");
+    assert!(send_result_contains_credentials(
+        &wrong,
+        &descriptor,
+        &json!({}),
+        &managed,
+        &empty,
+        &input
+    ));
+    // A credential that happens to equal the identity is still a credential.
+    let mut collision = managed.clone();
+    collision.insert("bot_token".into(), json!(identity));
+    assert!(send_result_contains_credentials(
+        &public,
+        &descriptor,
+        &json!({}),
+        &collision,
+        &empty,
+        &input
+    ));
+    descriptor.config_form=serde_json::from_value(json!({"schema_version":"1.0.0","fields":[{"key":"password","label":"Password","type":"string","control":"password"}]})).unwrap();
+    assert!(send_result_contains_credentials(
+        &public,
+        &descriptor,
+        &json!({"password":identity}),
+        &managed,
+        &empty,
+        &input
+    ));
+    if let NotificationOperation::Send { target, .. } = &mut input.operation {
+        *target = None;
+    }
+    // Proactive sends may disclose the exact declared account identity only in the same
+    // correlated standard receipt fields, without creating a fictitious inbound target.
+    assert!(!send_result_contains_credentials(
+        &public,
+        &descriptor,
+        &json!({}),
+        &managed,
+        &empty,
+        &input
+    ));
+}
+
+#[test]
 fn opted_in_legacy_account_projects_unknown_without_changing_other_channels() {
     let view: NotificationAuthorizationView =
         serde_json::from_value(json!({"status":"authorized"})).unwrap();

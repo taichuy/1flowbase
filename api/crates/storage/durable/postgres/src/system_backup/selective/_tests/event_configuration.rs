@@ -30,6 +30,7 @@ async fn selective_event_and_application_configuration_roundtrip_without_cross_o
         .unwrap();
     let now = OffsetDateTime::now_utc();
     let mut definition = EventDefinitionRecord {
+        event_kind: None,
         interface_event: None,
 
         id: Uuid::now_v7(),

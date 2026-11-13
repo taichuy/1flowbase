@@ -92,8 +92,8 @@ export function createStyleBoundaryCommandBindingResponse() {
     file_table_id: null,
     mcp_instance_ids: ['style-chat-tools'],
     system_prompt: '协助处理团队工作与聊天消息。',
-    event_commands: [],
-    command_settings: declarations.map(({ command_id, enabled }) => ({
+    commands: declarations.map(({ command_id, enabled }) => ({
+      kind: 'registered',
       command_id,
       enabled
     }))
@@ -106,8 +106,10 @@ export function createStyleBoundaryCommandBindingResponse() {
       .map((command) => ({
         ...command,
         enabled: instance_id
-          ? (binding.command_settings.find(
-              (setting) => setting.command_id === command.command_id
+          ? (binding.commands.find(
+              (setting) =>
+                setting.kind === 'registered' &&
+                setting.command_id === command.command_id
             )?.enabled ?? command.enabled)
           : command.enabled,
         ...(command.command_id === 'host/model' &&

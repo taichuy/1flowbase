@@ -315,6 +315,57 @@ pub(super) fn public_contains_credentials(
     managed: &BTreeMap<String, Value>,
     patch: &BTreeMap<String, Value>,
 ) -> bool {
+    public_contains_credentials_with_receipt(public, descriptor, config, managed, patch, None)
+}
+
+pub(super) fn send_result_contains_credentials(
+    public: &Value,
+    descriptor: &NotificationTypeDescriptor,
+    config: &Value,
+    managed: &BTreeMap<String, Value>,
+    patch: &BTreeMap<String, Value>,
+    input: &NotificationRuntimeInput,
+) -> bool {
+    let receipt = match &input.operation {
+        NotificationOperation::Send {
+            request_id: Some(request_id),
+            target,
+            ..
+        } if descriptor
+            .receive
+            .as_ref()
+            .is_some_and(|receive| receive.supports_send_receipts) =>
+        {
+            public
+                .get("receipt")
+                .and_then(|value| {
+                    serde_json::from_value::<extension_contracts::NotificationSendReceipt>(
+                        value.clone(),
+                    )
+                    .ok()
+                })
+                .filter(|receipt| receipt.validate_for(request_id, target.as_ref()).is_ok())
+        }
+        _ => None,
+    };
+    public_contains_credentials_with_receipt(
+        public,
+        descriptor,
+        config,
+        managed,
+        patch,
+        receipt.as_ref(),
+    )
+}
+
+fn public_contains_credentials_with_receipt(
+    public: &Value,
+    descriptor: &NotificationTypeDescriptor,
+    config: &Value,
+    managed: &BTreeMap<String, Value>,
+    patch: &BTreeMap<String, Value>,
+    receipt: Option<&extension_contracts::NotificationSendReceipt>,
+) -> bool {
     fn reflects(public: &Value, secret: &Value) -> bool {
         match secret {
             Value::String(value) => !value.is_empty() && contains_secret(public, value),
@@ -328,8 +379,34 @@ pub(super) fn public_contains_credentials(
         .filter_map(|key| config.get(key))
         .any(|secret| reflects(public, secret))
         || managed.iter().chain(patch.iter()).any(|(key, secret)| {
+            let mut projected = public.clone();
+            if descriptor
+                .authorization
+                .as_ref()
+                .is_some_and(|authorization| authorization.managed_identity_keys.contains(key))
+            {
+                if let (Some(identity), Some(receipt)) = (secret.as_str(), receipt) {
+                    if let Some(fields) =
+                        projected.get_mut("receipt").and_then(Value::as_object_mut)
+                    {
+                        // This is a field-local projection, never a global secret exemption.
+                        // Config passwords, tokens and all other receipt/result fields retain
+                        // the full check even when they happen to equal an account identity.
+                        for (field, actual) in [
+                            ("recipient_id", &receipt.recipient_id),
+                            ("conversation_id", &receipt.conversation_id),
+                        ] {
+                            if actual == identity
+                                && fields.get(field).and_then(Value::as_str) == Some(identity)
+                            {
+                                fields.remove(field);
+                            }
+                        }
+                    }
+                }
+            }
             if key != "qr_code_url" && key != "qr_credential" {
-                return reflects(public, secret);
+                return reflects(&projected, secret);
             }
             // A QR URL intentionally encodes its challenge. Only the exact cached URL
             // in the authorization display field may reveal qr_credential/qr_code_url;
@@ -337,7 +414,6 @@ pub(super) fn public_contains_credentials(
             let display_url = patch
                 .get("qr_code_url")
                 .or_else(|| managed.get("qr_code_url"));
-            let mut projected = public.clone();
             for action in ["/user_action", "/authorization/user_action"] {
                 if let Some(action) = projected.pointer_mut(action) {
                     if display_url.is_some() && action.get("qr_code_url") == display_url {

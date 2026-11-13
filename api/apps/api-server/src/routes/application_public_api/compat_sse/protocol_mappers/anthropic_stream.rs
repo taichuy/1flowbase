@@ -30,6 +30,7 @@ impl AnthropicMessageStopReason {
 
 pub(crate) struct AnthropicStreamMapper {
     model: String,
+    usage_baseline: crate::routes::application_public_api::openai::usage::ResponseUsageBaseline,
     message_id: String,
     next_content_index: u32,
     active_content: Option<AnthropicContentBlockKind>,
@@ -42,6 +43,7 @@ impl AnthropicStreamMapper {
     pub(in crate::routes::application_public_api::compat_sse) fn new(model: String) -> Self {
         Self {
             model,
+            usage_baseline: Default::default(),
             message_id: format!("msg_{}", Uuid::now_v7()),
             next_content_index: 0,
             active_content: None,
@@ -49,6 +51,14 @@ impl AnthropicStreamMapper {
             stream_state: AnthropicStreamState::Open,
             message_start_emitted: false,
         }
+    }
+
+    pub(in crate::routes::application_public_api::compat_sse) fn with_usage_baseline(
+        mut self,
+        baseline: crate::routes::application_public_api::openai::usage::ResponseUsageBaseline,
+    ) -> Self {
+        self.usage_baseline = baseline;
+        self
     }
 
     pub(in crate::routes::application_public_api::compat_sse) fn runtime_event_to_sse(
@@ -120,7 +130,7 @@ impl AnthropicStreamMapper {
                             "model": self.model,
                             "content": [],
                             "stop_reason": null,
-                            "usage": anthropic_message_start_usage_payload(initial_run.usage.as_ref())
+                            "usage": anthropic_message_start_usage_payload(self.usage_baseline.native_round(initial_run.usage.as_ref()).as_ref())
                         }
                     }),
                 )]
@@ -229,6 +239,7 @@ impl AnthropicStreamMapper {
             return Vec::new();
         }
         let mut events = Vec::new();
+        let usage = self.usage_baseline.native_round(usage);
         let stop_reason = self.terminal_stop_reason.as_str();
         if self.active_content.is_none() && self.next_content_index == 0 {
             events.extend(self.ensure_anthropic_content_block(AnthropicContentBlockKind::Text));
@@ -239,7 +250,7 @@ impl AnthropicStreamMapper {
             json!({
                 "type": "message_delta",
                 "delta": {"stop_reason": stop_reason},
-                "usage": anthropic_message_delta_usage_payload(usage)
+                "usage": anthropic_message_delta_usage_payload(usage.as_ref())
             }),
         ));
         events.push(event_json_sse(
@@ -259,6 +270,7 @@ impl AnthropicStreamMapper {
             return Some(Vec::new());
         }
         let blocks = anthropic_tool_use_blocks_from_waiting_payload(payload)?;
+        let usage = self.usage_baseline.native_round(usage);
         let mut events = self.close_active_anthropic_content_block();
         for block in blocks {
             let index = self.next_content_index;
@@ -300,7 +312,7 @@ impl AnthropicStreamMapper {
             json!({
                 "type": "message_delta",
                 "delta": {"stop_reason": "tool_use"},
-                "usage": anthropic_message_delta_usage_payload(usage)
+                "usage": anthropic_message_delta_usage_payload(usage.as_ref())
             }),
         ));
         events.push(event_json_sse(

@@ -61,7 +61,7 @@ async fn published_workflow(fixture: &Fixture, definition: &EventDefinitionRecor
             actor_user_id: actor.user_id,
             application_id: application.id,
             mapping: ApplicationApiMappingConfig::default_native(),
-            api_enabled: false,
+            api_enabled: true,
         })
         .await
         .unwrap();
@@ -152,7 +152,7 @@ async fn command_receipt_runs_real_event_worker_and_persists_mapped_workflow_res
         let command = fixture.state.notification_service.command_for_input(&scope, input)
             .await.unwrap().unwrap();
         assert_eq!(command.failure_code, None);
-        assert!(command.reply.unwrap().text.contains("1 targets accepted, 0 targets rejected"));
+        assert!(command.reply.is_none());
         let outcome = loop {
             if let Some(row) = statuses.snapshot(fixture.key.0).into_iter().find(|row| {
                 row.application_id == application_id && row.last_delivery == Some("succeeded")
@@ -205,7 +205,10 @@ async fn command_receipt_runs_real_event_worker_and_persists_mapped_workflow_res
         .unwrap();
     match completed {
         Ok(result) => {
-            result.expect("joined command to event workflow path must complete deterministically")
+            result.unwrap_or_else(|error| panic!(
+                "joined command to event workflow path must complete deterministically: {error}; statuses: {:?}; events: {:?}",
+                statuses.snapshot(fixture.key.0), fixture.state.event_center.snapshot(fixture.key.0)
+            ))
         }
         Err(panic) => std::panic::resume_unwind(panic),
     }

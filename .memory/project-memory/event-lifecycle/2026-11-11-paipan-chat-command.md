@@ -1,12 +1,24 @@
 ---
 memory_type: project
 topic: paipan-chat-command
-summary: Issue #2821 已按半机预算编译成功并更新本地7800/3100；真实聊天事件创建/读取/编辑及Notification导入预览已通过，完整计算与发送仍待接通。
+summary: Issue #2821 后续已接通独立排盘指令/报告与历史；用户批准回收worktree后整合到dev，插件内置MCP、按需图片和终端处理已通过有限验证，待真实微信发图验收。
 created_at: 2026-11-11 15
-updated_at: 2026-11-11 17
+updated_at: 2026-11-13 11
 decision_policy: verify_before_decision
 scope: [communications, events, workflow, taichuy-calendar]
 ---
+
+## Latest Scope And Evidence (2026-11-13)
+
+本节覆盖下方2026-11-11阶段运行状态；旧PID/草稿/“未接通”描述只作历史线索，不得据此重复实现。
+
+- 用户明确批准将回收归档任务改动整合到 `/home/taichuy/git/1flowbase` 的 `dev` 继续完成。原worktree已因磁盘回收，不重建；当前7800和3100运行已整合dev，7600仍只读不动。任务改动未commit/push。
+- 真实 `/paipan`、`/ziwei` 已分别为独立事件/工作流/单份报告；用户此前已确认报告收件。最新binding读回两者enabled/available，原应用/模型/思考强度/文件表/commands保留。
+- 用户再次明确图片不自动注入。固定插件MCP实例ID和名称 `wechat-chat-channels`，插件激活/升级强制覆盖完整图并移除旧工具，自选1flowbase保留。历史/关键词/文件元信息/原生view_image开放；终端仍需用户独立授权MCP。
+- dev集成run `01a1d2d9-81a9-73dc-ae82-1cc1649d6a86` 实际file_info/view_image后模型收到image/png并正确回答“微信通知”；另一run实际发现terminal_info、下载788394字节并同路径读图。聊天自动授权预览2475×1185，未创建公开链接。
+- 最新必要构建半机预算5m36s成功；未跑质量门禁/完整套件，fresh只读QA未发现确定源码blocker。临时key撤销，Mock渠道停用，本轮Mock MCP实例/6工具移除，终端文件及临时session回收；未代发微信。
+- 本地安装候选保持旧family wechat-notification@3.0.5，用本地匹配SDK；外部插件源码wechat-chat-channels@3.1.5尚未正式发布，正式发布前需同步SDK revision。
+- 证据与文件职责 `tmp/test-governance/issue-2821/integration/acceptance.md`；Issue #2821继续开放，下一步由用户真实微信发图确认。截止日期未指定，授权不包含改动7600或擅自代发消息。
 
 ## Approved Scope
 

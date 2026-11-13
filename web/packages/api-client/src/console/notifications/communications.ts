@@ -24,6 +24,9 @@ export interface CommunicationEventCommandBinding {
   contract_id: string;
   input_mapping: Record<string, string>;
 }
+export type CommunicationCommandConfiguration =
+  | ({ kind: 'registered' } & CommunicationCommandSetting)
+  | ({ kind: 'event' } & CommunicationEventCommandBinding);
 export interface CommunicationBindingInput {
   application_id: string;
   model: string | null;
@@ -31,8 +34,7 @@ export interface CommunicationBindingInput {
   file_table_id: string | null;
   mcp_instance_ids: string[];
   system_prompt: string;
-  command_settings: CommunicationCommandSetting[];
-  event_commands: CommunicationEventCommandBinding[];
+  commands: CommunicationCommandConfiguration[];
 }
 export interface CommunicationBindingRecord extends CommunicationBindingInput {
   workspace_id: string;
@@ -78,7 +80,13 @@ export interface CommunicationFile {
 export interface CommunicationMessage {
   id: string;
   conversation_id: string;
-  input_id: string;
+  input_id: string | null;
+  reply_to: {
+    provider_message_id: string | null;
+    message_id: string | null;
+    title: string | null;
+    text: string | null;
+  } | null;
   instance_id: string;
   instance_display_name: string | null;
   external_identity: string;
@@ -274,5 +282,25 @@ export const listCommunicationChatMessages = (
 ) =>
   apiFetch<CommunicationPage<CommunicationMessage>>({
     path: `${path}/conversations/${encodeURIComponent(conversation_id)}/messages?${query(input)}`,
+    signal
+  });
+
+export interface CommunicationFileInfo {
+  message: CommunicationMessage;
+  file_table_id?: string;
+  file_record_id?: string;
+  file_name?: string;
+  media_type?: string;
+  size_bytes?: number;
+  url: string | null;
+  preview_url: string | null;
+}
+export const getCommunicationFileInfo = (
+  id: string,
+  message_id: string,
+  signal?: AbortSignal
+) =>
+  apiFetch<CommunicationFileInfo>({
+    path: `${instancePath(id)}/files/${encodeURIComponent(message_id)}/info`,
     signal
   });

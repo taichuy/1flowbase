@@ -6,6 +6,7 @@ use std::{collections::BTreeMap, sync::Mutex};
 struct MemoryRepository {
     definitions: Mutex<Vec<EventDefinitionRecord>>,
     triggers: Mutex<Vec<WorkflowEventTriggerRecord>>,
+    catalog: Mutex<Vec<EventCatalogEntry>>,
 }
 #[async_trait]
 impl EventCenterRepository for MemoryRepository {
@@ -121,6 +122,14 @@ impl EventCatalogRepository for MemoryRepository {
             .into_iter()
             .map(EventCatalogEntry::from)
             .collect::<Vec<_>>();
+        entries.extend(
+            self.catalog
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|entry| source_visible(actor, &entry.scope))
+                .cloned(),
+        );
         query.sort(&mut entries);
         Ok(entries)
     }
@@ -131,14 +140,71 @@ fn actor() -> ActorContext {
 }
 fn input() -> CreateEventDefinitionInput {
     CreateEventDefinitionInput {
+        event_kind: domain::event_center::EventDefinitionKind::Interface,
         name: "Order interface observed".into(),
         description: String::new(),
         enabled: true,
-        interface_event: InterfaceEventBinding::legacy(
+        interface_event: Some(InterfaceEventBinding::legacy(
             "orders.create",
             InterfaceEventPhase::Before,
-        ),
+        )),
     }
+}
+
+#[tokio::test]
+async fn command_events_have_a_source_owned_schema_and_an_immutable_kind() {
+    let owner = actor();
+    let outsider = actor();
+    let service = EventCenterConfigurationService::new(MemoryRepository::default());
+    let input = CreateEventDefinitionInput {
+        event_kind: EventDefinitionKind::CommunicationCommand,
+        name: "Paipan requested".into(),
+        description: String::new(),
+        interface_event: None,
+        enabled: true,
+    };
+    let created = service
+        .create_definition(&owner, input.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        created.event_kind,
+        Some(EventDefinitionKind::CommunicationCommand)
+    );
+    assert!(created.interface_event.is_none());
+    assert_eq!(created.payload_schema, communication_command_event_schema());
+    assert!(created
+        .contract_id
+        .starts_with("custom.communication_command."));
+    assert!(service.get_definition(&outsider, created.id).await.is_err());
+    let entry = service.catalog(&owner).await.unwrap().pop().unwrap();
+    assert_eq!(entry.group_path, vec!["communication_commands"]);
+    let update = UpdateEventDefinitionInput {
+        event_kind: EventDefinitionKind::CommunicationCommand,
+        name: "Renamed".into(),
+        description: String::new(),
+        interface_event: None,
+        enabled: false,
+    };
+    let disabled = service
+        .update_definition(&owner, created.id, update.clone())
+        .await
+        .unwrap();
+    assert!(!disabled.enabled);
+    assert_eq!(disabled.contract_id, created.contract_id);
+    assert_eq!(disabled.payload_schema, created.payload_schema);
+    let mut forged = input;
+    forged.interface_event = Some(InterfaceEventBinding::api(
+        "orders.create",
+        InterfaceEventPhase::Before,
+    ));
+    assert!(service.create_definition(&owner, forged).await.is_err());
+    let mut changed_kind = update;
+    changed_kind.event_kind = EventDefinitionKind::Interface;
+    assert!(service
+        .update_definition(&owner, created.id, changed_kind)
+        .await
+        .is_err());
 }
 fn trigger_input() -> WorkflowEventTriggerInput {
     WorkflowEventTriggerInput {
@@ -156,7 +222,7 @@ fn declared_service(owner: &ActorContext) -> EventCenterConfigurationService<Mem
         },
         vec![EventTriggerPhase::Published],
     );
-    entry.interface_event = Some(input().interface_event);
+    entry.interface_event = input().interface_event;
     entry.payload_schema = interface_event_schema(
         InterfaceEventPhase::Before,
         serde_json::json!({"type":"object","properties":{"order_id":{"type":"string"}},"required":["order_id"],"additionalProperties":false}),
@@ -175,7 +241,7 @@ async fn rules_inherit_declared_schema_and_keep_workspace_identity() {
     let service = declared_service(&owner);
     let created = service.create_definition(&owner, input()).await.unwrap();
     assert!(created.contract_id.starts_with("custom.interface."));
-    assert_eq!(created.interface_event, Some(input().interface_event));
+    assert_eq!(created.interface_event, input().interface_event);
     assert_eq!(
         created.payload_schema["properties"]["input"]["properties"]["order_id"]["type"],
         "string"
@@ -186,6 +252,7 @@ async fn rules_inherit_declared_schema_and_keep_workspace_identity() {
             &owner,
             created.id,
             UpdateEventDefinitionInput {
+                event_kind: domain::event_center::EventDefinitionKind::Interface,
                 name: "Renamed".into(),
                 description: String::new(),
                 interface_event: input().interface_event,
@@ -220,13 +287,18 @@ async fn absent_interface_and_invalid_before_result_filter_are_rejected() {
     );
     let service = declared_service(&owner);
     let mut value = input();
-    value.interface_event = value
-        .interface_event
-        .with_results(vec![InterfaceEventTerminal::Failed]);
+    value.interface_event = Some(
+        value
+            .interface_event
+            .unwrap()
+            .with_results(vec![InterfaceEventTerminal::Failed]),
+    );
     assert!(service.create_definition(&owner, value).await.is_err());
     let mut value = input();
-    value.interface_event =
-        InterfaceEventBinding::legacy("undeclared", InterfaceEventPhase::Before);
+    value.interface_event = Some(InterfaceEventBinding::legacy(
+        "undeclared",
+        InterfaceEventPhase::Before,
+    ));
     assert!(service.create_definition(&owner, value).await.is_err());
     let mut value = input();
     value.name = "  ".into();
@@ -282,7 +354,10 @@ async fn source_selection_authorizes_scope_and_matches_identity_before_phase() {
         source_entry(EventSourceScope::System, vec![EventTriggerPhase::Published]),
     ];
     let service = EventCenterConfigurationService::with_registered_events(
-        MemoryRepository::default(),
+        MemoryRepository {
+            catalog: Mutex::new(entries.clone()),
+            ..MemoryRepository::default()
+        },
         owner.current_workspace_id,
         entries.clone(),
     );
@@ -364,7 +439,8 @@ async fn unchanged_rule_can_be_disabled_after_its_interface_is_removed() {
     let actor = actor();
     let repository = MemoryRepository::default();
     let mut record = EventDefinitionRecord {
-        interface_event: Some(input().interface_event),
+        event_kind: None,
+        interface_event: input().interface_event,
         id: Uuid::now_v7(),
         workspace_id: actor.current_workspace_id,
         contract_id: "custom.interface.removed".into(),
@@ -379,9 +455,10 @@ async fn unchanged_rule_can_be_disabled_after_its_interface_is_removed() {
     repository.create_event_definition(&record).await.unwrap();
     let service = EventCenterConfigurationService::new(repository);
     let mut update = UpdateEventDefinitionInput {
+        event_kind: domain::event_center::EventDefinitionKind::Interface,
         name: record.name.clone(),
         description: record.description.clone(),
-        interface_event: record.interface_event.clone().unwrap(),
+        interface_event: record.interface_event.clone(),
         enabled: false,
     };
     record = service
@@ -437,8 +514,10 @@ async fn api_rules_use_selected_operation_schema_and_reject_scope_phase_and_iden
     let service = EventCenterConfigurationService::new(MemoryRepository::default())
         .with_api_operations(owner.current_workspace_id, vec![details.clone()]);
     let mut value = input();
-    value.interface_event =
-        InterfaceEventBinding::api("list_applications", InterfaceEventPhase::Before);
+    value.interface_event = Some(InterfaceEventBinding::api(
+        "list_applications",
+        InterfaceEventPhase::Before,
+    ));
     let created = service
         .create_definition(&owner, value.clone())
         .await
@@ -453,21 +532,26 @@ async fn api_rules_use_selected_operation_schema_and_reject_scope_phase_and_iden
     assert!(created.payload_schema["properties"]
         .get("interface_id")
         .is_none());
-    value.interface_event =
-        InterfaceEventBinding::legacy("list_applications", InterfaceEventPhase::Before);
+    value.interface_event = Some(InterfaceEventBinding::legacy(
+        "list_applications",
+        InterfaceEventPhase::Before,
+    ));
     assert!(service
         .create_definition(&owner, value.clone())
         .await
         .is_err());
-    value.interface_event =
-        InterfaceEventBinding::api("unknown_operation", InterfaceEventPhase::Before);
+    value.interface_event = Some(InterfaceEventBinding::api(
+        "unknown_operation",
+        InterfaceEventPhase::Before,
+    ));
     assert!(service
         .create_definition(&owner, value.clone())
         .await
         .is_err());
-    value.interface_event =
+    value.interface_event = Some(
         InterfaceEventBinding::api("list_applications", InterfaceEventPhase::Completion)
-            .with_results(vec![InterfaceEventTerminal::Failed]);
+            .with_results(vec![InterfaceEventTerminal::Failed]),
+    );
     let completion = service
         .create_definition(&owner, value.clone())
         .await
@@ -543,9 +627,10 @@ async fn unchanged_legacy_target_preserves_saved_schema_and_workflow_mapping() {
             &owner,
             created.id,
             UpdateEventDefinitionInput {
+                event_kind: domain::event_center::EventDefinitionKind::Interface,
                 name: "Rename existing rule".into(),
                 description: String::new(),
-                interface_event: created.interface_event.clone().unwrap(),
+                interface_event: created.interface_event.clone(),
                 enabled: true,
             },
         )

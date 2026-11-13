@@ -32,6 +32,8 @@ use super::{input_schema, resources, result_delivery};
 mod description_guard;
 #[path = "virtual_ui/file_params.rs"]
 mod file_params;
+#[path = "virtual_ui/workflow_credentials.rs"]
+mod workflow_credentials;
 use crate::{
     error_response::ApiError,
     middleware::require_session::{with_server_delegated_request_context, RequestContext},
@@ -191,6 +193,13 @@ impl McpInterfaceCatalogPort for McpInterfaceCatalogSnapshot {
 
 #[async_trait]
 pub(crate) trait McpInterfaceDispatchPort: Send + Sync + 'static {
+    async fn execute_workflow_http(
+        &self,
+        _request: orchestration_runtime::execution_engine::WorkflowInternalHttpRequest,
+    ) -> anyhow::Result<orchestration_runtime::execution_engine::WorkflowInternalHttpResponse> {
+        anyhow::bail!("workflow Console dispatcher is unavailable")
+    }
+
     async fn execute(
         &self,
         headers: HeaderMap,
@@ -213,6 +222,13 @@ impl ConsoleRouterMcpInterfaceDispatchPort {
 
 #[async_trait]
 impl McpInterfaceDispatchPort for ConsoleRouterMcpInterfaceDispatchPort {
+    async fn execute_workflow_http(
+        &self,
+        request: orchestration_runtime::execution_engine::WorkflowInternalHttpRequest,
+    ) -> anyhow::Result<orchestration_runtime::execution_engine::WorkflowInternalHttpResponse> {
+        workflow_credentials::dispatch_console_http(self.console_router.clone(), request).await
+    }
+
     async fn execute(
         &self,
         headers: HeaderMap,
@@ -292,7 +308,7 @@ impl RuntimeInternalToolInvokerFactory {
 
     pub(crate) async fn create_server_delegated(
         &self,
-        mut headers: HeaderMap,
+        headers: HeaderMap,
         actor: domain::ActorContext,
         run_level_instance_ids: Vec<String>,
     ) -> Result<ApiMcpRuntimeToolInvoker, ApiError> {
@@ -319,10 +335,56 @@ impl RuntimeInternalToolInvokerFactory {
                 .into());
             }
         }
+        Ok(self.build_server_delegated(
+            headers,
+            actor,
+            run_level_instance_ids,
+            catalog,
+            user.session_version,
+        ))
+    }
+
+    /// Credential-only runs keep their Console host without loading the MCP catalog.
+    pub(crate) async fn create_workflow_credential_host(
+        &self,
+        actor: domain::ActorContext,
+    ) -> Result<ApiMcpRuntimeToolInvoker, ApiError> {
+        let user = self
+            .dependencies
+            .store
+            .find_user_by_id(actor.user_id)
+            .await?
+            .ok_or(control_plane::errors::ControlPlaneError::NotAuthenticated)?;
+        if matches!(user.status, domain::UserStatus::Disabled) {
+            return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
+        }
+        Ok(self.build_server_delegated(
+            HeaderMap::new(),
+            actor,
+            Vec::new(),
+            domain::McpCatalogSnapshot {
+                instances: Vec::new(),
+                groups: Vec::new(),
+                tools: Vec::new(),
+                bindings: Vec::new(),
+                discovery_policies: Vec::new(),
+            },
+            user.session_version,
+        ))
+    }
+
+    fn build_server_delegated(
+        &self,
+        mut headers: HeaderMap,
+        actor: domain::ActorContext,
+        run_level_instance_ids: Vec<String>,
+        catalog: domain::McpCatalogSnapshot,
+        session_version: i64,
+    ) -> ApiMcpRuntimeToolInvoker {
         headers.remove(COOKIE);
         headers.remove(AUTHORIZATION);
         headers.remove(CSRF_HEADER);
-        Ok(ApiMcpRuntimeToolInvoker {
+        ApiMcpRuntimeToolInvoker {
             dependencies: self.dependencies.clone(),
             interface_catalog: self.interface_catalog.clone(),
             interface_dispatch: self.interface_dispatch.clone(),
@@ -332,12 +394,12 @@ impl RuntimeInternalToolInvokerFactory {
                 tenant_id: actor.tenant_id,
                 workspace_id: actor.current_workspace_id,
                 active_role_code: actor.effective_display_role.clone(),
-                session_version: user.session_version,
+                session_version,
             }),
             catalog,
             run_level_instance_ids,
             assistant_client: None,
-        })
+        }
     }
 }
 
@@ -444,6 +506,24 @@ impl ApiMcpRuntimeToolInvoker {
 
 #[async_trait]
 impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
+    async fn prepare_workflow_credentials(
+        &self,
+        flow_run_id: uuid::Uuid,
+    ) -> anyhow::Result<orchestration_runtime::execution_engine::WorkflowCredentialReferences> {
+        self.prepare_workflow_credential_references(flow_run_id)
+            .await
+    }
+
+    async fn invoke_workflow_internal_http(
+        &self,
+        flow_run_id: uuid::Uuid,
+        credential_reference: &str,
+        request: orchestration_runtime::execution_engine::WorkflowInternalHttpRequest,
+    ) -> anyhow::Result<orchestration_runtime::execution_engine::WorkflowInternalHttpResponse> {
+        self.dispatch_workflow_credential_http(flow_run_id, credential_reference, request)
+            .await
+    }
+
     fn registrations_for_node(&self, node: &CompiledNode) -> Vec<RuntimeInternalToolRegistration> {
         mcp_llm_registrations(&self.selected_occurrences(node))
             .into_iter()

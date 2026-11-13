@@ -16,6 +16,7 @@ mod history;
 mod management;
 mod processing;
 mod receive;
+pub(crate) mod send_history;
 mod sessions;
 
 fn binding(row: PgRow) -> Result<CommunicationBindingRecord> {
@@ -45,6 +46,10 @@ fn input(row: PgRow) -> Result<CommunicationInput> {
         external_message_key: row.get("external_message_key"),
         received_at_ms: row.get("received_at_ms"),
         content: row.get("content"),
+        reply_to: row
+            .try_get::<Option<Value>, _>("reply_to_json")?
+            .map(serde_json::from_value)
+            .transpose()?,
         can_retry: row.get("can_retry"),
         processing_status: serde_json::from_value(Value::String(row.get("processing_status")))?,
         run_id: row.get("run_id"),
@@ -212,6 +217,7 @@ impl CommunicationRepository for PgControlPlaneStore {
             p,
             l,
             false,
+            None,
         )
         .await
     }
@@ -352,6 +358,29 @@ impl CommunicationRepository for PgControlPlaneStore {
         l: u32,
     ) -> Result<CommunicationPage<CommunicationMessage>> {
         history::messages(self, s, c, p, l).await
+    }
+    async fn communication_search_messages(
+        &self,
+        s: &CommunicationHistoryScope,
+        c: Uuid,
+        p: Option<Uuid>,
+        l: u32,
+        keyword: &str,
+    ) -> Result<CommunicationPage<CommunicationMessage>> {
+        history::timeline(
+            self,
+            history::TimelineScope {
+                workspace_id: s.workspace_id,
+                instance_id: Some(s.instance_id),
+                external_identity: Some(&s.external_identity),
+            },
+            c,
+            p,
+            l,
+            false,
+            Some(keyword),
+        )
+        .await
     }
     async fn communication_files(
         &self,

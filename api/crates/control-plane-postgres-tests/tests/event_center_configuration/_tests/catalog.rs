@@ -79,6 +79,7 @@ async fn custom_rules_share_the_directory_and_keep_original_timestamps_and_scope
     let now = time::OffsetDateTime::now_utc();
     let created = now - time::Duration::days(2);
     let rule = EventDefinitionRecord {
+        event_kind: None,
         id: Uuid::now_v7(),
         workspace_id: workspace.id,
         created_by: user.id,

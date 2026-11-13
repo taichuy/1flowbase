@@ -212,7 +212,7 @@ pub(super) fn client_protocol_envelope_payload(envelope: &ProtocolContextEnvelop
         .as_value()
 }
 
-pub(super) fn split_system_context_from_history(
+pub(crate) fn split_system_context_from_history(
     request: &NativeRunRequest,
 ) -> std::result::Result<(Vec<NativePromptBlock>, Vec<Value>), NativeInputMappingError> {
     let mut system_blocks = request.system.clone();

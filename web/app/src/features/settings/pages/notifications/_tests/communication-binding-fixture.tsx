@@ -109,11 +109,18 @@ export function setupCommunicationBinding({
         file_table_id: null,
         mcp_instance_ids: ['dedicated', 'extra'],
         system_prompt: 'Custom prompt',
-        event_commands: [],
-        command_settings: [
-          { command_id: 'host/help', enabled: false },
-          { command_id: 'acme/reports/summary', enabled: true },
-          { command_id: 'acme/retired/archive', enabled: true }
+        commands: [
+          { kind: 'registered', command_id: 'host/help', enabled: false },
+          {
+            kind: 'registered',
+            command_id: 'acme/reports/summary',
+            enabled: true
+          },
+          {
+            kind: 'registered',
+            command_id: 'acme/retired/archive',
+            enabled: true
+          }
         ]
       }
     : null;
@@ -130,10 +137,15 @@ export function setupCommunicationBinding({
     application_id?: string | null,
     instance_id?: string | null
   ) => {
-    const settings = instance_id ? saved?.command_settings : undefined;
+    const settings = instance_id
+      ? saved?.commands.filter((command) => command.kind === 'registered')
+      : undefined;
     const entries = [
       ...commands,
-      ...(instance_id ? (saved?.event_commands ?? []) : []).map((item) => ({
+      ...(instance_id
+        ? (saved?.commands.filter((command) => command.kind === 'event') ?? [])
+        : []
+      ).map((item) => ({
         ...item,
         usage: `/${item.name} [arguments]`,
         source_kind: 'user' as const,

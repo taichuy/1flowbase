@@ -46,7 +46,7 @@ function useDeletionJobController({
   onFinished
 }: {
   applicationId: string;
-  applicationType?: 'agent_logs' | 'agent_flow';
+  applicationType?: 'agent_logs' | 'agent_flow' | 'workflow';
   onFinished: () => Promise<void>;
 }) {
   const { t } = useTranslation('applications');
@@ -471,7 +471,7 @@ export function AgentLogsDeleteButton(
           type="warning"
           showIcon
           title={
-            applicationType === 'agent_flow'
+            applicationType !== 'agent_logs'
               ? t('log_deletion.native_warning')
               : t('log_deletion.warning')
           }

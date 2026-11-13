@@ -219,7 +219,7 @@ impl TurnFixture {
             json!({"application_id":application,"mcp_instance_ids":[fixture.mcp],
                 "system_prompt":"Use this sender's scoped history. Never replay prior user inputs automatically.",
                 "model":null,"reasoning_effort":null,"file_table_id":null,
-                "command_settings":[{"command_id":"host/help","enabled":false}]}),
+                "commands":[{"kind":"registered","command_id":"host/help","enabled":false}]}),
         ).await;
         assert_eq!(status, StatusCode::OK, "{saved}");
         Self {
@@ -266,6 +266,7 @@ impl TurnFixture {
                     sender_display_name: None,
                     received_at_ms: 1000,
                     text: Some(text.into()),
+                    reply_to: None,
                     attachments: vec![],
                 }],
             })
@@ -359,8 +360,8 @@ impl TurnFixture {
         .await;
         assert_eq!(status, StatusCode::OK, "{binding}");
         assert_eq!(
-            binding["data"]["binding"]["command_settings"],
-            json!([{"command_id":"host/help","enabled":false}])
+            binding["data"]["binding"]["commands"],
+            json!([{"kind":"registered","command_id":"host/help","enabled":false}])
         );
         let (status, options) = api(
             &self.fixture.app,

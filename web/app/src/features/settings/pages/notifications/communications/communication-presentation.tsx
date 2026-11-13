@@ -1,10 +1,12 @@
-import { useMutation } from '@tanstack/react-query';
-import { Button, Space, Tag, Tooltip, Typography } from 'antd';
+import { useAuthStore } from '../../../../../state/auth-store';
+import { selectNavigationQueryScope } from '../../../../../state/navigation-query-scope';
+import { useQuery } from '@tanstack/react-query';
+import { Button, Image, Space, Tag, Tooltip, Typography } from 'antd';
 import AimOutlined from '@ant-design/icons/es/icons/AimOutlined';
 import FileOutlined from '@ant-design/icons/es/icons/FileOutlined';
 import { useTranslation } from 'react-i18next';
 import type { CommunicationMessage } from '@1flowbase/api-client';
-import { getCommunicationFile } from '../../../../notifications/api/communications';
+import { getCommunicationFileInfo } from '../../../../notifications/api/communications';
 import { communicationRunHref } from './communication-navigation';
 
 export function CommunicationRunLink({
@@ -115,14 +117,35 @@ export function CommunicationFile({
   message: CommunicationMessage;
 }) {
   const { t } = useTranslation('notifications');
-  const link = useMutation({
-    mutationFn: () => getCommunicationFile(message.instance_id, message.id)
+  const scope = useAuthStore(selectNavigationQueryScope);
+  const link = useQuery({
+    queryKey: [
+      'communications',
+      scope,
+      'file-info',
+      message.instance_id,
+      message.id
+    ],
+    queryFn: ({ signal }) =>
+      getCommunicationFileInfo(message.instance_id, message.id, signal),
+    enabled: message.file?.status === 'ready'
   });
   const file = message.file;
   if (!file) return null;
   return (
     <Space wrap className="communication-chat__file">
-      <FileOutlined />
+      {link.data?.preview_url ? (
+        <Image
+          src={link.data.preview_url}
+          alt={file.file_name}
+          width={88}
+          height={56}
+          loading="lazy"
+          style={{ objectFit: 'cover' }}
+        />
+      ) : (
+        <FileOutlined />
+      )}
       <Typography.Text>{file.file_name}</Typography.Text>
       <Tag>
         {file.status === 'ready'
@@ -131,11 +154,6 @@ export function CommunicationFile({
             ? t('file_failed')
             : t('file_pending')}
       </Tag>
-      {file.status === 'ready' && !link.data?.url && (
-        <Button loading={link.isPending} onClick={() => link.mutate()}>
-          {t('file_access')}
-        </Button>
-      )}
       {link.data?.url && (
         <Typography.Link
           href={link.data.url}

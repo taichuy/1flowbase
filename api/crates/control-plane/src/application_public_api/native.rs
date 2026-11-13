@@ -64,6 +64,7 @@ mod wire_types;
 use serialization::*;
 use wire_types::{native_attachments, native_history};
 
+pub(crate) use input_mapping::split_system_context_from_history;
 pub use input_mapping::{NativeInputMapper, NativeInputMappingError};
 pub use run_lifecycle::{
     ApplicationNativeRunService, CancelNativeRunCommand, CreateNativeRunCommand,

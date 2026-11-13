@@ -72,6 +72,8 @@ import { buildNodePickerOptions } from '../../flow-editor/authoring/plugin-node-
 import type { WorkflowTriggerContext } from '../lib/trigger-context';
 import { WorkflowOverlay } from './WorkflowOverlay';
 import { WorkflowTestRunPanel } from './WorkflowTestRunPanel';
+import { WorkflowRunStatusBar } from './WorkflowRunStatusBar';
+import { useWorkflowTestRun } from '../hooks/use-workflow-test-run';
 
 const ENVIRONMENT_DOCK_WIDTH = 520;
 const HISTORY_DOCK_WIDTH = 460;
@@ -126,6 +128,7 @@ function useWorkflowCanvasController({
   const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const workingDocument = useAgentFlowEditorStore(selectWorkingDocument);
+  const testRun = useWorkflowTestRun(applicationId, workingDocument);
   const lastSavedDocument = useAgentFlowEditorStore(selectLastSavedDocument);
   const autosaveStatus = useAgentFlowEditorStore(selectAutosaveStatus);
   const versions = useAgentFlowEditorStore(selectVersions);
@@ -177,7 +180,38 @@ function useWorkflowCanvasController({
 
   const navigation = useContainerNavigation();
   const detailActions = useNodeDetailActions();
-  useEditorShortcuts();
+  useEditorShortcuts({ disabled: testRun.active });
+  const setSelection = useAgentFlowEditorStore((state) => state.setSelection);
+  const setInteractionState = useAgentFlowEditorStore(
+    (state) => state.setInteractionState
+  );
+  useEffect(() => {
+    if (!testRun.active) return;
+    setSelection({
+      selectedNodeId: null,
+      selectedNodeIds: [],
+      selectedEdgeId: null
+    });
+    setPanelState({
+      historyOpen: false,
+      issuesOpen: false,
+      nodePickerState: {
+        open: false,
+        anchorNodeId: null,
+        anchorEdgeId: null,
+        anchorCanvasPosition: null
+      }
+    });
+    setInteractionState({
+      pendingLocateNodeId: null,
+      connectingPayload: {
+        sourceNodeId: null,
+        sourceHandleId: null,
+        sourceNodeType: null
+      }
+    });
+    setEnvironmentVariablesOpen(false);
+  }, [testRun.active, setSelection, setPanelState, setInteractionState]);
   const draftSync = useDraftSync({
     applicationId,
     saveDraftOverride,
@@ -386,6 +420,7 @@ function useWorkflowCanvasController({
     });
   }
   return {
+    testRun,
     can,
     applicationName,
     applicationId,
@@ -435,6 +470,7 @@ export function WorkflowCanvasFrame(
   props: Parameters<typeof useWorkflowCanvasController>[0]
 ) {
   const {
+    testRun,
     can,
     applicationName,
     applicationId,
@@ -494,29 +530,28 @@ export function WorkflowCanvasFrame(
         )}
         autosaveStatus={autosaveStatus}
         issueErrorCount={issueErrorCount}
-        saveDisabled={!can('save_draft') || autosaveStatus === 'saving'}
+        saveDisabled={
+          testRun.active || !can('save_draft') || autosaveStatus === 'saving'
+        }
+        interactionLocked={testRun.active}
         saveLoading={autosaveStatus === 'saving'}
         published={isPublished}
         publishDisabled={
+          testRun.active ||
           !can('publish_application_api') ||
           publishMutation.isPending ||
           issueErrorCount > 0
         }
         publishLoading={publishMutation.isPending}
-        revertDisabled={!can('unpublish_application_api')}
+        revertDisabled={testRun.active || !can('unpublish_application_api')}
         revertLoading={revertToDraftMutation.isPending}
         testRunAction={
           <WorkflowTestRunPanel
-            applicationId={applicationId}
             document={workingDocument}
             triggerContext={triggerContext}
-            onOpenTrace={(runId) => {
-              void navigate({
-                to: '/applications/$applicationId/logs',
-                params: { applicationId },
-                search: { run_id: runId, view: 'trace' }
-              });
-            }}
+            running={testRun.active}
+            canRun={testRun.canRun}
+            onRun={testRun.start}
           />
         }
         onOpenEnvironmentVariables={() => {
@@ -537,6 +572,8 @@ export function WorkflowCanvasFrame(
       >
         <AgentFlowCanvas
           issueCountByNodeId={issueCountByNodeId}
+          interactionLocked={testRun.active}
+          nodeRunStatuses={testRun.nodeStatuses}
           workflowTriggerContext={triggerContext}
           nodePickerOptions={nodePickerOptions}
           onViewportSnapshotChange={(viewport) => {
@@ -546,7 +583,19 @@ export function WorkflowCanvasFrame(
             viewportGetterRef.current = getter;
           }}
         />
-        {selectedNodeId ? (
+        <WorkflowRunStatusBar
+          state={testRun.state}
+          active={testRun.active}
+          onClear={testRun.clear}
+          onOpenTrace={(runId) => {
+            void navigate({
+              to: '/applications/$applicationId/logs',
+              params: { applicationId },
+              search: runId ? { run_id: runId, view: 'trace' } : {}
+            });
+          }}
+        />
+        {selectedNodeId && !testRun.active ? (
           <div
             className="agent-flow-editor__detail-dock"
             data-layout={nodeDetailLayout}

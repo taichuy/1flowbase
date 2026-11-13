@@ -20,6 +20,7 @@ pub(super) fn request(
     // only the final user message, preserving prompt cache affinity within the conversation.
     let session = history_context(binding, &input.conversation).to_string();
     request.query = input.message.content.clone().unwrap_or_default();
+    turn_inputs::append_reply_reference(&mut request.query, input.message.reply_to.as_ref())?;
     if !files.is_empty() {
         request.query.push_str("\n\nAttached files: ");
         request.query.push_str(&serde_json::to_string(&files)?);

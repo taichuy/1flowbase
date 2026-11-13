@@ -802,7 +802,15 @@ fn console_invocation_error(error: interface_runtime::InterfaceInvocationError) 
         interface_runtime::InterfaceInvocationError::AdmissionRejected(error) => error
             .into_source::<ApiError>()
             .unwrap_or_else(|| anyhow::anyhow!("Console admission failed").into()),
-        _ => anyhow::anyhow!("Console interface invocation failed").into(),
+        error => {
+            // Fixed kernel classifications identify the failing contract boundary without
+            // logging caller inputs, credentials or arbitrary target error payloads.
+            tracing::warn!(
+                failure_class = error.classification(),
+                "console interface invocation rejected"
+            );
+            anyhow::anyhow!("Console interface invocation failed").into()
+        }
     }
 }
 

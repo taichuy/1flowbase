@@ -127,20 +127,20 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
                 );
                 let stopping_unchanged_rule = if let Input::Update(id, value) = &input {
                     !value.enabled
-                        && service
-                            .get_definition(actor, *id)
-                            .await?
-                            .interface_event
-                            .as_ref()
-                            == Some(&value.interface_event)
+                        && service.get_definition(actor, *id).await?.interface_event
+                            == value.interface_event
                 } else {
                     false
                 };
                 let selected_operation = match &input {
-                    Input::Create(value) => value.interface_event.operation_id(),
-                    Input::Update(_, value) if !stopping_unchanged_rule => {
-                        value.interface_event.operation_id()
-                    }
+                    Input::Create(value) => value
+                        .interface_event
+                        .as_ref()
+                        .and_then(|binding| binding.operation_id()),
+                    Input::Update(_, value) if !stopping_unchanged_rule => value
+                        .interface_event
+                        .as_ref()
+                        .and_then(|binding| binding.operation_id()),
                     _ => None,
                 };
                 if let Some(operation_id) = selected_operation {

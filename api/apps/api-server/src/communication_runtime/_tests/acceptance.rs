@@ -228,8 +228,7 @@ impl Fixture {
                 &actor,
                 channel,
                 domain::CommunicationBindingInput {
-                    event_commands: Vec::new(),
-                    command_settings: vec![],
+                    commands: vec![],
                     application_id: Uuid::now_v7(),
                     model: None,
                     reasoning_effort: None,

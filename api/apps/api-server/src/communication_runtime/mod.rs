@@ -17,6 +17,9 @@ use uuid::Uuid;
 use crate::{app_state::ApiState, notification_runtime::ManagedNotificationProvider};
 
 mod activity;
+mod provider_activity;
+pub(crate) use commands::event_replies::sender_for_event as event_notification_sender;
+pub(crate) use provider_activity::scope_event_activity;
 mod attachments;
 pub use activity::CommunicationActivity;
 pub(crate) mod command_capabilities;

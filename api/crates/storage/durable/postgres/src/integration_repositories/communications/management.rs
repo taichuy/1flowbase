@@ -61,7 +61,7 @@ pub(super) async fn messages(
     let send = status(&q.send_status)?;
     let direction = status(&q.direction)?;
     let kind = status(&q.message_type)?;
-    let filter = "t.scope_id=$1 AND ($2::uuid IS NULL OR t.instance_id=$2) AND ($3::uuid IS NULL OR t.conversation_id=$3) AND ($4::text IS NULL OR m.processing_status=$4) AND ($5::text IS NULL OR m.send_status=$5) AND ($6::text IS NULL OR t.direction=$6) AND ($7::text IS NULL OR t.type=$7)";
+    let filter = "t.scope_id=$1 AND ($2::uuid IS NULL OR t.instance_id=$2) AND ($3::uuid IS NULL OR t.conversation_id=$3) AND ($4::text IS NULL OR COALESCE(CASE WHEN t.direction='outbound' THEN CASE ns.send_status WHEN 'succeeded' THEN 'succeeded' WHEN 'failed' THEN 'failed' WHEN 'unknown' THEN 'failed' WHEN 'sending' THEN 'processing' END END,m.processing_status)=$4) AND ($5::text IS NULL OR COALESCE(ns.send_status,m.send_status)=$5) AND ($6::text IS NULL OR t.direction=$6) AND ($7::text IS NULL OR t.type=$7)";
     let sql = format!(
         "SELECT count(*) FROM communication_messages t {} WHERE {filter}",
         history::JOINS

@@ -27,6 +27,8 @@ pub enum EventDefinitionOrigin {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EventDefinitionRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_kind: Option<EventDefinitionKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interface_event: Option<InterfaceEventBinding>,
     pub id: Uuid,
     pub workspace_id: Uuid,
@@ -48,6 +50,8 @@ pub struct EventCatalogEntry {
     #[serde(default)]
     pub updated_at: Option<OffsetDateTime>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_kind: Option<EventDefinitionKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interface_event: Option<InterfaceEventBinding>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub group_path: Vec<String>,
@@ -67,12 +71,18 @@ pub struct EventCatalogEntry {
 
 impl From<EventDefinitionRecord> for EventCatalogEntry {
     fn from(value: EventDefinitionRecord) -> Self {
+        let group = match value.event_kind {
+            Some(EventDefinitionKind::CommunicationCommand) => "communication_commands",
+            _ if value.interface_event.is_some() => "interface_events",
+            _ => "custom_events",
+        };
         Self {
             created_at: Some(value.created_at),
             updated_at: Some(value.updated_at),
+            event_kind: value.event_kind,
             source: None,
             interface_event: value.interface_event,
-            group_path: vec!["interface_events".into()],
+            group_path: vec![group.into()],
             id: Some(value.id),
             scope: EventSourceScope::Workspace {
                 workspace_id: value.workspace_id,
@@ -96,9 +106,12 @@ impl From<EventDefinitionRecord> for EventCatalogEntry {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateEventDefinitionInput {
+    #[serde(default)]
+    pub event_kind: EventDefinitionKind,
     pub name: String,
     pub description: String,
-    pub interface_event: InterfaceEventBinding,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interface_event: Option<InterfaceEventBinding>,
     pub enabled: bool,
 }
 
@@ -106,9 +119,12 @@ pub struct CreateEventDefinitionInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateEventDefinitionInput {
+    #[serde(default)]
+    pub event_kind: EventDefinitionKind,
     pub name: String,
     pub description: String,
-    pub interface_event: InterfaceEventBinding,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interface_event: Option<InterfaceEventBinding>,
     pub enabled: bool,
 }
 
@@ -164,6 +180,9 @@ pub use catalog::*;
 
 mod interface;
 pub use interface::*;
+
+mod communication;
+pub use communication::*;
 
 mod api;
 pub use api::*;

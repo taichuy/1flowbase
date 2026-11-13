@@ -80,13 +80,16 @@ test('new binding requires an application and saves backend command defaults wit
       file_table_id: null,
       mcp_instance_ids: ['extra', 'dedicated'],
       system_prompt: 'Edited instructions',
-      event_commands: [],
-      command_settings: [
-        { command_id: 'host/new', enabled: true },
-        { command_id: 'host/model', enabled: true },
-        { command_id: 'host/help', enabled: true },
-        { command_id: 'acme/reports/summary', enabled: false },
-        { command_id: 'acme/paused/audit', enabled: false }
+      commands: [
+        { kind: 'registered', command_id: 'host/new', enabled: true },
+        { kind: 'registered', command_id: 'host/model', enabled: true },
+        { kind: 'registered', command_id: 'host/help', enabled: true },
+        {
+          kind: 'registered',
+          command_id: 'acme/reports/summary',
+          enabled: false
+        },
+        { kind: 'registered', command_id: 'acme/paused/audit', enabled: false }
       ]
     }
   ]);
@@ -147,17 +150,20 @@ test('editing switches saves canonical fields and reopening reads the persisted 
     file_table_id: null,
     mcp_instance_ids: ['dedicated', 'extra'],
     system_prompt: 'Saved command instructions',
-    event_commands: [],
-    command_settings: expect.arrayContaining([
-      { command_id: 'host/new', enabled: true },
-      { command_id: 'host/model', enabled: true },
-      { command_id: 'host/help', enabled: true },
-      { command_id: 'acme/reports/summary', enabled: false },
-      { command_id: 'acme/paused/audit', enabled: false },
-      { command_id: 'acme/retired/archive', enabled: true }
+    commands: expect.arrayContaining([
+      { kind: 'registered', command_id: 'host/new', enabled: true },
+      { kind: 'registered', command_id: 'host/model', enabled: true },
+      { kind: 'registered', command_id: 'host/help', enabled: true },
+      {
+        kind: 'registered',
+        command_id: 'acme/reports/summary',
+        enabled: false
+      },
+      { kind: 'registered', command_id: 'acme/paused/audit', enabled: false },
+      { kind: 'registered', command_id: 'acme/retired/archive', enabled: true }
     ])
   });
-  expect(writes[0].command_settings).toHaveLength(6);
+  expect(writes[0].commands).toHaveLength(6);
   view.unmount();
   client.clear();
   mount('channel-1');
@@ -199,10 +205,14 @@ test('unavailable enabled commands remain disableable and saved missing declarat
   await act(async () => {
     await ref.current?.save('channel-1');
   });
-  expect(writes[0].command_settings).toEqual(
+  expect(writes[0].commands).toEqual(
     expect.arrayContaining([
-      { command_id: 'acme/retired/archive', enabled: false },
-      { command_id: 'acme/paused/audit', enabled: false }
+      {
+        kind: 'registered',
+        command_id: 'acme/retired/archive',
+        enabled: false
+      },
+      { kind: 'registered', command_id: 'acme/paused/audit', enabled: false }
     ])
   );
 });
@@ -244,12 +254,11 @@ test('changing the application keeps unsaved toggles and requests the saved-chan
     application_id: 'app-2',
     model: null,
     reasoning_effort: null,
-    event_commands: [],
-    command_settings: expect.arrayContaining([
-      { command_id: 'host/new', enabled: false },
-      { command_id: 'host/model', enabled: false },
-      { command_id: 'host/help', enabled: true },
-      { command_id: 'acme/retired/archive', enabled: true }
+    commands: expect.arrayContaining([
+      { kind: 'registered', command_id: 'host/new', enabled: false },
+      { kind: 'registered', command_id: 'host/model', enabled: false },
+      { kind: 'registered', command_id: 'host/help', enabled: true },
+      { kind: 'registered', command_id: 'acme/retired/archive', enabled: true }
     ])
   });
 });
@@ -293,10 +302,12 @@ test('conflicting installations remain visible and disabling their shared comman
     await ref.current?.save('channel-1');
   });
   expect(
-    writes[0].command_settings.filter(
+    writes[0].commands.filter(
       (setting) => setting.command_id === 'acme/reports/summary'
     )
-  ).toEqual([{ command_id: 'acme/reports/summary', enabled: false }]);
+  ).toEqual([
+    { kind: 'registered', command_id: 'acme/reports/summary', enabled: false }
+  ]);
 });
 
 test('an unrelated edit does not erase a saved setting omitted from a refreshed catalogue', async () => {
@@ -312,7 +323,8 @@ test('an unrelated edit does not erase a saved setting omitted from a refreshed 
   await act(async () => {
     await ref.current?.save('channel-1');
   });
-  expect(writes[0].command_settings).toContainEqual({
+  expect(writes[0].commands).toContainEqual({
+    kind: 'registered',
     command_id: 'acme/retired/archive',
     enabled: true
   });
@@ -336,9 +348,8 @@ test('failed save rejects without losing command, MCP, prompt or model drafts', 
     reasoning_effort: 'high',
     system_prompt: 'Custom prompt',
     file_table_id: null,
-    event_commands: [],
-    command_settings: expect.arrayContaining([
-      { command_id: 'host/help', enabled: true }
+    commands: expect.arrayContaining([
+      { kind: 'registered', command_id: 'host/help', enabled: true }
     ])
   });
 });
@@ -407,7 +418,7 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
   const { ref, writes, view, mount } = setup({ existing: true });
   await screen.findByDisplayValue('Custom prompt');
   await settle();
-  fireEvent.click(screen.getByRole('button', { name: 'Add event command' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add command' }));
   const dialog = await screen.findByRole('dialog');
   fireEvent.change(
     within(dialog).getByRole('textbox', { name: 'Command identity' }),
@@ -447,8 +458,11 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
     expect(ref.current?.validate()).toBe(true);
     await ref.current?.save('channel-1');
   });
-  expect(writes[0].event_commands).toEqual([
+  expect(
+    writes[0].commands.filter((command) => command.kind === 'event')
+  ).toEqual([
     {
+      kind: 'event',
       command_id: 'user/invoice',
       name: 'invoice',
       description: 'Request invoice processing',
@@ -457,11 +471,13 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
       input_mapping: { invoice: '/arguments' }
     }
   ]);
-  expect(writes[0].event_commands[0]).not.toHaveProperty('contract_version');
   expect(
-    writes[0].command_settings.every(
-      (setting) => !setting.command_id.startsWith('user/')
-    )
+    writes[0].commands.filter((command) => command.kind === 'event')[0]
+  ).not.toHaveProperty('contract_version');
+  expect(
+    writes[0].commands
+      .filter((command) => command.kind === 'registered')
+      .every((setting) => !setting.command_id.startsWith('user/'))
   ).toBe(true);
   view.unmount();
   client.clear();
@@ -479,14 +495,16 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
     target: { value: 'Updated invoice processing' }
   });
   fireEvent.click(within(edit).getByRole('button', { name: 'Submit' }));
-  await waitFor(() =>
-    expect(screen.getByText('Updated invoice processing')).toBeInTheDocument()
-  );
+  expect(
+    await screen.findByRole('row', { name: /Updated invoice processing/ })
+  ).toBeInTheDocument();
   fireEvent.click(screen.getByRole('switch', { name: 'Enable invoice' }));
   await act(async () => {
     await ref.current?.save('channel-1');
   });
-  expect(writes[1].event_commands[0]).toMatchObject({
+  expect(
+    writes[1].commands.filter((command) => command.kind === 'event')[0]
+  ).toMatchObject({
     description: 'Updated invoice processing',
     enabled: false
   });
@@ -498,7 +516,9 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
   await act(async () => {
     await ref.current?.save('channel-1');
   });
-  expect(writes[2].event_commands).toEqual([]);
+  expect(
+    writes[2].commands.filter((command) => command.kind === 'event')
+  ).toEqual([]);
 });
 
 test('E8 cannot edit event commands with read-only permission', async () => {
@@ -506,16 +526,14 @@ test('E8 cannot edit event commands with read-only permission', async () => {
     permissions: ['communications.binding.get', 'communications.options.get']
   });
   await waitFor(() => expect(client.isFetching()).toBe(0));
-  expect(
-    screen.getByRole('button', { name: 'Add event command' })
-  ).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Add command' })).toBeDisabled();
 });
 
 test('E8 validates reserved slash names before adding a command draft', async () => {
   setup({ existing: true });
   await screen.findByDisplayValue('Custom prompt');
   await settle();
-  fireEvent.click(screen.getByRole('button', { name: 'Add event command' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add command' }));
   const dialog = await screen.findByRole('dialog');
   fireEvent.change(
     within(dialog).getByRole('textbox', { name: 'Command identity' }),

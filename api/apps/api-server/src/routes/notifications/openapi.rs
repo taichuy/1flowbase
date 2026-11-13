@@ -184,10 +184,12 @@ fn type_locale_schema() -> Value {
     )
 }
 fn authorization_descriptor_schema() -> Value {
-    fields(
+    let mut schema = fields(
         json!({"actions":array(fields(json!({"code":text(),"label":text(),"kind":choice(&["qr_code"])}))),
         "managed_secret_keys":array(text()),"supports_delivery_window":boolean()}),
-    )
+    );
+    schema["properties"]["managed_identity_keys"] = array(text());
+    schema
 }
 fn log_descriptor_schema() -> Value {
     object(
@@ -196,11 +198,15 @@ fn log_descriptor_schema() -> Value {
     )
 }
 fn receive_descriptor_schema() -> Value {
-    fields(
+    let mut schema = fields(
         json!({"contribution_id":text(),"default_system_prompt":text(),"mcp_tools":array(fields(json!({"name":text(),
         "description":text(),"input_schema":dynamic("Input JSON Schema owned by this declared notification MCP tool."),
         "operation":choice(&["history_messages","history_files","read_file"])})))}),
-    )
+    );
+    // Send-receipt support is omitted when false; activity retains its boolean value.
+    schema["properties"]["supports_send_receipts"] = boolean();
+    schema["properties"]["supports_activity"] = boolean();
+    schema
 }
 
 // Sources: control_plane::notifications::NotificationTypeCatalogEntry flattens

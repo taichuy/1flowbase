@@ -32,6 +32,23 @@ pub(crate) async fn ensure_channel_mcp(
     else {
         return Ok(None);
     };
+    if let Some(id) = receive.mcp_instance_id {
+        // Activation owns this graph. Binding writes must never create unmanaged copies.
+        let catalog = McpManagementService::new(deps.store.clone())
+            .read_catalog_for_actor(actor)
+            .await?;
+        if !catalog
+            .instances
+            .iter()
+            .any(|i| i.instance_id == id && i.managed_by.is_some())
+        {
+            return Err(control_plane::errors::ControlPlaneError::Conflict(
+                "notification_mcp_not_activated",
+            )
+            .into());
+        }
+        return Ok(Some(id));
+    }
     let id = instance_id(channel);
     let service = McpManagementService::new(deps.store.clone());
     let mut catalog = service.read_catalog_for_actor(actor).await?;
@@ -62,7 +79,8 @@ pub(crate) async fn ensure_channel_mcp(
         .await?;
     for (order, tool) in receive.mcp_tools.iter().enumerate() {
         let (operation, path_suffix) = match tool.operation {
-            NotificationMcpOperation::HistoryMessages => (
+            NotificationMcpOperation::HistoryMessages
+            | NotificationMcpOperation::SearchMessages => (
                 "communications.messages.list",
                 "/conversations/{conversation_id}/messages",
             ),
@@ -70,6 +88,12 @@ pub(crate) async fn ensure_channel_mcp(
                 "communications.files.list",
                 "/conversations/{conversation_id}/files",
             ),
+            NotificationMcpOperation::FileInfo => {
+                ("communications.files.info", "/files/{message_id}/info")
+            }
+            NotificationMcpOperation::ViewImage => {
+                ("communications.files.image", "/files/{message_id}/image")
+            }
             NotificationMcpOperation::ReadFile => {
                 ("communications.files.get", "/files/{message_id}")
             }

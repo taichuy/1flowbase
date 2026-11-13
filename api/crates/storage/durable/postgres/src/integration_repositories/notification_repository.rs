@@ -99,6 +99,51 @@ pub(crate) fn managed_aad(workspace: Uuid, id: Uuid) -> Vec<u8> {
 
 #[async_trait]
 impl NotificationRepository for PgControlPlaneStore {
+    async fn prepare_communication_send(
+        &self,
+        input: control_plane_contracts::ports::PrepareCommunicationSend,
+    ) -> Result<()> {
+        super::communications::send_history::prepare(self, input).await
+    }
+    async fn record_communication_send_receipt(
+        &self,
+        input: control_plane_contracts::ports::RecordCommunicationSendReceipt,
+    ) -> Result<()> {
+        super::communications::send_history::record(self, input)
+            .await
+            .map_err(|error| {
+                let transient =
+                    error
+                        .downcast_ref::<sqlx::Error>()
+                        .is_some_and(|error| match error {
+                            sqlx::Error::Io(_)
+                            | sqlx::Error::Tls(_)
+                            | sqlx::Error::PoolTimedOut
+                            | sqlx::Error::PoolClosed
+                            | sqlx::Error::WorkerCrashed => true,
+                            sqlx::Error::Database(database) => {
+                                database.code().is_some_and(|code| {
+                                    code.starts_with("08")
+                                        || matches!(
+                                            code.as_ref(),
+                                            "40001"
+                                                | "40P01"
+                                                | "57P01"
+                                                | "57P02"
+                                                | "57P03"
+                                                | "53300"
+                                        )
+                                })
+                            }
+                            _ => false,
+                        });
+                if transient {
+                    control_plane_contracts::ports::CommunicationSendArchiveUnavailable.into()
+                } else {
+                    error
+                }
+            })
+    }
     async fn notification_authorization_view(
         &self,
         workspace_id: Uuid,

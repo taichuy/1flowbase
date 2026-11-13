@@ -854,6 +854,13 @@
       "backfillSource": "20261026160000 projects original text, file and reply history into typed timeline rows",
       "writePathSource": "communications history and file repositories read typed timeline facts; communication_timeline_updated_at maintains file recovery updates"
     },
+    "communication_message_sends": {
+      "category": "join_or_child",
+      "scopeGenerationSource": "authenticated notification send workspace and channel are retained with the owner send log",
+      "backfillSource": "new send receipt relation; existing timeline rows remain unchanged",
+      "writePathSource": "communications send history repository correlates notification_send_logs identity with optional timeline history and updates the typed send status and delivery receipt",
+      "idGeneration": "send_log_id is the sole notification send owner identity; no independent row id"
+    },
     "communication_sessions": {
       "category": "managed_table",
       "scopeGenerationSource": "authenticated workspace and persisted external conversation scope are checked together by the communication repository",

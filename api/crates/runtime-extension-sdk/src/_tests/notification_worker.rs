@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         ])}, "candidate_cursor":"accepted-cursor", "has_more":false
                     }}
                 }),
-                NotificationOperation::Send { input_payload, target } => {
+                NotificationOperation::Send { input_payload, target, .. } => {
                     let target = target.ok_or("target required")?;
                     let allowed = match config.get("fixture_expected_sends") {
                         Some(expected) => expected.as_array().ok_or("expected sends must be an array")?.iter().any(|entry| {

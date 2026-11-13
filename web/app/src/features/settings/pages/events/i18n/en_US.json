@@ -227,5 +227,9 @@
   "observation_stats_known_counts": "Records removed after reaching their retention age, across reporting scopes. Scopes without statistics are not counted as zero.",
   "observation_stats_evicted_hint": "Records removed early to make room for new records, across reporting scopes.",
   "observation_stats_oversize_hint": "Records not retained because a single record exceeded available space, across reporting scopes.",
-  "observation_stats_rejected_hint": "Delivery rejections recorded within the current workspace retention window. These are not workflow execution failures."
+  "observation_stats_rejected_hint": "Delivery rejections recorded within the current workspace retention window. These are not workflow execution failures.",
+  "event_kind": "Event type",
+  "interface_event": "Interface event",
+  "communication_command_event": "Chat command event",
+  "communication_command_help": "A chat command publishes this event. The workflow receives the raw arguments and source channel and conversation identifiers, validates the arguments, runs the business steps, and sends the report."
 }

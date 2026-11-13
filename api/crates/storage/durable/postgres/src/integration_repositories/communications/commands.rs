@@ -28,8 +28,9 @@ fn record(row: &PgRow) -> Result<CommunicationCommandRecord> {
         subscriber_id: row.try_get("subscriber_id")?,
         reply: row
             .try_get::<Option<Value>, _>("reply_json")?
-            .map(serde_json::from_value)
-            .transpose()?,
+            .map(serde_json::from_value::<Option<CommunicationCommandReply>>)
+            .transpose()?
+            .flatten(),
         failure_code: row.try_get("failure_code")?,
         send_status: serde_json::from_value(Value::String(row.try_get("send_status")?))?,
         response_session_id: row.try_get("response_session_id")?,
@@ -91,7 +92,19 @@ async fn finish(
     reply: CommunicationCommandReply,
     failure_code: Option<String>,
 ) -> Result<CommunicationCommandRecord> {
-    reply.validate()?;
+    finish_optional(db, current, response_session_id, Some(reply), failure_code).await
+}
+
+async fn finish_optional(
+    db: &mut PgConnection,
+    current: CommunicationCommandRecord,
+    response_session_id: Uuid,
+    reply: Option<CommunicationCommandReply>,
+    failure_code: Option<String>,
+) -> Result<CommunicationCommandRecord> {
+    if let Some(reply) = &reply {
+        reply.validate()?;
+    }
     anyhow::ensure!(
         failure_code
             .as_ref()
@@ -102,6 +115,13 @@ async fn finish(
         // First committed result wins across retries; never overwrite a historical reply.
         return Ok(current);
     }
+    // SQL NULL is unfinished; JSON null is a terminal success with no outbound reply.
+    let Some(reply) = reply else {
+        let row = sqlx::query("UPDATE communication_command_events SET reply_json='null'::jsonb,failure_code=$2,response_session_id=$3,send_status='none',effect_claim_id=NULL,effect_claim_expires_at=NULL WHERE event_id=$1 RETURNING *")
+            .bind(current.event_id).bind(failure_code).bind(response_session_id).fetch_one(&mut *db).await?;
+        project(db, current.event_id).await?;
+        return record(&row);
+    };
     let outbound = Uuid::now_v7();
     sqlx::query("INSERT INTO communication_messages(id,scope_id,instance_id,external_identity,conversation_id,input_id,type,direction,occurred_at_ms,content) VALUES($1,$2,$3,$4,$5,$6,'text','outbound',(extract(epoch FROM clock_timestamp())*1000)::bigint,$7)")
         .bind(outbound).bind(current.scope.workspace_id).bind(current.scope.instance_id).bind(&current.scope.external_identity).bind(current.scope.conversation_id).bind(Uuid::parse_str(&current.request.input_id)?).bind(&reply.text).execute(&mut *db).await?;
@@ -154,7 +174,7 @@ pub(crate) async fn complete_managed(
     let settings: CommunicationBindingInput = serde_json::from_value(config)?;
     anyhow::ensure!(
         !settings
-            .command_settings
+            .command_settings()
             .iter()
             .any(|setting| setting.command_id == current.request.command_id && !setting.enabled),
         "command disabled before reply commit"
@@ -390,7 +410,7 @@ impl CommunicationCommandRepository for PgControlPlaneStore {
         &self,
         claim: &ClaimedBuiltinCommunicationCommand,
         response_session_id: Uuid,
-        reply: CommunicationCommandReply,
+        reply: Option<CommunicationCommandReply>,
         failure_code: Option<String>,
     ) -> Result<CommunicationCommandRecord> {
         let mut tx = self.pool().begin().await?;
@@ -408,7 +428,7 @@ impl CommunicationCommandRepository for PgControlPlaneStore {
             current.installation_id.is_none(),
             "plugin reply requires current authority"
         );
-        if current.reply.is_some() {
+        if row.try_get::<Option<Value>, _>("reply_json")?.is_some() {
             tx.commit().await?;
             return Ok(current);
         }
@@ -420,7 +440,8 @@ impl CommunicationCommandRepository for PgControlPlaneStore {
             response_session_id == requested || current.request.command_id == "host/new",
             "only new-session confirmation may change reply session"
         );
-        let result = finish(&mut tx, current, response_session_id, reply, failure_code).await?;
+        let result =
+            finish_optional(&mut tx, current, response_session_id, reply, failure_code).await?;
         tx.commit().await?;
         Ok(result)
     }
@@ -487,7 +508,7 @@ impl CommunicationCommandRepository for PgControlPlaneStore {
         let binding: CommunicationBindingInput = serde_json::from_value(config)?;
         anyhow::ensure!(
             !binding
-                .command_settings
+                .command_settings()
                 .iter()
                 .any(|setting| setting.command_id == "host/model" && !setting.enabled),
             "model command disabled before selection"
@@ -536,7 +557,7 @@ impl CommunicationCommandRepository for PgControlPlaneStore {
         scope: &CommunicationConversationScope,
         event_id: Uuid,
     ) -> Result<Option<extension_contracts::NotificationSendTarget>> {
-        let row = sqlx::query("SELECT c.external_identity,c.external_conversation_key,i.external_message_key FROM communication_command_events e JOIN communication_inputs i ON i.id=e.input_id AND i.scope_id=e.scope_id AND i.instance_id=e.instance_id AND i.external_identity=e.external_identity AND i.conversation_id=e.conversation_id JOIN communication_conversations c ON c.id=e.conversation_id AND c.scope_id=e.scope_id AND c.instance_id=e.instance_id AND c.external_identity=e.external_identity WHERE e.scope_id=$1 AND e.instance_id=$2 AND e.external_identity=$3 AND e.conversation_id=$4 AND e.event_id=$5 AND e.reply_json IS NOT NULL")
+        let row = sqlx::query("SELECT c.external_identity,c.external_conversation_key,i.external_message_key FROM communication_command_events e JOIN communication_inputs i ON i.id=e.input_id AND i.scope_id=e.scope_id AND i.instance_id=e.instance_id AND i.external_identity=e.external_identity AND i.conversation_id=e.conversation_id JOIN communication_conversations c ON c.id=e.conversation_id AND c.scope_id=e.scope_id AND c.instance_id=e.instance_id AND c.external_identity=e.external_identity WHERE e.scope_id=$1 AND e.instance_id=$2 AND e.external_identity=$3 AND e.conversation_id=$4 AND e.event_id=$5")
             .bind(scope.workspace_id).bind(scope.instance_id).bind(&scope.external_identity).bind(scope.conversation_id).bind(event_id).fetch_optional(self.pool()).await?;
         row.as_ref()
             .map(|row| {

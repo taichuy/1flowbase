@@ -10,23 +10,31 @@ fn operation(id: &str) -> ApiOperationContext {
 fn communication_binding_keeps_complete_command_configuration_and_real_path_body_shape() {
     let op = operation("communications.binding.update");
     let body = domain::CommunicationBindingInput {
-        command_settings: (0..70)
-            .map(|i| domain::CommunicationCommandSetting {
-                command_id: format!("command-{i}"),
-                enabled: true,
+        commands: (0..70)
+            .map(|i| {
+                domain::CommunicationCommandConfiguration::Registered(
+                    domain::CommunicationCommandSetting {
+                        command_id: format!("command-{i}"),
+                        enabled: true,
+                    },
+                )
             })
+            .chain(std::iter::once(
+                domain::CommunicationCommandConfiguration::Event(
+                    domain::CommunicationEventCommandBinding {
+                        command_id: "user/command-a".into(),
+                        name: "command".into(),
+                        description: "Description".repeat(200),
+                        enabled: true,
+                        contract_id: "custom.contract-a".into(),
+                        input_mapping: std::collections::BTreeMap::from([(
+                            "text".into(),
+                            "/arguments".into(),
+                        )]),
+                    },
+                ),
+            ))
             .collect(),
-        event_commands: vec![domain::CommunicationEventCommandBinding {
-            command_id: "command-a".into(),
-            name: "Command".into(),
-            description: "Description".repeat(200),
-            enabled: true,
-            contract_id: "contract-a".into(),
-            input_mapping: std::collections::BTreeMap::from([(
-                "text".into(),
-                "$.message.text".into(),
-            )]),
-        }],
         application_id: Uuid::nil(),
         model: Some("model-a".into()),
         reasoning_effort: None,
@@ -40,7 +48,7 @@ fn communication_binding_keeps_complete_command_configuration_and_real_path_body
     assert_eq!(value["path"], json!({"instance_id":Uuid::nil()}));
     assert_eq!(value["body"], expected);
     let legacy = input.project_for_event().unwrap();
-    assert!(legacy["body"].get("command_settings").is_none());
+    assert!(legacy["body"].get("commands").is_none());
     assert_eq!(legacy["operation"], "save_binding");
 }
 #[test]

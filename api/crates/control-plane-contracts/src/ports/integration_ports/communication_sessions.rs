@@ -30,6 +30,7 @@ pub struct CommunicationTurnInput {
     pub external_message_key: String,
     pub received_at_ms: i64,
     pub content: Option<String>,
+    pub reply_to: Option<CommunicationMessageReference>,
     pub attachments: Vec<CommunicationPendingAttachment>,
 }
 

@@ -16,6 +16,7 @@ fn billing_flow_execution_context(
         domain::ActorContext::scoped(user_id, Uuid::nil(), "member", Vec::<String>::new())
     };
     Arc::new(RuntimeFlowExecutionContext {
+        workflow_credential_invoker: None,
         notification_sender: None,
         user_account: Some("billing-user".to_string()),
         require_provider_usage_for_billing,

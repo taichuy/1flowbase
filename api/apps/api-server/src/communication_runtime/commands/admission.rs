@@ -82,12 +82,7 @@ pub(super) async fn admit_available(state: &ApiState, key: (Uuid, Uuid)) -> Resu
         // Classification errors never fall through into ordinary Agent-flow input.
         let intent = state
             .notification_service
-            .resolve_event_command(
-                &actor,
-                &binding.config.command_settings,
-                &binding.config.event_commands,
-                text,
-            )
+            .resolve_configured_command(&actor, &binding.config.commands, text)
             .await?;
         ensure!(
             !matches!(intent, CommunicationCommandIntent::Ordinary),

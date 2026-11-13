@@ -10,10 +10,30 @@ export const systemVariableNodeId = 'sys';
 const workflowSystemVariableKeys = new Set([
   'application_id',
   'workflow_id',
-  'workflow_run_id'
+  'workflow_run_id',
+  'creator_credential',
+  'executor_credential'
 ]);
 
 export const agentFlowSystemVariables: AgentFlowSystemVariable[] = [
+  {
+    key: 'creator_credential',
+    title: 'sys.creator_credential',
+    valueType: 'string',
+    description: i18nText(
+      'agentFlow',
+      'auto.system_variable_creator_credential'
+    )
+  },
+  {
+    key: 'executor_credential',
+    title: 'sys.executor_credential',
+    valueType: 'string',
+    description: i18nText(
+      'agentFlow',
+      'auto.system_variable_executor_credential'
+    )
+  },
   {
     key: 'conversation_id',
     title: 'sys.conversation_id',

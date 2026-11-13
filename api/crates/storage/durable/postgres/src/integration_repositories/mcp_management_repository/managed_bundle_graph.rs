@@ -371,7 +371,66 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
         .await?;
     }
 
-    if !plugin_template {
+    if reset {
+        // Legacy channel graphs were created by Host before managed-source tracking existed.
+        // A binding's recorded built-in ID and the verified installation family prove scope.
+        let legacy_ids = sqlx::query_scalar::<_, String>(
+            r#"
+            select distinct b.plugin_mcp_instance_id from communication_bindings b
+            join notification_instances n on n.id=b.instance_id and n.workspace_id=b.scope_id
+            join extension_installations e on e.id=n.installation_id
+            where b.scope_id=$1 and e.organization=$2 and e.artifact_id=$3
+              and b.plugin_mcp_instance_id='communication_' || b.instance_id::text
+        "#,
+        )
+        .bind(input.workspace_id)
+        .bind(&input.source.organization)
+        .bind(&input.source.bundle_id)
+        .fetch_all(&mut *transaction)
+        .await?;
+        let shared_id = &input.instances[0].instance_id;
+        for legacy in legacy_ids {
+            sqlx::query(r#"
+                update communication_bindings set
+                    config_json=jsonb_set(config_json,'{mcp_instance_ids}',coalesce((
+                        select jsonb_agg(case when value=to_jsonb($3::text) then to_jsonb($4::text) else value end order by ordinal)
+                        from jsonb_array_elements(config_json->'mcp_instance_ids') with ordinality as grants(value,ordinal)
+                    ),'[]'::jsonb)), plugin_mcp_instance_id=$4, revision=revision+1
+                where scope_id=$1 and plugin_mcp_instance_id=$3
+                  and instance_id in (select n.id from notification_instances n join extension_installations e on e.id=n.installation_id where n.workspace_id=$1 and e.organization=$2 and e.artifact_id=$5)
+            "#).bind(input.workspace_id).bind(&input.source.organization).bind(&legacy).bind(shared_id).bind(&input.source.bundle_id)
+                .execute(&mut *transaction).await?;
+            // Only the three legacy Host tool IDs, with their expected Host targets.
+            for (name, interface_id) in [
+                ("history_messages", "communications.messages.list"),
+                ("history_files", "communications.files.list"),
+                ("read_file", "communications.files.get"),
+            ] {
+                sqlx::query("delete from mcp_tools where workspace_id=$1 and tool_id=$2 and interface_id in ($3,$4) and managed_bundle_id is null")
+                    .bind(input.workspace_id).bind(format!("{legacy}_{name}")).bind(interface_id).bind(interface_id.replace(".messages.list", "_messages").replace(".files.list", "_files").replace(".files.get", "_file")).execute(&mut *transaction).await?;
+            }
+            sqlx::query("delete from mcp_instances where workspace_id=$1 and instance_id=$2 and managed_bundle_id is null")
+                .bind(input.workspace_id).bind(&legacy).execute(&mut *transaction).await?;
+        }
+    }
+
+    if reset {
+        // Earlier channel provisioners used OpenAPI IDs. Remove only their now-unbound
+        // orphan tools, proven by a migrated binding and the verified plugin family.
+        sqlx::query(r#"
+            delete from mcp_tools t using notification_instances n, extension_installations e, communication_bindings b
+            where n.installation_id=e.id and n.id=b.instance_id and n.workspace_id=b.scope_id
+              and n.workspace_id=$1 and e.organization=$2 and e.artifact_id=$3
+              and b.plugin_mcp_instance_id=$4 and t.workspace_id=$1 and t.managed_bundle_id is null
+              and ((t.tool_id='communication_'||n.id::text||'_history_messages' and t.interface_id in ('communications.messages.list','communications_messages'))
+                or (t.tool_id='communication_'||n.id::text||'_history_files' and t.interface_id in ('communications.files.list','communications_files'))
+                or (t.tool_id='communication_'||n.id::text||'_read_file' and t.interface_id in ('communications.files.get','communications_file')))
+              and not exists(select 1 from mcp_tool_bindings bound where bound.tool_record_id=t.id)
+        "#).bind(input.workspace_id).bind(&input.source.organization).bind(&input.source.bundle_id).bind(&input.instances[0].instance_id)
+            .execute(&mut *transaction).await?;
+    }
+
+    if !plugin_template || owned_reset {
         sqlx::query(
             r#"
         delete from mcp_instances

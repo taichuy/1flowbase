@@ -80,6 +80,14 @@ async fn receive(state: &ApiState, key: (Uuid, Uuid)) -> Result<()> {
                         sender_display_name: message.sender.display_name,
                         received_at_ms: i64::try_from(message.received_at_ms)?,
                         text: message.text,
+                        reply_to: message.reply_to.map(|reference| {
+                            domain::CommunicationMessageReference {
+                                provider_message_id: reference.provider_message_id,
+                                message_id: None,
+                                title: reference.title,
+                                text: reference.text,
+                            }
+                        }),
                         attachments: message
                             .attachments
                             .into_iter()

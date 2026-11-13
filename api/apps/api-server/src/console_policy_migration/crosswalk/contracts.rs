@@ -156,6 +156,8 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "communications.messages.list",
             "communications.files.list",
             "communications.files.get",
+            "communications.files.info",
+            "communications.files.image",
             "communications.messages.retry",
         ],
     ),
@@ -616,6 +618,8 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "communications.messages.list",
     "communications.files.list",
     "communications.files.get",
+    "communications.files.info",
+    "communications.files.image",
     "communications.messages.retry",
     // Log deletion is new destructive authority, never inferred from legacy application grants.
     "applications.logs.delete",

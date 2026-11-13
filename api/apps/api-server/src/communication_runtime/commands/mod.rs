@@ -8,6 +8,7 @@ use uuid::Uuid;
 mod admission;
 mod delivery;
 mod effects;
+pub(super) mod event_replies;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
 

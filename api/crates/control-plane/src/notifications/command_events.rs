@@ -184,7 +184,23 @@ where
     ) -> Result<CommunicationCommandRecord> {
         reply.validate()?;
         self.repository
-            .complete_builtin_communication_command(claim, response_session_id, reply, failure_code)
+            .complete_builtin_communication_command(
+                claim,
+                response_session_id,
+                Some(reply),
+                failure_code,
+            )
+            .await
+    }
+    /// Complete a Host event command without an outbound message; keep failures internal.
+    pub async fn complete_builtin_command_without_reply(
+        &self,
+        claim: &ClaimedBuiltinCommunicationCommand,
+        response_session_id: Uuid,
+        failure_code: Option<String>,
+    ) -> Result<CommunicationCommandRecord> {
+        self.repository
+            .complete_builtin_communication_command(claim, response_session_id, None, failure_code)
             .await
     }
     pub async fn select_command_model(

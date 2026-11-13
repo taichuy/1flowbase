@@ -8,3 +8,5 @@ mod workflow_extension_routes;
 pub(crate) use native_streaming::setup_published_native_app;
 
 mod payload_admission;
+
+mod workflow_credentials_fixture;

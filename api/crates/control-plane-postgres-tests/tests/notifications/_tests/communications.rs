@@ -10,8 +10,7 @@ mod lifecycle;
 pub(super) const KEY: &str = "communications-fixture-master-key";
 pub(super) fn config() -> CommunicationBindingInput {
     CommunicationBindingInput {
-        event_commands: Vec::new(),
-        command_settings: vec![],
+        commands: vec![],
         application_id: Uuid::now_v7(),
         model: None,
         reasoning_effort: None,
@@ -41,6 +40,7 @@ pub(super) fn received(key: &str, sender: &str, attachment: bool) -> Communicati
         sender_display_name: Some(sender.into()),
         received_at_ms: 42,
         text: Some("hello".into()),
+        reply_to: None,
         attachments: if attachment {
             vec![CommunicationReceiveAttachment {
                 provider_attachment_id: "image-1".into(),

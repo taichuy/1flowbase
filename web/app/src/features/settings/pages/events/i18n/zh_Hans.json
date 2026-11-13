@@ -227,5 +227,9 @@
   "observation_stats_known_counts": "已提供统计的范围中，因达到保留时长而清理的记录数；暂无统计的范围不计作零。",
   "observation_stats_evicted_hint": "已提供统计的范围中，为给新记录腾出空间而提前清理的记录数。",
   "observation_stats_oversize_hint": "已提供统计的范围中，因单条记录超出可用空间而未保留的记录数。",
-  "observation_stats_rejected_hint": "当前工作区保留窗口内记录到的投递拒绝次数，不是工作流执行失败次数。"
+  "observation_stats_rejected_hint": "当前工作区保留窗口内记录到的投递拒绝次数，不是工作流执行失败次数。",
+  "event_kind": "事件类型",
+  "interface_event": "接口事件",
+  "communication_command_event": "聊天指令事件",
+  "communication_command_help": "聊天指令发布此事件；工作流接收原始命令参数及来源渠道、会话信息，并负责参数校验、业务处理与报告发送。"
 }

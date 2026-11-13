@@ -38,8 +38,11 @@ pub(super) async fn commit(
         }
         let conversation_id:Uuid=sqlx::query_scalar("INSERT INTO communication_conversations(id,scope_id,instance_id,external_identity,external_conversation_key,sender_display_name) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(scope_id,instance_id,external_identity,external_conversation_key) DO UPDATE SET sender_display_name=excluded.sender_display_name RETURNING id")
             .bind(Uuid::now_v7()).bind(w).bind(i).bind(&m.sender_id).bind(m.conversation_id).bind(m.sender_display_name).fetch_one(&mut *tx).await?;
-        let message_id:Option<Uuid>=sqlx::query_scalar("INSERT INTO communication_inputs(id,scope_id,instance_id,conversation_id,external_identity,external_message_key,received_at_ms) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(scope_id,instance_id,external_identity,external_message_key) DO NOTHING RETURNING id")
-            .bind(Uuid::now_v7()).bind(w).bind(i).bind(conversation_id).bind(&m.sender_id).bind(&m.provider_message_id).bind(m.received_at_ms).fetch_optional(&mut *tx).await?;
+        let reply_to =
+            resolve_reply_reference(&mut tx, w, i, conversation_id, &m.sender_id, m.reply_to)
+                .await?;
+        let message_id:Option<Uuid>=sqlx::query_scalar("INSERT INTO communication_inputs(id,scope_id,instance_id,conversation_id,external_identity,external_message_key,received_at_ms,reply_to_json) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(scope_id,instance_id,external_identity,external_message_key) DO NOTHING RETURNING id")
+            .bind(Uuid::now_v7()).bind(w).bind(i).bind(conversation_id).bind(&m.sender_id).bind(&m.provider_message_id).bind(m.received_at_ms).bind(reply_to.map(serde_json::to_value).transpose()?).fetch_optional(&mut *tx).await?;
         if let Some(message_id) = message_id {
             let mut contents = Vec::new();
             if let Some(text) = m.text.filter(|text| !text.trim().is_empty()) {
@@ -94,4 +97,30 @@ pub(super) async fn commit(
         }
     }
     Ok(revision)
+}
+
+async fn resolve_reply_reference(
+    db: &mut sqlx::PgConnection,
+    workspace: Uuid,
+    instance: Uuid,
+    conversation: Uuid,
+    sender: &str,
+    reference: Option<CommunicationMessageReference>,
+) -> Result<Option<CommunicationMessageReference>> {
+    let Some(mut reference) = reference else {
+        return Ok(None);
+    };
+    // No caller may assert a Host timeline UUID. Resolve only a unique supplier identity
+    // within the receiving workspace, channel, external sender and conversation.
+    reference.message_id = None;
+    if let Some(provider_id) = &reference.provider_message_id {
+        let rows = sqlx::query("SELECT t.id,t.content FROM communication_messages t WHERE t.scope_id=$1 AND t.instance_id=$2 AND t.conversation_id=$3 AND t.external_identity=$4 AND t.type='text' AND (EXISTS(SELECT 1 FROM communication_inputs m WHERE m.id=t.input_id AND m.scope_id=t.scope_id AND m.instance_id=t.instance_id AND m.conversation_id=t.conversation_id AND m.external_identity=t.external_identity AND t.direction='inbound' AND m.external_message_key=$5) OR EXISTS(SELECT 1 FROM communication_message_sends s WHERE s.message_id=t.id AND s.scope_id=t.scope_id AND s.instance_id=t.instance_id AND s.conversation_id=t.conversation_id AND (s.receipt_json->>'provider_message_id'=$5 OR s.receipt_json->>'client_message_id'=$5))) LIMIT 2")
+            .bind(workspace).bind(instance).bind(conversation).bind(sender).bind(provider_id)
+            .fetch_all(db).await?;
+        if rows.len() == 1 {
+            reference.message_id = Some(rows[0].try_get("id")?);
+            reference.text = rows[0].try_get("content")?;
+        }
+    }
+    Ok(Some(reference))
 }

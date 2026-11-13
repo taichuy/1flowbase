@@ -1075,3 +1075,6 @@ mod callable_catalog;
 mod document_event_observation;
 #[path = "workflow_extension_routes/schedule_publication.rs"]
 mod schedule_publication;
+
+#[path = "workflow_extension_routes/workflow_credentials.rs"]
+mod workflow_credentials;

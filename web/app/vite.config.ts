@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 
 import { oauthAwareApiProxy } from './vite/oauth-proxy';
@@ -259,6 +260,8 @@ export default defineConfig(({ command, mode }) => {
       fs: {
         allow: [
           searchForWorkspaceRoot(process.cwd()),
+          // Worktrees may reuse installed dependencies through a node_modules symlink.
+          realpathSync(fileURLToPath(new URL('../node_modules', import.meta.url))),
           fileURLToPath(new URL('../../scripts', import.meta.url)),
           // Vite 8 checks both the file path and the full raw-import ID.
           // Permit only this backend-owned public login block and its raw ID.

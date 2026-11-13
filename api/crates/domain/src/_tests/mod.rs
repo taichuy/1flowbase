@@ -10,6 +10,8 @@ mod mcp_bundle_tests;
 mod mcp_return_control_tests;
 mod mcp_upstream_tests;
 mod modeling_tests;
+#[path = "notifications/commands.rs"]
+mod notification_command_tests;
 mod resource_tests;
 mod runtime_observability_tests;
 #[path = "identity/scope_tests.rs"]

@@ -28,6 +28,16 @@ pub(crate) struct PageQuery {
     pub limit: Option<u32>,
 }
 #[derive(Default, Deserialize, serde::Serialize)]
+pub(crate) struct HistoryQuery {
+    pub cursor: Option<Uuid>,
+    pub limit: Option<u32>,
+    pub keyword: Option<String>,
+}
+#[derive(Deserialize, serde::Serialize)]
+pub(crate) struct ImageQuery {
+    pub max_file_bytes: u64,
+}
+#[derive(Default, Deserialize, serde::Serialize)]
 pub(crate) struct OptionsQuery {
     pub application_id: Option<Uuid>,
     pub instance_id: Option<Uuid>,
@@ -92,6 +102,14 @@ pub(crate) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route(
             "/communications/instances/:instance_id/conversations/:conversation_id/files",
             console_get(files, Op("communications.files.list".into())),
+        )
+        .route(
+            "/communications/instances/:instance_id/files/:message_id/info",
+            console_get(file_info, Op("communications.files.info".into())),
+        )
+        .route(
+            "/communications/instances/:instance_id/files/:message_id/image",
+            console_get(file_image, Op("communications.files.image".into())),
         )
         .route(
             "/communications/instances/:instance_id/files/:message_id",
@@ -191,12 +209,12 @@ pub(crate) async fn conversations(
     )
     .await
 }
-#[utoipa::path(get,path="/api/console/communications/instances/{instance_id}/conversations/{conversation_id}/messages",tag="Communications",operation_id="communications_messages",params(("instance_id"=Uuid,Path,description="instance id"),("conversation_id"=Uuid,Path,description="conversation id"),("cursor"=Option<Uuid>,Query,description="cursor"),("limit"=Option<u32>,Query,minimum=1,maximum=5,description="Page size, default and maximum 5")),responses((status=200,body=Value))) ]
+#[utoipa::path(get,path="/api/console/communications/instances/{instance_id}/conversations/{conversation_id}/messages",tag="Communications",operation_id="communications_messages",params(("keyword"=Option<String>,Query,description="Literal case-insensitive substring in message text or file name"),("instance_id"=Uuid,Path,description="instance id"),("conversation_id"=Uuid,Path,description="conversation id"),("cursor"=Option<Uuid>,Query,description="cursor"),("limit"=Option<u32>,Query,minimum=1,maximum=5,description="Page size, default and maximum 5")),responses((status=200,body=Value))) ]
 pub(crate) async fn messages(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((id, conversation)): Path<(Uuid, Uuid)>,
-    Query(q): Query<PageQuery>,
+    Query(q): Query<HistoryQuery>,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
     invoke(
         state,
@@ -313,6 +331,38 @@ pub(crate) async fn management_history(
         headers,
         "communications.management.conversations.messages.list",
         Input::ManagementHistory(id, q),
+        false,
+    )
+    .await
+}
+
+#[utoipa::path(get,path="/api/console/communications/instances/{instance_id}/files/{message_id}/info",tag="Communications",operation_id="communications_file_info",summary="Read received file metadata",description="Return authorized file identifiers, size, MIME and preview URL without file contents or a public grant.",params(("instance_id"=Uuid,Path,description="Channel ID"),("message_id"=Uuid,Path,description="File message ID")),responses((status=200,body=Value))) ]
+pub(crate) async fn file_info(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((id, message)): Path<(Uuid, Uuid)>,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    invoke(
+        state,
+        headers,
+        "communications.files.info",
+        Input::FileInfo(id, message),
+        false,
+    )
+    .await
+}
+#[utoipa::path(get,path="/api/console/communications/instances/{instance_id}/files/{message_id}/image",tag="Communications",operation_id="communications_file_image",summary="View a received image",description="Read an authorized image on explicit request with a caller-supplied file size budget; the MCP tool projects native image content.",params(("instance_id"=Uuid,Path,description="Channel ID"),("message_id"=Uuid,Path,description="File message ID"),("max_file_bytes"=u64,Query,description="Positive explicit maximum complete image size")),responses((status=200,body=Value))) ]
+pub(crate) async fn file_image(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((id, message)): Path<(Uuid, Uuid)>,
+    Query(q): Query<ImageQuery>,
+) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    invoke(
+        state,
+        headers,
+        "communications.files.image",
+        Input::FileImage(id, message, q),
         false,
     )
     .await

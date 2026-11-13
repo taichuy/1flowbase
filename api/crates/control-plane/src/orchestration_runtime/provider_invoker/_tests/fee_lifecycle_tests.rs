@@ -368,6 +368,7 @@ async fn invoke_with_metadata_for_actor(
         api_node_id: Some("local:test".into()),
         flow_run_id: Some(flow_run_id),
         flow_execution_context: Some(std::sync::Arc::new(RuntimeFlowExecutionContext {
+            workflow_credential_invoker: None,
             notification_sender: None,
             user_account: include_account.then(|| "receipt-user".into()),
             require_provider_usage_for_billing: false,

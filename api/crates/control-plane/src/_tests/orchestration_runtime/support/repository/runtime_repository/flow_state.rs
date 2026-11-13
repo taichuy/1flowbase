@@ -355,6 +355,29 @@ impl InMemoryOrchestrationRuntimeRepository {
             return Err(anyhow::anyhow!("simulated runtime event append failure"));
         }
 
+        let unfinished_node_status = match &input.result {
+            CommitFlowRunTerminalResult::Cancelled { .. } => Some(domain::NodeRunStatus::Cancelled),
+            CommitFlowRunTerminalResult::InterruptedExecution { .. } => {
+                Some(domain::NodeRunStatus::Failed)
+            }
+            _ => None,
+        };
+        if let Some(status) = unfinished_node_status {
+            for node in inner.node_runs_by_id.values_mut().filter(|node| {
+                node.flow_run_id == recovered.id
+                    && !matches!(
+                        node.status,
+                        domain::NodeRunStatus::Succeeded
+                            | domain::NodeRunStatus::Failed
+                            | domain::NodeRunStatus::Cancelled
+                            | domain::NodeRunStatus::Skipped
+                    )
+            }) {
+                node.status = status;
+                node.finished_at.get_or_insert(input.finished_at);
+            }
+        }
+
         inner
             .flow_runs_by_id
             .insert(recovered.id, recovered.clone());

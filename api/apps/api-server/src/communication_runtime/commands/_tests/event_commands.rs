@@ -26,6 +26,7 @@ async fn configure(fixture: &mut Fixture) -> EventDefinitionRecord {
     // Seed that record directly: new interface rules cannot define a free-form schema.
     let now = time::OffsetDateTime::now_utc();
     let definition = EventDefinitionRecord {
+        event_kind: None,
         interface_event: None,
         id: Uuid::now_v7(),
         workspace_id: fixture.actor.current_workspace_id,
@@ -53,18 +54,20 @@ async fn configure(fixture: &mut Fixture) -> EventDefinitionRecord {
         .unwrap();
     binding
         .config
-        .event_commands
-        .push(CommunicationEventCommandBinding {
-            command_id: "user/notify".into(),
-            name: "notify".into(),
-            description: "Publish event".into(),
-            enabled: true,
-            contract_id: definition.contract_id.clone(),
-            input_mapping: std::collections::BTreeMap::from([(
-                "message".into(),
-                "/arguments".into(),
-            )]),
-        });
+        .commands
+        .push(domain::CommunicationCommandConfiguration::Event(
+            CommunicationEventCommandBinding {
+                command_id: "user/notify".into(),
+                name: "notify".into(),
+                description: "Publish event".into(),
+                enabled: true,
+                contract_id: definition.contract_id.clone(),
+                input_mapping: std::collections::BTreeMap::from([(
+                    "message".into(),
+                    "/arguments".into(),
+                )]),
+            },
+        ));
     fixture
         .state
         .notification_service
@@ -93,7 +96,7 @@ async fn event_command_catalog_help_classification_and_invalid_payload_never_fal
     let catalog = fixture
         .state
         .notification_service
-        .event_command_catalog(&fixture.actor, &[], &binding.config.event_commands)
+        .event_command_catalog(&fixture.actor, &[], &binding.config.event_commands())
         .await
         .unwrap();
     assert!(catalog.iter().any(|c| c.command_id == "user/notify"
@@ -111,7 +114,7 @@ async fn event_command_catalog_help_classification_and_invalid_payload_never_fal
         .resolve_event_command(
             &fixture.actor,
             &[],
-            &binding.config.event_commands,
+            &binding.config.event_commands(),
             "/notify hi",
         )
         .await
@@ -119,7 +122,7 @@ async fn event_command_catalog_help_classification_and_invalid_payload_never_fal
     assert!(
         matches!(intent, CommunicationCommandIntent::Event { command_id, arguments } if command_id=="user/notify" && arguments=="hi")
     );
-    let mut disabled = binding.config.event_commands.clone();
+    let mut disabled = binding.config.event_commands();
     disabled[0].enabled = false;
     assert!(matches!(
         fixture
@@ -175,8 +178,11 @@ async fn event_command_publish_records_zero_targets_and_does_not_reexecute() {
         .unwrap()
         .unwrap();
     let text = record.reply.as_ref().unwrap().text.as_str();
-    assert_eq!(record.failure_code, None);
-    assert_eq!(text, "Event published with 0 receiving targets.");
+    assert_eq!(
+        record.failure_code.as_deref(),
+        Some("event_publication_rejected")
+    );
+    assert!(text.contains("No workflow is available"));
     let activity_count = fixture
         .state
         .event_center
@@ -204,9 +210,9 @@ async fn event_command_publish_records_zero_targets_and_does_not_reexecute() {
 }
 
 #[tokio::test]
-async fn reclaimed_event_claim_is_terminal_without_republishing() {
+async fn reclaimed_event_claim_is_silent_and_terminal_without_republishing() {
     let mut fixture = Fixture::new().await;
-    configure(&mut fixture).await;
+    let target = configure(&mut fixture).await;
     let (scope, input) = fixture
         .receive("alice", "uncertain-event", "/notify hello")
         .await;
@@ -235,17 +241,109 @@ async fn reclaimed_event_claim_is_terminal_without_republishing() {
         result.failure_code.as_deref(),
         Some("command_outcome_unknown")
     );
-    assert!(result
-        .reply
+    assert!(result.reply.is_none());
+    assert_eq!(serde_json::to_value(result.send_status).unwrap(), "none");
+    assert!(fixture
+        .state
+        .notification_service
+        .pending_command_responses(fixture.key.0, fixture.key.1, 10)
+        .await
         .unwrap()
-        .text
-        .contains("will not be retried automatically"));
+        .is_empty());
+    let outbound: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM communication_messages WHERE instance_id=$1 AND direction='outbound'",
+    )
+    .bind(fixture.key.1)
+    .fetch_one(fixture.state.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        outbound, 0,
+        "internal recovery must not create a chat message"
+    );
+    fixture.effect().await;
+    assert!(fixture
+        .state
+        .notification_service
+        .claim_builtin_command(fixture.key.0, fixture.key.1, 60)
+        .await
+        .unwrap()
+        .is_none());
+    let status: (String, String, Option<String>) = sqlx::query_as(
+        "SELECT processing_status,send_status,failure_code FROM communication_inputs WHERE id=$1",
+    )
+    .bind(input)
+    .fetch_one(fixture.state.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        status,
+        (
+            "failed".into(),
+            "none".into(),
+            Some("command_outcome_unknown".into())
+        )
+    );
     assert!(fixture
         .state
         .event_center
         .snapshot(fixture.key.0)
         .activity
         .is_empty());
+
+    // A failed command must release this chat. The next input owns a new event;
+    // it must not be merged with the failure or inherit its outcome.
+    let consumer = fixture
+        .state
+        .event_center
+        .subscribe(
+            control_plane::event_center::EventRuntimeSubscription {
+                subscription_id: Uuid::now_v7(),
+                workspace_id: fixture.key.0,
+                contract_id: target.contract_id,
+                trigger_phase: domain::event_center::EventTriggerPhase::Published,
+                consumer_id: Uuid::now_v7(),
+            },
+            false,
+        )
+        .unwrap();
+    let (_, next_input) = fixture
+        .receive("alice", "after-uncertain-event", "/notify next command")
+        .await;
+    super::super::admission::admit_available(&fixture.state, fixture.key)
+        .await
+        .unwrap();
+    fixture.effect().await;
+    let next = fixture
+        .state
+        .notification_service
+        .command_for_input(&scope, next_input)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(next.event_id, input);
+    assert_eq!(next.failure_code, None);
+    assert!(next.response_session_id.is_some());
+    assert!(next.reply.is_none());
+    assert!(fixture
+        .state
+        .notification_service
+        .pending_admissions(&scope)
+        .await
+        .unwrap()
+        .is_empty());
+    let delivery = tokio::time::timeout(Duration::from_secs(1), consumer.recv())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        delivery.signal().body,
+        control_plane::event_center::EventCenterSignalBody::Published {
+            payload: json!({"message":"next command"})
+        }
+    );
+    delivery.complete();
 }
 
 #[tokio::test]
@@ -293,11 +391,37 @@ async fn admitted_event_command_delivers_the_mapped_payload_to_the_explicit_even
         .unwrap()
         .unwrap();
     assert_eq!(result.failure_code, None);
-    assert!(result
-        .reply
+    assert!(result.reply.is_none());
+    assert!(fixture
+        .state
+        .notification_service
+        .pending_command_responses(fixture.key.0, fixture.key.1, 10)
+        .await
         .unwrap()
-        .text
-        .contains("1 targets accepted, 0 targets rejected"));
+        .is_empty());
+    let outbound: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM communication_messages WHERE instance_id=$1 AND direction='outbound'",
+    )
+    .bind(fixture.key.1)
+    .fetch_one(fixture.state.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(outbound, 0);
+    assert!(fixture
+        .state
+        .notification_service
+        .claim_builtin_command(fixture.key.0, fixture.key.1, 60)
+        .await
+        .unwrap()
+        .is_none());
+    let status: (String, String) = sqlx::query_as(
+        "SELECT processing_status,send_status FROM communication_inputs WHERE id=$1",
+    )
+    .bind(input)
+    .fetch_one(fixture.state.store.pool())
+    .await
+    .unwrap();
+    assert_eq!(status, ("succeeded".into(), "none".into()));
     delivery.complete();
 }
 
@@ -314,26 +438,34 @@ async fn saving_event_commands_rejects_bad_mapping_namespace_names_and_unavailab
         .unwrap();
     for change in 0..6 {
         let mut input = binding.config.clone();
+        let event = input
+            .commands
+            .iter_mut()
+            .find_map(|command| match command {
+                domain::CommunicationCommandConfiguration::Event(event) => Some(event),
+                _ => None,
+            })
+            .unwrap();
         match change {
             0 => {
-                input.event_commands[0].input_mapping.clear();
+                event.input_mapping.clear();
             }
             1 => {
-                input.event_commands[0]
+                event
                     .input_mapping
                     .insert("message".into(), "/workspace_id".into());
             }
             2 => {
-                input.event_commands[0].command_id = "host/notify".into();
+                event.command_id = "host/notify".into();
             }
             3 => {
-                input.event_commands[0].name = "help".into();
+                event.name = "help".into();
             }
             4 => {
-                input.event_commands[0].contract_id = "custom.missing".into();
+                event.contract_id = "custom.missing".into();
             }
             _ => {
-                input.event_commands.push(input.event_commands[0].clone());
+                input.commands.push(input.commands[0].clone());
             }
         }
         assert!(
@@ -362,7 +494,7 @@ async fn saving_event_commands_rejects_bad_mapping_namespace_names_and_unavailab
         saved.revision, binding.revision,
         "invalid saves cannot mutate the binding"
     );
-    assert_eq!(saved.config.event_commands, binding.config.event_commands);
+    assert_eq!(saved.config.commands, binding.config.commands);
 }
 
 #[cfg(feature = "test-support")]

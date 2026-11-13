@@ -17,6 +17,8 @@ const DEFAULT_MAX_RESPONSE_BYTES: u64 = 6 * 1024 * 1024;
 const MAX_RESPONSE_BYTES_LIMIT: u64 = 10 * 1024 * 1024;
 const INLINE_RESPONSE_STORAGE_ID: &str = "runtime-inline";
 
+mod workflow_credentials;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct HttpRequestNodeExecution {
     pub output_payload: Value,
@@ -137,6 +139,19 @@ pub async fn execute_http_request_node_with_provider_invoker<I>(
 where
     I: super::ProviderInvoker + ?Sized,
 {
+    if let Some(reference) = workflow_credentials::credential_reference(resolved_inputs) {
+        return http_request_execution_result(
+            workflow_credentials::execute(
+                node,
+                resolved_inputs,
+                variable_pool,
+                file_persister,
+                provider_invoker,
+                &reference,
+            )
+            .await,
+        );
+    }
     let timeout = Duration::from_millis(config_u64(&node.config, "timeout_ms", DEFAULT_TIMEOUT_MS));
     let verify_ssl = node
         .config

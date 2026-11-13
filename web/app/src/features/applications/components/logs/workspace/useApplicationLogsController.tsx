@@ -1008,40 +1008,38 @@ export function useApplicationLogsController({
               </Tooltip>
             </>
           ) : null}
-          {(applicationType === 'agent_logs' ||
-            applicationType === 'agent_flow') &&
-            applicationId && (
-              <AgentLogsDeleteButton
-                key={applicationId}
-                applicationId={applicationId}
-                applicationType={applicationType}
-                onFinished={async () => {
-                  setSelectedRunIds([]);
-                  setSelectedRunId(null);
-                  setRunDetailRect(null);
-                  setConversationLogRect(null);
-                  setResumeTimelineRect(null);
-                  setOpenConversationLogMessage(null);
-                  setOpenResumeTimelineRunId(null);
-                  setTraceViewRequested(false);
-                  writeApplicationLogsSearchState(
-                    { runId: null, view: null },
-                    'replace'
-                  );
-                  setPage(1);
-                  await queryClient.invalidateQueries({
-                    predicate: ({ queryKey }) =>
-                      (queryKey[0] === 'applications' &&
-                        (queryKey[1] === applicationId ||
-                          (Array.isArray(queryKey[1]) &&
-                            queryKey[1].includes(applicationId)))) ||
-                      (queryKey[0] === 'application-log-record' &&
-                        queryKey[1] === applicationId)
-                  });
-                  await refreshRunsFromDurable();
-                }}
-              />
-            )}
+          {applicationId && (
+            <AgentLogsDeleteButton
+              key={applicationId}
+              applicationId={applicationId}
+              applicationType={applicationType}
+              onFinished={async () => {
+                setSelectedRunIds([]);
+                setSelectedRunId(null);
+                setRunDetailRect(null);
+                setConversationLogRect(null);
+                setResumeTimelineRect(null);
+                setOpenConversationLogMessage(null);
+                setOpenResumeTimelineRunId(null);
+                setTraceViewRequested(false);
+                writeApplicationLogsSearchState(
+                  { runId: null, view: null },
+                  'replace'
+                );
+                setPage(1);
+                await queryClient.invalidateQueries({
+                  predicate: ({ queryKey }) =>
+                    (queryKey[0] === 'applications' &&
+                      (queryKey[1] === applicationId ||
+                        (Array.isArray(queryKey[1]) &&
+                          queryKey[1].includes(applicationId)))) ||
+                    (queryKey[0] === 'application-log-record' &&
+                      queryKey[1] === applicationId)
+                });
+                await refreshRunsFromDurable();
+              }}
+            />
+          )}
           <Tooltip title={t('auto.refresh_logs')}>
             <Button
               aria-label={t('auto.refresh_logs')}

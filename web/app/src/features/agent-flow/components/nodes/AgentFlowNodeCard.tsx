@@ -24,6 +24,8 @@ import { getCommonErrorBranchSourceHandle } from '../../lib/policy/node-error-po
 import { getNodePickerOptionKey } from '../../lib/plugin-node-definitions';
 import { i18nText } from '../../../../shared/i18n/text';
 
+import { NodeRunStatus } from './NodeRunStatus';
+
 const QUICK_ACTION_HIDE_DELAY_MS = 1000;
 
 type SourceHandle = {
@@ -498,7 +500,8 @@ export function AgentFlowNodeCard(
         />
       ) : null}
       <div
-        className={`agent-flow-node-card agent-flow-node-card--theme-unified agent-flow-node-card--type-${data.nodeType}${selected ? ' agent-flow-node-card--selected' : ''}`}
+        className={`agent-flow-run-node agent-flow-node-card agent-flow-node-card--theme-unified agent-flow-node-card--type-${data.nodeType}${selected ? ' agent-flow-node-card--selected' : ''}`}
+        data-run-status={data.runStatus}
         style={{ minHeight: minimumNodeHeight }}
         role="button"
         tabIndex={0}
@@ -519,6 +522,7 @@ export function AgentFlowNodeCard(
           }
         }}
       >
+        <NodeRunStatus status={data.runStatus} />
         <div
           className="agent-flow-node-card__content"
           data-testid={`agent-flow-node-content-${data.nodeId}`}

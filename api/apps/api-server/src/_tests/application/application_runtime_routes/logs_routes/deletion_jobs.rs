@@ -35,8 +35,29 @@ async fn value(response: axum::response::Response) -> Value {
 }
 #[tokio::test]
 async fn agent_logs_delete_jobs_console_auth_csrf_idempotent_start_and_query() {
+    deletion_job_contract("agent_logs").await;
+}
+
+#[tokio::test]
+async fn native_application_types_share_log_deletion_console_contract() {
+    for application_type in ["agent_flow", "workflow"] {
+        deletion_job_contract(application_type).await;
+    }
+}
+
+async fn deletion_job_contract(application_type: &str) {
     let (app, _) = test_app_with_database_url().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let mut application = json!({
+        "application_type":application_type,"name":"Job fixture","description":""
+    });
+    if application_type == "workflow" {
+        application["workflow_trigger_type"] = json!("extension");
+        application["workflow_trigger_config"] = json!({
+            "subpath":format!("deletion-fixture-{}",Uuid::now_v7()),
+            "http_method":"POST","response_mode":"sync"
+        });
+    }
     let response = app
         .clone()
         .oneshot(
@@ -46,10 +67,7 @@ async fn agent_logs_delete_jobs_console_auth_csrf_idempotent_start_and_query() {
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({"application_type":"agent_logs","name":"Job fixture","description":""})
-                        .to_string(),
-                ))
+                .body(Body::from(application.to_string()))
                 .unwrap(),
         )
         .await

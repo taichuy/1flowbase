@@ -498,6 +498,24 @@ impl AssistantRuntimeToolInvoker {
 
 #[async_trait]
 impl RuntimeInternalToolInvoker for AssistantRuntimeToolInvoker {
+    async fn prepare_workflow_credentials(
+        &self,
+        flow_run_id: uuid::Uuid,
+    ) -> Result<orchestration_runtime::execution_engine::WorkflowCredentialReferences> {
+        self.mcp.prepare_workflow_credentials(flow_run_id).await
+    }
+
+    async fn invoke_workflow_internal_http(
+        &self,
+        flow_run_id: uuid::Uuid,
+        credential_reference: &str,
+        request: orchestration_runtime::execution_engine::WorkflowInternalHttpRequest,
+    ) -> Result<orchestration_runtime::execution_engine::WorkflowInternalHttpResponse> {
+        self.mcp
+            .invoke_workflow_internal_http(flow_run_id, credential_reference, request)
+            .await
+    }
+
     fn registrations_for_node(&self, node: &CompiledNode) -> Vec<RuntimeInternalToolRegistration> {
         let mut registrations = self.mcp.registrations_for_node(node);
         if let Some(client) = &self.client {

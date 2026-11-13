@@ -88,11 +88,25 @@ export function CommunicationChat({
     rawOutput: null,
     traceSummary: []
   }));
-  const renderFile = (message: AgentFlowDebugMessage) => {
+  const renderMessage = (message: AgentFlowDebugMessage) => {
     const item = byId.get(message.id)!;
-    return item.type === 'file' ? (
-      <CommunicationFile message={item} />
-    ) : undefined;
+    if (item.type === 'file') return <CommunicationFile message={item} />;
+    if (!item.reply_to) return undefined;
+    return (
+      <div>
+        <blockquote className="communication-chat__quotation">
+          <Typography.Text type="secondary">
+            {item.reply_to.title ?? t('quoted_message')}
+          </Typography.Text>
+          {item.reply_to.text && (
+            <Typography.Paragraph ellipsis={{ rows: 3, expandable: true }}>
+              {item.reply_to.text}
+            </Typography.Paragraph>
+          )}
+        </blockquote>
+        <Typography.Paragraph>{item.content}</Typography.Paragraph>
+      </div>
+    );
   };
   const renderActions = (message: AgentFlowDebugMessage) => {
     const item = byId.get(message.id)!;
@@ -175,8 +189,8 @@ export function CommunicationChat({
               )}
             </Typography.Text>
           )}
-          userMessageMainRender={renderFile}
-          assistantMessageMainRender={renderFile}
+          userMessageMainRender={renderMessage}
+          assistantMessageMainRender={renderMessage}
           userMessageActions={renderActions}
           assistantMessageActions={renderActions}
           onChangeRunContextValue={noAction}

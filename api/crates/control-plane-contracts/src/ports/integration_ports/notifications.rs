@@ -20,6 +20,38 @@ pub struct NotificationAuthorizationSnapshot {
     pub revision: i64,
 }
 
+/// Host-only causal identity. Never reconstructed from workflow node input or plugin output.
+#[derive(Debug, Clone)]
+pub struct CommunicationSendContext {
+    pub scope: domain::CommunicationConversationScope,
+    pub input_id: Uuid,
+    pub run_id: Option<Uuid>,
+}
+
+pub struct PrepareCommunicationSend {
+    pub workspace_id: Uuid,
+    pub instance_id: Uuid,
+    pub send_log_id: Uuid,
+    pub target: Option<extension_contracts::NotificationSendTarget>,
+    pub context: Option<CommunicationSendContext>,
+}
+
+#[derive(Clone)]
+pub struct RecordCommunicationSendReceipt {
+    pub workspace_id: Uuid,
+    pub send_log_id: Uuid,
+    pub send_status: domain::CommunicationSendStatus,
+    pub failure_code: Option<String>,
+    pub receipt: Option<extension_contracts::NotificationSendReceipt>,
+    /// Credential-checked result projection; finalized atomically with the receipt/history.
+    pub log_extra: Option<Value>,
+}
+
+/// Retry only the local archive transaction when its storage transport is unavailable.
+#[derive(Debug, thiserror::Error)]
+#[error("communication send archive temporarily unavailable")]
+pub struct CommunicationSendArchiveUnavailable;
+
 pub struct SaveNotificationAuthorizationInput {
     pub workspace_id: Uuid,
     pub instance_id: Uuid,
@@ -59,6 +91,20 @@ pub struct NotificationChannelListInput {
 }
 #[async_trait]
 pub trait NotificationRepository: Send + Sync {
+    /// Reserve a durable channel send, reusing an existing reply history row where present.
+    async fn prepare_communication_send(
+        &self,
+        _input: PrepareCommunicationSend,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("communication_send_history_unsupported")
+    }
+    /// First terminal provider outcome wins; this never dispatches another provider request.
+    async fn record_communication_send_receipt(
+        &self,
+        _input: RecordCommunicationSendReceipt,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("communication_send_history_unsupported")
+    }
     async fn notification_authorization_view(
         &self,
         workspace_id: Uuid,

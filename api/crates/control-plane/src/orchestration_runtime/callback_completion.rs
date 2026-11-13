@@ -94,6 +94,23 @@ where
     where
         R: crate::ports::BillingRepository + crate::ports::FileManagementRepository,
     {
+        if let Some(grant) = &command.anthropic_continuation {
+            grant.validate(
+                command.application_id,
+                command.actor_user_id,
+                command.callback_task_id,
+                &command.response_payload,
+            )?;
+        } else if command
+            .response_payload
+            .get("anthropic_continuation")
+            .is_some()
+        {
+            return Err(ControlPlaneError::PermissionDenied(
+                "anthropic_continuation_requires_verified_ingress",
+            )
+            .into());
+        }
         if let Some(grant) = &command.responses_continuation {
             grant.validate(
                 command.application_id,
@@ -183,6 +200,10 @@ where
                 return Err(ControlPlaneError::InvalidInput("tool_results").into());
             }
             let input = CommitToolCallbackResultsInput {
+                anthropic_continuation: command
+                    .anthropic_continuation
+                    .as_ref()
+                    .map(|grant| grant.continuation().clone()),
                 responses_continuation: command
                     .responses_continuation
                     .as_ref()
@@ -206,7 +227,9 @@ where
                 None => self.repository.commit_tool_callback_results(&input).await?,
             };
             let committed = if committed.disposition == ToolCallbackRoundDisposition::Completed
-                && (command.responses_continuation.is_some() || command.native_transport.is_some())
+                && (command.responses_continuation.is_some()
+                    || command.anthropic_continuation.is_some()
+                    || command.native_transport.is_some())
             {
                 let stored = committed
                     .callback_task

@@ -823,6 +823,7 @@ pub(crate) trait WorkflowExtensionPort: Send + Sync + 'static {
     fn invoke_authorized<'a>(
         &'a self,
         authorized: AuthorizedPublishedWorkflowOperation,
+        actor: domain::ActorContext,
         principal: WorkflowHttpPrincipal,
         input: WorkflowExtensionInput,
         observation: Option<interface_runtime::DocumentOperationSession>,
@@ -865,7 +866,7 @@ impl
             if let Some(session) = &observation {
                 let _ = session.select(Arc::new(authorized.clone()));
             }
-            port.invoke_authorized(authorized, principal, input, observation)
+            port.invoke_authorized(authorized, actor, principal, input, observation)
                 .await
                 .and_then(|output| {
                     super::ex::normalize_workflow_extension_output(output)

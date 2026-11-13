@@ -1,445 +1,200 @@
-import { getStartInputFields } from '../../agent-flow/lib/variables/start-node-variables';
 import { useMemo, useState } from 'react';
 import {
   Alert,
   Button,
-  Descriptions,
-  Divider,
+  Checkbox,
   Drawer,
   Form,
   Input,
   InputNumber,
   Select,
-  Space,
-  Tag,
   Typography
 } from 'antd';
 
-import type { ConsoleApplicationRunDetail } from '@1flowbase/api-client';
-import type {
-  FlowAuthoringDocument,
-  FlowStartInputSource
-} from '@1flowbase/flow-schema';
+import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 
-import { useConsoleOperationAccess } from '../../../state/console-operation-access';
-import { useAuthStore } from '../../../state/auth-store';
 import { i18nText } from '../../../shared/i18n/text';
-import { startFlowDebugRun } from '../../agent-flow/api/runtime';
-import {
-  buildWorkflowTestRunInput,
-  listWorkflowHttpInputFields,
-  readWorkflowResult
-} from '../lib/test-run';
+import { getStartInputFields } from '../../flow-editor/authoring/start-input-fields';
 import type { WorkflowTriggerContext } from '../lib/trigger-context';
 
-const EXTENSION_SOURCES: FlowStartInputSource[] = [
-  'path',
-  'query',
-  'form',
-  'body'
-];
-
-const EXTENSION_SOURCE_LABEL_KEYS: Record<FlowStartInputSource, string> = {
-  path: 'auto.workflow_test_run_path_parameters',
-  query: 'auto.workflow_test_run_query_parameters',
-  form: 'auto.workflow_test_run_form_parameters',
-  body: 'auto.workflow_test_run_body_parameters'
-};
-
 type WorkflowTestRunFormValues = {
-  eventInputs?: Record<string, unknown>;
-  schedulePayload?: string;
-  extensionInputs?: Record<string, Record<string, unknown>>;
+  inputs: Record<string, unknown>;
 };
 
 export interface WorkflowTestRunPanelProps {
-  applicationId: string;
-  startRun?: typeof startFlowDebugRun;
   document: FlowAuthoringDocument;
   triggerContext: WorkflowTriggerContext;
-  onOpenTrace: (runId: string) => void;
-}
-
-function errorMessage(error: unknown) {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-
-  return i18nText('workflow', 'auto.workflow_test_run_failed');
-}
-
-function ResultValue({ value }: { value: unknown }) {
-  if (Array.isArray(value)) {
-    return (
-      <Space orientation="vertical" size={4}>
-        {value.map((entry, index) => (
-          <ResultValue key={index} value={entry} />
-        ))}
-      </Space>
-    );
-  }
-
-  if (typeof value === 'object' && value !== null) {
-    return <WorkflowResult result={value as Record<string, unknown>} />;
-  }
-
-  if (typeof value === 'boolean') {
-    return <Typography.Text>{String(value)}</Typography.Text>;
-  }
-
-  return (
-    <Typography.Text>{value == null ? '—' : String(value)}</Typography.Text>
-  );
-}
-
-function workflowRunStatusLabel(status: string) {
-  if (status === 'waiting_human' || status === 'waiting_callback') {
-    return i18nText('workflow', 'auto.workflow_test_run_status_waiting');
-  }
-
-  const key = {
-    running: 'auto.workflow_test_run_status_running',
-    succeeded: 'auto.workflow_test_run_status_succeeded',
-    failed: 'auto.workflow_test_run_status_failed',
-    cancelled: 'auto.workflow_test_run_status_cancelled'
-  }[status];
-
-  return key ? i18nText('workflow', key) : status;
-}
-
-function workflowRunStatusColor(status: string) {
-  if (status === 'succeeded') return 'success';
-  if (status === 'failed') return 'error';
-  if (status === 'cancelled') return 'default';
-  return 'processing';
-}
-
-function triggerDeliveryLabel(triggerContext: WorkflowTriggerContext) {
-  if (triggerContext.triggerType === 'event')
-    return i18nText('workflow', 'event.debug_delivery');
-  if (triggerContext.triggerType === 'schedule') {
-    return i18nText('workflow', 'auto.workflow_trigger_delivery_schedule');
-  }
-  if (triggerContext.triggerType === 'extension') {
-    return i18nText('workflow', 'auto.workflow_trigger_delivery_extension');
-  }
-}
-
-function WorkflowResult({ result }: { result: Record<string, unknown> }) {
-  const entries = Object.entries(result);
-
-  if (entries.length === 0) {
-    return (
-      <Typography.Text type="secondary">
-        {i18nText('workflow', 'auto.workflow_test_run_empty_result')}
-      </Typography.Text>
-    );
-  }
-
-  return (
-    <Descriptions column={1} size="small" bordered>
-      {entries.map(([key, value]) => (
-        <Descriptions.Item key={key} label={key}>
-          <ResultValue value={value} />
-        </Descriptions.Item>
-      ))}
-    </Descriptions>
-  );
+  running: boolean;
+  canRun: boolean;
+  onRun: (inputs: Record<string, unknown>) => Promise<void>;
 }
 
 export function WorkflowTestRunPanel({
-  applicationId,
   document,
   triggerContext,
-  onOpenTrace,
-  startRun = startFlowDebugRun
+  running,
+  canRun,
+  onRun
 }: WorkflowTestRunPanelProps) {
   const [open, setOpen] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [detail, setDetail] = useState<ConsoleApplicationRunDetail | null>(
-    null
-  );
-  const [failure, setFailure] = useState<string | null>(null);
-  const [form] = Form.useForm<WorkflowTestRunFormValues>();
-  const can = useConsoleOperationAccess();
-  const canRun = can('start_flow_debug_run');
-  const csrfToken = useAuthStore((state) => state.csrfToken);
-  const extensionInputFields = useMemo(
-    () => listWorkflowHttpInputFields(document),
+  const inputFields = useMemo(
+    () =>
+      getStartInputFields(
+        document.graph.nodes.find((node) => node.type === 'workflow_start')
+      ),
     [document]
   );
-
+  const visibleInputFields = inputFields.filter((field) => !field.hidden);
+  const hasUnsupportedInputs = visibleInputFields.some(
+    (field) => field.inputType === 'file' || field.inputType === 'file_list'
+  );
+  const canExecute = Boolean(canRun && triggerContext.triggerType);
   const initialValues = useMemo<WorkflowTestRunFormValues>(
     () => ({
-      schedulePayload: JSON.stringify(
-        triggerContext.schedule?.input_payload ?? {},
-        null,
-        2
-      ),
-      extensionInputs: Object.fromEntries(
-        EXTENSION_SOURCES.map((source) => [source, {}])
+      inputs: Object.fromEntries(
+        inputFields.flatMap((field) => {
+          const value =
+            (triggerContext.triggerType === 'schedule'
+              ? triggerContext.schedule?.input_payload[field.key]
+              : undefined) ??
+            field.defaultValue ??
+            (field.inputType === 'checkbox' ? false : undefined);
+          return value === undefined ? [] : [[field.key, value]];
+        })
       )
     }),
-    [triggerContext.schedule?.input_payload]
+    [
+      inputFields,
+      triggerContext.triggerType,
+      triggerContext.schedule?.input_payload
+    ]
   );
 
-  async function runWorkflow(values: WorkflowTestRunFormValues) {
-    if (!canRun || !csrfToken || !triggerContext.triggerType) {
-      setFailure(i18nText('workflow', 'auto.workflow_test_run_unavailable'));
-      return;
-    }
-
-    setRunning(true);
-    setFailure(null);
-    setDetail(null);
-    try {
-      const triggerType = triggerContext.triggerType;
-      const runInput =
-        triggerType === 'event'
-          ? buildWorkflowTestRunInput({
-              document,
-              triggerType,
-              eventInputs: values.eventInputs ?? {}
-            })
-          : triggerType === 'schedule'
-            ? buildWorkflowTestRunInput({
-                document,
-                triggerType,
-                schedulePayload: JSON.parse(values.schedulePayload ?? '{}')
-              })
-            : buildWorkflowTestRunInput({
-                document,
-                triggerType,
-                extensionInputs: {
-                  path: values.extensionInputs?.path ?? {},
-                  query: values.extensionInputs?.query ?? {},
-                  form: values.extensionInputs?.form ?? {},
-                  body: values.extensionInputs?.body ?? {}
-                }
-              });
-      const nextDetail = await startRun(
-        applicationId,
-        { ...runInput, document },
-        csrfToken
-      );
-      setDetail(nextDetail);
-    } catch (error) {
-      setFailure(errorMessage(error));
-    } finally {
-      setRunning(false);
-    }
+  function runWorkflow(values: WorkflowTestRunFormValues) {
+    if (!canExecute || running) return;
+    setOpen(false);
+    void onRun({ ...initialValues.inputs, ...values.inputs });
   }
 
   return (
     <>
-      <Button disabled={!canRun} onClick={() => setOpen(true)}>
+      <Button
+        disabled={!canRun || running}
+        loading={running}
+        onClick={() => {
+          if (visibleInputFields.length === 0 && canExecute) {
+            runWorkflow(initialValues);
+          } else {
+            setOpen(true);
+          }
+        }}
+      >
         {i18nText('workflow', 'auto.workflow_test_run')}
       </Button>
       <Drawer
         open={open}
         size={520}
+        styles={{ wrapper: { maxWidth: '100vw' } }}
         title={i18nText('workflow', 'auto.workflow_test_run')}
         onClose={() => setOpen(false)}
         destroyOnHidden
       >
-        <Form
-          aria-label={i18nText('workflow', 'auto.workflow_test_run_form')}
-          form={form}
-          layout="vertical"
-          initialValues={initialValues}
-          onFinish={runWorkflow}
-        >
-          {triggerContext.triggerType === 'event' ? (
-            <>
+        {visibleInputFields.length > 0 ? (
+          <Form<WorkflowTestRunFormValues>
+            aria-label={i18nText('workflow', 'auto.workflow_test_run_form')}
+            layout="vertical"
+            initialValues={initialValues}
+            disabled={running}
+            onFinish={runWorkflow}
+          >
+            <Typography.Title level={5} style={{ marginTop: 0 }}>
+              {i18nText('workflow', 'auto.input_parameters')}
+            </Typography.Title>
+            {triggerContext.triggerType === 'event' ? (
               <Alert
                 type="info"
                 title={i18nText('workflow', 'event.debug_hint')}
+                style={{ marginBottom: 16 }}
               />
-              {document.graph.nodes
-                .filter((node) => node.type === 'workflow_start')
-                .flatMap((node) => getStartInputFields(node))
-                .filter((field) =>
-                  ['string', 'number', 'boolean'].includes(field.valueType)
-                )
-                .map((field) => (
-                  <Form.Item
-                    key={field.key}
-                    name={['eventInputs', field.key]}
-                    label={field.label}
-                    initialValue={field.defaultValue}
-                    rules={[
-                      {
-                        required:
-                          field.required && field.defaultValue === undefined
-                      }
-                    ]}
-                  >
-                    {field.valueType === 'number' ? (
-                      <InputNumber />
-                    ) : field.valueType === 'boolean' ? (
-                      <Select
-                        options={[
-                          { value: true, label: 'true' },
-                          { value: false, label: 'false' }
-                        ]}
-                      />
-                    ) : (
-                      <Input />
-                    )}
-                  </Form.Item>
-                ))}
-            </>
-          ) : null}
-          {triggerContext.triggerType === 'schedule' ? (
-            <Form.Item
-              name="schedulePayload"
-              label={i18nText(
-                'workflow',
-                'auto.workflow_schedule_input_payload'
-              )}
-              rules={[
-                {
-                  validator: (_, value: string) => {
-                    try {
-                      JSON.parse(value || '{}');
-                      return Promise.resolve();
-                    } catch {
-                      return Promise.reject(
-                        new Error(
-                          i18nText(
-                            'workflow',
-                            'auto.workflow_schedule_input_payload_invalid'
-                          )
-                        )
-                      );
+            ) : null}
+            {visibleInputFields.map((field) => (
+              <Form.Item
+                key={field.key}
+                name={['inputs', field.key]}
+                label={field.label}
+                valuePropName={
+                  field.inputType === 'checkbox' ? 'checked' : 'value'
+                }
+                rules={[
+                  { required: field.required },
+                  ...(field.inputType === 'url'
+                    ? [{ type: 'url' as const }]
+                    : [])
+                ]}
+              >
+                {field.inputType === 'number' ? (
+                  <InputNumber
+                    placeholder={field.placeholder}
+                    style={{ width: '100%' }}
+                  />
+                ) : field.inputType === 'checkbox' ? (
+                  <Checkbox />
+                ) : field.inputType === 'select' ? (
+                  <Select
+                    allowClear={!field.required}
+                    placeholder={field.placeholder}
+                    options={(field.options ?? []).map((value) => ({
+                      value,
+                      label: value
+                    }))}
+                  />
+                ) : field.inputType === 'paragraph' ? (
+                  <Input.TextArea
+                    autoSize={{ minRows: 3, maxRows: 6 }}
+                    placeholder={field.placeholder}
+                    maxLength={field.maxLength}
+                  />
+                ) : (
+                  <Input
+                    type={field.inputType === 'url' ? 'url' : 'text'}
+                    placeholder={field.placeholder}
+                    maxLength={field.maxLength}
+                    disabled={
+                      field.inputType === 'file' ||
+                      field.inputType === 'file_list'
                     }
-                  }
-                }
-              ]}
+                  />
+                )}
+              </Form.Item>
+            ))}
+            {hasUnsupportedInputs ? (
+              <Alert
+                showIcon
+                type="warning"
+                title={i18nText(
+                  'workflow',
+                  'auto.workflow_test_run_file_unavailable'
+                )}
+                style={{ marginBottom: 16 }}
+              />
+            ) : null}
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={running}
+              disabled={!canExecute || hasUnsupportedInputs}
             >
-              <Input.TextArea rows={8} />
-            </Form.Item>
-          ) : null}
-
-          {triggerContext.triggerType === 'extension'
-            ? EXTENSION_SOURCES.map((source) => {
-                const fields = extensionInputFields.filter(
-                  (field) => field.source === source
-                );
-
-                if (fields.length === 0) {
-                  return null;
-                }
-
-                return (
-                  <section key={source}>
-                    <Typography.Title level={5}>
-                      {i18nText(
-                        'workflow',
-                        EXTENSION_SOURCE_LABEL_KEYS[source]
-                      )}
-                    </Typography.Title>
-                    {fields.map((field) => (
-                      <Form.Item
-                        key={`${source}-${field.key}`}
-                        name={['extensionInputs', source, field.key]}
-                        label={field.key}
-                      >
-                        <Input />
-                      </Form.Item>
-                    ))}
-                  </section>
-                );
-              })
-            : null}
-
-          {triggerContext.triggerType ? null : (
-            <Alert
-              showIcon
-              type="warning"
-              title={i18nText('workflow', 'auto.workflow_test_run_unavailable')}
-            />
-          )}
-
-          <Button
-            type="primary"
-            htmlType="submit"
-            loading={running}
-            disabled={!canRun || !triggerContext.triggerType}
-          >
-            {i18nText('workflow', 'auto.workflow_test_run_execute')}
-          </Button>
-        </Form>
-
-        {failure ? (
-          <Alert
-            showIcon
-            type="error"
-            title={i18nText('workflow', 'auto.workflow_test_run_failed')}
-            description={failure}
-            style={{ marginTop: 16 }}
-          />
+              {i18nText('workflow', 'auto.workflow_test_run_execute')}
+            </Button>
+          </Form>
         ) : null}
 
-        {running ? (
+        {!canExecute ? (
           <Alert
             showIcon
-            type="info"
-            title={i18nText(
-              'workflow',
-              'auto.workflow_test_run_status_running'
-            )}
-            style={{ marginTop: 16 }}
+            type="warning"
+            title={i18nText('workflow', 'auto.workflow_test_run_unavailable')}
           />
-        ) : null}
-
-        {detail ? (
-          <>
-            <Divider />
-            <Space
-              orientation="vertical"
-              size="middle"
-              style={{ width: '100%' }}
-            >
-              <Descriptions column={1} size="small">
-                <Descriptions.Item
-                  label={i18nText('workflow', 'auto.workflow_test_run_status')}
-                >
-                  <Tag color={workflowRunStatusColor(detail.flow_run.status)}>
-                    {workflowRunStatusLabel(detail.flow_run.status)}
-                  </Tag>
-                </Descriptions.Item>
-              </Descriptions>
-              <Typography.Title level={5} style={{ margin: 0 }}>
-                {i18nText('workflow', 'auto.workflow_result')}
-              </Typography.Title>
-              <WorkflowResult result={readWorkflowResult(detail)} />
-              <Typography.Title level={5} style={{ margin: 0 }}>
-                {i18nText('workflow', 'auto.workflow_trigger_delivery')}
-              </Typography.Title>
-              <Descriptions column={1} size="small" bordered>
-                <Descriptions.Item
-                  label={i18nText(
-                    'workflow',
-                    'auto.workflow_trigger_delivery_source'
-                  )}
-                >
-                  {triggerDeliveryLabel(triggerContext)}
-                </Descriptions.Item>
-                <Descriptions.Item
-                  label={i18nText(
-                    'workflow',
-                    'auto.workflow_trigger_delivery_run_id'
-                  )}
-                >
-                  {detail.flow_run.id}
-                </Descriptions.Item>
-              </Descriptions>
-              <Button onClick={() => onOpenTrace(detail.flow_run.id)}>
-                {i18nText('workflow', 'auto.workflow_test_run_view_trace')}
-              </Button>
-            </Space>
-          </>
         ) : null}
       </Drawer>
     </>

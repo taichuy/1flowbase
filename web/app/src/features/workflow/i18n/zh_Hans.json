@@ -9,8 +9,6 @@
     "workflow_schedule_enabled": "已启用",
     "workflow_schedule_disabled": "已停用",
     "trigger_variables": "触发变量",
-    "workflow_schedule_input_payload": "输入 payload",
-    "workflow_schedule_input_payload_invalid": "输入 payload 必须是合法 JSON",
     "workflow_test_run": "测试运行",
     "workflow_test_run_execute": "运行",
     "workflow_test_run_status": "运行状态",
@@ -19,23 +17,18 @@
     "workflow_test_run_failed": "工作流测试运行失败",
     "workflow_test_run_unavailable": "当前工作流尚未配置可用触发器或登录凭证。",
     "workflow_test_run_empty_result": "本次运行没有返回结果。",
-    "workflow_test_run_path_parameters": "Path 参数",
-    "workflow_test_run_query_parameters": "Query 参数",
-    "workflow_test_run_form_parameters": "Form 参数",
-    "workflow_test_run_body_parameters": "Body 参数",
     "workflow_action_bar": "Workflow 操作栏",
     "more_publish_actions": "更多发布操作",
-    "workflow_trigger_delivery": "Trigger Delivery",
-    "workflow_trigger_delivery_source": "触发来源",
-    "workflow_trigger_delivery_run_id": "Run ID",
-    "workflow_trigger_delivery_schedule": "定时触发测试（不进入真实调度队列）",
-    "workflow_trigger_delivery_extension": "扩展接口测试（不访问公开接口）",
     "workflow_test_run_status_running": "运行中",
     "workflow_test_run_status_waiting": "等待中",
     "workflow_test_run_status_succeeded": "已成功",
     "workflow_test_run_status_failed": "已失败",
     "workflow_test_run_status_cancelled": "已取消",
-    "workflow_test_run_form": "Workflow 测试运行表单"
+    "workflow_test_run_form": "Workflow 测试运行表单",
+    "workflow_test_run_file_unavailable": "当前测试运行暂不支持文件参数。",
+    "workflow_test_run_connection_lost": "连接中断，运行状态尚未确认",
+    "workflow_test_run_status_incomplete": "未完成",
+    "workflow_test_run_clear": "清除运行标记"
   },
   "event": {
     "enabled": "订阅已启用",
@@ -43,7 +36,6 @@
     "subscribed": "订阅",
     "published": "发布",
     "consumed": "消费",
-    "debug_delivery": "事件工作流调试运行",
     "debug_hint": "直接测试标量 Start 输入；此调试不发布事件，也不验证事件投递。"
   }
 }

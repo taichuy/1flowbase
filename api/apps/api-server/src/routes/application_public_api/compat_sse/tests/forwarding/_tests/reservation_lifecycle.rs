@@ -36,8 +36,12 @@ struct NoToolsFactory;
 impl crate::routes::application_public_api::native_read_interface::NativeRuntimeInvokerFactory
     for NoToolsFactory
 {
-    fn without_mcp(&self) -> Result<Arc<dyn RuntimeInternalToolInvoker>, NativeApiError> {
-        Ok(Arc::new(NoTools) as Arc<dyn RuntimeInternalToolInvoker>)
+    fn without_mcp<'a>(
+        &'a self,
+        _actor: &'a domain::ActorContext,
+    ) -> crate::routes::application_public_api::native_read_interface::RuntimeInvokerFuture<'a>
+    {
+        Box::pin(async { Ok(Arc::new(NoTools) as Arc<dyn RuntimeInternalToolInvoker>) })
     }
 
     fn for_actor<'a>(
@@ -399,6 +403,7 @@ async fn fixture_with_callback_kind(
         response_payload,
         response_mode: Some("streaming".into()),
         native_transport: Some(native_transport),
+        anthropic_continuation: None,
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,
@@ -542,13 +547,12 @@ struct PreclaimInvokerFailure {
 impl crate::routes::application_public_api::native_read_interface::NativeRuntimeInvokerFactory
     for PreclaimInvokerFailure
 {
-    fn without_mcp(
-        &self,
-    ) -> Result<
-        Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>,
-        NativeApiError,
-    > {
-        panic!("callback resume must use the actor factory")
+    fn without_mcp<'a>(
+        &'a self,
+        _actor: &'a domain::ActorContext,
+    ) -> crate::routes::application_public_api::native_read_interface::RuntimeInvokerFuture<'a>
+    {
+        Box::pin(async { panic!("callback resume must use the actor factory") })
     }
 
     fn for_actor<'a>(
@@ -1029,6 +1033,7 @@ async fn complete_original_callback(
     let completed = state
         .store
         .commit_tool_callback_results(&control_plane::ports::CommitToolCallbackResultsInput {
+            anthropic_continuation: None,
             responses_continuation: None,
             scope_id,
             application_id: run.application_id,

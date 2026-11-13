@@ -605,6 +605,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
         let detail = scope_application_activity(
             application_id,
             runtime.complete_callback_task(CompleteCallbackTaskCommand {
+                anthropic_continuation: None,
                 responses_continuation: None,
                 transport_connection_scope: None,
                 observation_context: None,

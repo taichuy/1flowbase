@@ -41,6 +41,9 @@ export function EventDefinitionDrawer({
   const { t } = useTranslation('settingsEvents');
   const [form] = Form.useForm<CreateEventDefinitionInput>();
   const can = useConsoleOperationAccess();
+  const event_kind =
+    Form.useWatch('event_kind', form) ?? entry?.event_kind ?? 'interface';
+  const commandEvent = event_kind === 'communication_command';
   const operation_id = Form.useWatch(
     ['interface_event', 'operation_id'],
     form
@@ -56,33 +59,43 @@ export function EventDefinitionDrawer({
   const operations = useQuery({
     queryKey: ['events', 'api-operations'],
     queryFn: () => listApiEventOperations(),
-    enabled: editable && !legacy && can('events.api_operations.list')
+    enabled:
+      editable && !commandEvent && !legacy && can('events.api_operations.list')
   });
   const details = useQuery({
     queryKey: ['events', 'api-operations', operation_id],
     queryFn: () => getApiEventOperation(operation_id!),
     enabled:
-      editable && !legacy && !!operation_id && can('events.api_operations.get')
+      editable &&
+      !commandEvent &&
+      !legacy &&
+      !!operation_id &&
+      can('events.api_operations.get')
   });
   const selected =
     details.data?.operation_id === operation_id ? details.data : undefined;
   const availability = phase && selected ? selected[phase] : undefined;
-  const selectedSchema = legacy
+  const selectedSchema = commandEvent
     ? entry?.payload_schema
-    : phase === 'before'
-      ? selected?.before_schema
-      : phase === 'completion'
-        ? selected?.completion_schema
-        : undefined;
+    : legacy
+      ? entry?.payload_schema
+      : phase === 'before'
+        ? selected?.before_schema
+        : phase === 'completion'
+          ? selected?.completion_schema
+          : undefined;
   const hasSchema = selectedSchema !== undefined && selectedSchema !== null;
   const binding = Form.useWatch('interface_event', form);
   const unchangedDisabled =
     enabled === false &&
     entry?.interface_event !== undefined &&
     JSON.stringify(binding) === JSON.stringify(entry.interface_event);
-  const canSave = legacy
-    ? !!entry
-    : (availability?.status === 'available' && hasSchema) || unchangedDisabled;
+  const canSave = commandEvent
+    ? true
+    : legacy
+      ? !!entry
+      : (availability?.status === 'available' && hasSchema) ||
+        unchangedDisabled;
   // Static references keep all backend reason translations visible to i18n hygiene.
   const reasonLabels: Record<ApiEventUnavailableReason, string> = {
     operational_control: t('api_reason_operational_control'),
@@ -126,30 +139,66 @@ export function EventDefinitionDrawer({
                   name: entry.name,
                   description: entry.description,
                   enabled: entry.enabled,
+                  event_kind: entry.event_kind ?? 'interface',
                   interface_event: entry.interface_event
                 }
-              : { enabled: true, description: '' }
+              : { event_kind: 'interface', enabled: true, description: '' }
           }
-          onFinish={({ name, description, enabled, interface_event }) => {
+          onFinish={({
+            name,
+            description,
+            enabled,
+            interface_event,
+            event_kind = 'interface'
+          }) => {
             if (canSave)
               onSave({
                 name,
                 description: description ?? '',
                 enabled,
-                interface_event: legacy ?? {
-                  operation_id:
-                    'operation_id' in interface_event
-                      ? interface_event.operation_id
-                      : '',
-                  phase: interface_event.phase,
-                  ...(interface_event.phase === 'completion'
-                    ? { results: interface_event.results ?? [] }
-                    : {})
-                }
+                event_kind,
+                ...(event_kind === 'communication_command'
+                  ? {}
+                  : {
+                      interface_event: legacy ?? {
+                        operation_id:
+                          interface_event && 'operation_id' in interface_event
+                            ? interface_event.operation_id
+                            : '',
+                        phase: interface_event!.phase,
+                        ...(interface_event?.phase === 'completion'
+                          ? { results: interface_event.results ?? [] }
+                          : {})
+                      }
+                    })
               });
           }}
         >
-          <Alert type="info" showIcon title={t('interface_help')} />
+          <Form.Item
+            name="event_kind"
+            label={t('event_kind')}
+            rules={[{ required: true }]}
+          >
+            <Select
+              disabled={!!entry}
+              options={[
+                { value: 'interface', label: t('interface_event') },
+                {
+                  value: 'communication_command',
+                  label: t('communication_command_event')
+                }
+              ]}
+            />
+          </Form.Item>
+          <Alert
+            type="info"
+            showIcon
+            title={
+              commandEvent
+                ? t('communication_command_help')
+                : t('interface_help')
+            }
+          />
           <Form.Item
             name="name"
             label={t('name')}
@@ -157,7 +206,7 @@ export function EventDefinitionDrawer({
           >
             <Input />
           </Form.Item>
-          {legacy ? (
+          {commandEvent ? null : legacy ? (
             <Alert
               type="info"
               showIcon
@@ -229,7 +278,7 @@ export function EventDefinitionDrawer({
               )}
             </>
           )}
-          {!legacy && phase === 'completion' && (
+          {!commandEvent && !legacy && phase === 'completion' && (
             <Form.Item
               name={['interface_event', 'results']}
               label={t('results')}
@@ -260,15 +309,17 @@ export function EventDefinitionDrawer({
               value={selectedSchema}
               maxAutoHeight={400}
             />
-          ) : (
+          ) : !commandEvent ? (
             <Alert type="info" title={t('select_interface_phase')} />
-          )}
+          ) : null}
           <Space>
             <Button
               type="primary"
               htmlType="submit"
               loading={saving}
-              disabled={!canSave || (legacy ? false : details.isFetching)}
+              disabled={
+                !canSave || (!commandEvent && !legacy && details.isFetching)
+              }
             >
               {t('save')}
             </Button>
@@ -284,6 +335,18 @@ export function EventDefinitionDrawer({
             <Descriptions
               column={1}
               items={[
+                ...(entry.event_kind
+                  ? [
+                      {
+                        key: 'event_kind',
+                        label: t('event_kind'),
+                        children:
+                          entry.event_kind === 'communication_command'
+                            ? t('communication_command_event')
+                            : t('interface_event')
+                      }
+                    ]
+                  : []),
                 {
                   key: 'contract_id',
                   label: t('contract_id'),

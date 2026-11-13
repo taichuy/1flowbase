@@ -37,6 +37,13 @@ fn query_schema() -> Value {
         ("limit", nullable(json!({"type":"integer","minimum":0}))),
     ])
 }
+fn history_query_schema() -> Value {
+    object([
+        ("cursor", nullable(text())),
+        ("limit", nullable(json!({"type":"integer","minimum":0}))),
+        ("keyword", nullable(text())),
+    ])
+}
 fn query(query: &PageQuery) -> Value {
     json!({"cursor":query.cursor,"limit":query.limit})
 }
@@ -45,7 +52,7 @@ pub(super) fn input_schema() -> Value {
         object([("operation",json!({"const":"binding"})),("instance_id",text())]),
         object([("operation",json!({"const":"save_binding"})),("instance_id",text()),("body",binding_schema())]),
         object([("operation",json!({"const":"retry"})),("instance_id",text()),("message_id",text())]),
-        object([("operation",json!({"const":"messages"})),("instance_id",text()),("conversation_id",text()),("query",query_schema())]),
+        object([("operation",json!({"const":"messages"})),("instance_id",text()),("conversation_id",text()),("query",history_query_schema())]),
         object([("operation",json!({"const":"management_history"})),("conversation_id",text()),("query",query_schema())]),
         object([("operation",json!({"const":"management_message"})),("message_id",text())]),
         object([("operation",json!({"const":"management_messages"})),("query",object([
@@ -68,7 +75,7 @@ pub(super) fn input(input: &Input) -> Option<Value> {
             json!({"operation":"retry","instance_id":instance_id,"message_id":message_id})
         }
         Input::Messages(instance_id, conversation_id, page) => {
-            json!({"operation":"messages","instance_id":instance_id,"conversation_id":conversation_id,"query":query(page)})
+            json!({"operation":"messages","instance_id":instance_id,"conversation_id":conversation_id,"query":{"cursor":page.cursor,"limit":page.limit,"keyword":page.keyword}})
         }
         Input::ManagementHistory(conversation_id, page) => {
             json!({"operation":"management_history","conversation_id":conversation_id,"query":query(page)})
@@ -100,16 +107,19 @@ fn binding_record_schema() -> Value {
 }
 fn message_schema() -> Value {
     let mut properties = serde_json::Map::new();
-    for key in [
-        "id",
-        "conversation_id",
-        "input_id",
-        "instance_id",
-        "type",
-        "direction",
-    ] {
+    for key in ["id", "conversation_id", "instance_id", "type", "direction"] {
         properties.insert(key.into(), text());
     }
+    properties.insert("input_id".into(), nullable(text()));
+    properties.insert(
+        "reply_to".into(),
+        nullable(object([
+            ("provider_message_id", nullable(text())),
+            ("message_id", nullable(text())),
+            ("title", nullable(text())),
+            ("text", nullable(text())),
+        ])),
+    );
     for key in [
         "instance_display_name",
         "external_identity",
@@ -186,6 +196,7 @@ fn message(value: &Value) -> Value {
             "direction",
             "occurred_at_ms",
             "content",
+            "reply_to",
             "content_preview",
             "run_id",
             "application_id",
