@@ -553,10 +553,10 @@ async fn communication_command_help_uses_effective_availability_and_rechecks_dis
         .await
         .unwrap()
         .unwrap();
-    binding.config.command_settings = vec![CommunicationCommandSetting {
+    binding.config.commands = vec![domain::CommunicationCommandConfiguration::Registered(CommunicationCommandSetting {
         command_id: "host/new".into(),
         enabled: false,
-    }];
+    })];
     fixture
         .state
         .notification_service
@@ -595,7 +595,7 @@ async fn communication_command_help_uses_effective_availability_and_rechecks_dis
 }
 
 #[test]
-fn event_publication_reply_reports_admission_without_claiming_workflow_success() {
+fn event_publication_is_silent_when_admitted_and_actionable_when_unavailable() {
     use control_plane::event_center::{
         EventPublishReceipt, EventTargetAdmission, EventTargetAdmissionStatus as Status,
     };
@@ -605,24 +605,23 @@ fn event_publication_reply_reports_admission_without_claiming_workflow_success()
         targets: vec![],
     };
     let reply = super::super::effects::event_publication_reply(&receipt);
-    assert!(reply.0.contains("0 receiving targets"));
-    assert_eq!(reply.1, None);
+    assert!(reply.0.unwrap().contains("No workflow is available"));
+    assert_eq!(reply.1.as_deref(), Some("event_publication_rejected"));
     receipt.targets = vec![EventTargetAdmission {
         subscription_id: Uuid::now_v7(),
         status: Status::Accepted,
     }];
     let reply = super::super::effects::event_publication_reply(&receipt);
-    assert!(reply.0.contains("1 targets accepted, 0 targets rejected"));
+    assert_eq!(reply.0, None);
     assert_eq!(reply.1, None);
     receipt.targets.push(EventTargetAdmission {
         subscription_id: Uuid::now_v7(),
         status: Status::ResourceExhausted,
     });
     let reply = super::super::effects::event_publication_reply(&receipt);
-    assert!(reply.0.contains("1 targets accepted, 1 targets rejected"));
-    assert_eq!(reply.1.as_deref(), Some("event_publication_partial"));
+    assert_eq!(reply, (None, None));
     receipt.targets.remove(0);
     let reply = super::super::effects::event_publication_reply(&receipt);
-    assert!(reply.0.contains("0 targets accepted, 1 targets rejected"));
+    assert!(reply.0.unwrap().contains("No workflow is available"));
     assert_eq!(reply.1.as_deref(), Some("event_publication_rejected"));
 }

@@ -254,7 +254,7 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
 
 fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
     match model_code {
-        "event_definitions" => field_code != "interface_event",
+        "event_definitions" => !matches!(field_code, "interface_event" | "event_kind"),
         "workflow_event_triggers" => field_code != "source",
         "notification_instances" => field_code != "installation_id",
         "system_notifications" => field_code != "read_at",
@@ -988,6 +988,7 @@ pub fn builtin_data_model_contract(code: &str) -> Option<BuiltinDataModelContrac
                 "description",
                 "payload_schema",
                 "interface_event",
+                "event_kind",
                 "enabled",
                 "created_by",
                 "created_at",

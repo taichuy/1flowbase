@@ -1,7 +1,7 @@
 use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 mod event_projection;
 
-use super::{provisioning, scope, FileQuery, PageQuery};
+use super::{provisioning, scope, FileQuery, HistoryQuery, ImageQuery, PageQuery};
 use crate::{
     app_state::{ApiNotificationService, ApiState},
     error_response::ApiError,
@@ -67,13 +67,17 @@ pub(crate) enum Input {
     #[serde(serialize_with = "json_contract::path_query_omit_nulls")]
     Conversations(Uuid, PageQuery),
     #[serde(serialize_with = "json_contract::path2_query_omit_nulls")]
-    Messages(Uuid, Uuid, PageQuery),
+    Messages(Uuid, Uuid, HistoryQuery),
     #[serde(serialize_with = "json_contract::path2_query_omit_nulls")]
     Files(Uuid, Uuid, PageQuery),
     #[serde(serialize_with = "json_contract::path2_query_omit_nulls")]
     File(Uuid, Uuid, FileQuery),
     #[serde(serialize_with = "json_contract::path2")]
     Retry(Uuid, Uuid),
+    #[serde(serialize_with = "json_contract::path2")]
+    FileInfo(Uuid, Uuid),
+    #[serde(serialize_with = "json_contract::path2_query_omit_nulls")]
+    FileImage(Uuid, Uuid, ImageQuery),
 }
 impl Input {
     fn authorize_scope(&self) -> Result<(), ApiError> {
@@ -106,7 +110,7 @@ impl InterfaceContract for Input {
     }
     fn project_for_managed_hook(&self) -> Option<Value> {
         Some(
-            json!({"operation":match self{Self::ManagementConversations(_)=>"management_conversations",Self::ManagementHistory(..)=>"management_history",Self::ManagementMessages(_)=>"management_messages",Self::ManagementMessage(_)=>"management_message",Self::Options(..)=>"options",Self::Binding(_)=>"binding",Self::SaveBinding(..)=>"save_binding",Self::Conversations(..)=>"conversations",Self::Messages(..)=>"messages",Self::Files(..)=>"files",Self::File(..)=>"file",Self::Retry(..)=>"retry"}}),
+            json!({"operation":match self{Self::ManagementConversations(_)=>"management_conversations",Self::ManagementHistory(..)=>"management_history",Self::ManagementMessages(_)=>"management_messages",Self::ManagementMessage(_)=>"management_message",Self::Options(..)=>"options",Self::Binding(_)=>"binding",Self::SaveBinding(..)=>"save_binding",Self::Conversations(..)=>"conversations",Self::Messages(..)=>"messages",Self::Files(..)=>"files",Self::File(..)=>"file",Self::FileInfo(..)=>"file_info",Self::FileImage(..)=>"file_image",Self::Retry(..)=>"retry"}}),
         )
     }
 }
@@ -167,9 +171,8 @@ impl Dependencies {
                     Some(id) => self.service.get_binding(actor, id).await?,
                     None => None,
                 };
-                let settings = binding.as_ref().map(|b| b.config.command_settings.as_slice()).unwrap_or_default();
-                let event_commands = binding.as_ref().map(|b| b.config.event_commands.as_slice()).unwrap_or_default();
-                let mut commands = self.service.event_command_catalog(actor, settings, event_commands).await?;
+                let configured = binding.as_ref().map(|b| b.config.commands.as_slice()).unwrap_or_default();
+                let mut commands = self.service.configured_command_catalog(actor, configured).await?;
                 control_plane::notifications::apply_communication_model_availability(&mut commands, model_unavailable_reason);
                 json!({"published_agent_flows":published_agent_flows,"enabled_mcp_instances":enabled_mcp_instances,"run_capabilities":run_capabilities,"commands":commands})
             };
@@ -190,10 +193,9 @@ impl Dependencies {
                     .and_then(|t| t.descriptor.receive);
                 let binding = self.service.get_binding(actor, id).await?;
                 let plugin_mcp_instance_id =
-                    descriptor.as_ref().map(|_| provisioning::instance_id(id));
-                let settings = binding.as_ref().map(|b| b.config.command_settings.as_slice()).unwrap_or_default();
-                let event_commands = binding.as_ref().map(|b| b.config.event_commands.as_slice()).unwrap_or_default();
-                let mut commands = self.service.event_command_catalog(actor, settings, event_commands).await?;
+                    descriptor.as_ref().map(|d| d.mcp_instance_id.clone().unwrap_or_else(|| provisioning::instance_id(id)));
+                let configured = binding.as_ref().map(|b| b.config.commands.as_slice()).unwrap_or_default();
+                let mut commands = self.service.configured_command_catalog(actor, configured).await?;
                 let (_, reason) = crate::communication_runtime::command_capabilities::load(
                     &self.store, actor, binding.as_ref().map(|b| b.config.application_id),
                 ).await?;
@@ -288,7 +290,12 @@ impl Dependencies {
                 Ok(Output(result))
             }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
             Input::Messages(id, conversation, q) => Box::pin(async move {
-                let result = match scope::for_channel(actor, id)? {
+                let result = if let Some(keyword) = q.keyword.as_deref() {
+                    match scope::for_channel(actor,id)? {
+                        Some(s) => serde_json::to_value(self.service.scoped_search_messages(&s,conversation,q.cursor,q.limit.unwrap_or(5),keyword).await?)?,
+                        None => serde_json::to_value(self.service.search_message_history(actor,id,conversation,q.cursor,q.limit.unwrap_or(5),keyword).await?)?,
+                    }
+                } else { match scope::for_channel(actor, id)? {
                 Some(s) => serde_json::to_value(
                     self.service
                         .scoped_message_history(&s, conversation, q.cursor, q.limit.unwrap_or(5))
@@ -299,7 +306,7 @@ impl Dependencies {
                         .message_history(actor, id, conversation, q.cursor, q.limit.unwrap_or(5))
                         .await?,
                 )?,
-            };
+            }};
                 Ok(Output(result))
             }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
             Input::Files(id, conversation, q) => Box::pin(async move {
@@ -327,6 +334,14 @@ impl Dependencies {
             };
                 Ok(Output(result))
             }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
+            Input::FileInfo(id, message_id) => Box::pin(async move {
+                let message = match scope::for_channel(actor,id)? {Some(s)=>self.service.scoped_file(&s,message_id).await?,None=>self.service.file_info_message(actor,id,message_id).await?};
+                Ok(Output(self.file_metadata(actor,&message).await?))
+            }.map(|result:Result<Output,ApiError>|result.map_err(ConsoleInterfaceTargetError))),
+            Input::FileImage(id, message_id, q) => Box::pin(async move {
+                let message = match scope::for_channel(actor,id)? {Some(s)=>self.service.scoped_file(&s,message_id).await?,None=>self.service.image_message(actor,id,message_id).await?};
+                Ok(Output(self.view_image(actor,&message,q.max_file_bytes).await?))
+            }.map(|result:Result<Output,ApiError>|result.map_err(ConsoleInterfaceTargetError))),
             Input::Retry(id, message) => Box::pin(async move {
                 let result = {
                 // Retry is a management action; read-only history MCP declarations never expose it.
@@ -335,6 +350,76 @@ impl Dependencies {
                 Ok(Output(result))
             }.map(|result: Result<Output, ApiError>| result.map_err(ConsoleInterfaceTargetError))),
         }
+    }
+    async fn file_metadata(
+        &self,
+        actor: &domain::ActorContext,
+        message: &domain::CommunicationMessage,
+    ) -> Result<Value, ApiError> {
+        let file =
+            message
+                .file
+                .as_ref()
+                .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                    "communication_file",
+                ))?;
+        let (Some(table), Some(record)) = (file.file_table_id, file.file_record_id) else {
+            return Ok(json!({"message":message,"url":null,"preview_url":null}));
+        };
+        let mut value = self
+            .file_service
+            .metadata(actor.clone(), table, record)
+            .await?;
+        value["message"] = serde_json::to_value(message)?;
+        Ok(value)
+    }
+    async fn view_image(
+        &self,
+        actor: &domain::ActorContext,
+        message: &domain::CommunicationMessage,
+        max_file_bytes: u64,
+    ) -> Result<Value, ApiError> {
+        let metadata = self.file_metadata(actor, message).await?;
+        let file =
+            message
+                .file
+                .as_ref()
+                .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                    "communication_file",
+                ))?;
+        let (Some(table), Some(record)) = (file.file_table_id, file.file_record_id) else {
+            return Err(control_plane::errors::ControlPlaneError::Conflict(
+                "communication_file_not_ready",
+            )
+            .into());
+        };
+        let content = self
+            .file_service
+            .read_with_preview(actor.clone(), table, record, true)
+            .await?;
+        if max_file_bytes == 0 || content.content_length > max_file_bytes {
+            return Err(
+                control_plane::errors::ControlPlaneError::InvalidInput("max_file_bytes").into(),
+            );
+        }
+        let expected = content.content_length;
+        let mut reader = content
+            .reader
+            .into_inner()
+            .map_err(|_| control_plane::errors::ControlPlaneError::Conflict("file_reader"))?;
+        let mut bytes = Vec::new();
+        (&mut reader)
+            .take(expected.saturating_add(1))
+            .read_to_end(&mut bytes)
+            .await?;
+        if bytes.len() as u64 != expected {
+            return Err(
+                control_plane::errors::ControlPlaneError::Conflict("file_content_changed").into(),
+            );
+        }
+        Ok(
+            json!({"metadata":metadata,"data":STANDARD.encode(bytes),"mime_type":content.content_type}),
+        )
     }
     async fn read_file(
         &self,
@@ -470,6 +555,20 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         binding_id: "http.console.communications.files.get.v1",
         method: "GET",
         path: "/api/console/communications/instances/:instance_id/files/:message_id",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "communications.files.info",
+        binding_id: "http.console.communications.files.info.v1",
+        method: "GET",
+        path: "/api/console/communications/instances/:instance_id/files/:message_id/info",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "communications.files.image",
+        binding_id: "http.console.communications.files.image.v1",
+        method: "GET",
+        path: "/api/console/communications/instances/:instance_id/files/:message_id/image",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {

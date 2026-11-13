@@ -93,6 +93,7 @@ impl From<EventSourceDescriptor> for super::EventCatalogEntry {
         Self {
             created_at: None,
             updated_at: None,
+            event_kind: None,
             id: None,
             interface_event: None,
             group_path: Vec::new(),

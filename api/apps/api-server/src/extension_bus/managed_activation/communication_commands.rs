@@ -225,7 +225,7 @@ impl ManagedExtensionComposition {
             declarations(&current)?,
             &saved
                 .config
-                .command_settings
+                .command_settings()
                 .iter()
                 .map(|setting| (setting.command_id.clone(), setting.enabled))
                 .collect::<Vec<_>>(),

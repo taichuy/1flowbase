@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import {
   type CommunicationBindingInput,
+  type CommunicationCommandConfiguration,
   type NotificationType
 } from '@1flowbase/api-client';
 import {
@@ -16,8 +17,7 @@ import {
 import { useAuthStore } from '../../../../../state/auth-store';
 import { useConsoleOperationAccess } from '../../../../../state/console-operation-access';
 import { selectNavigationQueryScope } from '../../../../../state/navigation-query-scope';
-import { CommunicationEventCommandsEditor } from './CommunicationEventCommandsEditor';
-import { CommunicationCommandsTable } from './CommunicationCommandsTable';
+import { CommunicationCommandsEditor } from './CommunicationCommandsEditor';
 export interface CommunicationBindingHandle {
   validate: () => boolean;
   save: (id: string) => Promise<void>;
@@ -38,8 +38,7 @@ export const CommunicationBindingForm = forwardRef<
     file_table_id: null,
     mcp_instance_ids: [],
     system_prompt: receive.default_system_prompt,
-    event_commands: [],
-    command_settings: []
+    commands: []
   });
   const [dirty, setDirty] = useState(false);
   const [saveFailure, setSaveFailure] = useState<string | null>(null);
@@ -60,8 +59,7 @@ export const CommunicationBindingForm = forwardRef<
         file_table_id: value.file_table_id,
         mcp_instance_ids: value.mcp_instance_ids,
         system_prompt: value.system_prompt,
-        event_commands: value.event_commands,
-        command_settings: value.command_settings
+        commands: value.commands
       });
     else
       setDraft((d) => ({
@@ -78,21 +76,18 @@ export const CommunicationBindingForm = forwardRef<
     setDirty(true);
     setDraft((d) => ({ ...d, ...value }));
   };
-  // Keep saved settings whose declarations temporarily disappear, and overlay
-  // only the form's switch draft on the current backend catalogue.
-  const command_settings = new Map(
-    draft.command_settings.map((setting) => [setting.command_id, setting])
+  const commands = options.data?.commands ?? [];
+  const configured = new Map<string, CommunicationCommandConfiguration>(
+    draft.commands.map((command) => [command.command_id, command])
   );
-  const commands = options.data ? options.data.commands : [];
   for (const command of commands) {
-    if (
-      command.source_kind !== 'user' &&
-      !command_settings.has(command.command_id)
-    )
-      command_settings.set(command.command_id, {
+    if (command.source_kind !== 'user' && !configured.has(command.command_id)) {
+      configured.set(command.command_id, {
+        kind: 'registered',
         command_id: command.command_id,
         enabled: command.enabled
       });
+    }
   }
   useImperativeHandle(ref, () => ({
     validate: () => {
@@ -108,7 +103,7 @@ export const CommunicationBindingForm = forwardRef<
       if (!canWrite) throw new Error('operation not permitted');
       let value = {
         ...draft,
-        command_settings: [...command_settings.values()]
+        commands: [...configured.values()]
       };
       if (!instance_id) {
         const current = await getCommunicationBinding(id);
@@ -247,38 +242,20 @@ export const CommunicationBindingForm = forwardRef<
           onChange={(e) => change({ system_prompt: e.target.value })}
         />
       </Form.Item>
-      <CommunicationEventCommandsEditor
-        value={draft.event_commands}
-        commands={commands}
-        disabled={
-          !canWrite ||
-          options.isPending ||
-          (!!instance_id && !binding.isSuccess)
-        }
-        onChange={(event_commands) => change({ event_commands })}
-      />
-      <Form.Item label={t('commands')}>
-        {!options.isError && (
-          <CommunicationCommandsTable
-            commands={commands
-              .filter((command) => command.source_kind !== 'user')
-              .map((command) => ({
-                ...command,
-                enabled: command_settings.get(command.command_id)!.enabled
-              }))}
-            loading={options.isPending}
-            disabled={
-              !canWrite ||
-              options.isPending ||
-              (!!instance_id && !binding.isSuccess)
-            }
-            onChange={(setting) => {
-              command_settings.set(setting.command_id, setting);
-              change({ command_settings: [...command_settings.values()] });
-            }}
-          />
-        )}
-      </Form.Item>
+      {!options.isError && (
+        <CommunicationCommandsEditor
+          value={[...configured.values()]}
+          commands={commands}
+          loading={options.isPending}
+          disabled={
+            !canWrite ||
+            options.isPending ||
+            options.isError ||
+            (!!instance_id && !binding.isSuccess)
+          }
+          onChange={(commands) => change({ commands })}
+        />
+      )}
     </Form>
   );
 });

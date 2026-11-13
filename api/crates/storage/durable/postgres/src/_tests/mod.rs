@@ -62,6 +62,8 @@ mod storage_compaction_replay;
 
 #[path = "migrations/communication_sessions.rs"]
 mod communication_sessions;
+#[path = "migrations/communication_commands.rs"]
+mod communication_commands;
 #[path = "migrations/communication_timeline.rs"]
 mod communication_timeline;
 

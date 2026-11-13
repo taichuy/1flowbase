@@ -1,5 +1,6 @@
 pub mod mcp_projection;
 mod mcp_template;
+mod notification_mcp;
 pub use mcp_template::{prepare_managed_mcp_bundle_template, prepare_managed_mcp_template};
 mod schema;
 pub use schema::prepare_managed_schema_plan;
@@ -67,6 +68,7 @@ where
                 "managed_contribution_installation_required",
             ))?;
         // Read and validate the complete package before authority/schema/MCP writes.
+        let notification_template = notification_mcp::prepare(actor, installation_id, &manifest)?;
         let template = if let Some(reference) = manifest
             .managed_service
             .as_ref()
@@ -81,7 +83,10 @@ where
                 package,
             )?)
         } else {
-            prepare_managed_mcp_template(actor, installation_id, &manifest)?
+            match notification_template {
+                Some(template) => Some(template),
+                None => prepare_managed_mcp_template(actor, installation_id, &manifest)?,
+            }
         };
         PluginContributionAuthorityService::new(
             self.repository.clone(),

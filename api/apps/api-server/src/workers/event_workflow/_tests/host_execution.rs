@@ -56,6 +56,7 @@ async fn fixture_for_phase(phase: EventTriggerPhase, pointer: &str) -> Fixture {
     // This fixture exercises legacy custom publication/consumption, not rule creation.
     let now = time::OffsetDateTime::now_utc();
     let definition = EventDefinitionRecord {
+        event_kind: None,
         interface_event: None,
         id: Uuid::now_v7(),
         workspace_id: actor.current_workspace_id,

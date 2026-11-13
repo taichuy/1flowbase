@@ -325,3 +325,98 @@ async fn communication_sdk_rejects_receive_overflow_before_io_and_never_invents_
         .unwrap()
         .contains("private-provider-token"));
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn communication_sdk_validates_receipts_and_projects_invalid_acceptance_to_unknown() {
+    const REQUEST_ID: &str = "926926b7-a099-4e69-bbd7-0f91d3721ff8";
+    let mut descriptor = communication_descriptor();
+    descriptor.receive.as_mut().unwrap().supports_send_receipts = true;
+    let receipt = crate::notification_send_receipt(
+        Some(REQUEST_ID),
+        "scanned-peer",
+        "provider-room",
+        None,
+        Some("sent-client-id".into()),
+    )
+    .unwrap()
+    .unwrap();
+    let request = || {
+        managed_request(
+            json!({"type":"send","request_id":REQUEST_ID,"input_payload":{"text":"hello"},
+        "target":{"sender_id":"scanned-peer","conversation_id":"provider-room","provider_message_id":"inbound"}}),
+        )
+    };
+    let valid = json!({"type":"send","outcome":{"status":"succeeded","result":{"accepted":true,"delivery_id":"sent-client-id"}},
+        "receipt":receipt});
+    for (replacement, status) in [
+        (valid["receipt"].clone(), "succeeded"),
+        (Value::Null, "unknown"),
+        (
+            {
+                let mut receipt = valid["receipt"].clone();
+                receipt["recipient_id"] = json!("other");
+                receipt
+            },
+            "unknown",
+        ),
+        (
+            {
+                let mut receipt = valid["receipt"].clone();
+                receipt["request_id"] = json!("b3598376-0dd7-4fac-aa40-37a1d4188e58");
+                receipt
+            },
+            "unknown",
+        ),
+    ] {
+        let mut wire = valid.clone();
+        wire["receipt"] = replacement;
+        let response = crate::execute_communication(request(), &descriptor, |_, _| async move {
+            Ok::<_, String>(
+                serde_json::from_value::<crate::NotificationRuntimeResult>(wire).unwrap(),
+            )
+        })
+        .await;
+        assert!(response.ok);
+        assert_eq!(response.result["outcome"]["status"], status);
+        if status == "succeeded" {
+            assert_eq!(
+                response.result["receipt"]["client_message_id"],
+                "sent-client-id"
+            );
+            assert!(response.result["receipt"]
+                .get("provider_message_id")
+                .is_none());
+        } else {
+            assert!(response.result.get("receipt").is_none());
+        }
+    }
+    let response = crate::execute_communication(request(), &descriptor, |_, _| async {
+        Err::<crate::NotificationRuntimeResult, _>("provider output lost")
+    })
+    .await;
+    assert_eq!(response.result["outcome"]["status"], "unknown");
+    assert!(response.result.get("receipt").is_none());
+}
+
+#[test]
+fn communication_sdk_receipt_helper_preserves_legacy_and_checks_provider_identities() {
+    assert!(
+        crate::notification_send_receipt(None, "peer", "room", None, None)
+            .unwrap()
+            .is_none()
+    );
+    for (request_id, recipient, client) in [
+        ("bad-request", "peer", "client"),
+        ("926926b7-a099-4e69-bbd7-0f91d3721ff8", "", "client"),
+        ("926926b7-a099-4e69-bbd7-0f91d3721ff8", "peer", ""),
+    ] {
+        assert!(crate::notification_send_receipt(
+            Some(request_id),
+            recipient,
+            "room",
+            None,
+            Some(client.into())
+        )
+        .is_err());
+    }
+}

@@ -80,11 +80,7 @@ async fn execute(state: &ApiState, claim: &ClaimedBuiltinCommunicationCommand) -
     let intent = decode_builtin_command(record)?;
     let mut commands = state
         .notification_service
-        .event_command_catalog(
-            &actor,
-            &binding.config.command_settings,
-            &binding.config.event_commands,
-        )
+        .configured_command_catalog(&actor, &binding.config.commands)
         .await?;
     let (response_session, text, failure) = match intent {
         CommunicationCommandIntent::Rejected { code, reply } => {
@@ -392,15 +388,20 @@ async fn execute_event(
 ) -> Result<()> {
     let session = Uuid::parse_str(&claim.record.request.session_id)?;
     if claim.record.failure_code.as_deref() == Some("command_outcome_unknown") {
-        return complete(
-            state,
-            claim,
-            session,
-            "The prior event publication outcome is unknown. It will not be retried automatically."
-                .into(),
-            Some("command_outcome_unknown".into()),
-        )
-        .await;
+        let _permit = state.system_maintenance.try_enter_write(
+            control_plane::system_recovery::SystemWriteOwner::CommunicationExecution,
+        )?;
+        tracing::warn!(event_id = %claim.record.event_id, command_id,
+            "communication event publication outcome unknown; automatic replay suppressed");
+        state
+            .notification_service
+            .complete_builtin_command_without_reply(
+                claim,
+                session,
+                Some("command_outcome_unknown".into()),
+            )
+            .await?;
+        return Ok(());
     }
     if let Some((code, reply)) = unavailable(commands, command_id) {
         return complete(state, claim, session, reply.into(), Some(code)).await;
@@ -408,7 +409,7 @@ async fn execute_event(
     let result = async {
         let current = state.notification_service.active_session(&claim.record.scope).await?.context("command session missing")?;
         ensure!(current.id == session, "command session changed");
-        let command = binding.config.event_commands.iter().find(|c| c.command_id == command_id).context("event command removed")?;
+        let command = binding.config.commands.iter().filter_map(|command| command.event()).find(|c| c.command_id == command_id).context("event command removed")?;
         let target = state.notification_service.event_command_definition(actor, command).await?;
         ensure!(target.workspace_id == claim.record.scope.workspace_id && binding.workspace_id == target.workspace_id, "event command workspace mismatch");
         let context = serde_json::json!({"arguments": arguments, "input_id": claim.record.event_id, "conversation_id": claim.record.scope.conversation_id, "instance_id": binding.instance_id});
@@ -424,35 +425,43 @@ async fn execute_event(
         Ok(receipt) => event_publication_reply(&receipt),
         Err(error) => {
             tracing::warn!(%error, command_id, "communication event command rejected");
-            ("Event publication was rejected. Check the arguments, event definition and channel permissions.".to_string(), Some("event_command_publish_rejected".into()))
+            (
+                Some(
+                    "The command could not be started. Check its configuration or try again later."
+                        .to_string(),
+                ),
+                Some("event_command_publish_rejected".into()),
+            )
         }
     };
-    complete(state, claim, session, text.into(), failure).await
+    if let Some(text) = text {
+        complete(state, claim, session, text.into(), failure).await
+    } else {
+        let _permit = state.system_maintenance.try_enter_write(
+            control_plane::system_recovery::SystemWriteOwner::CommunicationExecution,
+        )?;
+        state
+            .notification_service
+            .complete_builtin_command_without_reply(claim, session, None)
+            .await?;
+        Ok(())
+    }
 }
 
 pub(super) fn event_publication_reply(
     receipt: &control_plane::event_center::EventPublishReceipt,
-) -> (String, Option<String>) {
+) -> (Option<String>, Option<String>) {
     use control_plane::event_center::EventTargetAdmissionStatus;
     let accepted = receipt
         .targets
         .iter()
-        .filter(|t| t.status == EventTargetAdmissionStatus::Accepted)
+        .filter(|target| target.status == EventTargetAdmissionStatus::Accepted)
         .count();
-    let rejected = receipt.targets.len() - accepted;
-    let text = if receipt.targets.is_empty() {
-        "Event published with 0 receiving targets.".into()
-    } else {
-        format!("Event publication: {accepted} targets accepted, {rejected} targets rejected. Workflow execution has not been confirmed.")
-    };
+    if accepted > 0 {
+        return (None, None);
+    }
     (
-        text,
-        (rejected > 0).then(|| {
-            if accepted > 0 {
-                "event_publication_partial".into()
-            } else {
-                "event_publication_rejected".into()
-            }
-        }),
+        Some("No workflow is available for this command. Please contact the administrator.".into()),
+        Some("event_publication_rejected".into()),
     )
 }

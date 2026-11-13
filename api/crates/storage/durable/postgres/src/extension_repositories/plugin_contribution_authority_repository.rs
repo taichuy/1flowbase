@@ -754,7 +754,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
             sqlx::query_scalar::<_, Uuid>("select id from extension_installations where contract_version='1flowbase.extension-bus/v1' and coalesce(metadata_json #>> '{managed_service,scope}' = 'system' or metadata_json -> 'binding_targets' = '[\"system\"]'::jsonb, false) and desired_state='active_requested'")
                 .fetch_all(&mut *transaction).await?
         } else {
-            sqlx::query_scalar::<_, Uuid>("select i.id from plugin_assignments a join extension_installations i on i.id=a.installation_id where a.workspace_id=$1 and i.contract_version='1flowbase.extension-bus/v1' and i.desired_state='active_requested'")
+            sqlx::query_scalar::<_, Uuid>("select i.id from plugin_assignments a join extension_installations i on i.id=a.installation_id where a.workspace_id=$1 and i.contract_version='1flowbase.extension-bus/v1' and i.desired_state='active_requested' and not coalesce(i.metadata_json #>> '{managed_service,scope}' = 'system' or i.metadata_json -> 'binding_targets' = '[\"system\"]'::jsonb, false)")
                 .bind(input.workspace_id).fetch_all(&mut *transaction).await?
         };
         let mut active = active_ids

@@ -161,7 +161,6 @@
   "file_ready": "文件就绪",
   "file_failed": "文件失败",
   "file_pending": "文件处理中",
-  "file_access": "获取文件链接",
   "download_file": "下载文件",
   "file_access_failed": "文件访问失败",
   "failure_run_interrupted": "消息处理已中断",
@@ -180,10 +179,7 @@
   "chat": "聊天",
   "load_earlier_messages": "加载更早消息",
   "event_commands": {
-    "title": "自定义事件命令",
-    "add": "添加事件命令",
-    "help": "斜杠命令发布自定义事件；Agent Flow 绑定与内置命令分别配置。保存渠道后应用这些更改。",
-    "empty": "暂无自定义事件命令",
+    "add": "新增指令",
     "identity": "命令标识",
     "identity_hint": "稳定标识，例如 user/invoice。",
     "identity_invalid": "使用 user/ 加 1–64 位小写字母、数字、下划线或连字符。",
@@ -197,8 +193,9 @@
     "mapping": "负载字段：{{field}}",
     "mapping_required": "请映射此必填负载字段。",
     "mapping_invalid": "请选择支持的消息上下文字段。",
-    "source_user": "用户",
+    "source_user": "自定义",
     "payload_field": "负载字段名",
     "add_mapping": "添加字段映射"
-  }
+  },
+  "quoted_message": "引用消息"
 }

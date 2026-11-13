@@ -152,7 +152,7 @@ async fn command_receipt_runs_real_event_worker_and_persists_mapped_workflow_res
         let command = fixture.state.notification_service.command_for_input(&scope, input)
             .await.unwrap().unwrap();
         assert_eq!(command.failure_code, None);
-        assert!(command.reply.unwrap().text.contains("1 targets accepted, 0 targets rejected"));
+        assert!(command.reply.is_none());
         let outcome = loop {
             if let Some(row) = statuses.snapshot(fixture.key.0).into_iter().find(|row| {
                 row.application_id == application_id && row.last_delivery == Some("succeeded")

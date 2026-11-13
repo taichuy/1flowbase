@@ -118,6 +118,10 @@ pub(super) async fn execute_delivery(
         );
         return Ok(DeliveryOutcome::Processed);
     }
+    let notification_sender =
+        crate::communication_runtime::event_notification_sender(state, signal, run_id)
+            .await?
+            .unwrap_or_else(|| state.notification_service.clone());
     statuses.delivery(
         snapshot.trigger.application_id,
         signal.event_id,
@@ -148,8 +152,21 @@ pub(super) async fn execute_delivery(
                 .await
                 .map_err(|error| error.0)?,
             );
-            state.runtime_event_stream.open_run_scoped(run_id, control_plane::ports::RuntimeEventStreamPolicy::debug_default(), source_binding.clone()).await?;
-            let persister = control_plane::orchestration_runtime::start_runtime_debug_event_persister(actor_store.clone(), state.runtime_event_stream.clone(), run_id).await;
+            state
+                .runtime_event_stream
+                .open_run_scoped(
+                    run_id,
+                    control_plane::ports::RuntimeEventStreamPolicy::debug_default(),
+                    source_binding.clone(),
+                )
+                .await?;
+            let persister =
+                control_plane::orchestration_runtime::start_runtime_debug_event_persister(
+                    actor_store.clone(),
+                    state.runtime_event_stream.clone(),
+                    run_id,
+                )
+                .await;
             let runtime_service = OrchestrationRuntimeService::new(
                 actor_store,
                 api_provider_runtime(state),
@@ -164,7 +181,7 @@ pub(super) async fn execute_delivery(
                 state.provider_install_root.clone(),
             )
             .with_file_storage_registry(state.file_storage_registry.clone())
-            .with_notification_sender(state.notification_service.clone())
+            .with_notification_sender(notification_sender)
             .with_runtime_internal_tool_invoker(mcp_invoker)
             .with_llm_routing_counter_store(state.infrastructure.cache_store())
             .with_provider_request_log_queue(state.infrastructure.task_queue())
@@ -186,18 +203,37 @@ pub(super) async fn execute_delivery(
             )
             .await;
             match &result {
-                Ok(detail) => control_plane::orchestration_runtime::project_runtime_event_stream_terminal(state.runtime_event_stream.clone(), &detail.flow_run).await,
+                Ok(detail) => {
+                    control_plane::orchestration_runtime::project_runtime_event_stream_terminal(
+                        state.runtime_event_stream.clone(),
+                        &detail.flow_run,
+                    )
+                    .await
+                }
                 Err(_) => {
-                    if let Ok(Some(winner)) = control_plane::ports::OrchestrationRuntimeRepository::get_flow_run(&causal_state.store, snapshot.trigger.application_id, run_id).await {
+                    if let Ok(Some(winner)) =
+                        control_plane::ports::OrchestrationRuntimeRepository::get_flow_run(
+                            &causal_state.store,
+                            snapshot.trigger.application_id,
+                            run_id,
+                        )
+                        .await
+                    {
                         control_plane::orchestration_runtime::project_runtime_event_stream_terminal(state.runtime_event_stream.clone(), &winner).await;
                     }
                 }
             }
-            control_plane::orchestration_runtime::wait_for_runtime_debug_event_persister(persister, snapshot.trigger.application_id, run_id).await;
+            control_plane::orchestration_runtime::wait_for_runtime_debug_event_persister(
+                persister,
+                snapshot.trigger.application_id,
+                run_id,
+            )
+            .await;
             result
         },
-    )
-    .await;
+    );
+    let execution =
+        crate::communication_runtime::scope_event_activity(state, signal, execution).await;
     match execution {
         Ok(detail) => {
             statuses.delivery(

@@ -142,6 +142,8 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("communications.messages.list", "system.notifications"),
     settings("communications.files.list", "system.notifications"),
     settings("communications.files.get", "system.notifications"),
+    settings("communications.files.info", "system.notifications"),
+    settings("communications.files.image", "system.notifications"),
     settings("communications.messages.retry", "system.notifications"),
     settings("notifications.instances.list", "system.notifications"),
     settings("notifications.instances.get", "system.notifications"),

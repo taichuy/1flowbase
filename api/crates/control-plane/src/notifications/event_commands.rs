@@ -1,7 +1,9 @@
 //! User slash commands publish workspace events through an explicit Host target.
 use super::*;
 use crate::ports::EventCenterRepository;
-use domain::event_center::EventDefinitionRecord;
+use domain::event_center::{
+    communication_command_event_mapping, EventDefinitionKind, EventDefinitionRecord,
+};
 use domain::{
     CommunicationCommandSetting, CommunicationCommandSourceKind, CommunicationCommandView,
     CommunicationEventCommandBinding,
@@ -60,6 +62,7 @@ fn definition<'a>(
         d.workspace_id == workspace_id
             && d.enabled
             && d.interface_event.is_none()
+            && d.event_kind != Some(EventDefinitionKind::Interface)
             && d.contract_id == binding.contract_id
     })
 }
@@ -75,9 +78,11 @@ pub fn communication_event_payload(
         binding.enabled
             && definition.enabled
             && definition.interface_event.is_none()
+            && definition.event_kind != Some(EventDefinitionKind::Interface)
             && binding.contract_id == definition.contract_id,
         "event command target unavailable"
     );
+    validate_target_mapping(binding, definition)?;
     let mut payload = serde_json::Map::new();
     for (field, pointer) in &binding.input_mapping {
         anyhow::ensure!(
@@ -110,6 +115,11 @@ fn validate_target_mapping(
     binding: &CommunicationEventCommandBinding,
     target: &EventDefinitionRecord,
 ) -> Result<()> {
+    if target.event_kind == Some(EventDefinitionKind::CommunicationCommand)
+        && binding.input_mapping != communication_command_event_mapping()
+    {
+        return Err(Error::InvalidInput("invalid_event_command_mapping").into());
+    }
     // Do not reject schemas containing string pattern/enum constraints based on a fabricated argument.
     // Required fields and property types are checked structurally; actual values are validated on use.
     let properties = target
@@ -166,6 +176,40 @@ impl<R> NotificationService<R>
 where
     R: NotificationRepository + PluginRepository + RoleConsolePolicyReader + EventCenterRepository,
 {
+    pub async fn configured_command_catalog(
+        &self,
+        actor: &ActorContext,
+        commands: &[domain::CommunicationCommandConfiguration],
+    ) -> Result<Vec<CommunicationCommandView>> {
+        let settings = commands
+            .iter()
+            .filter_map(|command| command.registered().cloned())
+            .collect::<Vec<_>>();
+        let events = commands
+            .iter()
+            .filter_map(|command| command.event().cloned())
+            .collect::<Vec<_>>();
+        self.event_command_catalog(actor, &settings, &events).await
+    }
+
+    pub async fn resolve_configured_command(
+        &self,
+        actor: &ActorContext,
+        commands: &[domain::CommunicationCommandConfiguration],
+        text: &str,
+    ) -> Result<CommunicationCommandIntent> {
+        let settings = commands
+            .iter()
+            .filter_map(|command| command.registered().cloned())
+            .collect::<Vec<_>>();
+        let events = commands
+            .iter()
+            .filter_map(|command| command.event().cloned())
+            .collect::<Vec<_>>();
+        self.resolve_event_command(actor, &settings, &events, text)
+            .await
+    }
+
     pub async fn validate_event_commands(
         &self,
         actor: &ActorContext,

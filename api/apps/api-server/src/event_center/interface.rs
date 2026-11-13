@@ -2,13 +2,13 @@
 use std::sync::{Arc, Weak};
 
 use control_plane_contracts::ports::EventCenterRepository;
-use domain::{event_center::*, ActorContext};
+use domain::{ActorContext, event_center::*};
 use interface_runtime::{
     CompiledInterfaceRegistry, InterfaceEvent, InterfaceEventCapability, InterfaceEventObserver,
     InterfaceEventObserverFuture, InterfaceEventPrincipal, InterfaceInvocationTerminal,
     InterfaceScope,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::app_state::ApiState;
 
@@ -249,7 +249,9 @@ fn capability_entry(
         InterfaceEventPhase::Completion => "completion",
     };
     EventCatalogEntry {
-        created_at: None, updated_at: None,
+        created_at: None,
+        updated_at: None,
+        event_kind: None,
         id: None, source: None, enabled: None,
         interface_event: Some(InterfaceEventBinding::legacy(interface_id, phase)),
         group_path: vec!["interfaces".into(), definition.owner().as_str().into()],

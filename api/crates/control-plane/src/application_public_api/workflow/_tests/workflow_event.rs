@@ -88,6 +88,7 @@ async fn event_invocation_freezes_publication_maps_context_and_deduplicates_sign
     // Preserve the pre-interface-rule consumer contract using a persisted legacy record.
     let now = time::OffsetDateTime::now_utc();
     let mut definition = domain::event_center::EventDefinitionRecord {
+        event_kind: None,
         interface_event: None,
         id: Uuid::now_v7(),
         workspace_id: actor.current_workspace_id,

@@ -25,6 +25,7 @@ fn lock<T>(state: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 #[derive(Default)]
 pub struct CommunicationActivity {
+    pub(super) native_status: super::provider_activity::ProviderActivity,
     sessions: Mutex<HashMap<Uuid, Weak<SessionActivity>>>,
     executions: Mutex<HashMap<Uuid, CommunicationExecutionBinding>>,
     provider_runs: Mutex<HashMap<Uuid, ProviderRunActivity>>,

@@ -79,7 +79,7 @@ fn migration_rejects_changed_type_config_payload_or_authority() {
         .as_mut()
         .unwrap()
         .managed_secret_keys
-        .push("other".into());
+        .remove(0);
     candidates.push(changed);
     let mut changed = old.clone();
     changed.authorization = None;
@@ -157,4 +157,23 @@ fn migration_rejects_secret_visibility_and_send_contribution_changes() {
     let mut new = old.clone();
     new.contribution_id = ContributionId::new("example.other.send").unwrap();
     assert!(types(&old, &new).is_empty());
+}
+
+#[test]
+fn migration_allows_additive_private_cache_keys_without_dropping_account_keys() {
+    let old = descriptor();
+    let mut new = old.clone();
+    new.authorization
+        .as_mut()
+        .unwrap()
+        .managed_secret_keys
+        .extend([
+            "typing_ticket".to_owned(),
+            "typing_ticket_expires_at_ms".to_owned(),
+        ]);
+    assert_eq!(types(&old, &new), vec![old.type_code.clone()]);
+    assert!(
+        types(&new, &old).is_empty(),
+        "removing declared fields needs an explicit migration"
+    );
 }

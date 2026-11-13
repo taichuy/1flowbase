@@ -13,6 +13,7 @@ export {
   listCommunicationFiles,
   retryCommunicationMessage,
   getCommunicationFile,
+  getCommunicationFileInfo,
   listCommunicationConversationOverview,
   listCommunicationMessageOverview,
   listCommunicationChatMessages,

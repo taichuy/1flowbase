@@ -16,6 +16,7 @@ fn binding() -> CommunicationEventCommandBinding {
 }
 fn event(workspace_id: Uuid) -> EventDefinitionRecord {
     EventDefinitionRecord {
+        event_kind: None,
         interface_event: None,
 
         id: Uuid::now_v7(),
@@ -29,6 +30,36 @@ fn event(workspace_id: Uuid) -> EventDefinitionRecord {
         created_at: time::OffsetDateTime::now_utc(),
         updated_at: time::OffsetDateTime::now_utc(),
     }
+}
+
+#[test]
+fn command_events_keep_raw_business_arguments_and_host_owned_identity() {
+    use domain::event_center::{
+        communication_command_event_mapping, communication_command_event_schema,
+        EventDefinitionKind,
+    };
+    let mut target = event(Uuid::now_v7());
+    target.event_kind = Some(EventDefinitionKind::CommunicationCommand);
+    target.payload_schema = communication_command_event_schema();
+    let mut command = binding();
+    command.input_mapping = communication_command_event_mapping();
+    let context = json!({
+        "arguments": "--brith=2026-11-11 --time=13:09:00 --gender=男 --country=中国 --province=广东 --city=湛江市",
+        "input_id": Uuid::now_v7().to_string(),
+        "conversation_id": Uuid::now_v7().to_string(),
+        "instance_id": Uuid::now_v7().to_string()
+    });
+    assert_eq!(
+        communication_event_payload(&command, &context, &target).unwrap(),
+        context
+    );
+    command
+        .input_mapping
+        .insert("conversation_id".into(), "/arguments".into());
+    assert!(communication_event_payload(&command, &context, &target).is_err());
+    command.input_mapping = communication_command_event_mapping();
+    command.input_mapping.remove("instance_id");
+    assert!(communication_event_payload(&command, &context, &target).is_err());
 }
 #[test]
 fn custom_command_identity_names_and_pointers_are_owned_and_unambiguous() {

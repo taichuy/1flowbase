@@ -124,7 +124,7 @@ pub trait CommunicationCommandRepository: Send + Sync {
         &self,
         claim: &ClaimedBuiltinCommunicationCommand,
         response_session_id: Uuid,
-        reply: CommunicationCommandReply,
+        reply: Option<CommunicationCommandReply>,
         failure_code: Option<String>,
     ) -> Result<CommunicationCommandRecord>;
     /// Host already validated the requested model against the bound application's capabilities.

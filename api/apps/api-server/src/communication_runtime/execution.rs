@@ -174,6 +174,23 @@ async fn process(
     claim: &CommunicationClaim,
     stage: &AtomicU8,
 ) -> Result<()> {
+    // A reclaimed, already generated reply only needs delivery, not a generation status.
+    let _native_activity =
+        (input.message.processing_status != CommunicationProcessingStatus::Succeeded).then(|| {
+            provider_activity::enter(
+                state,
+                (
+                    input.binding.workspace_id,
+                    input.binding.instance_id,
+                    input.conversation.id,
+                ),
+                extension_contracts::NotificationSendTarget {
+                    sender_id: input.conversation.external_identity.clone(),
+                    conversation_id: input.conversation.external_conversation_key.clone(),
+                    provider_message_id: input.message.external_message_key.clone(),
+                },
+            )
+        });
     let mut linked_run_id = input.message.run_id;
     let reply = if input.message.processing_status == CommunicationProcessingStatus::Succeeded {
         input.message.final_reply.clone().context("reply_missing")?

@@ -1,8 +1,5 @@
-use control_plane_contracts::{
-    ports::{EventCatalogRepository, EventCenterRepository},
-    ControlPlaneContractError as Error,
-};
-use domain::{event_center::*, ActorContext};
+use control_plane_contracts::{ControlPlaneContractError as Error, ports::{EventCenterRepository, EventCatalogRepository}};
+use domain::{ActorContext, event_center::*};
 use serde_json::Value;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -100,15 +97,21 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
         actor: &ActorContext,
         input: CreateEventDefinitionInput,
     ) -> anyhow::Result<EventDefinitionRecord> {
-        let payload_schema = self.interface_schema(actor, &input.interface_event)?;
+        let payload_schema =
+            self.definition_schema(actor, input.event_kind, input.interface_event.as_ref())?;
         validate_fields(&input.name, &payload_schema)?;
         let now = OffsetDateTime::now_utc();
         let record = EventDefinitionRecord {
-            interface_event: Some(input.interface_event),
+            event_kind: Some(input.event_kind),
+            interface_event: input.interface_event,
 
             id: Uuid::now_v7(),
             workspace_id: actor.current_workspace_id,
-            contract_id: format!("custom.interface.{}", Uuid::now_v7().simple()),
+            contract_id: format!(
+                "custom.{}.{}",
+                input.event_kind.as_str(),
+                Uuid::now_v7().simple()
+            ),
             name: input.name,
             description: input.description,
             payload_schema,
@@ -128,33 +131,63 @@ impl<R: EventCenterRepository> EventCenterConfigurationService<R> {
         input: UpdateEventDefinitionInput,
     ) -> anyhow::Result<EventDefinitionRecord> {
         let mut record = self.get_definition(actor, id).await?;
+        let existing_kind = record.event_kind.or_else(|| {
+            record
+                .interface_event
+                .as_ref()
+                .map(|_| EventDefinitionKind::Interface)
+        });
+        if existing_kind != Some(input.event_kind) {
+            return Err(Error::InvalidInput("event_definition_kind_immutable").into());
+        }
         // Stopping an unchanged rule stays possible when its interface is unavailable.
         let unchanged_legacy_target = record.interface_event.as_ref().is_some_and(|previous| {
-            previous.legacy_interface_id().is_some() && previous.same_target(&input.interface_event)
+            previous.legacy_interface_id().is_some()
+                && input
+                    .interface_event
+                    .as_ref()
+                    .is_some_and(|binding| previous.same_target(binding))
         });
-        let payload_schema =
-            if !input.enabled && record.interface_event.as_ref() == Some(&input.interface_event) {
-                record.payload_schema.clone()
-            } else if unchanged_legacy_target {
-                // Validate activation against the current owner without rewriting existing
-                // typed payloads or the Workflow mappings which consume those payloads.
-                self.interface_schema(actor, &input.interface_event)?;
-                record.payload_schema.clone()
-            } else {
-                self.interface_schema(actor, &input.interface_event)?
-            };
+        let payload_schema = if !input.enabled && record.interface_event == input.interface_event {
+            record.payload_schema.clone()
+        } else if unchanged_legacy_target {
+            // Validate activation against the current owner without rewriting existing
+            // typed payloads or the Workflow mappings which consume those payloads.
+            self.definition_schema(actor, input.event_kind, input.interface_event.as_ref())?;
+            record.payload_schema.clone()
+        } else {
+            self.definition_schema(actor, input.event_kind, input.interface_event.as_ref())?
+        };
         validate_fields(&input.name, &payload_schema)?;
         validate_identity(&record.contract_id)?;
         record.name = input.name;
         record.description = input.description;
         record.payload_schema = payload_schema;
-        record.interface_event = Some(input.interface_event);
+        record.event_kind = Some(input.event_kind);
+        record.interface_event = input.interface_event;
         record.enabled = input.enabled;
         record.updated_at = OffsetDateTime::now_utc();
         if !self.repository.update_event_definition(&record).await? {
             return Err(Error::NotFound("event_definition").into());
         }
         Ok(record)
+    }
+
+    fn definition_schema(
+        &self,
+        actor: &ActorContext,
+        kind: EventDefinitionKind,
+        binding: Option<&InterfaceEventBinding>,
+    ) -> anyhow::Result<Value> {
+        match (kind, binding) {
+            (EventDefinitionKind::Interface, Some(binding)) => {
+                self.interface_schema(actor, binding)
+            }
+            (EventDefinitionKind::CommunicationCommand, None) => {
+                Ok(communication_command_event_schema())
+            }
+            _ => Err(Error::InvalidInput("invalid_event_definition_source").into()),
+        }
     }
 
     fn interface_schema(

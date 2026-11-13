@@ -617,8 +617,7 @@ async fn communication_management_links_original_run_application_after_binding_c
         .await
         .unwrap();
     let config = domain::CommunicationBindingInput {
-        event_commands: Vec::new(),
-        command_settings: vec![],
+        commands: vec![],
         application_id: run.application_id,
         model: None,
         reasoning_effort: None,
@@ -644,8 +643,7 @@ async fn communication_management_links_original_run_application_after_binding_c
             &actor,
             channel,
             domain::CommunicationBindingInput {
-                event_commands: Vec::new(),
-                command_settings: vec![],
+                commands: vec![],
                 application_id: replacement,
                 ..config
             },

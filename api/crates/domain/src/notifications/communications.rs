@@ -6,9 +6,7 @@ use uuid::Uuid;
 #[serde(deny_unknown_fields)]
 pub struct CommunicationBindingInput {
     #[serde(default)]
-    pub command_settings: Vec<super::CommunicationCommandSetting>,
-    #[serde(default)]
-    pub event_commands: Vec<super::CommunicationEventCommandBinding>,
+    pub commands: Vec<super::CommunicationCommandConfiguration>,
     pub application_id: Uuid,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
@@ -16,6 +14,22 @@ pub struct CommunicationBindingInput {
     #[serde(default)]
     pub mcp_instance_ids: Vec<String>,
     pub system_prompt: String,
+}
+
+impl CommunicationBindingInput {
+    pub fn command_settings(&self) -> Vec<super::CommunicationCommandSetting> {
+        self.commands
+            .iter()
+            .filter_map(|command| command.registered().cloned())
+            .collect()
+    }
+
+    pub fn event_commands(&self) -> Vec<super::CommunicationEventCommandBinding> {
+        self.commands
+            .iter()
+            .filter_map(|command| command.event().cloned())
+            .collect()
+    }
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommunicationBindingRecord {
@@ -61,6 +75,15 @@ pub enum CommunicationAttachmentStatus {
     Ready,
     Failed,
 }
+/// A supplier quotation and, when verifiable in this chat, its durable timeline identity.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CommunicationMessageReference {
+    pub provider_message_id: Option<String>,
+    pub message_id: Option<Uuid>,
+    pub title: Option<String>,
+    pub text: Option<String>,
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommunicationInput {
     pub id: Uuid,
@@ -68,6 +91,8 @@ pub struct CommunicationInput {
     pub external_message_key: String,
     pub received_at_ms: i64,
     pub content: Option<String>,
+    #[serde(default)]
+    pub reply_to: Option<CommunicationMessageReference>,
     pub processing_status: CommunicationProcessingStatus,
     /// Current backend eligibility; clients must not derive this from visible status alone.
     pub can_retry: bool,
@@ -149,7 +174,7 @@ pub struct CommunicationMessageFile {
 pub struct CommunicationMessage {
     pub id: Uuid,
     pub conversation_id: Uuid,
-    pub input_id: Uuid,
+    pub input_id: Option<Uuid>,
     pub instance_id: Uuid,
     pub instance_display_name: Option<String>,
     pub external_identity: String,
@@ -159,6 +184,8 @@ pub struct CommunicationMessage {
     pub direction: CommunicationDirection,
     pub occurred_at_ms: i64,
     pub content: Option<String>,
+    #[serde(default)]
+    pub reply_to: Option<CommunicationMessageReference>,
     pub file: Option<CommunicationMessageFile>,
     pub run_id: Option<Uuid>,
     pub application_id: Option<Uuid>,

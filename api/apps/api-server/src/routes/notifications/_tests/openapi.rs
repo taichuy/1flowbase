@@ -138,10 +138,14 @@ fn notification_openapi_matches_real_descriptor_forms_locales_and_receive_metada
             label: "Scan".into(),
             kind: NotificationAuthorizationActionKind::QrCode,
         }],
-        managed_secret_keys: vec!["managed_token".into()],
+        managed_secret_keys: vec!["managed_token".into(), "account_identity".into()],
+        managed_identity_keys: vec!["account_identity".into()],
         supports_delivery_window: true,
     });
     descriptor.receive = Some(NotificationReceiveDescriptor {
+        mcp_instance_id: None,
+        supports_send_receipts: true,
+        supports_activity: true,
         contribution_id: ContributionId::new("fixture.receive").unwrap(),
         default_system_prompt: "Answer the incoming conversation".into(),
         mcp_tools: [
@@ -168,8 +172,37 @@ fn notification_openapi_matches_real_descriptor_forms_locales_and_receive_metada
         available: true,
         unavailable_reason: None,
     };
-    let wire = serde_json::to_value(entry).unwrap();
+    let wire = serde_json::to_value(&entry).unwrap();
     validate::<NotificationTypeCatalogEntrySchema>(&wire);
+    assert_eq!(
+        wire["authorization"]["managed_identity_keys"],
+        json!(["account_identity"])
+    );
+    let mut absent = entry.clone();
+    absent
+        .descriptor
+        .authorization
+        .as_mut()
+        .unwrap()
+        .managed_identity_keys
+        .clear();
+    let receive = absent.descriptor.receive.as_mut().unwrap();
+    receive.supports_send_receipts = false;
+    receive.supports_activity = false;
+    let absent = serde_json::to_value(absent).unwrap();
+    assert!(absent["authorization"]
+        .get("managed_identity_keys")
+        .is_none());
+    assert!(absent["receive"].get("supports_send_receipts").is_none());
+    assert_eq!(absent["receive"]["supports_activity"], json!(false));
+    validate::<NotificationTypeCatalogEntrySchema>(&absent);
+    let mut invalid_identity = wire.clone();
+    invalid_identity["authorization"]["managed_identity_keys"] = json!([17]);
+    assert!(
+        !jsonschema::validator_for(&schema::<NotificationTypeCatalogEntrySchema>())
+            .unwrap()
+            .is_valid(&invalid_identity)
+    );
     assert!(wire["input_form"]["fields"][0]["control"].is_string());
     assert!(wire["input_form"]["fields"][0]["min"].is_null());
     assert!(wire["input_form"]["fields"][0]["options"][0]["value"].is_string());

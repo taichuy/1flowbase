@@ -135,6 +135,19 @@ async fn process(
         stage.store(3, Ordering::SeqCst);
         return delivery::send(state, &input, actor, reply, stage).await;
     }
+    let _native_activity = provider_activity::enter(
+        state,
+        (
+            input.binding.workspace_id,
+            input.binding.instance_id,
+            input.conversation.id,
+        ),
+        extension_contracts::NotificationSendTarget {
+            sender_id: input.conversation.external_identity.clone(),
+            conversation_id: input.conversation.external_conversation_key.clone(),
+            provider_message_id: input.anchor_external_message_key.clone(),
+        },
+    );
     let preparer = Arc::new(turn_inputs::TurnInputPreparer::new(
         state.clone(),
         input.binding.clone(),

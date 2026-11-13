@@ -587,6 +587,8 @@ pub(crate) fn production_interface_contributions(
                 "communications.messages.list",
                 "communications.files.list",
                 "communications.files.get",
+                "communications.files.info",
+                "communications.files.image",
                 "communications.messages.retry",
             ],
             &["api-server.console-communications"],

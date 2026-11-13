@@ -155,6 +155,8 @@ use utoipa::OpenApi;
         crate::routes::communications::messages,
         crate::routes::communications::files,
         crate::routes::communications::file,
+        crate::routes::communications::file_info,
+        crate::routes::communications::file_image,
         crate::routes::communications::retry,
         crate::routes::assistant::get_settings,
         crate::routes::assistant::update_settings,

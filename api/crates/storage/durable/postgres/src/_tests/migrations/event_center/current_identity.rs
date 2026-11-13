@@ -72,7 +72,10 @@ async fn event_center_current_identity_migration_clears_only_new_configuration()
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(after_config, retained);
+    let mut expected_config = retained.clone();
+    expected_config.as_object_mut().unwrap().remove("command_settings");
+    expected_config["commands"] = json!([{"kind":"registered","command_id":"host/status","enabled":false}]);
+    assert_eq!(after_config, expected_config);
     let (after_binding, after_updated_at): (Value, time::OffsetDateTime) = sqlx::query_as(
         "SELECT to_jsonb(b)-'config_json'-'updated_at', updated_at FROM communication_bindings b WHERE instance_id=$1",
     )
@@ -80,7 +83,9 @@ async fn event_center_current_identity_migration_clears_only_new_configuration()
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(before_binding, after_binding);
+    let mut expected_binding = before_binding.clone();
+    expected_binding["revision"] = json!(before_binding["revision"].as_i64().unwrap() + 1);
+    assert_eq!(expected_binding, after_binding);
     // Removing event_commands is an UPDATE: retain the existing audit trigger semantics.
     assert!(after_updated_at > before_updated_at);
     let after_apps: Vec<Value> =

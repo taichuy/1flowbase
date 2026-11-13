@@ -68,6 +68,7 @@ impl CommandFixture {
                     sender_display_name: None,
                     received_at_ms: 43,
                     text: Some(text.into()),
+                    reply_to: None,
                     attachments: vec![],
                 }],
             })
@@ -214,10 +215,10 @@ async fn communication_command_terminal_revocation_disable_and_handler_loss_rele
                     .await
                     .unwrap()
                     .unwrap();
-                binding.config.command_settings = vec![CommunicationCommandSetting {
+                binding.config.commands = vec![domain::CommunicationCommandConfiguration::Registered(CommunicationCommandSetting {
                     command_id: "acme/acme.composition-commands/status".into(),
                     enabled: false,
-                }];
+                })];
                 fixture
                     .service
                     .save_binding(
@@ -575,7 +576,7 @@ async fn communication_command_authority_context_reuses_single_connection_and_cu
         .unwrap();
     assert_eq!(context.command.request, request.request);
     assert!(context.channel_enabled);
-    assert!(context.binding.unwrap().config.command_settings.is_empty());
+    assert!(context.binding.unwrap().config.commands.is_empty());
     let foreign = ManagedContributionSubject::new(
         ManagedInstallationId::new(fixture.installation.to_string()).unwrap(),
         ManagedWorkspaceId::new(Uuid::now_v7().to_string()).unwrap(),
@@ -596,10 +597,10 @@ async fn communication_command_authority_context_reuses_single_connection_and_cu
         .await
         .unwrap()
         .unwrap();
-    binding.config.command_settings = vec![CommunicationCommandSetting {
+    binding.config.commands = vec![domain::CommunicationCommandConfiguration::Registered(CommunicationCommandSetting {
         command_id: request.request.command_id.clone(),
         enabled: false,
-    }];
+    })];
     fixture
         .service
         .save_binding(
@@ -621,7 +622,7 @@ async fn communication_command_authority_context_reuses_single_connection_and_cu
         .await
         .unwrap()
         .unwrap();
-    assert!(!context.binding.unwrap().config.command_settings[0].enabled);
+    assert!(!context.binding.unwrap().config.command_settings()[0].enabled);
     lease.release().await.unwrap();
 
     assert_eq!(dispatcher(&fixture).run_once().await.unwrap(), 1);

@@ -417,7 +417,8 @@ fn event_configuration_models_protect_physical_contract_and_dedicated_service_wr
             assert_eq!(
                 field_contract.is_required,
                 !((code == "workflow_event_triggers" && *field == "source")
-                    || (code == "event_definitions" && *field == "interface_event"))
+                    || (code == "event_definitions"
+                        && matches!(*field, "interface_event" | "event_kind")))
             );
             assert_eq!(field_contract.physical_column_name, *field);
             assert_eq!(field_contract.is_unique, *field == "id");

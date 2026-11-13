@@ -34,6 +34,24 @@ Workflow configuration persists an optional source selection; omission preserves
 
 ## Catalog and definition ownership
 
+### Chat command events
+
+Event creation offers interface events and chat command events. Interface events still inherit the selected API's before/completion contract. Chat command events use the backend-owned `event_kind=communication_command`, do not select an API, and cannot supply an arbitrary payload schema. The kind is immutable after creation; existing event identifiers and workflow references remain stable.
+
+The [Paipan chat workflow example](examples/paipan-chat/README.en.md) generates native import archives for a runnable fixed mock and a real API draft requiring authentication and event configuration.
+
+A chat command event carries the raw `arguments` string and Host-provided `input_id`, `conversation_id`, and `instance_id`. Add a slash command in the communication channel and select this event. Its four context mappings are populated automatically; identity fields cannot be remapped to command text. Interface invocation facts are excluded from command targets. Historical definitions without a kind retain their existing read and invocation behavior; this does not reopen free-form schema creation.
+
+The channel's Chat commands table lists builtin, plugin, and custom commands together. Choose Add command to configure a custom command; edit, delete, or toggle it in the same table, then save the channel. Creating an event definition does not automatically register a channel command. The backend persists one `commands` array: builtin/plugin switches use `kind=registered`, while custom commands with event targets and mappings use `kind=event`. A migration merges the former `command_settings` and `event_commands` arrays, preserving their switches, targets, mappings, and unrelated channel settings. The API no longer accepts those two retired fields.
+
+An Event workflow subscribes to publication and maps inputs from `/payload/arguments` and the corresponding identity paths. Its Code node parses business flags before invoking business interfaces. For example, the calendar workflow uses six required flags:
+
+```text
+/paipan --brith=2026-11-11 --time=13:09:00 --gender=男 --country=中国 --province=广东 --city=湛江市
+```
+
+The workflow owns birth time, gender, and Chinese address validation. True solar time is enabled by default and region lookup supplies city reference coordinates. Successful command admission is silent. Channels with optional activity support show native typing during actual workflow execution and clear it after the last overlapping execution ends. Status failures do not block reports. Recovery from an unknown publication outcome remains internal: it does not replay the event or send a technical chat message. Unavailable workflows and publication failures retain actionable replies. The final report is sent by the existing Notification node after checking that the event came from the configured channel. Observe workflow completion and provider send acceptance separately.
+
 The default columns are Name, Event ID, Source category, Scope, Enabled, Supported trigger phases, and Actions. Owning module and extension point belong in read-only details. Contract version, registration status and observation coverage are not management columns. System/plugin ownership follows the defining module. Custom events have no owning module; their workspace is represented by scope. Source category does not depend on whether a consumer executes through a plugin.
 
 The catalog DTO exposes a boolean enabled value for user rules and null for system/plugin events. Both use switches: system/plugin switches are checked and disabled, without writing that display state back to enabled. Custom-event write endpoints cannot toggle system/plugin sources. Request failures and incomplete queue observations remain explicit rather than being hidden with the removed columns. Custom payloads are validated against the current schema. Only configuration is durable; this design does not add payload archives or a legacy workflow migration mechanism.
@@ -70,7 +88,7 @@ Application run -> first running -> waits/callbacks/resumes -> committed termina
 
 Interface completion, application termination, subscription activation, queue handoff, and notification delivery are independent boundaries. Cross-subscription broadcast is fanout, not an additional lifecycle state.
 
-Legacy free-schema records remain readable and retain their existing publication contracts. Records without `interface_event` are read-only in the editor; the old API cannot create new free-schema events. Legacy communication commands cannot publish fabricated interface-rule facts. The additive migration adds nullable rule metadata without deleting configuration in other environments. The development inventory found no legacy definitions, workflow triggers, or communication event-command references; that finding does not describe every deployment.
+Legacy free-schema records remain readable and retain their existing publication contracts. Records without `interface_event` or a chat command kind are read-only in the editor; the old API cannot create new free-schema events. Communication commands can publish chat command events or retain legacy free-schema contracts, but cannot fabricate interface invocation facts. The additive migration adds nullable rule metadata without deleting configuration in other environments. Historical development inventories do not establish that every deployment is empty or replace current configuration queries.
 
 ## Configuration flow
 
@@ -155,3 +173,6 @@ Implementation evidence comes from event-service unit tests, the `event_center_c
 This mechanism does not promise replay, restart recovery, cross-host broadcast or exactly-once external effects. Those capabilities require a separate scope decision; observation logs must not silently become a recovery store.
 
 Workflow event listeners are active while the application has an enabled publication. The form has no separate listener switch. It retains every supported phase in the dropdown and defaults to event publication, without an advanced-settings layer. Existing configuration `enabled` fields remain for compatibility and do not independently control listener activation.
+
+
+The chart example uses separate `/paipan` and `/ziwei` commands, events, and workflows, each returning one report. Host/SDK contracts own send correlation and channel history; plugins adapt provider delivery. See the [independent chart workflows](examples/paipan-chat/README.en.md).

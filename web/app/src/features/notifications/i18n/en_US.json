@@ -161,7 +161,6 @@
   "file_ready": "Ready",
   "file_failed": "File failed",
   "file_pending": "File pending",
-  "file_access": "Get file link",
   "download_file": "Download file",
   "file_access_failed": "Could not access file",
   "failure_run_interrupted": "Processing was interrupted",
@@ -180,10 +179,7 @@
   "chat": "Chat",
   "load_earlier_messages": "Load earlier messages",
   "event_commands": {
-    "title": "Custom event commands",
-    "add": "Add event command",
-    "help": "Slash commands publish a custom event. Agent Flow binding and built-in commands remain configured separately. Save the channel to publish these changes.",
-    "empty": "No custom event commands",
+    "add": "Add command",
     "identity": "Command identity",
     "identity_hint": "Stable identity, for example user/invoice.",
     "identity_invalid": "Use user/ followed by 1–64 lowercase letters, digits, underscores or hyphens.",
@@ -197,8 +193,9 @@
     "mapping": "Payload field: {{field}}",
     "mapping_required": "Map this required payload field.",
     "mapping_invalid": "Select one of the supported message context fields.",
-    "source_user": "User",
+    "source_user": "Custom",
     "payload_field": "Payload field name",
     "add_mapping": "Add field mapping"
-  }
+  },
+  "quoted_message": "Quoted message"
 }

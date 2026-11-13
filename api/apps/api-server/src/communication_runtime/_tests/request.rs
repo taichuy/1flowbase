@@ -12,7 +12,7 @@ fn input() -> ClaimedCommunicationInput {
     ClaimedCommunicationInput {
         binding:domain::CommunicationBindingRecord {
             workspace_id:Uuid::now_v7(),instance_id:instance,actor_user_id:Uuid::now_v7(),plugin_mcp_instance_id:"plugin-history".into(),revision:1,
-            config:domain::CommunicationBindingInput { event_commands: Vec::new(), command_settings:Vec::new(),application_id:Uuid::now_v7(),model:None,reasoning_effort:None,file_table_id:None,mcp_instance_ids:vec!["plugin-history".into()],system_prompt:"Use the channel instructions.".into() },
+            config:domain::CommunicationBindingInput { commands: vec![],application_id:Uuid::now_v7(),model:None,reasoning_effort:None,file_table_id:None,mcp_instance_ids:vec!["plugin-history".into()],system_prompt:"Use the channel instructions.".into() },
         },
         conversation:domain::CommunicationConversation { id:conversation,workspace_id:Uuid::nil(),instance_id:instance,external_identity:"sender-a".into(),external_conversation_key:"conversation-a".into(),sender_display_name:None },
         message:serde_json::from_value(json!({"id":Uuid::now_v7(),"conversation_id":conversation,"external_message_key":"message-a","received_at_ms":1000,"content":"First query","processing_status":"processing","run_id":null,"final_reply":null,"send_status":"none","failure_code":null,"can_retry":false})).unwrap(),

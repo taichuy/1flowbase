@@ -73,10 +73,10 @@ async fn communication_command_unknown_and_disabled_controls_block_then_exclude_
         .await
         .unwrap()
         .unwrap();
-    binding.config.command_settings = vec![CommunicationCommandSetting {
+    binding.config.commands = vec![domain::CommunicationCommandConfiguration::Registered(CommunicationCommandSetting {
         command_id: "host/help".into(),
         enabled: false,
-    }];
+    })];
     fixture
         .state
         .notification_service
@@ -202,6 +202,7 @@ async fn communication_command_blocked_chat_backlog_does_not_hide_another_chat()
                         sender_display_name: None,
                         received_at_ms: 42,
                         text: Some(format!("later ordinary input {index}")),
+                        reply_to: None,
                         attachments: vec![],
                     })
                     .collect(),

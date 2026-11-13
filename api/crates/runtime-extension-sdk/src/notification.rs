@@ -1,8 +1,9 @@
 //! Notification handlers reuse the capability envelope and the shared worker dispatcher.
 use extension_contracts::{
     CapabilityStdioError, CapabilityStdioMethod, CapabilityStdioRequest, CapabilityStdioResponse,
-    NotificationOperation, NotificationRuntimeInput, NotificationRuntimeResult,
-    NotificationSendOutcome, NotificationTypeDescriptor,
+    NotificationContractError, NotificationOperation, NotificationRuntimeInput,
+    NotificationRuntimeResult, NotificationSendOutcome, NotificationSendReceipt,
+    NotificationTypeDescriptor,
 };
 use serde_json::Value;
 
@@ -55,6 +56,7 @@ pub fn complete_authorizable_notification<E>(
         _ if matches!(input.operation, NotificationOperation::Send { .. }) => {
             NotificationRuntimeResult::Send {
                 outcome: NotificationSendOutcome::unknown(),
+                receipt: None,
                 authorization: None,
                 managed_secret_patch: Default::default(),
             }
@@ -127,4 +129,28 @@ where
     F: std::future::Future<Output = Result<NotificationRuntimeResult, E>>,
 {
     execute_authorizable_notification(request, descriptor, handler).await
+}
+
+/// Build acceptance evidence from the actual provider destination and sent client identity.
+/// A legacy request has no receipt and retains its original wire shape. This does not generate
+/// provider identities, retry a send, or claim delivery/read confirmation.
+pub fn notification_send_receipt(
+    request_id: Option<&str>,
+    recipient_id: impl Into<String>,
+    conversation_id: impl Into<String>,
+    provider_message_id: Option<String>,
+    client_message_id: Option<String>,
+) -> Result<Option<NotificationSendReceipt>, NotificationContractError> {
+    let Some(request_id) = request_id else {
+        return Ok(None);
+    };
+    let receipt = NotificationSendReceipt {
+        request_id: request_id.into(),
+        recipient_id: recipient_id.into(),
+        conversation_id: conversation_id.into(),
+        provider_message_id,
+        client_message_id,
+    };
+    receipt.validate()?;
+    Ok(Some(receipt))
 }

@@ -63,7 +63,8 @@ export function EventsPage() {
     (drawer.entry
       ? drawer.entry.origin === 'custom' &&
         drawer.entry.id !== null &&
-        !!drawer.entry.interface_event &&
+        (!!drawer.entry.interface_event ||
+          drawer.entry.event_kind === 'communication_command') &&
         drawer.entry.supported_phases.length > 0 &&
         can('events.definitions.update')
       : can('events.definitions.create'));
@@ -71,12 +72,7 @@ export function EventsPage() {
     mutationFn: async (values: CreateEventDefinitionInput) => {
       if (!csrfToken || !editable) throw new Error('operation not permitted');
       if (drawer?.entry?.id) {
-        const { name, description, interface_event, enabled } = values;
-        return updateEventDefinition(
-          drawer.entry.id,
-          { name, description, interface_event, enabled },
-          csrfToken
-        );
+        return updateEventDefinition(drawer.entry.id, values, csrfToken);
       }
       return createEventDefinition(values, csrfToken);
     },
@@ -99,7 +95,8 @@ export function EventsPage() {
         !csrfToken ||
         entry.origin !== 'custom' ||
         !entry.id ||
-        !entry.interface_event ||
+        (!entry.interface_event &&
+          entry.event_kind !== 'communication_command') ||
         !can('events.definitions.update')
       )
         throw new Error('operation not permitted');
@@ -109,6 +106,7 @@ export function EventsPage() {
           name: entry.name,
           description: entry.description,
           interface_event: entry.interface_event,
+          event_kind: entry.event_kind,
           enabled
         },
         csrfToken
@@ -185,6 +183,17 @@ export function EventsPage() {
       )
     },
     {
+      key: 'event_kind',
+      title: t('event_kind'),
+      width: 160,
+      render: (_, row) =>
+        row.event_kind === 'communication_command'
+          ? t('communication_command_event')
+          : row.event_kind === 'interface'
+            ? t('interface_event')
+            : '—'
+    },
+    {
       key: 'enabled',
       title: t('enabled'),
       width: 120,
@@ -195,7 +204,8 @@ export function EventsPage() {
           disabled={
             row.origin !== 'custom' ||
             !row.id ||
-            !row.interface_event ||
+            (!row.interface_event &&
+              row.event_kind !== 'communication_command') ||
             row.supported_phases.length === 0 ||
             !csrfToken ||
             !can('events.definitions.update') ||
@@ -243,7 +253,8 @@ export function EventsPage() {
           moreAriaLabel={t('actions')}
           actions={[
             ...(row.origin === 'custom' &&
-            row.interface_event &&
+            (row.interface_event ||
+              row.event_kind === 'communication_command') &&
             row.id &&
             row.supported_phases.length > 0 &&
             can('events.definitions.update')

@@ -16,3 +16,5 @@ mod runtime_observability_tests;
 mod scope_tests;
 mod system_backup_tests;
 mod ui_management_tests;
+#[path = "notifications/commands.rs"]
+mod notification_command_tests;

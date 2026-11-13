@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::{
-    identity, invalid, ContractResult, NotificationAttachmentDownloadOutcome,
+    identity, invalid, receive::bounded_id, ContractResult, NotificationAttachmentDownloadOutcome,
     NotificationAttachmentReference, NotificationReceiveOutcome, NotificationTypeDescriptor,
     NOTIFICATION_MAX_ATTACHMENT_CHUNK_BYTES, NOTIFICATION_MAX_RECEIVE_BATCH_BYTES,
     NOTIFICATION_MAX_RECEIVE_MESSAGES, NOTIFICATION_MAX_RECEIVE_WAIT_SECONDS,
@@ -17,6 +17,10 @@ use super::{
 pub struct NotificationAuthorizationDescriptor {
     pub actions: Vec<NotificationAuthorizationAction>,
     pub managed_secret_keys: Vec<String>,
+    /// Encrypted account identities, not credentials. Only exact values in validated
+    /// send-receipt recipient/conversation fields may be projected by Host.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub managed_identity_keys: Vec<String>,
     /// Declares that an authorized account also has an independent delivery window.
     #[serde(default)]
     pub supports_delivery_window: bool,
@@ -162,10 +166,17 @@ pub struct NotificationRuntimeInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NotificationOperation {
+    SetActivity {
+        target: NotificationSendTarget,
+        state: NotificationActivityState,
+    },
     Authorize {
         operation: NotificationAuthorizationOperation,
     },
     Send {
+        /// Host-owned send-log UUID, only sent to channels declaring send receipts.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
         input_payload: Value,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target: Option<NotificationSendTarget>,
@@ -183,13 +194,81 @@ pub enum NotificationOperation {
     },
 }
 
-/// Immutable reply destination captured from the committed inbound message.
+/// Ephemeral conversation activity, separate from durable messages and send outcomes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationActivityState {
+    Replying,
+    Idle,
+}
+
+/// Immutable external provider destination captured from the committed inbound message.
+/// These identities are not Host conversation or sender UUIDs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NotificationSendTarget {
     pub sender_id: String,
     pub conversation_id: String,
     pub provider_message_id: String,
+}
+
+/// Provider acceptance evidence for one Host request, never delivery or read confirmation.
+/// Recipient and conversation identities belong to the provider, not the Host UUID namespace.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NotificationSendReceipt {
+    pub request_id: String,
+    pub recipient_id: String,
+    pub conversation_id: String,
+    /// Only an actual provider-issued message identity may populate this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_message_id: Option<String>,
+    /// The actual client-generated identity sent to the provider, if supported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_message_id: Option<String>,
+}
+
+impl NotificationSendReceipt {
+    pub fn validate(&self) -> ContractResult {
+        if !bounded_id(&self.request_id)
+            || uuid::Uuid::parse_str(&self.request_id).is_err()
+            || !bounded_id(&self.recipient_id)
+            || !bounded_id(&self.conversation_id)
+            || self
+                .provider_message_id
+                .as_deref()
+                .is_some_and(|id| !bounded_id(id))
+            || self
+                .client_message_id
+                .as_deref()
+                .is_some_and(|id| !bounded_id(id))
+        {
+            return Err(invalid(
+                "send receipt requires a request UUID and bounded provider identities",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Bind acceptance to the original request and immutable external reply destination.
+    pub fn validate_for(
+        &self,
+        request_id: &str,
+        target: Option<&NotificationSendTarget>,
+    ) -> ContractResult {
+        self.validate()?;
+        if self.request_id != request_id
+            || target.is_some_and(|target| {
+                self.recipient_id != target.sender_id
+                    || self.conversation_id != target.conversation_id
+            })
+        {
+            return Err(invalid(
+                "send receipt does not match the request or external destination",
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -249,6 +328,11 @@ impl NotificationSendOutcome {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum NotificationRuntimeResult {
+    Activity {
+        applied: bool,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        managed_secret_patch: BTreeMap<String, Value>,
+    },
     Receive {
         outcome: NotificationReceiveOutcome,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -266,6 +350,8 @@ pub enum NotificationRuntimeResult {
     },
     Send {
         outcome: NotificationSendOutcome,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        receipt: Option<NotificationSendReceipt>,
         /// Omitted means no change; recipient_not_ready must not revoke account authorization.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         authorization: Option<NotificationAuthorizationView>,
@@ -296,6 +382,16 @@ impl NotificationAuthorizationDescriptor {
         {
             return Err(invalid("authorization requires unique managed secret keys"));
         }
+        let mut identities = BTreeSet::new();
+        if self
+            .managed_identity_keys
+            .iter()
+            .any(|key| !self.managed_secret_keys.contains(key) || !identities.insert(key))
+        {
+            return Err(invalid(
+                "managed identities must be a unique subset of managed secret keys",
+            ));
+        }
         Ok(())
     }
 
@@ -305,6 +401,16 @@ impl NotificationAuthorizationDescriptor {
             .any(|key| !self.managed_secret_keys.contains(key))
         {
             return Err(invalid("undeclared managed secret key"));
+        }
+        if self
+            .managed_identity_keys
+            .iter()
+            .filter_map(|key| secrets.get(key))
+            .any(|value| !value.is_null() && !value.as_str().is_some_and(bounded_id))
+        {
+            return Err(invalid(
+                "managed identity values must be bounded identities",
+            ));
         }
         Ok(())
     }
@@ -348,6 +454,28 @@ impl NotificationRuntimeInput {
             window.validate()?;
         }
         match &self.operation {
+            NotificationOperation::SetActivity { target, .. } => {
+                if !descriptor
+                    .receive
+                    .as_ref()
+                    .is_some_and(|receive| receive.supports_activity)
+                    || [
+                        &target.sender_id,
+                        &target.conversation_id,
+                        &target.provider_message_id,
+                    ]
+                    .iter()
+                    .any(|id| {
+                        id.trim().is_empty() || id.len() > 1024 || id.chars().any(char::is_control)
+                    })
+                {
+                    return Err(invalid(
+                        "activity requires declared capability and bounded committed destination",
+                    ));
+                }
+                Ok(())
+            }
+
             NotificationOperation::Authorize { operation } => {
                 let authorization = descriptor
                     .authorization
@@ -400,9 +528,22 @@ impl NotificationRuntimeInput {
                 attachment.validate()
             }
             NotificationOperation::Send {
+                request_id,
                 input_payload,
                 target,
             } => {
+                if request_id.as_deref().is_some_and(|id| {
+                    !descriptor
+                        .receive
+                        .as_ref()
+                        .is_some_and(|receive| receive.supports_send_receipts)
+                        || !bounded_id(id)
+                        || uuid::Uuid::parse_str(id).is_err()
+                }) {
+                    return Err(invalid(
+                        "send request UUID requires declared receipt support",
+                    ));
+                }
                 if target.as_ref().is_some_and(|target| {
                     [
                         &target.sender_id,
@@ -410,7 +551,7 @@ impl NotificationRuntimeInput {
                         &target.provider_message_id,
                     ]
                     .iter()
-                    .any(|id| id.trim().is_empty() || id.len() > 1024)
+                    .any(|id| !bounded_id(id))
                 }) {
                     return Err(invalid(
                         "reply target requires bounded message and recipient identities",
@@ -444,6 +585,14 @@ impl NotificationRuntimeResult {
             }
         };
         match (self, &input.operation) {
+            (
+                Self::Activity {
+                    managed_secret_patch,
+                    ..
+                },
+                NotificationOperation::SetActivity { .. },
+            ) => validate_patch(managed_secret_patch),
+
             (
                 Self::Receive {
                     outcome,
@@ -479,12 +628,29 @@ impl NotificationRuntimeResult {
             (
                 Self::Send {
                     outcome,
+                    receipt,
                     authorization,
                     managed_secret_patch,
                 },
-                NotificationOperation::Send { .. },
+                NotificationOperation::Send {
+                    request_id, target, ..
+                },
             ) => {
                 outcome.validate(descriptor)?;
+                match (request_id.as_deref(), receipt) {
+                    (Some(request_id), Some(receipt)) => {
+                        receipt.validate_for(request_id, target.as_ref())?;
+                    }
+                    (Some(_), None)
+                        if matches!(outcome, NotificationSendOutcome::Succeeded { .. }) =>
+                    {
+                        return Err(invalid("successful correlated send requires a receipt"));
+                    }
+                    (None, Some(_)) => {
+                        return Err(invalid("send receipt requires a Host request UUID"));
+                    }
+                    _ => {}
+                }
                 if let Some(view) = authorization {
                     view.validate()?;
                     let expected = match outcome {

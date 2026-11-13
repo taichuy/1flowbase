@@ -53,14 +53,13 @@ impl Fixture {
                 &actor,
                 channel,
                 CommunicationBindingInput {
-                    event_commands: Vec::new(),
                     application_id: Uuid::now_v7(),
                     model: None,
                     reasoning_effort: None,
                     file_table_id: None,
                     mcp_instance_ids: vec![],
                     system_prompt: "Command fixture".into(),
-                    command_settings: vec![],
+                    commands: vec![],
                 },
                 "fixture-tools".into(),
             )
@@ -106,6 +105,7 @@ impl Fixture {
                     sender_display_name: None,
                     received_at_ms: 42,
                     text: Some(text.into()),
+                    reply_to: None,
                     attachments: vec![],
                 }],
             })
