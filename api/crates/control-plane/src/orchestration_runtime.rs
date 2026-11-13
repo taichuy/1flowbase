@@ -219,6 +219,9 @@ pub struct ResumeFlowRunCommand {
 pub const HOST_TRANSPORT_CONNECTION_SCOPE_HEADER: &str = "x-1flowbase-transport-connection-scope";
 
 pub struct CompleteCallbackTaskCommand {
+    pub anthropic_continuation: Option<
+        crate::application_public_api::anthropic_continuation::VerifiedAnthropicContinuation,
+    >,
     pub responses_continuation:
         Option<crate::application_public_api::native_tool_resume::VerifiedResponsesContinuation>,
     pub transport_connection_scope: Option<String>,
@@ -675,6 +678,28 @@ where
             input.waiting_node_run_id,
         )
         .await?;
+        let mut continuation_snapshot = input.snapshot.clone();
+        if let Some(value) = input.resume_payload.get("anthropic_continuation") {
+            let continuation: domain::orchestration::AnthropicContinuation =
+                serde_json::from_value(value.clone())?;
+            let start_node_ids = input
+                .compiled_plan
+                .nodes
+                .values()
+                .filter(|node| node.node_type == "start")
+                .map(|node| node.node_id.clone())
+                .collect::<Vec<_>>();
+            crate::application_public_api::anthropic_continuation::refresh_owned_anthropic_context(
+                &mut continuation_snapshot,
+                &start_node_ids,
+                scoped_execution_id,
+                &continuation,
+            )?;
+        }
+        let input = ResumeExecutionSegmentInput {
+            snapshot: &continuation_snapshot,
+            ..input
+        };
         let waiting_variable_pool =
             live_debug_run::container::waiting_variable_pool(input.snapshot, scoped_execution_id)?;
         let flow_execution_context = self.runtime_flow_execution_context(
@@ -832,6 +857,13 @@ where
                 runtime_context,
             )
             .await;
+        if let Some(value) = input.resume_payload.get("anthropic_continuation") {
+            let continuation: domain::orchestration::AnthropicContinuation =
+                serde_json::from_value(value.clone())?;
+            let envelope: extension_contracts::provider_contract::ProtocolContextEnvelope =
+                serde_json::from_value(continuation.client_protocol_envelope)?;
+            runtime_context = runtime_context.with_protocol_context(envelope);
+        }
         if requires_native_transport {
             runtime_context = runtime_context.with_provider_invocation_capability(
                 extension_contracts::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,

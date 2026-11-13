@@ -250,6 +250,24 @@ async fn dispatch_message(
             resume.tool_results,
             response_mode.clone(),
         );
+        let restored_source = control_plane::application_public_api::anthropic_continuation::restore_anthropic_provider_call_ids(&source_body);
+        let envelope =
+            anthropic_protocol_context_from_ingress(uri.query(), &headers, &restored_source, None)
+                .expect("captured Anthropic source always has protocol context");
+        match control_plane::application_public_api::anthropic_continuation::verify_anthropic_continuation(
+            &state.store, &actor, resume.callback_task_id, command.response_payload["tool_results"].clone(), restored_source, envelope,
+        ).await {
+            Ok(grant) => {
+                command.response_payload = grant.payload().clone();
+                command.anthropic_continuation = Some(grant);
+            }
+            Err(error) => {
+                let error = native::service_error(error);
+                if error.status != StatusCode::NOT_FOUND || error.code != "callback_task" {
+                    return Err(error.into());
+                }
+            }
+        }
         command.observation_context =
             Some(control_plane_contracts::ports::WorkflowObservationContext {
                 client_request_id: recorder.capture_id(),
@@ -261,6 +279,8 @@ async fn dispatch_message(
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan))
                 if response_mode.as_deref() == Some("streaming") =>
             {
+                let baseline =
+                    load_callback_usage_baseline(&state, resume.callback_task_id).await?;
                 return compatibility_interface::invoke_client_stream_with_principal(
                     state,
                     resume_binding_id,
@@ -275,18 +295,23 @@ async fn dispatch_message(
                         },
                     },
                     Some(recorder.clone()),
-                    compat_sse::anthropic_interface_projection(model),
+                    compat_sse::anthropic_resume_interface_projection(model, baseline),
                 )
                 .await
                 .map_err(Into::into);
             }
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
+                let baseline =
+                    load_callback_usage_baseline(&state, resume.callback_task_id).await?;
                 let (run, response) = match compatibility_interface::invoke_blocking_with_principal(
                     state.clone(),
                     resume_binding_id,
                     principal,
                     compatibility_interface::CompatibilityBlockingInput {
-                        response_projection: Some(message_protocol_projection(model.clone())),
+                        response_projection: Some(message_protocol_projection_for_round(
+                            model.clone(),
+                            baseline,
+                        )),
                         document: document.clone(),
                         command: compatibility_interface::CompatibilityInvocationCommand::Resume {
                             initial_run: plan.initial_run,
@@ -629,6 +654,7 @@ fn anthropic_resume_command(
     response_mode: Option<String>,
 ) -> ResumePublishedCallbackCommand {
     ResumePublishedCallbackCommand {
+        anthropic_continuation: None,
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,
@@ -776,6 +802,51 @@ pub(super) fn message_protocol_projection(
         to_anthropic_response(run.clone(), model)
     })
 }
+/// The callback boundary is durable and immutable across duplicate admission/replay.
+async fn load_callback_usage_baseline(
+    state: &ApiState,
+    callback_task_id: Uuid,
+) -> Result<super::openai::usage::ResponseUsageBaseline, native::NativeApiError> {
+    use control_plane::application_public_api::run_service::ApplicationPublishedRunControlRepository;
+    let callback = state
+        .store
+        .get_published_callback_task(callback_task_id)
+        .await
+        .map_err(|error| {
+            native::NativeApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "anthropic_callback_usage",
+                error.to_string(),
+            )
+        })?;
+    Ok(callback
+        .map(|task| {
+            super::openai::usage::ResponseUsageBaseline::from_callback_payload(
+                &task.request_payload,
+            )
+        })
+        .unwrap_or(super::openai::usage::ResponseUsageBaseline::Unavailable))
+}
+
+fn message_protocol_projection_for_round(
+    model: String,
+    baseline: super::openai::usage::ResponseUsageBaseline,
+) -> compatibility_interface::http_result::Projection {
+    compatibility_interface::http_result::anthropic(move |run| {
+        to_anthropic_response_for_round(run, model, &baseline)
+    })
+}
+
+fn to_anthropic_response_for_round(
+    run: &NativeRunResult,
+    model: String,
+    baseline: &super::openai::usage::ResponseUsageBaseline,
+) -> Result<AnthropicMessageResponse, AnthropicRouteError> {
+    let mut response_run = run.clone();
+    response_run.usage = baseline.native_round(run.usage.as_ref());
+    to_anthropic_response(response_run, model)
+}
+
 pub(super) fn count_tokens_protocol_projection() -> compatibility_interface::http_result::Projection
 {
     compatibility_interface::http_result::anthropic(move |run| {

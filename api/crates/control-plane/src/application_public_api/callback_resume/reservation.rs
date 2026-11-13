@@ -97,14 +97,18 @@ where
             if existing.source != command.source.as_str() {
                 return Err(ControlPlaneError::Conflict("callback_resume_source_conflict").into());
             }
-            if command.responses_continuation.is_some()
+            if (command.responses_continuation.is_some()
+                || command.anthropic_continuation.is_some())
                 && matches!(
                     existing.status,
                     domain::FlowRunCallbackResumeAttemptStatus::Processing
                         | domain::FlowRunCallbackResumeAttemptStatus::Received
                 )
             {
-                if existing.response_payload != command.response_payload {
+                if !domain::orchestration::callback_resume_payloads_match(
+                    &existing.response_payload,
+                    &command.response_payload,
+                ) {
                     return Err(
                         ControlPlaneError::Conflict("callback_resume_payload_conflict").into(),
                     );
@@ -122,7 +126,12 @@ where
                     });
             }
             let is_tool_round = context.callback_task.callback_kind == "llm_tool_calls";
-            if !is_tool_round && existing.response_payload != command.response_payload {
+            if !is_tool_round
+                && !domain::orchestration::callback_resume_payloads_match(
+                    &existing.response_payload,
+                    &command.response_payload,
+                )
+            {
                 return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());
             }
             if is_tool_round
@@ -136,7 +145,10 @@ where
                         | domain::FlowRunCallbackResumeAttemptStatus::Received
                 )
             {
-                if existing.response_payload != command.response_payload {
+                if !domain::orchestration::callback_resume_payloads_match(
+                    &existing.response_payload,
+                    &command.response_payload,
+                ) {
                     return Err(
                         ControlPlaneError::Conflict("callback_resume_payload_conflict").into(),
                     );

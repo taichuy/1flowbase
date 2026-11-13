@@ -106,6 +106,7 @@ async fn fixture_with_pool(pool: sqlx::PgPool, tool_count: usize) -> Fixture {
         None
     };
     let command = ResumePublishedCallbackCommand {
+        anthropic_continuation: None,
         responses_continuation: grant.clone(),
         transport_connection_scope: None,
         observation_context: None,
@@ -646,6 +647,7 @@ async fn aged_same_admission_version_can_atomically_acquire_actual_execution() {
         .store
         .commit_tool_callback_results_with_admission(
             &CommitToolCallbackResultsInput {
+                anthropic_continuation: None,
                 responses_continuation: Some(
                     serde_json::from_value(
                         fixture.command.response_payload["responses_continuation"].clone(),

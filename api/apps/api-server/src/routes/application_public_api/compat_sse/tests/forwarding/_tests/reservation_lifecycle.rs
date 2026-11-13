@@ -399,6 +399,7 @@ async fn fixture_with_callback_kind(
         response_payload,
         response_mode: Some("streaming".into()),
         native_transport: Some(native_transport),
+        anthropic_continuation: None,
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,
@@ -1029,6 +1030,7 @@ async fn complete_original_callback(
     let completed = state
         .store
         .commit_tool_callback_results(&control_plane::ports::CommitToolCallbackResultsInput {
+            anthropic_continuation: None,
             responses_continuation: None,
             scope_id,
             application_id: run.application_id,

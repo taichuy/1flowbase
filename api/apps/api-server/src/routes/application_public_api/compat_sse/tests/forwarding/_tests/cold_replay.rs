@@ -465,6 +465,7 @@ async fn assert_cold_callback_scope(delayed_identity: bool, missing_marker: bool
         response_payload: json!({"tool_results": []}),
         response_mode: Some("streaming".into()),
         native_transport: None,
+        anthropic_continuation: None,
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,

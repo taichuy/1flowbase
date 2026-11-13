@@ -508,6 +508,7 @@ impl NativeResumePort for NativeResumeAdapter {
                 .resume_callback_for_actor(
                     actor,
                     ResumePublishedCallbackCommand {
+                        anthropic_continuation: None,
                         responses_continuation: None,
                         transport_connection_scope: None,
                         observation_context: None,

@@ -92,6 +92,7 @@ async fn aged_native_receipt_attaches_with_live_execution_lease_and_reclaims_onl
     .await;
     let service = ApplicationPublishedCallbackResumeService::new(store.clone(), runtime);
     let command = ResumePublishedCallbackCommand {
+        anthropic_continuation: None,
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,
@@ -136,6 +137,7 @@ async fn aged_native_receipt_attaches_with_live_execution_lease_and_reclaims_onl
     let attempt_id = second.attempt_id();
     let committed = store
         .commit_tool_callback_results(&CommitToolCallbackResultsInput {
+            anthropic_continuation: None,
             responses_continuation: None,
             scope_id: seeded.workspace_id,
             application_id: seeded.application_id,

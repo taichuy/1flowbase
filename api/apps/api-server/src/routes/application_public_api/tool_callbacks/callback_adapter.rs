@@ -177,15 +177,17 @@ pub(crate) fn correlate_anthropic_callback(
     let Some(messages) = request.get("messages").and_then(Value::as_array) else {
         return Ok(None);
     };
-    let trailing_start = messages
+    // Only the latest assistant turn may own a callback. The following user
+    // turn may contain text/reminders alongside receipts, including additional
+    // user messages sent by Claude Code after the tool result message.
+    let latest_assistant = messages
         .iter()
-        .rposition(|message| !anthropic_message_has_only_tool_results(message))
-        .map_or(0, |index| index + 1);
+        .rposition(|message| message.get("role").and_then(Value::as_str) == Some("assistant"));
+    let trailing_start = latest_assistant.map_or(0, |index| index + 1);
     let trailing = &messages[trailing_start..];
-    if trailing.is_empty() || !contains_encoded_anthropic_tool_result(trailing) {
+    if !contains_encoded_anthropic_tool_result(trailing) {
         return Ok(None);
     }
-
     let preceding = &messages[..trailing_start];
     let assistant_start = preceding
         .iter()
@@ -215,13 +217,13 @@ pub(crate) fn correlate_anthropic_callback(
 
     let mut decoded = Vec::new();
     for message in trailing {
-        let blocks = message
-            .get("content")
-            .and_then(Value::as_array)
-            .ok_or_else(|| {
-                CallbackCorrelationError::new("messages", "tool_result content must be an array")
-            })?;
-        for block in blocks {
+        let Some(blocks) = message.get("content").and_then(Value::as_array) else {
+            continue;
+        };
+        for block in blocks
+            .iter()
+            .filter(|block| block.get("type").and_then(Value::as_str) == Some("tool_result"))
+        {
             let external_id = block
                 .get("tool_use_id")
                 .and_then(Value::as_str)
@@ -420,19 +422,6 @@ fn openai_tool_message_content(message: &Value) -> String {
         Some(Value::Null) | None => String::new(),
         Some(content) => content.to_string(),
     }
-}
-
-fn anthropic_message_has_only_tool_results(message: &Value) -> bool {
-    message.get("role").and_then(Value::as_str) == Some("user")
-        && message
-            .get("content")
-            .and_then(Value::as_array)
-            .is_some_and(|blocks| {
-                !blocks.is_empty()
-                    && blocks.iter().all(|block| {
-                        block.get("type").and_then(Value::as_str) == Some("tool_result")
-                    })
-            })
 }
 
 fn anthropic_tool_result_content(block: &Value) -> Value {

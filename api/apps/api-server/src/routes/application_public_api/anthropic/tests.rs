@@ -618,3 +618,32 @@ fn anthropic_title_prompt_is_regular_protocol_content() {
     assert_eq!(translated.request.query, "continue");
     assert_eq!(translated.request.system.len(), 1);
 }
+
+#[test]
+fn anthropic_blocking_callback_usage_does_not_recount_prior_round() {
+    use crate::routes::application_public_api::openai::usage::ResponseUsageBaseline;
+    use control_plane::application_public_api::native::NativeUsage;
+    let mut run = blocking_run(NativeRunStatus::Succeeded);
+    run.usage = Some(NativeUsage {
+        prompt_tokens: Some(30606),
+        completion_tokens: Some(684),
+        cache_write_tokens: Some(6129),
+        cache_read_tokens: Some(1500),
+        ..Default::default()
+    });
+    let baseline = ResponseUsageBaseline::from_callback_payload(&json!({
+        "native_usage_baseline_source":"usage_ledger", "native_usage_baseline":{
+            "prompt_tokens":15187, "completion_tokens":604,
+            "cache_write_tokens":6129, "cache_read_tokens":500
+        }
+    }));
+    for _ in 0..2 {
+        let response =
+            to_anthropic_response_for_round(&run, "claude-fable-5-2".into(), &baseline).unwrap();
+        assert_eq!(response.usage.input_tokens, 15419);
+        assert_eq!(response.usage.output_tokens, 80);
+        assert_eq!(response.usage.cache_creation_input_tokens, 0);
+        assert_eq!(response.usage.cache_read_input_tokens, 1000);
+    }
+    assert_eq!(run.usage.unwrap().prompt_tokens, Some(30606));
+}

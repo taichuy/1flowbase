@@ -78,6 +78,7 @@ async fn waiting_commit_receipt_survives_upper_run_and_detail_read_failures_and_
             .iter()
             .any(|event| event.event_type == "flow_run_failed"));
         let completed = service.complete_callback_task(CompleteCallbackTaskCommand {
+            anthropic_continuation: None,
             responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,

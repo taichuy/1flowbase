@@ -629,3 +629,92 @@ async fn anthropic_tool_use_wire_helper_serializes_input_json() {
         "{body}"
     );
 }
+
+// Numeric fixture from the real Claude Code callback response: the second
+// provider request was 15419/80, not the run's cumulative 30606/684.
+#[tokio::test]
+async fn anthropic_callback_usage_is_response_local_for_finish_wait_and_replay() {
+    use crate::routes::application_public_api::openai::usage::ResponseUsageBaseline;
+    let before = NativeUsage {
+        prompt_tokens: Some(15187),
+        completion_tokens: Some(604),
+        cache_write_tokens: Some(6129),
+        cache_read_tokens: Some(500),
+        ..Default::default()
+    };
+    let cumulative = NativeUsage {
+        prompt_tokens: Some(30606),
+        completion_tokens: Some(684),
+        cache_write_tokens: Some(6129),
+        cache_read_tokens: Some(1500),
+        ..Default::default()
+    };
+    let baseline = ResponseUsageBaseline::from_callback_payload(&json!({
+        "native_usage_baseline_source":"usage_ledger", "native_usage_baseline":before
+    }));
+    for waiting in [false, true] {
+        // New projector instances simulate attachment/replay, using the same
+        // durable admission boundary rather than the current live snapshot.
+        for _ in 0..2 {
+            let mut run = native_run();
+            run.usage = Some(before.clone());
+            let mut mapper = AnthropicStreamMapper::new("claude-fable-5-2".into())
+                .with_usage_baseline(baseline.clone());
+            let mut events = mapper.runtime_event_to_sse(
+                &run,
+                RuntimeEventEnvelope::new(run.id, 0, debug_stream_events::flow_started(run.id)),
+            );
+            run.usage = Some(cumulative.clone());
+            if waiting {
+                events.extend(
+                    mapper
+                        .anthropic_tool_use_events(
+                            &json!({
+                                "callback_task_id":Uuid::now_v7(), "callback_kind":"llm_tool_calls",
+                                "tool_calls":[{"id":"toolu_read", "name":"Read", "arguments":{}}]
+                            }),
+                            run.usage.as_ref(),
+                        )
+                        .unwrap(),
+                );
+            } else {
+                events.extend(mapper.runtime_event_to_sse(
+                    &run,
+                    RuntimeEventEnvelope::new(
+                        run.id,
+                        1,
+                        debug_stream_events::flow_finished(run.id, json!({})),
+                    ),
+                ));
+            }
+            let body = axum::body::to_bytes(
+                test_projected_events_response(events).into_body(),
+                usize::MAX,
+            )
+            .await
+            .unwrap();
+            let decoded = decode_anthropic_sse(std::str::from_utf8(&body).unwrap());
+            assert_eq!(decoded[0].data["message"]["usage"]["input_tokens"], 0);
+            assert_eq!(
+                decoded[0].data["message"]["usage"]["cache_creation_input_tokens"],
+                0
+            );
+            let delta = decoded
+                .iter()
+                .find(|event| event.name == "message_delta")
+                .unwrap();
+            assert_eq!(
+                delta.data["usage"],
+                json!({
+                    "input_tokens":15419, "output_tokens":80,
+                    "cache_creation_input_tokens":0, "cache_read_input_tokens":1000
+                })
+            );
+            assert_eq!(
+                run.usage,
+                Some(cumulative.clone()),
+                "projection must not change accounting"
+            );
+        }
+    }
+}

@@ -417,6 +417,7 @@ mod tests {
         response_payload: Value,
     ) -> ResumePublishedCallbackCommand {
         ResumePublishedCallbackCommand {
+            anthropic_continuation: None,
             responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
@@ -1004,6 +1005,147 @@ mod tests {
                 .count(),
             2
         );
+    }
+    #[tokio::test]
+    async fn anthropic_continuation_binds_owner_context_and_failed_replay() {
+        use crate::application_public_api::anthropic_continuation::verify_anthropic_continuation;
+        use crate::application_public_api::client_protocol_envelope::{
+            capture_source_protocol_request_body, ClientProtocolIngressPolicy,
+        };
+        let (repository, mut consumer, token, run) = callback_fixture().await;
+        let callback = repository.seed_pending_llm_tool_callback_task(
+            run.id,
+            json!({
+                "tool_calls":[{"id":"a","name":"Read","arguments":{}}]
+            }),
+        );
+        let actor = ApplicationApiKeyService::new(repository.clone())
+            .authenticate_bearer_token(&token)
+            .await
+            .unwrap();
+        let source = json!({"model":"claude-fixture[1M]","max_tokens":100,"system":"current system",
+        "tools":[{"name":"Read","input_schema":{"type":"object"}}],
+        "messages":[
+            {"role":"user","content":"read source"},
+            {"role":"assistant","content":[{"type":"tool_use","id":"a","name":"Read","input":{}}]},
+            {"role":"user","content":[{"type":"tool_result","tool_use_id":"a","content":"file"},{"type":"text","text":"new reminder"}]},
+            {"role":"user","content":"new instruction"}
+        ]});
+        let results = json!([{"tool_call_id":"a","content":"file"}]);
+        let envelope = capture_source_protocol_request_body(
+            ClientProtocolIngressPolicy::AnthropicMessages,
+            &source,
+        )
+        .unwrap();
+        let grant = verify_anthropic_continuation(
+            &repository,
+            &actor,
+            callback.id,
+            results.clone(),
+            source.clone(),
+            envelope,
+        )
+        .await
+        .unwrap();
+        assert!(
+            grant.payload()["anthropic_continuation"]["ordered_messages"]
+                .to_string()
+                .contains("new instruction")
+        );
+        assert!(
+            grant.payload()["anthropic_continuation"]["ordered_messages"]
+                .to_string()
+                .contains("new reminder")
+        );
+        assert_eq!(
+            grant.payload()["anthropic_continuation"]["model_parameters"]
+                ["requested_context_window"],
+            1_000_000
+        );
+        let mut foreign = actor.clone();
+        foreign.api_key_id = Uuid::now_v7();
+        let envelope = capture_source_protocol_request_body(
+            ClientProtocolIngressPolicy::AnthropicMessages,
+            &source,
+        )
+        .unwrap();
+        assert!(verify_anthropic_continuation(
+            &repository,
+            &foreign,
+            callback.id,
+            results.clone(),
+            source.clone(),
+            envelope
+        )
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("anthropic_continuation_owner"));
+        consumer.terminal_error = Some(
+            json!({"error_code":"endpoint_unreachable","failed_after_first_token":false,"status_code":503}),
+        );
+        let service =
+            ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
+        let mut command = resume_command(&token, run.id, callback.id, grant.payload().clone());
+        command.source = PublishedCallbackResumeSource::AnthropicMessages;
+        command.anthropic_continuation = Some(grant);
+        let first = service.resume_callback(command.clone()).await.unwrap();
+        assert_eq!(first.run.id, run.id);
+        let replay = service.prepare_callback_resume(&command).await.unwrap();
+        assert!(matches!(
+            replay,
+            PreparedPublishedCallbackResume::Resume { .. }
+        ));
+        // SDK retries change the transport counter, while all source context
+        // remains bound to the original attempt.
+        let mut retry_envelope = capture_source_protocol_request_body(
+            ClientProtocolIngressPolicy::AnthropicMessages,
+            &source,
+        )
+        .unwrap();
+        retry_envelope
+            .headers
+            .insert("x-stainless-retry-count".into(), vec!["1".into()]);
+        let retry_grant = verify_anthropic_continuation(
+            &repository,
+            &actor,
+            callback.id,
+            results.clone(),
+            source.clone(),
+            retry_envelope,
+        )
+        .await
+        .unwrap();
+        command.response_payload = retry_grant.payload().clone();
+        command.anthropic_continuation = Some(retry_grant);
+        let second = service.resume_callback(command.clone()).await.unwrap();
+        assert_eq!(first.attempt.id, second.attempt.id);
+        assert_eq!(consumer.call_count(), 1);
+        let mut changed = source;
+        changed["messages"][3]["content"] = json!("different instruction");
+        let envelope = capture_source_protocol_request_body(
+            ClientProtocolIngressPolicy::AnthropicMessages,
+            &changed,
+        )
+        .unwrap();
+        let changed_grant = verify_anthropic_continuation(
+            &repository,
+            &actor,
+            callback.id,
+            results,
+            changed,
+            envelope,
+        )
+        .await
+        .unwrap();
+        command.response_payload = changed_grant.payload().clone();
+        command.anthropic_continuation = Some(changed_grant);
+        assert!(service
+            .prepare_callback_resume(&command)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("callback_resume_payload_conflict"));
     }
 }
 #[path = "resume/callback_resume.rs"]
