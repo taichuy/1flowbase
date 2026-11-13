@@ -160,6 +160,17 @@ fn canonical_anthropic_continuation(
     // supplier's guarded source projection can then restore exact wire order.
     let (system, mut ordered_messages) = super::native::split_system_context_from_history(&request)
         .map_err(|_| ControlPlaneError::InvalidInput("anthropic_continuation_request"))?;
+    // Match initial ingress assembly: the captured source/transport presentation
+    // wins, while the validated translator contributes all safe residual fields.
+    let client_protocol_envelope =
+        super::client_protocol_envelope::merge_client_protocol_envelopes(
+            super::client_protocol_envelope::ClientProtocolIngressPolicy::AnthropicMessages,
+            Some(client_protocol_envelope),
+            request.client_protocol_envelope,
+        )
+        .ok_or(ControlPlaneError::InvalidInput(
+            "anthropic_continuation_protocol_context",
+        ))?;
     if !request.query.is_empty() {
         ordered_messages.push(json!({"role":"user","content":request.query}));
     }
@@ -421,6 +432,113 @@ mod tests {
                 .iter()
                 .all(|message| message["role"] != "system"));
             assert_eq!(continuation.client_protocol_envelope, original_envelope);
+        }
+    }
+
+    #[test]
+    fn verified_anthropic_continuation_envelope_matches_initial_ingress_with_all_residuals() {
+        use super::super::client_protocol_envelope::{
+            capture_client_protocol_envelope, capture_client_protocol_query,
+            capture_source_protocol_request_body, merge_client_protocol_envelopes,
+            ClientProtocolIngressPolicy,
+        };
+        let policy = ClientProtocolIngressPolicy::AnthropicMessages;
+        for residuals in [false, true] {
+            let mut source = json!({
+                "model":"claude", "messages":[{"role":"user","content":"opaque user text"}],
+                "tools":[{"name":"Read","input_schema":{"type":"object","properties":{
+                    "authorization":{"type":"string"}
+                }}}],
+                "authorization":"unsafe root canary"
+            });
+            if residuals {
+                source["context_management"] = json!({"edits":[{
+                    "type":"clear_thinking_20251015","keep":"all"
+                }]});
+                source["safeguards"] = json!({"mode":"enabled"});
+            }
+            let request =
+                super::super::compat::anthropic::translate_messages_request(source.clone())
+                    .unwrap()
+                    .request;
+            let captured = merge_client_protocol_envelopes(
+                policy,
+                capture_client_protocol_envelope(
+                    policy,
+                    [
+                        ("authorization", "Bearer test-only-presentation"),
+                        ("anthropic-version", "2023-06-01"),
+                        (
+                            "anthropic-beta",
+                            "context-1m-2025-08-07,interleaved-thinking-2025-05-14",
+                        ),
+                    ],
+                ),
+                capture_client_protocol_query(
+                    policy,
+                    [("beta", "true"), ("authorization", "unsafe query canary")],
+                ),
+            );
+            let captured = merge_client_protocol_envelopes(
+                policy,
+                captured,
+                capture_source_protocol_request_body(policy, &source),
+            )
+            .unwrap();
+            let expected = merge_client_protocol_envelopes(
+                policy,
+                Some(captured.clone()),
+                request.client_protocol_envelope.clone(),
+            )
+            .unwrap();
+            let continuation = canonical_anthropic_continuation(request, captured.clone()).unwrap();
+            let actual: ProtocolContextEnvelope =
+                serde_json::from_value(continuation.client_protocol_envelope).unwrap();
+            assert_eq!(
+                actual, expected,
+                "callback must use the same complete envelope as initial ingress"
+            );
+            assert_eq!(actual.source_request, captured.source_request);
+            assert_eq!(actual.headers, captured.headers);
+            assert_eq!(actual.query, captured.query);
+            assert!(actual
+                .source_request
+                .as_ref()
+                .unwrap()
+                .authentication
+                .is_some());
+            assert!(actual
+                .source_request
+                .as_ref()
+                .unwrap()
+                .body
+                .as_ref()
+                .unwrap()
+                .get("authorization")
+                .is_none());
+            assert!(!actual.headers.contains_key("authorization"));
+            assert!(!actual.query.contains_key("authorization"));
+            assert!(!actual.body.contains_key("authorization"));
+            assert_eq!(
+                actual
+                    .source_request
+                    .as_ref()
+                    .unwrap()
+                    .body
+                    .as_ref()
+                    .unwrap()["tools"],
+                source["tools"],
+                "opaque schema property names remain intact in source context"
+            );
+            if residuals {
+                assert_eq!(
+                    actual.body["context_management"],
+                    source["context_management"]
+                );
+                assert_eq!(actual.body["safeguards"], source["safeguards"]);
+            } else {
+                assert!(actual.body.is_empty());
+            }
         }
     }
 }
