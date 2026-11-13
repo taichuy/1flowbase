@@ -114,13 +114,19 @@ async fn workflow_credentials_native_successor_refreshes_nested_rounds_without_r
         committed_effects: AtomicUsize::new(0),
     };
     let ledger = Ledger::default();
-    let mut input = json!({"source":{"items":[1]},"env":{"frozen":"frozen-environment"},"sys":{"protocol_context":{"locator":"frozen-protocol"}}});
+    // Protocol context is host-owned and normalized out of untrusted run input.
+    // Supply the same ephemeral host context on initial execution and recovery.
+    let runtime_context = ExecutionRuntimeContext::default().with_ephemeral_protocol_context(
+        json!({"locator":"frozen-protocol"}),
+        serde_json::from_value(json!({"source_protocol":"openai_responses"})).unwrap(),
+    );
+    let mut input = json!({"source":{"items":[1]},"env":{"frozen":"frozen-environment"}});
     WorkflowCredentialReferences::for_run(predecessor)
         .inject_into_pool(input.as_object_mut().unwrap());
     let failed = start_flow_debug_run_with_runtime_context_and_lifecycle(
         &plan,
         &input,
-        ExecutionRuntimeContext::default(),
+        runtime_context.clone(),
         &invoker,
         &ledger,
     )
@@ -171,7 +177,7 @@ async fn workflow_credentials_native_successor_refreshes_nested_rounds_without_r
         &plan,
         &checkpoint,
         "llm",
-        ExecutionRuntimeContext::default(),
+        runtime_context,
         &invoker,
         &ledger,
     )
