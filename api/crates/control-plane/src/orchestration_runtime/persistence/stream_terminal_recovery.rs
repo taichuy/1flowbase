@@ -165,7 +165,7 @@ pub(super) async fn finalize_published_run_missing_stream_terminal_owned<
             expected_status,
             require_initial_execution: false,
             tool_delivery_events: Vec::new(),
-            result: CommitFlowRunTerminalResult::Failed {
+            result: CommitFlowRunTerminalResult::InterruptedExecution {
                 output_payload: flow_run.output_payload.clone(),
                 error_payload: error_payload.clone(),
             },

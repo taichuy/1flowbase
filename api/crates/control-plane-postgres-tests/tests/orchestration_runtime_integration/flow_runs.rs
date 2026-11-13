@@ -912,3 +912,151 @@ async fn terminal_tool_delivery_is_atomic_and_cas_loser_cannot_publish() {
         "read\0opaque"
     );
 }
+
+#[tokio::test]
+async fn interrupted_execution_terminal_closes_nodes_only_for_cas_winner() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    // Ordinary Failed keeps its existing semantics; only the explicit root-loss
+    // result owns unfinished nodes, and a losing CAS owns no node writes.
+    for scenario in ["interrupted_winner", "interrupted_loser", "ordinary_failed"] {
+        let run = seed_flow_run_with_mode(
+            &store,
+            &seeded,
+            &compiled,
+            OffsetDateTime::now_utc(),
+            FlowRunMode::PublishedApiRun,
+            None,
+        )
+        .await;
+        let node_started = run.started_at + Duration::seconds(1);
+        for (index, status) in [
+            NodeRunStatus::Running,
+            NodeRunStatus::WaitingCallback,
+            NodeRunStatus::Failed,
+            NodeRunStatus::Succeeded,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let node = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_node_run(
+                &store,
+                &CreateNodeRunInput {
+                    flow_run_id: run.id,
+                    node_id: format!("node-{index}"),
+                    node_type: "llm".into(),
+                    node_alias: format!("Node {index}"),
+                    status: NodeRunStatus::Running,
+                    input_payload: json!({"input": "retained\u{0000}input"}),
+                    debug_payload: json!({"debug": "retained\u{0000}debug"}),
+                    started_at: node_started,
+                },
+            )
+            .await
+            .unwrap();
+            <PgControlPlaneStore as OrchestrationRuntimeRepository>::update_node_run(
+                &store,
+                &UpdateNodeRunInput {
+                    node_run_id: node.id,
+                    status,
+                    output_payload: json!({"partial": "retained\u{0000}output"}),
+                    error_payload: Some(
+                        json!({"code": "upstream_original", "message": "retained\u{0000}error"}),
+                    ),
+                    metrics_payload: json!({"tokens": 7}),
+                    debug_payload: json!({"debug": "retained\u{0000}debug"}),
+                    finished_at: matches!(status, NodeRunStatus::Failed | NodeRunStatus::Succeeded)
+                        .then_some(node_started),
+                },
+            )
+            .await
+            .unwrap();
+        }
+        let before =
+            <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_detail(
+                &store,
+                seeded.application_id,
+                run.id,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        let error_payload = json!({"code": "stream_terminal_missing"});
+        let result = if scenario == "ordinary_failed" {
+            CommitFlowRunTerminalResult::Failed {
+                output_payload: json!({"partial": true}),
+                error_payload: error_payload.clone(),
+            }
+        } else {
+            CommitFlowRunTerminalResult::InterruptedExecution {
+                output_payload: json!({"partial": true}),
+                error_payload: error_payload.clone(),
+            }
+        };
+        let finished_at = node_started + Duration::seconds(1);
+        let receipt = <PgControlPlaneStore as OrchestrationRuntimeRepository>::commit_flow_run_terminal(&store, &CommitFlowRunTerminalInput {
+            flow_run_id: run.id,
+            expected_status: if scenario == "interrupted_loser" { FlowRunStatus::Queued }
+                else { FlowRunStatus::Running },
+            require_initial_execution: false,
+            tool_delivery_events: Vec::new(),
+            result,
+            flow_run_event_payload: error_payload.clone(),
+            terminal_event_payload: json!({"type": "flow_failed", "run_id": run.id, "error_payload": error_payload}),
+            finished_at,
+        }).await.unwrap();
+        let after =
+            <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_application_run_detail(
+                &store,
+                seeded.application_id,
+                run.id,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        if scenario == "interrupted_loser" {
+            assert!(matches!(receipt, CommitFlowRunTerminalReceipt::Loser));
+            assert_eq!(after.flow_run, before.flow_run);
+        } else {
+            assert!(matches!(
+                receipt,
+                CommitFlowRunTerminalReceipt::Winner(_)
+                    | CommitFlowRunTerminalReceipt::WinnerWithPostCommitProjectionWarning(_)
+            ));
+            assert_eq!(after.flow_run.status, FlowRunStatus::Failed);
+            assert_eq!(after.flow_run.finished_at, Some(finished_at));
+        }
+        assert_eq!(after.node_runs.len(), before.node_runs.len());
+        for mut expected in before.node_runs {
+            if scenario == "interrupted_winner"
+                && matches!(
+                    expected.status,
+                    NodeRunStatus::Running | NodeRunStatus::WaitingCallback
+                )
+            {
+                expected.status = NodeRunStatus::Failed;
+                expected.finished_at = Some(finished_at);
+            }
+            let actual = after
+                .node_runs
+                .iter()
+                .find(|node| node.id == expected.id)
+                .unwrap();
+            assert_eq!(actual, &expected, "node mutation violated {scenario}");
+        }
+        let terminal_count: i64 = sqlx::query_scalar(
+            "select count(*) from runtime_events where flow_run_id = $1 and event_type = 'flow_failed'",
+        ).bind(run.id).fetch_one(store.pool()).await.unwrap();
+        assert_eq!(
+            terminal_count,
+            if scenario == "interrupted_loser" {
+                0
+            } else {
+                1
+            }
+        );
+    }
+}

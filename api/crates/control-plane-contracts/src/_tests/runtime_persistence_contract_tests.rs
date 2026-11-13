@@ -33,3 +33,19 @@ fn runtime_persistence_contracts_keep_canonical_values_and_ports() {
     fn accepts_orchestration_runtime_repository(_: Option<&dyn OrchestrationRuntimeRepository>) {}
     accepts_orchestration_runtime_repository(None);
 }
+
+#[test]
+fn interrupted_execution_retains_failed_terminal_contract() {
+    let result = CommitFlowRunTerminalResult::InterruptedExecution {
+        output_payload: json!({"partial": "kept"}),
+        error_payload: json!({"code": "stream_terminal_missing"}),
+    };
+    assert_eq!(result.status(), FlowRunStatus::Failed);
+    assert_eq!(result.flow_run_event_type(), "flow_run_failed");
+    assert_eq!(result.runtime_event_type(), "flow_failed");
+    assert_eq!(result.output_payload(), &json!({"partial": "kept"}));
+    assert_eq!(
+        result.error_payload(),
+        Some(&json!({"code": "stream_terminal_missing"}))
+    );
+}
