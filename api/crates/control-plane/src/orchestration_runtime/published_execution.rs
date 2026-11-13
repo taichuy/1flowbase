@@ -1,5 +1,6 @@
 use super::*;
 
+#[path = "published_execution/completion_guard.rs"]
 mod completion_guard;
 use completion_guard::PublishedExecutionCompletionGuard;
 
