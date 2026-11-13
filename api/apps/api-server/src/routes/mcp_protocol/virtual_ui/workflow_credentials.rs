@@ -49,7 +49,8 @@ impl ApiMcpRuntimeToolInvoker {
         let run = self.workflow_credential_run(flow_run_id).await?;
         // A request-scoped repository can hold an actor override. Authentication always reads
         // fresh durable facts rather than using that override's cached permission set.
-        let auth_store = MainDurableStore::new(self.dependencies.store.pool().clone());
+        let auth_store =
+            crate::authentication_runtime::fresh_authentication_store(&self.dependencies.store);
         let snapshot = match self
             .dependencies
             .store
@@ -118,7 +119,8 @@ impl ApiMcpRuntimeToolInvoker {
                 .as_ref()
                 .ok_or_else(|| anyhow!("workflow_executor_credential_unavailable"))?,
         };
-        let auth_store = MainDurableStore::new(self.dependencies.store.pool().clone());
+        let auth_store =
+            crate::authentication_runtime::fresh_authentication_store(&self.dependencies.store);
         let context = identity_context(&auth_store, identity).await?;
         control_plane_contracts::ports::with_lifecycle_workflow_ancestors(
             self.dependencies.store.workflow_ancestor_ids(),

@@ -1,4 +1,4 @@
-//! Host-owned admission and configuration for managed external identity verifiers.
+//! Host-owned verifier admission/configuration and fresh durable authentication views.
 mod registration;
 pub(crate) use registration::registry_for;
 
@@ -18,6 +18,11 @@ use runtime_core::runtime_backend::RuntimeExecutionPrincipal;
 use std::sync::{Arc, Weak};
 use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
+
+/// Read fresh durable authentication facts without reusing a request actor override.
+pub(crate) fn fresh_authentication_store(store: &MainDurableStore) -> MainDurableStore {
+    MainDurableStore::new(store.pool().clone())
+}
 
 /// Provider admission and invocation resources. The runtime reference is weak:
 /// its composition owns compiled registries which retain authentication handlers.
