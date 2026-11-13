@@ -2,6 +2,8 @@
 #[path = "../_tests/application/application_runtime_routes.rs"]
 pub mod application;
 mod resources;
+#[path = "../_tests/crate_split_contract_baseline.rs"]
+pub mod crate_split_contract_baseline;
 #[path = "../_tests/support/mod.rs"]
 pub mod support;
 pub(crate) use resources::TestResources;

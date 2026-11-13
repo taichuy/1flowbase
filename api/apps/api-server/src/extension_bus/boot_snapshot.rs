@@ -231,6 +231,13 @@ impl ExtensionBootSnapshot {
         self.external_endpoint_catalog.get()
     }
 
+    #[cfg(feature = "test-support")]
+    pub(crate) fn console_operation_snapshot_for_test_support(
+        &self,
+    ) -> Option<&crate::console_operation_compilation::CompiledConsoleOperationSnapshot> {
+        self.console_operation_snapshot.get().map(AsRef::as_ref)
+    }
+
     pub(crate) fn dispatch_owner(
         &self,
     ) -> Result<Arc<crate::generation_dispatch::GenerationDispatch>, crate::error_response::ApiError>

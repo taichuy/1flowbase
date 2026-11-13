@@ -25,6 +25,8 @@ use crate::{
 };
 
 pub(crate) struct PreparedGeneration {
+    #[cfg(feature = "test-support")]
+    pub(crate) mounted: Vec<crate::external_endpoint_catalog::ExternalEndpointContribution>,
     router: Router,
     owner: Arc<crate::generation_dispatch::GenerationDispatch>,
     stream_generation: String,
@@ -251,6 +253,8 @@ impl ManagedGenerationPublisher {
             )?;
         let event_catalog = crate::event_center::persistence::snapshot(&state, &snapshots).await?;
         Ok(PreparedGeneration {
+            #[cfg(feature = "test-support")]
+            mounted,
             event_catalog,
             owner,
             state: Arc::downgrade(&state),

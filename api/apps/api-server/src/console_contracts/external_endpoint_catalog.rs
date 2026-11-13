@@ -4,6 +4,7 @@ use interface_runtime::{CompiledInterfaceRegistry, ProtocolBinding, ProtocolProj
 use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "test-support", derive(serde::Serialize))]
 pub(crate) enum ExternalEndpointClassification {
     CanonicalBusinessInterface,
     ProtocolControl,
@@ -12,6 +13,7 @@ pub(crate) enum ExternalEndpointClassification {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "test-support", derive(serde::Serialize))]
 pub(crate) enum ExternalEndpointIdentity {
     Http {
         method: String,
@@ -58,6 +60,7 @@ impl ExternalEndpointIdentity {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "test-support", derive(serde::Serialize))]
 pub(crate) struct ExternalEndpointContribution {
     identity: ExternalEndpointIdentity,
     source: String,
@@ -144,6 +147,7 @@ impl ExternalEndpointContribution {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "test-support", derive(serde::Serialize))]
 pub(crate) struct ExternalEndpointRow {
     identity: ExternalEndpointIdentity,
     sources: BTreeSet<String>,
