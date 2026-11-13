@@ -837,6 +837,7 @@ describe('AgentFlowCanvas interactions', () => {
     fireEvent.pointerDown(container.querySelector('.agent-flow-canvas')!);
     act(() => latestReactFlowProps?.onPaneClick?.());
     expect(getState().nodePickerState.open).toBe(false);
+    expect(getState().connectingPayload.sourceNodeId).toBeNull();
   });
 
   test('creates a branched node from the dragged connection without rewriting the original outgoing edge', async () => {

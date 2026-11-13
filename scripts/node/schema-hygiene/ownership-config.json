@@ -1,5 +1,14 @@
 {
   "exemptions": {
+    "communication_message_sends": {
+      "kind": "notification_send_owned_receipt",
+      "reason": "Each communication send is keyed by its notification_send_logs owner and correlated to optional timeline history; repository status and receipt updates do not use an independent row identity, mutable timestamp, or workspace chronology.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-time-index"
+      ]
+    },
     "system_branding": {
       "kind": "system_singleton_state",
       "reason": "Global branding is one row keyed by a fixed TRUE singleton, read and upserted without workspace routing or time pagination",
@@ -1674,10 +1683,10 @@
         "scope_id",
         "instance_id",
         "external_identity",
-        "conversation_id",
-        "input_id"
+        "conversation_id"
       ],
       "requiredColumns": [
+        "input_id",
         "created_at",
         "updated_at",
         "type",
@@ -1725,6 +1734,30 @@
           "function": "communication_touch_updated_at"
         }
       ]
+    },
+    "communication_message_sends": {
+      "primaryKey": ["send_log_id"],
+      "ownerColumns": ["scope_id", "instance_id"],
+      "nullableOwnerColumns": ["message_id"],
+      "requiredColumns": [
+        "created_at", "message_id", "conversation_id", "input_id", "run_id",
+        "target_json", "receipt_json", "send_status", "failure_code"
+      ],
+      "foreignKeys": [
+        {
+          "columns": ["send_log_id"],
+          "table": "notification_send_logs",
+          "references": ["id"],
+          "onDelete": "no action"
+        },
+        {
+          "columns": ["message_id"],
+          "table": "communication_messages",
+          "references": ["id"],
+          "onDelete": "no action"
+        }
+      ],
+      "unconditionalIndexes": [["scope_id", "message_id", "created_at"]]
     },
     "communication_sessions": {
       "primaryKey": [

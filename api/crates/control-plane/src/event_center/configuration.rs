@@ -1,5 +1,8 @@
-use control_plane_contracts::{ControlPlaneContractError as Error, ports::{EventCenterRepository, EventCatalogRepository}};
-use domain::{ActorContext, event_center::*};
+use control_plane_contracts::{
+    ports::{EventCatalogRepository, EventCenterRepository},
+    ControlPlaneContractError as Error,
+};
+use domain::{event_center::*, ActorContext};
 use serde_json::Value;
 use time::OffsetDateTime;
 use uuid::Uuid;

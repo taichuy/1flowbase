@@ -73,10 +73,12 @@ async fn communication_command_unknown_and_disabled_controls_block_then_exclude_
         .await
         .unwrap()
         .unwrap();
-    binding.config.commands = vec![domain::CommunicationCommandConfiguration::Registered(CommunicationCommandSetting {
-        command_id: "host/help".into(),
-        enabled: false,
-    })];
+    binding.config.commands = vec![domain::CommunicationCommandConfiguration::Registered(
+        CommunicationCommandSetting {
+            command_id: "host/help".into(),
+            enabled: false,
+        },
+    )];
     fixture
         .state
         .notification_service

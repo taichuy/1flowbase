@@ -1,0 +1,51 @@
+.workflow-run-status {
+  position: absolute;
+  z-index: 12;
+  right: 24px;
+  bottom: 24px;
+  max-width: min(620px, calc(100% - 48px));
+  padding: 10px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-float);
+  pointer-events: auto;
+}
+
+.workflow-run-status__summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.workflow-run-status__icon {
+  color: var(--status-running);
+}
+.workflow-run-status[data-status='succeeded'] .workflow-run-status__icon {
+  color: var(--status-success);
+}
+.workflow-run-status[data-status='failed'] .workflow-run-status__icon {
+  color: var(--status-failed);
+}
+.workflow-run-status__result {
+  margin-top: 8px;
+}
+.workflow-run-status__result summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.workflow-run-status__result-content {
+  max-height: 240px;
+  overflow: auto;
+  padding-top: 10px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .workflow-run-status {
+    right: 12px;
+    bottom: 12px;
+    max-width: calc(100% - 24px);
+  }
+}

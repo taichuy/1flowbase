@@ -2,21 +2,13 @@ import { describe, expect, test } from 'vitest';
 
 import { createDefaultWorkflowDocument } from '@1flowbase/flow-schema';
 
-import { buildWorkflowTestRunInput, readWorkflowResult } from '../lib/test-run';
+import { buildWorkflowTestRunInput } from '../lib/test-run';
 
 function createWorkflowDocument() {
   const document = createDefaultWorkflowDocument({ flowId: 'flow-1' });
   const startNode = document.graph.nodes.find(
     (node) => node.type === 'workflow_start'
-  );
-  const endNode = document.graph.nodes.find(
-    (node) => node.type === 'workflow_end'
-  );
-
-  if (!startNode || !endNode) {
-    throw new Error('default workflow nodes are missing');
-  }
-
+  )!;
   startNode.config.input_fields = [
     {
       key: 'customer_id',
@@ -36,157 +28,81 @@ function createWorkflowDocument() {
       source: 'query'
     },
     {
-      key: 'payload',
-      label: 'Payload',
-      inputType: 'json',
-      valueType: 'object',
+      key: 'limit',
+      label: 'Limit',
+      inputType: 'number',
+      valueType: 'number',
       required: false,
-      source: 'body'
-    },
-    {
-      key: 'attachment',
-      label: 'Attachment',
-      inputType: 'text',
-      valueType: 'string',
-      required: false,
-      defaultValue: 'none',
-      source: 'form'
+      defaultValue: 100
     }
   ];
-  endNode.outputs = [
-    {
-      key: 'ticket_id',
-      title: 'Ticket ID',
-      valueType: 'string'
-    }
-  ];
-
   return document;
 }
 
-describe('Workflow test-run contract', () => {
-  test('AC-102 builds schedule payload under the workflow_start node id', () => {
-    const document = createWorkflowDocument();
-    const startNode = document.graph.nodes.find(
-      (node) => node.type === 'workflow_start'
-    );
-    if (!startNode || !Array.isArray(startNode.config.input_fields)) {
-      throw new Error('workflow_start input fields are missing');
-    }
-    startNode.config.input_fields = startNode.config.input_fields.map(
-      (field) => {
-        const scheduleField = { ...field };
-        delete scheduleField.source;
-        return scheduleField;
-      }
-    );
-
-    expect(
-      buildWorkflowTestRunInput({
-        document,
-        triggerType: 'schedule',
-        schedulePayload: {
-          customer_id: 'C-42',
-          force: false
-        }
-      })
-    ).toEqual({
-      input_payload: {
-        'node-workflow-start': {
-          customer_id: 'C-42',
-          force: false
-        }
-      }
-    });
-  });
-
-  test('AC-102 maps all HTTP sources directly from workflow_start input fields', () => {
+describe('Workflow test-run input', () => {
+  test('keys parameters by the start node and ignores undeclared input', () => {
     expect(
       buildWorkflowTestRunInput({
         document: createWorkflowDocument(),
-        triggerType: 'extension',
-        extensionInputs: {
-          path: { customer_id: 'C-42', undeclared: 'ignored' },
-          query: { force: true },
-          body: { payload: { ticket: 'T-1' } },
-          form: { attachment: 'invoice.pdf' }
-        }
-      })
-    ).toEqual({
-      input_payload: {
-        'node-workflow-start': {
+        inputs: {
           customer_id: 'C-42',
           force: true,
-          payload: { ticket: 'T-1' },
-          attachment: 'invoice.pdf'
-        }
-      }
-    });
-  });
-
-  test('AC-102 applies declared defaults without creating undeclared inputs', () => {
-    expect(
-      buildWorkflowTestRunInput({
-        document: createWorkflowDocument(),
-        triggerType: 'extension',
-        extensionInputs: {
-          path: { customer_id: 'C-42' },
-          query: {},
-          body: {},
-          form: {}
+          limit: 25,
+          undeclared: 'ignored'
         }
       })
     ).toEqual({
       input_payload: {
-        'node-workflow-start': {
-          customer_id: 'C-42',
-          force: false,
-          attachment: 'none'
-        }
+        'node-workflow-start': { customer_id: 'C-42', force: true, limit: 25 }
       }
     });
   });
 
-  test('AC-102 rejects a missing required workflow_start input', () => {
-    expect(() =>
+  test('applies start field defaults and preserves false and zero', () => {
+    expect(
       buildWorkflowTestRunInput({
         document: createWorkflowDocument(),
-        triggerType: 'extension',
-        extensionInputs: {
-          path: {},
-          query: {},
-          body: {},
-          form: {}
-        }
+        inputs: { customer_id: 'C-42', limit: 0 }
       })
-    ).toThrow('Missing required workflow input: customer_id');
+    ).toEqual({
+      input_payload: {
+        'node-workflow-start': { customer_id: 'C-42', force: false, limit: 0 }
+      }
+    });
   });
 
-  test('AC-104 reads Workflow Result from flow_run.output_payload', () => {
+  test('omits an optional parameter without a value or default', () => {
+    const document = createWorkflowDocument();
+    document.graph.nodes[0].config.input_fields = [
+      {
+        key: 'note',
+        label: 'Note',
+        inputType: 'text',
+        valueType: 'string',
+        required: false
+      }
+    ];
+    expect(buildWorkflowTestRunInput({ document, inputs: {} })).toEqual({
+      input_payload: { 'node-workflow-start': {} }
+    });
+  });
+
+  test('an empty start form sends an empty node payload', () => {
     expect(
-      readWorkflowResult({
-        flow_run: {
-          output_payload: {
-            ticket_id: 'ticket-C-42'
-          }
-        }
+      buildWorkflowTestRunInput({
+        document: createDefaultWorkflowDocument({ flowId: 'flow-1' }),
+        inputs: { undeclared: 'ignored' }
       })
-    ).toEqual({ ticket_id: 'ticket-C-42' });
+    ).toEqual({ input_payload: { 'node-workflow-start': {} } });
   });
-});
 
-test('E7 Event debug input uses Start names without HTTP source routing', () => {
-  const document = createWorkflowDocument();
-  const start = document.graph.nodes.find(
-    (node) => node.type === 'workflow_start'
-  )!;
-  const result = buildWorkflowTestRunInput({
-    document,
-    triggerType: 'event',
-    eventInputs: { customer_id: 'C-1', force: false, unrelated: 'discard' }
-  });
-  expect(result.input_payload[start.id]).toEqual({
-    customer_id: 'C-1',
-    force: false
+  test('a missing start node is not treated as an empty input form', () => {
+    const document = createWorkflowDocument();
+    document.graph.nodes = document.graph.nodes.filter(
+      (node) => node.type !== 'workflow_start'
+    );
+    expect(() => buildWorkflowTestRunInput({ document, inputs: {} })).toThrow(
+      'Workflow document requires a workflow_start node'
+    );
   });
 });

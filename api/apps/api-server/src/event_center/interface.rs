@@ -2,13 +2,13 @@
 use std::sync::{Arc, Weak};
 
 use control_plane_contracts::ports::EventCenterRepository;
-use domain::{ActorContext, event_center::*};
+use domain::{event_center::*, ActorContext};
 use interface_runtime::{
     CompiledInterfaceRegistry, InterfaceEvent, InterfaceEventCapability, InterfaceEventObserver,
     InterfaceEventObserverFuture, InterfaceEventPrincipal, InterfaceInvocationTerminal,
     InterfaceScope,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::app_state::ApiState;
 

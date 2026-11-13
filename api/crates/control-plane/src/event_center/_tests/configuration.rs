@@ -6,6 +6,7 @@ use std::{collections::BTreeMap, sync::Mutex};
 struct MemoryRepository {
     definitions: Mutex<Vec<EventDefinitionRecord>>,
     triggers: Mutex<Vec<WorkflowEventTriggerRecord>>,
+    catalog: Mutex<Vec<EventCatalogEntry>>,
 }
 #[async_trait]
 impl EventCenterRepository for MemoryRepository {
@@ -121,6 +122,14 @@ impl EventCatalogRepository for MemoryRepository {
             .into_iter()
             .map(EventCatalogEntry::from)
             .collect::<Vec<_>>();
+        entries.extend(
+            self.catalog
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|entry| source_visible(actor, &entry.scope))
+                .cloned(),
+        );
         query.sort(&mut entries);
         Ok(entries)
     }
@@ -164,11 +173,9 @@ async fn command_events_have_a_source_owned_schema_and_an_immutable_kind() {
     );
     assert!(created.interface_event.is_none());
     assert_eq!(created.payload_schema, communication_command_event_schema());
-    assert!(
-        created
-            .contract_id
-            .starts_with("custom.communication_command.")
-    );
+    assert!(created
+        .contract_id
+        .starts_with("custom.communication_command."));
     assert!(service.get_definition(&outsider, created.id).await.is_err());
     let entry = service.catalog(&owner).await.unwrap().pop().unwrap();
     assert_eq!(entry.group_path, vec!["communication_commands"]);
@@ -194,12 +201,10 @@ async fn command_events_have_a_source_owned_schema_and_an_immutable_kind() {
     assert!(service.create_definition(&owner, forged).await.is_err());
     let mut changed_kind = update;
     changed_kind.event_kind = EventDefinitionKind::Interface;
-    assert!(
-        service
-            .update_definition(&owner, created.id, changed_kind)
-            .await
-            .is_err()
-    );
+    assert!(service
+        .update_definition(&owner, created.id, changed_kind)
+        .await
+        .is_err());
 }
 fn trigger_input() -> WorkflowEventTriggerInput {
     WorkflowEventTriggerInput {
@@ -261,19 +266,15 @@ async fn rules_inherit_declared_schema_and_keep_workspace_identity() {
     assert_eq!(updated.payload_schema, created.payload_schema);
     let mut trigger = trigger_input();
     trigger.contract_id = created.contract_id;
-    assert!(
-        service
-            .validate_workflow_trigger(&owner, &trigger)
-            .await
-            .is_err()
-    );
+    assert!(service
+        .validate_workflow_trigger(&owner, &trigger)
+        .await
+        .is_err());
     trigger.enabled = false;
-    assert!(
-        service
-            .save_workflow_trigger(&owner, Uuid::now_v7(), trigger)
-            .await
-            .is_ok()
-    );
+    assert!(service
+        .save_workflow_trigger(&owner, Uuid::now_v7(), trigger)
+        .await
+        .is_ok());
 }
 #[tokio::test]
 async fn absent_interface_and_invalid_before_result_filter_are_rejected() {
@@ -353,7 +354,10 @@ async fn source_selection_authorizes_scope_and_matches_identity_before_phase() {
         source_entry(EventSourceScope::System, vec![EventTriggerPhase::Published]),
     ];
     let service = EventCenterConfigurationService::with_registered_events(
-        MemoryRepository::default(),
+        MemoryRepository {
+            catalog: Mutex::new(entries.clone()),
+            ..MemoryRepository::default()
+        },
         owner.current_workspace_id,
         entries.clone(),
     );
@@ -366,34 +370,26 @@ async fn source_selection_authorizes_scope_and_matches_identity_before_phase() {
         source_id: "native.same-contract".into(),
         scope: EventSourceScope::System,
     });
-    assert!(
-        service
-            .validate_workflow_trigger(&owner, &selected)
-            .await
-            .is_ok()
-    );
+    assert!(service
+        .validate_workflow_trigger(&owner, &selected)
+        .await
+        .is_ok());
     let mut non_root = owner.clone();
     non_root.is_root = false;
-    assert!(
-        service
-            .validate_workflow_trigger(&non_root, &selected)
-            .await
-            .is_err()
-    );
+    assert!(service
+        .validate_workflow_trigger(&non_root, &selected)
+        .await
+        .is_err());
     selected.source.as_mut().unwrap().scope = workspace.clone();
-    assert!(
-        service
-            .validate_workflow_trigger(&owner, &selected)
-            .await
-            .is_err()
-    );
+    assert!(service
+        .validate_workflow_trigger(&owner, &selected)
+        .await
+        .is_err());
     selected.trigger_phase = EventTriggerPhase::Consumed;
-    assert!(
-        service
-            .validate_workflow_trigger(&non_root, &selected)
-            .await
-            .is_ok()
-    );
+    assert!(service
+        .validate_workflow_trigger(&non_root, &selected)
+        .await
+        .is_ok());
     let saved = service
         .save_workflow_trigger(&owner, Uuid::now_v7(), selected.clone())
         .await
@@ -402,19 +398,15 @@ async fn source_selection_authorizes_scope_and_matches_identity_before_phase() {
     selected.source.as_mut().unwrap().scope = EventSourceScope::Workspace {
         workspace_id: Uuid::now_v7(),
     };
-    assert!(
-        service
-            .validate_workflow_trigger(&owner, &selected)
-            .await
-            .is_err()
-    );
+    assert!(service
+        .validate_workflow_trigger(&owner, &selected)
+        .await
+        .is_err());
     selected.source.as_mut().unwrap().scope = EventSourceScope::Unbound;
-    assert!(
-        service
-            .validate_workflow_trigger(&owner, &selected)
-            .await
-            .is_err()
-    );
+    assert!(service
+        .validate_workflow_trigger(&owner, &selected)
+        .await
+        .is_err());
     selected.source = None;
     assert!(
         service
@@ -431,19 +423,15 @@ async fn source_selection_authorizes_scope_and_matches_identity_before_phase() {
         unavailable,
     );
     selected.source = saved.configuration.source;
-    assert!(
-        unavailable_service
-            .validate_workflow_trigger(&owner, &selected)
-            .await
-            .is_err()
-    );
+    assert!(unavailable_service
+        .validate_workflow_trigger(&owner, &selected)
+        .await
+        .is_err());
     selected.enabled = false;
-    assert!(
-        unavailable_service
-            .validate_workflow_trigger(&owner, &selected)
-            .await
-            .is_ok()
-    );
+    assert!(unavailable_service
+        .validate_workflow_trigger(&owner, &selected)
+        .await
+        .is_ok());
 }
 
 #[tokio::test]
@@ -538,36 +526,28 @@ async fn api_rules_use_selected_operation_schema_and_reject_scope_phase_and_iden
         created.payload_schema,
         details.before_schema.clone().unwrap()
     );
-    assert!(
-        created.payload_schema["properties"]
-            .get("operation_id")
-            .is_some()
-    );
-    assert!(
-        created.payload_schema["properties"]
-            .get("interface_id")
-            .is_none()
-    );
+    assert!(created.payload_schema["properties"]
+        .get("operation_id")
+        .is_some());
+    assert!(created.payload_schema["properties"]
+        .get("interface_id")
+        .is_none());
     value.interface_event = Some(InterfaceEventBinding::legacy(
         "list_applications",
         InterfaceEventPhase::Before,
     ));
-    assert!(
-        service
-            .create_definition(&owner, value.clone())
-            .await
-            .is_err()
-    );
+    assert!(service
+        .create_definition(&owner, value.clone())
+        .await
+        .is_err());
     value.interface_event = Some(InterfaceEventBinding::api(
         "unknown_operation",
         InterfaceEventPhase::Before,
     ));
-    assert!(
-        service
-            .create_definition(&owner, value.clone())
-            .await
-            .is_err()
-    );
+    assert!(service
+        .create_definition(&owner, value.clone())
+        .await
+        .is_err());
     value.interface_event = Some(
         InterfaceEventBinding::api("list_applications", InterfaceEventPhase::Completion)
             .with_results(vec![InterfaceEventTerminal::Failed]),
@@ -580,36 +560,30 @@ async fn api_rules_use_selected_operation_schema_and_reject_scope_phase_and_iden
         completion.payload_schema,
         details.completion_schema.clone().unwrap()
     );
-    assert!(
-        service
-            .create_definition(&actor(), value.clone())
-            .await
-            .is_err()
-    );
+    assert!(service
+        .create_definition(&actor(), value.clone())
+        .await
+        .is_err());
     let mut unavailable = details.clone();
     unavailable.operation.completion = ApiEventPhaseAvailability::Unavailable {
         reason: ApiEventUnavailableReason::MissingStreamingTerminal,
     };
     let service = EventCenterConfigurationService::new(MemoryRepository::default())
         .with_api_operations(owner.current_workspace_id, vec![unavailable]);
-    assert!(
-        service
-            .create_definition(&owner, value.clone())
-            .await
-            .is_err()
-    );
+    assert!(service
+        .create_definition(&owner, value.clone())
+        .await
+        .is_err());
     let mut foreign = details.clone();
     foreign.operation.scope = EventSourceScope::Workspace {
         workspace_id: Uuid::now_v7(),
     };
     let service = EventCenterConfigurationService::new(MemoryRepository::default())
         .with_api_operations(owner.current_workspace_id, vec![foreign]);
-    assert!(
-        service
-            .create_definition(&owner, value.clone())
-            .await
-            .is_err()
-    );
+    assert!(service
+        .create_definition(&owner, value.clone())
+        .await
+        .is_err());
     let mut missing = details;
     missing.completion_schema = None;
     let service = EventCenterConfigurationService::new(MemoryRepository::default())

@@ -35,6 +35,9 @@ test('current timeline and session compaction schemas satisfy their actual owner
   }
   const timeline = inventory.tables.find((table) => table.name === 'communication_messages');
   assert.deepEqual(timeline.foreignKeys, []);
+  assert.equal(timeline.columns.find((column) => column.name === 'input_id').nullable, true,
+    'proactive outbound messages have no inbound input');
+  assert.ok(config.ownedTableContracts.communication_messages.requiredColumns.includes('input_id'));
   for (const column of ['processing_status', 'send_status', 'claim_expires_at']) {
     assert.equal(timeline.columns.some((item) => item.name === column), false, column);
     assert.ok(config.ownedTableContracts.communication_inputs.requiredColumns.includes(column));
@@ -42,6 +45,26 @@ test('current timeline and session compaction schemas satisfy their actual owner
   const heads = inventory.tables.find((table) => table.name === 'runtime_internal_compaction_heads');
   assert.ok(heads.columns.find((column) => column.name === 'checkpoint_content_id').nullable);
   assert.equal(heads.columns.some((column) => column.name === 'created_at'), false);
+});
+
+test('channel send receipts retain send-log ownership and scoped history lookup', () => {
+  const config = loadConfig(repoRoot);
+  const inventory = collectSchemaInventory({ repoRoot });
+  const errors = (candidate) => evaluateSchemaHygiene({ inventory: candidate, config }).findings
+    .filter((finding) => finding.table === 'communication_message_sends' && finding.severity === 'error');
+  assert.deepEqual(errors(inventory), []);
+  const reject = (mutate, rule) => {
+    const candidate = structuredClone(inventory);
+    mutate(candidate.tables.find((table) => table.name === 'communication_message_sends'));
+    assert.ok(errors(candidate).some((finding) => finding.rule === rule), rule);
+  };
+  reject((table) => { table.primaryKey.columns = ['id']; }, 'owned-table-primary-key');
+  reject((table) => { table.foreignKeys = []; }, 'owned-table-foreign-key');
+  reject((table) => { table.columns.find((column) => column.name === 'scope_id').nullable = true; },
+    'owned-table-owner-column');
+  reject((table) => { table.indexes = []; }, 'owned-table-lookup-index');
+  reject((table) => { table.columns = table.columns.filter((column) => column.name !== 'receipt_json'); },
+    'owned-table-required-column');
 });
 
 test('current owner contracts reject identity, routing and lifecycle damage', () => {

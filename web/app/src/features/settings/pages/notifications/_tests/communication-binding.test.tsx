@@ -495,9 +495,9 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
     target: { value: 'Updated invoice processing' }
   });
   fireEvent.click(within(edit).getByRole('button', { name: 'Submit' }));
-  await waitFor(() =>
-    expect(screen.getByText('Updated invoice processing')).toBeInTheDocument()
-  );
+  expect(
+    await screen.findByRole('row', { name: /Updated invoice processing/ })
+  ).toBeInTheDocument();
   fireEvent.click(screen.getByRole('switch', { name: 'Enable invoice' }));
   await act(async () => {
     await ref.current?.save('channel-1');

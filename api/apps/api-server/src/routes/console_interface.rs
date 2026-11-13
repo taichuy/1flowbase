@@ -805,7 +805,10 @@ fn console_invocation_error(error: interface_runtime::InterfaceInvocationError) 
         error => {
             // Fixed kernel classifications identify the failing contract boundary without
             // logging caller inputs, credentials or arbitrary target error payloads.
-            tracing::warn!(failure_class = error.classification(), "console interface invocation rejected");
+            tracing::warn!(
+                failure_class = error.classification(),
+                "console interface invocation rejected"
+            );
             anyhow::anyhow!("Console interface invocation failed").into()
         }
     }

@@ -553,10 +553,12 @@ async fn communication_command_help_uses_effective_availability_and_rechecks_dis
         .await
         .unwrap()
         .unwrap();
-    binding.config.commands = vec![domain::CommunicationCommandConfiguration::Registered(CommunicationCommandSetting {
-        command_id: "host/new".into(),
-        enabled: false,
-    })];
+    binding.config.commands = vec![domain::CommunicationCommandConfiguration::Registered(
+        CommunicationCommandSetting {
+            command_id: "host/new".into(),
+            enabled: false,
+        },
+    )];
     fixture
         .state
         .notification_service

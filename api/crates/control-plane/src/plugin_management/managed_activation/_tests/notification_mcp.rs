@@ -1,29 +1,43 @@
 use super::*;
 fn manifest() -> plugin_framework::PluginManifestV1 {
-    let mut manifest = plugin_framework::parse_plugin_manifest(&json!({
+    let mut manifest = json!({
         "manifest_version":2,"plugin_id":"chat_fixture","version":"1.0.0","publisher_namespace":"acme",
         "vendor":"acme","display_name":"Chat fixture","description":"Scoped chat fixture",
         "source_kind":"uploaded","trust_level":"unverified","consumption_kind":"runtime_extension",
         "execution_mode":"process_per_call","slot_codes":[],"selection_mode":"assignment_then_select",
         "minimum_host_version":"0.1.0","contract_version":"1flowbase.extension-bus/v1",
-        "schema_version":"1flowbase.plugin.manifest/v2","binding_targets":["system"],
+        "schema_version":"1flowbase.plugin.manifest/v2","binding_targets":["workspace"],
         "permissions":{"network":"none","secrets":"none","storage":"none","mcp":"none","subprocess":"deny"},
-        "runtime":{"entry":"bin/fixture","protocol":"stdio_json_multiplex_v1"},
-        "managed":{"module":{"bus_version":"v1","module_id":"chat_fixture","module_version":"1.0.0","module_kind":"runtime"}}
-    }).to_string()).unwrap();
+        "runtime":{"entry":"bin/fixture","protocol":"stdio_json"},
+        "managed":{
+            "module":{"bus_version":"v1","module_id":"chat_fixture","module_version":"1.0.0","module_kind":"runtime",
+                "contributions":[{"contribution_id":"chat_fixture.send","contributor_module_id":"chat_fixture",
+                    "point_id":"1flowbase.notification.send","contract_version":"1flowbase.notification/v1",
+                    "required_permissions":["notification.send"],"mode":"append"},
+                    {"contribution_id":"chat_fixture.receive","contributor_module_id":"chat_fixture",
+                    "point_id":"1flowbase.notification.receive","contract_version":"1flowbase.notification/v1",
+                    "required_permissions":["notification.receive"],"mode":"append"}]},
+            "execution_bindings":[{"contribution_id":"chat_fixture.send","execution_mode":"process_per_call",
+                "runtime":{"protocol":"stdio_json","entry":"bin/fixture"},"handler":"send",
+                "payload":{"kind":"notification_type","type_code":"acme/chat_fixture/private"}},
+                {"contribution_id":"chat_fixture.receive","execution_mode":"process_per_call",
+                "runtime":{"protocol":"stdio_json","entry":"bin/fixture"},"handler":"receive",
+                "payload":{"kind":"notification_receive","type_code":"acme/chat_fixture/private"}}]
+        }
+    });
     let tools:Vec<_> = ["history_messages","history_files","read_file","search_messages","file_info","view_image"].into_iter().map(|name|json!({
         "name":name,"description":name,"operation":name,
         "input_schema":{"type":"object","properties":{"message_id":{"type":"string"}},"required":["message_id"]}
     })).collect();
-    manifest.notification_types.push(serde_json::from_value(json!({
+    manifest["notification_types"] = json!([{
         "type_code":"acme/chat_fixture/private","display_name":"Chat","description":"Chat",
         "config_schema":{"type":"object","properties":{}},"config_form":{"schema_version":"1.0.0","fields":[]},
         "input_schema":{"type":"object","properties":{}},"input_form":{"schema_version":"1.0.0","fields":[]},
         "output_schema":{"type":"object"},"contribution_id":"chat_fixture.send",
         "receive":{"contribution_id":"chat_fixture.receive","default_system_prompt":"Use tools on demand",
             "mcp_instance_id":"wechat-chat-channels","mcp_tools":tools}
-    })).unwrap());
-    manifest
+    }]);
+    plugin_framework::parse_plugin_manifest(&manifest.to_string()).unwrap()
 }
 #[test]
 fn shared_notification_graph_resets_complete_owned_definition_and_exposes_native_image_only_on_demand(

@@ -72,25 +72,44 @@ async fn communication_kind_and_fixed_schema_roundtrip_and_cannot_be_retyped() {
     let (store, workspace, user) = super::support::seed_store().await;
     let actor = ActorContext::root_in_scope(user.id, workspace.tenant_id, workspace.id, "root");
     let service = EventCenterConfigurationService::new(store.clone());
-    let created = service.create_definition(&actor, CreateEventDefinitionInput {
-        event_kind: EventDefinitionKind::CommunicationCommand,
-        name: "Paipan requested".into(),
-        description: String::new(),
-        interface_event: None,
-        enabled: true,
-    }).await.unwrap();
+    let created = service
+        .create_definition(
+            &actor,
+            CreateEventDefinitionInput {
+                event_kind: EventDefinitionKind::CommunicationCommand,
+                name: "Paipan requested".into(),
+                description: String::new(),
+                interface_event: None,
+                enabled: true,
+            },
+        )
+        .await
+        .unwrap();
     let persisted = service.get_definition(&actor, created.id).await.unwrap();
-    assert_eq!(persisted.event_kind, Some(EventDefinitionKind::CommunicationCommand));
+    assert_eq!(
+        persisted.event_kind,
+        Some(EventDefinitionKind::CommunicationCommand)
+    );
     assert_eq!(persisted.contract_id, created.contract_id);
     assert_eq!(persisted.interface_event, None);
-    assert_eq!(persisted.payload_schema, communication_command_event_schema());
-    let disabled = service.update_definition(&actor, created.id, UpdateEventDefinitionInput {
-        event_kind: EventDefinitionKind::CommunicationCommand,
-        name: "Paused paipan".into(),
-        description: String::new(),
-        interface_event: None,
-        enabled: false,
-    }).await.unwrap();
+    assert_eq!(
+        persisted.payload_schema,
+        communication_command_event_schema()
+    );
+    let disabled = service
+        .update_definition(
+            &actor,
+            created.id,
+            UpdateEventDefinitionInput {
+                event_kind: EventDefinitionKind::CommunicationCommand,
+                name: "Paused paipan".into(),
+                description: String::new(),
+                interface_event: None,
+                enabled: false,
+            },
+        )
+        .await
+        .unwrap();
     let reloaded = service.get_definition(&actor, created.id).await.unwrap();
     assert_eq!(reloaded.event_kind, disabled.event_kind);
     assert_eq!(reloaded.name, disabled.name);
@@ -171,8 +190,10 @@ async fn definitions_roundtrip_with_workspace_scoped_identity_and_namespace_cons
         .await
         .is_ok());
     let mut unavailable = input();
-    unavailable.interface_event =
-        Some(InterfaceEventBinding::legacy("orders.undeclared", InterfaceEventPhase::Before));
+    unavailable.interface_event = Some(InterfaceEventBinding::legacy(
+        "orders.undeclared",
+        InterfaceEventPhase::Before,
+    ));
     assert!(service
         .create_definition(&owner, unavailable)
         .await

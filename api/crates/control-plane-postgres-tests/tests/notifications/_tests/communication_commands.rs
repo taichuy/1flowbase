@@ -216,7 +216,11 @@ async fn channel_send_history_reuses_command_reply_and_keeps_proactive_and_unkno
     // Reject only this send's archive write. The success log and proactive message must
     // both roll back, and retrying the same receipt after storage recovers must insert once.
     let reject = format!("ALTER TABLE communication_message_sends ADD CONSTRAINT fixture_reject_archive CHECK (send_log_id<>'{proactive}'::uuid OR send_status<>'succeeded')");
-    sqlx::query(&reject).execute(store.pool()).await.unwrap();
+    // SQL safety: this fixed constraint DDL interpolates only a host-generated UUID.
+    sqlx::query(sqlx::AssertSqlSafe(reject))
+        .execute(store.pool())
+        .await
+        .unwrap();
     let proactive_receipt = RecordCommunicationSendReceipt {
         workspace_id: scope.workspace_id,
         send_log_id: proactive,

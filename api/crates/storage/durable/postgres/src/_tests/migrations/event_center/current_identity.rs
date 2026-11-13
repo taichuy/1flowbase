@@ -73,8 +73,12 @@ async fn event_center_current_identity_migration_clears_only_new_configuration()
             .await
             .unwrap();
     let mut expected_config = retained.clone();
-    expected_config.as_object_mut().unwrap().remove("command_settings");
-    expected_config["commands"] = json!([{"kind":"registered","command_id":"host/status","enabled":false}]);
+    expected_config
+        .as_object_mut()
+        .unwrap()
+        .remove("command_settings");
+    expected_config["commands"] =
+        json!([{"kind":"registered","command_id":"host/status","enabled":false}]);
     assert_eq!(after_config, expected_config);
     let (after_binding, after_updated_at): (Value, time::OffsetDateTime) = sqlx::query_as(
         "SELECT to_jsonb(b)-'config_json'-'updated_at', updated_at FROM communication_bindings b WHERE instance_id=$1",

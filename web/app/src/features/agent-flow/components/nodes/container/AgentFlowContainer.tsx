@@ -19,6 +19,7 @@ import { getAgentFlowNodeTypeIcon } from '../../../lib/node-type-icons';
 import { MAIN_SOURCE_HANDLE_ID } from '../../../lib/canvas/handle-ids';
 import { i18nText } from '../../../../../shared/i18n/text';
 import './container.css';
+import { NodeRunStatus } from '../NodeRunStatus';
 
 function useContainerTheme(): CSSProperties {
   const { token } = theme.useToken();
@@ -97,10 +98,12 @@ export function AgentFlowContainer({
   const style = useContainerTheme();
   return (
     <div
-      className={`agent-flow-container${selected ? ' agent-flow-container--selected' : ''}`}
+      className={`agent-flow-run-node agent-flow-container${selected ? ' agent-flow-container--selected' : ''}`}
+      data-run-status={data.runStatus}
       data-container-id={data.nodeId}
       style={style}
     >
+      <NodeRunStatus status={data.runStatus} />
       <NodeResizeControl
         position="bottom-right"
         minWidth={data.minimumContainerSize?.width}
@@ -142,18 +145,20 @@ export function AgentFlowContainer({
             </span>
           ) : null}
         </button>
-        <Button
-          type="text"
-          disabled={data.readOnly}
-          size="small"
-          className="nodrag"
-          icon={<DeleteOutlined />}
-          aria-label={i18nText('agentFlow', 'auto.delete_node')}
-          onClick={(event) => {
-            event.stopPropagation();
-            data.onDeleteNode(data.nodeId);
-          }}
-        />
+        {!data.runStatus ? (
+          <Button
+            type="text"
+            disabled={data.readOnly}
+            size="small"
+            className="nodrag"
+            icon={<DeleteOutlined />}
+            aria-label={i18nText('agentFlow', 'auto.delete_node')}
+            onClick={(event) => {
+              event.stopPropagation();
+              data.onDeleteNode(data.nodeId);
+            }}
+          />
+        ) : null}
       </div>
       <div className="agent-flow-container__body" />
       <Source data={data} top={28} />
@@ -172,9 +177,11 @@ export function ContainerStart({
   }, [data.nodeId, data.emptyContainer, updateNodeInternals]);
   return (
     <div
-      className={`agent-flow-container-start${data.emptyContainer ? ' agent-flow-container-start--empty' : ''}${selected ? ' agent-flow-container-start--selected' : ''}`}
+      className={`agent-flow-run-node agent-flow-container-start${data.emptyContainer ? ' agent-flow-container-start--empty' : ''}${selected ? ' agent-flow-container-start--selected' : ''}`}
       style={style}
+      data-run-status={data.runStatus}
     >
+      <NodeRunStatus status={data.runStatus} />
       <button
         type="button"
         className="agent-flow-container-start__select"

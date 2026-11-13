@@ -1,9 +1,9 @@
 pub(crate) mod catalog;
 use crate::PgControlPlaneStore;
 use async_trait::async_trait;
-use control_plane_contracts::{ControlPlaneContractError as Error, ports::EventCenterRepository};
+use control_plane_contracts::{ports::EventCenterRepository, ControlPlaneContractError as Error};
 use domain::event_center::*;
-use sqlx::{Row, postgres::PgRow};
+use sqlx::{postgres::PgRow, Row};
 use uuid::Uuid;
 
 fn definition(row: PgRow) -> anyhow::Result<EventDefinitionRecord> {

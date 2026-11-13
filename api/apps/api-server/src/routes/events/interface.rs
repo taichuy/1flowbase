@@ -8,10 +8,11 @@ use crate::{
 };
 use control_plane::event_center::{EventCenterConfigurationService, EventCenterRuntime};
 use domain::event_center::{
-    CreateEventDefinitionInput, EventCatalogEntry, EventCatalogQuery, EventDefinitionRecord, UpdateEventDefinitionInput,
+    CreateEventDefinitionInput, EventCatalogEntry, EventCatalogQuery, EventDefinitionRecord,
+    UpdateEventDefinitionInput,
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::sync::{Arc, Weak};
 use uuid::Uuid;
 

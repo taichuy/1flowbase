@@ -215,10 +215,13 @@ async fn communication_command_terminal_revocation_disable_and_handler_loss_rele
                     .await
                     .unwrap()
                     .unwrap();
-                binding.config.commands = vec![domain::CommunicationCommandConfiguration::Registered(CommunicationCommandSetting {
-                    command_id: "acme/acme.composition-commands/status".into(),
-                    enabled: false,
-                })];
+                binding.config.commands =
+                    vec![domain::CommunicationCommandConfiguration::Registered(
+                        CommunicationCommandSetting {
+                            command_id: "acme/acme.composition-commands/status".into(),
+                            enabled: false,
+                        },
+                    )];
                 fixture
                     .service
                     .save_binding(
@@ -597,10 +600,12 @@ async fn communication_command_authority_context_reuses_single_connection_and_cu
         .await
         .unwrap()
         .unwrap();
-    binding.config.commands = vec![domain::CommunicationCommandConfiguration::Registered(CommunicationCommandSetting {
-        command_id: request.request.command_id.clone(),
-        enabled: false,
-    })];
+    binding.config.commands = vec![domain::CommunicationCommandConfiguration::Registered(
+        CommunicationCommandSetting {
+            command_id: request.request.command_id.clone(),
+            enabled: false,
+        },
+    )];
     fixture
         .service
         .save_binding(
