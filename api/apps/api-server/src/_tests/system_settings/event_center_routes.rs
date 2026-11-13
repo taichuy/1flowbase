@@ -73,7 +73,7 @@ async fn event_state() -> Arc<crate::app_state::ApiState> {
     // Bind only this fixture to the compiled serving catalog. General support remains
     // deliberately unavailable until a test opts into an event runtime.
     state_mut.event_sources = Arc::new(crate::app_state::EventSourceCatalog::for_test_support());
-    let snapshot = crate::event_center::persistence::snapshot(&state, &Default::default())
+    let snapshot = crate::test_support::event_catalog_snapshot(&state)
         .await
         .unwrap();
     control_plane_contracts::ports::EventCatalogRepository::synchronize_event_catalog(

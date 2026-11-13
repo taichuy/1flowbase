@@ -23,6 +23,14 @@ pub async fn rebuild_trace_projection(
         .await
 }
 
+/// Read the existing event catalog projection for native integration fixtures.
+#[doc(hidden)]
+pub async fn event_catalog_snapshot(
+    state: &crate::app_state::ApiState,
+) -> anyhow::Result<domain::event_center::EventCatalogSnapshot> {
+    crate::event_center::persistence::snapshot(state, &Default::default()).await
+}
+
 /// Shared assembly assertions; only the thin integration target registers tests.
 #[doc(hidden)]
 #[cfg(not(test))]
