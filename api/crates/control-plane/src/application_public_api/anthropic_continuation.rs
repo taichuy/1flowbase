@@ -137,37 +137,8 @@ pub async fn verify_anthropic_continuation<R: ApplicationPublishedRunControlRepo
         ingress_context_window,
     )
     .map_err(|_| ControlPlaneError::InvalidInput("anthropic_continuation_request"))?;
-    // Use the same Native prompt shape as a newly translated request; the
-    // supplier's guarded source projection can then restore exact wire order.
-    let mut ordered_messages = translated.request.history.clone();
-    if !translated.request.query.is_empty() {
-        ordered_messages.push(json!({"role":"user","content":translated.request.query}));
-    }
-    let mut model_tool_context = serde_json::Map::new();
-    model_tool_context.insert(
-        "tools".into(),
-        translated
-            .request
-            .inputs
-            .get("tools")
-            .cloned()
-            .unwrap_or_else(|| json!([])),
-    );
-    if let Some(choice) = translated.request.inputs.get("tool_choice") {
-        model_tool_context.insert("tool_choice".into(), choice.clone());
-    }
-    let continuation = AnthropicContinuation {
-        ordered_messages,
-        system: serde_json::to_value(translated.request.system)?,
-        model_tool_context: Value::Object(model_tool_context),
-        model_parameters: translated
-            .request
-            .execution
-            .model_parameters()
-            .map(|parameters| parameters.canonical_value())
-            .unwrap_or_else(|| json!({})),
-        client_protocol_envelope: serde_json::to_value(client_protocol_envelope)?,
-    };
+    let continuation =
+        canonical_anthropic_continuation(translated.request, client_protocol_envelope)?;
     let payload = json!({"tool_results":tool_results,"anthropic_continuation":continuation});
     Ok(VerifiedAnthropicContinuation {
         application_id: actor.application_id,
@@ -176,6 +147,44 @@ pub async fn verify_anthropic_continuation<R: ApplicationPublishedRunControlRepo
         callback_task_id,
         payload,
         continuation,
+    })
+}
+
+// Match the initial Native mapper before bindings render selected system values.
+// The source protocol envelope still owns the exact unmodified wire history.
+fn canonical_anthropic_continuation(
+    request: super::native::NativeRunRequest,
+    client_protocol_envelope: ProtocolContextEnvelope,
+) -> Result<AnthropicContinuation> {
+    // Use the same Native prompt shape as a newly translated request; the
+    // supplier's guarded source projection can then restore exact wire order.
+    let (system, mut ordered_messages) = super::native::split_system_context_from_history(&request)
+        .map_err(|_| ControlPlaneError::InvalidInput("anthropic_continuation_request"))?;
+    if !request.query.is_empty() {
+        ordered_messages.push(json!({"role":"user","content":request.query}));
+    }
+    let mut model_tool_context = serde_json::Map::new();
+    model_tool_context.insert(
+        "tools".into(),
+        request
+            .inputs
+            .get("tools")
+            .cloned()
+            .unwrap_or_else(|| json!([])),
+    );
+    if let Some(choice) = request.inputs.get("tool_choice") {
+        model_tool_context.insert("tool_choice".into(), choice.clone());
+    }
+    Ok(AnthropicContinuation {
+        ordered_messages,
+        system: serde_json::to_value(system)?,
+        model_tool_context: Value::Object(model_tool_context),
+        model_parameters: request
+            .execution
+            .model_parameters()
+            .map(|parameters| parameters.canonical_value())
+            .unwrap_or_else(|| json!({})),
+        client_protocol_envelope: serde_json::to_value(client_protocol_envelope)?,
     })
 }
 
@@ -338,5 +347,70 @@ mod tests {
             snapshot.variable_pool["start"]["tools"],
             continuation.model_tool_context["tools"]
         );
+    }
+    #[test]
+    fn verified_anthropic_continuation_prompt_matches_initial_native_mapper() {
+        use super::super::client_protocol_envelope::{
+            capture_source_protocol_request_body, ClientProtocolIngressPolicy,
+        };
+        use super::super::mapping::ApplicationApiMappingConfig;
+        use super::super::native::NativeInputMapper;
+        // Real Claude Code shape: root instructions, inline system updates,
+        // then a tool result plus new visible text in the latest user turn.
+        for (root, inline) in [
+            (
+                vec!["root-1", "root-2", "root-3"],
+                vec!["inline-1", "inline-2", "inline-3"],
+            ),
+            (vec!["root-1", "root-2", "root-3"], vec!["updated-inline"]),
+            (vec!["root-1", "root-2", "root-3"], vec![]),
+            (vec![], vec![]),
+            (vec!["same", "same"], vec!["same"]),
+        ] {
+            let mut messages = vec![
+                json!({"role":"user","content":"previous turn"}),
+                json!({"role":"assistant","content":[{"type":"tool_use","id":"read-1","name":"Read","input":{}}]}),
+            ];
+            messages.extend(
+                inline
+                    .iter()
+                    .map(|text| json!({"role":"system","content":text})),
+            );
+            messages.push(json!({"role":"user","content":[
+                {"type":"tool_result","tool_use_id":"read-1","content":"read result"},
+                {"type":"text","text":"complete current query"}
+            ]}));
+            let source = json!({"model":"claude", "system":root.iter().map(|text| json!({"type":"text","text":text})).collect::<Vec<_>>(), "messages":messages});
+            let request =
+                super::super::compat::anthropic::translate_messages_request(source.clone())
+                    .unwrap()
+                    .request;
+            let initial =
+                NativeInputMapper::map(&request, &ApplicationApiMappingConfig::default_native())
+                    .unwrap();
+            let initial_context = &initial.node_input_payload["__native_model_prompt_context"];
+            let envelope = capture_source_protocol_request_body(
+                ClientProtocolIngressPolicy::AnthropicMessages,
+                &source,
+            )
+            .unwrap();
+            let original_envelope = serde_json::to_value(&envelope).unwrap();
+            let continuation = canonical_anthropic_continuation(request, envelope).unwrap();
+            assert_eq!(continuation.system, initial_context["system"]);
+            let expected_system: Vec<_> = root
+                .iter()
+                .chain(inline.iter())
+                .map(|text| json!({"type":"text","text":text}))
+                .collect();
+            assert_eq!(continuation.system, json!(expected_system));
+            let mut expected_messages = initial_context["messages"].as_array().unwrap().clone();
+            expected_messages.push(json!({"role":"user","content":"complete current query"}));
+            assert_eq!(continuation.ordered_messages, expected_messages);
+            assert!(continuation
+                .ordered_messages
+                .iter()
+                .all(|message| message["role"] != "system"));
+            assert_eq!(continuation.client_protocol_envelope, original_envelope);
+        }
     }
 }

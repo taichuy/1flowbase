@@ -243,3 +243,125 @@ fn callback_system_order_communication_retains_app_channel_owners_and_replaces_s
         "stale session" | "old rendered query"
     )));
 }
+
+#[test]
+fn callback_system_order_real_system_selector_template_matches_initial_canonical_mapping() {
+    use crate::binding_runtime::{render_templated_bindings, resolve_node_inputs};
+
+    let (plan, mut node, mut runtime, _) = fixture();
+    node.bindings.insert("prompt_messages".into(), serde_json::from_value(json!({
+        "kind":"prompt_messages",
+        "selector_paths":[["node-start","system"],["node-start","query"]],
+        "raw_value":[
+            {"id":"system","role":"system","content":{"kind":"templated_text","value":"{{node-start.system}}\n\nAPP"}},
+            {"id":"user","role":"user","content":{"kind":"templated_text","value":"{{node-start.query}}"}}
+        ]
+    })).unwrap());
+    // Initial Native mapping and verified callback admission both promote only
+    // the current request's inline system into the mapped source system slot.
+    for (root, inline) in [
+        (
+            vec!["root-1", "root-2", "root-3"],
+            vec!["inline-1", "inline-2", "inline-3"],
+        ),
+        (vec!["root-1", "root-2", "root-3"], vec!["updated-inline"]),
+        (vec!["root-1", "root-2", "root-3"], vec![]),
+        (vec![], vec![]),
+        (vec!["same", "same"], vec!["same"]),
+    ] {
+        let canonical_system = root
+            .iter()
+            .chain(inline.iter())
+            .map(|text| NativePromptBlock::text(*text))
+            .collect::<Vec<_>>();
+        let canonical_history = history(&[]);
+        runtime.native_model_prompt_context.system = canonical_system.clone();
+        runtime.native_model_prompt_context.messages = canonical_history.clone();
+        let mut pool = json!({"node-start":{"system":canonical_system,"query":"current query"}})
+            .as_object()
+            .unwrap()
+            .clone();
+        let resolved = resolve_node_inputs(&node, &pool).unwrap();
+        let templates = render_templated_bindings(&node, &resolved);
+        let initial = provider_context_from_prompt_messages(
+            binding_prompt_messages_with_context_sources(
+                &plan,
+                &node,
+                &templates,
+                &resolved,
+                &pool,
+                &json!({}),
+                &runtime,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let mut admitted = canonical_history;
+        admitted.push(json!({"role":"user","content":"current query"}));
+        pool.insert(
+            "llm".into(),
+            json!({"__llm_tool_callback":{"verified_anthropic_context":true,"history":admitted}}),
+        );
+        let callback_resolved = resolve_node_inputs(&node, &pool).unwrap();
+        let callback_templates = render_templated_bindings(&node, &callback_resolved);
+        let callback = provider_context_from_prompt_messages(
+            binding_prompt_messages_with_context_sources(
+                &plan,
+                &node,
+                &callback_templates,
+                &callback_resolved,
+                &pool,
+                &json!({}),
+                &runtime,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let mut expected = canonical_system;
+        expected.push(NativePromptBlock::text("\n\nAPP"));
+        assert_eq!(initial.system, expected);
+        assert_eq!(callback.system, expected);
+        assert_eq!(callback.messages, initial.messages);
+    }
+}
+
+#[test]
+fn callback_system_order_real_selector_preserves_duplicate_app_and_source_text() {
+    use crate::binding_runtime::{render_templated_bindings, resolve_node_inputs};
+
+    let (plan, mut node, mut runtime, _) = fixture();
+    node.bindings.insert("prompt_messages".into(), serde_json::from_value(json!({
+        "kind":"prompt_messages",
+        "selector_paths":[["node-start","system"],["node-start","query"]],
+        "raw_value":[
+            {"id":"system","role":"system","content":{"kind":"templated_text","value":"{{node-start.system}}same"}},
+            {"id":"user","role":"user","content":{"kind":"templated_text","value":"{{node-start.query}}"}}
+        ]
+    })).unwrap());
+    runtime.native_model_prompt_context.system = blocks(&["same", "same", "same"]);
+    runtime.native_model_prompt_context.messages = history(&[]);
+    let mut pool = json!({"node-start":{"system":runtime.native_model_prompt_context.system,"query":"current"}}).as_object().unwrap().clone();
+    for is_callback in [false, true] {
+        if is_callback {
+            let mut admitted = history(&[]);
+            admitted.push(json!({"role":"user","content":"current"}));
+            pool.insert("llm".into(), json!({"__llm_tool_callback":{"verified_anthropic_context":true,"history":admitted}}));
+        }
+        let resolved = resolve_node_inputs(&node, &pool).unwrap();
+        let templates = render_templated_bindings(&node, &resolved);
+        let context = provider_context_from_prompt_messages(
+            binding_prompt_messages_with_context_sources(
+                &plan,
+                &node,
+                &templates,
+                &resolved,
+                &pool,
+                &json!({}),
+                &runtime,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(context.system, blocks(&["same", "same", "same", "same"]));
+    }
+}
