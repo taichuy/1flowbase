@@ -12,7 +12,7 @@ use std::time::Duration;
 // Compile through the real service, then admit a distinct published business root.
 macro_rules! published_fixture {
     () => {{
-        let stream = Arc::new(crate::_tests::support::RecordingRuntimeEventStream::default());
+        let stream = Arc::new(crate::_tests::RecordingRuntimeEventStream::default());
         let service = Arc::new(
             OrchestrationRuntimeService::for_tests().with_runtime_event_stream(stream.clone()),
         );
@@ -301,4 +301,81 @@ async fn published_execution_completion_panicking_root_fails_once() {
             .count(),
         1
     );
+}
+
+#[tokio::test]
+async fn published_execution_completion_active_llm_abort_finishes_running_node() {
+    let (service, run, stream) = published_fixture!();
+    let (gate, _release) = service.repository.gate_llm_selection_append(false);
+    let root = tokio::spawn({
+        let service = service.clone();
+        let command = command(&run);
+        async move { service.start_published_flow_run(command).await }
+    });
+    entered(&gate).await;
+    let active = service
+        .repository
+        .get_application_run_detail(run.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(active.flow_run.status, FlowRunStatus::Running);
+    let running_nodes: Vec<_> = active
+        .node_runs
+        .iter()
+        .filter(|node| node.status == domain::NodeRunStatus::Running)
+        .map(|node| node.id)
+        .collect();
+    assert!(
+        !running_nodes.is_empty(),
+        "fixture must interrupt a persisted Running node"
+    );
+    root.abort();
+    assert!(root.await.unwrap_err().is_cancelled());
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !stream.is_closed(run.id) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let failed = service
+        .repository
+        .get_application_run_detail(run.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(failed.flow_run.status, FlowRunStatus::Failed);
+    assert_eq!(
+        failed.flow_run.error_payload.unwrap()["code"],
+        "stream_terminal_missing"
+    );
+    assert_eq!(
+        service
+            .list_runtime_events(run.id, 0)
+            .await
+            .iter()
+            .filter(|event| event.event_type == "flow_failed")
+            .count(),
+        1
+    );
+    for node_id in running_nodes {
+        let node = failed
+            .node_runs
+            .iter()
+            .find(|node| node.id == node_id)
+            .expect("interrupted node remains in durable detail");
+        assert!(
+            matches!(
+                node.status,
+                domain::NodeRunStatus::Failed | domain::NodeRunStatus::Cancelled
+            ),
+            "interrupted Running node must reach a failure terminal, got {:?}",
+            node.status
+        );
+        assert!(
+            node.finished_at.is_some(),
+            "interrupted node must record completion time"
+        );
+    }
 }
