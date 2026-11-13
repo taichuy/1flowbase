@@ -67,11 +67,8 @@ pub(super) fn binding_prompt_messages_with_context_sources(
     runtime_context: &ExecutionRuntimeContext,
 ) -> Result<Vec<Value>, Value> {
     if let Some(history) = pending_llm_tool_callback_history(node, variable_pool) {
-        let mut messages = if pending_llm_tool_callback_uses_rebuilt_system(node, variable_pool) {
-            // Rebuild only instruction owners from current bindings/context.
-            // Client history was replaced by the admitted full request; older
-            // history system messages cannot re-enter through this path.
-            non_callback_prompt_messages_with_context_sources(
+        if pending_llm_tool_callback_uses_rebuilt_system(node, variable_pool) {
+            return assemble_prompt_messages_with_context_sources(
                 plan,
                 node,
                 rendered_templates,
@@ -79,28 +76,16 @@ pub(super) fn binding_prompt_messages_with_context_sources(
                 variable_pool,
                 context_policy,
                 runtime_context,
-            )?
-            .into_iter()
-            .filter(|message| {
-                message.get("role").and_then(Value::as_str) == Some("system")
-                    && message
-                        .get(LLM_CONTEXT_SOURCE_KEY)
-                        .and_then(|source| source.get("source_kind"))
-                        .and_then(Value::as_str)
-                        != Some("history")
-            })
-            .collect::<Vec<_>>()
-        } else {
-            Vec::new()
-        };
-        messages.extend(annotate_prompt_messages(
+                Some(history),
+            );
+        }
+        return Ok(annotate_prompt_messages(
             history,
             "pending_tool_callback_history",
             format!("{}.{}", node.node_id, LLM_TOOL_CALLBACK_STATE_KEY),
         ));
-        return Ok(messages);
     }
-    non_callback_prompt_messages_with_context_sources(
+    assemble_prompt_messages_with_context_sources(
         plan,
         node,
         rendered_templates,
@@ -108,10 +93,11 @@ pub(super) fn binding_prompt_messages_with_context_sources(
         variable_pool,
         context_policy,
         runtime_context,
+        None,
     )
 }
 
-fn non_callback_prompt_messages_with_context_sources(
+fn assemble_prompt_messages_with_context_sources(
     plan: &CompiledPlan,
     node: &CompiledNode,
     rendered_templates: &Map<String, Value>,
@@ -119,6 +105,7 @@ fn non_callback_prompt_messages_with_context_sources(
     variable_pool: &Map<String, Value>,
     context_policy: &Value,
     runtime_context: &ExecutionRuntimeContext,
+    admitted_history: Option<Vec<Value>>,
 ) -> Result<Vec<Value>, Value> {
     // Only the host communication mapper writes this marker; public Native history rejects
     // unknown fields. Keep the session separate and never replay selected/prior history.
@@ -169,8 +156,16 @@ fn non_callback_prompt_messages_with_context_sources(
             "run_level_system",
             "native_model_prompt_context.system",
         ));
-        systems.extend(runtime_context.native_model_prompt_context.messages.clone());
-        systems.extend(users);
+        if let Some(history) = admitted_history {
+            systems.extend(annotate_prompt_messages(
+                history,
+                "pending_tool_callback_history",
+                format!("{}.{}", node.node_id, LLM_TOOL_CALLBACK_STATE_KEY),
+            ));
+        } else {
+            systems.extend(runtime_context.native_model_prompt_context.messages.clone());
+            systems.extend(users);
+        }
         return Ok(systems);
     }
 
@@ -183,34 +178,53 @@ fn non_callback_prompt_messages_with_context_sources(
             variable_pool,
             runtime_context,
         )?);
-        messages.extend(selected_context_messages_with_sources(
-            node,
-            variable_pool,
-            context_policy,
-        )?);
-        if !context_policy_has_selector(context_policy) {
-            if runtime_context
-                .native_model_prompt_context
-                .messages
-                .is_empty()
-            {
-                messages.extend(compatible_history_messages_with_context_sources(
-                    plan,
-                    node,
-                    resolved_inputs,
-                    variable_pool,
-                ));
-            } else {
-                messages.extend(annotate_prompt_messages(
-                    runtime_context.native_model_prompt_context.messages.clone(),
-                    "history",
-                    "native_model_prompt_context.messages".to_string(),
-                ));
+        if admitted_history.is_none() {
+            messages.extend(selected_context_messages_with_sources(
+                node,
+                variable_pool,
+                context_policy,
+            )?);
+            if !context_policy_has_selector(context_policy) {
+                if runtime_context
+                    .native_model_prompt_context
+                    .messages
+                    .is_empty()
+                {
+                    messages.extend(compatible_history_messages_with_context_sources(
+                        plan,
+                        node,
+                        resolved_inputs,
+                        variable_pool,
+                    ));
+                } else {
+                    messages.extend(annotate_prompt_messages(
+                        runtime_context.native_model_prompt_context.messages.clone(),
+                        "history",
+                        "native_model_prompt_context.messages".to_string(),
+                    ));
+                }
             }
         }
     }
+    // A verified callback replaces the complete client history at the same slot
+    // used by the initial assembly. Keep run-level and node instruction owners
+    // on their original sides of that slot; never resurrect prior client text.
+    let is_verified_callback = admitted_history.is_some();
+    if let Some(history) = admitted_history {
+        messages.extend(annotate_prompt_messages(
+            history,
+            "pending_tool_callback_history",
+            format!("{}.{}", node.node_id, LLM_TOOL_CALLBACK_STATE_KEY),
+        ));
+    }
     messages.extend(annotate_prompt_messages(
-        prompt_messages_from_bindings(Some(rendered_templates), resolved_inputs),
+        prompt_messages_from_bindings(Some(rendered_templates), resolved_inputs)
+            .into_iter()
+            .filter(|message| {
+                !is_verified_callback
+                    || message.get("role").and_then(Value::as_str) == Some("system")
+            })
+            .collect(),
         "node_prompt",
         "bindings.prompt_messages".to_string(),
     ));
@@ -1356,3 +1370,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "llm_context/_tests/callback_system_order.rs"]
+mod callback_system_order_tests;
