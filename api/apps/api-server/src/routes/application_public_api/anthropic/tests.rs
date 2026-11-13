@@ -659,3 +659,73 @@ fn anthropic_blocking_callback_usage_does_not_recount_prior_round() {
     }
     assert_eq!(run.usage.unwrap().prompt_tokens, Some(30606));
 }
+
+#[test]
+fn anthropic_normal_ingress_projects_historical_callback_ids_without_rewriting_opaque_values() {
+    let first = encode_anthropic_callback_tool_use_id(Uuid::from_u128(91), "toolu_first");
+    let second = encode_anthropic_callback_tool_use_id(Uuid::from_u128(92), "toolu_second");
+    let source = json!({
+        "model":"claude-fixture","max_tokens":128,
+        "system":[{"type":"text","text":"source system","cache_control":{"type":"ephemeral"}}],
+        "messages":[
+            {"role":"user","content":"first question"},
+            {"role":"assistant","content":[{"type":"tool_use","id":first,"name":"Read","input":{"id":first,"tool_use_id":second,"opaque":{"type":"tool_use","id":second}}}]},
+            {"role":"user","content":[{"type":"tool_result","tool_use_id":first,"content":first}]},
+            {"role":"assistant","content":[{"type":"tool_use","id":second,"name":"Read","input":{"id":second}}]},
+            {"role":"user","content":[{"type":"tool_result","tool_use_id":second,"content":[{"type":"text","text":second}]}]},
+            {"role":"assistant","content":"prior rounds complete"},
+            {"role":"user","content":"new ordinary turn"}
+        ]
+    });
+    let original_ingress = source.clone();
+    assert!(
+        correlate_anthropic_callback(&source).unwrap().is_none(),
+        "historical receipts must remain a normal new-turn request"
+    );
+    let translated = translate_messages_request_with_context_window(source.clone(), None).unwrap();
+    let report_before_projection = serde_json::to_value(&translated.report).unwrap();
+    let envelope = anthropic_protocol_context_from_ingress(
+        None,
+        &HeaderMap::new(),
+        &source,
+        translated.request.client_protocol_envelope.clone(),
+    )
+    .unwrap();
+    let projected = envelope
+        .source_request
+        .as_ref()
+        .unwrap()
+        .body
+        .as_ref()
+        .unwrap();
+    let mut expected = source.clone();
+    expected["messages"][1]["content"][0]["id"] = json!("toolu_first");
+    expected["messages"][2]["content"][0]["tool_use_id"] = json!("toolu_first");
+    expected["messages"][3]["content"][0]["id"] = json!("toolu_second");
+    expected["messages"][4]["content"][0]["tool_use_id"] = json!("toolu_second");
+    assert_eq!(projected,&expected, "only protocol tool identity fields may change; opaque input/result text and all other source fields stay exact");
+    assert_eq!(
+        source, original_ingress,
+        "observation retains the original request body"
+    );
+    assert_eq!(
+        serde_json::to_value(&translated.report).unwrap(),
+        report_before_projection,
+        "source projection must not rewrite the translation receipt"
+    );
+    let repeated =
+        anthropic_protocol_context_from_ingress(None, &HeaderMap::new(), projected, None).unwrap();
+    assert_eq!(
+        repeated.source_request.as_ref().unwrap().body.as_ref(),
+        Some(projected),
+        "callback-resume and new-turn source projection share an idempotent codec"
+    );
+    assert_eq!(
+        translated.request.history[1]["tool_calls"][0]["id"],
+        "toolu_first"
+    );
+    assert_eq!(
+        translated.request.history[4]["tool_call_id"],
+        "toolu_second"
+    );
+}

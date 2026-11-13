@@ -630,10 +630,14 @@ fn anthropic_protocol_context_from_ingress(
             form_urlencoded::parse(raw_query.unwrap_or_default().as_bytes()),
         ),
     );
+    // Public callback prefixes belong to the adapter. Historical calls in a
+    // normal new turn need the same Provider identity projection as a resume;
+    // the original ingress body remains owned by observation/translation.
+    let provider_source_body = control_plane::application_public_api::anthropic_continuation::restore_anthropic_provider_call_ids(source_body);
     let captured = merge_client_protocol_envelopes(
         policy,
         captured,
-        capture_source_protocol_request_body(policy, source_body),
+        capture_source_protocol_request_body(policy, &provider_source_body),
     );
     merge_client_protocol_envelopes(policy, captured, translated)
 }
