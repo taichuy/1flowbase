@@ -1,5 +1,8 @@
 use super::*;
 
+mod completion_guard;
+use completion_guard::PublishedExecutionCompletionGuard;
+
 impl<R, H> OrchestrationRuntimeService<R, H>
 where
     R: ApplicationRepository
@@ -68,6 +71,18 @@ where
             .await?
             .ok_or(ControlPlaneError::NotFound("application"))?;
 
+        // Only the root that wins the initial execution CAS owns interruption
+        // finalization. A Running re-entry may be observing another root owner.
+        let completion_runtime =
+            if flow_run.run_mode == domain::FlowRunMode::PublishedApiRun
+                && flow_run.status == domain::FlowRunStatus::Queued
+            {
+                Some(tokio::runtime::Handle::try_current().map_err(|_| {
+                    anyhow!("published execution requires an installed async runtime")
+                })?)
+            } else {
+                None
+            };
         let running = match flow_run.status {
             domain::FlowRunStatus::Queued => {
                 ensure_flow_run_transition(
@@ -99,86 +114,104 @@ where
                 .ok_or_else(|| anyhow!("flow run detail not found"));
         };
 
-        let execution_started_event = if running.run_mode == domain::FlowRunMode::AssistantExecution
-        {
-            "assistant_execution_started"
-        } else {
-            "public_run_execution_started"
-        };
-        self.repository
-            .append_run_event(&AppendRunEventInput {
-                flow_run_id: running.id,
-                node_run_id: None,
-                event_type: execution_started_event.to_string(),
-                payload: json!({
-                    "api_key_id": running.api_key_id,
-                    "application_id": running.application_id,
-                    "publication_version_id": running.publication_version_id,
-                    "creator_user_id": running.created_by,
-                    "external_user": running.external_user,
-                    "external_conversation_id": running.external_conversation_id,
-                    "external_trace_id": running.external_trace_id,
-                    "compatibility_mode": running.compatibility_mode,
-                }),
-            })
-            .await?;
-        let flow_started_event = debug_stream_events::flow_started(running.id);
-        if let Err(error) = runtime_event_persister::persist_runtime_event_payload(
-            &self.repository,
-            running.id,
-            &flow_started_event,
-        )
-        .await
-        {
-            tracing::warn!(
-                flow_run_id = %running.id,
-                event_type = %flow_started_event.event_type,
-                error = %error,
-                "failed to persist published flow runtime start event"
-            );
-        }
-        if let Some(stream) = &self.runtime_event_stream {
-            let _ = stream.append(running.id, flow_started_event).await;
-        }
-
-        let continuation = ContinueFlowDebugRunCommand {
-            application_id,
-            flow_run_id: running.id,
-            workspace_id: application.workspace_id,
-        };
-        // Keep the slot available until the complete execution segment has exhausted Provider
-        // retries. A disconnected SSE receiver does not own this background execution lifetime.
-        let provider_transport_payload = self
-            .resolve_provider_transport_payload(&running, provider_transport_slot)
-            .await?;
-        let result = live_debug_run::continue_flow_debug_run_with_provider_transport(
-            self,
-            continuation,
-            provider_transport_payload,
-            transport_connection_scope,
-            observation_context,
-        )
-        .await;
-        if let Some(slot_id) = provider_transport_slot {
-            self.delete_provider_transport_slot(slot_id).await;
-        }
-        let detail = match result {
-            Ok(detail) => detail,
-            Err(error) => {
-                if let Ok(Some(failed)) = self
-                    .repository
-                    .get_flow_run(application_id, running.id)
-                    .await
-                {
-                    self.append_published_terminal_audit(&application, &failed)
-                        .await;
-                }
-                return Err(error);
+        let mut completion_guard = completion_runtime.map(|runtime| {
+            PublishedExecutionCompletionGuard::new(
+                runtime,
+                self.repository.clone(),
+                self.runtime_event_stream.clone(),
+                application_id,
+                running.id,
+            )
+        });
+        // A regular return (including an already handled business error) releases
+        // the guard. Only dropping/unwinding this admitted root future arms cleanup.
+        let result = async {
+            let execution_started_event =
+                if running.run_mode == domain::FlowRunMode::AssistantExecution {
+                    "assistant_execution_started"
+                } else {
+                    "public_run_execution_started"
+                };
+            self.repository
+                .append_run_event(&AppendRunEventInput {
+                    flow_run_id: running.id,
+                    node_run_id: None,
+                    event_type: execution_started_event.to_string(),
+                    payload: json!({
+                        "api_key_id": running.api_key_id,
+                        "application_id": running.application_id,
+                        "publication_version_id": running.publication_version_id,
+                        "creator_user_id": running.created_by,
+                        "external_user": running.external_user,
+                        "external_conversation_id": running.external_conversation_id,
+                        "external_trace_id": running.external_trace_id,
+                        "compatibility_mode": running.compatibility_mode,
+                    }),
+                })
+                .await?;
+            let flow_started_event = debug_stream_events::flow_started(running.id);
+            if let Err(error) = runtime_event_persister::persist_runtime_event_payload(
+                &self.repository,
+                running.id,
+                &flow_started_event,
+            )
+            .await
+            {
+                tracing::warn!(
+                    flow_run_id = %running.id,
+                    event_type = %flow_started_event.event_type,
+                    error = %error,
+                    "failed to persist published flow runtime start event"
+                );
             }
-        };
-        self.append_published_terminal_audit(&application, &detail.flow_run)
+            if let Some(stream) = &self.runtime_event_stream {
+                let _ = stream.append(running.id, flow_started_event).await;
+            }
+
+            let continuation = ContinueFlowDebugRunCommand {
+                application_id,
+                flow_run_id: running.id,
+                workspace_id: application.workspace_id,
+            };
+            // Keep the slot available until the complete execution segment has exhausted Provider
+            // retries. A disconnected SSE receiver does not own this background execution lifetime.
+            let provider_transport_payload = self
+                .resolve_provider_transport_payload(&running, provider_transport_slot)
+                .await?;
+            let result = live_debug_run::continue_flow_debug_run_with_provider_transport(
+                self,
+                continuation,
+                provider_transport_payload,
+                transport_connection_scope,
+                observation_context,
+            )
             .await;
-        Ok(detail)
+            if let Some(slot_id) = provider_transport_slot {
+                self.delete_provider_transport_slot(slot_id).await;
+            }
+            let detail = match result {
+                Ok(detail) => detail,
+                Err(error) => {
+                    if let Ok(Some(failed)) = self
+                        .repository
+                        .get_flow_run(application_id, running.id)
+                        .await
+                    {
+                        self.append_published_terminal_audit(&application, &failed)
+                            .await;
+                    }
+                    return Err(error);
+                }
+            };
+            self.append_published_terminal_audit(&application, &detail.flow_run)
+                .await;
+            Ok(detail)
+        }
+        .await;
+        if let Some(guard) = &mut completion_guard {
+            guard.disarm();
+        }
+        result
     }
 
     pub async fn continue_flow_debug_run_with_live_provider_events(
