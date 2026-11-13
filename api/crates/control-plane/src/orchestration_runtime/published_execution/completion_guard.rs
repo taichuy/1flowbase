@@ -41,6 +41,8 @@ impl PublishedExecutionCompletionGuard {
                         application_id,
                         flow_run_id,
                     },
+                    // Checkpoint/claim handoff permanently revokes this initial root.
+                    true,
                 )
                 .await
             })),

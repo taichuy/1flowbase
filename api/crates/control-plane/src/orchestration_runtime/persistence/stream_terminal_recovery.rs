@@ -100,6 +100,7 @@ where
             &self.repository,
             self.runtime_event_stream.as_ref(),
             command,
+            false,
         )
         .await
     }
@@ -118,6 +119,7 @@ pub(super) async fn finalize_published_run_missing_stream_terminal_owned<
     repository: &R,
     stream: Option<&Arc<dyn RuntimeEventStream>>,
     command: FinalizePublishedRunMissingStreamTerminalCommand,
+    require_initial_execution: bool,
 ) -> Result<domain::FlowRunRecord> {
     let flow_run = repository
         .get_flow_run(command.application_id, command.flow_run_id)
@@ -163,7 +165,7 @@ pub(super) async fn finalize_published_run_missing_stream_terminal_owned<
         .commit_flow_run_terminal(&CommitFlowRunTerminalInput {
             flow_run_id: flow_run.id,
             expected_status,
-            require_initial_execution: false,
+            require_initial_execution,
             tool_delivery_events: Vec::new(),
             result: CommitFlowRunTerminalResult::InterruptedExecution {
                 output_payload: flow_run.output_payload.clone(),
