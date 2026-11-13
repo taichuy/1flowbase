@@ -118,10 +118,8 @@ where
     // Recovery selects a different pool. Refresh read-only system values there
     // as well, including a successor run's new credential references.
     if let Some(snapshot) = recovery_snapshot.as_mut() {
-        inject_workflow_credentials(&mut snapshot.variable_pool, flow_run.id);
-        if let Some(container) = snapshot.container_state.as_mut() {
-            inject_workflow_credentials(&mut container.root_variable_pool, flow_run.id);
-        }
+        orchestration_runtime::execution_engine::WorkflowCredentialReferences::for_run(flow_run.id)
+            .inject_into_snapshot(snapshot);
     }
     if let Some(host) = &service.runtime_internal_tool_invoker {
         host.prepare_workflow_credentials(flow_run.id).await?;

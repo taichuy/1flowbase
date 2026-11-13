@@ -10,12 +10,7 @@ pub(in crate::orchestration_runtime) fn inject_workflow_credentials(
 ) {
     let references =
         orchestration_runtime::execution_engine::WorkflowCredentialReferences::for_run(flow_run_id);
-    let sys = variable_pool.entry("sys").or_insert_with(|| json!({}));
-    if !sys.is_object() {
-        *sys = json!({});
-    }
-    sys["creator_credential"] = json!(references.creator_credential);
-    sys["executor_credential"] = json!(references.executor_credential);
+    references.inject_into_pool(variable_pool);
 }
 
 pub(in crate::orchestration_runtime) fn inject_system_variables(

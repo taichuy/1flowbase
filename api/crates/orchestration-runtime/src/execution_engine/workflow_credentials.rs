@@ -40,6 +40,29 @@ impl WorkflowCredentialReferences {
             executor_credential: WorkflowCredentialSubject::Executor.reference(flow_run_id),
         }
     }
+
+    pub fn inject_into_pool(&self, pool: &mut serde_json::Map<String, serde_json::Value>) {
+        let sys = pool.entry("sys").or_insert_with(|| serde_json::json!({}));
+        if !sys.is_object() {
+            *sys = serde_json::json!({});
+        }
+        sys["creator_credential"] = serde_json::json!(self.creator_credential);
+        sys["executor_credential"] = serde_json::json!(self.executor_credential);
+    }
+
+    /// Refresh only host selectors. Each admitted container round owns the pool
+    /// it resumes with; changing the root alone leaves predecessor references.
+    pub fn inject_into_snapshot(&self, snapshot: &mut crate::execution_state::CheckpointSnapshot) {
+        self.inject_into_pool(&mut snapshot.variable_pool);
+        if let Some(container) = snapshot.container_state.as_mut() {
+            self.inject_into_pool(&mut container.root_variable_pool);
+            for frame in container.frames.values_mut() {
+                for round in frame.rounds.values_mut() {
+                    self.inject_into_pool(&mut round.variable_pool);
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
