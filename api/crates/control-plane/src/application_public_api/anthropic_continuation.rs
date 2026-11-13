@@ -355,6 +355,7 @@ mod tests {
         };
         use super::super::mapping::ApplicationApiMappingConfig;
         use super::super::native::NativeInputMapper;
+        use plugin_framework::provider_contract::{NativeModelPromptContext, NativePromptBlock};
         // Real Claude Code shape: root instructions, inline system updates,
         // then a tool result plus new visible text in the latest user turn.
         for (root, inline) in [
@@ -388,7 +389,14 @@ mod tests {
             let initial =
                 NativeInputMapper::map(&request, &ApplicationApiMappingConfig::default_native())
                     .unwrap();
-            let initial_context = &initial.node_input_payload["__native_model_prompt_context"];
+            let initial_context: NativeModelPromptContext = match initial
+                .node_input_payload
+                .get("__native_model_prompt_context")
+            {
+                Some(value) => serde_json::from_value(value.clone())
+                    .expect("present Native prompt context must satisfy its typed contract"),
+                None => NativeModelPromptContext::default(),
+            };
             let envelope = capture_source_protocol_request_body(
                 ClientProtocolIngressPolicy::AnthropicMessages,
                 &source,
@@ -396,14 +404,16 @@ mod tests {
             .unwrap();
             let original_envelope = serde_json::to_value(&envelope).unwrap();
             let continuation = canonical_anthropic_continuation(request, envelope).unwrap();
-            assert_eq!(continuation.system, initial_context["system"]);
+            let continuation_system: Vec<NativePromptBlock> =
+                serde_json::from_value(continuation.system.clone()).unwrap();
+            assert_eq!(continuation_system, initial_context.system);
             let expected_system: Vec<_> = root
                 .iter()
                 .chain(inline.iter())
                 .map(|text| json!({"type":"text","text":text}))
                 .collect();
             assert_eq!(continuation.system, json!(expected_system));
-            let mut expected_messages = initial_context["messages"].as_array().unwrap().clone();
+            let mut expected_messages = initial_context.messages;
             expected_messages.push(json!({"role":"user","content":"complete current query"}));
             assert_eq!(continuation.ordered_messages, expected_messages);
             assert!(continuation
