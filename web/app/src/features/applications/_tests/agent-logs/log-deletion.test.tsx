@@ -44,7 +44,7 @@ function job(overrides: Partial<AgentLogsDeleteJob> = {}): AgentLogsDeleteJob {
   };
 }
 function renderButton(
-  applicationType: 'agent_logs' | 'agent_flow' = 'agent_logs'
+  applicationType: 'agent_logs' | 'agent_flow' | 'workflow' = 'agent_logs'
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
@@ -457,23 +457,30 @@ test('a restored task can finish and start a new deletion without reviving its s
   ).not.toBe('fixture-job');
 });
 
-test('Agent Flow uses the durable deletion interaction and explains active-task and financial retention', async () => {
-  renderButton('agent_flow');
-  expect(
-    screen.getByText(/费用、积分、用量流水和计费会话保留/)
-  ).toBeInTheDocument();
-  expect(screen.getByText(/运行中或等待继续的任务将保留/)).toBeInTheDocument();
-  await choose('全部');
-  await start();
-  await waitFor(() =>
-    expect(api.createConsoleApplicationLogDeletionJob).toHaveBeenCalledOnce()
-  );
-  expect(
-    api.createConsoleApplicationLogDeletionJob.mock.calls[0][1].scope
-  ).toEqual({ mode: 'all_time', batch_size: 100 });
-  fireEvent.click(await screen.findByRole('button', { name: '停止后续批次' }));
-  await waitFor(() =>
-    expect(api.stopConsoleApplicationLogDeletionJob).toHaveBeenCalledOnce()
-  );
-  expect(api.deleteConsoleApplicationLogs).not.toHaveBeenCalled();
-});
+test.each(['agent_flow', 'workflow'] as const)(
+  '%s uses the durable deletion interaction and explains active-task and financial retention',
+  async (applicationType) => {
+    renderButton(applicationType);
+    expect(
+      screen.getByText(/费用、积分、用量流水和计费会话保留/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/运行中或等待继续的任务将保留/)
+    ).toBeInTheDocument();
+    await choose('全部');
+    await start();
+    await waitFor(() =>
+      expect(api.createConsoleApplicationLogDeletionJob).toHaveBeenCalledOnce()
+    );
+    expect(
+      api.createConsoleApplicationLogDeletionJob.mock.calls[0][1].scope
+    ).toEqual({ mode: 'all_time', batch_size: 100 });
+    fireEvent.click(
+      await screen.findByRole('button', { name: '停止后续批次' })
+    );
+    await waitFor(() =>
+      expect(api.stopConsoleApplicationLogDeletionJob).toHaveBeenCalledOnce()
+    );
+    expect(api.deleteConsoleApplicationLogs).not.toHaveBeenCalled();
+  }
+);

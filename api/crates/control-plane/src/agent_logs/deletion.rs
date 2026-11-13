@@ -42,16 +42,9 @@ where
         app: Uuid,
         operation: Operation,
     ) -> Result<domain::ApplicationRecord> {
-        let application = crate::application::ApplicationService::new(self.repository.clone())
+        crate::application::ApplicationService::new(self.repository.clone())
             .load_application_for_non_crud_console_operation_for_actor(actor, app, operation)
-            .await?;
-        if !matches!(
-            application.application_type,
-            domain::ApplicationType::AgentLogs | domain::ApplicationType::AgentFlow
-        ) {
-            return Err(ControlPlaneError::InvalidInput("agent_logs_application_type").into());
-        }
-        Ok(application)
+            .await
     }
     pub async fn preview_deletion(
         &self,

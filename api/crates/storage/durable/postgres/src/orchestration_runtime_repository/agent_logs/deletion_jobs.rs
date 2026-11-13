@@ -65,7 +65,7 @@ pub(in crate::orchestration_runtime_repository) async fn create(
         .bind(format!("agent-logs-application:{app}"))
         .execute(&mut *tx)
         .await?;
-    let supported: bool=sqlx::query_scalar("select exists(select 1 from applications where id=$1 and scope_id=$2 and application_type in ('agent_logs','agent_flow'))").bind(app).bind(scope_id).fetch_one(&mut *tx).await?;
+    let supported: bool=sqlx::query_scalar("select exists(select 1 from applications where id=$1 and scope_id=$2 and application_type in ('agent_logs','agent_flow','workflow'))").bind(app).bind(scope_id).fetch_one(&mut *tx).await?;
     anyhow::ensure!(supported, "agent_logs.application_type");
     // SQL safety: JOB_COLUMNS is static SQL; deletion job selectors remain bound.
     if let Some(row) = sqlx::query(sqlx::AssertSqlSafe(format!(
