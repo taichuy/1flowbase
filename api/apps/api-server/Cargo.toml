@@ -85,6 +85,7 @@ utoipa.workspace = true
 utoipa-swagger-ui.workspace = true
 uuid.workspace = true
 zip.workspace = true
+api-host-kernel = { path = "../../crates/api/kernel" }
 domain = { path = "../../crates/domain" }
 control-plane = { path = "../../crates/control-plane" }
 control-plane-contracts = { path = "../../crates/control-plane-contracts" }

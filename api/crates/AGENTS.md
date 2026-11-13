@@ -19,6 +19,7 @@
 | 目录 / crate | 唯一职责 | 允许的内部直接依赖 |
 | --- | --- | --- |
 | `domain` | 领域对象、不变量、状态与作用域语义 | 无 |
+| `api/` | HTTP 宿主内核与六个协议适配域；详细 owner 见 [api/AGENTS.md](api/AGENTS.md) | `api-server` 装配；组内域 → `api-host-kernel`，内核仅消费已批准下层 |
 | `interface-runtime` | 协议无关的 Definition / Binding / compiled Plan、Registry snapshot、认证关联及 Invocation Kernel / Receipt / 有界收尾 | `domain` |
 | `extension-contracts` | Host / Runtime 稳定 wire type、Slot 与协议错误 | 无 |
 | `access-control` | 权限目录、角色与授权规则 | `domain` |

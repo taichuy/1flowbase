@@ -171,9 +171,35 @@ fn dependency_policy_violations(metadata: &serde_json::Value) -> Vec<String> {
             }
         }
     }
+    let packages = package_names_by_id(metadata);
+    for node in metadata["resolve"]["nodes"]
+        .as_array()
+        .expect("resolved nodes")
+    {
+        let source = &packages[node["id"].as_str().expect("source package id")];
+        for dependency in node["deps"].as_array().expect("resolved dependencies") {
+            let target = &packages[dependency["pkg"].as_str().expect("target package id")];
+            let alias = dependency["name"].as_str().expect("dependency crate name");
+            let target_is_domain = API_DOMAINS.contains(&target.as_str());
+            let forbidden = (target_is_domain && source != "api-server")
+                || (source == "api-host-kernel" && target == "api-server");
+            if forbidden {
+                violations.push(format!("{source} -> {target} (crate alias {alias})"));
+            }
+        }
+    }
     violations.sort();
     violations
 }
+
+const API_DOMAINS: &[&str] = &[
+    "api-public-gateway",
+    "api-applications",
+    "api-console-settings",
+    "api-mcp",
+    "api-plugins-models",
+    "api-console-interaction",
+];
 
 fn source_dependency_violations(
     metadata: &serde_json::Value,
@@ -588,5 +614,162 @@ fn dependency_fixture_rejects_sdk_to_orchestration_even_when_renamed() {
     assert_eq!(
         dependency_policy_violations(&fixture),
         vec!["runtime-extension-sdk -> orchestration-runtime (crate alias renamed_engine)"]
+    );
+}
+
+fn api_layer_metadata_fixture() -> serde_json::Value {
+    let names = [
+        "api-server",
+        "api-host-kernel",
+        "api-public-gateway",
+        "api-applications",
+        "api-console-settings",
+        "api-mcp",
+        "api-plugins-models",
+        "api-console-interaction",
+        "domain",
+        "control-plane",
+    ];
+    serde_json::json!({
+        "packages": names.iter().map(|name| serde_json::json!({
+            "id": format!("path+file:///boundary-fixture/{name}#0.6.3"), "name": name
+        })).collect::<Vec<_>>(),
+        "resolve": {"nodes": names.iter().map(|name| serde_json::json!({
+            "id": format!("path+file:///boundary-fixture/{name}#0.6.3"), "deps": []
+        })).collect::<Vec<_>>()}
+    })
+}
+
+fn add_fixture_edge(fixture: &mut serde_json::Value, source: &str, target: &str, alias: &str) {
+    let names = package_names_by_id(fixture);
+    let id = |name: &str| {
+        names
+            .iter()
+            .find(|(_, candidate)| *candidate == name)
+            .unwrap()
+            .0
+            .clone()
+    };
+    let source_id = id(source);
+    let target_id = id(target);
+    let node = fixture["resolve"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| node["id"] == source_id)
+        .unwrap();
+    node["deps"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "pkg": target_id, "name": alias, "dep_kinds": [{"kind": null, "target": null}]
+        }));
+}
+
+#[test]
+fn controlled_negative_rejects_all_api_layer_edge_families_and_renames() {
+    let mut fixture = api_layer_metadata_fixture();
+    add_fixture_edge(
+        &mut fixture,
+        "api-host-kernel",
+        "api-server",
+        "renamed_root",
+    );
+    add_fixture_edge(
+        &mut fixture,
+        "api-host-kernel",
+        "api-public-gateway",
+        "renamed_gateway",
+    );
+    add_fixture_edge(
+        &mut fixture,
+        "api-public-gateway",
+        "api-applications",
+        "renamed_applications",
+    );
+    add_fixture_edge(
+        &mut fixture,
+        "control-plane",
+        "api-console-settings",
+        "renamed_settings",
+    );
+    let kernel = fixture["resolve"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|node| node["id"].as_str().unwrap().contains("/api-host-kernel#"))
+        .unwrap();
+    kernel["deps"][0]["dep_kinds"][0]["kind"] = serde_json::json!("dev");
+    kernel["deps"][1]["dep_kinds"][0]["kind"] = serde_json::json!("build");
+    assert_eq!(
+        dependency_policy_violations(&fixture),
+        vec![
+            "api-host-kernel -> api-public-gateway (crate alias renamed_gateway)",
+            "api-host-kernel -> api-server (crate alias renamed_root)",
+            "api-public-gateway -> api-applications (crate alias renamed_applications)",
+            "control-plane -> api-console-settings (crate alias renamed_settings)",
+        ]
+    );
+}
+
+#[test]
+fn every_api_domain_rejects_non_root_consumers_even_when_renamed() {
+    for target in [
+        "api-public-gateway",
+        "api-applications",
+        "api-console-settings",
+        "api-mcp",
+        "api-plugins-models",
+        "api-console-interaction",
+    ] {
+        let mut fixture = api_layer_metadata_fixture();
+        add_fixture_edge(&mut fixture, "control-plane", target, "hidden_http_domain");
+        assert_eq!(
+            dependency_policy_violations(&fixture),
+            vec![format!(
+                "control-plane -> {target} (crate alias hidden_http_domain)"
+            )]
+        );
+    }
+}
+
+#[test]
+fn api_layer_fixture_accepts_root_domains_and_kernel_dependencies() {
+    let mut fixture = api_layer_metadata_fixture();
+    add_fixture_edge(&mut fixture, "api-server", "api-host-kernel", "shared_host");
+    add_fixture_edge(
+        &mut fixture,
+        "api-host-kernel",
+        "domain",
+        "domain_contracts",
+    );
+    for domain in [
+        "api-public-gateway",
+        "api-applications",
+        "api-console-settings",
+        "api-mcp",
+        "api-plugins-models",
+        "api-console-interaction",
+    ] {
+        add_fixture_edge(&mut fixture, "api-server", domain, "root_domain");
+        add_fixture_edge(&mut fixture, domain, "api-host-kernel", "shared_host");
+    }
+    assert_eq!(dependency_policy_violations(&fixture), Vec::<String>::new());
+}
+
+#[test]
+fn workspace_api_layer_members_use_the_resolved_root_kernel_edge() {
+    let api = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let metadata = cargo_metadata(&api);
+    let names = package_names_by_id(&metadata);
+    assert!(names.values().any(|name| name == "api-host-kernel"));
+    assert!(resolved_dependencies(&metadata, "api-server")
+        .iter()
+        .any(|dependency| dependency.package == "api-host-kernel"));
+    // Domains enter the actual graph as their own migration is assembled. This
+    // rule checks every present package without requiring future members early.
+    assert_eq!(
+        dependency_policy_violations(&metadata),
+        Vec::<String>::new()
     );
 }

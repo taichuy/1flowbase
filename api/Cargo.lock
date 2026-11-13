@@ -62,11 +62,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
+name = "api-host-kernel"
+version = "0.6.3"
+
+[[package]]
 name = "api-server"
 version = "0.6.3"
 dependencies = [
  "access-control",
  "anyhow",
+ "api-host-kernel",
  "api-server",
  "api-test-selection",
  "argon2",
