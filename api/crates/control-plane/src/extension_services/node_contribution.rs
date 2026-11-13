@@ -8,18 +8,7 @@ use crate::{
 
 const NODE_CONTRIBUTIONS_VIEW_OPERATION_ID: &str = "node_contributions.view";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ApplicationNodeRuntimeStatus {
-    Ready,
-    Unavailable,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ApplicationNodeAuthoringStatus {
-    Published,
-    Hidden,
-}
-
+pub use domain::flow::{ApplicationNodeAuthoringStatus, ApplicationNodeRuntimeStatus};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApplicationNodeSourceKind {
     Builtin,
@@ -54,15 +43,6 @@ impl From<domain::NodeContributionDependencyStatus> for ApplicationNodeDependenc
             domain::NodeContributionDependencyStatus::MissingPlugin => Self::MissingPlugin,
             domain::NodeContributionDependencyStatus::VersionMismatch => Self::VersionMismatch,
             domain::NodeContributionDependencyStatus::DisabledPlugin => Self::DisabledPlugin,
-        }
-    }
-}
-
-impl ApplicationNodeRuntimeStatus {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Ready => "ready",
-            Self::Unavailable => "unavailable",
         }
     }
 }
@@ -154,109 +134,18 @@ where
     }
 }
 
-#[derive(Clone, Copy)]
-struct BuiltinNodeSpec {
-    node_type: &'static str,
-    title: &'static str,
-    category: &'static str,
-    authoring_status: ApplicationNodeAuthoringStatus,
-    runtime_status: ApplicationNodeRuntimeStatus,
-}
-
-const SHARED_PROCESSING_NODES: &[BuiltinNodeSpec] = &[
-    published_ready("llm", "LLM", "generation"),
-    hidden_unavailable("knowledge_retrieval", "Knowledge Retrieval", "generation"),
-    hidden_unavailable("question_classifier", "Question Classifier", "control"),
-    published_ready("if_else", "If / Else", "control"),
-    published_ready("code", "Code", "data"),
-    published_ready("template_transform", "Template Transform", "generation"),
-    published_ready("http_request", "HTTP Request", "external"),
-    published_ready("notification", "Notification", "external"),
-    hidden_ready("tool", "Tool", "external"),
-    published_ready("tool_result", "Tool Result", "io"),
-    published_ready("data_model_list", "Data Model List", "data"),
-    published_ready("data_model_get", "Data Model Get", "data"),
-    published_ready("data_model_create", "Data Model Create", "data"),
-    published_ready("data_model_update", "Data Model Update", "data"),
-    published_ready("data_model_delete", "Data Model Delete", "data"),
-    published_ready("sql", "SQL", "data"),
-    published_ready("variable_assigner", "Variable Assigner", "data"),
-    published_ready("variable_aggregator", "Variable Aggregator", "control"),
-    hidden_unavailable("parameter_extractor", "Parameter Extractor", "data"),
-    published_ready("iteration", "Iteration", "control"),
-    published_ready("loop", "Loop", "control"),
-    hidden_ready("human_input", "Human Input", "io"),
-];
-
-const fn published_ready(
-    node_type: &'static str,
-    title: &'static str,
-    category: &'static str,
-) -> BuiltinNodeSpec {
-    BuiltinNodeSpec {
-        node_type,
-        title,
-        category,
-        authoring_status: ApplicationNodeAuthoringStatus::Published,
-        runtime_status: ApplicationNodeRuntimeStatus::Ready,
-    }
-}
-
-const fn hidden_ready(
-    node_type: &'static str,
-    title: &'static str,
-    category: &'static str,
-) -> BuiltinNodeSpec {
-    BuiltinNodeSpec {
-        node_type,
-        title,
-        category,
-        authoring_status: ApplicationNodeAuthoringStatus::Hidden,
-        runtime_status: ApplicationNodeRuntimeStatus::Ready,
-    }
-}
-
-const fn hidden_unavailable(
-    node_type: &'static str,
-    title: &'static str,
-    category: &'static str,
-) -> BuiltinNodeSpec {
-    BuiltinNodeSpec {
-        node_type,
-        title,
-        category,
-        authoring_status: ApplicationNodeAuthoringStatus::Hidden,
-        runtime_status: ApplicationNodeRuntimeStatus::Unavailable,
-    }
-}
-
 fn builtin_application_nodes(
     application_type: domain::ApplicationType,
 ) -> Vec<ApplicationNodeCatalogEntry> {
-    if application_type == domain::ApplicationType::AgentLogs {
-        return Vec::new();
-    }
-    let boundary_nodes: &[BuiltinNodeSpec] = match application_type {
-        domain::ApplicationType::AgentLogs => &[],
-        domain::ApplicationType::AgentFlow => &[
-            published_ready("start", "Start", "io"),
-            published_ready("answer", "Answer", "io"),
-        ],
-        domain::ApplicationType::Workflow => &[
-            published_ready("workflow_start", "Workflow Start", "io"),
-            published_ready("workflow_end", "Workflow End", "io"),
-        ],
-    };
-
-    boundary_nodes
+    domain::flow::flow_node_capabilities()
         .iter()
-        .chain(SHARED_PROCESSING_NODES)
         .copied()
+        .filter(|node| node.appears_in_catalog() && node.supports_application(application_type))
         .map(builtin_application_node)
         .collect()
 }
 
-fn builtin_application_node(spec: BuiltinNodeSpec) -> ApplicationNodeCatalogEntry {
+fn builtin_application_node(spec: domain::flow::FlowNodeCapability) -> ApplicationNodeCatalogEntry {
     ApplicationNodeCatalogEntry {
         source_kind: ApplicationNodeSourceKind::Builtin,
         node_type: spec.node_type.to_string(),

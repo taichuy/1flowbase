@@ -26,35 +26,6 @@ const RUN_LEVEL_VARIABLE_NAMESPACES: &[&str] = &[
     VISIBLE_INTERNAL_LLM_TOOL_TYPE,
 ];
 
-const EXECUTABLE_NODE_TYPES: &[&str] = &[
-    "start",
-    "workflow_start",
-    "workflow_end",
-    "answer",
-    "llm",
-    "if_else",
-    "code",
-    "template_transform",
-    "http_request",
-    "notification",
-    "tool",
-    "tool_result",
-    "data_model_list",
-    "data_model_get",
-    "data_model_create",
-    "data_model_update",
-    "data_model_delete",
-    "sql",
-    "variable_assigner",
-    "variable_aggregator",
-    "human_input",
-    "plugin_node",
-    "unresolved_node",
-    "loop",
-    "iteration",
-    "container_start",
-];
-
 type NodeTopologyBuild = (
     BTreeMap<String, CompiledNode>,
     Vec<CompiledEdge>,
@@ -642,7 +613,10 @@ pub(super) fn validate_executable_node_types(
 ) -> Vec<CompileIssue> {
     nodes
         .values()
-        .filter(|node| !EXECUTABLE_NODE_TYPES.contains(&node.node_type.as_str()))
+        .filter(|node| {
+            !domain::flow::flow_node_capability(&node.node_type)
+                .is_some_and(|capability| capability.is_compiler_supported())
+        })
         .map(|node| CompileIssue {
             field_path: None,
             node_id: node.node_id.clone(),

@@ -3,8 +3,13 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 mod analysis;
+mod node_capabilities;
 mod validation;
 pub use analysis::*;
+pub use node_capabilities::{
+    flow_node_capabilities, flow_node_capability, ApplicationNodeAuthoringStatus,
+    ApplicationNodeRuntimeStatus, FlowNodeCapability, FlowNodeKind,
+};
 pub use validation::{
     flow_node_document_schema, validate_flow_draft_structure, validate_flow_node_structure,
     FlowDocumentValidationError,

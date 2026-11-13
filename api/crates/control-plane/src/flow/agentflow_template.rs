@@ -15,30 +15,6 @@ pub const UNRESOLVED_NODE_TYPE: &str = "unresolved_node";
 const MISSING_DEPENDENCY_STATUS: &str = "missing_dependency";
 const READY_STATUS: &str = "ready";
 
-const BUILTIN_NODE_TYPES: &[&str] = &[
-    "start",
-    "workflow_start",
-    "workflow_end",
-    "sql",
-    "answer",
-    "llm",
-    "if_else",
-    "code",
-    "template_transform",
-    "http_request",
-    "notification",
-    "tool",
-    "tool_result",
-    "data_model_list",
-    "data_model_get",
-    "data_model_create",
-    "data_model_update",
-    "data_model_delete",
-    "variable_assigner",
-    "variable_aggregator",
-    "human_input",
-];
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AgentFlowTemplatePackage {
     pub schema_version: String,
@@ -256,9 +232,10 @@ fn preview_validated_application_template_package(
     template: AgentFlowTemplatePackage,
     resources: &AgentFlowTemplateResourceSnapshot,
 ) -> Result<AgentFlowTemplatePreview> {
-    let dependencies = dependency_statuses(&template.flow_document, resources);
+    let application_type = template_application_type(&template.application.application_type)?;
+    let dependencies = dependency_statuses(&template.flow_document, resources, application_type);
     let (document, unresolved_nodes) =
-        resolve_template_document(&template.flow_document, resources)?;
+        resolve_template_document(&template.flow_document, resources, application_type)?;
 
     Ok(AgentFlowTemplatePreview {
         schema_version: template.schema_version,
@@ -292,8 +269,11 @@ fn import_validated_application_template_document(
     flow_id: Uuid,
     resources: &AgentFlowTemplateResourceSnapshot,
 ) -> Result<(Value, Vec<AgentFlowTemplateUnresolvedNode>)> {
-    let (mut document, unresolved_nodes) =
-        resolve_template_document(&template.flow_document, resources)?;
+    let (mut document, unresolved_nodes) = resolve_template_document(
+        &template.flow_document,
+        resources,
+        template_application_type(&template.application.application_type)?,
+    )?;
     let meta = document
         .get_mut("meta")
         .and_then(Value::as_object_mut)
@@ -402,6 +382,7 @@ fn validate_template_graph(flow_document: &Value) -> Result<()> {
 fn resolve_template_document(
     flow_document: &Value,
     resources: &AgentFlowTemplateResourceSnapshot,
+    application_type: domain::ApplicationType,
 ) -> Result<(Value, Vec<AgentFlowTemplateUnresolvedNode>)> {
     let mut document = flow_document.clone();
     let nodes = document
@@ -413,7 +394,7 @@ fn resolve_template_document(
 
     for node in nodes.iter_mut() {
         let candidate = recover_original_node(node).unwrap_or_else(|| node.clone());
-        let resolution = resolve_node(&candidate, resources);
+        let resolution = resolve_node(&candidate, resources, application_type);
         if resolution.status == READY_STATUS {
             if is_unresolved_node(node) {
                 *node = candidate;
@@ -451,7 +432,11 @@ fn recover_original_node(node: &Value) -> Option<Value> {
     (current_id == original_id).then_some(original)
 }
 
-fn resolve_node(node: &Value, resources: &AgentFlowTemplateResourceSnapshot) -> NodeResolution {
+fn resolve_node(
+    node: &Value,
+    resources: &AgentFlowTemplateResourceSnapshot,
+    application_type: domain::ApplicationType,
+) -> NodeResolution {
     let Some(node_type) = node.get("type").and_then(Value::as_str) else {
         return unresolved_resolution("missing_node_type");
     };
@@ -464,7 +449,7 @@ fn resolve_node(node: &Value, resources: &AgentFlowTemplateResourceSnapshot) -> 
         return resolve_plugin_node(node, resources);
     }
 
-    if !BUILTIN_NODE_TYPES.contains(&node_type) {
+    if !importable_builtin(node_type, application_type) {
         return unresolved_resolution("unsupported_builtin_node");
     }
 
@@ -693,11 +678,12 @@ fn unresolved_summary(unresolved_node: &Value) -> AgentFlowTemplateUnresolvedNod
 fn dependency_statuses(
     flow_document: &Value,
     resources: &AgentFlowTemplateResourceSnapshot,
+    application_type: domain::ApplicationType,
 ) -> Vec<AgentFlowTemplateDependencyStatus> {
     collect_template_dependencies(flow_document)
         .into_iter()
         .map(|dependency| {
-            let resolution = resolve_dependency(&dependency, resources);
+            let resolution = resolve_dependency(&dependency, resources, application_type);
             AgentFlowTemplateDependencyStatus {
                 dependency,
                 status: resolution.status,
@@ -710,6 +696,7 @@ fn dependency_statuses(
 fn resolve_dependency(
     dependency: &AgentFlowTemplateDependency,
     resources: &AgentFlowTemplateResourceSnapshot,
+    application_type: domain::ApplicationType,
 ) -> NodeResolution {
     match dependency.kind.as_str() {
         "model_provider" => resolve_model_dependency(dependency, resources),
@@ -718,7 +705,7 @@ fn resolve_dependency(
             if dependency
                 .node_type
                 .as_deref()
-                .is_some_and(|node_type| BUILTIN_NODE_TYPES.contains(&node_type))
+                .is_some_and(|node_type| importable_builtin(node_type, application_type))
             {
                 ready_resolution()
             } else {
@@ -927,4 +914,17 @@ fn model_ids_from_catalog_json(models_json: &Value) -> BTreeSet<String> {
                 .map(str::to_string)
         })
         .collect()
+}
+
+fn template_application_type(application_type: &str) -> Result<domain::ApplicationType> {
+    match application_type {
+        "agent_flow" => Ok(domain::ApplicationType::AgentFlow),
+        "workflow" => Ok(domain::ApplicationType::Workflow),
+        _ => Err(ControlPlaneError::InvalidInput("application.application_type").into()),
+    }
+}
+
+fn importable_builtin(node_type: &str, application_type: domain::ApplicationType) -> bool {
+    domain::flow::flow_node_capability(node_type)
+        .is_some_and(|capability| capability.is_importable_builtin(application_type))
 }

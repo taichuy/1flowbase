@@ -1,0 +1,966 @@
+{
+  "meta": {
+    "name": "会话历史清理（保留30天，每批100条）",
+    "flowId": "01a1d3f0-0d2d-72ed-b4c7-61d17c3c3b0a",
+    "description": "通过正式日志删除接口清理30天之前已结束的历史，创建者权限，每批100条串行直到全部完成；直接删除、不备份，任意失败向工作流传播。"
+  },
+  "graph": {
+    "edges": [
+      {
+        "id": "edge-0",
+        "points": [],
+        "source": "node-workflow-start",
+        "target": "node-retention-scope",
+        "containerId": null,
+        "sourceHandle": null,
+        "targetHandle": null
+      },
+      {
+        "id": "edge-1",
+        "points": [],
+        "source": "node-retention-scope",
+        "target": "node-list-applications",
+        "containerId": null,
+        "sourceHandle": null,
+        "targetHandle": null
+      },
+      {
+        "id": "edge-2",
+        "points": [],
+        "source": "node-list-applications",
+        "target": "node-select-applications",
+        "containerId": null,
+        "sourceHandle": null,
+        "targetHandle": null
+      },
+      {
+        "id": "edge-3",
+        "points": [],
+        "source": "node-select-applications",
+        "target": "node-each-application",
+        "containerId": null,
+        "sourceHandle": null,
+        "targetHandle": null
+      },
+      {
+        "id": "edge-4",
+        "points": [],
+        "source": "node-each-application",
+        "target": "node-completion-guard",
+        "containerId": null,
+        "sourceHandle": null,
+        "targetHandle": null
+      },
+      {
+        "id": "edge-5",
+        "points": [],
+        "source": "node-completion-guard",
+        "target": "node-workflow-end",
+        "containerId": null,
+        "sourceHandle": null,
+        "targetHandle": null
+      },
+      {
+        "id": "edge-6",
+        "points": [],
+        "source": "node-app-entry",
+        "target": "node-build-request",
+        "containerId": "node-each-application",
+        "sourceHandle": null,
+        "targetHandle": null
+      },
+      {
+        "id": "edge-7",
+        "points": [],
+        "source": "node-build-request",
+        "target": "node-preview",
+        "containerId": "node-each-application",
+        "sourceHandle": null,
+        "targetHandle": null
+      },
+      {
+        "id": "edge-8",
+        "points": [],
+        "source": "node-preview",
+        "target": "node-preview-guard",
+        "containerId": "node-each-application",
+        "sourceHandle": null,
+        "targetHandle": null
+      },
+      {
+        "id": "edge-9",
+        "points": [],
+        "source": "node-preview-guard",
+        "target": "node-create-job",
+        "containerId": "node-each-application",
+        "sourceHandle": null,
+        "targetHandle": null
+      },
+      {
+        "id": "edge-10",
+        "points": [],
+        "source": "node-create-job",
+        "target": "node-job-receipt",
+        "containerId": "node-each-application",
+        "sourceHandle": null,
+        "targetHandle": null
+      },
+      {
+        "id": "edge-11",
+        "points": [],
+        "source": "node-job-receipt",
+        "target": "node-wait-cleanup",
+        "containerId": "node-each-application",
+        "sourceHandle": null,
+        "targetHandle": null
+      },
+      {
+        "id": "edge-12",
+        "points": [],
+        "source": "node-wait-cleanup",
+        "target": "node-app-complete",
+        "containerId": "node-each-application",
+        "sourceHandle": null,
+        "targetHandle": null
+      },
+      {
+        "id": "edge-13",
+        "points": [],
+        "source": "node-wait-entry",
+        "target": "node-get-job",
+        "containerId": "node-wait-cleanup",
+        "sourceHandle": null,
+        "targetHandle": null
+      },
+      {
+        "id": "edge-14",
+        "points": [],
+        "source": "node-get-job",
+        "target": "node-verify-progress",
+        "containerId": "node-wait-cleanup",
+        "sourceHandle": null,
+        "targetHandle": null
+      }
+    ],
+    "nodes": [
+      {
+        "id": "node-workflow-start",
+        "type": "workflow_start",
+        "alias": "每天03:00触发",
+        "config": {
+          "input_fields": [],
+          "sync_timeout_ms": 30000
+        },
+        "outputs": [],
+        "bindings": {},
+        "position": {
+          "x": 120,
+          "y": 220
+        },
+        "containerId": null,
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-retention-scope",
+        "type": "code",
+        "alias": "固定本次30天截止时间",
+        "config": {
+          "source": "function main(inputs) { const now=new Date();return {scope:{mode:\"time_range\",started_at_from:\"0001-01-01T00:00:00Z\",started_at_to:new Date(now.getTime()-30*86400000).toISOString(),batch_size:100}};}",
+          "language": "javascript",
+          "entrypoint": "main"
+        },
+        "outputs": [
+          {
+            "key": "scope",
+            "title": "scope",
+            "valueType": "object"
+          }
+        ],
+        "bindings": {},
+        "position": {
+          "x": 440,
+          "y": 220
+        },
+        "containerId": null,
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-list-applications",
+        "type": "http_request",
+        "alias": "以创建者权限查询本环境应用",
+        "config": {
+          "url": "/api/console/applications",
+          "method": "GET",
+          "body_type": "none",
+          "timeout_ms": 30000,
+          "max_response_bytes": 8388608
+        },
+        "outputs": [
+          {
+            "key": "body",
+            "title": "body",
+            "valueType": "string"
+          },
+          {
+            "key": "status_code",
+            "title": "status_code",
+            "valueType": "number"
+          },
+          {
+            "key": "headers",
+            "title": "headers",
+            "valueType": "object"
+          },
+          {
+            "key": "files",
+            "title": "files",
+            "valueType": "array"
+          }
+        ],
+        "bindings": {
+          "headers": {
+            "kind": "named_bindings",
+            "value": [
+              {
+                "name": "Authorization",
+                "value": {
+                  "kind": "templated_text",
+                  "value": "Bearer {{ sys.creator_credential }}"
+                }
+              },
+              {
+                "name": "Accept",
+                "value": {
+                  "kind": "constant",
+                  "value": "application/json"
+                }
+              }
+            ]
+          }
+        },
+        "position": {
+          "x": 760,
+          "y": 220
+        },
+        "containerId": null,
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-select-applications",
+        "type": "code",
+        "alias": "核对应用清单",
+        "config": {
+          "source": "function read(status,body,label) { if(status<200||status>=300) throw new Error(label+\" HTTP \"+status+\": \"+String(body).slice(0,1000)); const value=JSON.parse(body); if(!value || !Object.prototype.hasOwnProperty.call(value,\"data\")) throw new Error(label+\" response missing data\"); return value.data; }\nfunction main(inputs) {const rows=read(inputs.status,inputs.body,\"List applications\");if(!Array.isArray(rows))throw new Error(\"Applications response is not an array\");const apps=rows.filter(a=>[\"agent_flow\",\"agent_logs\",\"workflow\"].includes(a.application_type)).map(a=>({id:a.id,name:a.name,application_type:a.application_type})).sort((a,b)=>a.id.localeCompare(b.id));return {apps};}",
+          "language": "javascript",
+          "entrypoint": "main"
+        },
+        "outputs": [
+          {
+            "key": "apps",
+            "title": "apps",
+            "valueType": "array"
+          }
+        ],
+        "bindings": {
+          "body": {
+            "kind": "selector",
+            "value": [
+              "node-list-applications",
+              "body"
+            ]
+          },
+          "status": {
+            "kind": "selector",
+            "value": [
+              "node-list-applications",
+              "status_code"
+            ]
+          }
+        },
+        "position": {
+          "x": 1080,
+          "y": 220
+        },
+        "containerId": null,
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-each-application",
+        "type": "iteration",
+        "alias": "串行清理所有应用（100条/批直到完成）",
+        "width": 4000,
+        "config": {
+          "parallelism": 1,
+          "error_policy": "fail"
+        },
+        "height": 720,
+        "outputs": [
+          {
+            "key": "result",
+            "title": "result",
+            "valueType": "array"
+          }
+        ],
+        "bindings": {
+          "items": {
+            "kind": "selector",
+            "value": [
+              "node-select-applications",
+              "result",
+              "apps"
+            ]
+          },
+          "output": {
+            "kind": "selector",
+            "value": [
+              "node-app-complete",
+              "result",
+              "summary"
+            ]
+          }
+        },
+        "position": {
+          "x": 1500,
+          "y": 220
+        },
+        "containerId": null,
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-app-entry",
+        "type": "container_start",
+        "alias": "应用开始",
+        "config": {},
+        "outputs": [],
+        "bindings": {},
+        "position": {
+          "x": 120,
+          "y": 100
+        },
+        "containerId": "node-each-application",
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-build-request",
+        "type": "code",
+        "alias": "构造正式删除请求",
+        "config": {
+          "source": "function jobId(run,app) {const a=run.replace(/-/g,\"\"),b=app.replace(/-/g,\"\"); if(!/^[0-9a-f]{32}$/i.test(a)||!/^[0-9a-f]{32}$/i.test(b)) throw new Error(\"Invalid run/application id\"); let s=\"\";for(let i=0;i<32;i++)s+=((parseInt(a[i],16)^parseInt(b[(i+13)%32],16))&15).toString(16);s=s.slice(0,12)+\"4\"+s.slice(13,16)+\"8\"+s.slice(17);return s.slice(0,8)+\"-\"+s.slice(8,12)+\"-\"+s.slice(12,16)+\"-\"+s.slice(16,20)+\"-\"+s.slice(20);}\nfunction main(inputs){const scope=inputs.scope;const app=inputs.app;if(!app||!app.id)throw new Error(\"Missing application\");const job_id=jobId(inputs.run,app.id);return {request:{application_id:app.id,application_name:app.name,job_id,scope,preview_body:JSON.stringify(scope),create_body:JSON.stringify({job_id,scope})}};}",
+          "language": "javascript",
+          "entrypoint": "main"
+        },
+        "outputs": [
+          {
+            "key": "request",
+            "title": "request",
+            "valueType": "object"
+          }
+        ],
+        "bindings": {
+          "app": {
+            "kind": "selector",
+            "value": [
+              "node-each-application",
+              "item"
+            ]
+          },
+          "run": {
+            "kind": "selector",
+            "value": [
+              "sys",
+              "workflow_run_id"
+            ]
+          },
+          "scope": {
+            "kind": "selector",
+            "value": [
+              "node-retention-scope",
+              "result",
+              "scope"
+            ]
+          }
+        },
+        "position": {
+          "x": 440,
+          "y": 100
+        },
+        "containerId": "node-each-application",
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-preview",
+        "type": "http_request",
+        "alias": "预览可删除记录",
+        "config": {
+          "url": "/api/console/applications/{{ node-build-request.result.request.application_id }}/logs/deletion-preview",
+          "method": "POST",
+          "body_type": "json",
+          "timeout_ms": 30000,
+          "max_response_bytes": 8388608
+        },
+        "outputs": [
+          {
+            "key": "body",
+            "title": "body",
+            "valueType": "string"
+          },
+          {
+            "key": "status_code",
+            "title": "status_code",
+            "valueType": "number"
+          },
+          {
+            "key": "headers",
+            "title": "headers",
+            "valueType": "object"
+          },
+          {
+            "key": "files",
+            "title": "files",
+            "valueType": "array"
+          }
+        ],
+        "bindings": {
+          "body": {
+            "kind": "selector",
+            "value": [
+              "node-build-request",
+              "result",
+              "request",
+              "preview_body"
+            ]
+          },
+          "headers": {
+            "kind": "named_bindings",
+            "value": [
+              {
+                "name": "Authorization",
+                "value": {
+                  "kind": "templated_text",
+                  "value": "Bearer {{ sys.creator_credential }}"
+                }
+              },
+              {
+                "name": "Accept",
+                "value": {
+                  "kind": "constant",
+                  "value": "application/json"
+                }
+              }
+            ]
+          }
+        },
+        "position": {
+          "x": 760,
+          "y": 100
+        },
+        "containerId": "node-each-application",
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-preview-guard",
+        "type": "code",
+        "alias": "验证预览成功",
+        "config": {
+          "source": "function read(status,body,label) { if(status<200||status>=300) throw new Error(label+\" HTTP \"+status+\": \"+String(body).slice(0,1000)); const value=JSON.parse(body); if(!value || !Object.prototype.hasOwnProperty.call(value,\"data\")) throw new Error(label+\" response missing data\"); return value.data; }\nfunction main(inputs){const p=read(inputs.status,inputs.body,\"Deletion preview\");if(!Number.isSafeInteger(p.total_records)||p.total_records<0)throw new Error(\"Invalid preview count\");return {preview:p};}",
+          "language": "javascript",
+          "entrypoint": "main"
+        },
+        "outputs": [
+          {
+            "key": "preview",
+            "title": "preview",
+            "valueType": "object"
+          }
+        ],
+        "bindings": {
+          "body": {
+            "kind": "selector",
+            "value": [
+              "node-preview",
+              "body"
+            ]
+          },
+          "status": {
+            "kind": "selector",
+            "value": [
+              "node-preview",
+              "status_code"
+            ]
+          }
+        },
+        "position": {
+          "x": 1080,
+          "y": 100
+        },
+        "containerId": "node-each-application",
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-create-job",
+        "type": "http_request",
+        "alias": "提交后台分批清理（每批100条）",
+        "config": {
+          "url": "/api/console/applications/{{ node-build-request.result.request.application_id }}/logs/deletion-jobs",
+          "method": "POST",
+          "body_type": "json",
+          "timeout_ms": 30000,
+          "max_response_bytes": 8388608
+        },
+        "outputs": [
+          {
+            "key": "body",
+            "title": "body",
+            "valueType": "string"
+          },
+          {
+            "key": "status_code",
+            "title": "status_code",
+            "valueType": "number"
+          },
+          {
+            "key": "headers",
+            "title": "headers",
+            "valueType": "object"
+          },
+          {
+            "key": "files",
+            "title": "files",
+            "valueType": "array"
+          }
+        ],
+        "bindings": {
+          "body": {
+            "kind": "selector",
+            "value": [
+              "node-build-request",
+              "result",
+              "request",
+              "create_body"
+            ]
+          },
+          "headers": {
+            "kind": "named_bindings",
+            "value": [
+              {
+                "name": "Authorization",
+                "value": {
+                  "kind": "templated_text",
+                  "value": "Bearer {{ sys.creator_credential }}"
+                }
+              },
+              {
+                "name": "Accept",
+                "value": {
+                  "kind": "constant",
+                  "value": "application/json"
+                }
+              }
+            ]
+          }
+        },
+        "position": {
+          "x": 1400,
+          "y": 100
+        },
+        "containerId": "node-each-application",
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-job-receipt",
+        "type": "code",
+        "alias": "确认已创建指定删除任务",
+        "config": {
+          "source": "function read(status,body,label) { if(status<200||status>=300) throw new Error(label+\" HTTP \"+status+\": \"+String(body).slice(0,1000)); const value=JSON.parse(body); if(!value || !Object.prototype.hasOwnProperty.call(value,\"data\")) throw new Error(label+\" response missing data\"); return value.data; }\nfunction main(inputs){const d=read(inputs.status,inputs.body,\"Create deletion job\"),r=inputs.request;const j=d&&d.job;if(!j||j.job_id!==r.job_id||j.application_id!==r.application_id)throw new Error(\"Deletion job identity mismatch\");if(![\"queued\",\"running\",\"succeeded\"].includes(j.status))throw new Error(\"Deletion job \"+j.status+\": \"+j.error_code);if(!j.scope||j.scope.batch_size!==100)throw new Error(\"Deletion batch_size must be 100\");return {job:j};}",
+          "language": "javascript",
+          "entrypoint": "main"
+        },
+        "outputs": [
+          {
+            "key": "job",
+            "title": "job",
+            "valueType": "object"
+          }
+        ],
+        "bindings": {
+          "body": {
+            "kind": "selector",
+            "value": [
+              "node-create-job",
+              "body"
+            ]
+          },
+          "status": {
+            "kind": "selector",
+            "value": [
+              "node-create-job",
+              "status_code"
+            ]
+          },
+          "request": {
+            "kind": "selector",
+            "value": [
+              "node-build-request",
+              "result",
+              "request"
+            ]
+          }
+        },
+        "position": {
+          "x": 1720,
+          "y": 100
+        },
+        "containerId": "node-each-application",
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-wait-cleanup",
+        "type": "loop",
+        "alias": "等待此应用全部批次完成",
+        "width": 1100,
+        "config": {
+          "max_rounds": 86400,
+          "parallelism": 1,
+          "error_policy": "fail",
+          "loop_variables": [
+            {
+              "key": "summary",
+              "value_type": "object"
+            }
+          ]
+        },
+        "height": 360,
+        "outputs": [
+          {
+            "key": "result",
+            "title": "result",
+            "valueType": "array"
+          },
+          {
+            "key": "variables",
+            "title": "variables",
+            "valueType": "object"
+          }
+        ],
+        "bindings": {
+          "variables": {
+            "kind": "named_bindings",
+            "value": [
+              {
+                "name": "summary",
+                "value": {
+                  "kind": "constant",
+                  "value": {
+                    "done": false
+                  }
+                }
+              }
+            ]
+          },
+          "break_condition": {
+            "kind": "condition_group",
+            "value": {
+              "operator": "and",
+              "conditions": [
+                {
+                  "left": [
+                    "node-wait-cleanup",
+                    "variables",
+                    "summary",
+                    "done"
+                  ],
+                  "right": {
+                    "kind": "constant",
+                    "value": true
+                  },
+                  "comparator": "equals"
+                }
+              ]
+            }
+          },
+          "variable_updates": {
+            "kind": "named_bindings",
+            "value": [
+              {
+                "name": "summary",
+                "value": {
+                  "kind": "selector",
+                  "selector": [
+                    "node-verify-progress",
+                    "result",
+                    "summary"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "position": {
+          "x": 2040,
+          "y": 100
+        },
+        "containerId": "node-each-application",
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-wait-entry",
+        "type": "container_start",
+        "alias": "轮次开始",
+        "config": {},
+        "outputs": [],
+        "bindings": {},
+        "position": {
+          "x": 120,
+          "y": 100
+        },
+        "containerId": "node-wait-cleanup",
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-get-job",
+        "type": "http_request",
+        "alias": "读取正式删除任务进度",
+        "config": {
+          "url": "/api/console/applications/{{ node-build-request.result.request.application_id }}/logs/deletion-jobs/{{ node-build-request.result.request.job_id }}",
+          "method": "GET",
+          "body_type": "none",
+          "timeout_ms": 30000,
+          "max_response_bytes": 8388608
+        },
+        "outputs": [
+          {
+            "key": "body",
+            "title": "body",
+            "valueType": "string"
+          },
+          {
+            "key": "status_code",
+            "title": "status_code",
+            "valueType": "number"
+          },
+          {
+            "key": "headers",
+            "title": "headers",
+            "valueType": "object"
+          },
+          {
+            "key": "files",
+            "title": "files",
+            "valueType": "array"
+          }
+        ],
+        "bindings": {
+          "headers": {
+            "kind": "named_bindings",
+            "value": [
+              {
+                "name": "Authorization",
+                "value": {
+                  "kind": "templated_text",
+                  "value": "Bearer {{ sys.creator_credential }}"
+                }
+              },
+              {
+                "name": "Accept",
+                "value": {
+                  "kind": "constant",
+                  "value": "application/json"
+                }
+              }
+            ]
+          }
+        },
+        "position": {
+          "x": 440,
+          "y": 100
+        },
+        "containerId": "node-wait-cleanup",
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-verify-progress",
+        "type": "code",
+        "alias": "失败立即报错，全部完成才退出",
+        "config": {
+          "source": "function read(status,body,label) { if(status<200||status>=300) throw new Error(label+\" HTTP \"+status+\": \"+String(body).slice(0,1000)); const value=JSON.parse(body); if(!value || !Object.prototype.hasOwnProperty.call(value,\"data\")) throw new Error(label+\" response missing data\"); return value.data; }\nfunction main(inputs){const d=read(inputs.status,inputs.body,\"Get deletion job\"),j=d&&d.job,r=inputs.request;if(!j||j.job_id!==r.job_id||j.application_id!==r.application_id)throw new Error(\"Deletion job missing or identity mismatch\");if(![\"queued\",\"running\",\"succeeded\"].includes(j.status))throw new Error(\"Deletion job \"+j.status+\": \"+j.error_code);if(!Number.isSafeInteger(j.total_records)||!Number.isSafeInteger(j.deleted_records)||j.deleted_records<0||j.total_records<j.deleted_records)throw new Error(\"Invalid deletion counts\");if(j.status===\"succeeded\"&&j.total_records!==j.deleted_records)throw new Error(\"Deletion incomplete\");return {summary:{done:j.status===\"succeeded\",application_id:r.application_id,application_name:r.application_name,job_id:j.job_id,status:j.status,total_records:j.total_records,deleted_records:j.deleted_records,batch_size:100}};}",
+          "language": "javascript",
+          "entrypoint": "main"
+        },
+        "outputs": [
+          {
+            "key": "summary",
+            "title": "summary",
+            "valueType": "object"
+          }
+        ],
+        "bindings": {
+          "body": {
+            "kind": "selector",
+            "value": [
+              "node-get-job",
+              "body"
+            ]
+          },
+          "status": {
+            "kind": "selector",
+            "value": [
+              "node-get-job",
+              "status_code"
+            ]
+          },
+          "request": {
+            "kind": "selector",
+            "value": [
+              "node-build-request",
+              "result",
+              "request"
+            ]
+          }
+        },
+        "position": {
+          "x": 760,
+          "y": 100
+        },
+        "containerId": "node-wait-cleanup",
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-app-complete",
+        "type": "code",
+        "alias": "确认本应用清理完成",
+        "config": {
+          "source": "function main(inputs){const s=inputs.state&&inputs.state.summary;if(!s||!s.done||s.status!==\"succeeded\"||s.deleted_records!==s.total_records)throw new Error(\"Application cleanup did not finish\");return {summary:s};}",
+          "language": "javascript",
+          "entrypoint": "main"
+        },
+        "outputs": [
+          {
+            "key": "summary",
+            "title": "summary",
+            "valueType": "object"
+          }
+        ],
+        "bindings": {
+          "state": {
+            "kind": "selector",
+            "value": [
+              "node-wait-cleanup",
+              "variables"
+            ]
+          }
+        },
+        "position": {
+          "x": 3460,
+          "y": 100
+        },
+        "containerId": "node-each-application",
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-completion-guard",
+        "type": "code",
+        "alias": "所有应用完成才返回成功",
+        "config": {
+          "source": "function main(inputs){const jobs=inputs.jobs;if(!Array.isArray(jobs)||jobs.length!==inputs.apps.length||jobs.some(j=>!j||!j.done||j.status!==\"succeeded\"||j.deleted_records!==j.total_records))throw new Error(\"Retention cleanup incomplete\");return {summary:{status:\"succeeded\",retention_days:30,batch_size:100,backup:false,credential:\"creator\",scope:inputs.scope,total_records:jobs.reduce((s,j)=>s+j.total_records,0),deleted_records:jobs.reduce((s,j)=>s+j.deleted_records,0),jobs}};}",
+          "language": "javascript",
+          "entrypoint": "main"
+        },
+        "outputs": [
+          {
+            "key": "summary",
+            "title": "summary",
+            "valueType": "object"
+          }
+        ],
+        "bindings": {
+          "apps": {
+            "kind": "selector",
+            "value": [
+              "node-select-applications",
+              "result",
+              "apps"
+            ]
+          },
+          "jobs": {
+            "kind": "selector",
+            "value": [
+              "node-each-application",
+              "result"
+            ]
+          },
+          "scope": {
+            "kind": "selector",
+            "value": [
+              "node-retention-scope",
+              "result",
+              "scope"
+            ]
+          }
+        },
+        "position": {
+          "x": 5820,
+          "y": 220
+        },
+        "containerId": null,
+        "description": "",
+        "configVersion": 1
+      },
+      {
+        "id": "node-workflow-end",
+        "type": "workflow_end",
+        "alias": "返回完整清理结果",
+        "config": {},
+        "outputs": [
+          {
+            "key": "summary",
+            "title": "summary",
+            "valueType": "object"
+          }
+        ],
+        "bindings": {
+          "summary": {
+            "kind": "selector",
+            "value": [
+              "node-completion-guard",
+              "result",
+              "summary"
+            ]
+          }
+        },
+        "position": {
+          "x": 6140,
+          "y": 220
+        },
+        "containerId": null,
+        "description": "",
+        "configVersion": 1
+      }
+    ]
+  },
+  "editor": {
+    "viewport": {
+      "x": 45.41281835542702,
+      "y": 228.49231216789096,
+      "zoom": 0.6803950148943021
+    },
+    "annotations": [],
+    "activeContainerPath": []
+  },
+  "schemaVersion": "1flowbase.flow/v2"
+}
