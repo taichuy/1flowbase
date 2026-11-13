@@ -383,7 +383,7 @@ fn validate_anthropic_tool_addition_block(
     reject_unknown_anthropic_content_block_fields(
         object,
         block_path,
-        &["type", "tool"],
+        &["type", "tool", "cache_control"],
         &[],
         report,
     )?;
@@ -425,6 +425,15 @@ fn validate_anthropic_tool_addition_block(
             "tool_reference name must be non-empty text",
             TranslationSafeRepresentation::Present,
         ));
+    }
+    if let Some(cache_control) = object.get("cache_control") {
+        validate_anthropic_cache_control(
+            cache_control,
+            &format!("{block_path}.cache_control"),
+            TranslationDecisionKind::Exact,
+            Some("$.client_protocol_envelope.source_request.body.messages"),
+            report,
+        )?;
     }
     Ok(())
 }

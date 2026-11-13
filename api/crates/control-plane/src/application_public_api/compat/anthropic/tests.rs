@@ -684,3 +684,79 @@ fn forced_anthropic_tool_choice_maps_to_canonical_function_tag() {
         json!({"type":"function","name":"Glob"})
     );
 }
+
+#[test]
+fn claude_code_tool_addition_cache_control_preserves_exact_source() {
+    // Real wire shape from the protected capture-first.json: inline system tool
+    // reference with an ephemeral cache hint, retained for matching suppliers.
+    for cache_control in [
+        json!({"type":"ephemeral"}),
+        json!({"type":"ephemeral","ttl":"5m"}),
+        json!({"type":"ephemeral","ttl":"1h"}),
+    ] {
+        let source = json!({
+            "model":"claude-fable-5-2[1M]",
+            "messages":[
+                {"role":"user","content":"inspect"},
+                {"role":"system","content":[
+                    {"type":"text","text":"environment"},
+                    {"type":"tool_addition","tool":{"type":"tool_reference","name":"Glob"},
+                     "cache_control":cache_control}
+                ]}
+            ]
+        });
+        let translated = translate_messages_request(source.clone())
+            .expect("tool_addition accepts validated cache hints from real Claude Code wire");
+        assert_eq!(translated.request.query, "inspect");
+        assert_eq!(translated.request.history[0]["content"], "environment");
+        let envelope = translated
+            .request
+            .client_protocol_envelope
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            envelope.source_request.as_ref().unwrap().body.as_ref(),
+            Some(&source)
+        );
+        assert!(translated.report.has_decision(
+            "$.messages[1].content[1].cache_control",
+            TranslationDecisionKind::Exact
+        ));
+    }
+}
+
+#[test]
+fn claude_code_tool_addition_cache_control_rejects_malformed_or_unknown_fields() {
+    for cache_control in [
+        json!(null),
+        json!("ephemeral"),
+        json!({}),
+        json!({"type":"persistent"}),
+        json!({"type":"ephemeral","ttl":"10m"}),
+        json!({"type":"ephemeral","ttl":300}),
+        json!({"type":"ephemeral","future":true}),
+    ] {
+        let error = translate_messages_request(json!({
+            "model":"claude", "messages":[
+                {"role":"user","content":"inspect"},
+                {"role":"system","content":[{
+                    "type":"tool_addition","tool":{"type":"tool_reference","name":"Glob"},
+                    "cache_control":cache_control
+                }]}
+            ]
+        }))
+        .expect_err("tool_addition must use the existing strict cache_control contract");
+        assert_eq!(error.error_type, "invalid_request");
+    }
+    let error = translate_messages_request(json!({
+        "model":"claude", "messages":[
+            {"role":"user","content":"inspect"},
+            {"role":"system","content":[{
+                "type":"tool_addition","tool":{"type":"tool_reference","name":"Glob"},
+                "cache_control":{"type":"ephemeral"}, "future":true
+            }]}
+        ]
+    }))
+    .expect_err("cache support does not permit unknown block fields");
+    assert_eq!(error.error_type, "invalid_request");
+}
