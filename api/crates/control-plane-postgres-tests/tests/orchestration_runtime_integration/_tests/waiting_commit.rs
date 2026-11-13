@@ -183,6 +183,7 @@ async fn receipt_survives_postcommit_pool_starvation_and_valid_output_advances_o
     assert!(ack_error.downcast_ref::<ControlPlaneError>().is_some());
     let callback = waiting.callback_task.unwrap();
     let input = CommitToolCallbackResultsInput {
+        anthropic_continuation: None,
         responses_continuation: None,
         scope_id: seeded.workspace_id,
         application_id: seeded.application_id,
@@ -243,6 +244,7 @@ async fn initial_execution_cannot_fail_resumed_owner_with_same_status() {
     let callback = waiting.callback_task.as_ref().unwrap();
     let acquired = store
         .commit_tool_callback_results(&CommitToolCallbackResultsInput {
+            anthropic_continuation: None,
             responses_continuation: None,
             scope_id: seeded.workspace_id,
             application_id: seeded.application_id,
@@ -332,6 +334,7 @@ async fn cancellation_before_and_after_wait_commit_never_reopens_pending_callbac
             let callback = waiting.callback_task.unwrap();
             let output = store
                 .commit_tool_callback_results(&CommitToolCallbackResultsInput {
+                    anthropic_continuation: None,
                     responses_continuation: None,
                     scope_id: seeded.workspace_id,
                     application_id: seeded.application_id,
@@ -427,6 +430,7 @@ async fn independent_business_failure_does_not_reopen_a_pending_callback() {
     let callback = waiting.callback_task.unwrap();
     let result = store
         .commit_tool_callback_results(&CommitToolCallbackResultsInput {
+            anthropic_continuation: None,
             responses_continuation: None,
             scope_id: seeded.workspace_id,
             application_id: seeded.application_id,
@@ -621,6 +625,7 @@ async fn service_lost_commit_response_preserves_wait_and_result_resumes_exactly_
     );
     assert_eq!(provider.executions.load(Ordering::SeqCst), 1);
     let command = CompleteCallbackTaskCommand {
+        anthropic_continuation: None,
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,

@@ -305,7 +305,7 @@ pub(super) fn append_llm_tool_result_messages(
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
         .map(ToOwned::to_owned);
-    let system = state.get("system").cloned();
+    let mut system = state.get("system").cloned();
     let provider_route = state.get("provider_route").cloned();
     let provider_continuation = state.get("provider_continuation").cloned();
     let provider_metadata = state.get("provider_metadata").cloned();
@@ -479,6 +479,19 @@ pub(super) fn append_llm_tool_result_messages(
         history.extend(delta_messages.iter().cloned());
     }
 
+    if let Some(value) = resume_payload.get("anthropic_continuation") {
+        let continuation: domain::orchestration::AnthropicContinuation =
+            serde_json::from_value(value.clone())?;
+        // Decode the canonical system type here; malformed persisted data must
+        // fail before a Provider invocation, never become a new prompt schema.
+        let _: Vec<NativePromptBlock> = serde_json::from_value(continuation.system.clone())?;
+        history = continuation.ordered_messages;
+        system = Some(continuation.system);
+        // Full source history is independently projected through the fresh
+        // protocol envelope; an old upstream cursor cannot represent it.
+        delta_messages.clear();
+    }
+
     let mut callback_state = Map::new();
     callback_state.insert(
         "callback_kind".to_string(),
@@ -487,9 +500,14 @@ pub(super) fn append_llm_tool_result_messages(
     if let Some(system) = system {
         callback_state.insert("system".to_string(), system);
     }
+    if resume_payload.get("anthropic_continuation").is_some() {
+        callback_state.insert("verified_anthropic_context".into(), Value::Bool(true));
+    }
     callback_state.insert("history".to_string(), Value::Array(history));
-    if let Some(response_id) = response_id {
-        callback_state.insert("response_id".to_string(), Value::String(response_id));
+    if resume_payload.get("anthropic_continuation").is_none() {
+        if let Some(response_id) = response_id {
+            callback_state.insert("response_id".to_string(), Value::String(response_id));
+        }
     }
     if let Some(provider_route) = provider_route {
         callback_state.insert("provider_route".to_string(), provider_route);
@@ -702,10 +720,25 @@ pub(super) fn pending_llm_tool_callback_delta_messages(
         .cloned()
 }
 
+pub(super) fn pending_llm_tool_callback_uses_rebuilt_system(
+    node: &CompiledNode,
+    variable_pool: &Map<String, Value>,
+) -> bool {
+    pending_llm_tool_callback_state(variable_pool, &node.node_id)
+        .and_then(|state| state.get("verified_anthropic_context"))
+        == Some(&Value::Bool(true))
+}
+
 pub(super) fn pending_llm_tool_callback_system(
     node: &CompiledNode,
     variable_pool: &Map<String, Value>,
 ) -> Result<Option<Vec<NativePromptBlock>>, Value> {
+    // The current binding/context policy already rebuilt all instruction
+    // owners, including an intentionally empty effective system. Falling back
+    // to the stored transcript would bypass that policy.
+    if pending_llm_tool_callback_uses_rebuilt_system(node, variable_pool) {
+        return Ok(None);
+    }
     if let Some(system) = pending_llm_tool_callback_state(variable_pool, &node.node_id)
         .and_then(|state| state.get("system"))
     {
@@ -1084,5 +1117,32 @@ mod tests {
         assert_eq!(delta[1]["content"], "real result");
         assert!(delta[0].get("tool_call_id").is_none());
         assert!(delta[2].get("tool_call_id").is_none());
+    }
+    #[test]
+    fn anthropic_callback_keeps_complete_new_context_and_discards_stale_cursor() {
+        let mut pool = json!({"llm":{"__llm_tool_callback":{
+            "pending_tool_calls":[{"id":"a","name":"Read"}],
+            "history":[{"role":"user","content":"old context"}],"system":[],"response_id":"old-response"
+        }}}).as_object().unwrap().clone();
+        let ordered = json!([
+            {"role":"user","content":"source question"},
+            {"role":"assistant","content":"","tool_calls":[{"id":"a","name":"Read","arguments":{}}]},
+            {"role":"tool","tool_call_id":"a","content":"file"},
+            {"role":"user","content":"new reminder"},
+            {"role":"user","content":"new instruction"}
+        ]);
+        append_llm_tool_result_messages(&mut pool, "llm", &json!({
+            "tool_results":[{"tool_call_id":"a","content":"file"}],
+            "anthropic_continuation":{
+                "ordered_messages":ordered,"model_tool_context":{"tools":[]},"model_parameters":{},
+                "system":[{"type":"text","text":"new system"}],
+                "client_protocol_envelope":{}
+            }
+        })).unwrap();
+        let state = &pool["llm"]["__llm_tool_callback"];
+        assert_eq!(state["history"], ordered);
+        assert_eq!(state["system"][0]["text"], "new system");
+        assert!(state.get("response_id").is_none());
+        assert!(state.get("delta_messages").is_none());
     }
 }

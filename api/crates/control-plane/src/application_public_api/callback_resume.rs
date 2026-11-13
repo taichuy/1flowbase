@@ -67,6 +67,9 @@ pub enum PublishedCallbackResumeTarget {
 
 #[derive(Debug, Clone)]
 pub struct ResumePublishedCallbackCommand {
+    pub anthropic_continuation: Option<
+        crate::application_public_api::anthropic_continuation::VerifiedAnthropicContinuation,
+    >,
     pub responses_continuation: Option<super::native_tool_resume::VerifiedResponsesContinuation>,
     /// Host-only transport ownership; never accepted from callback JSON.
     pub transport_connection_scope: Option<String>,
@@ -82,6 +85,9 @@ pub struct ResumePublishedCallbackCommand {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompletePublishedCallbackInput {
+    pub anthropic_continuation: Option<
+        crate::application_public_api::anthropic_continuation::VerifiedAnthropicContinuation,
+    >,
     pub responses_continuation: Option<super::native_tool_resume::VerifiedResponsesContinuation>,
     pub transport_connection_scope: Option<String>,
     pub observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
@@ -255,7 +261,10 @@ where
                 .is_reclaimable_responses_predecessor(&context, &existing, command)
                 .await?
             {
-                if existing.response_payload != command.response_payload {
+                if !domain::orchestration::callback_resume_payloads_match(
+                    &existing.response_payload,
+                    &command.response_payload,
+                ) {
                     return Err(
                         ControlPlaneError::Conflict("callback_resume_payload_conflict").into(),
                     );
@@ -269,6 +278,36 @@ where
                 return Ok(PreparedPublishedCallbackResume::Resume {
                     initial_run: Box::new(initial_run),
                 });
+            }
+            if command.anthropic_continuation.is_some()
+                && matches!(
+                    existing.status,
+                    domain::FlowRunCallbackResumeAttemptStatus::Processing
+                        | domain::FlowRunCallbackResumeAttemptStatus::Received
+                )
+            {
+                if !domain::orchestration::callback_resume_payloads_match(
+                    &existing.response_payload,
+                    &command.response_payload,
+                ) {
+                    return Err(
+                        ControlPlaneError::Conflict("callback_resume_payload_conflict").into(),
+                    );
+                }
+                if existing.source != command.source.as_str() {
+                    return Err(
+                        ControlPlaneError::Conflict("callback_resume_source_conflict").into(),
+                    );
+                }
+                let initial_run =
+                    Box::new(self.native_result_for_flow_run(&context.flow_run).await?);
+                return Ok(
+                    if existing.status == domain::FlowRunCallbackResumeAttemptStatus::Processing {
+                        PreparedPublishedCallbackResume::Attach { initial_run }
+                    } else {
+                        PreparedPublishedCallbackResume::Resume { initial_run }
+                    },
+                );
             }
             ensure_existing_callback_resume_matches(&context.callback_task, &existing, command)?;
             if command.responses_continuation.is_none()
@@ -359,6 +398,7 @@ where
                 }
             }
             if command.source != PublishedCallbackResumeSource::OpenAiResponses
+                && command.anthropic_continuation.is_none()
                 && callback_failure_allows_new_turn(&context.flow_run)
             {
                 return Ok(PreparedPublishedCallbackResume::StartNewTurnFromHistory);
@@ -395,7 +435,10 @@ where
         processing: &domain::FlowRunCallbackResumeAttemptRecord,
         command: &ResumePublishedCallbackCommand,
     ) -> Result<bool> {
-        if processing.response_payload != command.response_payload {
+        if !domain::orchestration::callback_resume_payloads_match(
+            &processing.response_payload,
+            &command.response_payload,
+        ) {
             return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());
         }
         if processing.source != command.source.as_str() {
@@ -464,7 +507,10 @@ where
         processing: &domain::FlowRunCallbackResumeAttemptRecord,
         command: &ResumePublishedCallbackCommand,
     ) -> Result<()> {
-        if processing.response_payload != command.response_payload {
+        if !domain::orchestration::callback_resume_payloads_match(
+            &processing.response_payload,
+            &command.response_payload,
+        ) {
             return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());
         }
         if processing.source != command.source.as_str() {
@@ -551,7 +597,10 @@ where
             // The processing attempt carries the payload of the delivery that
             // owns it, for tool rounds too (refreshed on every re-acquire).
             if existing.id != reserved_id
-                || existing.response_payload != command.response_payload
+                || !domain::orchestration::callback_resume_payloads_match(
+                    &existing.response_payload,
+                    &command.response_payload,
+                )
                 || existing.source != command.source.as_str()
             {
                 return Err(
@@ -646,6 +695,7 @@ where
         let result = self
             .consumer
             .complete_published_callback(CompletePublishedCallbackInput {
+                anthropic_continuation: command.anthropic_continuation.clone(),
                 responses_continuation: command.responses_continuation.clone(),
                 transport_connection_scope: command.transport_connection_scope.clone(),
                 observation_context: command.observation_context.clone(),
@@ -916,6 +966,33 @@ where
                 ControlPlaneError::PermissionDenied("application_public_callback_resume").into(),
             );
         }
+        if let Some(grant) = &command.anthropic_continuation {
+            if command.source != PublishedCallbackResumeSource::AnthropicMessages
+                || command.native_transport.is_some()
+                || command.responses_continuation.is_some()
+            {
+                return Err(ControlPlaneError::Conflict(
+                    "anthropic_continuation_transport_mismatch",
+                )
+                .into());
+            }
+            grant.validate(
+                actor.application_id,
+                actor.creator_user_id,
+                callback_task.id,
+                &command.response_payload,
+            )?;
+            grant.validate_api_key(actor.api_key_id)?;
+        } else if command
+            .response_payload
+            .get("anthropic_continuation")
+            .is_some()
+        {
+            return Err(ControlPlaneError::PermissionDenied(
+                "anthropic_continuation_requires_verified_ingress",
+            )
+            .into());
+        }
         if let Some(grant) = &command.responses_continuation {
             if command.source != PublishedCallbackResumeSource::OpenAiResponses
                 || command.native_transport.is_some()
@@ -1002,13 +1079,16 @@ fn ensure_existing_callback_resume_matches(
     attempt: &domain::FlowRunCallbackResumeAttemptRecord,
     command: &ResumePublishedCallbackCommand,
 ) -> Result<()> {
-    if attempt.response_payload != command.response_payload {
+    if !domain::orchestration::callback_resume_payloads_match(
+        &attempt.response_payload,
+        &command.response_payload,
+    ) {
         return Err(ControlPlaneError::Conflict("callback_resume_payload_conflict").into());
     }
     if attempt.source != command.source.as_str() {
         return Err(ControlPlaneError::Conflict("callback_resume_source_conflict").into());
     }
-    if command.responses_continuation.is_some()
+    if (command.responses_continuation.is_some() || command.anthropic_continuation.is_some())
         && matches!(
             attempt.status,
             domain::FlowRunCallbackResumeAttemptStatus::Processing
@@ -1111,6 +1191,7 @@ where
         input: CompletePublishedCallbackInput,
     ) -> Result<domain::FlowRunRecord> {
         self.complete_callback_task_run(CompleteCallbackTaskCommand {
+            anthropic_continuation: input.anthropic_continuation,
             responses_continuation: input.responses_continuation,
             transport_connection_scope: input.transport_connection_scope,
             observation_context: input.observation_context,

@@ -67,13 +67,46 @@ pub(super) fn binding_prompt_messages_with_context_sources(
     runtime_context: &ExecutionRuntimeContext,
 ) -> Result<Vec<Value>, Value> {
     if let Some(history) = pending_llm_tool_callback_history(node, variable_pool) {
+        if pending_llm_tool_callback_uses_rebuilt_system(node, variable_pool) {
+            return assemble_prompt_messages_with_context_sources(
+                plan,
+                node,
+                rendered_templates,
+                resolved_inputs,
+                variable_pool,
+                context_policy,
+                runtime_context,
+                Some(history),
+            );
+        }
         return Ok(annotate_prompt_messages(
             history,
             "pending_tool_callback_history",
             format!("{}.{}", node.node_id, LLM_TOOL_CALLBACK_STATE_KEY),
         ));
     }
+    assemble_prompt_messages_with_context_sources(
+        plan,
+        node,
+        rendered_templates,
+        resolved_inputs,
+        variable_pool,
+        context_policy,
+        runtime_context,
+        None,
+    )
+}
 
+fn assemble_prompt_messages_with_context_sources(
+    plan: &CompiledPlan,
+    node: &CompiledNode,
+    rendered_templates: &Map<String, Value>,
+    resolved_inputs: &Map<String, Value>,
+    variable_pool: &Map<String, Value>,
+    context_policy: &Value,
+    runtime_context: &ExecutionRuntimeContext,
+    admitted_history: Option<Vec<Value>>,
+) -> Result<Vec<Value>, Value> {
     // Only the host communication mapper writes this marker; public Native history rejects
     // unknown fields. Keep the session separate and never replay selected/prior history.
     if runtime_context
@@ -123,8 +156,16 @@ pub(super) fn binding_prompt_messages_with_context_sources(
             "run_level_system",
             "native_model_prompt_context.system",
         ));
-        systems.extend(runtime_context.native_model_prompt_context.messages.clone());
-        systems.extend(users);
+        if let Some(history) = admitted_history {
+            systems.extend(annotate_prompt_messages(
+                history,
+                "pending_tool_callback_history",
+                format!("{}.{}", node.node_id, LLM_TOOL_CALLBACK_STATE_KEY),
+            ));
+        } else {
+            systems.extend(runtime_context.native_model_prompt_context.messages.clone());
+            systems.extend(users);
+        }
         return Ok(systems);
     }
 
@@ -137,34 +178,53 @@ pub(super) fn binding_prompt_messages_with_context_sources(
             variable_pool,
             runtime_context,
         )?);
-        messages.extend(selected_context_messages_with_sources(
-            node,
-            variable_pool,
-            context_policy,
-        )?);
-        if !context_policy_has_selector(context_policy) {
-            if runtime_context
-                .native_model_prompt_context
-                .messages
-                .is_empty()
-            {
-                messages.extend(compatible_history_messages_with_context_sources(
-                    plan,
-                    node,
-                    resolved_inputs,
-                    variable_pool,
-                ));
-            } else {
-                messages.extend(annotate_prompt_messages(
-                    runtime_context.native_model_prompt_context.messages.clone(),
-                    "history",
-                    "native_model_prompt_context.messages".to_string(),
-                ));
+        if admitted_history.is_none() {
+            messages.extend(selected_context_messages_with_sources(
+                node,
+                variable_pool,
+                context_policy,
+            )?);
+            if !context_policy_has_selector(context_policy) {
+                if runtime_context
+                    .native_model_prompt_context
+                    .messages
+                    .is_empty()
+                {
+                    messages.extend(compatible_history_messages_with_context_sources(
+                        plan,
+                        node,
+                        resolved_inputs,
+                        variable_pool,
+                    ));
+                } else {
+                    messages.extend(annotate_prompt_messages(
+                        runtime_context.native_model_prompt_context.messages.clone(),
+                        "history",
+                        "native_model_prompt_context.messages".to_string(),
+                    ));
+                }
             }
         }
     }
+    // A verified callback replaces the complete client history at the same slot
+    // used by the initial assembly. Keep run-level and node instruction owners
+    // on their original sides of that slot; never resurrect prior client text.
+    let is_verified_callback = admitted_history.is_some();
+    if let Some(history) = admitted_history {
+        messages.extend(annotate_prompt_messages(
+            history,
+            "pending_tool_callback_history",
+            format!("{}.{}", node.node_id, LLM_TOOL_CALLBACK_STATE_KEY),
+        ));
+    }
     messages.extend(annotate_prompt_messages(
-        prompt_messages_from_bindings(Some(rendered_templates), resolved_inputs),
+        prompt_messages_from_bindings(Some(rendered_templates), resolved_inputs)
+            .into_iter()
+            .filter(|message| {
+                !is_verified_callback
+                    || message.get("role").and_then(Value::as_str) == Some("system")
+            })
+            .collect(),
         "node_prompt",
         "bindings.prompt_messages".to_string(),
     ));
@@ -1219,4 +1279,98 @@ mod tests {
         assert_eq!(context.messages[0].content, "before");
         assert_eq!(context.messages[2].content, "after");
     }
+    #[test]
+    fn anthropic_context_rebuilds_system_owners_without_old_client_history_or_new_query() {
+        let plan: CompiledPlan = serde_json::from_value(json!({"flow_id":uuid::Uuid::nil(),"source_draft_id":"test","schema_version":"1","topological_order":[],"nodes":{}})).unwrap();
+        for selects_start_system in [false, true] {
+            let mut node: CompiledNode = serde_json::from_value(json!({"node_id":"llm","node_type":"llm","alias":"LLM","container_id":null,
+                "dependency_node_ids":[],"downstream_node_ids":[],"bindings":{},"outputs":[],"config":{}})).unwrap();
+            if selects_start_system {
+                node.bindings.insert("prompt_messages".into(), serde_json::from_value(json!({"kind":"template","raw_value":null,"selector_paths":[["start","system"]]})).unwrap());
+            }
+            // The configured app instruction has the same text as an older
+            // client instruction. Its owner must survive both later rounds.
+            for round in [1, 2] {
+                let client_system = vec![
+                    NativePromptBlock::text(format!("root-{round}")),
+                    NativePromptBlock::text(format!("inline-{round}")),
+                ];
+                let mut runtime_context = ExecutionRuntimeContext::default();
+                runtime_context.native_model_prompt_context.system = client_system.clone();
+                runtime_context.native_model_prompt_context.messages =
+                    vec![json!({"role":"system","content":"stale-inline"})];
+                let mut rendered =
+                    vec![json!({"role":"system","content":"identical-old-client-and-app"})];
+                if selects_start_system {
+                    rendered.push(json!({"role":"system","content":client_system}));
+                }
+                rendered.push(json!({"role":"user","content":"must not append rendered query"}));
+                let templates = json!({"prompt_messages":rendered})
+                    .as_object()
+                    .unwrap()
+                    .clone();
+                let history = json!([{"role":"user","content":"current complete request"},{"role":"tool","tool_call_id":"a","content":"result"}]);
+                let pool = json!({"llm":{"__llm_tool_callback":{"verified_anthropic_context":true,"history":history}}}).as_object().unwrap().clone();
+                let messages = binding_prompt_messages_with_context_sources(
+                    &plan,
+                    &node,
+                    &templates,
+                    &Map::new(),
+                    &pool,
+                    &json!({"integration_context":"enabled"}),
+                    &runtime_context,
+                )
+                .unwrap();
+                let context = provider_context_from_prompt_messages(messages).unwrap();
+                let systems = serde_json::to_value(context.system).unwrap().to_string();
+                assert!(systems.contains("identical-old-client-and-app"));
+                assert!(systems.contains(&format!("root-{round}")));
+                assert!(systems.contains(&format!("inline-{round}")));
+                assert!(!systems.contains("stale-inline"));
+                assert_eq!(context.messages.len(), 2);
+                assert_eq!(context.messages[0].content, "current complete request");
+                assert_eq!(context.messages[1].tool_call_id.as_deref(), Some("a"));
+            }
+        }
+    }
+    #[test]
+    fn verified_anthropic_context_keeps_an_intentionally_empty_effective_system() {
+        let node: CompiledNode = serde_json::from_value(json!({"node_id":"llm","node_type":"llm","alias":"LLM","container_id":null,
+            "dependency_node_ids":[],"downstream_node_ids":[],"bindings":{},"outputs":[],"config":{}})).unwrap();
+        let plan: CompiledPlan = serde_json::from_value(json!({"flow_id":uuid::Uuid::nil(),"source_draft_id":"test","schema_version":"1","topological_order":[],"nodes":{}})).unwrap();
+        let mut runtime = ExecutionRuntimeContext::default();
+        runtime.native_model_prompt_context.system = vec![NativePromptBlock::text(
+            "client system excluded by compiled integration policy",
+        )];
+        let mut pool = json!({"llm":{"__llm_tool_callback":{"verified_anthropic_context":true,"system":[{"type":"text","text":"old fallback"}],"history":[{"role":"user","content":"current"}]}}}).as_object().unwrap().clone();
+        let context = provider_context_from_prompt_messages(
+            binding_prompt_messages_with_context_sources(
+                &plan,
+                &node,
+                &Map::new(),
+                &Map::new(),
+                &pool,
+                &json!({"integration_context":"disabled"}),
+                &runtime,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(context.system.is_empty());
+        assert!(pending_llm_tool_callback_system(&node, &pool)
+            .unwrap()
+            .is_none());
+        pool.get_mut("llm").unwrap()["__llm_tool_callback"]
+            .as_object_mut()
+            .unwrap()
+            .remove("verified_anthropic_context");
+        assert_eq!(
+            pending_llm_tool_callback_system(&node, &pool).unwrap(),
+            Some(vec![NativePromptBlock::text("old fallback")])
+        );
+    }
 }
+
+#[cfg(test)]
+#[path = "llm_context/_tests/callback_system_order.rs"]
+mod callback_system_order_tests;

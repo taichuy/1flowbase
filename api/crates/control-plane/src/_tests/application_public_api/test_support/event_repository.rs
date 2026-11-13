@@ -127,7 +127,7 @@ impl control_plane_contracts::ports::EventCatalogRepository for ApplicationPubli
     }
     async fn list_event_catalog(
         &self,
-        actor: &ActorContext,
+        actor: &domain::ActorContext,
         query: domain::event_center::EventCatalogQuery,
     ) -> Result<Vec<domain::event_center::EventCatalogEntry>> {
         let mut entries = self

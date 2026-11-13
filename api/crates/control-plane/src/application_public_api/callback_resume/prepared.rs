@@ -208,7 +208,10 @@ where
                 "callback_resume_reservation_missing",
             ))?;
         if attempt.id != receipt.attempt_id()
-            || attempt.response_payload != command.response_payload
+            || !domain::orchestration::callback_resume_payloads_match(
+                &attempt.response_payload,
+                &command.response_payload,
+            )
             || attempt.source != command.source.as_str()
         {
             return Err(ControlPlaneError::Conflict("callback_resume_reservation_mismatch").into());
@@ -218,6 +221,7 @@ where
             .consumer
             .prepare_callback_task_execution(
                 CompleteCallbackTaskCommand {
+                    anthropic_continuation: command.anthropic_continuation.clone(),
                     responses_continuation: command.responses_continuation.clone(),
                     transport_connection_scope: command.transport_connection_scope.clone(),
                     observation_context: command.observation_context.clone(),

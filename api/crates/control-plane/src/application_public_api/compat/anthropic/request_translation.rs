@@ -13,7 +13,8 @@ use super::{
     AnthropicContextWindowRequest, ANTHROPIC_TYPED_ROOT_FIELDS,
 };
 use crate::application_public_api::client_protocol_envelope::{
-    capture_client_protocol_body, ClientProtocolIngressPolicy,
+    capture_client_protocol_body, capture_source_protocol_request_body,
+    merge_client_protocol_envelopes, ClientProtocolIngressPolicy,
 };
 use crate::application_public_api::native::{
     NativeExecution, NativeRequestMetadata, NativeRunRequest, NativeStreamOptions,
@@ -42,6 +43,39 @@ pub fn translate_messages_request_with_context_window(
         object,
         ANTHROPIC_TYPED_ROOT_FIELDS,
     );
+    // These semantic extensions have no canonical equivalent. Keep their exact source
+    // alongside the canonical projection, including callers outside the HTTP adapter.
+    let requires_source_tools = object
+        .get("tools")
+        .and_then(Value::as_array)
+        .is_some_and(|tools| tools.iter().any(|tool| tool.get("defer_loading").is_some()))
+        || object
+            .get("messages")
+            .and_then(Value::as_array)
+            .is_some_and(|messages| {
+                messages.iter().any(|message| {
+                    message
+                        .get("content")
+                        .and_then(Value::as_array)
+                        .is_some_and(|blocks| {
+                            blocks.iter().any(|block| {
+                                block.get("type").and_then(Value::as_str) == Some("tool_addition")
+                            })
+                        })
+                })
+            });
+    let protocol_context = if requires_source_tools {
+        merge_client_protocol_envelopes(
+            ClientProtocolIngressPolicy::AnthropicMessages,
+            protocol_context,
+            capture_source_protocol_request_body(
+                ClientProtocolIngressPolicy::AnthropicMessages,
+                &request,
+            ),
+        )
+    } else {
+        protocol_context
+    };
     let model = required_anthropic_string(object, "model", &mut report)?;
     let (model, model_context_window) = normalize_anthropic_model_for_native(&model);
     let requested_context_window = model_context_window

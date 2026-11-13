@@ -45,7 +45,7 @@ impl ResponseUsageBaseline {
         }
     }
     /// Subtract the recorded boundary, never a live snapshot that can move on replay.
-    fn native_round(&self, cumulative: Option<&NativeUsage>) -> Option<NativeUsage> {
+    pub(crate) fn native_round(&self, cumulative: Option<&NativeUsage>) -> Option<NativeUsage> {
         match self {
             Self::NewRun => cumulative.cloned(),
             Self::Unavailable => None,

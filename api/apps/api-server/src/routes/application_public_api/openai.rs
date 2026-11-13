@@ -902,6 +902,7 @@ fn openai_resume_command(
     response_mode: Option<String>,
 ) -> ResumePublishedCallbackCommand {
     ResumePublishedCallbackCommand {
+        anthropic_continuation: None,
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,

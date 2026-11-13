@@ -435,3 +435,65 @@ fn exact_callback_payload_retries_are_stable() {
         .expect("retry callback payload should resume");
     assert_eq!(retry, first);
 }
+
+#[test]
+fn anthropic_current_mixed_context_resumes_without_claiming_old_completed_history() {
+    let task = callback(29);
+    let id = encode_anthropic_callback_tool_use_id(task, "toolu_read");
+    let mut body = json!({"messages":[
+        {"role":"user","content":"read"},
+        {"role":"assistant","content":[{"type":"text","text":"checking"}]},
+        {"role":"assistant","content":[{"type":"tool_use","id":id,"name":"Read","input":{}}]},
+        {"role":"user","content":[{"type":"tool_result","tool_use_id":id,"content":"file"},{"type":"text","text":"<system-reminder>new context</system-reminder>"}]},
+        {"role":"user","content":"finish with this additional instruction"}
+    ]});
+    let matched = correlate_anthropic_callback(&body).unwrap().unwrap();
+    assert_eq!(matched.callback_task_id, task);
+    assert_eq!(
+        matched.tool_results,
+        json!([{"tool_call_id":"toolu_read","content":"file"}])
+    );
+    let messages = body["messages"].as_array_mut().unwrap();
+    messages.push(json!({"role":"assistant","content":"finished"}));
+    messages.push(json!({"role":"user","content":"a new ordinary turn"}));
+    assert!(correlate_anthropic_callback(&body).unwrap().is_none());
+}
+
+#[test]
+fn anthropic_mixed_context_retains_duplicate_foreign_and_missing_receipt_checks() {
+    let task = callback(30);
+    let a = encode_anthropic_callback_tool_use_id(task, "a");
+    let b = encode_anthropic_callback_tool_use_id(task, "b");
+    let body = json!({"messages":[
+        {"role":"assistant","content":[{"type":"tool_use","id":a},{"type":"tool_use","id":b}]},
+        {"role":"user","content":[{"type":"text","text":"context"},{"type":"tool_result","tool_use_id":a,"content":"A"},{"type":"tool_result","tool_use_id":b,"content":"B"}]},
+        {"role":"user","content":"extra context"}
+    ]});
+    assert!(correlate_anthropic_callback(&body).unwrap().is_some());
+    let mut missing = body.clone();
+    missing["messages"][1]["content"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    assert!(correlate_anthropic_callback(&missing)
+        .unwrap_err()
+        .message
+        .contains("exactly"));
+    let mut duplicate = body.clone();
+    duplicate["messages"][1]["content"]
+        .as_array_mut()
+        .unwrap()
+        .push(body["messages"][1]["content"][1].clone());
+    assert!(correlate_anthropic_callback(&duplicate)
+        .unwrap_err()
+        .message
+        .contains("unique"));
+    let mut foreign = body;
+    foreign["messages"][1]["content"][2]["tool_use_id"] = json!(
+        encode_anthropic_callback_tool_use_id(callback(31), "foreign")
+    );
+    assert!(correlate_anthropic_callback(&foreign)
+        .unwrap_err()
+        .message
+        .contains("does not match"));
+}

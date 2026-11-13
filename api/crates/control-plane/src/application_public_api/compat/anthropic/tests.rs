@@ -64,7 +64,7 @@ fn issue_1736_ac_001_eager_tool_input_streaming_degrades_without_rejecting_the_t
 
 #[test]
 fn issue_1736_ac_003_semantic_tool_fields_fail_with_a_typed_unsupported_error() {
-    for field in ["strict", "defer_loading"] {
+    for field in ["strict"] {
         let mut tool = json!({
             "name": "Bash",
             "input_schema": { "type": "object" }
@@ -584,4 +584,179 @@ fn compaction_resume_away_and_title_prompts_are_ordinary_text() {
             .report
             .has_decision("$.messages[0].content", TranslationDecisionKind::Normalized));
     }
+}
+
+#[test]
+fn claude_code_dynamic_tool_references_preserve_exact_source_and_one_million_context() {
+    // Shape observed in the real Claude Code 2.1.323 api-request-blob.
+    let source = json!({
+        "model": "claude-fable-5-2[1M]",
+        "messages": [
+            {"role": "user", "content": "inspect"},
+            {"role": "system", "content": [
+                {"type": "text", "text": "environment"},
+                {"type": "tool_addition", "tool": {"type": "tool_reference", "name": "Glob"}},
+                {"type": "tool_addition", "tool": {"type": "tool_reference", "name": "Grep"}}
+            ]}
+        ],
+        "tools": [
+            {"name": "Glob", "input_schema": {"type": "object"}, "defer_loading": true},
+            {"name": "Grep", "input_schema": {"type": "object"}, "defer_loading": false}
+        ]
+    });
+    let translated =
+        translate_messages_request(source.clone()).expect("observed dynamic tool shape");
+    assert_eq!(translated.request.query, "inspect");
+    assert_eq!(translated.request.history[0]["content"], "environment");
+    assert_eq!(
+        translated.request.model.as_deref(),
+        Some("claude-fable-5-2")
+    );
+    assert_eq!(
+        translated
+            .request
+            .execution
+            .model_parameters()
+            .unwrap()
+            .requested_context_window(),
+        Some(1_000_000)
+    );
+    let envelope = translated
+        .request
+        .client_protocol_envelope
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        envelope.source_request.as_ref().unwrap().body.as_ref(),
+        Some(&source)
+    );
+    for path in [
+        "$.messages[1].content[1].type",
+        "$.tools[0].defer_loading",
+        "$.tools[1].defer_loading",
+    ] {
+        assert!(translated
+            .report
+            .has_decision(path, TranslationDecisionKind::Exact));
+    }
+}
+
+#[test]
+fn dynamic_tool_reference_shape_and_defer_loading_types_remain_strict() {
+    for block in [
+        json!({"type":"tool_addition"}),
+        json!({"type":"tool_addition","tool":"Glob"}),
+        json!({"type":"tool_addition","tool":{"type":"tool_reference","name":" "}}),
+        json!({"type":"tool_addition","tool":{"type":"function","name":"Glob"}}),
+        json!({"type":"tool_addition","tool":{"type":"tool_reference","name":"Glob","future":true}}),
+        json!({"type":"tool_addition","tool":{"type":"tool_reference","name":"Glob"},"future":true}),
+        json!({"type":"future_block","tool":{"type":"tool_reference","name":"Glob"}}),
+    ] {
+        let error = translate_messages_request(json!({
+            "model":"claude", "messages":[
+                {"role":"user","content":"inspect"},
+                {"role":"system","content":[block]}
+            ]
+        }))
+        .expect_err("invalid or unknown dynamic tool structure must fail closed");
+        assert_eq!(error.error_type, "invalid_request");
+    }
+    for value in [json!("true"), json!(1), json!(null)] {
+        let error = translate_messages_request(json!({
+            "model":"claude", "messages":[{"role":"user","content":"inspect"}],
+            "tools":[{"name":"Glob","input_schema":{"type":"object"},"defer_loading":value}]
+        }))
+        .expect_err("defer_loading must remain boolean");
+        assert_eq!(error.error_type, "invalid_request");
+    }
+}
+
+#[test]
+fn forced_anthropic_tool_choice_maps_to_canonical_function_tag() {
+    let translated = translate_messages_request(json!({
+        "model":"claude", "messages":[{"role":"user","content":"inspect"}],
+        "tools":[{"name":"Glob","input_schema":{"type":"object"}}],
+        "tool_choice":{"type":"tool","name":"Glob"}
+    }))
+    .expect("forced named tool choice");
+    assert_eq!(
+        translated.request.inputs.as_value()["tool_choice"],
+        json!({"type":"function","name":"Glob"})
+    );
+}
+
+#[test]
+fn claude_code_tool_addition_cache_control_preserves_exact_source() {
+    // Real wire shape from the protected capture-first.json: inline system tool
+    // reference with an ephemeral cache hint, retained for matching suppliers.
+    for cache_control in [
+        json!({"type":"ephemeral"}),
+        json!({"type":"ephemeral","ttl":"5m"}),
+        json!({"type":"ephemeral","ttl":"1h"}),
+    ] {
+        let source = json!({
+            "model":"claude-fable-5-2[1M]",
+            "messages":[
+                {"role":"user","content":"inspect"},
+                {"role":"system","content":[
+                    {"type":"text","text":"environment"},
+                    {"type":"tool_addition","tool":{"type":"tool_reference","name":"Glob"},
+                     "cache_control":cache_control}
+                ]}
+            ]
+        });
+        let translated = translate_messages_request(source.clone())
+            .expect("tool_addition accepts validated cache hints from real Claude Code wire");
+        assert_eq!(translated.request.query, "inspect");
+        assert_eq!(translated.request.history[0]["content"], "environment");
+        let envelope = translated
+            .request
+            .client_protocol_envelope
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            envelope.source_request.as_ref().unwrap().body.as_ref(),
+            Some(&source)
+        );
+        assert!(translated.report.has_decision(
+            "$.messages[1].content[1].cache_control",
+            TranslationDecisionKind::Exact
+        ));
+    }
+}
+
+#[test]
+fn claude_code_tool_addition_cache_control_rejects_malformed_or_unknown_fields() {
+    for cache_control in [
+        json!(null),
+        json!("ephemeral"),
+        json!({}),
+        json!({"type":"persistent"}),
+        json!({"type":"ephemeral","ttl":"10m"}),
+        json!({"type":"ephemeral","ttl":300}),
+        json!({"type":"ephemeral","future":true}),
+    ] {
+        let error = translate_messages_request(json!({
+            "model":"claude", "messages":[
+                {"role":"user","content":"inspect"},
+                {"role":"system","content":[{
+                    "type":"tool_addition","tool":{"type":"tool_reference","name":"Glob"},
+                    "cache_control":cache_control
+                }]}
+            ]
+        }))
+        .expect_err("tool_addition must use the existing strict cache_control contract");
+        assert_eq!(error.error_type, "invalid_request");
+    }
+    let error = translate_messages_request(json!({
+        "model":"claude", "messages":[
+            {"role":"user","content":"inspect"},
+            {"role":"system","content":[{
+                "type":"tool_addition","tool":{"type":"tool_reference","name":"Glob"},
+                "cache_control":{"type":"ephemeral"}, "future":true
+            }]}
+        ]
+    }))
+    .expect_err("cache support does not permit unknown block fields");
+    assert_eq!(error.error_type, "invalid_request");
 }
