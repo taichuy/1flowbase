@@ -14,3 +14,6 @@ mod workflow_trajectory_contract;
 mod agent_logs_contract_tests;
 
 mod mcp_directory_contract_tests;
+
+#[path = "workflow_run_identity/mod.rs"]
+mod workflow_run_identity_contract_tests;

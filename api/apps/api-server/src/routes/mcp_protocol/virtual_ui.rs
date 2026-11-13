@@ -32,6 +32,8 @@ use super::{input_schema, resources, result_delivery};
 mod description_guard;
 #[path = "virtual_ui/file_params.rs"]
 mod file_params;
+#[path = "virtual_ui/workflow_credentials.rs"]
+mod workflow_credentials;
 use crate::{
     error_response::ApiError,
     middleware::require_session::{with_server_delegated_request_context, RequestContext},
@@ -191,6 +193,13 @@ impl McpInterfaceCatalogPort for McpInterfaceCatalogSnapshot {
 
 #[async_trait]
 pub(crate) trait McpInterfaceDispatchPort: Send + Sync + 'static {
+    async fn execute_workflow_http(
+        &self,
+        _request: orchestration_runtime::execution_engine::WorkflowInternalHttpRequest,
+    ) -> anyhow::Result<orchestration_runtime::execution_engine::WorkflowInternalHttpResponse> {
+        anyhow::bail!("workflow Console dispatcher is unavailable")
+    }
+
     async fn execute(
         &self,
         headers: HeaderMap,
@@ -213,6 +222,13 @@ impl ConsoleRouterMcpInterfaceDispatchPort {
 
 #[async_trait]
 impl McpInterfaceDispatchPort for ConsoleRouterMcpInterfaceDispatchPort {
+    async fn execute_workflow_http(
+        &self,
+        request: orchestration_runtime::execution_engine::WorkflowInternalHttpRequest,
+    ) -> anyhow::Result<orchestration_runtime::execution_engine::WorkflowInternalHttpResponse> {
+        workflow_credentials::dispatch_console_http(self.console_router.clone(), request).await
+    }
+
     async fn execute(
         &self,
         headers: HeaderMap,
@@ -444,6 +460,24 @@ impl ApiMcpRuntimeToolInvoker {
 
 #[async_trait]
 impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
+    async fn prepare_workflow_credentials(
+        &self,
+        flow_run_id: uuid::Uuid,
+    ) -> anyhow::Result<orchestration_runtime::execution_engine::WorkflowCredentialReferences> {
+        self.prepare_workflow_credential_references(flow_run_id)
+            .await
+    }
+
+    async fn invoke_workflow_internal_http(
+        &self,
+        flow_run_id: uuid::Uuid,
+        credential_reference: &str,
+        request: orchestration_runtime::execution_engine::WorkflowInternalHttpRequest,
+    ) -> anyhow::Result<orchestration_runtime::execution_engine::WorkflowInternalHttpResponse> {
+        self.dispatch_workflow_credential_http(flow_run_id, credential_reference, request)
+            .await
+    }
+
     fn registrations_for_node(&self, node: &CompiledNode) -> Vec<RuntimeInternalToolRegistration> {
         mcp_llm_registrations(&self.selected_occurrences(node))
             .into_iter()

@@ -56,6 +56,11 @@ pub mod communication;
 mod compact_operation;
 pub mod container;
 mod http_request;
+mod workflow_credentials;
+pub use workflow_credentials::{
+    WorkflowCredentialReferences, WorkflowCredentialSubject, WorkflowInternalHttpRequest,
+    WorkflowInternalHttpResponse,
+};
 pub mod internal_compaction;
 #[path = "execution_engine/llm_operations/llm_callbacks.rs"]
 mod llm_callbacks;
@@ -198,6 +203,15 @@ impl ResolvedProviderRoute {
 
 #[async_trait]
 pub trait ProviderInvoker: Send + Sync {
+    /// The host invoker supplies the current run; node input cannot choose the consumer identity.
+    async fn invoke_workflow_internal_http(
+        &self,
+        _credential_reference: &str,
+        _request: WorkflowInternalHttpRequest,
+    ) -> Result<WorkflowInternalHttpResponse> {
+        bail!("workflow credential host is unavailable")
+    }
+
     /// Default deny: only the host owning durable native source evidence may rebuild.
     /// Called once, after a validated owner-loss receipt and ledger admission.
     async fn materialize_native_continuation(
@@ -361,6 +375,24 @@ pub struct RuntimeInternalToolOutput {
 
 #[async_trait]
 pub trait RuntimeInternalToolInvoker: Send + Sync {
+    /// Host-only preparation. The returned strings contain no authentication capability.
+    async fn prepare_workflow_credentials(
+        &self,
+        flow_run_id: uuid::Uuid,
+    ) -> Result<WorkflowCredentialReferences> {
+        Ok(WorkflowCredentialReferences::for_run(flow_run_id))
+    }
+
+    /// The caller supplies its own trusted execution run, never a run ID from node input.
+    async fn invoke_workflow_internal_http(
+        &self,
+        _flow_run_id: uuid::Uuid,
+        _credential_reference: &str,
+        _request: WorkflowInternalHttpRequest,
+    ) -> Result<WorkflowInternalHttpResponse> {
+        bail!("workflow credential host is unavailable")
+    }
+
     fn registrations_for_node(&self, node: &CompiledNode) -> Vec<RuntimeInternalToolRegistration>;
 
     async fn invoke_runtime_internal_tool(

@@ -174,6 +174,14 @@ impl CallableDispatchPort for GenerationDispatch {
 }
 #[async_trait::async_trait]
 impl McpInterfaceDispatchPort for GenerationDispatch {
+    async fn execute_workflow_http(
+        &self,
+        request: orchestration_runtime::execution_engine::WorkflowInternalHttpRequest,
+    ) -> anyhow::Result<orchestration_runtime::execution_engine::WorkflowInternalHttpResponse> {
+        let ports = self.ports.get().ok_or_else(unavailable)?;
+        ports.mcp.execute_workflow_http(request).await
+    }
+
     async fn execute(
         &self,
         headers: HeaderMap,
@@ -214,6 +222,14 @@ impl CallableDispatchPort for WeakGenerationDispatch {
 }
 #[async_trait::async_trait]
 impl McpInterfaceDispatchPort for WeakGenerationDispatch {
+    async fn execute_workflow_http(
+        &self,
+        request: orchestration_runtime::execution_engine::WorkflowInternalHttpRequest,
+    ) -> anyhow::Result<orchestration_runtime::execution_engine::WorkflowInternalHttpResponse> {
+        let owner = self.0.upgrade().ok_or_else(unavailable)?;
+        owner.execute_workflow_http(request).await
+    }
+
     async fn execute(
         &self,
         headers: HeaderMap,
