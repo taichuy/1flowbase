@@ -148,14 +148,15 @@ impl PluginInterfaceAdapter {
         actor: &domain::ActorContext,
         operation: &'static str,
     ) -> crate::app_state::ApiPluginManagementService {
-        PluginManagementService::new(
-            self.0.store.for_actor(actor.clone()),
-            ApiProviderRuntime::new(self.0.provider_runtime.clone()),
-            self.0.official_plugin_source.clone(),
-            self.0.provider_install_root.clone(),
+        api_host_kernel::plugin_execution::with_managed_activation(
+            PluginManagementService::new(
+                self.0.store.for_actor(actor.clone()),
+                ApiProviderRuntime::new(self.0.provider_runtime.clone()),
+                self.0.official_plugin_source.clone(),
+                self.0.provider_install_root.clone(),
+            )
+            .with_node_id(self.0.api_node_id.clone()),
         )
-        .with_node_id(self.0.api_node_id.clone())
-        .with_managed_activation()
         .with_allow_uploaded_host_extensions(self.0.allow_uploaded_host_extensions)
         .with_model_routing_cache_store(self.0.cache_store.clone())
         .for_plugin_console_operation(
@@ -170,14 +171,15 @@ impl PluginInterfaceAdapter {
         actor: &domain::ActorContext,
         operation: &'static str,
     ) -> crate::app_state::ApiPluginManagementService {
-        PluginManagementService::new(
-            self.0.store.for_actor(actor.clone()),
-            ApiProviderRuntime::new(self.0.provider_runtime.clone()),
-            self.0.official_plugin_source.clone(),
-            self.0.provider_install_root.clone(),
+        api_host_kernel::plugin_execution::with_managed_activation(
+            PluginManagementService::new(
+                self.0.store.for_actor(actor.clone()),
+                ApiProviderRuntime::new(self.0.provider_runtime.clone()),
+                self.0.official_plugin_source.clone(),
+                self.0.provider_install_root.clone(),
+            )
+            .with_node_id(self.0.api_node_id.clone()),
         )
-        .with_node_id(self.0.api_node_id.clone())
-        .with_managed_activation()
         .with_allow_uploaded_host_extensions(self.0.allow_uploaded_host_extensions)
         .with_model_routing_cache_store(self.0.cache_store.clone())
         .for_model_provider_console_operation(operation)
@@ -302,13 +304,14 @@ impl PluginInterfaceAdapter {
                 ))
             }
             PluginInterfaceInput::InstallPath(body) => {
-                let result = self
-                    .service(actor, "plugins.install")
-                    .install_plugin(InstallPluginCommand {
+                let result = api_host_kernel::plugin_execution::install_plugin(
+                    &self.service(actor, "plugins.install"),
+                    InstallPluginCommand {
                         actor_user_id: actor.user_id,
                         package_root: body.package_root,
-                    })
-                    .await?;
+                    },
+                )
+                .await?;
                 Ok(PluginInterfaceOutput::Installed(to_install_response(
                     result,
                 )?))
@@ -317,14 +320,15 @@ impl PluginInterfaceAdapter {
                 file_name,
                 package_bytes,
             } => {
-                let result = self
-                    .service(actor, "plugins.install.upload")
-                    .install_uploaded_plugin(InstallUploadedPluginCommand {
+                let result = api_host_kernel::plugin_execution::install_uploaded_plugin(
+                    &self.service(actor, "plugins.install.upload"),
+                    InstallUploadedPluginCommand {
                         actor_user_id: actor.user_id,
                         file_name,
                         package_bytes,
-                    })
-                    .await?;
+                    },
+                )
+                .await?;
                 Ok(PluginInterfaceOutput::Installed(to_install_response(
                     result,
                 )?))
@@ -337,10 +341,11 @@ impl PluginInterfaceAdapter {
                     body,
                 )
                 .await?;
-                let result = self
-                    .service(actor, "plugins.install.official")
-                    .install_resolved_official_plugin(command)
-                    .await?;
+                let result = api_host_kernel::plugin_execution::install_resolved_official_plugin(
+                    &self.service(actor, "plugins.install.official"),
+                    command,
+                )
+                .await?;
                 Ok(PluginInterfaceOutput::Installed(to_install_response(
                     result,
                 )?))
@@ -357,22 +362,26 @@ impl PluginInterfaceAdapter {
             ),
             PluginInterfaceInput::RefreshArtifact { installation_id } => Ok(
                 PluginInterfaceOutput::Artifact(to_artifact_instance_response(
-                    self.service(actor, "plugins.artifact.refresh")
-                        .refresh_current_node_artifact(RefreshCurrentNodePluginArtifactCommand {
+                    api_host_kernel::plugin_execution::refresh_current_node_artifact(
+                        &self.service(actor, "plugins.artifact.refresh"),
+                        RefreshCurrentNodePluginArtifactCommand {
                             actor_user_id: actor.user_id,
                             installation_id: parse_uuid(&installation_id, "installation_id")?,
-                        })
-                        .await?,
+                        },
+                    )
+                    .await?,
                 )?),
             ),
             PluginInterfaceInput::InstallArtifact { installation_id } => Ok(
                 PluginInterfaceOutput::Artifact(to_artifact_instance_response(
-                    self.service(actor, "plugins.artifact.install")
-                        .install_current_node_artifact(InstallCurrentNodePluginArtifactCommand {
+                    api_host_kernel::plugin_execution::install_current_node_artifact(
+                        &self.service(actor, "plugins.artifact.install"),
+                        InstallCurrentNodePluginArtifactCommand {
                             actor_user_id: actor.user_id,
                             installation_id: parse_uuid(&installation_id, "installation_id")?,
-                        })
-                        .await?,
+                        },
+                    )
+                    .await?,
                 )?),
             ),
             PluginInterfaceInput::UpgradeLatest {
@@ -383,15 +392,16 @@ impl PluginInterfaceAdapter {
                     to_compatibility_override(body.compatibility_override.clone())
                 });
                 let risk_override = body.and_then(|body| to_risk_override(body.risk_override));
-                let task = self
-                    .service(actor, "plugins.families.upgrade")
-                    .upgrade_latest(UpgradeLatestPluginFamilyCommand {
+                let task = api_host_kernel::plugin_execution::upgrade_latest(
+                    &self.service(actor, "plugins.families.upgrade"),
+                    UpgradeLatestPluginFamilyCommand {
                         actor_user_id: actor.user_id,
                         provider_code,
                         compatibility_override,
                         risk_override,
-                    })
-                    .await?;
+                    },
+                )
+                .await?;
                 Ok(PluginInterfaceOutput::Task(to_task_response(task)?))
             }
             PluginInterfaceInput::SwitchVersion {
@@ -400,13 +410,15 @@ impl PluginInterfaceAdapter {
             } => {
                 let installation_id = parse_uuid(&body.installation_id, "installation_id")?;
                 Ok(PluginInterfaceOutput::Task(to_task_response(
-                    self.service(actor, "plugins.families.switch")
-                        .switch_version(SwitchPluginVersionCommand {
+                    api_host_kernel::plugin_execution::switch_version(
+                        &self.service(actor, "plugins.families.switch"),
+                        SwitchPluginVersionCommand {
                             actor_user_id: actor.user_id,
                             provider_code,
                             target_installation_id: installation_id,
-                        })
-                        .await?,
+                        },
+                    )
+                    .await?,
                 )?))
             }
             PluginInterfaceInput::DeleteFamily { provider_code } => {
@@ -421,22 +433,26 @@ impl PluginInterfaceAdapter {
             }
             PluginInterfaceInput::Enable { installation_id } => {
                 Ok(PluginInterfaceOutput::Task(to_task_response(
-                    self.service(actor, "plugins.enable")
-                        .enable_plugin(EnablePluginCommand {
+                    api_host_kernel::plugin_execution::enable_plugin(
+                        &self.service(actor, "plugins.enable"),
+                        EnablePluginCommand {
                             actor_user_id: actor.user_id,
                             installation_id: parse_uuid(&installation_id, "installation_id")?,
-                        })
-                        .await?,
+                        },
+                    )
+                    .await?,
                 )?))
             }
             PluginInterfaceInput::Assign { installation_id } => {
                 Ok(PluginInterfaceOutput::Task(to_task_response(
-                    self.service(actor, "plugins.assign")
-                        .assign_plugin(AssignPluginCommand {
+                    api_host_kernel::plugin_execution::assign_plugin(
+                        &self.service(actor, "plugins.assign"),
+                        AssignPluginCommand {
                             actor_user_id: actor.user_id,
                             installation_id: parse_uuid(&installation_id, "installation_id")?,
-                        })
-                        .await?,
+                        },
+                    )
+                    .await?,
                 )?))
             }
             PluginInterfaceInput::ListTasks => Ok(PluginInterfaceOutput::Tasks(
@@ -575,10 +591,11 @@ impl PluginInterfaceAdapter {
                     body,
                 )
                 .await?;
-                let result = self
-                    .model_service(actor, "model_provider_plugins.install.official")
-                    .install_resolved_official_plugin(command)
-                    .await?;
+                let result = api_host_kernel::plugin_execution::install_resolved_official_plugin(
+                    &self.model_service(actor, "model_provider_plugins.install.official"),
+                    command,
+                )
+                .await?;
                 Ok(PluginInterfaceOutput::Installed(to_install_response(
                     result,
                 )?))
@@ -587,36 +604,41 @@ impl PluginInterfaceAdapter {
                 file_name,
                 package_bytes,
             } => {
-                let result = self
-                    .model_service(actor, "model_provider_plugins.install.upload")
-                    .install_uploaded_model_provider(InstallUploadedPluginCommand {
+                let result = api_host_kernel::plugin_execution::install_uploaded_model_provider(
+                    &self.model_service(actor, "model_provider_plugins.install.upload"),
+                    InstallUploadedPluginCommand {
                         actor_user_id: actor.user_id,
                         file_name,
                         package_bytes,
-                    })
-                    .await?;
+                    },
+                )
+                .await?;
                 Ok(PluginInterfaceOutput::Installed(to_install_response(
                     result,
                 )?))
             }
             PluginInterfaceInput::ModelRefreshArtifact { installation_id } => Ok(
                 PluginInterfaceOutput::Artifact(to_artifact_instance_response(
-                    self.model_service(actor, "model_provider_plugins.artifact.refresh")
-                        .refresh_current_node_artifact(RefreshCurrentNodePluginArtifactCommand {
+                    api_host_kernel::plugin_execution::refresh_current_node_artifact(
+                        &self.model_service(actor, "model_provider_plugins.artifact.refresh"),
+                        RefreshCurrentNodePluginArtifactCommand {
                             actor_user_id: actor.user_id,
                             installation_id: parse_uuid(&installation_id, "installation_id")?,
-                        })
-                        .await?,
+                        },
+                    )
+                    .await?,
                 )?),
             ),
             PluginInterfaceInput::ModelInstallArtifact { installation_id } => Ok(
                 PluginInterfaceOutput::Artifact(to_artifact_instance_response(
-                    self.model_service(actor, "model_provider_plugins.artifact.install")
-                        .install_current_node_artifact(InstallCurrentNodePluginArtifactCommand {
+                    api_host_kernel::plugin_execution::install_current_node_artifact(
+                        &self.model_service(actor, "model_provider_plugins.artifact.install"),
+                        InstallCurrentNodePluginArtifactCommand {
                             actor_user_id: actor.user_id,
                             installation_id: parse_uuid(&installation_id, "installation_id")?,
-                        })
-                        .await?,
+                        },
+                    )
+                    .await?,
                 )?),
             ),
             PluginInterfaceInput::ModelUpgradeLatest {
@@ -628,30 +650,31 @@ impl PluginInterfaceAdapter {
                 });
                 let risk_override = body.and_then(|body| to_risk_override(body.risk_override));
                 Ok(PluginInterfaceOutput::Task(to_task_response(
-                    self.model_service(actor, "model_provider_plugins.families.upgrade")
-                        .upgrade_latest(UpgradeLatestPluginFamilyCommand {
+                    api_host_kernel::plugin_execution::upgrade_latest(
+                        &self.model_service(actor, "model_provider_plugins.families.upgrade"),
+                        UpgradeLatestPluginFamilyCommand {
                             actor_user_id: actor.user_id,
                             provider_code,
                             compatibility_override,
                             risk_override,
-                        })
-                        .await?,
+                        },
+                    )
+                    .await?,
                 )?))
             }
             PluginInterfaceInput::ModelSwitchVersion {
                 provider_code,
                 body,
             } => Ok(PluginInterfaceOutput::Task(to_task_response(
-                self.model_service(actor, "model_provider_plugins.families.switch")
-                    .switch_version(SwitchPluginVersionCommand {
+                api_host_kernel::plugin_execution::switch_version(
+                    &self.model_service(actor, "model_provider_plugins.families.switch"),
+                    SwitchPluginVersionCommand {
                         actor_user_id: actor.user_id,
                         provider_code,
-                        target_installation_id: parse_uuid(
-                            &body.installation_id,
-                            "installation_id",
-                        )?,
-                    })
-                    .await?,
+                        target_installation_id: parse_uuid(&body.installation_id, "installation_id")?,
+                    },
+                )
+                .await?,
             )?)),
             PluginInterfaceInput::ModelDeleteFamily { provider_code } => {
                 Ok(PluginInterfaceOutput::Task(to_task_response(

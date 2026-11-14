@@ -341,15 +341,15 @@ impl ExtensionCenterAdapter {
                 .await?
                 {
                     if target.category == domain::ExtensionCategory::HostExtensions {
-                        service(&self.0, actor, "extension_center.installed.select")
-                            .switch_version(
-                                control_plane::plugin_management::SwitchPluginVersionCommand {
-                                    actor_user_id: actor.user_id,
-                                    provider_code: target.provider_code,
-                                    target_installation_id: installation_id,
-                                },
-                            )
-                            .await?;
+                        api_host_kernel::plugin_execution::switch_version(
+                            &service(&self.0, actor, "extension_center.installed.select"),
+                            control_plane::plugin_management::SwitchPluginVersionCommand {
+                                actor_user_id: actor.user_id,
+                                provider_code: target.provider_code,
+                                target_installation_id: installation_id,
+                            },
+                        )
+                        .await?;
                         let selected = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(&self.0.store,&self.0.api_node_id,installation_id).await?
                             .ok_or(control_plane::errors::ControlPlaneError::NotFound("extension_installation"))?;
                         let mut response = to_local_inventory_entry(selected)?;
@@ -379,15 +379,15 @@ impl ExtensionCenterAdapter {
                             .iter()
                             .any(|assignment| assignment.installation_id == installation_id)
                         {
-                            service(&self.0, actor, "extension_center.installed.select")
-                                .switch_version(
-                                    control_plane::plugin_management::SwitchPluginVersionCommand {
-                                        actor_user_id: actor.user_id,
-                                        provider_code: target.provider_code,
-                                        target_installation_id: installation_id,
-                                    },
-                                )
-                                .await?;
+                            api_host_kernel::plugin_execution::switch_version(
+                                &service(&self.0, actor, "extension_center.installed.select"),
+                                control_plane::plugin_management::SwitchPluginVersionCommand {
+                                    actor_user_id: actor.user_id,
+                                    provider_code: target.provider_code,
+                                    target_installation_id: installation_id,
+                                },
+                            )
+                            .await?;
                         }
                         let selected = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(&self.0.store, &self.0.api_node_id, installation_id).await?
                             .ok_or(control_plane::errors::ControlPlaneError::NotFound("extension_installation"))?;
@@ -418,12 +418,14 @@ impl ExtensionCenterAdapter {
                 let actor = actor.clone();
                 let task = tokio::spawn(async move {
                     let _operation = operation;
-                    service(&dependencies, &actor, "extension_center.installed.enable")
-                        .enable_plugin(EnablePluginCommand {
+                    api_host_kernel::plugin_execution::enable_plugin(
+                        &service(&dependencies, &actor, "extension_center.installed.enable"),
+                        EnablePluginCommand {
                             actor_user_id: actor.user_id,
                             installation_id,
-                        })
-                        .await
+                        },
+                    )
+                    .await
                 })
                 .await
                 .map_err(anyhow::Error::from)??;
@@ -432,12 +434,14 @@ impl ExtensionCenterAdapter {
             ExtensionCenterInput::Disable(installation_id) => {
                 let installation = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(&self.0.store, &self.0.api_node_id, installation_id).await?
                     .ok_or(control_plane::errors::ControlPlaneError::NotFound("extension_installation"))?;
-                let task = service(&self.0, actor, "extension_center.installed.disable")
-                    .disable_plugin(DisablePluginCommand {
+                let task = api_host_kernel::plugin_execution::disable_plugin(
+                    &service(&self.0, actor, "extension_center.installed.disable"),
+                    DisablePluginCommand {
                         actor_user_id: actor.user_id,
                         installation_id,
-                    })
-                    .await?;
+                    },
+                )
+                .await?;
                 retain_managed_schema(&self.0, actor.current_workspace_id, &installation.identity)
                     .await?;
                 Ok(ExtensionCenterOutput::Task(to_task_response(task)?))

@@ -323,26 +323,27 @@ pub(super) async fn app_and_runtime_host_from_config(
         network_egress_http_clients.as_ref().clone(),
         bootstrap_result.workspace_id,
     );
-    let plugin_management = control_plane::plugin_management::PluginManagementService::new(
-        store.clone(),
-        ApiProviderRuntime::new(provider_runtime.clone()),
-        official_plugin_source.clone(),
-        config.provider_install_root.clone(),
-    )
-    .with_node_id(config.api_node_id.clone())
-    .with_managed_activation()
-    .with_allow_uploaded_host_extensions(config.allow_uploaded_host_extensions);
-    plugin_management
-        .ensure_builtin_plugin(
-            control_plane::plugin_management::EnsureBuiltinPluginCommand {
-                actor_user_id: bootstrap_result.root_user_id,
-                package_root: builtin_frontstage_code_block_package_root()?
-                    .display()
-                    .to_string(),
-            },
+    let plugin_management = api_host_kernel::plugin_execution::with_managed_activation(
+        control_plane::plugin_management::PluginManagementService::new(
+            store.clone(),
+            ApiProviderRuntime::new(provider_runtime.clone()),
+            official_plugin_source.clone(),
+            config.provider_install_root.clone(),
         )
-        .await?;
-    plugin_management.reconcile_all_installations().await?;
+        .with_node_id(config.api_node_id.clone()),
+    )
+    .with_allow_uploaded_host_extensions(config.allow_uploaded_host_extensions);
+    api_host_kernel::plugin_execution::ensure_builtin_plugin(
+        &plugin_management,
+        control_plane::plugin_management::EnsureBuiltinPluginCommand {
+            actor_user_id: bootstrap_result.root_user_id,
+            package_root: builtin_frontstage_code_block_package_root()?
+                .display()
+                .to_string(),
+        },
+    )
+    .await?;
+    api_host_kernel::plugin_execution::reconcile_all_installations(&plugin_management).await?;
     intake_active_data_source_templates_at_startup(
         &store,
         &api_provider_runtime,

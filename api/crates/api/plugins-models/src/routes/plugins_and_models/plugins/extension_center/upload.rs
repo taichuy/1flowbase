@@ -422,15 +422,17 @@ pub(crate) async fn install_uploaded_artifact(
             false
         };
         let (managed_schema_preview, managed_schema_receipt) = if recover_managed_installation {
-            service(dependencies, actor, "extension_center.install.upload")
-                .install_extension_node_plugin(InstallExtensionNodePluginCommand {
+            api_host_kernel::plugin_execution::install_extension_node_plugin(
+                &service(dependencies, actor, "extension_center.install.upload"),
+                InstallExtensionNodePluginCommand {
                     actor_user_id,
                     category: artifact.category,
                     file_name: file_name.clone(),
                     package_bytes: artifact_bytes.clone(),
                     source_kind: "uploaded".to_string(),
-                })
-                .await?;
+                },
+            )
+            .await?;
             let prepared = prepare_managed_schema(
                 dependencies,
                 actor.current_workspace_id,
@@ -508,15 +510,17 @@ pub(crate) async fn install_uploaded_artifact(
     .await?;
     let managed_schema_preview = prepared_schema.as_ref().map(|prepared| prepared.preview());
     if artifact.node_plugin {
-        let installed = service(dependencies, actor, "extension_center.install.upload")
-            .install_extension_node_plugin(InstallExtensionNodePluginCommand {
+        let installed = api_host_kernel::plugin_execution::install_extension_node_plugin(
+            &service(dependencies, actor, "extension_center.install.upload"),
+            InstallExtensionNodePluginCommand {
                 actor_user_id,
                 category: artifact.category,
                 file_name,
                 package_bytes: artifact_bytes,
                 source_kind: "uploaded".to_string(),
-            })
-            .await?;
+            },
+        )
+        .await?;
         let installation = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(
             &dependencies.store,
             &dependencies.api_node_id,

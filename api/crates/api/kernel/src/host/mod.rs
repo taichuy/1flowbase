@@ -10,6 +10,8 @@ pub mod middleware;
 pub mod network;
 #[path = "notification_runtime/mod.rs"]
 pub mod notification_runtime;
+#[path = "plugin_execution.rs"]
+pub mod plugin_execution;
 #[path = "provider_runtime/mod.rs"]
 pub mod provider_runtime;
 #[path = "runtime_activity.rs"]

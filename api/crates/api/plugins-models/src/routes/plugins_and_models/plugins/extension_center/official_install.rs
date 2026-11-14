@@ -228,15 +228,17 @@ pub(super) async fn install_or_update_official_extension(
         acknowledged_warnings: value.acknowledged_warnings,
     });
     if is_node_plugin_category(category) && collector_descriptor.is_none() {
-        let installed = service(dependencies, actor, operation_id)
-            .install_extension_node_plugin(InstallExtensionNodePluginCommand {
+        let installed = api_host_kernel::plugin_execution::install_extension_node_plugin(
+            &service(dependencies, actor, operation_id),
+            InstallExtensionNodePluginCommand {
                 actor_user_id: actor.user_id,
                 category,
                 file_name: downloaded.file_name,
                 package_bytes: downloaded.artifact_bytes,
                 source_kind: source_kind.to_string(),
-            })
-            .await?;
+            },
+        )
+        .await?;
         let current = control_plane::ports::PluginRepository::list_assignments(
             &dependencies.store,
             actor.current_workspace_id,
@@ -262,24 +264,28 @@ pub(super) async fn install_or_update_official_extension(
                 .as_ref()
                 .is_some_and(|assignment| assignment.installation_id != installed.installation.id);
         if requires_model_provider_switch {
-            service(dependencies, actor, operation_id)
-                .switch_version(SwitchPluginVersionCommand {
+            api_host_kernel::plugin_execution::switch_version(
+                &service(dependencies, actor, operation_id),
+                SwitchPluginVersionCommand {
                     actor_user_id: actor.user_id,
                     provider_code: installed.installation.provider_code.clone(),
                     target_installation_id: installed.installation.id,
-                })
-                .await?;
+                },
+            )
+            .await?;
         } else if supports_assignment
             && current
                 .as_ref()
                 .is_none_or(|assignment| assignment.installation_id != installed.installation.id)
         {
-            service(dependencies, actor, operation_id)
-                .assign_plugin(AssignPluginCommand {
+            api_host_kernel::plugin_execution::assign_plugin(
+                &service(dependencies, actor, operation_id),
+                AssignPluginCommand {
                     actor_user_id: actor.user_id,
                     installation_id: installed.installation.id,
-                })
-                .await?;
+                },
+            )
+            .await?;
         }
         let installation = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(
             &dependencies.store,

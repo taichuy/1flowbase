@@ -205,14 +205,15 @@ fn service(
     actor: &domain::ActorContext,
     operation_id: &'static str,
 ) -> crate::app_state::ApiPluginManagementService {
-    control_plane::plugin_management::PluginManagementService::new(
-        dependencies.store.for_actor(actor.clone()),
-        crate::provider_runtime::ApiProviderRuntime::new(dependencies.provider_runtime.clone()),
-        dependencies.official_plugin_source.clone(),
-        dependencies.provider_install_root.clone(),
+    api_host_kernel::plugin_execution::with_managed_activation(
+        control_plane::plugin_management::PluginManagementService::new(
+            dependencies.store.for_actor(actor.clone()),
+            crate::provider_runtime::ApiProviderRuntime::new(dependencies.provider_runtime.clone()),
+            dependencies.official_plugin_source.clone(),
+            dependencies.provider_install_root.clone(),
+        )
+        .with_node_id(dependencies.api_node_id.clone()),
     )
-    .with_node_id(dependencies.api_node_id.clone())
-    .with_managed_activation()
     .with_allow_uploaded_host_extensions(dependencies.allow_uploaded_host_extensions)
     .with_model_routing_cache_store(dependencies.cache_store.clone())
     .for_extension_center_console_operation(operation_id)

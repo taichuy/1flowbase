@@ -36,14 +36,15 @@ impl TemplateDependencies {
         dependencies: &[PortablePluginDependency],
     ) -> anyhow::Result<()> {
         let repository = self.store.for_actor(actor.clone());
-        let service = PluginManagementService::new(
-            repository.clone(),
-            ApiProviderRuntime::new(self.provider_runtime.clone()),
-            self.official_plugin_source.clone(),
-            self.provider_install_root.clone(),
+        let service = api_host_kernel::plugin_execution::with_managed_activation(
+            PluginManagementService::new(
+                repository.clone(),
+                ApiProviderRuntime::new(self.provider_runtime.clone()),
+                self.official_plugin_source.clone(),
+                self.provider_install_root.clone(),
+            )
+            .with_node_id(self.api_node_id.clone()),
         )
-        .with_node_id(self.api_node_id.clone())
-        .with_managed_activation()
         .with_model_routing_cache_store(self.cache_store.clone());
         let mut resolved = BTreeSet::new();
         for dependency in dependencies {
@@ -67,12 +68,14 @@ impl TemplateDependencies {
                 {
                     return Err(ControlPlaneError::Conflict("template_plugin_verification").into());
                 }
-                service
-                    .install_current_node_artifact(InstallCurrentNodePluginArtifactCommand {
+                api_host_kernel::plugin_execution::install_current_node_artifact(
+                    &service,
+                    InstallCurrentNodePluginArtifactCommand {
                         actor_user_id: actor.user_id,
                         installation_id: installed.id,
-                    })
-                    .await?;
+                    },
+                )
+                .await?;
                 continue;
             }
             let mut matched = None;
@@ -156,8 +159,9 @@ impl TemplateDependencies {
             {
                 return Err(ControlPlaneError::Conflict("template_plugin_identity").into());
             }
-            service
-                .install_resolved_official_plugin(InstallResolvedOfficialPluginCommand {
+            api_host_kernel::plugin_execution::install_resolved_official_plugin(
+                &service,
+                InstallResolvedOfficialPluginCommand {
                     actor_user_id: actor.user_id,
                     plugin_id: dependency.plugin_id.clone(),
                     plugin_type,
@@ -168,8 +172,9 @@ impl TemplateDependencies {
                     expected_checksum: checksum,
                     compatibility_override: None,
                     risk_override: None,
-                })
-                .await?;
+                },
+            )
+            .await?;
         }
         Ok(())
     }
