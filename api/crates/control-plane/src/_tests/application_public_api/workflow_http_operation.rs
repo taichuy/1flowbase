@@ -23,6 +23,7 @@ async fn workflow_http_operation_runs_with_authenticated_user_api_key_principal(
         },
         output: ApplicationApiMappingOutput::default(),
         extension: Some(WorkflowExtensionApiConfig {
+            invoke_role_codes: Vec::new(),
             slug: "open-ticket".into(),
             method: WorkflowExtensionHttpMethod::Post,
             response_mode: WorkflowExtensionResponseMode::Async,

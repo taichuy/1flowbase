@@ -230,9 +230,21 @@ where
             .await
             .map_err(WorkflowExtensionRunError::Internal)?
             .ok_or(WorkflowExtensionRunError::ExtensionNotFound)?;
-        ensure_application_view_permission(&self.repository, actor, &application)
-            .await
-            .map_err(map_authorization_error)?;
+        let role_can_invoke = operation
+            .publication
+            .mapping_snapshot
+            .extension
+            .as_ref()
+            .is_some_and(|extension| {
+                extension
+                    .invoke_role_codes
+                    .contains(&actor.effective_display_role)
+            });
+        if !role_can_invoke {
+            ensure_application_view_permission(&self.repository, actor, &application)
+                .await
+                .map_err(map_authorization_error)?;
+        }
         if application.workflow_trigger_type != Some(domain::WorkflowTriggerType::Extension) {
             return Err(WorkflowExtensionRunError::TriggerTypeMismatch);
         }

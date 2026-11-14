@@ -119,6 +119,10 @@ pub struct WorkflowExtensionApiBody {
     pub method: WorkflowExtensionHttpMethodBody,
     /// sync waits for a result up to Workflow Start sync_timeout_ms; async returns an accepted run.
     pub response_mode: WorkflowExtensionResponseModeBody,
+    /// Additional active workspace roles allowed to invoke this workflow without application
+    /// management access. Takes effect in the published snapshot; does not grant data access.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub invoke_role_codes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
@@ -496,6 +500,7 @@ fn to_mapping_body(mapping: ApplicationApiMappingConfig) -> ApplicationApiMappin
 
 fn to_extension_config(body: WorkflowExtensionApiBody) -> WorkflowExtensionApiConfig {
     WorkflowExtensionApiConfig {
+        invoke_role_codes: body.invoke_role_codes,
         slug: body.slug,
         method: match body.method {
             WorkflowExtensionHttpMethodBody::Get => WorkflowExtensionHttpMethod::Get,
@@ -515,6 +520,7 @@ fn to_extension_config(body: WorkflowExtensionApiBody) -> WorkflowExtensionApiCo
 
 fn to_extension_body(config: WorkflowExtensionApiConfig) -> WorkflowExtensionApiBody {
     WorkflowExtensionApiBody {
+        invoke_role_codes: config.invoke_role_codes,
         slug: config.slug,
         method: match config.method {
             WorkflowExtensionHttpMethod::Get => WorkflowExtensionHttpMethodBody::Get,

@@ -348,6 +348,7 @@ mod workflow_operation_tests {
                 },
                 output: ApplicationApiMappingOutput::default(),
                 extension: Some(WorkflowExtensionApiConfig {
+                    invoke_role_codes: Vec::new(),
                     slug: "orders/{order_id}".into(),
                     method: WorkflowExtensionHttpMethod::Post,
                     response_mode: WorkflowExtensionResponseMode::Sync,

@@ -269,6 +269,7 @@ async fn published_workflow_is_compiled_and_draft_remains_independent() {
     let source_flow = Uuid::new_v4();
     let mut mapping = ApplicationApiMappingConfig::default_native();
     mapping.extension = Some(WorkflowExtensionApiConfig {
+        invoke_role_codes: Vec::new(),
         slug: "portable-workflow".into(),
         method: WorkflowExtensionHttpMethod::Get,
         response_mode: WorkflowExtensionResponseMode::Sync,
