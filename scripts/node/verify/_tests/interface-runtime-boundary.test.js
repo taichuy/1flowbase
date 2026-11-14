@@ -19,6 +19,16 @@ const { productionRustSources } = require('../../testing/contracts/rust-sources.
 let metadata;
 function workspaceMetadata() {
   if (!metadata) {
+    if (process.env.ONEFLOWBASE_DEPENDENCY_METADATA_DIR !== undefined) {
+      const result = spawnSync(process.execPath, [
+        path.join(repoRoot, 'scripts/node/compile-memory-audit/metadata-capture.js'),
+        '--read', '--api-dir', path.join(repoRoot, 'api'),
+        '--directory', process.env.ONEFLOWBASE_DEPENDENCY_METADATA_DIR, '--feature', 'default-no-deps',
+      ], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+      assert.equal(result.status, 0, result.stderr || result.error?.message);
+      metadata = JSON.parse(result.stdout);
+      return metadata;
+    }
     const result = spawnSync('cargo', [
       'metadata', '--no-deps', '--offline', '--locked', '--format-version=1',
       '--manifest-path', path.join(repoRoot, 'api/Cargo.toml'),

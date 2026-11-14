@@ -4,11 +4,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
+const NO_DEPS = 'default-no-deps';
 const JAVASCRIPT = 'runtime-extension-sdk/javascript';
 const GENERATOR = fs.realpathSync(__filename);
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 
 function featureName(feature) {
+  if (feature === NO_DEPS) return NO_DEPS;
   if (feature !== 'default' && feature !== JAVASCRIPT) {
     throw new Error(`Unsupported metadata feature: ${feature}`);
   }
@@ -16,6 +18,10 @@ function featureName(feature) {
 }
 
 function commandArgs(api, feature) {
+  if (feature === NO_DEPS) {
+    return ['metadata', '--no-deps', '--offline', '--locked', '--format-version=1',
+      '--manifest-path', path.join(api, 'Cargo.toml')];
+  }
   featureName(feature);
   return ['metadata', ...(feature === 'default' ? [] : ['--features', feature]),
     '--locked', '--offline', '--format-version', '1', '--manifest-path', path.join(api, 'Cargo.toml')];
@@ -92,6 +98,17 @@ function validateInputs(api, metadata, inputs) {
   });
 }
 
+function validateNoDeps(api, metadata, resolved) {
+  // This graph is Cargo's actual --no-deps output, never a filtered resolved graph.
+  const sorted = (values) => JSON.stringify([...values].sort());
+  if (metadata.workspace_root !== api || metadata.resolve !== null || !Array.isArray(metadata.packages) ||
+      !Array.isArray(metadata.workspace_members) ||
+      sorted(metadata.workspace_members) !== sorted(resolved.workspace_members) ||
+      sorted(metadata.packages.map((pkg) => pkg.id)) !== sorted(resolved.workspace_members)) {
+    throw new Error('Captured default-no-deps graph does not match the Cargo workspace');
+  }
+}
+
 function readCapturedMetadata({ apiDir, directory, feature = 'default' }) {
   const api = fs.realpathSync(apiDir);
   const name = featureName(feature);
@@ -112,7 +129,18 @@ function readCapturedMetadata({ apiDir, directory, feature = 'default' }) {
     throw new Error(`Captured metadata provenance mismatch for ${feature}`);
   }
   const metadata = JSON.parse(raw);
-  validateInputs(api, metadata, provenance.inputs);
+  if (feature === NO_DEPS) {
+    // The resolved graph supplies the local path manifest closure omitted by --no-deps.
+    const resolvedRaw = readCapturedMetadata({ apiDir: api, directory: capture, feature: 'default' });
+    if (provenance.localInputGraphSha256 !== sha256(resolvedRaw)) {
+      throw new Error('Captured default-no-deps input graph provenance mismatch');
+    }
+    const resolved = JSON.parse(resolvedRaw);
+    validateNoDeps(api, metadata, resolved);
+    validateInputs(api, resolved, provenance.inputs);
+  } else {
+    validateInputs(api, metadata, provenance.inputs);
+  }
   // Reject a capture replaced while the reader was validating its provenance.
   if (!fs.readFileSync(path.join(capture, `${name}.receipt.json`)).equals(provenanceBytes)) {
     throw new Error('Capture provenance changed during validation');
@@ -127,7 +155,7 @@ function captureMetadata({ apiDir, directory }) {
   // A new exclusive directory prevents stale or partially overwritten graphs.
   fs.mkdirSync(directory, { recursive: false });
   const receipts = [];
-  for (const feature of ['default', JAVASCRIPT]) {
+  for (const feature of ['default', JAVASCRIPT, NO_DEPS]) {
     assertNoCargo();
     // Also compare all inputs from the previous graph before starting Cargo.
     for (const previous of receipts) {
@@ -144,16 +172,19 @@ function captureMetadata({ apiDir, directory }) {
       throw new Error(`cargo metadata ${feature} failed: ${result.error || result.stderr?.toString()}`);
     }
     const metadata = JSON.parse(result.stdout);
+    const inputMetadata = feature === NO_DEPS ? receipts[0].metadata : metadata;
+    if (feature === NO_DEPS) validateNoDeps(api, metadata, inputMetadata);
     const receipt = { version: 1, feature, workspaceRoot: api, ...identity,
-      metadataSha256: sha256(result.stdout), inputs: inputSnapshot(api, metadata),
+      metadataSha256: sha256(result.stdout), inputs: inputSnapshot(api, inputMetadata),
+      ...(feature === NO_DEPS ? { localInputGraphSha256: receipts[0].receipt.metadataSha256 } : {}),
       command: { executable: 'cargo', args, cwd: api, pid: result.pid, status: result.status, startedAt, finishedAt, admission } };
     fs.writeFileSync(path.join(directory, `${name}.metadata.json`), result.stdout);
     fs.writeFileSync(path.join(directory, `${name}.receipt.json`), `${JSON.stringify(receipt, null, 2)}\n`);
-    receipts.push({ metadata, receipt });
+    receipts.push({ metadata: inputMetadata, receipt });
   }
   // Fail capture if source revision or any captured manifest moved mid-command.
   if (JSON.stringify(sourceIdentity(api)) !== JSON.stringify(identity)) throw new Error('Source changed during capture');
-  for (const feature of ['default', JAVASCRIPT]) readCapturedMetadata({ apiDir: api, directory, feature });
+  for (const feature of ['default', JAVASCRIPT, NO_DEPS]) readCapturedMetadata({ apiDir: api, directory, feature });
 }
 
 function parseArgs(args) {
@@ -186,4 +217,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { JAVASCRIPT, commandArgs, parseArgs, captureMetadata, readCapturedMetadata };
+module.exports = { NO_DEPS, JAVASCRIPT, commandArgs, parseArgs, captureMetadata, readCapturedMetadata };
