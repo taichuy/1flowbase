@@ -13,7 +13,7 @@
       "method": "GET",
       "path": "/api/console/applications/{id}/logs/runs",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads.rs",
+        "file": "api/crates/api/applications/src/routes/applications/application_runtime/interface_runtime_reads.rs",
         "functionName": "list_runs"
       },
       "repository": {
@@ -22,11 +22,11 @@
       },
       "extraSources": [
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/log_handlers.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/handlers/log_handlers.rs",
           "functionName": "list_application_runs"
         },
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/response_projection/summary_responses.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/response_projection/summary_responses.rs",
           "functionName": "application_runs_created_after"
         },
         {
@@ -76,7 +76,7 @@
       "method": "GET",
       "path": "/api/console/applications/{id}/monitoring/run-metrics",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads.rs",
+        "file": "api/crates/api/applications/src/routes/applications/application_runtime/interface_runtime_reads.rs",
         "functionName": "monitoring_report"
       },
       "repository": {
@@ -85,7 +85,7 @@
       },
       "extraSources": [
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/application_monitoring.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/application_monitoring.rs",
           "functionName": "get_application_run_monitoring_report"
         },
         {
@@ -98,11 +98,11 @@
           "functionName": "application_run_monitoring_ranked_runs"
         },
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/application_monitoring.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/application_monitoring.rs",
           "functionName": "default_started_from"
         },
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/application_monitoring.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/application_monitoring.rs",
           "functionName": "monitoring_time_range_days"
         },
         {
@@ -159,7 +159,7 @@
       "method": "GET",
       "path": "/api/console/applications/{id}/logs/conversations/{conversation_id}/messages",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads.rs",
+        "file": "api/crates/api/applications/src/routes/applications/application_runtime/interface_runtime_reads.rs",
         "functionName": "conversation_messages"
       },
       "repository": {
@@ -168,7 +168,7 @@
       },
       "extraSources": [
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/log_handlers.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/handlers/log_handlers.rs",
           "functionName": "list_application_conversation_messages"
         }
       ],
@@ -215,7 +215,7 @@
       "method": "GET",
       "path": "/api/console/applications/{id}/logs/runs/{run_id}/trace-tree",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads.rs",
+        "file": "api/crates/api/applications/src/routes/applications/application_runtime/interface_runtime_reads.rs",
         "functionName": "trace_tree"
       },
       "repository": {
@@ -224,11 +224,11 @@
       },
       "extraSources": [
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/log_handlers.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/handlers/log_handlers.rs",
           "functionName": "get_application_run_trace_tree"
         },
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/log_handlers/trace_projection_payloads.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/handlers/log_handlers/trace_projection_payloads.rs",
           "functionName": "application_run_trace_children_page_size"
         }
       ],
@@ -280,7 +280,7 @@
       "method": "GET",
       "path": "/api/console/applications/{id}/logs/runs/{run_id}/trace-tree/nodes",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/log_handlers.rs",
+        "file": "api/crates/api/applications/src/routes/applications/application_runtime/handlers/log_handlers.rs",
         "functionName": "get_application_run_trace_node_children"
       },
       "repository": {
@@ -289,11 +289,11 @@
       },
       "extraSources": [
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/log_handlers/trace_projection_payloads.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/handlers/log_handlers/trace_projection_payloads.rs",
           "functionName": "application_run_trace_children_page_size"
         },
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/interface_runtime_reads.rs",
           "functionName": "trace_children"
         }
       ],
@@ -343,7 +343,7 @@
       "method": "GET",
       "path": "/api/console/applications/{id}/logs/runs/{run_id}/debug-stream",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads.rs",
+        "file": "api/crates/api/applications/src/routes/applications/application_runtime/interface_runtime_reads.rs",
         "functionName": "runtime_debug_stream"
       },
       "repository": {
@@ -352,15 +352,15 @@
       },
       "extraSources": [
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/log_handlers.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/handlers/log_handlers.rs",
           "functionName": "get_runtime_debug_stream"
         },
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/debug_handlers.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/handlers/debug_handlers.rs",
           "functionName": "debug_run_stream_from_sequence"
         },
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/log_handlers.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/handlers/log_handlers.rs",
           "functionName": "runtime_debug_stream_page_size"
         }
       ],
@@ -410,7 +410,7 @@
       "method": "GET",
       "path": "/api/console/applications/{id}/orchestration/runs/{run_id}/debug-stream",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/debug_handlers.rs",
+        "file": "api/crates/api/applications/src/routes/applications/application_runtime/handlers/debug_handlers.rs",
         "functionName": "subscribe_flow_debug_run_stream"
       },
       "repository": {
@@ -419,11 +419,11 @@
       },
       "extraSources": [
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/interface_debug_commands.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/interface_debug_commands.rs",
           "functionName": "subscribe_stream"
         },
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/debug_handlers.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/handlers/debug_handlers.rs",
           "functionName": "debug_run_stream_from_sequence"
         }
       ],
@@ -523,7 +523,7 @@
       "method": "POST",
       "path": "/api/console/applications/{id}/orchestration/debug-artifacts/resolve",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/interface_debug_artifacts.rs",
+        "file": "api/crates/api/applications/src/routes/applications/application_runtime/interface_debug_artifacts.rs",
         "functionName": "execute_inner"
       },
       "repository": {
@@ -532,7 +532,7 @@
       },
       "extraSources": [
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/debug_handlers.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/handlers/debug_handlers.rs",
           "functionName": "resolve_runtime_debug_artifacts"
         }
       ],
@@ -583,7 +583,7 @@
       "method": "GET",
       "path": "/api/console/applications/{id}/orchestration/debug-artifacts/{artifact_id}",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/handlers/debug_handlers.rs",
+        "file": "api/crates/api/applications/src/routes/applications/application_runtime/handlers/debug_handlers.rs",
         "functionName": "get_runtime_debug_artifact"
       },
       "repository": {
@@ -635,7 +635,7 @@
       },
       "extraSources": [
         {
-          "file": "api/apps/api-server/src/routes/applications/application_runtime/interface_debug_artifacts.rs",
+          "file": "api/crates/api/applications/src/routes/applications/application_runtime/interface_debug_artifacts.rs",
           "functionName": "execute_inner"
         }
       ]

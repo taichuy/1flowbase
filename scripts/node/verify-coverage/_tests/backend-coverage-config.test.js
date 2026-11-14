@@ -176,4 +176,17 @@ test('ordinary API coverage selects existing owners and weights the original 60 
   ]);
   files[2].summary.lines.covered = 10;
   assert.deepEqual(collectBackendCoverageFailures(summaries, ['api-server']), []);
+  const manifest = path.join(root, 'api/crates/api/applications/Cargo.toml');
+  fs.mkdirSync(path.dirname(manifest), { recursive: true });
+  fs.writeFileSync(manifest, '[package]\n');
+  const [withApplications] = buildBackendCommands({ repoRoot: root, cargoParallelism: 2, cargoTestThreads: 2, backendKeys: ['api-server'] });
+  assert.deepEqual(withApplications.args.flatMap((arg, i, args) => arg === '--package' ? [args[i + 1]] : []),
+    ['api-server', 'api-host-kernel', 'api-public-gateway', 'api-applications']);
+  files[2].filename = '/repo/api/crates/api/applications/src/lib.rs';
+  files[2].summary.lines.covered = 0;
+  assert.deepEqual(collectBackendCoverageFailures(summaries, ['api-server']), [
+    { key: 'api-server', metric: 'lines', expectedPct: 60, actualPct: 50 },
+  ]);
+  files[2].summary.lines.covered = 10;
+  assert.deepEqual(collectBackendCoverageFailures(summaries, ['api-server']), []);
 });

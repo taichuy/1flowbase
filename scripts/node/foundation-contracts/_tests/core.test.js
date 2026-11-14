@@ -89,7 +89,7 @@ test('routes real native transport and replay owners without widening the AI fas
     'api/crates/api/public-gateway/src/routes/application_public_api/sse.rs',
     'api/crates/api/public-gateway/src/routes/application_public_api/stream_terminal_fallback.rs',
     'api/crates/api/public-gateway/src/routes/application_public_api/stream_terminal_fallback/cold_replay.rs',
-    'api/apps/api-server/src/routes/applications/debug_run_stream.rs',
+    'api/crates/api/applications/src/routes/applications/debug_run_stream.rs',
     'api/crates/api/kernel/src/host/host_infrastructure/local_runtime_event_stream.rs',
     'api/crates/api/kernel/src/host/provider_runtime/transport_session_lifecycle.rs',
     'api/crates/api/kernel/src/host/provider_runtime/_tests/transport_session_lifecycle/dispatch_settlement.rs',
@@ -299,4 +299,18 @@ test('shared contract routing does not select documentation or unrelated modules
     'api/crates/interface-runtime/src/i18n/en_US.json',
     'web/app/src/features/frontstage/styles.css',
   ]) assert.deepEqual(buildFoundationPlan({ changedFiles: [file] }).selectedFoundations, [], file);
+});
+
+
+test('the moved binary schema marker keeps its application backend foundation without widening shared siblings', () => {
+  const repoRoot = path.resolve(__dirname, '../../../..');
+  for (const changedFile of [
+    'api/apps/api-server/src/openapi/mod.rs',
+    'api/crates/api/kernel/src/slices/openapi/binary_body.rs',
+  ]) {
+    assert.equal(fs.existsSync(path.join(repoRoot, changedFile)), true);
+    assert.deepEqual(buildFoundationPlan({ changedFiles: [changedFile] }).selectedFoundations, ['application-backend'], changedFile);
+  }
+  assert.deepEqual(buildFoundationPlan({ changedFiles: ['api/crates/api/kernel/src/contracts/application_runtime_shared/plugin_risk.rs'] }).selectedFoundations, []);
+  assert.deepEqual(buildFoundationPlan({ changedFiles: ['api/apps/api-server/src/routes/applications/debug_run_stream.rs'] }).selectedFoundations, ['ai-gateway']);
 });

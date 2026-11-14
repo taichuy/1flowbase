@@ -47,6 +47,7 @@ test('workspace inventory rejects a new unassigned member and stale package targ
 
 test('API app checks and every hash shard select all actual API owners', () => {
   const packages = require('../../testing/contracts/api-source-owners.js').apiSourceOwners(repoRoot).map((owner) => owner.packageName);
+  assert.ok(packages.includes('api-applications'), 'Applications must be selected after its manifest is integrated');
   for (const shard of ['apps', ...Array.from({ length: 4 }, (_, index) => `api-server-${index + 1}-of-4`)]) {
     const [command] = buildBackendCommands({ repoRoot, cargoJobs: 2, cargoTestThreads: 2, target: shard === 'apps' ? 'clippy' : 'test', shard });
     const selected = command.args.filter((_arg, index) => command.args[index - 1] === '--package');

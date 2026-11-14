@@ -301,4 +301,17 @@ test('all existing API owners share list/run/cleanup selection and the original 
   assert.throws(() => validateCoverageSummary(summary), /50\.00% is below 60\.00%/u);
   summary.data[0].files[2].summary.lines.covered = 10;
   assert.equal(validateCoverageSummary(summary).lineCoveragePercent, 60);
+  const manifest = path.join(root, 'api/crates/api/applications/Cargo.toml');
+  fs.mkdirSync(path.dirname(manifest), { recursive: true });
+  fs.writeFileSync(manifest, '[package]\n');
+  for (const command of buildApiServerShardCommands({ repoRoot: root, shardIndex: 1, shardCount: 2, cargoTestThreads: 2 }).slice(1)) {
+    assert.deepEqual(command.args.flatMap((arg, i, args) => arg === '--package' ? [args[i + 1]] : []),
+      ['api-server', 'api-host-kernel', 'api-public-gateway', 'api-applications']);
+    assert.equal(command.args.includes('api-mcp'), false);
+  }
+  summary.data[0].files[2].filename = '/repo/api/crates/api/applications/src/lib.rs';
+  summary.data[0].files[2].summary.lines.covered = 0;
+  assert.throws(() => validateCoverageSummary(summary), /50\.00% is below 60\.00%/u);
+  summary.data[0].files[2].summary.lines.covered = 10;
+  assert.equal(validateCoverageSummary(summary).lineCoveragePercent, 60);
 });

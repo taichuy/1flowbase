@@ -87,7 +87,7 @@ test('edition and explicit root must match the trusted workspace shape', (t) => 
 
 test('format explicitly includes moved owner macros and tests without requiring future crates', (t) => {
   const f = fixture(t);
-  for (const owner of ['kernel', 'public-gateway']) {
+  for (const owner of ['kernel', 'public-gateway', 'applications']) {
     f.write(`api/crates/api/${owner}/Cargo.toml`, '[package]\n');
     f.files.push(f.write(`api/crates/api/${owner}/src/lib.rs`, 'pub fn item() {}\n'));
     f.files.push(f.write(`api/crates/api/${owner}/src/_tests/macro_leaf.rs`, '#[test] fn leaf() {}\n'));

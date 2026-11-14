@@ -87,7 +87,7 @@ test('main reads staged changes from env override and never blocks the commit', 
     env: {
       GATE_ROUTER_CHANGED_FILES: [
         'web/app/src/components/Toolbar.tsx',
-        'api/apps/api-server/src/routes/applications.rs',
+        'api/crates/api/applications/src/routes/applications/applications.rs',
       ].join('\n'),
     },
     writeStdout(text) {
@@ -177,9 +177,10 @@ test('state protocol owner and wrapper changes route independently, unrelated ve
   assert(!routeChangedFiles(['scripts/node/verify/coverage.js']).some((route) => route.scope === 'state-protocols'));
 });
 
-test('current Kernel and Gateway changes select the API apps check owner', () => {
+test('current Kernel, Gateway and Applications changes select the API apps check owner', () => {
   for (const file of [
     'api/crates/api/kernel/src/contracts/app_state.rs',
+    'api/crates/api/applications/src/routes/applications/application_runtime.rs',
     'api/crates/api/public-gateway/src/routes/application_public_api/native.rs',
   ]) {
     assert.deepEqual(routeChangedFiles([file]).filter((route) => route.scope.startsWith('repo-backend-check-'))

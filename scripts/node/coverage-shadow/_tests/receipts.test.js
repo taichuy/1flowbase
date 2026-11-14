@@ -112,7 +112,7 @@ test('metadata rejects missing or wrong package, partition, SHA, execution, inve
     assert.throws(() => validateShardMetadata({ ...options, metadata: incomplete }), /coverage shard/u, field);
   }
   for (const patch of [
-    { package: 'control-plane' }, { packages: ['api-server', 'api-host-kernel'] }, { partition: 'hash:2/4' }, { sha: 'old-sha' },
+    { package: 'control-plane' }, { packages: ['api-server', 'api-host-kernel'] }, { packages: ['api-server', 'api-applications'] }, { partition: 'hash:2/4' }, { sha: 'old-sha' },
     { testCount: 0 }, { testCount: 2 }, { ignoredCount: 0 },
     { exitCode: 1 }, { passedCount: 0 }, { passedCount: 2 }, { failedCount: 1 },
     { profileCount: 0 }, { profileCount: 2 },
@@ -237,10 +237,10 @@ test('API coverage cannot pass with an empty or malformed owned line denominator
   }
 });
 
-test('merge applies the same owner selection and stale-source rejection to Kernel and Gateway', (t) => {
-  for (const owner of ['kernel', 'public-gateway']) {
+test('merge applies the same owner selection and stale-source rejection to Kernel, Gateway and Applications', (t) => {
+  for (const owner of ['kernel', 'public-gateway', 'applications']) {
     const { repoRoot, directory } = prepareMerge(t);
-    const packageName = owner === 'kernel' ? 'api-host-kernel' : 'api-public-gateway';
+    const packageName = owner === 'kernel' ? 'api-host-kernel' : `api-${owner}`;
     const manifest = path.join(repoRoot, 'api/crates/api', owner, 'Cargo.toml');
     fs.mkdirSync(path.dirname(manifest), { recursive: true });
     fs.writeFileSync(manifest, '[package]\n');
@@ -263,4 +263,36 @@ test('merge applies the same owner selection and stale-source rejection to Kerne
       },
     }), /sources absent from the candidate/u);
   }
+});
+
+
+test('Applications shard provenance merges only with its exact current package identity and live source', (t) => {
+  const { repoRoot, root, directory, finalPath } = prepareMerge(t);
+  const sources = ['api/apps/api-server/src/lib.rs', 'api/crates/api/applications/src/lib.rs'];
+  for (const file of sources) {
+    fs.mkdirSync(path.dirname(path.join(repoRoot, file)), { recursive: true });
+    fs.writeFileSync(path.join(repoRoot, file), 'pub fn live() {}\n');
+  }
+  fs.writeFileSync(path.join(repoRoot, 'api/crates/api/applications/Cargo.toml'), '[package]\n');
+  for (let index = 1; index <= 4; index += 1) {
+    fs.writeFileSync(path.join(directory, `metadata-${index}.json`), JSON.stringify({ ...metadata(index), packages: ['api-server', 'api-applications'] }));
+  }
+  const value = summary();
+  value.data[0].files.push({ filename: '/repo/api/crates/api/applications/src/lib.rs', summary: { lines: { count: 10, covered: 8 } } });
+  mergeApiServerShadow({
+    repoRoot, shardCount: 4, env: { QUALITY_GATE_TARGET_SHA: sha },
+    spawnSyncImpl(_command, args) {
+      if (args[1] === 'show-env') return { status: 0, stdout: llvmEnvironment };
+      assert.deepEqual(args.filter((_arg, index) => args[index - 1] === '--package' || _arg === '--package'), ['--package', 'api-server', '--package', 'api-applications']);
+      if (args[0] === 'clean') return { status: 0, stdout: '' };
+      if (args[1] === 'list') return { status: 0, stdout: JSON.stringify(inventory(['1', '2', '3', '4'], ['later'])) };
+      fs.writeFileSync(args.at(-1), JSON.stringify(value));
+      return { status: 0 };
+    },
+  });
+  const evidence = JSON.parse(fs.readFileSync(path.join(root, 'equivalence.json'), 'utf8'));
+  assert.equal(evidence.sha, sha);
+  assert.equal(evidence.coverage.lineCoveragePercent, 80);
+  assert.equal(evidence.shards.every((shard) => JSON.stringify(shard.packages) === JSON.stringify(['api-server', 'api-applications'])), true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(finalPath, 'utf8')), value);
 });
