@@ -153,3 +153,14 @@ mod tests;
 #[cfg(test)]
 #[path = "_tests/spool_event.rs"]
 mod event_tests;
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "_tests/support/spool_event.rs"]
+mod event_support;
+
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use event_support::{
+    failed_event_decode_retains_file_ownership_position_and_original_bytes,
+    positioned_event_reads_preserve_an_arbitrary_existing_http_cursor,
+};

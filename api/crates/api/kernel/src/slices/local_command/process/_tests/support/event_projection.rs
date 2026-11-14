@@ -1,6 +1,6 @@
 use super::*;
-#[test]
-fn event_output_reads_are_exact_repeatable_and_do_not_move_http_spool_cursors() {
+#[doc(hidden)]
+pub fn event_output_reads_are_exact_repeatable_and_do_not_move_http_spool_cursors() {
     let stdout = "quoted \"text\"\nUnicode 文\n".repeat(10000);
     let stderr = "error\t\\trail\r\n".repeat(4000);
     let completed = CompletedCommand {

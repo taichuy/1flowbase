@@ -223,3 +223,17 @@ mod tests;
 #[cfg(test)]
 #[path = "_tests/event_projection.rs"]
 mod event_projection_tests;
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "_tests/support/event_projection.rs"]
+mod event_projection_support;
+
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use event_projection_support::event_output_reads_are_exact_repeatable_and_do_not_move_http_spool_cursors;
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use spool::{
+    failed_event_decode_retains_file_ownership_position_and_original_bytes,
+    positioned_event_reads_preserve_an_arbitrary_existing_http_cursor,
+};

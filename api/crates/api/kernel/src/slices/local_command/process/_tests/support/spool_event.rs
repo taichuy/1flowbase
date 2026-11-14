@@ -1,6 +1,6 @@
 use super::*;
-#[test]
-fn positioned_event_reads_preserve_an_arbitrary_existing_http_cursor() {
+#[doc(hidden)]
+pub fn positioned_event_reads_preserve_an_arbitrary_existing_http_cursor() {
     let expected = "quoted \"文\"\n".repeat(9000);
     let mut spool = capture(
         std::io::Cursor::new(expected.as_bytes()),
@@ -18,8 +18,8 @@ fn positioned_event_reads_preserve_an_arbitrary_existing_http_cursor() {
     assert_eq!(spool.text().unwrap(), expected);
     assert_eq!(spool.file.as_mut().unwrap().stream_position().unwrap(), 3);
 }
-#[test]
-fn failed_event_decode_retains_file_ownership_position_and_original_bytes() {
+#[doc(hidden)]
+pub fn failed_event_decode_retains_file_ownership_position_and_original_bytes() {
     let mut spool = Spool::new().unwrap();
     spool
         .file
