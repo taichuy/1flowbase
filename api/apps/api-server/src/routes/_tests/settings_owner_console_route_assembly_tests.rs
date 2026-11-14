@@ -86,6 +86,26 @@ pub fn ac_001_ui_management_route_bindings_are_explicit_and_granular() {
         &[
             (
                 "GET",
+                "/api/console/settings/ui-management/blocks",
+                "ui_management.blocks.list",
+            ),
+            (
+                "POST",
+                "/api/console/settings/ui-management/blocks",
+                "ui_management.blocks.create",
+            ),
+            (
+                "PUT",
+                "/api/console/settings/ui-management/blocks/:id",
+                "ui_management.blocks.update",
+            ),
+            (
+                "DELETE",
+                "/api/console/settings/ui-management/blocks/:id",
+                "ui_management.blocks.delete",
+            ),
+            (
+                "GET",
                 "/api/console/settings/ui-management/plugin-settings-page",
                 "authenticated",
             ),
