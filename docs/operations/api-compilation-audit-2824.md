@@ -106,6 +106,78 @@ systemd-run --user --scope --slice=issue2824.slice --unit=issue2824-before-clean
   --output "$RAW/before-dev2/data"
 ```
 
+### Missing cache marker: finite cleanup-only exception
+
+[Cargo #12441](https://github.com/rust-lang/cargo/issues/12441) reports that Cargo
+does not create `CACHEDIR.TAG` when the target directory already exists, even when
+empty. The unchanged audit `owned_target()` creates its fresh directory first;
+local Cargo 1.99 subsequently rejected both full and package cleanup with “missing
+or invalid CACHEDIR.TAG”. B1's completed build, original volume/bin hashes and
+successful job receipts remain valid. Do not rebuild B1, claim another cold slot,
+change the five-file measurement bundle, or change its initial target/cache state.
+
+Only after successful measurement and volume/hash capture, the standalone
+`scripts/node/compile-memory-audit/cache-tag.py` may add the missing cache metadata.
+This is the sole task-specific exception to manual target writes. It validates the
+real clean workspace/source, manifest/lock, original exported tool hashes, fresh
+ownership and corresponding successful managed job/process receipts. Current
+volume and every originally recorded bin/harness device/inode/size/SHA must match.
+The historical root directory inode was not recorded: the repair records its
+current identity and pins that directory with a dirfd/NOFOLLOW during validation
+and exclusive creation. No unmeasured/unknown target, symlink, changed content or
+existing marker (including an invalid marker) is accepted; no force/overwrite or
+compiled-file deletion is provided. The helper runs no Cargo and requires the
+original actual task budget, no global Cargo and <=90% resource admission.
+
+Export only this committed stdlib helper separately as `CACHE_TAG_HELPER`; keep
+`BUNDLE` and its original export hashes untouched. `DATA` names the original fresh
+owner's data directory (for B1, `$RAW/before-dev2/data`). Record hashes of all original
+non-target raw artifacts and their pre-metadata target volume first. Set
+`OBSERVATION_DATA` to the explicitly selected latest existing observation on that
+same ownership chain: use `DATA` for an unchanged cold target; after dev2 incremental
+use its incremental data directory; after test2 workspace/full-backend work use
+the most recent external data directory. Incremental selection validates the
+existing mutation measurement against `incremental.json`, successful original job,
+source_restored_clean and exact committed handler restoration. No historical
+measurement is edited or manufactured to accommodate an unobserved change.
+
+Run the helper under a NEW bounded original managed invocation, with repair records
+outside every original data directory and tool export:
+
+```bash
+systemd-run --user --scope --slice=issue2824.slice --unit=issue2824-before-cache-tag \
+  python3 "$BUNDLE/resource-job-run.py" --deadline-seconds 180 \
+  --output-dir "$RAW/before-cache-tag-job" -- \
+  python3 "$BUNDLE/resource-heavy-run.py" python3 "$CACHE_TAG_HELPER" \
+  --workspace "$WORKSPACE" --source-sha dc1aa27f9658b2aaf17541a23c8a76db77016f53 \
+  --data-dir "$DATA" --observation-data-dir "$OBSERVATION_DATA" \
+  --tool-directory "$BUNDLE" --receipt-directory "$RAW/before-cache-tag-record"
+```
+
+Keep the old failed `clean.json`, clean log and both failed managed receipts exactly
+as recorded. `audit.py clean` intentionally refuses to resend once `clean.json`
+exists; do not delete/overwrite it or call that action again. After successful
+repair and unchanged raw-artifact hash verification, run the original Cargo cleanup
+in another NEW exclusive managed job. The admission below is read-only code from
+the unchanged original bundle; its final exec is the original `cargo clean
+--manifest-path <workspace/api/Cargo.toml> --target-dir <ownership target>`:
+
+```bash
+TARGET="$DATA/target"
+systemd-run --user --scope --slice=issue2824.slice --unit=issue2824-before-clean-repaired \
+  python3 "$BUNDLE/resource-job-run.py" --deadline-seconds 180 \
+  --output-dir "$RAW/before-clean-repaired-job" -- \
+  python3 "$BUNDLE/resource-heavy-run.py" env CARGO_BUILD_JOBS=2 python3 -c \
+  'import os,sys; from pathlib import Path; sys.path.insert(0,sys.argv[1]); from sampling import admission; admission(Path(sys.argv[2])); admission(Path(sys.argv[3])); os.execvp("cargo",["cargo","clean","--manifest-path",str(Path(sys.argv[2])/"api/Cargo.toml"),"--target-dir",sys.argv[3]])' \
+  "$BUNDLE" "$WORKSPACE" "$TARGET"
+```
+
+Preserve the original pre-metadata measurement/volume/bin hashes, external repair
+record/marker hash, unchanged raw-data hash comparison, and final Cargo command/log,
+exit/cleanup/OOM receipts. Candidate cleanup uses its exact source SHA and separate
+new receipt paths. This metadata-only step follows measurement; it never enters
+CPU/RSS/volume comparisons or modifies the formal campaign/measurement artifacts.
+
 After Root restores exact assembly and freezes, fresh QA uses the same `run` recipe
 with `--source-sha "$CANDIDATE_SHA" --role candidate` for dev2, dev10 and test2,
 new outputs and the same absolute campaign. These are the three candidate cold slots.
