@@ -2,6 +2,13 @@
   "version": 1,
   "sourceSearchDirs": [
     "api/apps/api-server/src",
+    "api/crates/api/kernel/src",
+    "api/crates/api/public-gateway/src",
+    "api/crates/api/applications/src",
+    "api/crates/api/console-settings/src",
+    "api/crates/api/mcp/src",
+    "api/crates/api/plugins-models/src",
+    "api/crates/api/console-interaction/src",
     "api/crates/storage/durable/postgres/src",
     "api/crates/control-plane/src",
     "api/crates/orchestration-runtime/src"

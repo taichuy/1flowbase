@@ -73,5 +73,6 @@ pub fn sample_runtime_profile(service: &str, host_fingerprint: &str) -> RuntimeP
     }
 }
 
+#[path = "profiles/wrappers.rs"]
 mod wrappers;
 pub use wrappers::*;

@@ -1,3 +1,4 @@
+const { apiSourceOwners } = require('../../testing/contracts/api-source-owners.js');
 'use strict';
 
 const assert = require('node:assert/strict');
@@ -56,7 +57,7 @@ test('Delivery 1898 keeps one Backend executable in the Cargo workspace', () => 
 
 test('Delivery 1898 binds the production Backend Slot and hides concrete registries', () => {
   const boot = bootRustSources(repoRoot);
-  const runtime = productionRustSources(path.join(repoRoot, 'api/apps/api-server/src/provider_runtime'));
+  const runtime = productionRustSources(path.join(repoRoot, 'api/crates/api/kernel/src/host/provider_runtime'));
   const host = productionRustSources(path.join(repoRoot, 'api/crates/runtime-extension-host/src/runtime_host.rs'));
   const contract = fs.readFileSync(
     path.join(repoRoot, 'api/crates/runtime-core/src/runtime_backend.rs'),
@@ -74,7 +75,7 @@ test('Delivery 1898 binds the production Backend Slot and hides concrete registr
 
 test('Delivery 1898 projects only the execution port into orchestration', () => {
   const boot = bootRustSources(repoRoot);
-  const runtime = productionRustSources(path.join(repoRoot, 'api/apps/api-server/src/provider_runtime'));
+  const runtime = productionRustSources(path.join(repoRoot, 'api/crates/api/kernel/src/host/provider_runtime'));
   const orchestration = fs.readFileSync(
     path.join(repoRoot, 'api/crates/orchestration-runtime/src/runtime_backend.rs'),
     'utf8',
@@ -173,7 +174,7 @@ test('Delivery 1898 exposes only the approved Runtime Host facade', () => {
     'u',
   );
   const consumerRoots = [
-    path.join(repoRoot, 'api/apps/api-server/src'),
+    ...apiSourceOwners(repoRoot).map((owner) => path.join(repoRoot, owner.directory, 'src')),
     path.join(repoRoot, 'api/crates/orchestration-runtime/src'),
   ];
   const consumerIgnoredDirectories = new Set(['node_modules', 'target']);

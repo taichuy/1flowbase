@@ -154,3 +154,26 @@ test('backend coverage removes stale json summaries before threshold reporting',
   assert.equal(status, 0);
   assert.equal(fs.existsSync(stalePath), false);
 });
+
+test('ordinary API coverage selects existing owners and weights the original 60 percent aggregate', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ordinary-api-coverage-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const owner of ['kernel', 'public-gateway']) {
+    const manifest = path.join(root, 'api/crates/api', owner, 'Cargo.toml');
+    fs.mkdirSync(path.dirname(manifest), { recursive: true });
+    fs.writeFileSync(manifest, '[package]\n');
+  }
+  const [command] = buildBackendCommands({ repoRoot: root, cargoParallelism: 2, cargoTestThreads: 2, backendKeys: ['api-server'] });
+  assert.deepEqual(command.args.flatMap((arg, i, args) => arg === '--package' ? [args[i + 1]] : []),
+    ['api-server', 'api-host-kernel', 'api-public-gateway']);
+  const { collectBackendCoverageFailures } = require('../../verify/coverage-report.js');
+  const files = [
+    ['apps/api-server', 1, 1], ['crates/api/kernel', 49, 49], ['crates/api/public-gateway', 50, 0],
+  ].map(([owner, count, covered]) => ({ filename: `/repo/api/${owner}/src/lib.rs`, summary: { lines: { count, covered } } }));
+  const summaries = { 'api-server': { data: [{ totals: { lines: { percent: 100 } }, files }] } };
+  assert.deepEqual(collectBackendCoverageFailures(summaries, ['api-server']), [
+    { key: 'api-server', metric: 'lines', expectedPct: 60, actualPct: 50 },
+  ]);
+  files[2].summary.lines.covered = 10;
+  assert.deepEqual(collectBackendCoverageFailures(summaries, ['api-server']), []);
+});

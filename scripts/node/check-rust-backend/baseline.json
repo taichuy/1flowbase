@@ -145,8 +145,8 @@
           "reason": "new_with_sample_source calls detect_host_fingerprint once; collect clones stored host_fingerprint."
         },
         {
-          "file": "api/apps/api-server/src/runtime_profile_client/mod.rs",
-          "sha256": "1b114bb4a9c1c2c0e71841e1221c5ef9cbaea7e9bd87931217735c52b7dcafbb",
+          "file": "api/crates/api/kernel/src/host/runtime_profile_client/mod.rs",
+          "sha256": "66216512013409381a5888020053fc1f1b399ef60fde4d52e87f57dac5d03b30",
           "reason": "HostApiRuntimeProfileCollector constructs a shared collector and collects through that instance."
         },
         {

@@ -34,3 +34,18 @@ test('vendor exclusion uses the exact owner directory rather than a name substri
     assert.equal(scanRustSource({ relativePath, content })[0]?.rule, 'no-production-escape');
   }
 });
+
+test('Gateway visibility macro keeps production implementations enforced and existing cfg exclusion semantics', () => {
+  const relativePath = 'api/crates/api/public-gateway/src/probe.rs';
+  const production = 'test_support_item! { pub(crate), [] fn run() { panic!("bad"); } }';
+  assert.equal(scanRustSource({ relativePath, content: production })[0]?.rule, 'no-production-escape');
+  assert.deepEqual(scanRustSource({ relativePath, content:
+    'test_support_item! { , [#[cfg(test)]] fn helper() { panic!("test"); } }' }), []);
+  // Unknown feature conditions could be production: the old scanner fails safe.
+  assert.equal(scanRustSource({ relativePath, content:
+    'test_support_item! { pub(super), [#[cfg(any(test, feature="test-support"))]] fn helper() { panic!("bad"); } }'
+  })[0]?.rule, 'no-production-escape');
+  assert.equal(scanRustSource({ relativePath, content:
+    'test_support_item! { , [#[cfg(test)]] fn helper() { panic!("test"); } }\nfn real() { panic!("bad"); }'
+  })[0]?.line, 2);
+});

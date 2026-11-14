@@ -74,11 +74,11 @@ const REQWEST_CLIENT_CONSTRUCTOR_PATTERN =
   /\b(?:reqwest::)?Client::(?:new|builder)\s*\(/u;
 const OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST = new Map([
   [
-    "api/apps/api-server/src/network_egress_client.rs",
+    "api/crates/api/kernel/src/host/network/network_egress_client.rs",
     "Host-owned route resolution, proxy construction, and direct fallback boundary",
   ],
   [
-    "api/apps/api-server/src/catalog_sources/official_extension_catalog/artifact_download.rs",
+    "api/crates/api/kernel/src/catalog_sources/official_extension_catalog/artifact_download.rs",
     "GitHub official-source implementation already resolves Network Center routes",
   ],
   [
@@ -571,7 +571,7 @@ function scanSourceFile({ relativePath, content, today = new Date().toISOString(
 
     if (
       !testPath &&
-      relativePath.startsWith("api/apps/api-server/src/") &&
+      (relativePath.startsWith("api/apps/api-server/src/") || /^api\/crates\/api\/[^/]+\/src\//u.test(relativePath)) &&
       REQWEST_CLIENT_CONSTRUCTOR_PATTERN.test(strippedLine) &&
       !OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST.has(relativePath)
     ) {

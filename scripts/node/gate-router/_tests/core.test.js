@@ -57,7 +57,7 @@ test('routeChangedFiles does not route frontend state names to backend consisten
 
 test('routeChangedFiles recommends state protocol gates for Anthropic ACP projection changes', () => {
   const routes = routeChangedFiles([
-    'api/apps/api-server/src/routes/application_public_api/compat_sse/protocol_mappers/anthropic_stream.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/compat_sse/protocol_mappers/anthropic_stream.rs',
     'scripts/node/acp-claude-smoke/core.js',
   ]);
 
@@ -175,4 +175,14 @@ test('state protocol owner and wrapper changes route independently, unrelated ve
     assert(routeChangedFiles([file]).some((route) => route.scope === 'state-protocols'), file);
   }
   assert(!routeChangedFiles(['scripts/node/verify/coverage.js']).some((route) => route.scope === 'state-protocols'));
+});
+
+test('current Kernel and Gateway changes select the API apps check owner', () => {
+  for (const file of [
+    'api/crates/api/kernel/src/contracts/app_state.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/native.rs',
+  ]) {
+    assert.deepEqual(routeChangedFiles([file]).filter((route) => route.scope.startsWith('repo-backend-check-'))
+      .map((route) => route.scope), ['repo-backend-check-apps']);
+  }
 });

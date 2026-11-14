@@ -227,7 +227,7 @@ test('enforced merge rebuilds measured objects, gathers profiles and writes curr
   for (let index = 1; index <= 4; index += 1) {
     fs.writeFileSync(path.join(shardRoot, `inventory-${index}.json`), JSON.stringify(inventory([String(index)])));
     fs.writeFileSync(path.join(shardRoot, `metadata-${index}.json`), JSON.stringify({
-      sha: 'frozen-sha', package: 'api-server', partition: `hash:${index}/4`,
+      sha: 'frozen-sha', package: 'api-server', packages: ['api-server'], partition: `hash:${index}/4`,
       testCount: 1, ignoredCount: 0, exitCode: 0, passedCount: 1, failedCount: 0, profileCount: 1,
     }));
     fs.writeFileSync(path.join(shardRoot, `shard-${index}-1.profraw`), `profile-${index}`);
@@ -277,4 +277,28 @@ test('enforced merge rebuilds measured objects, gathers profiles and writes curr
   assert.deepEqual(JSON.parse(fs.readFileSync(
     path.join(repoRoot, 'tmp/test-governance/coverage/backend/api-server.json'), 'utf8'
   )), summary);
+});
+
+test('all existing API owners share list/run/cleanup selection and the original aggregate threshold', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'coverage-api-owners-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const owner of ['kernel', 'public-gateway']) {
+    const manifest = path.join(root, 'api/crates/api', owner, 'Cargo.toml');
+    fs.mkdirSync(path.dirname(manifest), { recursive: true });
+    fs.writeFileSync(manifest, '[package]\n');
+  }
+  const commands = buildApiServerShardCommands({ repoRoot: root, shardIndex: 1, shardCount: 2, cargoTestThreads: 2 });
+  for (const command of commands.slice(1)) {
+    assert.deepEqual(command.args.flatMap((arg, i, args) => arg === '--package' ? [args[i + 1]] : []),
+      ['api-server', 'api-host-kernel', 'api-public-gateway']);
+    assert.equal(command.args.includes('api-applications'), false);
+  }
+  const summary = { data: [{ totals: { lines: { count: 100, covered: 100 } }, files: [
+    { filename: '/repo/api/apps/api-server/src/lib.rs', summary: { lines: { count: 1, covered: 1 } } },
+    { filename: '/repo/api/crates/api/kernel/src/lib.rs', summary: { lines: { count: 49, covered: 49 } } },
+    { filename: '/repo/api/crates/api/public-gateway/src/lib.rs', summary: { lines: { count: 50, covered: 0 } } },
+  ] }] };
+  assert.throws(() => validateCoverageSummary(summary), /50\.00% is below 60\.00%/u);
+  summary.data[0].files[2].summary.lines.covered = 10;
+  assert.equal(validateCoverageSummary(summary).lineCoveragePercent, 60);
 });

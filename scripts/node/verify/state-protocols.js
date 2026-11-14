@@ -1,3 +1,4 @@
+const { apiSourceOwners } = require('../testing/contracts/api-source-owners.js');
 const path = require('node:path');
 
 const {
@@ -114,8 +115,9 @@ function buildStateProtocolCommands({
       command: 'cargo',
       args: [
         'test',
-        '-p',
-        'api-server',
+        ...apiSourceOwners(repoRoot)
+          .filter((owner) => ['api-server', 'api-public-gateway'].includes(owner.packageName))
+          .flatMap((owner) => ['--package', owner.packageName]),
         '--jobs',
         String(cargoJobs),
         'anthropic_',

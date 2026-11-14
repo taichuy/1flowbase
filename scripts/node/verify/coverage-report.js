@@ -118,11 +118,11 @@ function collectFrontendCoverageFailures(summary) {
   });
 }
 
-function readBackendLinePct(summary, sourcePathMarker) {
+function readBackendLinePct(summary, sourcePathMarkers) {
   const files = summary?.data?.[0]?.files;
-  if (sourcePathMarker && Array.isArray(files)) {
+  if (sourcePathMarkers?.length && Array.isArray(files)) {
     const ownedLines = files
-      .filter((file) => normalizeCoveragePath(file.filename || '').includes(sourcePathMarker))
+      .filter((file) => sourcePathMarkers.some((marker) => normalizeCoveragePath(file.filename || '').includes(marker)))
       .map((file) => file.summary?.lines)
       .filter((lines) => Number.isFinite(lines?.count) && Number.isFinite(lines?.covered));
     if (ownedLines.length > 0) {
@@ -138,7 +138,7 @@ function readBackendLinePct(summary, sourcePathMarker) {
 
 function collectBackendCoverageFailures(summaries, backendKeys) {
   return selectBackendCoverageEntries(backendKeys).flatMap((threshold) => {
-    const actualPct = readBackendLinePct(summaries[threshold.key], threshold.sourcePathMarker);
+    const actualPct = readBackendLinePct(summaries[threshold.key], threshold.sourcePathMarkers);
     const expectedPct = threshold.line;
 
     if (actualPct + Number.EPSILON >= expectedPct) {

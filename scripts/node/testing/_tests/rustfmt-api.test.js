@@ -84,3 +84,14 @@ test('edition and explicit root must match the trusted workspace shape', (t) => 
     assert.throws(() => runRustFormat({ repoRoot: f.root, spawnSyncImpl: () => assert.fail('must fail before spawning') }), /declared workspace/);
   }
 });
+
+test('format explicitly includes moved owner macros and tests without requiring future crates', (t) => {
+  const f = fixture(t);
+  for (const owner of ['kernel', 'public-gateway']) {
+    f.write(`api/crates/api/${owner}/Cargo.toml`, '[package]\n');
+    f.files.push(f.write(`api/crates/api/${owner}/src/lib.rs`, 'pub fn item() {}\n'));
+    f.files.push(f.write(`api/crates/api/${owner}/src/_tests/macro_leaf.rs`, '#[test] fn leaf() {}\n'));
+  }
+  f.files.push(f.write('api/crates/api/public-gateway/tests/transport.rs', '#[test] fn transport() {}\n'));
+  assert.deepEqual(apiFormatInputs(f.root).files, f.files.sort());
+});

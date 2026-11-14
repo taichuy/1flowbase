@@ -1,3 +1,4 @@
+const { apiSourceOwners } = require('./contracts/api-source-owners.js');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -17,7 +18,10 @@ function apiFormatInputs(repoRoot) {
   if (editions.length !== 1 || editions[0][1] !== '2021') {
     throw new Error('Rust format requires the declared workspace.package edition = "2021"');
   }
-  const roots = ['src', 'tests'].map((name) => path.join(repoRoot, 'api/apps/api-server', name));
+  const roots = apiSourceOwners(repoRoot).flatMap((owner, index) =>
+    ['src', 'tests'].filter((name) => index === 0 || name === 'src'
+      || fs.existsSync(path.join(repoRoot, owner.directory, name)))
+      .map((name) => path.join(repoRoot, owner.directory, name)));
   const files = roots.flatMap((root) => {
     if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
       throw new Error('Missing API Rust format source directory: ' + root);

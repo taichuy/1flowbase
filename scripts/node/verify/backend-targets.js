@@ -1,3 +1,7 @@
+const path = require('node:path');
+const { apiSourceOwners } = require('../testing/contracts/api-source-owners.js');
+const API_PACKAGES = apiSourceOwners(path.resolve(__dirname, '../../..')).map((owner) => owner.packageName);
+
 const BACKEND_SHARDS = [
   {
     key: 'core-libs',
@@ -24,7 +28,7 @@ const BACKEND_SHARDS = [
   },
   {
     key: 'apps',
-    packages: ['control-plane', 'api-server', 'control-plane-postgres-tests'],
+    packages: ['control-plane', ...API_PACKAGES, 'control-plane-postgres-tests'],
   },
 ];
 const BACKEND_APP_TEST_SHARDS = [
@@ -34,7 +38,7 @@ const BACKEND_APP_TEST_SHARDS = [
   },
   ...Array.from({ length: 4 }, (_, index) => ({
     key: `api-server-${index + 1}-of-4`,
-    packages: ['api-server'],
+    packages: [...API_PACKAGES],
     nextestPartition: `hash:${index + 1}/4`,
   })),
 ];

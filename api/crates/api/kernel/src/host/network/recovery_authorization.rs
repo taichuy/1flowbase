@@ -135,7 +135,7 @@ pub fn mark_reauth_challenge_consumed(token: Uuid) {
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 

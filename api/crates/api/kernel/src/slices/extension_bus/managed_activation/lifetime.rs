@@ -16,12 +16,6 @@ struct LifetimeState {
 }
 pub struct SnapshotReference(Arc<SnapshotLifetime>);
 impl SnapshotLifetime {
-    #[doc(hidden)]
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn set_reference_count_for_test_support(&self, references: usize) {
-        self.0.lock().unwrap().references = references;
-    }
-
     pub fn with_reclamation_notify(notify: Arc<tokio::sync::Notify>) -> Self {
         Self(Mutex::default(), tokio::sync::Notify::new(), Some(notify))
     }
@@ -138,3 +132,7 @@ impl ManagedWorkspaceSnapshot {
         }))
     }
 }
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "_tests/support/lifetime.rs"]
+mod test_support;

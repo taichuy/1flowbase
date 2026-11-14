@@ -32,7 +32,7 @@ function inventory(testIds, ignoredIds = []) {
 
 function metadata(index = 1) {
   return {
-    package: 'api-server', partition: `hash:${index}/4`, sha,
+    package: 'api-server', packages: ['api-server'], partition: `hash:${index}/4`, sha,
     testCount: 1, ignoredCount: 1, exitCode: 0, passedCount: 1, failedCount: 0, profileCount: 1,
   };
 }
@@ -112,7 +112,7 @@ test('metadata rejects missing or wrong package, partition, SHA, execution, inve
     assert.throws(() => validateShardMetadata({ ...options, metadata: incomplete }), /coverage shard/u, field);
   }
   for (const patch of [
-    { package: 'control-plane' }, { partition: 'hash:2/4' }, { sha: 'old-sha' },
+    { package: 'control-plane' }, { packages: ['api-server', 'api-host-kernel'] }, { partition: 'hash:2/4' }, { sha: 'old-sha' },
     { testCount: 0 }, { testCount: 2 }, { ignoredCount: 0 },
     { exitCode: 1 }, { passedCount: 0 }, { passedCount: 2 }, { failedCount: 1 },
     { profileCount: 0 }, { profileCount: 2 },
@@ -234,5 +234,33 @@ test('merge rejects duplicate inventories, stale reports, low coverage and retir
 test('API coverage cannot pass with an empty or malformed owned line denominator', () => {
   for (const value of [summary(0, 0), summary(0, NaN), summary(11, 10)]) {
     assert.throws(() => validateCoverageSummary(value), /API-owned/u);
+  }
+});
+
+test('merge applies the same owner selection and stale-source rejection to Kernel and Gateway', (t) => {
+  for (const owner of ['kernel', 'public-gateway']) {
+    const { repoRoot, directory } = prepareMerge(t);
+    const packageName = owner === 'kernel' ? 'api-host-kernel' : 'api-public-gateway';
+    const manifest = path.join(repoRoot, 'api/crates/api', owner, 'Cargo.toml');
+    fs.mkdirSync(path.dirname(manifest), { recursive: true });
+    fs.writeFileSync(manifest, '[package]\n');
+    for (let index = 1; index <= 4; index += 1) {
+      fs.writeFileSync(path.join(directory, `metadata-${index}.json`), JSON.stringify({ ...metadata(index), packages: ['api-server', packageName] }));
+    }
+    const selected = ['--package', 'api-server', '--package', packageName];
+    const stale = `/repo/api/crates/api/${owner}/src/deleted.rs`;
+    assert.throws(() => mergeApiServerShadow({
+      repoRoot, shardCount: 4, env: { QUALITY_GATE_TARGET_SHA: sha },
+      spawnSyncImpl(_command, args) {
+        if (args[1] === 'show-env') return { status: 0, stdout: llvmEnvironment };
+        assert.deepEqual(args.filter((_arg, i) => args[i - 1] === '--package' || _arg === '--package'), selected);
+        if (args[0] === 'clean') return { status: 0, stdout: '' };
+        if (args[1] === 'list') return { status: 0, stdout: JSON.stringify(inventory(['1', '2', '3', '4'], ['later'])) };
+        const value = summary();
+        value.data[0].files[0].filename = stale;
+        fs.writeFileSync(args.at(-1), JSON.stringify(value));
+        return { status: 0 };
+      },
+    }), /sources absent from the candidate/u);
   }
 });

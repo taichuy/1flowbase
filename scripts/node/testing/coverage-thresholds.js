@@ -1,3 +1,4 @@
+const { API_SOURCE_OWNERS } = require('./contracts/api-source-owners.js');
 const COVERAGE_ROOT = 'tmp/test-governance/coverage';
 
 const frontendThresholds = [
@@ -46,7 +47,7 @@ const backendThresholds = [
   {
     key: 'api-server',
     packageName: 'api-server',
-    sourcePathMarker: '/api/apps/api-server/src/',
+    sourcePathMarkers: API_SOURCE_OWNERS.map((owner) => owner.sourcePathMarker),
     line: 60,
   },
 ];

@@ -395,7 +395,8 @@ test('current api routes do not contain active blocking IO warnings', () => {
   const findings = collectRustBackendFindings({ repoRoot }).filter(
     (finding) =>
       finding.rule === 'blocking-in-async-context'
-      && finding.file.startsWith('api/apps/api-server/src/routes/')
+      && (finding.file.startsWith('api/apps/api-server/src/routes/')
+        || /^api\/crates\/api\/[^/]+\/src\/(?:routes|contracts\/routes|slices\/routes)\//u.test(finding.file))
   );
 
   assert.deepEqual(findings, []);

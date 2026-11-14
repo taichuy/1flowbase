@@ -63,7 +63,7 @@ test('buildCommands composes static projection tests plus backend ensure and ACP
   ]);
   assert.deepEqual(commands[1].args, [
     'test',
-    '-p',
+    '--package',
     'api-server',
     '--jobs',
     '4',
@@ -86,4 +86,13 @@ test('buildCommands composes static projection tests plus backend ensure and ACP
     '--timeout-ms',
     '5000',
   ]);
+});
+
+test('Anthropic source migration retains both Root and Gateway test consumers', () => {
+  const repoRoot = path.resolve(__dirname, '../../../..');
+  const commands = buildCommands({ repoRoot, env: {}, cargoJobs: 2, cargoTestThreads: 2,
+    options: parseStateProtocolsCliArgs(['--skip-live-acp']) });
+  const command = commands.find((entry) => entry.label === 'state-protocol-anthropic-api-tests');
+  assert.deepEqual(command.args.filter((_arg, index) => command.args[index - 1] === '--package'), ['api-server', 'api-public-gateway']);
+  assert.ok(command.args.includes('anthropic_'));
 });

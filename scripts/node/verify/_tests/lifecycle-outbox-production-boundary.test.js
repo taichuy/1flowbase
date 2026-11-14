@@ -18,7 +18,7 @@ test('production boot starts the durable lifecycle dispatcher', () => {
 
 test('durable delivery invokes frozen typed subscribers before acknowledgement', () => {
   const delivery = read(
-    'api/apps/api-server/src/host_extensions/lifecycle.rs'
+    'api/crates/api/kernel/src/host/host_extensions/lifecycle.rs'
   );
   const dispatcher = read(
     'api/crates/control-plane/src/lifecycle_outbox_dispatcher.rs'
@@ -36,9 +36,9 @@ test('durable delivery invokes frozen typed subscribers before acknowledgement',
 
 test('composition resolves active HostExtension entrypoint factories before registry binding', () => {
   const api = bootRustSources(root);
-  const delivery = read('api/apps/api-server/src/host_extensions/lifecycle.rs');
+  const delivery = read('api/crates/api/kernel/src/host/host_extensions/lifecycle.rs');
   const activation = read(
-    'api/apps/api-server/src/host_extensions/lifecycle_activation.rs'
+    'api/crates/api/kernel/src/host/host_extensions/lifecycle_activation.rs'
   );
   const registry = read(
     'api/crates/plugin-framework/src/extension_bus/lifecycle_handler_registry.rs'
@@ -50,7 +50,7 @@ test('composition resolves active HostExtension entrypoint factories before regi
   assert.match(activation, /contribution\.native\.entry_symbol/u);
   assert.match(activation, /factory\(\)\?/u);
   assert.match(delivery, /LifecycleHandlerBinding::typed/u);
-  assert.match(delivery, /acme_lifecycle_subscriber_fixture/u);
+  assert.match(read('api/apps/api-server/src/host_extensions/lifecycle.rs'), /acme_lifecycle_subscriber_fixture/u);
   assert.match(registry, /TypedLifecycleSubscriberHandler/u);
   assert.match(registry, /invalid typed lifecycle fact/u);
   assert.doesNotMatch(registry, /serde_json::Value/u);

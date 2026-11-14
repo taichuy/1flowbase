@@ -4,7 +4,8 @@ const { spawnSync } = require('node:child_process');
 const { backendThresholds } = require('../testing/coverage-thresholds.js');
 
 const API_SERVER_PACKAGE = 'api-server';
-const API_SERVER_SOURCE_MARKER = '/api/apps/api-server/src/';
+const { API_SOURCE_OWNERS, apiSourceOwners, apiPackageArgs } = require('../testing/contracts/api-source-owners.js');
+const API_SOURCE_MARKERS = API_SOURCE_OWNERS.map((owner) => owner.sourcePathMarker);
 const API_SERVER_LINE_THRESHOLD = backendThresholds.find(
   (entry) => entry.packageName === API_SERVER_PACKAGE
 )?.line;
@@ -21,12 +22,12 @@ function buildApiServerShardCommands({ repoRoot, shardIndex, shardCount, cargoTe
   assertShard(shardIndex, shardCount);
   const shardDir = path.join(repoRoot, 'tmp', 'test-governance', 'coverage-shadow', 'api-server', `shard-${shardIndex}`);
   const partition = `hash:${shardIndex}/${shardCount}`;
-  const common = ['--package', API_SERVER_PACKAGE, '--partition', partition];
+  const common = [...apiPackageArgs(repoRoot), '--partition', partition];
 
   return [
     { command: 'cargo', args: ['llvm-cov', 'show-env', '--sh'], cwd: path.join(repoRoot, 'api') },
-    // report scans cached executables too; rebuild only the measured package.
-    { command: 'cargo', args: ['clean', '--package', API_SERVER_PACKAGE], cwd: path.join(repoRoot, 'api') },
+    // report scans cached executables too; rebuild only the measured API packages.
+    { command: 'cargo', args: ['clean', ...apiPackageArgs(repoRoot)], cwd: path.join(repoRoot, 'api') },
     { command: 'cargo', args: ['nextest', 'list', ...common, '--message-format', 'json'], cwd: path.join(repoRoot, 'api') },
     {
       command: 'cargo',
@@ -121,11 +122,13 @@ function shardProfiles(directory, shardIndex) {
   return profiles;
 }
 
-function validateShardMetadata({ metadata, inventory, shardIndex, shardCount, expectedSha, directory }) {
+function validateShardMetadata({ metadata, inventory, shardIndex, shardCount, expectedSha, directory, expectedPackages = [API_SERVER_PACKAGE] }) {
   if (!expectedSha || metadata?.sha !== expectedSha) {
     throw new Error('coverage shards do not belong to the same frozen SHA');
   }
-  if (metadata.package !== API_SERVER_PACKAGE || metadata.partition !== `hash:${shardIndex}/${shardCount}`) {
+  if (metadata.package !== API_SERVER_PACKAGE
+    || JSON.stringify(metadata.packages) !== JSON.stringify(expectedPackages)
+    || metadata.partition !== `hash:${shardIndex}/${shardCount}`) {
     throw new Error(`coverage shard ${shardIndex} metadata package or partition mismatch`);
   }
   const testCount = collectNextestTestIds(inventory).length;
@@ -152,11 +155,11 @@ function canonicalCoverageSummary(summary) {
   };
 }
 
-function validateCoverageSummary(summary) {
+function validateCoverageSummary(summary, sourceMarkers = API_SOURCE_MARKERS) {
   const coverage = canonicalCoverageSummary(summary);
   const structuralMetrics = Object.keys(coverage.totals).sort();
   const ownedLines = coverage.files
-    .filter((file) => file.filename.replaceAll('\\', '/').includes(API_SERVER_SOURCE_MARKER))
+    .filter((file) => sourceMarkers.some((marker) => file.filename.replaceAll('\\', '/').includes(marker)))
     .map((file) => file.summary.lines);
   if (ownedLines.length === 0) {
     throw new Error('merged API coverage contains no API-owned source files');
@@ -286,6 +289,7 @@ function runApiServerShard({
   const profiles = shardProfiles(shardDir, shardIndex);
   fs.writeFileSync(path.join(shardDir, `metadata-${shardIndex}.json`), `${JSON.stringify({
     package: API_SERVER_PACKAGE,
+    packages: apiSourceOwners(repoRoot).map((owner) => owner.packageName),
     partition: `hash:${shardIndex}/${shardCount}`,
     sha: env.QUALITY_GATE_TARGET_SHA || '',
     testCount,
@@ -333,6 +337,7 @@ function mergeApiServerShadow({
   const profiles = metadata.flatMap((item, offset) => validateShardMetadata({
     metadata: item, inventory: inventories[offset], shardIndex: offset + 1,
     shardCount, expectedSha, directory: shardRoot,
+    expectedPackages: apiSourceOwners(repoRoot).map((owner) => owner.packageName),
   }));
   if (fs.readdirSync(shardRoot).filter((name) => name.endsWith('.profraw')).length !== profiles.length) {
     throw new Error('coverage shadow contains unexpected shard profiles');
@@ -347,10 +352,10 @@ function mergeApiServerShadow({
   const showEnv = { command: 'cargo', args: ['llvm-cov', 'show-env', '--sh'], cwd: apiCwd };
   const llvmEnv = parseLlvmCovEnvironment(run(showEnv, { env, spawnSyncImpl, capture: true }));
   const instrumentedEnv = { ...env, ...llvmEnv, CARGO_PROFILE_TEST_DEBUG: '0' };
-  run({ command: 'cargo', args: ['clean', '--package', API_SERVER_PACKAGE], cwd: apiCwd },
+  run({ command: 'cargo', args: ['clean', ...apiPackageArgs(repoRoot)], cwd: apiCwd },
     { env: instrumentedEnv, spawnSyncImpl });
   const fullInventory = JSON.parse(run({
-    command: 'cargo', args: ['nextest', 'list', '--package', API_SERVER_PACKAGE, '--message-format', 'json'], cwd: apiCwd,
+    command: 'cargo', args: ['nextest', 'list', ...apiPackageArgs(repoRoot), '--message-format', 'json'], cwd: apiCwd,
   }, { env: instrumentedEnv, spawnSyncImpl, capture: true }));
   const inventoryResult = validateShardInventories({ fullInventory, shardInventories: inventories });
   for (const profile of profiles) {
@@ -358,16 +363,17 @@ function mergeApiServerShadow({
   }
   run({
     command: 'cargo',
-    args: ['llvm-cov', 'report', '--package', API_SERVER_PACKAGE, '--json', '--summary-only', '--verbose', '--output-path', mergedPath],
+    args: ['llvm-cov', 'report', ...apiPackageArgs(repoRoot), '--json', '--summary-only', '--verbose', '--output-path', mergedPath],
     cwd: apiCwd,
   }, { env: instrumentedEnv, spawnSyncImpl });
   const mergedSummary = readJson(mergedPath);
-  const coverage = validateCoverageSummary(mergedSummary);
+  const sourceMarkers = apiSourceOwners(repoRoot).map((owner) => owner.sourcePathMarker);
+  const coverage = validateCoverageSummary(mergedSummary, sourceMarkers);
   const staleSources = mergedSummary.data[0].files
     .map((file) => file.filename.replaceAll('\\', '/'))
-    .filter((filename) => filename.includes(API_SERVER_SOURCE_MARKER))
+    .filter((filename) => sourceMarkers.some((marker) => filename.includes(marker)))
     .filter((filename) => !fs.existsSync(path.join(repoRoot,
-      filename.slice(filename.indexOf(API_SERVER_SOURCE_MARKER) + 1))));
+      filename.slice(filename.indexOf(sourceMarkers.find((marker) => filename.includes(marker))) + 1))));
   if (staleSources.length) {
     throw new Error(`API coverage contains sources absent from the candidate: ${staleSources.join(', ')}`);
   }

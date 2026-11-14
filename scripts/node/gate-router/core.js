@@ -1,4 +1,5 @@
 const { spawnSync } = require('node:child_process');
+const { API_SOURCE_OWNERS } = require('../testing/contracts/api-source-owners.js');
 
 const { getRepoRoot } = require('../testing/warning-capture.js');
 const { buildFoundationPlan } = require('../foundation-contracts/core.js');
@@ -221,6 +222,8 @@ function isBackendFile(filePath) {
 }
 
 function readCrateFromPath(filePath) {
+  const apiOwner = API_SOURCE_OWNERS.find((owner) => filePath.startsWith(`${owner.directory}/`));
+  if (apiOwner) return apiOwner.packageName;
   const crateMatch = /^api\/crates\/([^/]+)\//u.exec(filePath);
   if (crateMatch) {
     return crateMatch[1];
@@ -262,14 +265,14 @@ function addBackendCheckRoutes(routes, filePath) {
 function isBackendConsistencyFile(filePath) {
   return isBackendFile(filePath)
     && (/^api\/crates\/(?:control-plane|orchestration-runtime|runtime-core|storage(?:\/|$))/u.test(filePath)
-    || /^api\/apps\/api-server\/src\/routes\//u.test(filePath)
+    || /^api\/(?:apps\/api-server|crates\/api\/[^/]+)\/src\/(?:routes|contracts\/routes|slices\/routes)\//u.test(filePath)
     || /(?:^|\/)migrations?(?:\/|$)/iu.test(filePath)
     || /(?:state|transition|repository|workspace|runtime|model_definition|orchestration|permission|acl|access-control)/iu.test(filePath));
 }
 
 function isStateProtocolFile(filePath) {
   return /^scripts\/node\/(?:acp-claude-smoke\/|cli\/acp-claude-smoke\.js$|verify\/state-protocols\.js$|verify-state-protocols(?:\.js|\/))/u.test(filePath)
-    || /^api\/apps\/api-server\/src\/routes\/application_public_api\/(?:anthropic\.rs$|compat_sse(?:\/|\.rs$))/u.test(filePath);
+    || /^api\/(?:apps\/api-server|crates\/api\/public-gateway)\/src\/routes\/application_public_api\/(?:anthropic\.rs$|compat_sse(?:\/|\.rs$))/u.test(filePath);
 }
 
 function isContainerFile(filePath) {

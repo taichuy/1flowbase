@@ -33,7 +33,7 @@ test("outbound HTTP client owner exceptions are narrow and documented", () => {
     true,
   );
   const findings = scanSourceFile({
-    relativePath: "api/apps/api-server/src/network_egress_client.rs",
+    relativePath: "api/crates/api/kernel/src/host/network/network_egress_client.rs",
     content: "let client = Client::builder().build()?;\n",
   });
   assert.equal(
@@ -748,5 +748,15 @@ test("structure hard limits preserve early warnings and exact vendor ownership",
       .map(({ file, severity }) => [file, severity]), [["web/app/src/over_limit", "error"]]);
   } finally {
     fs.rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
+test('moved API owners cannot construct outbound clients outside the exact Host allowlist', () => {
+  for (const relativePath of [
+    'api/crates/api/kernel/src/contracts/unowned.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/unowned.rs',
+  ]) {
+    const findings = scanSourceFile({ relativePath, content: 'let client = reqwest::Client::new();\n' });
+    assert.equal(findings.some((item) => item.rule === 'unowned-outbound-http-client'), true);
   }
 });

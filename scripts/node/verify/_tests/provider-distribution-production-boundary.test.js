@@ -9,9 +9,9 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
 test('production composition compiles and owns the effective distribution snapshot', () => {
   const registry = read(
-    'api/apps/api-server/src/provider_runtime/distribution_registry.rs'
+    'api/crates/api/kernel/src/host/provider_runtime/distribution_registry.rs'
   );
-  const runtime = productionRustSources(path.join(root, 'api/apps/api-server/src/provider_runtime'));
+  const runtime = productionRustSources(path.join(root, 'api/crates/api/kernel/src/host/provider_runtime'));
   assert.match(registry, /ProviderDistributionRuleRegistry::compile/u);
   assert.match(runtime, /provider_distribution_snapshot/u);
   assert.match(runtime, /with_runtime_package/u);

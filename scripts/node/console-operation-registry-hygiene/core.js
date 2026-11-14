@@ -39,14 +39,7 @@ const DEFAULT_ROUTE_HOST_FILE = path.join(
   'src',
   'lib.rs'
 );
-const DEFAULT_CONSOLE_MIDDLEWARE_FILE = path.join(
-  'api',
-  'apps',
-  'api-server',
-  'src',
-  'middleware',
-  'require_settings_feature_permission.rs'
-);
+const DEFAULT_CONSOLE_MIDDLEWARE_FILE = 'api/crates/api/kernel/src/host/middleware/require_settings_feature_permission.rs';
 const DEFAULT_LEGACY_MAPPING_FILE = path.join(
   'api',
   'apps',

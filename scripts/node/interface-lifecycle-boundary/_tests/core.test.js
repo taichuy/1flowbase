@@ -8,30 +8,31 @@ const { productionRustSources, bootRustSources } = require('../../testing/contra
 const { inspectInterfaceLifecycleBoundary } = require('../core');
 
 const sources = [
-  'api/apps/api-server/src/routes/application_public_api/compat_sse.rs',
-  'api/apps/api-server/src/routes/application_public_api/openai.rs',
-  'api/apps/api-server/src/routes/application_public_api/anthropic.rs',
-  'api/apps/api-server/src/routes/application_public_api/ex.rs',
+  'api/crates/api/public-gateway/src/routes/application_public_api/compat_sse.rs',
+  'api/crates/api/public-gateway/src/routes/application_public_api/openai.rs',
+  'api/crates/api/public-gateway/src/routes/application_public_api/anthropic.rs',
+  'api/crates/api/public-gateway/src/routes/application_public_api/ex.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions.rs',
   'api/apps/api-server/src/routes/identity/auth.rs',
   'api/apps/api-server/src/routes/identity/sign_in_interface.rs',
-  'api/apps/api-server/src/routes/application_public_api/native.rs',
-  'api/apps/api-server/src/routes/application_public_api/compatibility_interface.rs',
+  'api/crates/api/public-gateway/src/routes/application_public_api/native.rs',
+  'api/crates/api/public-gateway/src/routes/application_public_api/compatibility_interface.rs',
   'api/apps/api-server/src/routes/mcp_protocol.rs',
   'api/apps/api-server/src/lib.rs',
-  'api/apps/api-server/src/console_contracts/external_endpoint_catalog.rs',
-  'api/apps/api-server/src/routes/application_public_api/openai/response_dispatch.rs',
+  'api/crates/api/kernel/src/slices/console_contracts/external_endpoint_catalog.rs',
+  'api/crates/api/public-gateway/src/routes/application_public_api/openai/response_dispatch.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions/provider_operations.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions/network.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions/plugins.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions/mcp.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions/system.rs',
-  'api/apps/api-server/src/routes/application_public_api/openai/response_dispatch/execution.rs',
+  'api/crates/api/public-gateway/src/routes/application_public_api/openai/response_dispatch/execution.rs',
 ];
 
 function fixture(overrides = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'interface-lifecycle-boundary-'));
   const defaults = {
+    'api/apps/api-server/src/console_contracts/external_endpoint_catalog.rs': 'fn compile_complete() {} enum Error { UnclassifiedRows }',
     [sources[0]]: 'public_mcp_runtime_invoker_for_actor(&state);',
     [sources[1]]: 'compatibility_interface::invoke_blocking(); compatibility_interface::invoke_client_stream_with_principal();',
     [sources[2]]: 'compatibility_interface::invoke_blocking(); compatibility_interface::invoke_client_stream_with_principal();',
@@ -59,7 +60,7 @@ function fixture(overrides = {}) {
     [sources[17]]: '',
     [sources[18]]: '',
   };
-  for (const source of sources) {
+  for (const source of Object.keys(defaults)) {
     const target = path.join(root, source);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, overrides[source] ?? defaults[source]);
@@ -185,7 +186,7 @@ test('root_1998 rejects a bare mount at the final application root', () => {
 // A4: mutate the real route so a bypass cannot hide behind the wrapper's presence elsewhere.
 test('root_1998 rejects direct authentication and discarded lineage in production source', () => {
   const { inspectAuthenticationInvocationBoundary } = require('../core');
-  const file = 'api/apps/api-server/src/routes/application_public_api/native.rs';
+  const file = 'api/crates/api/public-gateway/src/routes/application_public_api/native.rs';
   const production = productionRustSources(path.resolve(__dirname, '../../../..', file));
   assert.deepEqual(inspectAuthenticationInvocationBoundary(file, production), []);
   const bypass = production.replace('.authenticate_invocation', '.authenticate');
@@ -254,7 +255,7 @@ test('private invocation and startup splits retain the same positive and negativ
   const root = fixture();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   for (const [owner, child] of [
-    [sources[8], 'api/apps/api-server/src/routes/application_public_api/compatibility_interface/stream_dispatch.rs'],
+    [sources[8], 'api/crates/api/public-gateway/src/routes/application_public_api/compatibility_interface/stream_dispatch.rs'],
     [sources[10], 'api/apps/api-server/src/internal/startup_assembly.rs'],
   ]) {
     const original = fs.readFileSync(path.join(root, owner), 'utf8');
@@ -272,4 +273,21 @@ test('private invocation and startup splits retain the same positive and negativ
   fs.writeFileSync(startup, fs.readFileSync(startup, 'utf8')
     .replace('router.into_router()', 'router.into_router().merge(rogue_router())'));
   assert.ok(inspectInterfaceLifecycleBoundary(root).some((value) => value.includes('bare external mount')));
+});
+
+test('route ownership enforcement follows current Kernel and Gateway manifests', (t) => {
+  const root = fixture();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const owner of ['kernel', 'public-gateway']) {
+    const manifest = path.join(root, 'api/crates/api', owner, 'Cargo.toml');
+    fs.mkdirSync(path.dirname(manifest), { recursive: true });
+    fs.writeFileSync(manifest, '[package]\n');
+    const route = `api/crates/api/${owner}/src/routes/unowned.rs`;
+    const target = path.join(root, route);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, 'struct UnownedAdapter { state: Arc<ApiState> }\nrequire_session(&state);');
+    const violations = inspectInterfaceLifecycleBoundary(root);
+    assert.ok(violations.some((value) => value.includes(`${route} Interface adapter retains the global ApiState`)));
+    assert.ok(violations.some((value) => value.includes(`${route} retains a direct route authentication owner`)));
+  }
 });

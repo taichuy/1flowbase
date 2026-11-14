@@ -104,7 +104,7 @@ function createFixtureRepo({ drift = false } = {}) {
   writeJson(repoRoot, 'web/locales/en_US.json', LOCALE_SOURCE);
   writeText(
     repoRoot,
-    'api/apps/api-server/src/middleware/require_settings_feature_permission.rs',
+    'api/crates/api/kernel/src/host/middleware/require_settings_feature_permission.rs',
     drift
       ? 'registry.access_for_console_route(method, path);\nlet fallback = legacy_permission_code;\nnext.run(request).await;\n'
       : 'registry.access_for_console_route(method, path);\n'

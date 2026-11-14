@@ -349,5 +349,5 @@ pub mod tests;
 
 #[doc(hidden)]
 #[cfg(any(test, feature = "test-support"))]
-#[path = "activity/test_support.rs"]
+#[path = "_tests/support/activity.rs"]
 pub mod test_support;

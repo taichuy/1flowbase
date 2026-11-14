@@ -1,3 +1,4 @@
+const { API_SOURCE_OWNERS, apiSourceOwners } = require('../testing/contracts/api-source-owners.js');
 const path = require('node:path');
 const { buildCargoCommandEnv, getRepoRoot, runCommandSequence, runManagedCommandSequence } = require('../testing/warning-capture.js');
 const { loadVerifyRuntimeConfig } = require('../testing/verify-runtime.js');
@@ -48,17 +49,23 @@ function normalizeBackendShard(shard) {
   return shard;
 }
 
-function buildBackendPackageArgs(shard) {
+function buildBackendPackageArgs(shard, repoRoot) {
   const normalizedShard = normalizeBackendShard(shard);
 
   if (!normalizedShard) {
     return ['--workspace'];
   }
 
-  return normalizedShard.packages.flatMap((packageName) => ['--package', packageName]);
+  const apiNames = new Set(API_SOURCE_OWNERS.map((owner) => owner.packageName));
+  const packages = normalizedShard.packages.includes('api-server')
+    ? normalizedShard.packages.filter((name) => name === 'api-server' || !apiNames.has(name))
+      .flatMap((name) => name === 'api-server' ? apiSourceOwners(repoRoot).map((owner) => owner.packageName) : [name])
+    : normalizedShard.packages;
+  return packages.flatMap((packageName) => ['--package', packageName]);
 }
 
 function buildBackendCargoCommand({
+  repoRoot = getRepoRoot(),
   target,
   cargoJobs,
   cargoTestThreads,
@@ -70,7 +77,7 @@ function buildBackendCargoCommand({
   const labelSuffix = testSelection ? '-selected' : normalizedShard ? `-${normalizedShard.key}` : '';
   const packageArgs = testSelection
     ? testSelection.workspace ? ['--workspace'] : testSelection.packages.flatMap((packageName) => ['--package', packageName])
-    : buildBackendPackageArgs(normalizedShard);
+    : buildBackendPackageArgs(normalizedShard, repoRoot);
 
   if (target === 'clippy') {
     return {
@@ -230,7 +237,7 @@ function buildBackendCommands({
     const testShard = target === 'test' && env.QUALITY_GATE_SCOPE === 'ci' && normalizedShard?.coverageOwnedPackages
       ? { ...normalizedShard, packages: normalizedShard.packages.filter((name) => !normalizedShard.coverageOwnedPackages.includes(name)) }
       : normalizedShard;
-    const commands = [buildBackendCargoCommand({ target, cargoJobs, cargoTestThreads, incremental, shard: testShard })];
+    const commands = [buildBackendCargoCommand({ repoRoot, target, cargoJobs, cargoTestThreads, incremental, shard: testShard })];
     // The SQL report needs PostgreSQL, not a private deployed page. Run once in
     // the database-backed batch, and keep it inside the candidate gate receipt.
     if (target === 'test' && normalizedShard?.key === 'storage-postgres-1-of-4') {

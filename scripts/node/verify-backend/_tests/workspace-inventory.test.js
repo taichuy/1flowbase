@@ -44,3 +44,16 @@ test('workspace inventory rejects a new unassigned member and stale package targ
   assert.throws(() => assertCovered([...members, 'new-unassigned-crate'], BACKEND_SHARDS));
   assert.throws(() => assertCovered(members.filter((name) => name !== 'interface-runtime'), BACKEND_SHARDS));
 });
+
+test('API app checks and every hash shard select all actual API owners', () => {
+  const packages = require('../../testing/contracts/api-source-owners.js').apiSourceOwners(repoRoot).map((owner) => owner.packageName);
+  for (const shard of ['apps', ...Array.from({ length: 4 }, (_, index) => `api-server-${index + 1}-of-4`)]) {
+    const [command] = buildBackendCommands({ repoRoot, cargoJobs: 2, cargoTestThreads: 2, target: shard === 'apps' ? 'clippy' : 'test', shard });
+    const selected = command.args.filter((_arg, index) => command.args[index - 1] === '--package');
+    for (const name of packages) assert.ok(selected.includes(name), `${shard} must select ${name}`);
+    if (shard !== 'apps') assert.deepEqual(selected, packages);
+  }
+  // A fixture containing only Root cannot accidentally issue absent API packages.
+  const [command] = buildBackendCommands({ repoRoot: '/repo-root', cargoJobs: 2, cargoTestThreads: 2, target: 'test', shard: 'api-server-1-of-4' });
+  assert.deepEqual(command.args.filter((_arg, index) => command.args[index - 1] === '--package'), ['api-server']);
+});
