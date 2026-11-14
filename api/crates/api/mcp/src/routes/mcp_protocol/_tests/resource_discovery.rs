@@ -122,3 +122,21 @@ fn discovery_cursor_paginates_stably_under_json_budget_and_rejects_wrong_kind() 
         json!({"resourceTemplates":[]})
     );
 }
+
+#[test]
+fn discovery_oversized_first_entry_preserves_cursor_error_priority() {
+    let entries = BTreeMap::from([(
+        "urn:large".to_owned(),
+        json!({"name":"large","uri":"urn:large","description":"x".repeat(1024)}),
+    )]);
+    for templates in [false, true] {
+        assert_eq!(
+            page(entries.clone(), &json!({"cursor":"bad!"}), templates, 500),
+            Err("Invalid resource cursor")
+        );
+        assert_eq!(
+            page(entries.clone(), &json!({}), templates, 500),
+            Err("Resource discovery entry exceeds response budget")
+        );
+    }
+}

@@ -55,12 +55,13 @@ pub(super) fn decode_read_reference(
     {
         return Err("Invalid resource template parameters");
     }
+    // The validated query contains each of the two names used below.
     let parameter = |name: &str| {
         pairs
             .iter()
             .find(|(key, _)| key == name)
             .map(|(_, value)| value.as_ref())
-            .unwrap()
+            .ok_or("Invalid resource template parameters")
     };
     let reference = ResourceReference(extension_contracts::ResourceReference {
         v: 1,
@@ -69,9 +70,9 @@ pub(super) fn decode_read_reference(
         instance_id: identity.instance_id,
         tool_id: identity.tool_id,
         des_id: identity.des_id,
-        arguments: serde_json::from_str(parameter("arguments"))
+        arguments: serde_json::from_str(parameter("arguments")?)
             .map_err(|_| "Invalid resource arguments")?,
-        resource_uri: parameter("resource_uri").to_owned(),
+        resource_uri: parameter("resource_uri")?.to_owned(),
     });
     if reference.resource_uri.starts_with("flowbase-resource:") {
         return Err("Resource template requires an original resource URI");
@@ -200,18 +201,29 @@ fn page(
     while let Some((key, entry)) = remaining.next() {
         let cursor = URL_SAFE_NO_PAD
             .encode(serde_json::to_vec(&(field, key)).map_err(|_| "Invalid resource cursor")?);
-        result[field].as_array_mut().unwrap().push(entry);
+        result
+            .get_mut(field)
+            .and_then(Value::as_array_mut)
+            .ok_or("Invalid resource discovery")?
+            .push(entry);
         if remaining.peek().is_some() {
             result["nextCursor"] = json!(cursor);
         } else {
-            result.as_object_mut().unwrap().remove("nextCursor");
+            result
+                .as_object_mut()
+                .ok_or("Invalid resource discovery")?
+                .remove("nextCursor");
         }
         if serde_json::to_vec(&result)
             .map_err(|_| "Invalid resource discovery")?
             .len()
             > budget
         {
-            result[field].as_array_mut().unwrap().pop();
+            result
+                .get_mut(field)
+                .and_then(Value::as_array_mut)
+                .ok_or("Invalid resource discovery")?
+                .pop();
             let Some(last) = last_cursor else {
                 return Err("Resource discovery entry exceeds response budget");
             };
