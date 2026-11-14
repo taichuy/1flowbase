@@ -40,6 +40,35 @@ impl OpenApi for ApiDoc {
     }
 }
 
+// utoipa derives apply explicit schemas first, then handler schema references;
+// both use last-write-wins within a category. OpenApi::merge is first-write-wins,
+// so merge category contributions explicitly before the existing outer merge.
+fn compose_category(
+    mut document: utoipa::openapi::OpenApi,
+    mut paths: Vec<(usize, utoipa::openapi::OpenApi)>,
+    mut schemas: Vec<(usize, utoipa::openapi::OpenApi)>,
+) -> utoipa::openapi::OpenApi {
+    paths.sort_by_key(|(ordinal, _)| *ordinal);
+    schemas.sort_by_key(|(ordinal, _)| *ordinal);
+    let mut handler_schemas = Vec::new();
+    for (_, fragment) in paths {
+        document.paths.merge(fragment.paths);
+        if let Some(components) = fragment.components {
+            handler_schemas.push(components.schemas);
+        }
+    }
+    let components = document.components.get_or_insert_with(Default::default);
+    for (_, fragment) in schemas {
+        if let Some(explicit) = fragment.components {
+            components.schemas.extend(explicit.schemas);
+        }
+    }
+    for schemas in handler_schemas {
+        components.schemas.extend(schemas);
+    }
+    document
+}
+
 pub(crate) async fn dynamic_openapi_document(state: &ApiState) -> Result<Value, ApiError> {
     let mut document = dynamic_openapi_document_with(
         state.store.clone(),
@@ -260,6 +289,58 @@ mod workflow_operation_tests {
             created_at: OffsetDateTime::UNIX_EPOCH,
         })
         .unwrap()
+    }
+
+    #[test]
+    fn category_composition_preserves_path_and_schema_collision_precedence() {
+        fn fragment(label: &str) -> utoipa::openapi::OpenApi {
+            serde_json::from_value(json!({
+                "openapi": "3.1.0",
+                "info": {"title": "collision fixture", "version": "1"},
+                "paths": {"/collision": {"get": {
+                    "operationId": label, "responses": {"200": {"description": "ok"}}
+                }}},
+                "components": {"schemas": {
+                    "Shared": {"type": "string", "description": label}
+                }}
+            }))
+            .unwrap()
+        }
+        let mut explicit_early = fragment("explicit-early");
+        explicit_early.components.as_mut().unwrap().schemas.insert(
+            "ExplicitOnly".into(),
+            serde_json::from_value(json!({"type": "string", "description": "early"})).unwrap(),
+        );
+        let mut explicit_late = fragment("explicit-late");
+        explicit_late.components.as_mut().unwrap().schemas.insert(
+            "ExplicitOnly".into(),
+            serde_json::from_value(json!({"type": "string", "description": "late"})).unwrap(),
+        );
+        let document = compose_category(
+            serde_json::from_value(json!({
+                "openapi": "3.1.0", "info": {"title": "root", "version": "1"}, "paths": {}
+            }))
+            .unwrap(),
+            vec![
+                (7, fragment("handler-late")),
+                (2, fragment("handler-early")),
+            ],
+            vec![(9, explicit_late), (1, explicit_early)],
+        );
+        let document = serde_json::to_value(document).unwrap();
+        assert_eq!(
+            document["paths"]["/collision"]["get"]["operationId"],
+            "handler-early"
+        );
+        assert_eq!(
+            document["components"]["schemas"]["ExplicitOnly"]["description"],
+            "late"
+        );
+        assert_eq!(
+            document["components"]["schemas"]["Shared"]["description"],
+            "handler-late"
+        );
+        assert_eq!(document["info"]["title"], "root");
     }
 
     #[test]

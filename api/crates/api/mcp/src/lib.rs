@@ -15,3 +15,6 @@ pub mod routes {
     pub mod webmcp;
     pub use settings_group::mcp_management;
 }
+
+#[doc(hidden)]
+pub mod openapi;

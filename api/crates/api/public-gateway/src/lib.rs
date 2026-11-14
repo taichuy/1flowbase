@@ -9,3 +9,6 @@ pub mod routes {
     pub use api_host_kernel::routes::*;
     pub mod application_public_api;
 }
+
+#[doc(hidden)]
+pub mod openapi;

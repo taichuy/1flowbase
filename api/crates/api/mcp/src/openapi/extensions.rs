@@ -1,0 +1,117 @@
+// Original category ordinals retain utoipa path and schema collision precedence.
+use utoipa::OpenApi;
+
+#[derive(OpenApi)]
+#[openapi(paths(
+    crate::routes::mcp_management::get_mcp_catalog,
+    crate::routes::mcp_management::list_mcp_interface_capabilities,
+    crate::routes::mcp_management::list_mcp_items,
+    crate::routes::mcp_management::export_mcp_catalog,
+    crate::routes::mcp_management::directory::get_instance_directory,
+    crate::routes::mcp_management::directory::replace_instance_directory,
+    crate::routes::mcp_management::list_mcp_instances,
+    crate::routes::mcp_management::create_mcp_instance,
+    crate::routes::mcp_management::copy_mcp_instance,
+    crate::routes::mcp_management::update_mcp_instance,
+    crate::routes::mcp_management::delete_mcp_instance,
+    crate::routes::mcp_management::upsert_mcp_group,
+    crate::routes::mcp_management::delete_mcp_group,
+    crate::routes::mcp_management::list_mcp_tools,
+    crate::routes::mcp_management::create_mcp_tool,
+    crate::routes::mcp_management::get_mcp_tool,
+    crate::routes::mcp_management::update_mcp_tool,
+    crate::routes::mcp_management::delete_mcp_tool,
+    crate::routes::mcp_management::refresh_mcp_tool_description,
+    crate::routes::mcp_management::check_mcp_tool_description,
+    crate::routes::mcp_management::execute_mcp_debug,
+    crate::routes::mcp_management::create_mcp_tool_binding,
+    crate::routes::mcp_management::update_mcp_tool_binding,
+    crate::routes::mcp_management::delete_mcp_tool_binding,
+    crate::routes::mcp_management::get_mcp_instance_discovery_policy,
+    crate::routes::mcp_management::update_mcp_instance_discovery_policy,
+    crate::routes::mcp_management::upstream::list_connections,
+    crate::routes::mcp_management::upstream::create_connection,
+    crate::routes::mcp_management::upstream::update_connection,
+    crate::routes::mcp_management::upstream::delete_connection,
+    crate::routes::mcp_management::upstream::save_credentials,
+    crate::routes::mcp_management::upstream::delete_credentials,
+    crate::routes::mcp_management::upstream::test_draft_connection,
+    crate::routes::mcp_management::upstream::test_connection,
+    crate::routes::mcp_management::upstream::discover_tools,
+    crate::routes::mcp_management::upstream::import_tools,
+    crate::routes::mcp_management::upstream::debug_proxy_tool,
+    crate::routes::mcp_management::bundles::list_bundle_library,
+    crate::routes::mcp_management::bundles::sync_library_bundle,
+    crate::routes::mcp_management::bundles::preview_library_bundle,
+    crate::routes::mcp_management::bundles::import_library_bundle,
+))]
+struct Paths92;
+
+#[derive(OpenApi)]
+#[openapi(components(schemas(
+    crate::routes::mcp_management::CreateMcpInstanceBody,
+    crate::routes::mcp_management::CreateMcpToolBindingBody,
+    crate::routes::mcp_management::CreateMcpToolBody,
+    crate::routes::mcp_management::McpCatalogResponse,
+    crate::routes::mcp_management::McpDescriptionCheckBody,
+    crate::routes::mcp_management::McpDescriptionCheckResponse,
+    crate::routes::mcp_management::McpDebugExecuteBody,
+    crate::routes::mcp_management::McpDebugExecuteDetailsResponse,
+    crate::routes::mcp_management::McpDebugResponseMode,
+    crate::routes::mcp_management::McpExportPackageResponse,
+    crate::routes::mcp_management::directory::McpInstanceDirectoryResponse,
+    crate::routes::mcp_management::directory::ReplaceMcpInstanceDirectoryBody,
+    crate::routes::mcp_management::directory::McpDirectoryGroupBody,
+    crate::routes::mcp_management::directory::McpDirectoryBindingBody,
+    crate::routes::mcp_management::McpGroupResponse,
+    crate::routes::mcp_management::McpInstanceResponse,
+    crate::routes::mcp_management::McpInterfaceCatalogEntryResponse,
+    crate::routes::mcp_management::McpListItemSummaryResponse,
+    crate::routes::mcp_management::McpInstanceDiscoveryPolicyResponse,
+    crate::routes::mcp_management::McpToolBindingResponse,
+    crate::routes::mcp_management::McpToolResponse,
+    crate::routes::mcp_management::McpToolAvailabilityStatusDto,
+    crate::routes::mcp_management::UpdateMcpInstanceDiscoveryPolicyBody,
+    crate::routes::mcp_management::UpdateMcpToolBindingBody,
+    crate::routes::mcp_management::UpdateMcpToolBody,
+    crate::routes::mcp_management::UpsertMcpGroupBody,
+    crate::routes::mcp_management::McpToolExecutionTargetDto,
+    crate::routes::mcp_management::bundles::McpBundleLibraryVersionBody,
+    crate::official_mcp_bundles::OfficialMcpBundleCatalogSource,
+    crate::official_mcp_bundles::McpCatalogVersion,
+    crate::official_mcp_bundles::LocalMcpBundleReceipt,
+    crate::official_mcp_bundles::McpBundleLibraryEntry,
+    crate::official_mcp_bundles::McpBundleLibraryCatalog,
+    domain::McpBundleFileKind,
+    domain::McpBundleFile,
+    domain::McpBundleManifest,
+    domain::McpBundleVersionStatus,
+    domain::McpBundleItemEffect,
+    domain::McpBundleEffectSummary,
+    domain::McpBundleItemReport,
+    domain::McpBundleSharedToolImpact,
+    domain::McpBundlePreview,
+    domain::McpBundleImportReport,
+    crate::routes::mcp_management::upstream::SaveMcpUpstreamConnectionBody,
+    crate::routes::mcp_management::upstream::McpUpstreamConnectionResponse,
+    crate::routes::mcp_management::upstream::SaveMcpUpstreamCredentialBody,
+    crate::routes::mcp_management::upstream::TestMcpUpstreamConnectionDraftBody,
+    crate::routes::mcp_management::upstream::McpUpstreamDraftTestResponse,
+    crate::routes::mcp_management::upstream::McpUpstreamTestResponse,
+    crate::routes::mcp_management::upstream::McpUpstreamToolResponse,
+    crate::routes::mcp_management::upstream::McpUpstreamDiscoverResponse,
+    crate::routes::mcp_management::upstream::ImportMcpUpstreamToolsBody,
+    crate::routes::mcp_management::upstream::DebugMcpProxyToolBody,
+    crate::routes::mcp_management::upstream::DebugMcpProxyToolResponse,
+)))]
+struct Schemas122;
+
+#[doc(hidden)]
+pub fn paths_fragments() -> Vec<(usize, utoipa::openapi::OpenApi)> {
+    vec![(92, Paths92::openapi())]
+}
+
+#[doc(hidden)]
+pub fn schemas_fragments() -> Vec<(usize, utoipa::openapi::OpenApi)> {
+    vec![(122, Schemas122::openapi())]
+}

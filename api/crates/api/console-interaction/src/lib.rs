@@ -26,3 +26,6 @@ pub mod routes {
     pub mod terminal;
     pub mod plugins { pub use api_host_kernel::plugin_transport::*; }
 }
+
+#[doc(hidden)]
+pub mod openapi;

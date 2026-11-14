@@ -17,3 +17,6 @@ pub mod routes {
     pub use settings_group::*;
     pub use settings_group::{billing, host_infrastructure, system};
 }
+
+#[doc(hidden)]
+pub mod openapi;

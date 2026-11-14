@@ -15,3 +15,6 @@ pub mod routes {
         debug_run_stream,
     };
 }
+
+#[doc(hidden)]
+pub mod openapi;

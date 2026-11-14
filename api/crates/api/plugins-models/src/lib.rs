@@ -14,3 +14,6 @@ pub mod routes {
     pub mod plugins_and_models_group;
     pub use plugins_and_models_group::*;
 }
+
+#[doc(hidden)]
+pub mod openapi;
