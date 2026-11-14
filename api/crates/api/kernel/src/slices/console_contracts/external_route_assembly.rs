@@ -3,6 +3,66 @@ use axum::{handler::Handler, routing::MethodRouter, Router};
 
 use crate::external_endpoint_catalog::ExternalEndpointContribution;
 
+/// Concrete HTTP states own shared router code generation at the Kernel boundary.
+pub trait HttpRouteState: Clone + Send + Sync + 'static {
+    fn new_router() -> Router<Self>;
+    fn route_router(router: Router<Self>, path: &str, methods: MethodRouter<Self>) -> Router<Self>;
+    fn merge_routers(router: Router<Self>, other: Router<Self>) -> Router<Self>;
+    fn nest_router(router: Router<Self>, prefix: &str, other: Router<Self>) -> Router<Self>;
+    fn limit_router_body(
+        router: Router<Self>,
+        limit: axum::extract::DefaultBodyLimit,
+    ) -> Router<Self>;
+    fn docs_router() -> Router<Self>;
+}
+
+// Expand only concrete, non-generic implementations; no default/blanket operation body.
+macro_rules! http_route_state {
+    ($state:ty) => {
+        impl HttpRouteState for $state {
+            fn new_router() -> Router<Self> {
+                Router::new()
+            }
+
+            fn route_router(
+                router: Router<Self>,
+                path: &str,
+                methods: MethodRouter<Self>,
+            ) -> Router<Self> {
+                router.route(path, methods)
+            }
+
+            fn merge_routers(router: Router<Self>, other: Router<Self>) -> Router<Self> {
+                router.merge(other)
+            }
+
+            fn nest_router(
+                router: Router<Self>,
+                prefix: &str,
+                other: Router<Self>,
+            ) -> Router<Self> {
+                router.nest(prefix, other)
+            }
+
+            fn limit_router_body(
+                router: Router<Self>,
+                limit: axum::extract::DefaultBodyLimit,
+            ) -> Router<Self> {
+                router.layer(limit)
+            }
+
+            fn docs_router() -> Router<Self> {
+                utoipa_swagger_ui::SwaggerUi::new("/docs")
+                    .config(utoipa_swagger_ui::Config::from("/openapi.json"))
+                    .into()
+            }
+        }
+    };
+}
+
+http_route_state!(std::sync::Arc<crate::app_state::ApiState>);
+http_route_state!(());
+
 /// Canonical endpoint and authorization templates retain `:name` / `*rest`.
 /// Only the protocol router consumes Axum's brace syntax.
 pub(crate) fn axum_route_path(path: &str) -> String {
@@ -75,37 +135,52 @@ pub struct ExternalRouteAssembly<S> {
 }
 
 impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
-    pub fn new() -> Self {
+    pub fn new() -> Self
+    where
+        S: HttpRouteState,
+    {
         Self {
-            router: Router::new(),
+            router: S::new_router(),
             routes: Vec::new(),
         }
     }
 
-    pub fn route(mut self, path: &str, methods: ExternalMethodRouter<S>) -> Self {
+    pub fn route(mut self, path: &str, methods: ExternalMethodRouter<S>) -> Self
+    where
+        S: HttpRouteState,
+    {
         self.routes.extend(
             methods
                 .methods
                 .into_iter()
                 .map(|(method, binding)| (method.to_string(), path.to_string(), binding)),
         );
-        self.router = self.router.route(&axum_route_path(path), methods.router);
+        self.router = S::route_router(self.router, &axum_route_path(path), methods.router);
         self
     }
 
-    pub fn merge(mut self, other: Self) -> Self {
+    pub fn merge(mut self, other: Self) -> Self
+    where
+        S: HttpRouteState,
+    {
         self.routes.extend(other.routes);
-        self.router = self.router.merge(other.router);
+        self.router = S::merge_routers(self.router, other.router);
         self
     }
 
     /// Apply an extractor policy without losing the mounted endpoint inventory.
-    pub fn default_body_limit(mut self, limit: axum::extract::DefaultBodyLimit) -> Self {
-        self.router = self.router.layer(limit);
+    pub fn default_body_limit(mut self, limit: axum::extract::DefaultBodyLimit) -> Self
+    where
+        S: HttpRouteState,
+    {
+        self.router = S::limit_router_body(self.router, limit);
         self
     }
 
-    pub fn nest(mut self, prefix: &str, other: Self) -> Self {
+    pub fn nest(mut self, prefix: &str, other: Self) -> Self
+    where
+        S: HttpRouteState,
+    {
         self.routes
             .extend(other.routes.into_iter().map(|(method, path, binding)| {
                 (
@@ -114,7 +189,7 @@ impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
                     binding,
                 )
             }));
-        self.router = self.router.nest(&axum_route_path(prefix), other.router);
+        self.router = S::nest_router(self.router, &axum_route_path(prefix), other.router);
         self
     }
 
@@ -145,11 +220,12 @@ impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
     }
 
     // Swagger owns these three routes in utoipa-swagger-ui; arbitrary Router conversion is absent.
-    pub fn docs() -> Self {
+    pub fn docs() -> Self
+    where
+        S: HttpRouteState,
+    {
         Self {
-            router: utoipa_swagger_ui::SwaggerUi::new("/docs")
-                .config(utoipa_swagger_ui::Config::from("/openapi.json"))
-                .into(),
+            router: S::docs_router(),
             routes: ["/docs", "/docs/*rest"]
                 .into_iter()
                 .map(|path| ("GET".to_string(), path.to_string(), None))

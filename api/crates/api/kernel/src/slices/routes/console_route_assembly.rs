@@ -1,5 +1,7 @@
 use std::convert::Infallible;
 
+use crate::external_route_assembly::HttpRouteState;
+
 use access_control::{ConsoleRouteAssemblyBinding, ConsoleRouteBinding, ConsoleRouteOwnership};
 use axum::{
     handler::Handler,
@@ -145,7 +147,7 @@ pub struct ConsoleRouteAssembly<S> {
 
 impl<S> Default for ConsoleRouteAssembly<S>
 where
-    S: Clone + Send + Sync + 'static,
+    S: HttpRouteState,
 {
     fn default() -> Self {
         Self::new()
@@ -156,15 +158,21 @@ impl<S> ConsoleRouteAssembly<S>
 where
     S: Clone + Send + Sync + 'static,
 {
-    pub fn new() -> Self {
+    pub fn new() -> Self
+    where
+        S: HttpRouteState,
+    {
         Self {
-            router: Router::new(),
+            router: S::new_router(),
             bindings: Vec::new(),
             maintenance_control_routes: Vec::new(),
         }
     }
 
-    pub fn route(mut self, path: &str, methods: ConsoleMethodRouter<S>) -> Self {
+    pub fn route(mut self, path: &str, methods: ConsoleMethodRouter<S>) -> Self
+    where
+        S: HttpRouteState,
+    {
         let ConsoleMethodRouter { router, methods } = methods;
         for (method, ownership, request_class) in methods {
             let route = ConsoleRouteBinding {
@@ -177,15 +185,19 @@ where
             self.bindings
                 .push(ConsoleRouteAssemblyBinding { route, ownership });
         }
-        self.router = self.router.route(
+        self.router = S::route_router(
+            self.router,
             &crate::external_route_assembly::axum_route_path(path),
             router,
         );
         self
     }
 
-    pub fn merge(mut self, other: Self) -> Self {
-        self.router = self.router.merge(other.router);
+    pub fn merge(mut self, other: Self) -> Self
+    where
+        S: HttpRouteState,
+    {
+        self.router = S::merge_routers(self.router, other.router);
         self.bindings.extend(other.bindings);
         self.maintenance_control_routes
             .extend(other.maintenance_control_routes);
