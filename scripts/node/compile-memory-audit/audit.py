@@ -208,6 +208,7 @@ def checks(role, workload, measured, rows):
         result['rustc_records_present'] = bool(rows)
     if role == 'candidate':
         result['all_observed_rustc_invocations_at_most_4_gib'] = (bool(rows) or workload == 'external') and all(p['maxrss_kib'] * 1024 <= 4 * GIB for p in rows)
+        result['observed_direct_rustc_hwm_at_most_4_gib'] = all(p['hwm_kib'] * 1024 <= 4 * GIB for p in measured.get('sampled_processes', []) if p['role'] == 'rustc')
         if workload in {'dev2', 'test2'}:
             result['anonymous_peak_limit'] = measured['anon_peak_bytes'] <= (7.5 if workload == 'dev2' else 8) * GIB
         if workload in {'dev2', 'dev10', 'incremental'}:

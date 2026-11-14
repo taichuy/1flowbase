@@ -47,6 +47,10 @@ class AuditTests(unittest.TestCase):
         self.assertFalse(result['all_observed_rustc_invocations_at_most_4_gib'])
         self.assertFalse(result['anonymous_peak_limit'])
         self.assertFalse(result['api_server_link_descendant_upper_bound_at_most_3_9_gib'])
+        measured['sampled_processes'] = [{'role': 'rustc', 'hwm_kib': 5 * 1024 ** 2}]
+        low_row = dict(row, maxrss_kib=1024)
+        self.assertFalse(audit.checks('candidate', 'external', measured, [low_row])['observed_direct_rustc_hwm_at_most_4_gib'])
+        self.assertTrue(all(audit.checks('baseline', 'dev2', measured, [row]).values()))
         measured['returncode'] = 7
         self.assertFalse(audit.checks('baseline', 'dev2', measured, [row])['workload_completed'])
         measured['returncode'] = 0
