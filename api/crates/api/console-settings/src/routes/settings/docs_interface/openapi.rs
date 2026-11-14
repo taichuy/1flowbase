@@ -7,7 +7,10 @@ pub struct ConsoleOpenApiDocumentSchema;
 impl utoipa::ToSchema for ConsoleOpenApiDocumentSchema {}
 impl utoipa::PartialSchema for ConsoleOpenApiDocumentSchema {
     fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        serde_json::from_value(document_schema()).expect("static scoped OpenAPI document schema")
+        api_host_kernel::openapi_interface::schema_projection::openapi_schema_from_value(
+            document_schema(),
+        )
+        .expect("static scoped OpenAPI document schema")
     }
 }
 fn text() -> Value {

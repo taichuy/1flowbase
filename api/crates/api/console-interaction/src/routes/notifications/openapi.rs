@@ -248,7 +248,10 @@ macro_rules! projection {
         impl ToSchema for $name {}
         impl PartialSchema for $name {
             fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-                serde_json::from_value($schema()).expect("static notification wire schema")
+                api_host_kernel::openapi_interface::schema_projection::openapi_schema_from_value(
+                    $schema(),
+                )
+                .expect("static notification wire schema")
             }
         }
     };

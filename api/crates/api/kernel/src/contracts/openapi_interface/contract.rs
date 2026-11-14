@@ -8,6 +8,8 @@ use interface_runtime::{
 use serde_json::Value;
 use std::sync::Arc;
 
+use super::schema_projection::openapi_schema_to_value;
+
 #[derive(Clone, Debug)]
 pub struct ApiOperationContext {
     pub interface_id: String,
@@ -68,12 +70,12 @@ pub fn schema<T: utoipa::ToSchema>() -> Value {
         .map(|(name, schema)| {
             (
                 name,
-                serde_json::to_value(schema).expect("typed schema serializes"),
+                openapi_schema_to_value(schema).expect("typed schema serializes"),
             )
         })
         .collect::<serde_json::Map<String, Value>>();
     let source = serde_json::json!({"components":{"schemas":definitions}});
-    let root = serde_json::to_value(T::schema()).expect("typed schema serializes");
+    let root = openapi_schema_to_value(T::schema()).expect("typed schema serializes");
     crate::openapi_interface::close_api_event_schema(&source, &root)
 }
 

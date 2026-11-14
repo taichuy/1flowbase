@@ -1,5 +1,17 @@
 //! Shared schema and JSON view mechanics; field-selection policy belongs to each API owner.
 use serde_json::Value;
+
+pub fn openapi_schema_to_value(
+    schema: utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+) -> serde_json::Result<Value> {
+    serde_json::to_value(schema)
+}
+
+pub fn openapi_schema_from_value(
+    value: Value,
+) -> serde_json::Result<utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>> {
+    serde_json::from_value(value)
+}
 pub fn query_fields(value: Value) -> Value {
     super::json_contract::omit_query_nulls(value).expect("typed query object")
 }
