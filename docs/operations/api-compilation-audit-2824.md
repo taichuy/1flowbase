@@ -121,7 +121,17 @@ Only after successful measurement and volume/hash capture, the standalone
 This is the sole task-specific exception to manual target writes. It validates the
 real clean workspace/source, manifest/lock, original exported tool hashes, fresh
 ownership and corresponding successful managed job/process receipts. Current
-volume and every originally recorded bin/harness device/inode/size/SHA must match.
+volume fields other than allocated bytes and every originally recorded bin/harness
+device/inode/apparent size/SHA must match exactly. Physical allocated bytes are
+accounted separately: deduplicate recorded artifacts by (device,inode), calculate
+each original/current allocated-byte difference, and require their exact sum to
+equal the entire target's allocated-byte difference. Unknown differences, conflicting
+hardlink snapshots or any content/other volume change are refused; there is no
+tolerance or force option. The external repair record preserves both volumes,
+per-inode original/current allocations, alias paths and the exact sums without
+changing historical measurement values or formal report statistics. B1's observed
+4096-byte allocation-only change has no established cause; this method does not
+attribute it to delayed allocation or another filesystem mechanism.
 The historical root directory inode was not recorded: the repair records its
 current identity and pins that directory with a dirfd/NOFOLLOW during validation
 and exclusive creation. No unmeasured/unknown target, symlink, changed content or

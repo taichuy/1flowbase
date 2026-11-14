@@ -145,5 +145,109 @@ class CacheTagTests(unittest.TestCase):
                 self.assertFalse(args.receipt_directory.exists())
 
 
+class AllocationReconciliationTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.target = Path(temporary.name)
+        self.binary = self.target / 'probe'
+        with self.binary.open('wb') as stream:
+            stream.truncate(8192)  # Real sparse zero bytes, no Cargo or compiler.
+
+    def recorded_artifact(self, file):
+        info = file.stat()
+        return {'path': str(file), 'device': info.st_dev, 'inode': info.st_ino,
+                'apparent_bytes': info.st_size, 'allocated_bytes': info.st_blocks * 512,
+                'sha256': cache_tag.digest(file)}
+
+    def allocate_same_bytes(self, file):
+        before = self.recorded_artifact(file)
+        descriptor = os.open(file, os.O_RDWR)
+        try:
+            os.posix_fallocate(descriptor, 0, before['apparent_bytes'])
+        finally:
+            os.close(descriptor)
+        after = self.recorded_artifact(file)
+        self.assertEqual(after['sha256'], before['sha256'])
+        self.assertEqual(after['inode'], before['inode'])
+        self.assertGreater(after['allocated_bytes'], before['allocated_bytes'])
+        return after['allocated_bytes'] - before['allocated_bytes']
+
+    def test_same_content_allocation_delta_exactly_explains_target(self):
+        recorded = self.recorded_artifact(self.binary)
+        measured_volume = cache_tag.volume(self.target)
+        delta = self.allocate_same_bytes(self.binary)
+        result = cache_tag.reconcile_allocation(self.target, measured_volume,
+            {'bins': [recorded], 'test_or_bin_harness_executables': []})
+        self.assertEqual(result['measured_target_volume'], measured_volume)
+        self.assertEqual(result['current_target_volume'], cache_tag.volume(self.target))
+        self.assertEqual(result['target_allocated_delta_bytes'], delta)
+        self.assertEqual(result['artifact_allocated_delta_bytes'], delta)
+        self.assertEqual(len(result['unique_artifact_allocations']), 1)
+        allocation = result['unique_artifact_allocations'][0]
+        self.assertEqual(allocation['measured_allocated_bytes'], recorded['allocated_bytes'])
+        self.assertEqual(allocation['current_allocated_bytes'], recorded['allocated_bytes'] + delta)
+        self.assertEqual(allocation['allocated_delta_bytes'], delta)
+
+    def test_hardlink_bin_and_harness_allocation_is_counted_once(self):
+        alias = self.target / 'hardlink'
+        os.link(self.binary, alias)
+        recorded = self.recorded_artifact(self.binary)
+        harness = self.recorded_artifact(alias)
+        measured_volume = cache_tag.volume(self.target)
+        delta = self.allocate_same_bytes(self.binary)
+        result = cache_tag.reconcile_allocation(self.target, measured_volume,
+            {'bins': [recorded], 'test_or_bin_harness_executables': [harness, recorded]})
+        self.assertEqual(result['artifact_allocated_delta_bytes'], delta)
+        self.assertEqual(result['target_allocated_delta_bytes'], delta)
+        self.assertEqual(len(result['unique_artifact_allocations']), 1)
+        self.assertEqual(set(result['unique_artifact_allocations'][0]['paths']), {str(self.binary), str(alias)})
+
+    def test_unrecorded_file_allocation_delta_is_rejected(self):
+        unknown = self.target / 'unrecorded'
+        with unknown.open('wb') as stream:
+            stream.truncate(8192)
+        recorded = self.recorded_artifact(self.binary)
+        measured_volume = cache_tag.volume(self.target)
+        self.allocate_same_bytes(unknown)
+        with self.assertRaisesRegex(ValueError, 'not exactly explained'):
+            cache_tag.reconcile_allocation(self.target, measured_volume,
+                {'bins': [recorded], 'test_or_bin_harness_executables': []})
+
+    def test_hash_change_is_rejected_even_when_allocation_delta_would_match(self):
+        recorded = self.recorded_artifact(self.binary)
+        measured_volume = cache_tag.volume(self.target)
+        self.allocate_same_bytes(self.binary)
+        with self.binary.open('r+b') as stream:
+            stream.write(b'X')
+        self.assertEqual(self.binary.stat().st_size, recorded['apparent_bytes'])
+        with self.assertRaisesRegex(ValueError, 'identity/hash mismatch'):
+            cache_tag.reconcile_allocation(self.target, measured_volume,
+                {'bins': [recorded], 'test_or_bin_harness_executables': []})
+
+    def test_every_non_allocation_volume_field_remains_exact(self):
+        recorded = self.recorded_artifact(self.binary)
+        measured_volume = cache_tag.volume(self.target)
+        for key in measured_volume:
+            if key == 'allocated_bytes':
+                continue
+            with self.subTest(field=key):
+                wrong = dict(measured_volume)
+                wrong[key] = 'changed' if isinstance(wrong[key], str) else wrong[key] + 1
+                with self.assertRaisesRegex(ValueError, 'outside allocated bytes'):
+                    cache_tag.reconcile_allocation(self.target, wrong,
+                        {'bins': [recorded], 'test_or_bin_harness_executables': []})
+
+    def test_conflicting_hardlink_allocation_snapshots_are_rejected(self):
+        alias = self.target / 'hardlink'
+        os.link(self.binary, alias)
+        recorded = self.recorded_artifact(self.binary)
+        conflicting = self.recorded_artifact(alias)
+        conflicting['allocated_bytes'] += 512
+        with self.assertRaisesRegex(ValueError, 'Conflicting hardlink'):
+            cache_tag.reconcile_allocation(self.target, cache_tag.volume(self.target),
+                {'bins': [recorded], 'test_or_bin_harness_executables': [conflicting]})
+
+
 if __name__ == '__main__':
     unittest.main()

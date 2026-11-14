@@ -133,6 +133,7 @@ def artifact_identity(target, artifacts):
     harnesses = artifacts.get('test_or_bin_harness_executables')
     require(isinstance(bins, list) and isinstance(harnesses, list) and (bins or harnesses), 'Measured produced artifacts are required')
     hashed_inodes = {}
+    allocations = {}
     for item in bins + harnesses:
         file = canonical(Path(item['path']))
         require(file.is_relative_to(target) and file.is_file(), 'Measured artifact escaped target')
@@ -140,10 +141,42 @@ def artifact_identity(target, artifacts):
         key = info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
         if key not in hashed_inodes:
             hashed_inodes[key] = digest(file)
-        require((info.st_dev, info.st_ino, info.st_size, info.st_blocks * 512) ==
-                (item['device'], item['inode'], item['apparent_bytes'], item['allocated_bytes'])
+        require((info.st_dev, info.st_ino, info.st_size) ==
+                (item['device'], item['inode'], item['apparent_bytes'])
                 and hashed_inodes[key] == item['sha256'], 'Measured artifact identity/hash mismatch: ' + str(file))
-    return {'bins': len(bins), 'harness_executables': len(harnesses)}
+        measured_allocated = item['allocated_bytes']
+        require(type(measured_allocated) is int and measured_allocated >= 0, 'Invalid measured artifact allocation')
+        inode = info.st_dev, info.st_ino
+        allocation = {'device': info.st_dev, 'inode': info.st_ino, 'apparent_bytes': info.st_size,
+                      'sha256': item['sha256'], 'measured_allocated_bytes': measured_allocated,
+                      'current_allocated_bytes': info.st_blocks * 512,
+                      'allocated_delta_bytes': info.st_blocks * 512 - measured_allocated}
+        if inode in allocations:
+            require(all(allocations[inode][key] == value for key, value in allocation.items()),
+                    'Conflicting hardlink artifact allocation records')
+        else:
+            allocations[inode] = dict(allocation, paths=[])
+        if str(file) not in allocations[inode]['paths']:
+            allocations[inode]['paths'].append(str(file))
+    return {'bins': len(bins), 'harness_executables': len(harnesses),
+            'unique_artifact_allocations': list(allocations.values()),
+            'artifact_allocated_delta_bytes': sum(item['allocated_delta_bytes'] for item in allocations.values())}
+
+
+def reconcile_allocation(target, measured_volume, artifacts):
+    current_volume = volume(target)
+    require({key: value for key, value in current_volume.items() if key != 'allocated_bytes'} ==
+            {key: value for key, value in measured_volume.items() if key != 'allocated_bytes'},
+            'Measured target volume changed outside allocated bytes')
+    require(type(measured_volume.get('allocated_bytes')) is int and measured_volume['allocated_bytes'] >= 0,
+            'Invalid measured target allocation')
+    identity = artifact_identity(target, artifacts)
+    target_delta = current_volume['allocated_bytes'] - measured_volume['allocated_bytes']
+    require(target_delta == identity['artifact_allocated_delta_bytes'],
+            'Target allocation difference is not exactly explained by recorded artifacts')
+    return {'measured_target_volume': measured_volume, 'current_target_volume': current_volume,
+            'target_allocated_delta_bytes': target_delta, **identity,
+            'scope': 'physical allocation accounting only; content identities unchanged; no cause inferred'}
 
 
 def verified_inputs(workspace, expected, data, tools, observation=None):
@@ -266,11 +299,11 @@ def verified_inputs(workspace, expected, data, tools, observation=None):
     job = validate_measurement(measured, phase, observation, selected_identity, phase == observation)
     for file, value in measured['configuration_hashes'].items():
         require(digest(canonical(Path(file))) == value, 'Measured configuration changed: ' + file)
-    require(volume(target) == measured['target_volume'], 'Measured target volume changed before repair')
-    artifact_counts = artifact_identity(target, measured['artifacts'])
+    allocation = reconcile_allocation(target, measured['target_volume'], measured['artifacts'])
+    artifact_counts = {key: allocation[key] for key in ('bins', 'harness_executables')}
     return target, hashes, {'source': identity, 'ownership': ownership, 'job': job,
                             'tool_export': exported, 'target_volume': measured['target_volume'],
-                            'artifact_counts': artifact_counts, 'observation_data_directory': str(observation),
+                            'artifact_counts': artifact_counts, 'allocation_reconciliation': allocation, 'observation_data_directory': str(observation),
                             'selected_measurement': str(phase / 'measurement.json'),
                             'root_identity_scope': 'current repair-time directory only; historical root inode was not recorded'}
 
