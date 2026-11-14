@@ -144,10 +144,13 @@ fn console_log_exchange_only_declares_import_as_event_capable() {
         }
     }
     let registry = console_interface::compile_registry_with_event_observation(
-        "api-server.console-application-log-exchange", "graph:console-application-log-exchange-v1",
-        super::super::interface::DECLARATIONS, Arc::new(UnusedPort),
-        &[crate::routes::application_public_api::agent_logs::event_projection::CONSOLE_IMPORT_OPERATION],
-    ).unwrap();
+        "api-server.console-application-log-exchange",
+        "graph:console-application-log-exchange-v1",
+        super::super::interface::DECLARATIONS,
+        Arc::new(UnusedPort),
+        &[crate::agent_logs_event_projection::CONSOLE_IMPORT_OPERATION],
+    )
+    .unwrap();
     let capabilities = registry
         .event_capabilities()
         .map(|entry| entry.definition().interface_id().as_str().to_owned())

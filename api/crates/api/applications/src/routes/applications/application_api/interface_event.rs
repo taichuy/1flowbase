@@ -14,7 +14,7 @@ use std::sync::{Arc, Weak};
 use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
-pub(crate) enum WorkflowEventInput {
+pub enum WorkflowEventInput {
     Get {
         application_id: Uuid,
     },
@@ -41,7 +41,7 @@ impl InterfaceContract for WorkflowEventInput {
         Some(serde_json::json!({"application_id":id,"mutating":mutating}))
     }
 }
-pub(crate) enum WorkflowEventOutput {
+pub enum WorkflowEventOutput {
     Optional(Option<WorkflowEventTriggerResponse>),
     Required(WorkflowEventTriggerResponse),
 }
@@ -88,7 +88,7 @@ struct WorkflowEventAdapter {
     // The registry owns this adapter, so the generation is borrowed, never retained.
     boot: Option<Weak<crate::extension_bus::ExtensionBootSnapshot>>,
 }
-pub(crate) fn port(
+pub fn port(
     state: &crate::app_state::ApiState,
 ) -> Arc<dyn ConsoleInterfacePort<WorkflowEventInput, WorkflowEventOutput>> {
     Arc::new(WorkflowEventAdapter {
@@ -162,7 +162,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: true,
     },
 ];
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<WorkflowEventInput, WorkflowEventOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -175,11 +175,6 @@ pub(crate) fn compile_registry(
         port,
     )
 }
-
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-#[path = "_tests/workflow_event_ownership.rs"]
-mod ownership_tests;
 
 impl crate::openapi_interface::contract::ApiInput for WorkflowEventInput {
     fn project_document_input(

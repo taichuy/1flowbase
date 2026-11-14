@@ -3,8 +3,8 @@ use super::*;
 use control_plane::ports::{
     ApplicationLogRecordsPage, LogQueryField, RecordClientTrajectoryQueryPage,
 };
-pub(crate) mod conversation_trajectory;
-pub(crate) mod current_context;
+pub mod conversation_trajectory;
+pub mod current_context;
 pub(super) mod schemas;
 use schemas::{
     LogConversationsPageSchema, LogRecordsPageSchema, QueryFieldsSchema, TrajectoryQueryPageSchema,
@@ -30,7 +30,7 @@ pub async fn query_log_conversations(
     headers: HeaderMap,
     Json(query): Json<LogConversationsQuery>,
 ) -> Result<Json<ApiSuccess<control_plane::ports::ApplicationLogConversationsPage>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.conversations.query.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -111,7 +111,7 @@ pub async fn query_log_records(
     headers: HeaderMap,
     Json(query): Json<LogRecordsQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationLogRecordsPage>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.records.query.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -131,7 +131,7 @@ pub async fn get_query_fields(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<QueryFields>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.records.query-fields.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -153,7 +153,7 @@ pub async fn query_record_trajectory(
     Path((application_id, record_id)): Path<(Uuid, Uuid)>,
     Json(query): Json<TrajectoryQuery>,
 ) -> Result<Json<ApiSuccess<RecordClientTrajectoryQueryPage>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.record.client-trajectory.query.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },

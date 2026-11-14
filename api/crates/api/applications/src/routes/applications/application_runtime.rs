@@ -37,7 +37,7 @@ use crate::{
 };
 
 use super::debug_run_stream;
-pub(crate) mod provider_trajectory;
+pub mod provider_trajectory;
 use provider_trajectory::workflow::{get_workflow_trajectory_body, list_workflow_trajectory};
 use provider_trajectory::{
     get_client_trajectory_section, get_log_record, get_provider_trajectory_body,
@@ -47,22 +47,22 @@ use provider_trajectory::{
 };
 mod application_log_cache;
 mod application_logs;
-pub(crate) mod application_monitoring;
-pub(crate) mod archive;
-pub(crate) mod debug_variable_cache;
-pub(crate) mod debug_variable_snapshot;
-pub(crate) mod interface_debug_artifacts;
-pub(crate) mod interface_debug_commands;
-pub(crate) mod interface_debug_variables;
-pub(crate) mod interface_runtime_reads;
-pub(crate) mod interface_trace_exports;
-pub(crate) mod interface_trace_payloads;
-pub(crate) mod log_exchange;
-pub(crate) mod log_query;
-pub(crate) mod logs_delete;
+pub mod application_monitoring;
+pub mod archive;
+pub mod debug_variable_cache;
+pub mod debug_variable_snapshot;
+pub mod interface_debug_artifacts;
+pub mod interface_debug_commands;
+pub mod interface_debug_variables;
+pub mod interface_runtime_reads;
+pub mod interface_trace_exports;
+pub mod interface_trace_payloads;
+pub mod log_exchange;
+pub mod log_query;
+pub mod logs_delete;
 #[path = "application_runtime/response_projection/managed_detail_projection/mod.rs"]
 mod managed_detail_projection;
-pub(crate) mod record_trace;
+pub mod record_trace;
 mod runtime_debug_artifacts;
 
 use archive::{
@@ -75,7 +75,7 @@ pub use debug_variable_cache::{
 };
 pub use debug_variable_snapshot::{get_debug_variable_snapshot, DebugVariableSnapshotResponse};
 pub(crate) use runtime_debug_artifacts::enrich_application_run_detail_visible_internal_llm_route_traces;
-pub(crate) use runtime_debug_artifacts::enrich_application_run_trace_projection_source_visible_internal_llm_route_traces;
+pub use runtime_debug_artifacts::enrich_application_run_trace_projection_source_visible_internal_llm_route_traces;
 use runtime_debug_artifacts::{
     application_run_model, application_run_query, count_llm_tool_callback_trace_items,
     enrich_node_last_run_visible_internal_llm_route_traces, load_runtime_debug_artifact_content,
@@ -398,10 +398,8 @@ include!("application_runtime/handlers/log_handlers.rs");
 
 include!("application_runtime/handlers/export_handlers.rs");
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use archive::{build_archive_from_trace_exports, parse_run_archive_v1};
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests;

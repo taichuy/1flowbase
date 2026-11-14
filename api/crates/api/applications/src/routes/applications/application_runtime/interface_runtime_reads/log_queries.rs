@@ -57,7 +57,7 @@ impl ApplicationRuntimeReadsAdapter {
     pub(super) async fn current_run_context(
         &self,
         actor: &domain::ActorContext,
-        context: crate::routes::mcp_protocol::client_context::McpClientContext,
+        context: crate::mcp_client_context::McpClientContext,
     ) -> Result<log_query::current_context::CurrentRunContextResponse, ApiError> {
         use log_query::current_context::{context_filter, CurrentRunContextResponse};
         let mut response = CurrentRunContextResponse::from_context(&context);

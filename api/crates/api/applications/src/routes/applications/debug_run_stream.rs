@@ -144,7 +144,7 @@ pub(crate) fn runtime_event_to_websocket_value(
     value
 }
 
-pub(crate) async fn send_runtime_event_websocket_stream(
+pub async fn send_runtime_event_websocket_stream(
     stream: Arc<dyn RuntimeEventStream>,
     backfill_source: Arc<dyn RuntimeEventBackfillSource>,
     run_id: Uuid,
@@ -259,7 +259,7 @@ pub(crate) fn durable_event_stream_sequence(event: &domain::RuntimeEventRecord) 
         .unwrap_or(event.sequence)
 }
 
-pub(crate) fn to_runtime_event_record_response(
+pub fn to_runtime_event_record_response(
     event: domain::RuntimeEventRecord,
 ) -> RuntimeEventStreamEnvelopeResponse {
     let sequence = durable_event_stream_sequence(&event);
@@ -525,7 +525,6 @@ async fn send_durable_backfill(
     read_any
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

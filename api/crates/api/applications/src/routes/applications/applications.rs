@@ -22,7 +22,7 @@ use crate::{
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
-pub(crate) mod interface;
+pub mod interface;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -640,7 +640,7 @@ pub async fn list_applications(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<ApplicationSummaryResponse>>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -669,7 +669,7 @@ pub async fn get_application_catalog(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ApplicationCatalogResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.catalog.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -700,7 +700,7 @@ pub async fn create_application(
     headers: HeaderMap,
     Json(body): Json<CreateApplicationBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ApplicationDetailResponse>>), ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.create.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -729,7 +729,7 @@ pub async fn create_application_tag(
     headers: HeaderMap,
     Json(body): Json<CreateApplicationTagBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ApplicationTagCatalogResponse>>), ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.tags.create.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -760,7 +760,7 @@ pub async fn get_application(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<ApplicationDetailResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -791,7 +791,7 @@ pub async fn list_application_environment_variables(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<Vec<ApplicationEnvironmentVariableResponse>>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.environment-variables.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -828,7 +828,7 @@ pub async fn replace_application_environment_variables(
     Path(id): Path<Uuid>,
     Json(body): Json<ReplaceApplicationEnvironmentVariablesBody>,
 ) -> Result<Json<ApiSuccess<Vec<ApplicationEnvironmentVariableResponse>>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.environment-variables.replace.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -865,7 +865,7 @@ pub async fn list_application_js_dependency_selections(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<Vec<ApplicationJsDependencySelectionResponse>>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.js-dependencies.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -901,7 +901,7 @@ pub async fn replace_application_js_dependency_selection(
     Path(id): Path<Uuid>,
     Json(body): Json<ReplaceApplicationJsDependencySelectionBody>,
 ) -> Result<Json<ApiSuccess<ApplicationJsDependencySelectionResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.js-dependencies.replace.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -940,7 +940,7 @@ pub async fn patch_application(
     Path(id): Path<Uuid>,
     Json(body): Json<PatchApplicationBody>,
 ) -> Result<Json<ApiSuccess<ApplicationDetailResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.update.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -974,7 +974,7 @@ pub async fn delete_application(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
-    crate::routes::console_interface::invoke::<_, interface::ApplicationsOutput>(
+    crate::routes::console_interface::invoke_non_create::<_, interface::ApplicationsOutput>(
         Arc::clone(&state),
         "http.console.applications.delete.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -984,9 +984,8 @@ pub async fn delete_application(
     Ok(StatusCode::NO_CONTENT)
 }
 
-pub(crate) mod collectors;
+pub mod collectors;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "applications/_tests/time_response.rs"]
 mod time_response_tests;

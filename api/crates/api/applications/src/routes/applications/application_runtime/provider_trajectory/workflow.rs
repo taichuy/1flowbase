@@ -19,7 +19,7 @@ pub async fn list_workflow_trajectory(
     Path((application_id, run_id)): Path<(Uuid, Uuid)>,
     Query(query): Query<WorkflowTrajectoryQuery>,
 ) -> Result<Json<ApiSuccess<WorkflowTrajectoryPage>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.workflow-trajectory.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -48,7 +48,7 @@ pub async fn get_workflow_trajectory_body(
     headers: HeaderMap,
     Path((application_id, run_id, event_id)): Path<(Uuid, Uuid, String)>,
 ) -> Result<Json<ApiSuccess<WorkflowTrajectoryBody>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.workflow-trajectory.body.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },

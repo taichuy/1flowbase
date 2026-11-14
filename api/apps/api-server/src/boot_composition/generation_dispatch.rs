@@ -51,6 +51,7 @@ impl GenerationDispatchAssembly for GenerationDispatch {
                 ),
             ),
             Arc::new(crate::public_gateway_assembly::PublicRuntimeInvokerAdapter),
+            Arc::new(crate::applications_assembly::RuntimeDebugMcpAdapter),
         )
     }
     #[cfg_attr(test, api_test_selection::group(contracts))]

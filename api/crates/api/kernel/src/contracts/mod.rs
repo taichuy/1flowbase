@@ -20,3 +20,6 @@ pub mod openapi_docs;
 pub mod openapi_interface;
 #[path = "response.rs"]
 pub mod response;
+
+mod application_runtime_shared;
+pub use application_runtime_shared::*;

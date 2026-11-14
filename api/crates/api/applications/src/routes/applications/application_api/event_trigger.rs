@@ -101,13 +101,14 @@ pub async fn get_workflow_event_trigger(
     headers: HeaderMap,
     Path(application_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<Option<WorkflowEventTriggerResponse>>>, ApiError> {
-    let output: interface_event::WorkflowEventOutput = crate::routes::console_interface::invoke(
-        Arc::clone(&state),
-        "http.console.applications.workflow-event.get.v1",
-        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
-        interface_event::WorkflowEventInput::Get { application_id },
-    )
-    .await?;
+    let output: interface_event::WorkflowEventOutput =
+        crate::routes::console_interface::invoke_non_create(
+            Arc::clone(&state),
+            "http.console.applications.workflow-event.get.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+            interface_event::WorkflowEventInput::Get { application_id },
+        )
+        .await?;
     Ok(Json(ApiSuccess::new(output.into_optional()?)))
 }
 #[utoipa::path(put, path = "/api/console/applications/{application_id}/workflow-event-trigger",
@@ -121,20 +122,23 @@ pub async fn replace_workflow_event_trigger(
     Path(application_id): Path<Uuid>,
     Json(body): Json<WorkflowEventTriggerBody>,
 ) -> Result<Json<ApiSuccess<WorkflowEventTriggerResponse>>, ApiError> {
-    let output: interface_event::WorkflowEventOutput = crate::routes::console_interface::invoke(
-        Arc::clone(&state),
-        "http.console.applications.workflow-event.replace.v1",
-        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
-        interface_event::WorkflowEventInput::Replace {
-            application_id,
-            body,
-        },
-    )
-    .await?;
+    let output: interface_event::WorkflowEventOutput =
+        crate::routes::console_interface::invoke_non_create(
+            Arc::clone(&state),
+            "http.console.applications.workflow-event.replace.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+                state,
+                headers,
+            },
+            interface_event::WorkflowEventInput::Replace {
+                application_id,
+                body,
+            },
+        )
+        .await?;
     Ok(Json(ApiSuccess::new(output.into_required()?)))
 }
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 mod tests {
     use super::*;

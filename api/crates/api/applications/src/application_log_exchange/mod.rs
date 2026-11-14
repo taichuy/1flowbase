@@ -22,7 +22,7 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use uuid::Uuid;
 mod native;
 
-pub(crate) async fn execute(
+pub async fn execute(
     state: &ApiState,
     actor: &ActorContext,
     request: ApplicationLogsRequest,
@@ -252,6 +252,5 @@ fn date_filter(from: Option<String>, to: Option<String>) -> Result<Filter, ApiEr
     ))
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod _tests;

@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) const OPERATIONS: &[&str] = &[
+pub const OPERATIONS: &[&str] = &[
     "applications.logs.otlp.export",
     "applications.logs.otlp.import",
 ];
@@ -20,7 +20,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: true,
     },
 ];
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     state: Arc<ApiState>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -34,6 +34,6 @@ pub(crate) fn compile_registry(
             store: state.store.clone(),
             files: state.file_storage_registry.clone(),
         }),
-        &[crate::routes::application_public_api::agent_logs::event_projection::CONSOLE_IMPORT_OPERATION],
+        &[crate::agent_logs_event_projection::CONSOLE_IMPORT_OPERATION],
     )
 }

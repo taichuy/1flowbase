@@ -1,3 +1,5 @@
+mod binary_body;
+pub use binary_body::OpenApiBinaryBody;
 use control_plane::application_public_api::{
     mapping::WorkflowExtensionResponseMode,
     published_workflow_operation::PublishedWorkflowOperation,

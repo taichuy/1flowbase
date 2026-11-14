@@ -4,15 +4,13 @@ pub(super) async fn rebuild_imported_run_trace_projections(
     store: &storage_durable_postgres::MainDurableStore,
     application_id: Uuid,
     run_mappings: &[(String, Uuid)],
+    trace_rebuilder: &dyn crate::runtime_ports::TraceProjectionRebuildPort,
 ) -> Vec<serde_json::Value> {
     let mut warnings = Vec::new();
     for (source_run_id, target_run_id) in run_mappings {
-        if let Err(error) = crate::workers::trace_projection::rebuild_trace_projection(
-            store,
-            application_id,
-            *target_run_id,
-        )
-        .await
+        if let Err(error) = trace_rebuilder
+            .rebuild(store, application_id, *target_run_id)
+            .await
         {
             warnings.push(serde_json::json!({
                 "code": "trace_projection_rebuild_failed",

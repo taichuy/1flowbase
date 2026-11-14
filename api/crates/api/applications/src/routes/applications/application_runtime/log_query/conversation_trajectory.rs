@@ -40,7 +40,7 @@ pub async fn query_conversation_trajectory(
     Path((application_id, log_conversation_id)): Path<(Uuid, Uuid)>,
     Json(query): Json<ConversationTrajectoryQuery>,
 ) -> Result<Json<ApiSuccess<ConversationClientTrajectoryQueryPage>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.conversation-trajectory.query.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -71,7 +71,7 @@ pub async fn get_conversation_trajectory_section(
     Path((application_id, log_conversation_id, step_id)): Path<(Uuid, Uuid, Uuid)>,
     Query(query): Query<ConversationTrajectorySectionQuery>,
 ) -> Result<Json<ApiSuccess<ClientTrajectorySection>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.conversation-trajectory.section.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },

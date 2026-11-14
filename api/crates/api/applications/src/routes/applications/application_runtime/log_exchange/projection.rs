@@ -1,7 +1,7 @@
 //! Managed hooks receive counts only; source bodies and remote destinations stay private.
 use super::*;
+use crate::agent_logs_event_projection as ep;
 use crate::extension_bus::managed_projection as mp;
-use crate::routes::application_public_api::agent_logs::event_projection as ep;
 impl InterfaceContract for ExchangeInput {
     const CONTRACT_ID: &'static str = "console-application-log-exchange-input";
     const CONTRACT_VERSION: &'static str = "1";

@@ -165,7 +165,7 @@ fn partial_attribution_counts_input_spans_not_events_or_deduplicated_spans() {
     let mut request = agent_logs_protocol::decode(
         "application/json",
         None,
-        include_bytes!("../../../../../agent_logs_protocol/_tests/fixtures/openlit.json"),
+        include_bytes!("../../../../../../../kernel/src/contracts/application_runtime_shared/agent_logs_protocol/_tests/fixtures/openlit.json"),
     )
     .unwrap();
     let span = request.resource_spans[0].scope_spans[0].spans[1].clone();

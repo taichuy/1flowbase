@@ -17,7 +17,7 @@ pub async fn get_record_trace_tree(
     headers: HeaderMap,
     Path((application_id, record_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<control_plane::ports::ApplicationLogRecordTraceTree>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.record.trace-tree.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -45,7 +45,7 @@ pub async fn list_record_trace_children(
     Path((application_id, record_id, trace_node_id)): Path<(Uuid, Uuid, Uuid)>,
     Query(query): Query<RecordTraceChildrenQuery>,
 ) -> Result<Json<ApiSuccess<control_plane::ports::ApplicationLogRecordTraceChildren>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.record.trace-tree.children.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },

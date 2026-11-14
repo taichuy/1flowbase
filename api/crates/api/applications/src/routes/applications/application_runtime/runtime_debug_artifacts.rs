@@ -23,7 +23,6 @@ type RuntimeDebugArtifactOffloadFuture<'a> =
 mod llm_tool_callbacks;
 mod payloads;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests;
 
@@ -74,7 +73,6 @@ use llm_tool_callbacks::{
     with_llm_tool_callback_runtime_facts, LlmToolCallbackRuntimeFacts,
 };
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use llm_tool_callbacks::{
     execution_status_from_callback_payload, execution_status_from_callback_payload_and_route_trace,

@@ -21,7 +21,7 @@ use crate::{
     },
 };
 
-pub(crate) enum ApplicationApiKeyInput {
+pub enum ApplicationApiKeyInput {
     List {
         application_id: Uuid,
     },
@@ -132,7 +132,7 @@ impl InterfaceContract for ApplicationApiKeyInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) enum ApplicationApiKeyOutput {
+pub enum ApplicationApiKeyOutput {
     List(Vec<ApplicationApiKeyResponse>),
     Created(CreatedApplicationApiKeyResponse),
     NoContent,
@@ -307,7 +307,7 @@ struct ApplicationApiKeyAdapter {
     store: MainDurableStore,
 }
 
-pub(crate) fn port(
+pub fn port(
     store: MainDurableStore,
 ) -> Arc<dyn ConsoleInterfacePort<ApplicationApiKeyInput, ApplicationApiKeyOutput>> {
     Arc::new(ApplicationApiKeyAdapter { store })
@@ -404,7 +404,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<ApplicationApiKeyInput, ApplicationApiKeyOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

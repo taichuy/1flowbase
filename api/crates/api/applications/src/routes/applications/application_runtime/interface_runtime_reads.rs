@@ -32,7 +32,7 @@ use crate::{
 
 pub(crate) enum ApplicationRuntimeReadsInput {
     CurrentContext {
-        context: crate::routes::mcp_protocol::client_context::McpClientContext,
+        context: crate::mcp_client_context::McpClientContext,
     },
     QueryFields,
     QueryConversations {
@@ -988,7 +988,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: MainDurableStore,
     cache: Arc<dyn CacheStore>,
     runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
@@ -1012,11 +1012,9 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableApplicationRuntimeReadsPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<ApplicationRuntimeReadsInput, ApplicationRuntimeReadsOutput>
     for UnavailableApplicationRuntimeReadsPort
@@ -1034,7 +1032,6 @@ impl ConsoleInterfacePort<ApplicationRuntimeReadsInput, ApplicationRuntimeReadsO
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;

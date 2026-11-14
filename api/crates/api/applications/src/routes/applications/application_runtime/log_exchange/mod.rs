@@ -21,8 +21,8 @@ mod interface;
 mod projection;
 mod routes;
 
-pub(crate) use interface::{compile_registry, OPERATIONS};
-pub(crate) use routes::*;
+pub use interface::{compile_registry, OPERATIONS};
+pub use routes::*;
 
 #[derive(Deserialize, utoipa::ToSchema, serde::Serialize)]
 #[serde(deny_unknown_fields)]
@@ -149,6 +149,5 @@ impl ConsoleInterfacePort<ExchangeInput, ExchangeOutput> for ExchangeAdapter {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod _tests;

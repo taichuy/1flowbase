@@ -125,7 +125,7 @@ async fn otlp_route_json_protobuf_gzip_full_ack_and_duplicate_replay_keep_scope_
         None,
         include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../crates/api/public-gateway/src/agent_logs_protocol/_tests/fixtures/openlit.json"
+            "/../../crates/api/kernel/src/contracts/application_runtime_shared/agent_logs_protocol/_tests/fixtures/openlit.json"
         )),
     )
     .unwrap();

@@ -156,6 +156,7 @@ pub(super) fn contributions(
             crate::routes::application_runtime::interface_debug_commands::compile_registry(
                 crate::routes::application_runtime::interface_debug_commands::dependencies(
                     state.clone(),
+                    Arc::new(crate::applications_assembly::BindingValidator),
                 ),
             )?,
         ),
@@ -169,6 +170,7 @@ pub(super) fn contributions(
             crate::routes::application_runtime::interface_debug_commands::compile_stream_registry(
                 crate::routes::application_runtime::interface_debug_commands::dependencies(
                     state.clone(),
+                    Arc::new(crate::applications_assembly::BindingValidator),
                 ),
             )?,
         ),
@@ -236,6 +238,7 @@ pub(super) fn contributions(
                 crate::routes::application_runtime::archive::interface::dependencies(
                     state.store.clone(),
                     state.file_storage_registry.clone(),
+                    Arc::new(crate::applications_assembly::TraceRebuilder),
                 ),
             )?,
         ),

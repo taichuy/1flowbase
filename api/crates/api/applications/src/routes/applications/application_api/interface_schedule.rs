@@ -20,7 +20,7 @@ use crate::{
     },
 };
 
-pub(crate) enum WorkflowScheduleInput {
+pub enum WorkflowScheduleInput {
     Get {
         application_id: Uuid,
     },
@@ -114,7 +114,7 @@ impl InterfaceContract for WorkflowScheduleInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) enum WorkflowScheduleOutput {
+pub enum WorkflowScheduleOutput {
     Optional(Option<WorkflowScheduleTriggerResponse>),
     Required(WorkflowScheduleTriggerResponse),
 }
@@ -280,7 +280,7 @@ struct WorkflowScheduleAdapter {
     store: MainDurableStore,
 }
 
-pub(crate) fn port(
+pub fn port(
     store: MainDurableStore,
 ) -> Arc<dyn ConsoleInterfacePort<WorkflowScheduleInput, WorkflowScheduleOutput>> {
     Arc::new(WorkflowScheduleAdapter { store })
@@ -355,7 +355,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<WorkflowScheduleInput, WorkflowScheduleOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

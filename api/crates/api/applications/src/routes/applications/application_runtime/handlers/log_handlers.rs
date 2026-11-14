@@ -27,7 +27,7 @@ pub async fn list_application_runs(
     Path(id): Path<Uuid>,
     Query(query): Query<ApplicationRunsQuery>,
 ) -> Result<Json<ApiSuccess<FlowRunSummaryPageResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.logs.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -67,7 +67,7 @@ pub async fn list_application_conversation_messages(
     Path((id, conversation_id)): Path<(Uuid, String)>,
     Query(query): Query<ApplicationConversationMessagesQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationConversationMessagesPageResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.conversations.messages.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -109,7 +109,7 @@ pub async fn list_application_run_conversation_messages(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
     Query(query): Query<ApplicationConversationMessagesQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationConversationMessagesPageResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.run-conversation.messages.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -253,7 +253,7 @@ pub async fn get_application_run_overview(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunOverviewResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.run.overview.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -289,7 +289,7 @@ pub async fn get_application_run_trace_tree(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceTreeResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.trace-tree.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -328,7 +328,7 @@ pub async fn get_application_run_trace_node_children(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
     Query(query): Query<ApplicationRunTraceNodeChildrenQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceNodeChildrenResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.trace-tree.children.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -369,7 +369,7 @@ pub async fn get_application_run_trace_node_content(
     Path((id, run_id, trace_node_id)): Path<(Uuid, Uuid, String)>,
     RawQuery(raw_query): RawQuery,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceNodeContentResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.trace-node.content.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -413,7 +413,7 @@ pub async fn get_application_run_trace_node_detail(
     Path((id, run_id, trace_node_id, detail_ref_id)): Path<(Uuid, Uuid, String, String)>,
     RawQuery(raw_query): RawQuery,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceNodeDetailResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.trace-node.detail.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -455,7 +455,7 @@ pub async fn get_application_run_trace_tool_callback_content(
     headers: HeaderMap,
     Path((id, run_id, trace_node_id, tool_call_id)): Path<(Uuid, Uuid, String, String)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceToolCallbackContentResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.trace-tool-callback.content.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -495,7 +495,7 @@ pub async fn get_application_run_resume_timeline(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunResumeTimelineResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.resume-timeline.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -531,7 +531,7 @@ pub async fn get_application_run_resume_timeline_summary(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunResumeTimelineSummaryResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.resume-timeline-summary.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -569,7 +569,7 @@ pub async fn get_application_run_node_last_run(
     headers: HeaderMap,
     Path((id, run_id, node_id)): Path<(Uuid, Uuid, String)>,
 ) -> Result<Json<ApiSuccess<Option<NodeLastRunResponse>>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.run-node-last-run.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -609,7 +609,7 @@ pub async fn get_runtime_debug_stream(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
     Query(query): Query<RuntimeDebugStreamQuery>,
 ) -> Result<Json<ApiSuccess<RuntimeDebugStreamResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.debug-stream.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -653,7 +653,7 @@ pub async fn get_node_last_run(
     headers: HeaderMap,
     Path((id, node_id)): Path<(Uuid, String)>,
 ) -> Result<Json<ApiSuccess<Option<NodeLastRunResponse>>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.node-last-run.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },

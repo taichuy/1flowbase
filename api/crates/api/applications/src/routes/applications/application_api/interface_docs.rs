@@ -13,11 +13,7 @@ use uuid::Uuid;
 
 use super::ApplicationApiDocsQuery;
 use crate::{
-    application_public_docs::{
-        build_application_public_docs_catalog, build_application_public_docs_category_operations,
-        build_application_public_docs_category_spec, build_application_public_docs_operation_spec,
-        ApplicationPublicDocsContext,
-    },
+    application_public_docs::{ApplicationPublicDocsContext, ApplicationPublicDocsPort},
     error_response::ApiError,
     openapi_docs::{
         filter_category_operations, paginate_category_operations, ApiDocsRegistry, DocsCatalog,
@@ -29,7 +25,7 @@ use crate::{
     },
 };
 
-pub(crate) enum ApplicationDocsInput {
+pub enum ApplicationDocsInput {
     Catalog {
         application_id: Uuid,
         query_locale: Option<String>,
@@ -239,7 +235,7 @@ impl InterfaceContract for ApplicationDocsInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) enum ApplicationDocsOutput {
+pub enum ApplicationDocsOutput {
     Catalog(DocsCatalog),
     CategoryOperations(DocsCatalogCategoryOperationsPage),
     OpenApi(Value),
@@ -296,13 +292,19 @@ impl InterfaceContract for ApplicationDocsOutput {
 struct ApplicationDocsAdapter {
     store: MainDurableStore,
     api_docs: Arc<ApiDocsRegistry>,
+    public_docs: Arc<dyn ApplicationPublicDocsPort>,
 }
 
-pub(crate) fn port(
+pub fn port(
     store: MainDurableStore,
     api_docs: Arc<ApiDocsRegistry>,
+    public_docs: Arc<dyn ApplicationPublicDocsPort>,
 ) -> Arc<dyn ConsoleInterfacePort<ApplicationDocsInput, ApplicationDocsOutput>> {
-    Arc::new(ApplicationDocsAdapter { store, api_docs })
+    Arc::new(ApplicationDocsAdapter {
+        store,
+        api_docs,
+        public_docs,
+    })
 }
 
 impl ApplicationDocsAdapter {
@@ -377,9 +379,7 @@ impl ConsoleInterfacePort<ApplicationDocsInput, ApplicationDocsOutput> for Appli
                         let context = self
                             .context(principal, application_id, query_locale, locale)
                             .await?;
-                        ApplicationDocsOutput::Catalog(build_application_public_docs_catalog(
-                            &context,
-                        ))
+                        ApplicationDocsOutput::Catalog(self.public_docs.catalog(&context))
                     }
                     ApplicationDocsInput::CategoryOperations {
                         application_id,
@@ -390,15 +390,12 @@ impl ConsoleInterfacePort<ApplicationDocsInput, ApplicationDocsOutput> for Appli
                         let context = self
                             .context(principal, application_id, query.locale.clone(), locale)
                             .await?;
-                        let operations = build_application_public_docs_category_operations(
-                            &context,
-                            &category_id,
-                        )
-                        .ok_or(
-                            control_plane::errors::ControlPlaneError::NotFound(
+                        let operations = self
+                            .public_docs
+                            .category_operations(&context, &category_id)
+                            .ok_or(control_plane::errors::ControlPlaneError::NotFound(
                                 "application_api_docs_category",
-                            ),
-                        )?;
+                            ))?;
                         let filtered =
                             filter_category_operations(&operations, query.search_query());
                         ApplicationDocsOutput::CategoryOperations(paginate_category_operations(
@@ -417,7 +414,8 @@ impl ConsoleInterfacePort<ApplicationDocsInput, ApplicationDocsOutput> for Appli
                             .context(principal, application_id, query_locale, locale)
                             .await?;
                         ApplicationDocsOutput::OpenApi(
-                            build_application_public_docs_category_spec(&context, &category_id)
+                            self.public_docs
+                                .category_spec(&context, &category_id)
                                 .ok_or(control_plane::errors::ControlPlaneError::NotFound(
                                     "application_api_docs_category",
                                 ))?,
@@ -433,10 +431,11 @@ impl ConsoleInterfacePort<ApplicationDocsInput, ApplicationDocsOutput> for Appli
                             .context(principal, application_id, query_locale, locale)
                             .await?;
                         ApplicationDocsOutput::OpenApi(
-                            build_application_public_docs_operation_spec(&context, &operation_id)
+                            self.public_docs
+                                .operation_spec(&context, &operation_id)
                                 .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                                "application_api_docs_operation",
-                            ))?,
+                                    "application_api_docs_operation",
+                                ))?,
                         )
                     }
                 };
@@ -479,7 +478,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<ApplicationDocsInput, ApplicationDocsOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

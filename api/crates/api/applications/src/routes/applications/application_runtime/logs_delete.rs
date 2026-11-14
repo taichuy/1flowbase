@@ -1,4 +1,4 @@
-pub(crate) mod jobs;
+pub mod jobs;
 use std::sync::Arc;
 
 use axum::{
@@ -163,7 +163,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[ConsoleInterfa
     path: "/api/console/applications/:id/logs",
     mutating: true,
 }];
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: MainDurableStore,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -204,7 +204,7 @@ pub(crate) async fn delete_logs(
     Path(application_id): Path<Uuid>,
     Json(scope): Json<AgentLogsDeleteScope>,
 ) -> Result<Json<ApiSuccess<LogsDeleteOutput>>, ApiError> {
-    let output = console_interface::invoke(
+    let output = console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.logs.delete.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },

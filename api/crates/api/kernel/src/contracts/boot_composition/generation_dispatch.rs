@@ -46,6 +46,7 @@ struct DispatchPorts {
     callable: Arc<dyn CallableDispatchPort>,
     mcp: Arc<dyn McpInterfaceDispatchPort>,
     public_runtime_invoker: Arc<dyn public_runtime_invoker::PublicRuntimeInvokerPort>,
+    runtime_debug_mcp: Arc<dyn crate::runtime_ports::RuntimeDebugMcpPort>,
 }
 
 pub fn unavailable() -> ApiError {
@@ -64,6 +65,14 @@ impl GenerationDispatch {
         let ports = self.ports.get().ok_or_else(unavailable)?;
         ports.public_runtime_invoker.for_actor(state, actor).await
     }
+    pub async fn runtime_debug_mcp_factory(
+        &self,
+        state: &Arc<ApiState>,
+        actor: &domain::ActorContext,
+    ) -> Result<Arc<dyn crate::runtime_ports::RuntimeToolInvokerFactoryHandle>, ApiError> {
+        let ports = self.ports.get().ok_or_else(unavailable)?;
+        ports.runtime_debug_mcp.for_actor(state, actor).await
+    }
     pub fn is_ready(&self) -> bool {
         self.ports.get().is_some()
     }
@@ -72,12 +81,14 @@ impl GenerationDispatch {
         callable: Arc<dyn CallableDispatchPort>,
         mcp: Arc<dyn McpInterfaceDispatchPort>,
         public_runtime_invoker: Arc<dyn public_runtime_invoker::PublicRuntimeInvokerPort>,
+        runtime_debug_mcp: Arc<dyn crate::runtime_ports::RuntimeDebugMcpPort>,
     ) -> Result<(), ApiError> {
         self.ports
             .set(DispatchPorts {
                 callable,
                 mcp,
                 public_runtime_invoker,
+                runtime_debug_mcp,
             })
             .map_err(|_| unavailable())
     }

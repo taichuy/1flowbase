@@ -134,7 +134,6 @@ pub(super) fn application_body_schema(operation: &ApiOperationContext, body: Val
     },"required":["path","body"],"additionalProperties":false})
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/document_event_projection.rs"]
 mod tests;

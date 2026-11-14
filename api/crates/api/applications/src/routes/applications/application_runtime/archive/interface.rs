@@ -563,18 +563,21 @@ impl InterfaceContract for ApplicationRuntimeArchiveOutput {
 }
 
 #[derive(Clone)]
-pub(crate) struct ApplicationRuntimeArchiveDependencies {
+pub struct ApplicationRuntimeArchiveDependencies {
     store: MainDurableStore,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    trace_rebuilder: Arc<dyn crate::runtime_ports::TraceProjectionRebuildPort>,
 }
 
-pub(crate) fn dependencies(
+pub fn dependencies(
     store: MainDurableStore,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    trace_rebuilder: Arc<dyn crate::runtime_ports::TraceProjectionRebuildPort>,
 ) -> ApplicationRuntimeArchiveDependencies {
     ApplicationRuntimeArchiveDependencies {
         store,
         file_storage_registry,
+        trace_rebuilder,
     }
 }
 
@@ -825,6 +828,7 @@ impl ApplicationRuntimeArchiveAdapter {
         let store = self.dependencies.store.clone();
         let restore_store = store.clone();
         let restore_actor = actor.clone();
+        let trace_rebuilder = self.dependencies.trace_rebuilder.clone();
         tokio::spawn(async move {
             if let Err(error) = restore_run_archive_v1(
                 restore_store.clone(),
@@ -832,6 +836,7 @@ impl ApplicationRuntimeArchiveAdapter {
                 restore_actor,
                 job_id,
                 archive,
+                trace_rebuilder,
             )
             .await
             {
@@ -992,7 +997,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: ApplicationRuntimeArchiveDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

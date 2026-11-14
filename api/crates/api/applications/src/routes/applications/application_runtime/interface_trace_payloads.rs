@@ -778,7 +778,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: MainDurableStore,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
 ) -> Result<

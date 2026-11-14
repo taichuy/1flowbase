@@ -37,7 +37,7 @@ use crate::{
     },
 };
 
-pub(crate) enum ApplicationsInput {
+pub enum ApplicationsInput {
     List,
     Catalog {
         locale: ConsoleLocaleHints,
@@ -229,7 +229,7 @@ impl InterfaceContract for ApplicationsInput {
     clippy::large_enum_variant,
     reason = "the typed application output is projected immediately into the console response"
 )]
-pub(crate) enum ApplicationsOutput {
+pub enum ApplicationsOutput {
     Applications(Vec<ApplicationSummaryResponse>),
     Catalog(ApplicationCatalogResponse),
     Application(ApplicationDetailResponse),
@@ -580,7 +580,7 @@ struct ApplicationsAdapter {
     bootstrap_workspace_id: Uuid,
 }
 
-pub(crate) fn applications_port(
+pub fn applications_port(
     store: MainDurableStore,
     bootstrap_workspace_id: Uuid,
     collector: super::collectors::CollectorCatalogDependencies,
@@ -907,7 +907,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<ApplicationsInput, ApplicationsOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -1070,11 +1070,9 @@ fn parse_workflow_trigger_type(
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableApplicationsPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<ApplicationsInput, ApplicationsOutput> for UnavailableApplicationsPort {
     fn execute<'a>(
@@ -1090,7 +1088,6 @@ impl ConsoleInterfacePort<ApplicationsInput, ApplicationsOutput> for Unavailable
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;
@@ -1128,7 +1125,6 @@ mod tests {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/collectors.rs"]
 mod collector_tests;
@@ -1278,7 +1274,6 @@ mod event_projection {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "interface/_tests/event_projection.rs"]
 mod event_projection_tests;

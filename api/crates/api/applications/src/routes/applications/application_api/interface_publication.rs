@@ -32,7 +32,7 @@ use crate::{
     },
 };
 
-pub(crate) enum ApplicationPublicationInput {
+pub enum ApplicationPublicationInput {
     GetMapping {
         application_id: Uuid,
     },
@@ -219,7 +219,7 @@ impl InterfaceContract for ApplicationPublicationInput {
     clippy::large_enum_variant,
     reason = "the typed output is projected immediately into the console response"
 )]
-pub(crate) enum ApplicationPublicationOutput {
+pub enum ApplicationPublicationOutput {
     Mapping(ApplicationApiMappingBody),
     Publication(ApplicationPublicationResponse),
     Status(ApplicationApiStatusResponse),
@@ -424,7 +424,7 @@ struct ApplicationPublicationAdapter {
     changes: Arc<tokio::sync::Notify>,
 }
 
-pub(crate) fn port(
+pub fn port(
     store: MainDurableStore,
     cache_store: Arc<dyn CacheStore>,
     changes: Arc<tokio::sync::Notify>,
@@ -594,7 +594,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<ApplicationPublicationInput, ApplicationPublicationOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

@@ -208,7 +208,7 @@ pub async fn get_application_runtime_activity(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<ApplicationRuntimeActivitySnapshot>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.monitoring.activity.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -248,7 +248,7 @@ pub async fn get_application_run_monitoring_report(
     Path(id): Path<Uuid>,
     Query(query): Query<ApplicationRunMonitoringQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationRunMonitoringReportResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.monitoring.report.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },

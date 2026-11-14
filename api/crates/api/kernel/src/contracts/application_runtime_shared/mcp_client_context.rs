@@ -5,15 +5,15 @@ use axum::http::HeaderMap;
 use serde_json::Value;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct McpClientContext {
-    pub(crate) thread_id: Option<String>,
-    pub(crate) turn_id: Option<String>,
-    pub(crate) session_id: Option<String>,
-    pub(crate) error: Option<&'static str>,
+pub struct McpClientContext {
+    pub thread_id: Option<String>,
+    pub turn_id: Option<String>,
+    pub session_id: Option<String>,
+    pub error: Option<&'static str>,
 }
 
 impl McpClientContext {
-    pub(super) fn from_protocol(meta: Option<&Value>, headers: &HeaderMap) -> Self {
+    pub fn from_protocol(meta: Option<&Value>, headers: &HeaderMap) -> Self {
         match parse(meta, headers) {
             Ok(context) => context,
             Err(error) => Self {
@@ -70,18 +70,14 @@ tokio::task_local! {
     static CLIENT_CONTEXT: McpClientContext;
 }
 
-pub(crate) async fn with_client_context<F: Future>(
-    context: McpClientContext,
-    future: F,
-) -> F::Output {
+pub async fn with_client_context<F: Future>(context: McpClientContext, future: F) -> F::Output {
     CLIENT_CONTEXT.scope(context, future).await
 }
 
-pub(crate) fn current_client_context() -> McpClientContext {
+pub fn current_client_context() -> McpClientContext {
     CLIENT_CONTEXT.try_with(Clone::clone).unwrap_or_default()
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
-#[path = "_tests/client_context.rs"]
+#[path = "_tests/mcp_client_context.rs"]
 mod tests;

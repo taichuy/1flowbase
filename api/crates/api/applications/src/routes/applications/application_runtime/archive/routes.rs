@@ -17,13 +17,13 @@ use super::*;
     )
 )]
 // Compatibility export endpoint; user-facing run export uses the trace zip path.
-pub(crate) async fn export_application_run_archive(
+pub async fn export_application_run_archive(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
     Query(query): Query<ApplicationRunArchiveQuery>,
 ) -> Result<axum::response::Response, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.archive.run.export.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -54,13 +54,13 @@ pub(crate) async fn export_application_run_archive(
     )
 )]
 // Compatibility export endpoint; user-facing run export uses the trace zip path.
-pub(crate) async fn export_application_runs_archive(
+pub async fn export_application_runs_archive(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(id): Path<Uuid>,
     Json(body): Json<ApplicationRunArchiveBody>,
 ) -> Result<axum::response::Response, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.archive.runs.export.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -89,7 +89,7 @@ pub(crate) async fn export_application_runs_archive(
         (status = 404, body = crate::error_response::ErrorBody)
     )
 )]
-pub(crate) async fn create_run_archive_upload_session(
+pub async fn create_run_archive_upload_session(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(id): Path<Uuid>,
@@ -101,7 +101,7 @@ pub(crate) async fn create_run_archive_upload_session(
     ),
     ApiError,
 > {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.archive.upload-sessions.create.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -135,7 +135,7 @@ pub(crate) async fn create_run_archive_upload_session(
         (status = 404, body = crate::error_response::ErrorBody)
     )
 )]
-pub(crate) async fn upload_run_archive_chunk(
+pub async fn upload_run_archive_chunk(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((id, session_id, chunk_index)): Path<(Uuid, Uuid, i32)>,
@@ -143,7 +143,7 @@ pub(crate) async fn upload_run_archive_chunk(
 ) -> Result<Json<ApiSuccess<RunArchiveChunkUploadResponse>>, ApiError> {
     let expected_sha256 = header_value(&headers, "x-chunk-sha256")
         .ok_or(ControlPlaneError::InvalidInput("chunk_sha256"))?;
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.archive.upload-chunks.upsert.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -177,12 +177,12 @@ pub(crate) async fn upload_run_archive_chunk(
         (status = 404, body = crate::error_response::ErrorBody)
     )
 )]
-pub(crate) async fn complete_run_archive_upload_session(
+pub async fn complete_run_archive_upload_session(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((id, session_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<RunArchiveImportJobResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.archive.upload-sessions.complete.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -212,12 +212,12 @@ pub(crate) async fn complete_run_archive_upload_session(
         (status = 404, body = crate::error_response::ErrorBody)
     )
 )]
-pub(crate) async fn get_run_archive_import_job(
+pub async fn get_run_archive_import_job(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path((id, job_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<RunArchiveImportJobResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.archive.import-jobs.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },

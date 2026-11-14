@@ -49,7 +49,6 @@ fn node_input_payload_view(payload: &serde_json::Value) -> serde_json::Value {
     payload.clone()
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn decode_runtime_debug_artifact_preview(payload: &serde_json::Value) -> Option<serde_json::Value> {
     let object = payload.as_object()?;
@@ -67,7 +66,6 @@ fn decode_runtime_debug_artifact_preview(payload: &serde_json::Value) -> Option<
         .and_then(|preview| serde_json::from_str(preview).ok())
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn start_input_payload(payload: &serde_json::Value) -> &serde_json::Value {
     payload

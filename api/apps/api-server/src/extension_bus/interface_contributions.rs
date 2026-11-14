@@ -257,6 +257,7 @@ pub(crate) fn production_interface_contributions(
     let console_application_docs = crate::routes::application_api::interface_docs::port(
         state.store.clone(),
         Arc::clone(&state.api_docs),
+        Arc::new(crate::applications_assembly::PublicDocs),
     );
     let native_interface_registry = state
         .extension_boot_snapshot

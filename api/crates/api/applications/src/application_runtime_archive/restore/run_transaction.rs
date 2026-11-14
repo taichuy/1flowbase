@@ -20,6 +20,7 @@ pub(crate) async fn restore_run_archive_v1(
     actor: domain::ActorContext,
     job_id: Uuid,
     archive: RunArchiveV1Response,
+    trace_rebuilder: Arc<dyn crate::runtime_ports::TraceProjectionRebuildPort>,
 ) -> Result<(), ApiError> {
     mark_run_archive_import_job_processing(&store, job_id).await?;
     if archive.archive_version != RUN_ARCHIVE_VERSION {
@@ -574,9 +575,13 @@ pub(crate) async fn restore_run_archive_v1(
     }
     let imported_run_mappings = run_mappings.clone();
     mark_run_archive_import_job_succeeded(&store, job_id, run_mappings).await?;
-    let projection_warnings =
-        rebuild_imported_run_trace_projections(&store, application.id, &imported_run_mappings)
-            .await;
+    let projection_warnings = rebuild_imported_run_trace_projections(
+        &store,
+        application.id,
+        &imported_run_mappings,
+        trace_rebuilder.as_ref(),
+    )
+    .await;
     if !projection_warnings.is_empty() {
         update_run_archive_import_job_projection_warnings(
             &store,

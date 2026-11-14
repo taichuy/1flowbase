@@ -1,47 +1,7 @@
-//! Explicit business fields for all Agent Logs reception operations. No raw facts or credentials.
+//! Shared Agent Logs schema and fact projections.
 use control_plane::ports::{AgentLogsBatch, AgentLogsReceipt, AGENT_LOGS_SCHEMA_VERSION};
-use interface_runtime::{InterfaceEventContext, InterfaceEventPrincipal, InvocationId};
 use serde_json::{json, Value};
-use uuid::Uuid;
-
 pub const CONSOLE_IMPORT_OPERATION: &str = "applications.logs.otlp.import";
-pub const OPERATIONS: &[&str] = &[super::ID, super::otlp::ID, CONSOLE_IMPORT_OPERATION];
-
-/// An operation subject, never a native run or an external task terminal.
-pub struct ApplicationLogOperationContext {
-    pub application_id: Uuid,
-    pub workspace_id: Uuid,
-    pub invocation_id: InvocationId,
-    pub operation: &'static str,
-}
-
-/// Only the sealed Application principal can supply public-ingress ownership.
-/// Console import retains the route application_id in its admitted typed input.
-pub fn application_operation_context(
-    context: &InterfaceEventContext,
-    input: Option<&Value>,
-) -> Option<ApplicationLogOperationContext> {
-    let operation = *OPERATIONS
-        .iter()
-        .find(|operation| **operation == context.definition().interface_id().as_str())?;
-    let (application_id, workspace_id) = match (operation, context.principal()?) {
-        (CONSOLE_IMPORT_OPERATION, InterfaceEventPrincipal::User(principal)) => (
-            input?.get("application_id")?.as_str()?.parse().ok()?,
-            principal.actor().current_workspace_id,
-        ),
-        (super::ID | super::otlp::ID, InterfaceEventPrincipal::Application(principal)) => {
-            (principal.application_id(), principal.workspace_id())
-        }
-        _ => return None,
-    };
-    Some(ApplicationLogOperationContext {
-        application_id,
-        workspace_id,
-        invocation_id: context.invocation_id(),
-        operation,
-    })
-}
-
 pub fn object_schema(fields: impl IntoIterator<Item = (&'static str, Value)>) -> Value {
     let properties = fields
         .into_iter()
@@ -153,6 +113,6 @@ pub fn receipt_schema() -> Value {
         ),
     ])
 }
-pub(crate) fn receipt_value(receipt: &AgentLogsReceipt) -> Value {
+pub fn receipt_value(receipt: &AgentLogsReceipt) -> Value {
     json!({"accepted_events":receipt.accepted_events,"duplicate_events":receipt.duplicate_events,"record_ids":receipt.record_ids})
 }

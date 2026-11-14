@@ -3,7 +3,7 @@ use control_plane_contracts::ports::{
     AgentLogsDeleteJob, AgentLogsDeleteJobCreate, AgentLogsDeletePreview,
 };
 
-pub(crate) const OPERATIONS: &[&str] = &[
+pub const OPERATIONS: &[&str] = &[
     "applications.logs.delete.jobs.create",
     "applications.logs.delete.jobs.get",
     "applications.logs.delete.jobs.latest",
@@ -226,7 +226,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: true,
     },
 ];
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: MainDurableStore,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -282,7 +282,7 @@ const PREVIEW_DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[ConsoleInterfaceD
     path: "/api/console/applications/:id/logs/deletion-preview",
     mutating: false,
 }];
-pub(crate) fn compile_preview_registry(
+pub fn compile_preview_registry(
     store: MainDurableStore,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -303,7 +303,7 @@ pub(crate) async fn preview(
     Path(application_id): Path<Uuid>,
     Json(scope): Json<AgentLogsDeleteScope>,
 ) -> Result<Json<ApiSuccess<PreviewOutput>>, ApiError> {
-    let output = console_interface::invoke(
+    let output = console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.logs.delete.preview.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -411,7 +411,7 @@ async fn invoke_job(
             headers,
         }
     };
-    let output = console_interface::invoke(state, binding, credential, input).await?;
+    let output = console_interface::invoke_non_create(state, binding, credential, input).await?;
     Ok(Json(ApiSuccess::new(output)))
 }
 

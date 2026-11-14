@@ -62,6 +62,49 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
+name = "api-applications"
+version = "0.6.3"
+dependencies = [
+ "access-control",
+ "anyhow",
+ "api-host-kernel",
+ "async-trait",
+ "axum",
+ "base16ct",
+ "base64 0.23.1",
+ "control-plane",
+ "control-plane-contracts",
+ "domain",
+ "extension-contracts",
+ "flate2",
+ "form_urlencoded",
+ "futures-util",
+ "interface-runtime",
+ "jsonschema",
+ "observability",
+ "orchestration-runtime",
+ "plugin-framework",
+ "postgres-test-support",
+ "runtime-core",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "storage-durable-postgres",
+ "storage-ephemeral",
+ "storage-object",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "url",
+ "utoipa",
+ "uuid",
+ "zip 9.0.3",
+]
+
+[[package]]
 name = "api-host-kernel"
 version = "0.6.3"
 dependencies = [
@@ -180,6 +223,7 @@ version = "0.6.3"
 dependencies = [
  "access-control",
  "anyhow",
+ "api-applications",
  "api-host-kernel",
  "api-public-gateway",
  "api-server",

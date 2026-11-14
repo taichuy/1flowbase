@@ -3,32 +3,22 @@ use super::*;
 mod codec;
 #[path = "../../../../application_runtime_archive/document.rs"]
 pub(crate) mod document;
-pub(crate) mod interface;
+pub mod interface;
 #[path = "../../../../application_runtime_archive/query.rs"]
 mod query;
 #[path = "../../../../application_runtime_archive/restore/mod.rs"]
 mod restore;
-pub(crate) mod routes;
+pub mod routes;
 #[path = "../../../../application_runtime_archive/upload_job.rs"]
 mod upload_job;
 
 const RUN_ARCHIVE_VERSION: i32 = 1;
 const APPLICATION_RUN_ARCHIVE_SEMANTICS: &str = "application_run_archive_v1";
 
-#[cfg(not(test))]
-use codec::parse_run_archive_v1;
-
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-pub(in crate::routes::applications_group::application_runtime) use codec::build_archive_from_trace_exports;
-
-#[cfg_attr(test, api_test_selection::group(public_api, routes))]
-#[cfg(test)]
 pub(in crate::routes::applications_group::application_runtime) use codec::parse_run_archive_v1;
 
-#[cfg_attr(test, api_test_selection::group(core, contracts))]
 #[cfg(test)]
-use codec::parse_run_archive_v1;
+pub(in crate::routes::applications_group::application_runtime) use codec::build_archive_from_trace_exports;
 
 use codec::{
     ensure_sha256_value, finalize_run_archive_v1_entries,

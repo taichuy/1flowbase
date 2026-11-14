@@ -12,7 +12,7 @@ use control_plane::{
 use std::{collections::BTreeMap, sync::Arc};
 use storage_durable_postgres::MainDurableStore;
 
-pub(crate) struct CollectorCatalogDependencies {
+pub struct CollectorCatalogDependencies {
     pub source: Arc<dyn OfficialExtensionCatalogSourcePort>,
     pub install_root: String,
     pub node_id: String,

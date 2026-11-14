@@ -55,7 +55,7 @@ pub async fn get_debug_variable_snapshot(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<DebugVariableSnapshotResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.debug-variables.snapshot.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },

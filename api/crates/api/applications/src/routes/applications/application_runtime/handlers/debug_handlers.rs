@@ -51,7 +51,7 @@ pub async fn start_flow_debug_run(
     Path(id): Path<Uuid>,
     Json(body): Json<StartFlowDebugRunBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ApplicationRunDetailResponse>>), ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.debug-runs.create.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -213,7 +213,7 @@ pub async fn get_flow_debug_run_snapshot(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunDetailResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.debug-snapshot.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -251,7 +251,7 @@ pub async fn cancel_flow_run(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunDetailResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.runs.cancel.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -290,7 +290,7 @@ pub async fn resume_flow_run(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
     Json(body): Json<ResumeFlowRunBody>,
 ) -> Result<Json<ApiSuccess<ApplicationRunDetailResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.runs.resume.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -334,7 +334,7 @@ pub async fn complete_callback_task(
     Path((id, callback_task_id)): Path<(Uuid, Uuid)>,
     Json(body): Json<CompleteCallbackTaskBody>,
 ) -> Result<Json<ApiSuccess<ApplicationRunDetailResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.callback-tasks.complete.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -378,7 +378,7 @@ pub async fn start_node_debug_preview(
     Path((id, node_id)): Path<(Uuid, String)>,
     Json(body): Json<StartNodeDebugPreviewBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<NodeLastRunResponse>>), ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.nodes.debug-runs.create.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -419,7 +419,7 @@ pub async fn get_runtime_debug_artifact(
     headers: HeaderMap,
     Path((id, artifact_id)): Path<(Uuid, Uuid)>,
 ) -> Result<axum::response::Response, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.debug-artifact.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -462,7 +462,7 @@ pub async fn resolve_runtime_debug_artifacts(
     Path(id): Path<Uuid>,
     Json(body): Json<ResolveRuntimeDebugArtifactsBody>,
 ) -> Result<Json<ApiSuccess<ResolveRuntimeDebugArtifactsResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.debug-artifacts.resolve.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },

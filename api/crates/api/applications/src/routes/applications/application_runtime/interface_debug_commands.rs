@@ -40,7 +40,6 @@ use crate::{
             ConsoleInterfaceTargetError, ConsoleServerStreamFuture, ConsoleServerStreamPort,
         },
         debug_run_stream,
-        mcp_protocol::virtual_ui,
     },
     runtime_activity::ApplicationRuntimeActivityTracker,
 };
@@ -109,17 +108,19 @@ pub(crate) struct ApplicationRuntimeDebugStreamOutput {
     pub(crate) run_id: Uuid,
 }
 
-pub(crate) trait RuntimeDebugMcpFactory: Send + Sync + 'static {
+test_support_item! { pub(crate), []
+trait RuntimeDebugMcpFactory: Send + Sync + 'static {
     fn for_actor<'a>(
         &'a self,
         actor: &'a domain::ActorContext,
     ) -> Pin<
         Box<
-            dyn Future<Output = Result<virtual_ui::RuntimeInternalToolInvokerFactory, ApiError>>
+            dyn Future<Output = Result<Arc<dyn crate::runtime_ports::RuntimeToolInvokerFactoryHandle>, ApiError>>
                 + Send
                 + 'a,
         >,
     >;
+}
 }
 
 struct StateRuntimeDebugMcpFactory {
@@ -132,8 +133,12 @@ impl RuntimeDebugMcpFactory for StateRuntimeDebugMcpFactory {
         actor: &'a domain::ActorContext,
     ) -> Pin<
         Box<
-            dyn Future<Output = Result<virtual_ui::RuntimeInternalToolInvokerFactory, ApiError>>
-                + Send
+            dyn Future<
+                    Output = Result<
+                        Arc<dyn crate::runtime_ports::RuntimeToolInvokerFactoryHandle>,
+                        ApiError,
+                    >,
+                > + Send
                 + 'a,
         >,
     > {
@@ -142,13 +147,15 @@ impl RuntimeDebugMcpFactory for StateRuntimeDebugMcpFactory {
                 .state
                 .upgrade()
                 .ok_or_else(crate::generation_dispatch::unavailable)?;
-            crate::runtime_internal_tool_invoker_factory(&state, actor).await
+            crate::generation_dispatch::GenerationDispatch::acquire(&state)?
+                .runtime_debug_mcp_factory(&state, actor)
+                .await
         })
     }
 }
 
 #[derive(Clone)]
-pub(crate) struct RuntimeDebugCommandDependencies {
+pub struct RuntimeDebugCommandDependencies {
     store: MainDurableStore,
     provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
     runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
@@ -168,10 +175,15 @@ pub(crate) struct RuntimeDebugCommandDependencies {
     assistant_executions:
         Arc<std::sync::Mutex<std::collections::HashMap<Uuid, tokio::task::AbortHandle>>>,
     mcp_factory: Arc<dyn RuntimeDebugMcpFactory>,
+    binding_validator: Arc<dyn crate::runtime_ports::CommunicationBindingValidator>,
 }
 
-pub(crate) fn dependencies(state: Arc<ApiState>) -> RuntimeDebugCommandDependencies {
+pub fn dependencies(
+    state: Arc<ApiState>,
+    binding_validator: Arc<dyn crate::runtime_ports::CommunicationBindingValidator>,
+) -> RuntimeDebugCommandDependencies {
     RuntimeDebugCommandDependencies {
+        binding_validator,
         store: state.store.clone(),
         provider_runtime: state.provider_runtime.clone(),
         runtime_activity: state.runtime_activity.clone(),
@@ -270,16 +282,16 @@ impl ApplicationRuntimeDebugCommandsAdapter {
         actor: &domain::ActorContext,
         headers: HeaderMap,
         mcp_instance_ids: Vec<String>,
-    ) -> Result<Arc<virtual_ui::ApiMcpRuntimeToolInvoker>, ApiError> {
-        Ok(Arc::new(
-            virtual_ui::ApiMcpRuntimeToolInvoker::new(
-                self.dependencies.mcp_factory.for_actor(actor).await?,
-                headers,
-                actor.clone(),
-                mcp_instance_ids,
-            )
-            .await?,
-        ))
+    ) -> Result<
+        Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>,
+        ApiError,
+    > {
+        self.dependencies
+            .mcp_factory
+            .for_actor(actor)
+            .await?
+            .create_server_delegated(headers, actor.clone(), mcp_instance_ids)
+            .await
     }
 
     async fn mcp_invoker_for_run(
@@ -319,12 +331,14 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             // The Console kernel has authorized this operator for the exact resume/callback
             // route. Do not require the retired aggregate applications.run grant as well.
             // Execution retains the independently validated configuring actor below.
-            let execution_actor =
-                crate::communication_runtime::validate_binding(&self.dependencies.store, &binding)
-                    .await
-                    .map_err(|_| {
-                        ControlPlaneError::PermissionDenied("communication_execution_denied")
-                    })?;
+            let execution_actor = self
+                .dependencies
+                .binding_validator
+                .validate_binding(&self.dependencies.store, &binding)
+                .await
+                .map_err(|_| {
+                    ControlPlaneError::PermissionDenied("communication_execution_denied")
+                })?;
             let inner = self
                 .dependencies
                 .mcp_factory
@@ -337,10 +351,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                 )
                 .await?;
             return Ok((
-                Arc::new(crate::communication_runtime::scoped_tools::ScopedTools {
-                    inner: Arc::new(inner),
-                    scope,
-                }),
+                Arc::new(crate::scoped_tools::ScopedTools { inner, scope }),
                 execution_actor,
                 true,
             ));
@@ -552,7 +563,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .get_flow_run(application_id, run_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        crate::routes::assistant::abort_assistant_execution_in(
+        crate::assistant_execution::abort_assistant_execution_in(
             &self.dependencies.assistant_executions,
             run_id,
         );
@@ -1165,7 +1176,7 @@ pub(crate) const STREAM_DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: RuntimeDebugCommandDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -1186,7 +1197,7 @@ pub(crate) fn compile_registry(
     )
 }
 
-pub(crate) fn compile_stream_registry(
+pub fn compile_stream_registry(
     dependencies: RuntimeDebugCommandDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -1222,7 +1233,10 @@ impl StartFlowDebugRunBody {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-#[path = "_tests/generation_factory.rs"]
-mod generation_factory_tests;
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub fn state_runtime_debug_mcp_factory_for_test(
+    state: std::sync::Weak<ApiState>,
+) -> Arc<dyn RuntimeDebugMcpFactory> {
+    Arc::new(StateRuntimeDebugMcpFactory { state })
+}

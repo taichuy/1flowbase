@@ -17,7 +17,7 @@ pub async fn export_application_run_trace_dump(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<axum::response::Response, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.trace-export.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -52,7 +52,7 @@ pub async fn export_application_runs_zip(
     Path(id): Path<Uuid>,
     Json(body): Json<ApplicationRunSelectedExportBody>,
 ) -> Result<axum::response::Response, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.trace-export.selected-runs.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },

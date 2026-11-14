@@ -47,7 +47,7 @@ pub async fn upsert_debug_variable_cache_entry(
     Path(id): Path<Uuid>,
     Json(body): Json<UpsertDebugVariableCacheEntryBody>,
 ) -> Result<Json<ApiSuccess<serde_json::Value>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.debug-variables.cache.upsert.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -82,7 +82,7 @@ pub async fn delete_debug_variable_cache_entries(
     Path(id): Path<Uuid>,
     Json(body): Json<DeleteDebugVariableCacheEntriesBody>,
 ) -> Result<Json<ApiSuccess<serde_json::Value>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.debug-variables.cache.delete.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },

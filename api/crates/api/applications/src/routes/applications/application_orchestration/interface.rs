@@ -25,7 +25,7 @@ use crate::{
     },
 };
 
-pub(crate) enum ApplicationOrchestrationInput {
+pub enum ApplicationOrchestrationInput {
     AnalyzeDraft {
         application_id: Uuid,
         body: AnalyzeDraftBody,
@@ -69,7 +69,7 @@ pub(crate) enum ApplicationOrchestrationInput {
     clippy::large_enum_variant,
     reason = "the typed orchestration output is short-lived and projected at the route boundary"
 )]
-pub(crate) enum ApplicationOrchestrationOutput {
+pub enum ApplicationOrchestrationOutput {
     Analysis(domain::flow::FlowDocumentAnalysis),
     State(OrchestrationStateResponse),
     ArchivePreview(ApplicationArchivePreviewResponse),
@@ -157,7 +157,7 @@ impl ApplicationOrchestrationOutput {
     }
 }
 
-pub(crate) struct ExportedApplicationArchive {
+pub struct ExportedApplicationArchive {
     pub(super) content_type: &'static str,
     pub(super) filename: String,
     pub(super) document: Vec<u8>,
@@ -186,7 +186,7 @@ struct ApplicationOrchestrationAdapter {
     provider_install_root: String,
 }
 
-pub(crate) fn port(
+pub fn port(
     store: MainDurableStore,
     bootstrap_workspace_id: Uuid,
     api_node_id: String,
@@ -634,7 +634,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<
         dyn ConsoleInterfacePort<ApplicationOrchestrationInput, ApplicationOrchestrationOutput>,
     >,

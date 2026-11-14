@@ -1,5 +1,5 @@
 use super::*;
-use crate::routes::mcp_protocol::client_context::{current_client_context, McpClientContext};
+use crate::mcp_client_context::{current_client_context, McpClientContext};
 
 #[derive(Debug, Serialize, ToSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -76,7 +76,7 @@ pub async fn get_current_run_context(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<CurrentRunContextResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.runtime.current-context.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -104,7 +104,6 @@ pub(crate) fn context_filter(context: &McpClientContext) -> Option<serde_json::V
     ]}))
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/current_context.rs"]
 mod tests;

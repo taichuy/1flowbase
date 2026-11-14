@@ -38,11 +38,11 @@ use crate::{
     },
 };
 
-pub(crate) mod interface_docs;
-pub(crate) mod interface_event;
-pub(crate) mod interface_keys;
-pub(crate) mod interface_publication;
-pub(crate) mod interface_schedule;
+pub mod interface_docs;
+pub mod interface_event;
+pub mod interface_keys;
+pub mod interface_publication;
+pub mod interface_schedule;
 
 #[path = "application_api/event_trigger.rs"]
 mod event_trigger;
@@ -635,13 +635,14 @@ pub async fn list_application_api_keys(
     headers: HeaderMap,
     Path(application_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<Vec<ApplicationApiKeyResponse>>>, ApiError> {
-    let output: interface_keys::ApplicationApiKeyOutput = crate::routes::console_interface::invoke(
-        Arc::clone(&state),
-        "http.console.applications.api-keys.list.v1",
-        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
-        interface_keys::ApplicationApiKeyInput::List { application_id },
-    )
-    .await?;
+    let output: interface_keys::ApplicationApiKeyOutput =
+        crate::routes::console_interface::invoke_non_create(
+            Arc::clone(&state),
+            "http.console.applications.api-keys.list.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+            interface_keys::ApplicationApiKeyInput::List { application_id },
+        )
+        .await?;
     Ok(Json(ApiSuccess::new(output.into_list()?)))
 }
 
@@ -670,16 +671,20 @@ pub async fn create_application_api_key(
     ),
     ApiError,
 > {
-    let output: interface_keys::ApplicationApiKeyOutput = crate::routes::console_interface::invoke(
-        Arc::clone(&state),
-        "http.console.applications.api-keys.create.v1",
-        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
-        interface_keys::ApplicationApiKeyInput::Create {
-            application_id,
-            body,
-        },
-    )
-    .await?;
+    let output: interface_keys::ApplicationApiKeyOutput =
+        crate::routes::console_interface::invoke_non_create(
+            Arc::clone(&state),
+            "http.console.applications.api-keys.create.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+                state,
+                headers,
+            },
+            interface_keys::ApplicationApiKeyInput::Create {
+                application_id,
+                body,
+            },
+        )
+        .await?;
     Ok((
         StatusCode::CREATED,
         Json(ApiSuccess::new(output.into_created()?)),
@@ -705,7 +710,7 @@ pub async fn revoke_application_api_key(
     headers: HeaderMap,
     Path((application_id, key_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    crate::routes::console_interface::invoke::<_, interface_keys::ApplicationApiKeyOutput>(
+    crate::routes::console_interface::invoke_non_create::<_, interface_keys::ApplicationApiKeyOutput>(
         Arc::clone(&state),
         "http.console.applications.api-keys.revoke.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -736,7 +741,7 @@ pub async fn get_application_api_mapping(
     Path(application_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<ApplicationApiMappingBody>>, ApiError> {
     let output: interface_publication::ApplicationPublicationOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.api-mapping.get.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -766,7 +771,7 @@ pub async fn replace_application_api_mapping(
     Json(body): Json<ApplicationApiMappingBody>,
 ) -> Result<Json<ApiSuccess<ApplicationApiMappingBody>>, ApiError> {
     let output: interface_publication::ApplicationPublicationOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.api-mapping.replace.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -801,7 +806,7 @@ pub async fn get_application_api_publication(
     Path(application_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<ApplicationPublicationResponse>>, ApiError> {
     let output: interface_publication::ApplicationPublicationOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.api-publication.get.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -833,7 +838,7 @@ pub async fn publish_application_api(
     Json(body): Json<PublishApplicationApiBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ApplicationPublicationResponse>>), ApiError> {
     let output: interface_publication::ApplicationPublicationOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.api-publication.publish.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -868,7 +873,7 @@ pub async fn unpublish_application_api(
     headers: HeaderMap,
     Path(application_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
-    crate::routes::console_interface::invoke::<
+    crate::routes::console_interface::invoke_non_create::<
         _,
         interface_publication::ApplicationPublicationOutput,
     >(
@@ -901,7 +906,7 @@ pub async fn patch_application_api_status(
     Json(body): Json<PatchApplicationApiStatusBody>,
 ) -> Result<Json<ApiSuccess<ApplicationApiStatusResponse>>, ApiError> {
     let output: interface_publication::ApplicationPublicationOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.api-status.update.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -937,7 +942,7 @@ pub async fn get_workflow_schedule_trigger(
     Path(application_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<Option<WorkflowScheduleTriggerResponse>>>, ApiError> {
     let output: interface_schedule::WorkflowScheduleOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.workflow-schedule.get.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -969,7 +974,7 @@ pub async fn replace_workflow_schedule_trigger(
     Json(body): Json<WorkflowScheduleTriggerBody>,
 ) -> Result<Json<ApiSuccess<WorkflowScheduleTriggerResponse>>, ApiError> {
     let output: interface_schedule::WorkflowScheduleOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.workflow-schedule.replace.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -1006,17 +1011,18 @@ pub async fn get_application_api_docs_catalog(
     Path(application_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<DocsCatalog>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
-    let output: interface_docs::ApplicationDocsOutput = crate::routes::console_interface::invoke(
-        Arc::clone(&state),
-        "http.console.applications.api-docs.catalog.v1",
-        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
-        interface_docs::ApplicationDocsInput::Catalog {
-            application_id,
-            query_locale: query.locale,
-            locale,
-        },
-    )
-    .await?;
+    let output: interface_docs::ApplicationDocsOutput =
+        crate::routes::console_interface::invoke_non_create(
+            Arc::clone(&state),
+            "http.console.applications.api-docs.catalog.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+            interface_docs::ApplicationDocsInput::Catalog {
+                application_id,
+                query_locale: query.locale,
+                locale,
+            },
+        )
+        .await?;
     Ok(Json(ApiSuccess::new(output.into_catalog()?)))
 }
 
@@ -1045,18 +1051,19 @@ pub async fn get_application_api_docs_category_operations(
     Path((application_id, category_id)): Path<(Uuid, String)>,
 ) -> Result<Json<ApiSuccess<DocsCatalogCategoryOperationsPage>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
-    let output: interface_docs::ApplicationDocsOutput = crate::routes::console_interface::invoke(
-        Arc::clone(&state),
-        "http.console.applications.api-docs.category-operations.v1",
-        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
-        interface_docs::ApplicationDocsInput::CategoryOperations {
-            application_id,
-            category_id,
-            query,
-            locale,
-        },
-    )
-    .await?;
+    let output: interface_docs::ApplicationDocsOutput =
+        crate::routes::console_interface::invoke_non_create(
+            Arc::clone(&state),
+            "http.console.applications.api-docs.category-operations.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+            interface_docs::ApplicationDocsInput::CategoryOperations {
+                application_id,
+                category_id,
+                query,
+                locale,
+            },
+        )
+        .await?;
     Ok(Json(ApiSuccess::new(output.into_category_operations()?)))
 }
 
@@ -1082,18 +1089,19 @@ pub async fn get_application_api_docs_category_openapi(
     Path((application_id, category_id)): Path<(Uuid, String)>,
 ) -> Result<Json<Value>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
-    let output: interface_docs::ApplicationDocsOutput = crate::routes::console_interface::invoke(
-        Arc::clone(&state),
-        "http.console.applications.api-docs.category-openapi.v1",
-        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
-        interface_docs::ApplicationDocsInput::CategoryOpenApi {
-            application_id,
-            category_id,
-            query_locale: query.locale,
-            locale,
-        },
-    )
-    .await?;
+    let output: interface_docs::ApplicationDocsOutput =
+        crate::routes::console_interface::invoke_non_create(
+            Arc::clone(&state),
+            "http.console.applications.api-docs.category-openapi.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+            interface_docs::ApplicationDocsInput::CategoryOpenApi {
+                application_id,
+                category_id,
+                query_locale: query.locale,
+                locale,
+            },
+        )
+        .await?;
     Ok(Json(output.into_openapi()?))
 }
 
@@ -1119,22 +1127,22 @@ pub async fn get_application_api_docs_operation_openapi(
     Path((application_id, operation_id)): Path<(Uuid, String)>,
 ) -> Result<Json<Value>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
-    let output: interface_docs::ApplicationDocsOutput = crate::routes::console_interface::invoke(
-        Arc::clone(&state),
-        "http.console.applications.api-docs.operation-openapi.v1",
-        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
-        interface_docs::ApplicationDocsInput::OperationOpenApi {
-            application_id,
-            operation_id,
-            query_locale: query.locale,
-            locale,
-        },
-    )
-    .await?;
+    let output: interface_docs::ApplicationDocsOutput =
+        crate::routes::console_interface::invoke_non_create(
+            Arc::clone(&state),
+            "http.console.applications.api-docs.operation-openapi.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+            interface_docs::ApplicationDocsInput::OperationOpenApi {
+                application_id,
+                operation_id,
+                query_locale: query.locale,
+                locale,
+            },
+        )
+        .await?;
     Ok(Json(output.into_openapi()?))
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "application_api/_tests/time_response.rs"]
 mod time_response_tests;

@@ -52,7 +52,7 @@ use crate::{
     },
 };
 
-pub(crate) mod interface;
+pub mod interface;
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct AnalyzeDraftBody {
@@ -511,7 +511,7 @@ async fn installed_application_archive_entry_with(
 pub struct ImportInstalledApplicationExtensionBody {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub integrity_override: Option<crate::routes::plugins::PluginRiskOverrideBody>,
+    pub integrity_override: Option<crate::plugin_risk::PluginRiskOverrideBody>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -539,7 +539,7 @@ pub async fn preview_installed_application_extension(
     Path(installation_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<InstalledApplicationExtensionPreviewResponse>>, ApiError> {
     let output: interface::ApplicationOrchestrationOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.archive.installed.preview.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -572,7 +572,7 @@ pub async fn import_installed_application_extension(
 > {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
     let output: interface::ApplicationOrchestrationOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.archive.installed.import.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -609,7 +609,7 @@ pub async fn preview_application_archive(
 ) -> Result<Json<ApiSuccess<ApplicationArchivePreviewResponse>>, ApiError> {
     let (package, _) = uploaded_application_archive(&mut multipart).await?;
     let output: interface::ApplicationOrchestrationOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.archive.preview.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -644,7 +644,7 @@ pub async fn import_application_archive(
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
     let (package, selections) = uploaded_application_archive(&mut multipart).await?;
     let output: interface::ApplicationOrchestrationOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.archive.import.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -756,7 +756,7 @@ pub async fn export_application_archive(
     Json(body): Json<ExportApplicationArchiveBody>,
 ) -> Result<Response, ApiError> {
     let output: interface::ApplicationOrchestrationOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.archive.export.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -1038,7 +1038,7 @@ pub async fn get_orchestration(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<OrchestrationStateResponse>>, ApiError> {
     let output: interface::ApplicationOrchestrationOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.orchestration.get.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
@@ -1078,7 +1078,7 @@ pub async fn analyze_draft(
     Json(body): Json<AnalyzeDraftBody>,
 ) -> Result<Json<ApiSuccess<domain::flow::FlowDocumentAnalysis>>, ApiError> {
     let output: interface::ApplicationOrchestrationOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.orchestration.analysis.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -1114,7 +1114,7 @@ pub async fn save_draft(
 ) -> Result<Json<ApiSuccess<OrchestrationStateResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
     let output: interface::ApplicationOrchestrationOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.orchestration.draft.save.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -1152,7 +1152,7 @@ pub async fn restore_version(
 ) -> Result<Json<ApiSuccess<OrchestrationStateResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
     let output: interface::ApplicationOrchestrationOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.orchestration.version.restore.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -1193,7 +1193,7 @@ pub async fn update_version(
 ) -> Result<Json<ApiSuccess<OrchestrationStateResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
     let output: interface::ApplicationOrchestrationOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.applications.orchestration.version.update.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -1211,7 +1211,6 @@ pub async fn update_version(
     Ok(Json(ApiSuccess::new(output.into_state()?)))
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "application_orchestration/_tests/time_response.rs"]
 mod time_response_tests;

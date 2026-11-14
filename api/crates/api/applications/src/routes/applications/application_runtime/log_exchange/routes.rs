@@ -40,7 +40,7 @@ pub(crate) async fn otlp_export(
     Path(application_id): Path<Uuid>,
     Json(body): Json<OtlpExportBody>,
 ) -> Result<Response, ApiError> {
-    let output: ExchangeOutput = console_interface::invoke(
+    let output: ExchangeOutput = console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.logs.otlp.export.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -76,7 +76,7 @@ pub(crate) async fn otlp_import(
     Path(application_id): Path<Uuid>,
     Json(body): Json<OtlpImportBody>,
 ) -> Result<Response, ApiError> {
-    let output: ExchangeOutput = console_interface::invoke(
+    let output: ExchangeOutput = console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.applications.logs.otlp.import.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },

@@ -515,7 +515,7 @@ fn overview_contract_fixture_contains_metadata_without_body_or_answer_claims() {
     }
     let adapter = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../crates/storage/durable/postgres/src/orchestration_runtime_repository/read_methods.rs"
+        "/../../storage/durable/postgres/src/orchestration_runtime_repository/read_methods.rs"
     ));
     let metadata = application_runtime_method_source(adapter, "get_flow_run_metadata");
     for body in [

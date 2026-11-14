@@ -1,3 +1,5 @@
+#[path = "boot_composition/applications_assembly/mod.rs"]
+mod applications_assembly;
 #[path = "boot_composition/managed_runtime_assembly/mod.rs"]
 mod managed_runtime_assembly;
 #[path = "boot_composition/public_gateway_assembly/mod.rs"]

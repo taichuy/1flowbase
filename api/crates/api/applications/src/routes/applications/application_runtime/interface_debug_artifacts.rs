@@ -209,7 +209,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: MainDurableStore,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
 ) -> Result<
@@ -230,7 +230,6 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;

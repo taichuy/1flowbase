@@ -139,7 +139,6 @@ pub(super) fn stream_output(output: &ApplicationRuntimeDebugStreamOutput) -> Val
     json!({"application_id":output.application_id,"run_id":output.run_id})
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "event_projection/_tests/events.rs"]
 mod _tests;

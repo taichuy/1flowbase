@@ -826,3 +826,42 @@ pub trait ConsoleInvocationPreparation<I: InterfaceContract>: Send + Sync {
         envelope: InvocationEnvelope<I, UserPrincipal>,
     ) -> Result<InvocationEnvelope<I, UserPrincipal>, ApiError>;
 }
+
+/// Application adapters have no Model Definition Create preparation authority.
+pub async fn invoke_non_create<I: InterfaceContract, O: InterfaceContract>(
+    state: Arc<ApiState>,
+    binding_id: &str,
+    credential: crate::extension_bus::ConsoleAuthenticationCredential,
+    input: I,
+) -> Result<O, ApiError> {
+    invoke_prepared(state, binding_id, credential, input, NonCreatePreparation).await
+}
+struct NonCreatePreparation;
+fn reject_create_plan(
+    registry: &CompiledInterfaceRegistry,
+    binding: &BindingId,
+) -> Result<(), ApiError> {
+    if registry
+        .plan(binding)
+        .is_some_and(|plan| plan.definition().interface_id().as_str() == "model_definitions.create")
+    {
+        return Err(anyhow::anyhow!("Create binding requires its typed Create input").into());
+    }
+    Ok(())
+}
+#[async_trait::async_trait]
+impl<I: InterfaceContract> ConsoleInvocationPreparation<I> for NonCreatePreparation {
+    async fn prepare(
+        &self,
+        _state: &ApiState,
+        registry: &Arc<CompiledInterfaceRegistry>,
+        envelope: InvocationEnvelope<I, UserPrincipal>,
+    ) -> Result<InvocationEnvelope<I, UserPrincipal>, ApiError> {
+        reject_create_plan(registry, envelope.binding_id())?;
+        Ok(envelope)
+    }
+}
+
+#[cfg(test)]
+#[path = "_tests/non_create_preparation.rs"]
+mod non_create_preparation_tests;

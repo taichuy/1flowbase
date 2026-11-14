@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 /// Scope is reapplied at each invocation, including tools executed in spawned runtime tasks.
 /// Tokio task-local state itself is not inherited by tokio::spawn.
-pub(crate) struct ScopedTools {
+pub struct ScopedTools {
     pub inner: Arc<dyn RuntimeInternalToolInvoker>,
     pub scope: CommunicationHistoryScope,
 }
@@ -22,7 +22,7 @@ impl RuntimeInternalToolInvoker for ScopedTools {
         &self,
         flow_run_id: uuid::Uuid,
     ) -> Result<orchestration_runtime::execution_engine::WorkflowCredentialReferences> {
-        crate::routes::communications::scope::with_scope(
+        crate::communication_scope::with_scope(
             self.scope.clone(),
             self.inner.prepare_workflow_credentials(flow_run_id),
         )
@@ -35,7 +35,7 @@ impl RuntimeInternalToolInvoker for ScopedTools {
         credential_reference: &str,
         request: orchestration_runtime::execution_engine::WorkflowInternalHttpRequest,
     ) -> Result<orchestration_runtime::execution_engine::WorkflowInternalHttpResponse> {
-        crate::routes::communications::scope::with_scope(
+        crate::communication_scope::with_scope(
             self.scope.clone(),
             self.inner
                 .invoke_workflow_internal_http(flow_run_id, credential_reference, request),
@@ -52,7 +52,7 @@ impl RuntimeInternalToolInvoker for ScopedTools {
         registration: &RuntimeInternalToolRegistration,
         arguments: Value,
     ) -> Result<RuntimeInternalToolOutput> {
-        crate::routes::communications::scope::with_scope(
+        crate::communication_scope::with_scope(
             self.scope.clone(),
             self.inner
                 .invoke_runtime_internal_tool(node, registration, arguments),
