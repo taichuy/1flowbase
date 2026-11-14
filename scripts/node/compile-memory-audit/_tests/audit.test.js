@@ -10,5 +10,5 @@ test('exportable compile audit keeps workload, source, recovery and report guard
     env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' },
   });
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stderr, /Ran 29 tests/);
+  assert.match(result.stderr, /Ran 37 tests/);
 });

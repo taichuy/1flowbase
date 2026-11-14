@@ -249,5 +249,155 @@ class AllocationReconciliationTests(unittest.TestCase):
                 {'bins': [recorded], 'test_or_bin_harness_executables': [conflicting]})
 
 
+class ThresholdCleanupGateTests(unittest.TestCase):
+    MEMORY_KEYS = ('all_observed_rustc_invocations_at_most_4_gib',
+                   'observed_direct_rustc_hwm_at_most_4_gib',
+                   'anonymous_peak_limit',
+                   'api_server_link_descendant_upper_bound_at_most_3_9_gib')
+
+    def fixture(self, role='candidate', workload='dev2', failed=()):
+        checks = {'workload_completed': True, 'source_and_configuration_unchanged': True}
+        if workload in ('dev2', 'dev10', 'test2', 'incremental'):
+            checks['rustc_records_present'] = True
+        if role == 'candidate':
+            checks.update({key: True for key in self.MEMORY_KEYS[:2]})
+            if workload in ('dev2', 'test2'):
+                checks['anonymous_peak_limit'] = True
+            if workload in ('dev2', 'dev10', 'incremental'):
+                checks['api_server_link_descendant_upper_bound_at_most_3_9_gib'] = True
+        for key in failed:
+            checks[key] = False
+        measured = {'role': role, 'workload': workload, 'checks': checks,
+                    'candidate_thresholds_applied': role == 'candidate',
+                    'cgroup_observation': {'returncode': 0, 'error': None, 'cancel_signals': [],
+                        'cleanup': {'process_group_empty': True, 'principal_reaped': True},
+                        'memory_events_delta': {'oom': 0, 'oom_kill': 0, 'oom_group_kill': 0}}}
+        status = 2 if failed else 0
+        command = {'kind': 'exit', 'returncode': status, 'exit_code': status,
+                   'wait_status': status << 8, 'signal': None}
+        finished = {'classification': 'exit', 'runner_exit_code': status, 'command': dict(command)}
+        return measured, command, finished
+
+    def test_only_known_candidate_memory_failures_qualify_without_changing_failure(self):
+        for failed in [(key,) for key in self.MEMORY_KEYS] + [self.MEMORY_KEYS]:
+            with self.subTest(failed=failed):
+                measured, command, finished = self.fixture(failed=failed)
+                before = json.dumps((measured, command, finished), sort_keys=True)
+                status = cache_tag.measurement_exit_status(measured, command, finished)
+                self.assertEqual(status['original_gate_exit_code'], 2)
+                self.assertEqual(status['failed_memory_checks'], sorted(failed))
+                self.assertTrue(status['original_measurement_failure_preserved'])
+                self.assertEqual(json.dumps((measured, command, finished), sort_keys=True), before)
+
+    def test_original_success_exit_zero_remains_eligible_for_each_role(self):
+        for role in ('baseline', 'candidate', 'instrumentation'):
+            with self.subTest(role=role):
+                status = cache_tag.measurement_exit_status(*self.fixture(role=role))
+                self.assertEqual(status['original_gate_exit_code'], 0)
+                self.assertEqual(status['failed_memory_checks'], [])
+                self.assertFalse(status['original_measurement_failure_preserved'])
+
+    def test_known_key_set_is_complete_and_every_value_must_be_boolean(self):
+        for unknown in (False, True):
+            measured, command, finished = self.fixture()
+            measured['checks']['unknown_check'] = unknown
+            with self.assertRaisesRegex(ValueError, 'complete known boolean'):
+                cache_tag.measurement_exit_status(measured, command, finished)
+        measured, _, _ = self.fixture()
+        for key in measured['checks']:
+            candidate, command, finished = self.fixture()
+            del candidate['checks'][key]
+            with self.subTest(missing=key), self.assertRaisesRegex(ValueError, 'complete known boolean'):
+                cache_tag.measurement_exit_status(candidate, command, finished)
+        for value in (0, 1, None, 'true'):
+            candidate, command, finished = self.fixture()
+            candidate['checks']['workload_completed'] = value
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'complete known boolean'):
+                cache_tag.measurement_exit_status(candidate, command, finished)
+
+    def test_safety_check_failure_never_becomes_a_cleanup_threshold_exception(self):
+        for key in ('workload_completed', 'rustc_records_present', 'source_and_configuration_unchanged'):
+            measured, command, finished = self.fixture(failed=(self.MEMORY_KEYS[-1],))
+            measured['checks'][key] = False
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'safety checks'):
+                cache_tag.measurement_exit_status(measured, command, finished)
+
+    def test_underlying_process_failure_cancel_oom_or_incomplete_cleanup_is_rejected(self):
+        changes = [('returncode', 1), ('returncode', True), ('error', 'compiler error'),
+                   ('cancel_signals', [15]), ('cleanup', {'process_group_empty': False, 'principal_reaped': True}),
+                   ('cleanup', {'process_group_empty': 1, 'principal_reaped': True})]
+        for key, value in changes:
+            measured, command, finished = self.fixture(failed=(self.MEMORY_KEYS[-1],))
+            measured['cgroup_observation'][key] = value
+            with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, 'Raw measured process'):
+                cache_tag.measurement_exit_status(measured, command, finished)
+        for key in ('oom', 'oom_kill', 'oom_group_kill'):
+            measured, command, finished = self.fixture(failed=(self.MEMORY_KEYS[-1],))
+            measured['cgroup_observation']['memory_events_delta'][key] = 1
+            with self.subTest(oom=key), self.assertRaisesRegex(ValueError, 'Raw measured process'):
+                cache_tag.measurement_exit_status(measured, command, finished)
+
+    def test_original_managed_exit_must_exactly_match_all_checks_result(self):
+        for failed in ((), (self.MEMORY_KEYS[-1],)):
+            expected = 2 if failed else 0
+            for field in ('returncode', 'exit_code', 'wait_status', 'kind', 'signal',
+                          'runner_exit_code', 'classification', 'command_copy'):
+                measured, command, finished = self.fixture(failed=failed)
+                if field in ('returncode', 'exit_code'):
+                    command[field] = 0 if expected else 2
+                    finished['command'] = dict(command)
+                elif field == 'wait_status':
+                    command[field] = (0 if expected else 2) << 8
+                    finished['command'] = dict(command)
+                elif field in ('kind', 'signal'):
+                    command[field] = 'signal' if field == 'kind' else 15
+                    finished['command'] = dict(command)
+                elif field == 'runner_exit_code':
+                    finished[field] = 0 if expected else 2
+                elif field == 'classification':
+                    finished[field] = 'deadline'
+                else:
+                    finished['command']['returncode'] = 101
+                with self.subTest(failed=failed, field=field), self.assertRaisesRegex(ValueError, 'managed exit contradicts'):
+                    cache_tag.measurement_exit_status(measured, command, finished)
+
+        # Even mutually consistent original exits must match all(checks), not merely each other.
+        for failed in ((), (self.MEMORY_KEYS[-1],)):
+            measured, command, finished = self.fixture(failed=failed)
+            wrong = 0 if failed else 2
+            command.update(returncode=wrong, exit_code=wrong, wait_status=wrong << 8)
+            finished.update(runner_exit_code=wrong, command=dict(command))
+            with self.subTest(consistent_wrong_exit=wrong), self.assertRaisesRegex(ValueError, 'managed exit contradicts'):
+                cache_tag.measurement_exit_status(measured, command, finished)
+
+    def test_threshold_exception_requires_candidate_role_and_exact_threshold_flag(self):
+        for role in ('baseline', 'instrumentation'):
+            measured, command, finished = self.fixture(role=role, failed=(self.MEMORY_KEYS[-1],))
+            with self.subTest(role=role), self.assertRaisesRegex(ValueError, 'complete known boolean'):
+                cache_tag.measurement_exit_status(measured, command, finished)
+        for flag in (False, None, 1):
+            measured, command, finished = self.fixture(failed=(self.MEMORY_KEYS[-1],))
+            measured['candidate_thresholds_applied'] = flag
+            with self.subTest(flag=flag), self.assertRaisesRegex(ValueError, 'threshold flag'):
+                cache_tag.measurement_exit_status(measured, command, finished)
+
+    def test_workload_specific_check_keys_match_current_audit_schema(self):
+        expected_memory = {'dev2': set(self.MEMORY_KEYS), 'dev10': set(self.MEMORY_KEYS) - {'anonymous_peak_limit'},
+                           'test2': set(self.MEMORY_KEYS) - {self.MEMORY_KEYS[-1]},
+                           'incremental': set(self.MEMORY_KEYS) - {'anonymous_peak_limit'},
+                           'external': set(self.MEMORY_KEYS[:2]), 'exact-bin-warmup': set()}
+        for workload, expected in expected_memory.items():
+            role = 'instrumentation' if workload == 'exact-bin-warmup' else 'candidate'
+            measured, command, finished = self.fixture(role=role, workload=workload)
+            actual = set(measured['checks']) - {'workload_completed', 'rustc_records_present', 'source_and_configuration_unchanged'}
+            self.assertEqual(actual, expected)
+            self.assertEqual(cache_tag.measurement_exit_status(measured, command, finished)['original_gate_exit_code'], 0)
+        for field in ('role', 'workload'):
+            measured, command, finished = self.fixture()
+            measured[field] = 'unknown'
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'Unknown measurement'):
+                cache_tag.measurement_exit_status(measured, command, finished)
+
+
 if __name__ == '__main__':
     unittest.main()

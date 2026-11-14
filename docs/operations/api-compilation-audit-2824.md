@@ -116,11 +116,11 @@ or invalid CACHEDIR.TAG”. B1's completed build, original volume/bin hashes and
 successful job receipts remain valid. Do not rebuild B1, claim another cold slot,
 change the five-file measurement bundle, or change its initial target/cache state.
 
-Only after successful measurement and volume/hash capture, the standalone
+Only after completed Cargo execution and volume/hash capture, the standalone
 `scripts/node/compile-memory-audit/cache-tag.py` may add the missing cache metadata.
 This is the sole task-specific exception to manual target writes. It validates the
 real clean workspace/source, manifest/lock, original exported tool hashes, fresh
-ownership and corresponding successful managed job/process receipts. Current
+ownership and corresponding managed job/process receipts. Current
 volume fields other than allocated bytes and every originally recorded bin/harness
 device/inode/apparent size/SHA must match exactly. Physical allocated bytes are
 accounted separately: deduplicate recorded artifacts by (device,inode), calculate
@@ -138,6 +138,24 @@ and exclusive creation. No unmeasured/unknown target, symlink, changed content o
 existing marker (including an invalid marker) is accepted; no force/overwrite or
 compiled-file deletion is provided. The helper runs no Cargo and requires the
 original actual task budget, no global Cargo and <=90% resource admission.
+
+Cleanup eligibility is separate from measurement acceptance. The original
+all-checks-pass path still requires managed command/runner exit0. A candidate whose
+Cargo process exited0, with no error/cancellation/OOM and complete process/job
+cleanup, may also qualify when only the known memory checks failed and its exact
+original command/runner exit is2. The complete workload-specific check dictionary
+must contain only boolean values: workload_completed, rustc_records_present when
+emitted, and source_and_configuration_unchanged must all be true. The current
+candidate memory keys are all_observed_rustc_invocations_at_most_4_gib,
+observed_direct_rustc_hwm_at_most_4_gib, anonymous_peak_limit and
+api_server_link_descendant_upper_bound_at_most_3_9_gib, in the exact subsets emitted
+by audit.checks for each workload. This exception requires candidate role and
+candidate_thresholds_applied=true; unknown/missing keys, safety failures, Cargo
+failure or any exit/check contradiction refuse cleanup. Repair evidence records
+the original gate exit and failed memory keys. Original checks, thresholds, FAIL
+verdict and measurements remain unchanged; cleanup grants no QA acceptance and
+does not authorize a cold-build retry. Retain failed measurement/QA receipts and
+use NEW independent repair and Cargo cleanup job/record paths.
 
 Export only this committed stdlib helper separately as `CACHE_TAG_HELPER`; keep
 `BUNDLE` and its original export hashes untouched. `DATA` names the original fresh

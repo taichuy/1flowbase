@@ -179,6 +179,51 @@ def reconcile_allocation(target, measured_volume, artifacts):
             'scope': 'physical allocation accounting only; content identities unchanged; no cause inferred'}
 
 
+def measurement_exit_status(measured, command_finish, finished):
+    role, workload = measured['role'], measured['workload']
+    require(role in {'baseline', 'candidate', 'instrumentation'} and workload in
+            {'dev2', 'dev10', 'test2', 'incremental', 'external', 'exact-bin-warmup'},
+            'Unknown measurement role/workload')
+    expected = {'workload_completed', 'source_and_configuration_unchanged'}
+    if workload in {'dev2', 'dev10', 'test2', 'incremental'}:
+        expected.add('rustc_records_present')
+    memory = set()
+    if role == 'candidate':
+        memory.update({'all_observed_rustc_invocations_at_most_4_gib',
+                       'observed_direct_rustc_hwm_at_most_4_gib'})
+        if workload in {'dev2', 'test2'}:
+            memory.add('anonymous_peak_limit')
+        if workload in {'dev2', 'dev10', 'incremental'}:
+            memory.add('api_server_link_descendant_upper_bound_at_most_3_9_gib')
+    checks = measured['checks']
+    require(isinstance(checks, dict) and set(checks) == expected | memory
+            and all(type(value) is bool for value in checks.values()),
+            'Measurement checks must contain the complete known boolean key set')
+    require(measured.get('candidate_thresholds_applied') is (role == 'candidate'),
+            'Candidate threshold flag does not match the measurement role')
+    require(all(checks[key] is True for key in expected), 'Measurement safety checks did not all pass')
+    observed = measured['cgroup_observation']
+    require(type(observed['returncode']) is int and observed['returncode'] == 0
+            and (observed['error'] is None or observed['error'] == '') and observed['cancel_signals'] == []
+            and set(observed['cleanup']) == {'process_group_empty', 'principal_reaped'}
+            and all(value is True for value in observed['cleanup'].values())
+            and all(type(observed['memory_events_delta'].get(key)) is int
+                    and observed['memory_events_delta'][key] == 0 for key in ('oom', 'oom_kill', 'oom_group_kill')),
+            'Raw measured process did not succeed and clean up without OOM')
+    failed = sorted(key for key in memory if checks[key] is False)
+    gate_exit = 2 if failed else 0
+    require(command_finish['kind'] == 'exit' and command_finish.get('signal') is None
+            and type(command_finish['wait_status']) is int and command_finish['wait_status'] == (gate_exit << 8)
+            and finished['classification'] == 'exit'
+            and finished['command'] == command_finish
+            and all(type(value) is int and value == gate_exit for value in
+                    (command_finish['returncode'], command_finish['exit_code'], finished['runner_exit_code'])),
+            'Original managed exit contradicts the exact measurement checks result')
+    return {'original_gate_exit_code': gate_exit, 'failed_memory_checks': failed,
+            'original_measurement_failure_preserved': bool(failed),
+            'scope': 'cleanup eligibility only; original checks and measurement verdict remain unchanged'}
+
+
 def verified_inputs(workspace, expected, data, tools, observation=None):
     identity = source(workspace, expected)
     data, tools = canonical(data), canonical(tools)
@@ -213,21 +258,17 @@ def verified_inputs(workspace, expected, data, tools, observation=None):
                 and measured['tool'] == exported, 'Observation source/tool identity mismatch')
         require(measured.get('version') == 1 and measured.get('n') == 1
                 and (not source_clean or measured.get('source_clean_after') is True)
-                and measured.get('jobs') in (2, 10) and measured.get('checks')
-                and all(value is True for value in measured['checks'].values()),
-                'Measurement did not complete successfully')
+                and measured.get('jobs') in (2, 10),
+                'Measurement source completion or original jobs are invalid')
         observed = measured['cgroup_observation']
-        require(observed == load(phase / 'process/result.json') and observed['returncode'] == 0
-                and not observed['error'] and not observed['cancel_signals']
-                and observed['cleanup'] == {'process_group_empty': True, 'principal_reaped': True}
-                and not any(observed['memory_events_delta'].get(k, 0) for k in ('oom', 'oom_kill', 'oom_group_kill')),
-                'Raw measured process did not succeed and clean up')
+        require(observed == load(phase / 'process/result.json'), 'Raw measured process receipt mismatch')
         job_dir = job_data.parent / 'job'
         job = load(job_dir / 'job.json')
         started = load(job_dir / 'started.json')
         command_start = load(job_dir / 'command-started.json')
         command_finish = load(job_dir / 'command-finished.json')
         finished = load(job_dir / 'finished.json')
+        gate_status = measurement_exit_status(measured, command_finish, finished)
         argv = started['argv']
         def argument(key, value):
             return any(argv[index:index + 2] == [key, value] for index in range(len(argv) - 1))
@@ -240,16 +281,13 @@ def verified_inputs(workspace, expected, data, tools, observation=None):
                 and finished['budget'] == {'cgroup': BUDGET, 'inode': BUDGET_INODE}
                 and command_start['cgroup'] == job['cgroup']
                 and observed['cgroup'] == '/sys/fs/cgroup' + job['cgroup']
-                and finished['command'] == command_finish and command_finish['kind'] == 'exit'
-                and command_finish['returncode'] == 0 and command_finish['exit_code'] == 0
-                and finished['classification'] == 'exit' and finished['runner_exit_code'] == 0
                 and all(finished['cleanup'].get(k) is True for k in ('complete', 'cgroup_empty', 'launcher_reaped')),
-                'Original corresponding managed job did not succeed and clean up')
+                'Original corresponding managed job identity or cleanup is invalid')
         process_start = load(phase / 'process/started.json')
         require(process_start['argv'] == measured['raw_command'] == observed['argv']
                 and process_start['identity']['cgroup'].strip() == '0::' + job['cgroup'],
                 'Measured command/job identity mismatch')
-        return job
+        return job, gate_status
 
     validate_measurement(owner_measurement, data, data, identity)
     selected_identity = identity
@@ -296,12 +334,12 @@ def verified_inputs(workspace, expected, data, tools, observation=None):
             require(measured['workload'] == 'external' and measured['cache_state'] == 'warm existing task-owned target',
                     'Only an existing external or incremental observation may replace the cold snapshot')
             phase = observation
-    job = validate_measurement(measured, phase, observation, selected_identity, phase == observation)
+    job, gate_status = validate_measurement(measured, phase, observation, selected_identity, phase == observation)
     for file, value in measured['configuration_hashes'].items():
         require(digest(canonical(Path(file))) == value, 'Measured configuration changed: ' + file)
     allocation = reconcile_allocation(target, measured['target_volume'], measured['artifacts'])
     artifact_counts = {key: allocation[key] for key in ('bins', 'harness_executables')}
-    return target, hashes, {'source': identity, 'ownership': ownership, 'job': job,
+    return target, hashes, {'source': identity, 'ownership': ownership, 'job': job, 'measurement_gate_status': gate_status,
                             'tool_export': exported, 'target_volume': measured['target_volume'],
                             'artifact_counts': artifact_counts, 'allocation_reconciliation': allocation, 'observation_data_directory': str(observation),
                             'selected_measurement': str(phase / 'measurement.json'),
