@@ -110,7 +110,7 @@ pub struct ApiRuntimeServices {
     provider_distribution_snapshot: Arc<tokio::sync::RwLock<EffectiveProviderDistributionSnapshot>>,
     transport_sessions: Arc<transport_session_lifecycle::TransportSessionCoordinator>,
     // Declared last: runtime/backend/session fields are dropped before fixture cleanup.
-    #[cfg(feature = "test-support")]
+    #[cfg(any(test, feature = "test-support"))]
     fixture_resources: Option<Arc<crate::test_support::TestResources>>,
 }
 
@@ -259,7 +259,7 @@ impl ApiRuntimeServices {
             )?,
         );
         Ok(Self {
-            #[cfg(feature = "test-support")]
+            #[cfg(any(test, feature = "test-support"))]
             fixture_resources: None,
             managed_composition: None,
             local_artifact_references: cfg!(test),
@@ -308,7 +308,7 @@ impl ApiRuntimeServices {
             .expect("test transport registry must initialize"),
         );
         Self {
-            #[cfg(feature = "test-support")]
+            #[cfg(any(test, feature = "test-support"))]
             fixture_resources: None,
             managed_composition: None,
             local_artifact_references: true,
@@ -364,7 +364,7 @@ impl ApiRuntimeServices {
             .expect("test transport registry must initialize"),
         );
         Self {
-            #[cfg(feature = "test-support")]
+            #[cfg(any(test, feature = "test-support"))]
             fixture_resources: None,
             managed_composition: None,
             local_artifact_references: cfg!(test),
@@ -382,7 +382,7 @@ impl ApiRuntimeServices {
         }
     }
 
-    #[cfg(feature = "test-support")]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn with_fixture_resources(
         mut self,
         owner: Arc<crate::test_support::TestResources>,
