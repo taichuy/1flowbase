@@ -1,16 +1,7 @@
 use super::*;
 use serde_json::json;
-pub(super) fn fixture() -> ManagedServiceRegistration {
-    ManagedServiceRegistration { publisher_namespace: "test".into(), data_models: Vec::new(),
-        display_name: "Fixture plugin".into(), description: "Fixture plugin operations".into(),
-        installation_id: uuid::Uuid::nil(), plugin_code:"fixture".into(), plugin_version:"1.0.0".into(),
-        declaration:serde_json::from_value(json!({"scope":"system","feature":{"feature_id":"fixture.settings","label":"Fixture service","description":"Configure fixture service","route_id":"fixture","path":"/settings/fixture"},"operations":[{
-            "interface_id":"fixture.list","contribution_id":"fixture.list","method":"GET","path":"/api/console/managed-services/fixture/items","summary":"List fixture items","description":"List shared fixture items.","input_schema":{"type":"object","properties":{"path":{"type":"object"},"query":{"type":"object"},"body":{"type":"object"}}},"output_schema":{"type":"object"}
-        }]})).unwrap(),
-        pages:vec![plugin_framework::PluginSettingsPageManifest { code_modules: Vec::new(),
-feature_id:"fixture.settings".into(), contribution_code:"settings".into(), source_file:"ui/Settings.tsx".into(), language:"tsx".into() }],
-    }
-}
+use api_plugins_models::managed_services::support::fixture;
+
 #[test]
 fn service_boot_registry_registers_one_operation_per_route_and_managed_page() {
     let service = fixture();
@@ -132,7 +123,7 @@ fn business_failures_expose_only_classification_codes() {
 
 mod hot_generation;
 
-mod stream_ticket;
+
 
 #[test]
 fn duplex_upgrade_is_protocol_metadata_and_keeps_exact_original_post_permission() {

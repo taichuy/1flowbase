@@ -101,7 +101,8 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     )
 }
 
-pub(crate) fn to_response(
+test_support_item! { pub(crate), []
+fn to_response(
     binding: FrontendContributionBinding,
 ) -> Result<FrontendBlockCatalogResponse, ApiError> {
     let asset_bindings = binding
@@ -177,6 +178,7 @@ pub(crate) fn to_response(
             .map(|reason| reason.as_str().to_string()),
     })
 }
+}
 
 #[utoipa::path(
     get,
@@ -204,7 +206,7 @@ pub async fn list_frontend_blocks(
     Ok(Json(ApiSuccess::new(output.0)))
 }
 
-pub(crate) use api_host_kernel::frontend_block_dependencies::FrontendBlockDependencies;
+pub use api_host_kernel::frontend_block_dependencies::FrontendBlockDependencies;
 
 #[derive(Default, serde::Serialize, serde::Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -577,7 +579,7 @@ impl
     }
 }
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: FrontendBlockDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

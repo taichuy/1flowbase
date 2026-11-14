@@ -382,7 +382,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: MainDurableStore,
     provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
     provider_secret_master_key: String,
@@ -1111,7 +1111,6 @@ pub async fn map_resource_to_model(
     Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "data_sources/_tests/time_response.rs"]
 mod time_response_tests;

@@ -42,15 +42,15 @@ use crate::{
     },
 };
 
-pub(crate) mod catalog_logs_interface;
+pub mod catalog_logs_interface;
 mod clear_request_log_continuation;
-pub(crate) mod discovery_interface;
+pub mod discovery_interface;
 mod dto;
-pub(crate) mod icons;
-pub(crate) mod instance_lifecycle_interface;
-pub(crate) mod instance_operations_interface;
-pub(crate) mod routing_interface;
-pub(crate) mod settings_routes;
+pub mod icons;
+pub mod instance_lifecycle_interface;
+pub mod instance_operations_interface;
+pub mod routing_interface;
+pub mod settings_routes;
 
 pub use dto::*;
 
@@ -802,7 +802,6 @@ pub async fn list_options(
     Ok(Json(ApiSuccess::new(response)))
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod request_log_response_tests {
     use super::*;
@@ -868,7 +867,6 @@ mod request_log_response_tests {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "model_providers/_tests/time_response.rs"]
 mod time_response_tests;

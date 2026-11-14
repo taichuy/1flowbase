@@ -56,18 +56,16 @@ async fn start(f: &Fixture, root: bool, record: &str) -> Active<stream::SocketLe
         state.clone(),
         "http.record_fixture.stream.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
-        ManagedServiceInput {
-            event_policy,
-            interface_id: "record_fixture.stream".into(),
-            payload,
-            stream: Some(StreamInput::Run {
+        ManagedServiceInput::test_new(event_policy,
+"record_fixture.stream".into(),
+payload,
+Some(StreamInput::Run {
                 duplex: RuntimeManagedDuplex {
                     input: Arc::new(tokio::sync::Mutex::new(input_receiver)),
                     events: unused_events,
                 },
                 cancel: cancellation.clone(),
-            }),
-        },
+            })),
     )
     .await
     .expect("current record open action must admit this real stream");

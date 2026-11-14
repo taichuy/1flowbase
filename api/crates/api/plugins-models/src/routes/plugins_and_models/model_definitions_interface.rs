@@ -3,7 +3,7 @@ use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput}
 mod managed_projection;
 
 #[path = "model_definitions_managed_hooks.rs"]
-pub(crate) mod managed_hooks;
+pub mod managed_hooks;
 
 use std::sync::Arc;
 
@@ -20,9 +20,10 @@ use crate::{
     },
 };
 
-#[derive(serde::Serialize)]
+test_support_item! { pub(crate), [#[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum ModelDefinitionsInput {
+]
+enum ModelDefinitionsInput {
     List {
         query: ListModelsQuery,
         #[serde(skip_serializing)]
@@ -84,10 +85,12 @@ pub(crate) enum ModelDefinitionsInput {
         body: UpdateScopeGrantBody,
     },
 }
+}
 
-#[derive(serde::Serialize)]
+test_support_item! { pub(crate), [#[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum ModelDefinitionsOutput {
+]
+enum ModelDefinitionsOutput {
     Models(Vec<ModelDefinitionResponse>),
     Templates(Vec<CompatibleTemplateCatalogEntryResponse>),
     AgentFlowOptions(Vec<AgentFlowDataModelOptionResponse>),
@@ -99,6 +102,7 @@ pub(crate) enum ModelDefinitionsOutput {
     #[serde(serialize_with = "serialize_deleted")]
     Deleted,
     BatchDeleted(BatchDeletedResponse),
+}
 }
 
 impl JsonApiInput for ModelDefinitionsInput {}
@@ -120,7 +124,7 @@ fn serialize_deleted<S: serde::Serializer>(serializer: S) -> Result<S::Ok, S::Er
     serde::Serialize::serialize(&DeletedResponse { deleted: true }, serializer)
 }
 
-pub(crate) struct ModelDefinitionDependencies {
+pub struct ModelDefinitionDependencies {
     store: MainDurableStore,
     bootstrap_workspace_id: Uuid,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
@@ -131,7 +135,7 @@ pub(crate) struct ModelDefinitionDependencies {
     provider_install_root: String,
 }
 
-pub(crate) fn dependencies(
+pub fn dependencies(
     store: MainDurableStore,
     bootstrap_workspace_id: Uuid,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
@@ -707,7 +711,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: ModelDefinitionDependencies,
     graph: interface_runtime::GraphFingerprint,
 ) -> Result<
@@ -737,7 +741,6 @@ use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutpu
 #[cfg(test)]
 use serde_json::json;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "model_definitions_interface/managed_projection/_tests/event_projection.rs"]
 mod event_tests;

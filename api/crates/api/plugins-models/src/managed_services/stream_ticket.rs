@@ -18,7 +18,7 @@ pub(super) struct Ticket {
     pub operation: String,
     pub payload: Value,
 }
-pub(crate) fn generation(state: &ApiState) -> Result<String, ApiError> {
+pub fn generation(state: &ApiState) -> Result<String, ApiError> {
     let boot = state
         .extension_boot_snapshot
         .as_ref()

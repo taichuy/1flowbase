@@ -283,7 +283,7 @@ async fn authorize(
     Ok(())
 }
 /// Discovery uses the same published model/template owner and action grants as execution.
-pub(crate) async fn document_descriptor_for_entry(
+pub async fn document_descriptor_for_entry(
     dependencies: &crate::openapi_interface::OpenApiCapabilityCatalogDependencies,
     actor: &domain::ActorContext,
     entry: &crate::openapi_interface::OpenApiCapabilityCatalogEntry,
@@ -380,7 +380,6 @@ pub(super) async fn prepare(
     Ok(Arc::new(snapshot))
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/document_event_projection.rs"]
 mod tests;

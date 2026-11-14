@@ -47,7 +47,8 @@ struct FrozenManagedCreateInvocation {
     workspace: Option<FrozenWorkspaceHooks>,
 }
 
-pub(crate) async fn freeze<I: InterfaceContract>(
+test_support_item! { pub(crate), []
+async fn freeze<I: InterfaceContract>(
     state: &ApiState,
     registry: &Arc<CompiledInterfaceRegistry>,
     envelope: InvocationEnvelope<I, UserPrincipal>,
@@ -194,6 +195,7 @@ pub(crate) async fn freeze<I: InterfaceContract>(
     envelope
         .freeze_extension_context(Arc::new(frozen))
         .map_err(|_| anyhow::anyhow!("Create invocation was already frozen").into())
+}
 }
 
 fn phase_input(phase: HookPhase, create: &ManagedCreateView) -> ManagedCreateHookInput {
@@ -524,7 +526,7 @@ pub(super) fn bind(
     Ok(())
 }
 
-pub(crate) struct ModelDefinitionPreparation;
+pub struct ModelDefinitionPreparation;
 #[async_trait::async_trait]
 impl<I: InterfaceContract> crate::routes::console_interface::ConsoleInvocationPreparation<I>
     for ModelDefinitionPreparation

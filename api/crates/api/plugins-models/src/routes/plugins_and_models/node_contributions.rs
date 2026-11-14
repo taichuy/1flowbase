@@ -409,7 +409,7 @@ impl
     }
 }
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: storage_durable_postgres::MainDurableStore,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

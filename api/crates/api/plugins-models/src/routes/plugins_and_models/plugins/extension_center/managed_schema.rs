@@ -4,9 +4,6 @@ use super::{
 };
 use crate::error_response::ApiError;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-use control_plane::ports::ManagedSchemaOperation;
 
 use control_plane::ports::{
     ManagedSchemaApplyReceipt, ManagedSchemaPlan, ManagedSchemaPreview, ManagedSchemaRepository,
@@ -14,10 +11,12 @@ use control_plane::ports::{
 use extension_contracts::PluginDataModelContribution;
 use plugin_framework::{PluginManifestV1, PluginSchemaOwner};
 
-#[derive(Debug, Clone)]
-pub(super) struct ManagedSchemaDeclaration {
+test_support_item! { pub(super), [#[derive(Debug, Clone)]
+]
+struct ManagedSchemaDeclaration {
     owner: PluginSchemaOwner,
     contributions: Vec<PluginDataModelContribution>,
+}
 }
 
 impl ManagedSchemaDeclaration {
@@ -47,9 +46,11 @@ impl ManagedSchemaDeclaration {
     }
 }
 
-pub(super) struct PreparedManagedSchema {
+test_support_item! { pub(super), []
+struct PreparedManagedSchema {
     plan: ManagedSchemaPlan,
     preview: ManagedSchemaPreviewResponse,
+}
 }
 
 impl PreparedManagedSchema {
@@ -57,7 +58,8 @@ impl PreparedManagedSchema {
         self.preview.clone()
     }
 
-    pub(super) async fn apply(
+test_support_item! { pub(super), []
+    async fn apply(
         self,
         dependencies: &ExtensionCenterDependencies,
     ) -> Result<ManagedSchemaApplyReceiptResponse, ApiError> {
@@ -66,8 +68,10 @@ impl PreparedManagedSchema {
         Ok(receipt_response(receipt))
     }
 }
+}
 
-pub(super) async fn prepare_managed_schema(
+test_support_item! { pub(super), []
+async fn prepare_managed_schema(
     dependencies: &ExtensionCenterDependencies,
     workspace_id: uuid::Uuid,
     declaration: Option<&ManagedSchemaDeclaration>,
@@ -87,8 +91,10 @@ pub(super) async fn prepare_managed_schema(
         preview: preview_response(preview),
     }))
 }
+}
 
-pub(super) async fn retain_managed_schema(
+test_support_item! { pub(super), []
+async fn retain_managed_schema(
     dependencies: &ExtensionCenterDependencies,
     workspace_id: uuid::Uuid,
     identity: &domain::ExtensionInstallationIdentity,
@@ -103,6 +109,7 @@ pub(super) async fn retain_managed_schema(
         return Ok(None);
     }
     prepared.apply(dependencies).await.map(Some)
+}
 }
 
 fn preview_response(preview: ManagedSchemaPreview) -> ManagedSchemaPreviewResponse {
@@ -140,6 +147,10 @@ fn receipt_response(receipt: ManagedSchemaApplyReceipt) -> ManagedSchemaApplyRec
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-mod _tests;
+
+
+
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "managed_schema/_tests/support/accessors.rs"]
+mod test_accessors;

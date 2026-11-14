@@ -249,7 +249,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[ConsoleInterfaceDeclarati
     mutating: false,
 }];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: MainDurableStore,
     provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
     secret_key: String,
@@ -276,7 +276,6 @@ pub(crate) fn compile_registry(
 #[path = "icons/event_projection.rs"]
 mod event_projection;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "icons/_tests/openapi.rs"]
 mod openapi_tests;

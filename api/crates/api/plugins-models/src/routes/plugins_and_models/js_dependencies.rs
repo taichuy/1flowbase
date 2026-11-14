@@ -252,7 +252,7 @@ impl
     }
 }
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: storage_durable_postgres::MainDurableStore,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -279,7 +279,6 @@ use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutpu
 #[cfg(test)]
 use serde_json::json;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "js_dependencies/_tests/event_projection.rs"]
 mod event_tests;

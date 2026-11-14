@@ -368,7 +368,6 @@ fn bind_handle(key: HandleKey, record: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/record_acl.rs"]
 mod tests;

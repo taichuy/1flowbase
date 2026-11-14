@@ -15,7 +15,7 @@ use axum::{
 };
 use control_plane::plugin_management::{
     group_installed_extension_families, AssignPluginCommand, ExtensionArtifactInstallOutcome,
-    ExtensionCatalogCategory, ExtensionInstallationService, ExtensionRiskOverride,
+    ExtensionInstallationService, ExtensionRiskOverride,
     InstallExtensionArtifactCommand, InstallExtensionNodePluginCommand, InstalledExtensionFamily,
     SwitchPluginVersionCommand,
 };
@@ -37,23 +37,23 @@ use crate::{
 };
 
 use super::{
-    enforce_plugin_upload_limit, format_time, to_task_response, PluginCompatibilityOverrideBody,
-    PluginRiskOverrideBody, PluginTaskResponse,
+    enforce_plugin_upload_limit, format_time, to_task_response,
+    PluginTaskResponse,
 };
 
 #[derive(Clone)]
-pub(crate) struct ExtensionCenterDependencies {
-    pub(crate) store: storage_durable_postgres::MainDurableStore,
-    pub(crate) provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
-    pub(crate) official_plugin_source: Arc<dyn control_plane::ports::OfficialPluginSourcePort>,
-    pub(crate) official_mcp_bundle_source:
+pub struct ExtensionCenterDependencies {
+    pub store: storage_durable_postgres::MainDurableStore,
+    pub provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
+    pub official_plugin_source: Arc<dyn control_plane::ports::OfficialPluginSourcePort>,
+    pub official_mcp_bundle_source:
         Arc<dyn crate::official_mcp_bundles::OfficialMcpBundleSourcePort>,
-    pub(crate) official_extension_catalog_source:
+    pub official_extension_catalog_source:
         Arc<dyn crate::official_extension_catalog::OfficialExtensionCatalogSourcePort>,
-    pub(crate) cache_store: Arc<dyn crate::host_infrastructure::CacheStore>,
-    pub(crate) provider_install_root: String,
-    pub(crate) api_node_id: String,
-    pub(crate) allow_uploaded_host_extensions: bool,
+    pub cache_store: Arc<dyn crate::host_infrastructure::CacheStore>,
+    pub provider_install_root: String,
+    pub api_node_id: String,
+    pub allow_uploaded_host_extensions: bool,
 }
 
 async fn invoke_interface(
@@ -73,13 +73,17 @@ async fn invoke_interface(
 }
 
 mod builtin_mcp;
+test_support_item! { , []
 mod catalog_page;
-pub(crate) mod contribution_authority;
+}
+pub mod contribution_authority;
 mod dto;
 use contribution_authority::*;
-pub(crate) mod interface;
-pub(crate) mod managed_execution;
+pub mod interface;
+pub mod managed_execution;
+test_support_item! { , []
 mod managed_schema;
+}
 mod official_install;
 use managed_execution::*;
 use official_install::install_or_update_official_extension;
@@ -317,6 +321,7 @@ fn to_local_inventory_family_entry(
     to_local_inventory_family(family.current, family.installed_versions)
 }
 
+test_support_item! { , []
 fn paginate_installed_families(
     families: Vec<InstalledExtensionFamily>,
     cursor: Option<&str>,
@@ -343,6 +348,7 @@ fn paginate_installed_families(
         })
         .flatten();
     (total_entries, next_cursor, page_entries)
+}
 }
 
 #[utoipa::path(
@@ -477,14 +483,17 @@ pub async fn delete_local_extension_installation(
     Ok(Json(ApiSuccess::new(installation)))
 }
 
+test_support_item! { , []
 fn is_runtime_uninstall_category(category: domain::ExtensionCategory) -> bool {
     matches!(
         category,
         domain::ExtensionCategory::RuntimeExtensions | domain::ExtensionCategory::CapabilityPlugins
     )
 }
+}
 
-#[derive(Debug, Clone)]
+test_support_item! { , [#[derive(Debug, Clone)]
+]
 struct InstalledCatalogJoin {
     installation_id: Uuid,
     current_version: String,
@@ -492,11 +501,14 @@ struct InstalledCatalogJoin {
     trust: String,
     status: InstalledCatalogJoinStatus,
 }
+}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+test_support_item! { , [#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+]
 enum InstalledCatalogJoinStatus {
     Installed,
     Uninstalled,
+}
 }
 
 impl InstalledCatalogJoinStatus {
@@ -607,7 +619,8 @@ struct NodePluginInspection {
     managed_schema: Option<ManagedSchemaDeclaration>,
 }
 
-#[derive(Debug)]
+test_support_item! { , [#[derive(Debug)]
+]
 struct UploadedExtensionArtifact {
     category: ExtensionCatalogCategory,
     organization: String,
@@ -620,6 +633,7 @@ struct UploadedExtensionArtifact {
     signing_key_id: Option<String>,
     application_action: domain::ExtensionApplicationAction,
     managed_schema: Option<ManagedSchemaDeclaration>,
+}
 }
 
 #[derive(Default)]
@@ -661,9 +675,11 @@ fn project_install_outcome(outcome: ExtensionInstallOutcome) -> Response {
     }
 }
 
+test_support_item! { , []
 enum PreflightDecision {
     Challenge,
     Accepted(Option<serde_json::Value>),
+}
 }
 
 fn extension_identity(
@@ -701,6 +717,7 @@ fn valid_extension_segment(value: &str) -> bool {
         && !value.contains([':', '/', '\\', '\0'])
 }
 
+test_support_item! { , []
 fn requested_installation_identity(
     category: ExtensionCatalogCategory,
     catalog_id: &str,
@@ -715,6 +732,7 @@ fn requested_installation_identity(
         version,
         node_id,
     )
+}
 }
 
 fn catalog_identity(
@@ -746,6 +764,7 @@ fn risk_warning(code: &str, message: &str) -> ExtensionRiskWarningResponse {
     }
 }
 
+test_support_item! { , []
 fn artifact_preflight_challenge(
     entry: &OfficialExtensionCatalogEntry,
     descriptor: &OfficialExtensionArtifactDescriptor,
@@ -789,7 +808,9 @@ fn artifact_preflight_challenge(
         compatibility: catalog_entry_compatibility(entry),
     }
 }
+}
 
+test_support_item! { , []
 fn validate_preflight_overrides(
     challenge: &ExtensionRiskChallengeResponse,
     risk_override: Option<&PluginRiskOverrideBody>,
@@ -845,6 +866,7 @@ fn validate_preflight_overrides(
     });
     Ok(PreflightDecision::Accepted(receipt))
 }
+}
 
 fn domain_challenge(
     challenge: domain::ExtensionRiskChallenge,
@@ -891,6 +913,7 @@ fn complete_artifact_signature(
     })
 }
 
+test_support_item! { , []
 fn verify_trusted_artifact_signature(
     downloaded: &DownloadedOfficialExtensionArtifact,
     trusted_public_keys: &[plugin_framework::TrustedPublicKey],
@@ -917,6 +940,7 @@ fn verify_trusted_artifact_signature(
         trusted_public_keys,
     )
     .map_err(|_| OfficialExtensionArtifactError::SignatureInvalid.into())
+}
 }
 
 fn signature_status_from_intake(status: &str) -> domain::ExtensionSignatureStatus {
@@ -1032,35 +1056,51 @@ pub async fn update_official_extension(
     Ok(project_install_outcome(outcome))
 }
 
-pub(crate) mod upload;
+pub mod upload;
 pub use upload::install_uploaded_extension;
 mod application;
+#[cfg(not(any(test, feature = "test-support")))]
 use application::{
-    catalog_application_action, default_application_status, workspace_application_status,
+    catalog_application_action, default_application_status,
 };
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-mod _tests;
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-/// Test assembly uses the production schema owner, without a duplicate ownership registry.
-#[cfg(test)]
-pub(crate) async fn apply_fixture_managed_schema(
-    dependencies: &ExtensionCenterDependencies,
-    workspace_id: Uuid,
-    manifest: &plugin_framework::PluginManifestV1,
-) -> Result<(), ApiError> {
-    let declaration = ManagedSchemaDeclaration::from_manifest(manifest)?;
-    if let Some(prepared) =
-        prepare_managed_schema(dependencies, workspace_id, declaration.as_ref()).await?
-    {
-        prepared.apply(dependencies).await?;
-    }
-    Ok(())
-}
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "extension_center/_tests/support/mod.rs"]
+mod support;
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use support::apply_fixture_managed_schema;
 
 #[path = "extension_center/catalog_projection.rs"]
 mod catalog_projection;
 
 use catalog_projection::*;
+
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use application::{catalog_application_action, default_application_status};
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use catalog_projection::{extension_update_status, project_catalog_entry, project_installed_catalog_joins};
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use super::{PluginRiskOverrideBody, PluginCompatibilityOverrideBody};
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use control_plane::plugin_management::ExtensionCatalogCategory;
+
+#[cfg(not(any(test, feature = "test-support")))]
+use super::{PluginRiskOverrideBody, PluginCompatibilityOverrideBody};
+#[cfg(not(any(test, feature = "test-support")))]
+use control_plane::plugin_management::ExtensionCatalogCategory;
+
+use application::workspace_application_status;
+
+
+
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "extension_center/_tests/support/accessors.rs"]
+mod test_accessors;

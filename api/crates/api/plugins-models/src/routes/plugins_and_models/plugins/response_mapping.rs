@@ -49,15 +49,17 @@ pub(super) fn to_artifact_instance_response(
     })
 }
 
-pub(crate) fn runtime_slot_for_contract(contract_version: &str) -> Option<String> {
+test_support_item! { pub(crate), []
+fn runtime_slot_for_contract(contract_version: &str) -> Option<String> {
     match contract_version {
         CURRENT_PROVIDER_CONTRACT => Some("model_provider".to_string()),
         "1flowbase.data_source/v1" => Some("data_source".to_string()),
         _ => None,
     }
 }
+}
 
-pub(crate) fn to_install_response(
+pub fn to_install_response(
     result: InstallPluginResult,
 ) -> Result<InstallPluginResponse, ApiError> {
     Ok(InstallPluginResponse {

@@ -5,8 +5,9 @@ use interface_runtime::{CompiledInterfaceRegistry, RegistryCompiler};
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, sync::Arc};
 
-#[derive(Clone)]
-pub(super) struct OperationPolicy {
+test_support_item! { pub(super), [#[derive(Clone)]
+]
+struct OperationPolicy {
     interface_id: String,
     method: String,
     path: String,
@@ -16,9 +17,11 @@ pub(super) struct OperationPolicy {
     result_schema: Option<Value>,
     streaming: bool,
 }
+}
 
 impl OperationPolicy {
-    pub(super) fn new(operation: &plugin_framework::ManagedServiceOperation) -> Self {
+test_support_item! { pub(super), []
+    fn new(operation: &plugin_framework::ManagedServiceOperation) -> Self {
         let input = request_schema_without_headers(
             super::registration::operation_document_input_schema(operation),
         );
@@ -33,6 +36,7 @@ impl OperationPolicy {
             streaming: operation.stream.is_some(),
         }
     }
+}
 
     fn check(&self, operation: &ApiOperationContext) -> Result<(), Arc<str>> {
         if operation.interface_id != self.interface_id
@@ -79,11 +83,13 @@ fn request_schema_without_headers(schema: Value) -> Value {
     schema
 }
 
-/// A terminal kind, not a fabricated stream-completion flag. The HTTP owner still
+test_support_item! { pub(super), [/// A terminal kind, not a fabricated stream-completion flag. The HTTP owner still
 /// consumes the original value unchanged in ManagedServiceOutput.0.
-pub(super) enum OutputPolicy {
+]
+enum OutputPolicy {
     TicketIssued(Arc<OperationPolicy>),
     BusinessResult(Arc<OperationPolicy>),
+}
 }
 
 fn ticket_schema() -> Value {
@@ -424,7 +430,6 @@ pub(super) fn refine_registry(
     Ok(())
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/document_event_projection.rs"]
 mod tests;

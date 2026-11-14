@@ -5,7 +5,7 @@ async fn socket_exit_and_mutation_cancel_the_ephemeral_call_and_release_registra
     let generation = streams()
         .lock()
         .unwrap()
-        .generation
+        .test_generation()
         .clone()
         .unwrap_or_default();
     let installation = uuid::Uuid::now_v7();
@@ -18,10 +18,10 @@ async fn socket_exit_and_mutation_cancel_the_ephemeral_call_and_release_registra
     assert!(streams()
         .lock()
         .unwrap()
-        .installations
+        .test_installations()
         .get(&installation)
         .unwrap()
-        .sockets
+        .test_sockets()
         .is_empty());
     let (lease, mut cancellation) =
         register(installation, epoch(installation), &generation, None).unwrap();
@@ -84,39 +84,35 @@ async fn generation_managed_socket_session_retains_old_owner_until_session_drop(
     let (_, events) = mpsc::channel(1);
     let (_, terminal) = oneshot::channel();
     let (cancel_sender, cancel) = watch::channel(false);
-    let session = SocketSession {
-        state: state.clone(),
-        generation: owner.clone(),
-        operation: Arc::new(operation),
-        headers: HeaderMap::new(),
-        session: String::new(),
-        installation: uuid::Uuid::now_v7(),
-        payload: json!({}),
-        input,
-        events,
-        terminal,
-        cancel,
-        lease: SocketLease {
-            installation: uuid::Uuid::now_v7(),
-            id: uuid::Uuid::now_v7(),
-            cancel: cancel_sender,
-        },
-    };
+    let session = SocketSession::test_new(state.clone(),
+owner.clone(),
+Arc::new(operation),
+HeaderMap::new(),
+String::new(),
+uuid::Uuid::now_v7(),
+json!({}),
+input,
+events,
+terminal,
+cancel,
+SocketLease::test_new(uuid::Uuid::now_v7(),
+uuid::Uuid::now_v7(),
+cancel_sender));
     drop(owner);
     drop(state);
     publisher.publish(publisher.prepare(vec![], BTreeMap::new()).await.unwrap());
     assert!(probe.upgrade().is_some());
     assert_eq!(
-        session.generation.generation_id(),
+        session.test_generation().generation_id(),
         session
-            .state
+            .test_state()
             .extension_boot_snapshot
             .as_ref()
             .unwrap()
             .generation_id()
     );
     assert_ne!(
-        session.generation.generation_id(),
+        session.test_generation().generation_id(),
         publisher
             .current_generation()
             .unwrap()
@@ -148,16 +144,15 @@ fn record_revocation_candidates_are_exact_and_never_include_root_or_untracked_st
     let mut add = |installation, actor: ActorContext, key: Option<RecordPermissionKey>| {
         let id = uuid::Uuid::now_v7();
         let (cancel, _) = watch::channel(false);
-        all.installations
+        all.test_installations_mut()
             .entry(installation)
             .or_default()
-            .sockets
+            .test_sockets_mut()
             .insert(
                 id,
-                RegisteredStream {
-                    cancel,
-                    record_permission: key.map(|key| StreamRecordAdmission { actor, key }),
-                },
+                RegisteredStream::test_new(cancel,
+key.map(|key| StreamRecordAdmission::test_new(actor,
+key))),
             );
         id
     };
@@ -195,5 +190,5 @@ fn record_revocation_candidates_are_exact_and_never_include_root_or_untracked_st
     assert!(ids.contains(&candidate_requiring_fresh_role_evaluation));
     assert!(candidates
         .iter()
-        .all(|(_, admission)| !admission.actor.is_root && admission.key == key));
+        .all(|(_, admission)| !admission.test_actor().is_root && admission.test_key() == &key));
 }

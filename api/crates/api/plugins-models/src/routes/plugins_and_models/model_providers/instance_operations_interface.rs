@@ -766,13 +766,13 @@ impl InterfaceContract for ProviderInstanceOperationsOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct ProviderInstanceOperationsDependencies {
-    pub(crate) store: MainDurableStore,
-    pub(crate) provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
-    pub(crate) secret_key: String,
-    pub(crate) api_node_id: String,
-    pub(crate) install_root: String,
-    pub(crate) cache_store: Arc<dyn CacheStore>,
+pub struct ProviderInstanceOperationsDependencies {
+    pub store: MainDurableStore,
+    pub provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
+    pub secret_key: String,
+    pub api_node_id: String,
+    pub install_root: String,
+    pub cache_store: Arc<dyn CacheStore>,
 }
 
 struct ProviderInstanceOperationsAdapter(ProviderInstanceOperationsDependencies);
@@ -994,7 +994,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: ProviderInstanceOperationsDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

@@ -12,16 +12,20 @@ use control_plane_contracts::ports::ManagedServiceMutationRepository;
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use std::{collections::BTreeMap, sync::Arc};
 
-pub(crate) struct ManagedServiceInput {
+test_support_item! { pub(crate), []
+struct ManagedServiceInput {
     pub interface_id: String,
     pub payload: serde_json::Value,
     pub stream: Option<super::stream::StreamInput>,
     pub(super) event_policy: Arc<super::event_projection::OperationPolicy>,
 }
-pub(crate) struct ManagedServiceOutput(
+}
+test_support_item! { pub(crate), []
+struct ManagedServiceOutput(
     pub serde_json::Value,
     pub(super) super::event_projection::OutputPolicy,
 );
+}
 // Generic business bodies can contain outbound credentials. Hooks only receive safe metadata.
 impl InterfaceContract for ManagedServiceInput {
     const CONTRACT_ID: &'static str = "managed-service-input";
@@ -159,7 +163,7 @@ impl Adapter {
                                 | "network.http.request"
                         )
                     }) {
-                crate::resource_import::capture_caller(
+                api_host_kernel::resource_import_context::capture_caller(
                     &state,
                     principal,
                     &op.declaration.interface_id,
@@ -226,7 +230,7 @@ impl Adapter {
         })
     }
 }
-pub(crate) fn registry_contribution(
+pub fn registry_contribution(
     state: &Arc<ApiState>,
     registration: &ManagedServiceRegistration,
 ) -> anyhow::Result<InterfaceRegistryContribution> {
@@ -332,3 +336,8 @@ pub(crate) fn registry_contribution(
         registry,
     ))
 }
+
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "_tests/support/interface.rs"]
+mod test_accessors;

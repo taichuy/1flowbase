@@ -335,7 +335,8 @@ async fn classify_uploaded_extension(
     })
 }
 
-pub(super) fn upload_challenge(
+test_support_item! { pub(super), []
+fn upload_challenge(
     artifact: &UploadedExtensionArtifact,
 ) -> ExtensionRiskChallengeResponse {
     let mut warnings = vec![risk_warning(
@@ -365,6 +366,7 @@ pub(super) fn upload_challenge(
             .as_deref()
             .and_then(compatibility_for_requirement),
     }
+}
 }
 
 pub(crate) async fn install_uploaded_artifact(

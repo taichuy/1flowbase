@@ -30,9 +30,12 @@ use std::{
 };
 use tokio::sync::{mpsc, oneshot, watch};
 
-pub(super) const FRAME_BYTES: usize = 1024 * 1024;
+test_support_item! { pub(super), []
+const FRAME_BYTES: usize = 1024 * 1024;
+}
 
-pub(crate) enum StreamInput {
+test_support_item! { pub(crate), []
+enum StreamInput {
     Ticket {
         origin: String,
     },
@@ -41,7 +44,10 @@ pub(crate) enum StreamInput {
         cancel: watch::Receiver<bool>,
     },
 }
-pub(crate) struct StreamEvent(pub RuntimeManagedDuplexEvent);
+}
+test_support_item! { pub(crate), []
+struct StreamEvent(pub RuntimeManagedDuplexEvent);
+}
 impl InterfaceContract for StreamEvent {
     const CONTRACT_ID: &'static str = "managed-service-stream-event";
     const CONTRACT_VERSION: &'static str = "1";
@@ -52,31 +58,41 @@ impl InterfaceContract for StreamEvent {
         Some(json!({"body_bytes":serde_json::to_vec(&self.0.event).ok()?.len()}))
     }
 }
-#[derive(Clone)]
+test_support_item! { , [#[derive(Clone)]
+]
 struct StreamRecordAdmission {
     actor: domain::ActorContext,
     key: domain::RecordPermissionKey,
 }
+}
+test_support_item! { , []
 struct RegisteredStream {
     cancel: watch::Sender<bool>,
     // Derived by authenticated upgrade admission, never accepted from a worker/frame/body.
     record_permission: Option<StreamRecordAdmission>,
 }
-#[derive(Default)]
+}
+test_support_item! { , [#[derive(Default)]
+]
 struct InstallationStreams {
     epoch: u64,
     sockets: BTreeMap<uuid::Uuid, RegisteredStream>,
 }
-#[derive(Default)]
+}
+test_support_item! { , [#[derive(Default)]
+]
 struct StreamRegistry {
     generation: Option<String>,
     installations: BTreeMap<uuid::Uuid, InstallationStreams>,
 }
+}
+test_support_item! { , []
 fn streams() -> &'static Mutex<StreamRegistry> {
     static STREAMS: OnceLock<Mutex<StreamRegistry>> = OnceLock::new();
     STREAMS.get_or_init(Mutex::default)
 }
-pub(crate) fn publish_generation(generation: String) {
+}
+pub fn publish_generation(generation: String) {
     super::record_acl::clear_handles();
     let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
     all.generation = Some(generation);
@@ -87,7 +103,8 @@ pub(crate) fn publish_generation(generation: String) {
         }
     }
 }
-pub(crate) fn revoke_installation(id: uuid::Uuid) {
+test_support_item! { pub(crate), []
+fn revoke_installation(id: uuid::Uuid) {
     let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
     let entry = all.installations.entry(id).or_default();
     entry.epoch += 1;
@@ -95,6 +112,8 @@ pub(crate) fn revoke_installation(id: uuid::Uuid) {
         let _ = stream.cancel.send(true);
     }
 }
+}
+test_support_item! { , []
 fn record_candidates(
     all: &StreamRegistry,
     installation: uuid::Uuid,
@@ -112,6 +131,7 @@ fn record_candidates(
                 .map(|admission| (*id, admission.clone()))
         })
         .collect()
+}
 }
 /// A record policy change revokes only newly denied streams in that caller workspace.
 /// Admission and periodic validation still own the separate global operation/session gates.
@@ -148,7 +168,7 @@ pub(crate) async fn revoke_record_permissions(
         }
     }
 }
-pub(crate) fn revoke_all() {
+pub fn revoke_all() {
     let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
     for entry in all.installations.values_mut() {
         entry.epoch += 1;
@@ -157,7 +177,8 @@ pub(crate) fn revoke_all() {
         }
     }
 }
-pub(super) fn epoch(id: uuid::Uuid) -> u64 {
+test_support_item! { pub(super), []
+fn epoch(id: uuid::Uuid) -> u64 {
     streams()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -166,10 +187,13 @@ pub(super) fn epoch(id: uuid::Uuid) -> u64 {
         .or_default()
         .epoch
 }
-pub(super) struct SocketLease {
+}
+test_support_item! { pub(super), []
+struct SocketLease {
     installation: uuid::Uuid,
     id: uuid::Uuid,
     cancel: watch::Sender<bool>,
+}
 }
 impl Drop for SocketLease {
     fn drop(&mut self) {
@@ -184,6 +208,7 @@ impl Drop for SocketLease {
         }
     }
 }
+test_support_item! { , []
 fn register(
     installation: uuid::Uuid,
     expected_epoch: u64,
@@ -219,6 +244,7 @@ fn register(
         },
         receiver,
     ))
+}
 }
 
 impl ConsoleServerStreamPort<ManagedServiceInput, StreamEvent, ManagedServiceOutput> for Adapter {
@@ -274,7 +300,7 @@ impl ConsoleServerStreamPort<ManagedServiceInput, StreamEvent, ManagedServiceOut
                         let duplex = RuntimeManagedDuplex { input: duplex.input, events: sender };
                         let needs_call_context = registration.declaration.worker_lifetime == plugin_framework::ManagedServiceWorkerLifetime::ActorWorkspaceScope;
                         let caller = if needs_call_context || binding.descriptor.required_permissions.iter().any(|permission| matches!(permission.as_str(), "file.import.resource" | "file.read.content" | "application.logs.read" | "application.logs.import" | "network.http.request")) {
-                            crate::resource_import::capture_caller(&state, &principal, &op.interface_id).await?
+                            api_host_kernel::resource_import_context::capture_caller(&state, &principal, &op.interface_id).await?
                         } else { None };
                         if needs_call_context && caller.is_none() && record_permissions.is_none() { return Err(Error::NotAuthenticated.into()); }
                         tokio::spawn(async move {
@@ -538,6 +564,7 @@ async fn upgrade(
             )
         }))
 }
+test_support_item! { , []
 struct SocketSession {
     generation: Arc<crate::generation_dispatch::GenerationDispatch>,
     state: Arc<ApiState>,
@@ -559,6 +586,7 @@ struct SocketSession {
     >,
     cancel: watch::Receiver<bool>,
     lease: SocketLease,
+}
 }
 async fn run_socket(socket: WebSocket, session: SocketSession) {
     let SocketSession {
@@ -773,10 +801,13 @@ async fn run_socket(socket: WebSocket, session: SocketSession) {
     let _ = writer_task.await;
 }
 
+test_support_item! { , []
 enum ClientFrame {
     Input(Value),
     Ack(u64),
 }
+}
+test_support_item! { , []
 fn parse_client_frame(text: &str, input: &jsonschema::Validator) -> Result<ClientFrame, ()> {
     if text.len() > FRAME_BYTES {
         return Err(());
@@ -800,11 +831,8 @@ fn parse_client_frame(text: &str, input: &jsonschema::Validator) -> Result<Clien
         _ => Err(()),
     }
 }
+}
 
-#[cfg_attr(test, api_test_selection::group(core))]
-#[cfg(test)]
-#[path = "_tests/stream_lifecycle.rs"]
-mod lifecycle_tests;
 
 // Runtime frames and their consumed ACK owner are not a business terminal DTO.
 impl crate::openapi_interface::contract::ApiOutput for StreamEvent {
@@ -821,31 +849,23 @@ impl crate::openapi_interface::contract::ApiOutput for StreamEvent {
     }
 }
 
-#[cfg(test)]
-pub(super) async fn register_test_stream(
-    state: &ApiState,
-    headers: &HeaderMap,
-    installation: uuid::Uuid,
-    operation: &plugin_framework::ManagedServiceOperation,
-    payload: &Value,
-) -> Result<(SocketLease, watch::Receiver<bool>), ApiError> {
-    let context = crate::middleware::require_session::require_session(state, headers).await?;
-    let session = context.cookie_session()?.session_id.clone();
-    let admission = revalidate(state, headers, &session, operation, installation, payload).await?;
-    let generation = super::stream_ticket::generation(state)?;
-    register(installation, epoch(installation), &generation, admission)
-}
 
-#[cfg(test)]
-pub(super) async fn revalidate_test_stream(
-    state: &ApiState,
-    headers: &HeaderMap,
-    session: &str,
-    operation: &plugin_framework::ManagedServiceOperation,
-    installation: uuid::Uuid,
-    payload: &Value,
-) -> Result<(), ApiError> {
-    revalidate(state, headers, session, operation, installation, payload)
-        .await
-        .map(|_| ())
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "_tests/support/stream.rs"]
+mod test_accessors;
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use test_accessors::{register_test_stream, revalidate_test_stream};

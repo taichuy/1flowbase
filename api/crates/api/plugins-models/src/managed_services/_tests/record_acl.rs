@@ -64,7 +64,7 @@ fn host_handle_cannot_be_rebound_to_another_record_or_replayed_by_other_identity
 }
 #[test]
 fn policy_identity_tracks_real_caller_workspace_and_stable_plugin_publisher() {
-    let registration = crate::managed_services::tests::fixture();
+    let registration = crate::managed_services::support::fixture();
     let actor = ActorContext::root(uuid::Uuid::now_v7(), uuid::Uuid::now_v7(), "root");
     let resource = ManagedServiceRecordResource {
         resource_code: "hosts".into(),
@@ -91,7 +91,7 @@ fn policy_identity_tracks_real_caller_workspace_and_stable_plugin_publisher() {
 
 #[test]
 fn uuid_spelling_cannot_escape_the_same_record_policy_header() {
-    let registration = crate::managed_services::tests::fixture();
+    let registration = crate::managed_services::support::fixture();
     let resource = ManagedServiceRecordResource {
         resource_code: "hosts".into(),
         collection_code: "hosts".into(),
@@ -116,7 +116,7 @@ fn uuid_spelling_cannot_escape_the_same_record_policy_header() {
 
 #[test]
 fn sql_context_uses_real_caller_scope_and_unmapped_operations_fail_closed() {
-    let mut registration = crate::managed_services::tests::fixture();
+    let mut registration = crate::managed_services::support::fixture();
     registration.declaration.record_resources = vec![ManagedServiceRecordResource {
         resource_code: "hosts".into(),
         collection_code: "hosts".into(),

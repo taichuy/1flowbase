@@ -14,7 +14,7 @@ use axum::{
 };
 use std::{collections::BTreeMap, sync::Arc};
 
-pub(crate) fn route_assembly(
+pub fn route_assembly(
     services: &[ManagedServiceRegistration],
 ) -> ConsoleRouteAssembly<Arc<ApiState>> {
     let mut assembly = ConsoleRouteAssembly::new();

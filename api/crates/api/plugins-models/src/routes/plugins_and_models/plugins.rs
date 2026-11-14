@@ -48,7 +48,7 @@ pub struct InstallOfficialPluginBody {
 
 #[derive(ToSchema)]
 #[allow(dead_code)]
-pub(crate) struct PluginUploadMultipartBody {
+pub struct PluginUploadMultipartBody {
     #[schema(value_type = String, format = Binary)]
     file: Vec<u8>,
 }
@@ -301,7 +301,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     route_assembly_with_plugin_upload_max_bytes(crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES)
 }
 
-pub(crate) fn route_assembly_with_plugin_upload_max_bytes(
+pub fn route_assembly_with_plugin_upload_max_bytes(
     plugin_upload_max_bytes: usize,
 ) -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
@@ -495,11 +495,11 @@ pub(crate) fn route_assembly_with_plugin_upload_max_bytes(
         )
 }
 
-pub(crate) mod extension_center;
-pub(crate) mod interface;
+pub mod extension_center;
+pub mod interface;
 mod official_install_command;
-pub(crate) use official_install_command::resolve_official_install_command;
-pub(crate) mod settings_routes;
+pub use official_install_command::resolve_official_install_command;
+pub mod settings_routes;
 
 async fn invoke_plugin_interface(
     state: Arc<ApiState>,
@@ -549,7 +549,7 @@ pub(crate) fn to_risk_override(
     })
 }
 
-pub(crate) async fn enforce_plugin_upload_limit(
+pub async fn enforce_plugin_upload_limit(
     plugin_upload_max_bytes: usize,
     request: Request<Body>,
     next: Next,
@@ -564,7 +564,7 @@ pub(crate) async fn enforce_plugin_upload_limit(
     }
 }
 
-pub(crate) async fn read_upload_file(
+pub async fn read_upload_file(
     multipart: &mut Multipart,
 ) -> Result<(String, Vec<u8>), ApiError> {
     while let Some(field) = multipart
@@ -598,7 +598,7 @@ pub(crate) async fn read_upload_file(
     Err(control_plane::errors::ControlPlaneError::InvalidInput("plugin_file").into())
 }
 
-pub(crate) fn requested_locales(
+pub fn requested_locales(
     locale_meta: &LocaleMetaResponse,
 ) -> control_plane::i18n::RequestedLocales {
     control_plane::i18n::RequestedLocales::new(
@@ -1062,7 +1062,6 @@ pub async fn get_task(
     Ok(Json(ApiSuccess::new(task)))
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "plugins/_tests/time_response.rs"]
 mod time_response_tests;
@@ -1070,9 +1069,9 @@ mod time_response_tests;
 #[path = "plugins/response_mapping.rs"]
 mod response_mapping;
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-pub(crate) use response_mapping::runtime_slot_for_contract;
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use response_mapping::runtime_slot_for_contract;
 
-pub(crate) use response_mapping::to_install_response;
+pub use response_mapping::to_install_response;
 use response_mapping::*;

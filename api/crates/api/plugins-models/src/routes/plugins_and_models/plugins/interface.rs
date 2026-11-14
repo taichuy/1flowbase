@@ -128,16 +128,16 @@ pub(crate) enum PluginInterfaceOutput {
     Tasks(Vec<PluginTaskResponse>),
 }
 
-pub(crate) struct PluginInterfaceDependencies {
-    pub(crate) store: MainDurableStore,
-    pub(crate) provider_runtime: Arc<ApiRuntimeServices>,
-    pub(crate) official_plugin_source: Arc<dyn OfficialPluginSourcePort>,
-    pub(crate) official_catalog_source: Arc<dyn OfficialExtensionCatalogSourcePort>,
-    pub(crate) cache_store: Arc<dyn CacheStore>,
-    pub(crate) provider_install_root: String,
-    pub(crate) api_node_id: String,
-    pub(crate) bootstrap_workspace_id: uuid::Uuid,
-    pub(crate) allow_uploaded_host_extensions: bool,
+pub struct PluginInterfaceDependencies {
+    pub store: MainDurableStore,
+    pub provider_runtime: Arc<ApiRuntimeServices>,
+    pub official_plugin_source: Arc<dyn OfficialPluginSourcePort>,
+    pub official_catalog_source: Arc<dyn OfficialExtensionCatalogSourcePort>,
+    pub cache_store: Arc<dyn CacheStore>,
+    pub provider_install_root: String,
+    pub api_node_id: String,
+    pub bootstrap_workspace_id: uuid::Uuid,
+    pub allow_uploaded_host_extensions: bool,
 }
 
 struct PluginInterfaceAdapter(PluginInterfaceDependencies);
@@ -873,7 +873,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: PluginInterfaceDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

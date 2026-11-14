@@ -9,7 +9,8 @@ use crate::error_response::ApiError;
 
 use super::ExtensionCenterDependencies;
 
-pub(super) fn default_application_status(
+test_support_item! { pub(super), []
+fn default_application_status(
     action: domain::ExtensionApplicationAction,
 ) -> &'static str {
     match action {
@@ -20,8 +21,10 @@ pub(super) fn default_application_status(
         | domain::ExtensionApplicationAction::ActivateI18n => "not_applied",
     }
 }
+}
 
-pub(super) fn catalog_application_action(
+test_support_item! { pub(super), []
+fn catalog_application_action(
     category: ExtensionCatalogCategory,
 ) -> domain::ExtensionApplicationAction {
     match category {
@@ -32,6 +35,7 @@ pub(super) fn catalog_application_action(
         | ExtensionCatalogCategory::HostExtensions
         | ExtensionCatalogCategory::RuntimeExtensions => domain::ExtensionApplicationAction::None,
     }
+}
 }
 
 pub(super) async fn workspace_application_status(
@@ -59,7 +63,7 @@ pub(super) async fn workspace_application_status(
                 ))?;
             let bytes = tokio::fs::read(local_path).await?;
             let package = tokio::task::spawn_blocking(move || {
-                crate::routes::mcp_management::bundles::parse_bundle_archive(&bytes)
+                api_host_kernel::mcp_bundle_archive::parse_bundle_archive(&bytes)
             })
             .await
             .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_archive"))?;

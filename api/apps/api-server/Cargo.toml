@@ -21,7 +21,7 @@ name = "api_public_api"
 path = "src/public_api_test.rs"
 
 [features]
-test-support = ["api-console-settings/test-support","api-mcp/test-support","api-applications/test-support","api-public-gateway/test-support","api-host-kernel/test-support","dep:postgres-test-support", "dep:ed25519-dalek"]
+test-support = ["api-plugins-models/test-support","api-console-settings/test-support","api-mcp/test-support","api-applications/test-support","api-public-gateway/test-support","api-host-kernel/test-support","dep:postgres-test-support", "dep:ed25519-dalek"]
 # Builds only the Root #1805 consumer authenticity fixture. The normal lib-test target keeps
 # the internal unit suite; ordinary package tests also discover the independent contract targets.
 # This narrow lib target prevents a fresh QA run from compiling every
@@ -38,6 +38,7 @@ required-features = ["responses-history-migration"]
 [dependencies]
 api-console-settings={path="../../crates/api/console-settings"}
 api-mcp={path="../../crates/api/mcp"}
+api-plugins-models={path="../../crates/api/plugins-models"}
 api-applications={path="../../crates/api/applications"}
 api-public-gateway={path="../../crates/api/public-gateway"}
 postgres-test-support = { path = "../../crates/postgres-test-support", optional = true }
@@ -118,6 +119,7 @@ windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Globa
 [dev-dependencies]
 api-console-settings={path="../../crates/api/console-settings",features=["test-support"]}
 api-mcp={path="../../crates/api/mcp",features=["test-support"]}
+api-plugins-models={path="../../crates/api/plugins-models",features=["test-support"]}
 api-applications={path="../../crates/api/applications",features=["test-support"]}
 api-public-gateway={path="../../crates/api/public-gateway",features=["test-support"]}
 api-server = { path = ".", features = ["test-support"] }

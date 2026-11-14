@@ -24,33 +24,41 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::sync::{Arc, Weak};
 
-#[derive(Clone, Serialize, Deserialize, utoipa::IntoParams)]
+test_support_item! { pub(crate), [#[derive(Clone, Serialize, Deserialize, utoipa::IntoParams)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct RecordQuery {
+]
+struct RecordQuery {
     pub plugin_code: String,
     pub resource_code: String,
     pub record_id: String,
 }
-#[derive(Clone, Serialize, Deserialize, utoipa::ToSchema)]
+}
+test_support_item! { pub(crate), [#[derive(Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct CapabilitiesBody {
+]
+struct CapabilitiesBody {
     pub plugin_code: String,
     pub resource_code: String,
     pub record_ids: Vec<String>,
 }
-#[derive(Clone, Serialize, Deserialize, utoipa::ToSchema)]
+}
+test_support_item! { pub(crate), [#[derive(Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct GrantBody {
+]
+struct GrantBody {
     pub role_id: uuid::Uuid,
     pub actions: Vec<String>,
 }
-#[derive(Clone, Serialize, Deserialize, utoipa::ToSchema)]
+}
+test_support_item! { pub(crate), [#[derive(Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ReplaceBody {
+]
+struct ReplaceBody {
     #[schema(value_type=String, example="restricted")]
     pub mode: domain::RecordPermissionMode,
     pub grants: Vec<GrantBody>,
     pub expected_revision: Option<i64>,
+}
 }
 #[derive(Serialize, utoipa::ToSchema)]
 pub(crate) struct ActionResponse {
@@ -100,9 +108,10 @@ pub(crate) struct PolicyResponse {
     pub grants: Vec<domain::RecordPermissionGrant>,
     pub revision: i64,
 }
-#[derive(serde::Serialize)]
+test_support_item! { pub(crate), [#[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum Input {
+]
+enum Input {
     #[serde(serialize_with = "json_contract::query_with_nulls")]
     Get(RecordQuery),
     #[serde(serialize_with = "json_contract::query_body")]
@@ -110,9 +119,12 @@ pub(crate) enum Input {
     #[serde(serialize_with = "json_contract::body")]
     Capabilities(CapabilitiesBody),
 }
-#[derive(serde::Serialize)]
+}
+test_support_item! { pub(crate), [#[derive(serde::Serialize)]
 #[serde(transparent)]
-pub(crate) struct Output(Value);
+]
+struct Output(Value);
+}
 macro_rules! safe_contract { ($type:ty, $id:literal) => { impl InterfaceContract for $type {
     const CONTRACT_ID: &'static str = $id;
     const CONTRACT_VERSION: &'static str = "1";
@@ -271,7 +283,8 @@ impl Adapter {
         }
     }
 }
-pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+test_support_item! { pub(crate), []
+const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     ConsoleInterfaceDeclaration {
         interface_id: "roles.record_permissions.view",
         binding_id: "http.roles.record-permissions.view.v1",
@@ -294,7 +307,9 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: false,
     },
 ];
-pub(crate) fn compile_registry(
+}
+
+pub fn compile_registry(
     state: &Arc<ApiState>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -307,7 +322,7 @@ pub(crate) fn compile_registry(
         Arc::new(Adapter(Arc::downgrade(state))),
     )
 }
-pub(crate) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
     ConsoleRouteAssembly::new()
         .route(
@@ -381,13 +396,9 @@ pub(crate) async fn capabilities(
     invoke(state, headers, Input::Capabilities(body), 2).await
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
-#[cfg(test)]
-#[path = "_tests/record_permissions.rs"]
-mod tests;
 
 /// Role UI catalog and OpenAPI consume the API owner's same static English metadata.
-pub(crate) fn metadata(interface_id: &str) -> Option<(String, String)> {
+pub fn metadata(interface_id: &str) -> Option<(String, String)> {
     let operation = match interface_id {
         "roles.record_permissions.view" => <__path_get as utoipa::Path>::operation(),
         "roles.record_permissions.replace" => <__path_replace as utoipa::Path>::operation(),
@@ -399,3 +410,8 @@ pub(crate) fn metadata(interface_id: &str) -> Option<(String, String)> {
 
 impl JsonApiInput for Input {}
 impl JsonApiOutput for Output {}
+
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "_tests/support/record_permissions.rs"]
+mod test_accessors;

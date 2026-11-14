@@ -17,7 +17,8 @@ use super::{
     ExtensionCatalogGatewayQuery, ExtensionCenterDependencies,
 };
 
-pub(super) async fn load_catalog_page(
+test_support_item! { pub(super), []
+async fn load_catalog_page(
     dependencies: &ExtensionCenterDependencies,
     workspace_id: Uuid,
     category: ExtensionCatalogCategory,
@@ -109,4 +110,5 @@ pub(super) async fn load_catalog_page(
         total_entries: page.total_entries + usize::from(builtin_matches && !remote_has_builtin),
         entries,
     })
+}
 }

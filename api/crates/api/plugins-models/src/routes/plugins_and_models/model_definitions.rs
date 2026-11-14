@@ -36,7 +36,7 @@ use crate::{
 };
 
 #[path = "model_definitions_interface.rs"]
-pub(crate) mod interface;
+pub mod interface;
 
 #[derive(Debug, Deserialize, ToSchema, Serialize)]
 #[serde(deny_unknown_fields)]

@@ -46,7 +46,8 @@ pub(super) async fn installed_catalog_joins(
     Ok(joins)
 }
 
-pub(super) fn project_installed_catalog_joins(
+test_support_item! { pub(super), []
+fn project_installed_catalog_joins(
     records: impl IntoIterator<Item = domain::ExtensionInstallationRecord>,
     category: ExtensionCatalogCategory,
 ) -> HashMap<String, InstalledCatalogJoin> {
@@ -69,6 +70,7 @@ pub(super) fn project_installed_catalog_joins(
     }
     joins
 }
+}
 
 pub(super) fn catalog_entry_join<'a>(
     entry: &OfficialExtensionCatalogEntry,
@@ -77,7 +79,8 @@ pub(super) fn catalog_entry_join<'a>(
     installed.get(&entry.id)
 }
 
-pub(super) fn extension_update_status(
+test_support_item! { pub(super), []
+fn extension_update_status(
     latest_version: Option<&str>,
     installed_versions: &[String],
 ) -> &'static str {
@@ -86,6 +89,7 @@ pub(super) fn extension_update_status(
         Some(_) => "update_available",
         None => "unknown_error",
     }
+}
 }
 
 pub(super) async fn find_catalog_entry_for_requested_identity(
@@ -196,7 +200,8 @@ pub(super) fn host_version_requirement_is_satisfied(current: &str, requirement: 
     }
 }
 
-pub(super) fn project_catalog_entry(
+test_support_item! { pub(super), []
+fn project_catalog_entry(
     entry: OfficialExtensionCatalogEntry,
     catalog_source: &str,
     installed: &HashMap<String, InstalledCatalogJoin>,
@@ -250,4 +255,5 @@ pub(super) fn project_catalog_entry(
         compatibility,
         mcp_instances: Vec::new(),
     }
+}
 }

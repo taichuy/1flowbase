@@ -5,7 +5,7 @@ use plugin_framework::PluginManifestV1;
 use std::path::Path;
 use storage_durable_postgres::MainDurableStore;
 
-pub(crate) async fn load(
+pub async fn load(
     store: &MainDurableStore,
     node_id: &str,
 ) -> Result<Vec<ManagedServiceRegistration>> {
@@ -29,7 +29,7 @@ pub(crate) async fn load(
 }
 
 /// Pure candidate loading. No published template or durable selection changes during preparation.
-pub(crate) async fn load_installations(
+pub async fn load_installations(
     store: &MainDurableStore,
     node_id: &str,
     installations: &[domain::PluginInstallationRecord],
@@ -87,7 +87,7 @@ pub(crate) async fn load_installations(
     Ok(registrations)
 }
 /// OpenAPI and MCP discovery consume the same frozen declarations as routes and handlers.
-pub(crate) fn append_openapi(
+pub fn append_openapi(
     document: &mut serde_json::Value,
     services: &[ManagedServiceRegistration],
 ) {

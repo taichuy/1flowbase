@@ -166,7 +166,7 @@ pub(crate) type RuntimeModelMetadataFuture<'a> = Pin<
     >,
 >;
 
-pub(crate) trait RuntimeModelOperationPort: Send + Sync + 'static {
+pub trait RuntimeModelOperationPort: Send + Sync + 'static {
     fn metadata<'a>(
         &'a self,
         principal: &'a UserPrincipal,
@@ -453,45 +453,8 @@ pub(super) fn contract<T: InterfaceContract>() -> ContractIdentity {
         .expect("static runtime model contract is valid")
 }
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-struct UnavailableRuntimeModelOperationPort;
-
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-impl RuntimeModelOperationPort for UnavailableRuntimeModelOperationPort {
-    fn metadata<'a>(
-        &'a self,
-        _principal: &'a UserPrincipal,
-        _model_code: String,
-    ) -> RuntimeModelMetadataFuture<'a> {
-        Box::pin(async {
-            Err(RuntimeModelOperationTargetError(ApiError::from(
-                control_plane::errors::ControlPlaneError::Conflict(
-                    "runtime_model_test_port_unavailable",
-                ),
-            )))
-        })
-    }
-
-    fn execute<'a>(
-        &'a self,
-        _principal: &'a UserPrincipal,
-        _input: RuntimeModelOperationInput,
-    ) -> RuntimeModelOperationFuture<'a> {
-        Box::pin(async {
-            Err(RuntimeModelOperationTargetError(ApiError::from(
-                control_plane::errors::ControlPlaneError::Conflict(
-                    "runtime_model_test_port_unavailable",
-                ),
-            )))
-        })
-    }
-}
-
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-pub(super) fn compile_registry_for_test(
-) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
-    compile_registry(Arc::new(UnavailableRuntimeModelOperationPort))
-}
+#[cfg(any(test, feature = "test-support"))]
+#[path = "interface/_tests/support/registry.rs"]
+mod test_registry;
+#[cfg(any(test, feature = "test-support"))]
+pub(super) use test_registry::compile_registry_for_test;

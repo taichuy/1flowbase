@@ -1,5 +1,5 @@
 //! Composition-only Settings adapters and transitional plugin route contribution.
-pub(crate) mod plugin_data_model_mounts;
+
 pub(crate) struct WorkflowExtensionDocument;
 #[async_trait::async_trait]
 impl api_host_kernel::console_settings_ports::WorkflowExtensionDocumentProvider

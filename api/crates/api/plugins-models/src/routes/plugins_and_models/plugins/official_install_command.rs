@@ -5,7 +5,7 @@ use crate::{
     error_response::ApiError, official_extension_catalog::OfficialExtensionCatalogSourcePort,
 };
 
-pub(crate) async fn resolve_official_install_command(
+pub async fn resolve_official_install_command(
     source: &dyn OfficialExtensionCatalogSourcePort,
     actor_user_id: uuid::Uuid,
     workspace_id: uuid::Uuid,

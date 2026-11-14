@@ -30,10 +30,10 @@ use runtime_core::runtime_engine::RuntimeEngine;
 use storage_durable_postgres::MainDurableStore;
 
 mod error_mapping;
-pub(crate) mod event_projection;
+pub mod event_projection;
 mod interface;
-pub(crate) mod metadata;
-pub(crate) mod metadata_interface;
+pub mod metadata;
+pub mod metadata_interface;
 
 use error_mapping::{map_runtime_error, runtime_acl_denial_reason};
 
@@ -86,7 +86,7 @@ pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
 }
 
-pub(crate) fn route_assembly(
+pub fn route_assembly(
 ) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
     crate::external_route_assembly::ExternalRouteAssembly::new()
         .route(
@@ -105,7 +105,7 @@ struct RuntimeModelOperationAdapter {
     cache_store: Arc<dyn CacheStore>,
 }
 
-pub(crate) fn runtime_model_operation_port(
+pub fn runtime_model_operation_port(
     store: MainDurableStore,
     runtime_engine: Arc<RuntimeEngine>,
     cache_store: Arc<dyn CacheStore>,
@@ -117,7 +117,7 @@ pub(crate) fn runtime_model_operation_port(
     })
 }
 
-pub(crate) fn compile_runtime_model_interface_registry(
+pub fn compile_runtime_model_interface_registry(
     port: Arc<dyn interface::RuntimeModelOperationPort>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -126,14 +126,12 @@ pub(crate) fn compile_runtime_model_interface_registry(
     interface::compile_registry(port)
 }
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-pub(crate) fn compile_runtime_model_interface_registry_for_test() -> Result<
-    Arc<interface_runtime::CompiledInterfaceRegistry>,
-    interface_runtime::RegistryCompilationError,
-> {
-    interface::compile_registry_for_test()
-}
+#[cfg(any(test, feature = "test-support"))]
+#[path = "runtime_models/_tests/support/mod.rs"]
+mod support;
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use support::compile_runtime_model_interface_registry_for_test;
 
 impl interface::RuntimeModelOperationPort for RuntimeModelOperationAdapter {
     fn metadata<'a>(
@@ -464,7 +462,7 @@ fn resolve_runtime_operation_with_engine(
     })
 }
 
-pub(crate) fn runtime_operation_requires_csrf(
+pub fn runtime_operation_requires_csrf(
     state: &ApiState,
     actor: &domain::ActorContext,
     method: plugin_framework::DataModelOperationMethod,
@@ -1117,7 +1115,6 @@ async fn delete_record(
     Ok(result)
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests;
 

@@ -264,13 +264,13 @@ impl InterfaceContract for ProviderRoutingOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct ProviderRoutingDependencies {
-    pub(crate) store: MainDurableStore,
-    pub(crate) provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
-    pub(crate) secret_key: String,
-    pub(crate) api_node_id: String,
-    pub(crate) install_root: String,
-    pub(crate) cache_store: Arc<dyn CacheStore>,
+pub struct ProviderRoutingDependencies {
+    pub store: MainDurableStore,
+    pub provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
+    pub secret_key: String,
+    pub api_node_id: String,
+    pub install_root: String,
+    pub cache_store: Arc<dyn CacheStore>,
 }
 
 struct ProviderRoutingAdapter(ProviderRoutingDependencies);
@@ -412,7 +412,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: ProviderRoutingDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -431,7 +431,6 @@ use crate::openapi_interface::contract::{ApiInput, ApiOperationContext};
 #[cfg(test)]
 use serde_json::json;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "routing_interface/_tests/event_projection.rs"]
 mod event_tests;

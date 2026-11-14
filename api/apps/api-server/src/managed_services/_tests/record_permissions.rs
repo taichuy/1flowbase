@@ -175,7 +175,7 @@ fn record_permission_events_inherit_each_api_contract_and_preserve_actual_values
         assert!(jsonschema::validator_for(&contract.request_schema)
             .unwrap()
             .is_valid(&before));
-        let output = Output(result.clone());
+        let output = Output::test_new(result.clone());
         let after = output.project_document_output(&context).unwrap();
         assert_eq!(after, result);
         assert!(jsonschema::validator_for(&contract.response_schema)
