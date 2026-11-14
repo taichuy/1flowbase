@@ -16,7 +16,7 @@ use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-pub(super) struct ReplayBeforeFallbackRuntimeEventStream {
+pub struct ReplayBeforeFallbackRuntimeEventStream {
     events: Vec<RuntimeEventEnvelope>,
     subscription_replay: Vec<RuntimeEventEnvelope>,
     subscription_closure: Option<RuntimeEventClosure>,
@@ -24,7 +24,7 @@ pub(super) struct ReplayBeforeFallbackRuntimeEventStream {
 }
 
 impl ReplayBeforeFallbackRuntimeEventStream {
-    pub(super) fn with_subscription_replay(
+    pub fn with_subscription_replay(
         subscription_replay: Vec<RuntimeEventEnvelope>,
         events: Vec<RuntimeEventEnvelope>,
     ) -> Self {
@@ -36,7 +36,7 @@ impl ReplayBeforeFallbackRuntimeEventStream {
         }
     }
 
-    pub(super) fn with_closed_subscription_replay(
+    pub fn with_closed_subscription_replay(
         subscription_replay: Vec<RuntimeEventEnvelope>,
         events: Vec<RuntimeEventEnvelope>,
         reason: RuntimeEventCloseReason,
@@ -58,14 +58,14 @@ impl ReplayBeforeFallbackRuntimeEventStream {
         }
     }
 
-    pub(super) fn emit_live(&self, event: RuntimeEventEnvelope) {
+    pub fn emit_live(&self, event: RuntimeEventEnvelope) {
         self.live_senders
             .lock()
             .expect("live sender lock poisoned")
             .retain(|sender| sender.send(event.clone()).is_ok());
     }
 
-    pub(super) fn active_subscriber_count(&self) -> usize {
+    pub fn active_subscriber_count(&self) -> usize {
         let mut senders = self.live_senders.lock().expect("live sender lock poisoned");
         senders.retain(|sender| !sender.is_closed());
         senders.len()
@@ -148,7 +148,7 @@ impl RuntimeEventStream for ReplayBeforeFallbackRuntimeEventStream {
     }
 }
 
-pub(super) fn native_run() -> NativeRunResult {
+pub fn native_run() -> NativeRunResult {
     NativeRunResult {
         id: Uuid::from_u128(0x11111111111111111111111111111111),
         application_id: Uuid::from_u128(0x22222222222222222222222222222222),
@@ -168,7 +168,7 @@ pub(super) fn native_run() -> NativeRunResult {
     }
 }
 
-pub(super) async fn seed_flow_run_for_compat_sse_test(state: &ApiState, run: &NativeRunResult) {
+pub async fn seed_flow_run_for_compat_sse_test(state: &ApiState, run: &NativeRunResult) {
     let pool = state.store.pool();
     let user_id: Uuid = sqlx::query_scalar("select id from users where account = 'root'")
         .fetch_one(pool)
@@ -256,7 +256,7 @@ pub(super) async fn seed_flow_run_for_compat_sse_test(state: &ApiState, run: &Na
     .unwrap();
 }
 
-pub(super) async fn append_compat_sse_runtime_event(
+pub async fn append_compat_sse_runtime_event(
     state: &ApiState,
     run_id: Uuid,
     event_type: &str,
@@ -287,7 +287,7 @@ pub(super) async fn append_compat_sse_runtime_event(
         .unwrap();
 }
 
-pub(super) struct UnusedTerminalWriter;
+pub struct UnusedTerminalWriter;
 
 #[async_trait::async_trait]
 impl control_plane::ports::RuntimeEventTerminalWriter for UnusedTerminalWriter {

@@ -41,7 +41,7 @@ use interface_runtime::{
 use tracing::warn;
 
 mod models;
-pub(crate) use models::{compatibility_models_port, invoke_models, CompatibilityModelsPort};
+pub use models::{compatibility_models_port, invoke_models, CompatibilityModelsPort};
 
 use crate::{
     app_state::ApiState,
@@ -51,35 +51,86 @@ use crate::{
     },
 };
 
-pub(crate) const OPENAI_CHAT_BINDING_ID: &str = "http.compat.openai.chat-completions.blocking.v1";
-pub(crate) const OPENAI_CHAT_ROOT_BINDING_ID: &str =
+test_support_item! { pub(crate), [
+]
+const OPENAI_CHAT_BINDING_ID: &str = "http.compat.openai.chat-completions.blocking.v1";
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_CHAT_ROOT_BINDING_ID: &str =
     "http.compat.openai.chat-completions-root.blocking.v1";
-pub(crate) const OPENAI_RESPONSES_BINDING_ID: &str = "http.compat.openai.responses.blocking.v1";
-pub(crate) const OPENAI_RESPONSES_ROOT_BINDING_ID: &str =
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_RESPONSES_BINDING_ID: &str = "http.compat.openai.responses.blocking.v1";
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_RESPONSES_ROOT_BINDING_ID: &str =
     "http.compat.openai.responses-root.blocking.v1";
-pub(crate) const OPENAI_RESPONSES_COMPACT_BINDING_ID: &str =
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_RESPONSES_COMPACT_BINDING_ID: &str =
     "http.compat.openai.responses-compact.blocking.v1";
-pub(crate) const ANTHROPIC_MESSAGES_BINDING_ID: &str = "http.compat.anthropic.messages.blocking.v1";
-pub(crate) const ANTHROPIC_COUNT_TOKENS_BINDING_ID: &str =
+}
+test_support_item! { pub(crate), [
+]
+const ANTHROPIC_MESSAGES_BINDING_ID: &str = "http.compat.anthropic.messages.blocking.v1";
+}
+test_support_item! { pub(crate), [
+]
+const ANTHROPIC_COUNT_TOKENS_BINDING_ID: &str =
     "http.compat.anthropic.messages.count-tokens.v1";
-pub(crate) const OPENAI_MODELS_ROOT_BINDING_ID: &str = "http.compat.openai.models-root.list.v1";
-pub(crate) const OPENAI_MODELS_BINDING_ID: &str = "http.compat.openai.models.list.v1";
-pub(crate) const OPENAI_CHAT_MODELS_BINDING_ID: &str =
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_MODELS_ROOT_BINDING_ID: &str = "http.compat.openai.models-root.list.v1";
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_MODELS_BINDING_ID: &str = "http.compat.openai.models.list.v1";
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_CHAT_MODELS_BINDING_ID: &str =
     "http.compat.openai.chat-completions.models.list.v1";
-pub(crate) const OPENAI_CHAT_STREAM_BINDING_ID: &str =
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_CHAT_STREAM_BINDING_ID: &str =
     "http.compat.openai.chat-completions.stream.v1";
-pub(crate) const OPENAI_CHAT_ROOT_STREAM_BINDING_ID: &str =
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_CHAT_ROOT_STREAM_BINDING_ID: &str =
     "http.compat.openai.chat-completions-root.stream.v1";
-pub(crate) const OPENAI_RESPONSES_STREAM_BINDING_ID: &str =
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_RESPONSES_STREAM_BINDING_ID: &str =
     "http.compat.openai.responses.stream.v1";
-pub(crate) const OPENAI_RESPONSES_ROOT_STREAM_BINDING_ID: &str =
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_RESPONSES_ROOT_STREAM_BINDING_ID: &str =
     "http.compat.openai.responses-root.stream.v1";
-pub(crate) const ANTHROPIC_MESSAGES_STREAM_BINDING_ID: &str =
+}
+test_support_item! { pub(crate), [
+]
+const ANTHROPIC_MESSAGES_STREAM_BINDING_ID: &str =
     "http.compat.anthropic.messages.stream.v1";
-pub(crate) const NATIVE_WEBSOCKET_STREAM_BINDING_ID: &str =
+}
+test_support_item! { pub(crate), [
+]
+const NATIVE_WEBSOCKET_STREAM_BINDING_ID: &str =
     "http.application.native.runs.websocket.stream.v1";
-pub(crate) const OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID: &str =
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID: &str =
     "http.compat.openai.responses.websocket.stream.v1";
+}
 
 const OWNER: &str = "api-server.application-public-api";
 const OPERATION: &str = "application.native.runs.create";
@@ -87,17 +138,22 @@ const TARGET: &str = "control-plane.application-native-run.create";
 const AUTHENTICATION_ADAPTER: &str = "api-server.application-api-key";
 const AUTHORIZATION_ADAPTER: &str = "api-server.application-compatibility-run";
 
-pub(crate) struct CompatibilityBlockingInput {
+test_support_item! { pub(crate), [
+]
+struct CompatibilityBlockingInput {
     pub(crate) response_projection: Option<http_result::Projection>,
     pub(crate) document: Result<document_projection::ProtocolRequestDocument, Arc<str>>,
     pub(crate) command: CompatibilityInvocationCommand,
 }
+}
 
+test_support_item! { pub(crate), [
 #[expect(
     clippy::large_enum_variant,
     reason = "the protocol command is consumed once by the typed compatibility adapter"
 )]
-pub(crate) enum CompatibilityInvocationCommand {
+]
+enum CompatibilityInvocationCommand {
     Start {
         request: NativeRunRequest,
         protocol: TranslationProtocol,
@@ -110,20 +166,30 @@ pub(crate) enum CompatibilityInvocationCommand {
         reservation: Option<super::compat_sse::CompatibleCallbackReservation>,
     },
 }
+}
 
 pub(crate) struct CompatibilityProviderTransport {
     pub(crate) operation: AiNativeOperation,
     pub(crate) payload: Option<ProviderTransportPayload>,
 }
 
-pub(crate) struct CompatibilityBlockingOutput(pub(crate) NativeRunResult);
+test_support_item! { pub(crate), [
+]
+struct CompatibilityBlockingOutput(pub(crate) NativeRunResult);
+}
 
-pub(crate) struct CompatibilityBlockingTargetError(pub(crate) NativeApiError);
+test_support_item! { pub(crate), [
+]
+struct CompatibilityBlockingTargetError(pub(crate) NativeApiError);
+}
 
-pub(crate) struct CompatibilityStreamEvent {
+test_support_item! { pub(crate), [
+]
+struct CompatibilityStreamEvent {
     run: Arc<NativeRunResult>,
     envelope: RuntimeEventEnvelope,
     delivery: Option<RuntimeEventDeliveryReceipt>,
+}
 }
 
 pub(crate) struct CompatibilityTypedStreamInvocation {
@@ -135,7 +201,9 @@ pub(crate) struct CompatibilityTypedStreamInvocation {
 }
 
 impl CompatibilityTypedStreamInvocation {
-    pub(crate) fn into_parts(
+    test_support_item! { pub(crate), [
+    ]
+    fn into_parts(
         self,
     ) -> (
         tokio::sync::mpsc::Receiver<CompatibilityStreamEvent>,
@@ -146,20 +214,25 @@ impl CompatibilityTypedStreamInvocation {
     ) {
         (self.events, self.completion)
     }
+    }
 }
 
 impl CompatibilityStreamEvent {
-    #[cfg_attr(test, api_test_selection::group(public_api))]
-    #[cfg(test)]
-    pub(crate) fn new(run: NativeRunResult, envelope: RuntimeEventEnvelope) -> Self {
+    test_support_item! { pub(crate), [
+        #[cfg(any(test,feature="test-support"))]
+    ]
+    fn new(run: NativeRunResult, envelope: RuntimeEventEnvelope) -> Self {
         Self {
             run: Arc::new(run),
             envelope,
             delivery: None,
         }
     }
+    }
 
-    pub(crate) fn with_delivery(
+    test_support_item! { pub(crate), [
+    ]
+    fn with_delivery(
         run: impl Into<Arc<NativeRunResult>>,
         envelope: RuntimeEventEnvelope,
         delivery: Option<RuntimeEventDeliveryReceipt>,
@@ -170,8 +243,11 @@ impl CompatibilityStreamEvent {
             delivery,
         }
     }
+    }
 
-    pub(crate) fn into_parts(
+    test_support_item! { pub(crate), [
+    ]
+    fn into_parts(
         self,
     ) -> (
         Arc<NativeRunResult>,
@@ -179,6 +255,7 @@ impl CompatibilityStreamEvent {
         Option<RuntimeEventDeliveryReceipt>,
     ) {
         (self.run, self.envelope, self.delivery)
+    }
     }
 }
 
@@ -190,7 +267,7 @@ type CompatibilityBlockingFuture<'a> = Pin<
     >,
 >;
 
-pub(crate) trait CompatibilityBlockingPort: Send + Sync + 'static {
+pub trait CompatibilityBlockingPort: Send + Sync + 'static {
     fn execute<'a>(
         &'a self,
         principal: &'a ApplicationPrincipal,
@@ -223,14 +300,14 @@ type CompatibilityBlockingStreamFuture<'a> = Pin<
 >;
 
 #[derive(Clone)]
-pub(crate) struct CompatibilityExecutionDependencies {
-    pub(crate) native: ApplicationNativeRunDependencies,
-    pub(crate) provider_transport_store: Arc<dyn ProviderTransportStore>,
+pub struct CompatibilityExecutionDependencies {
+    pub native: ApplicationNativeRunDependencies,
+    pub provider_transport_store: Arc<dyn ProviderTransportStore>,
 }
 
 struct CompatibilityExecutionAdapter(CompatibilityExecutionDependencies);
 
-pub(crate) fn compatibility_execution_port(
+pub fn compatibility_execution_port(
     dependencies: CompatibilityExecutionDependencies,
 ) -> Arc<dyn CompatibilityBlockingPort> {
     Arc::new(CompatibilityExecutionAdapter(dependencies))
@@ -504,7 +581,10 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
     }
 }
 
-pub(crate) struct CompatibilityBlockingAuthorization;
+test_support_item! { pub(crate), [
+]
+struct CompatibilityBlockingAuthorization;
+}
 
 impl InterfaceAuthorizationPort<ApplicationPrincipal> for CompatibilityBlockingAuthorization {
     fn adapter_reference(&self) -> AuthorizationAdapterReference {
@@ -520,7 +600,7 @@ impl InterfaceAuthorizationPort<ApplicationPrincipal> for CompatibilityBlockingA
     }
 }
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn CompatibilityBlockingPort>,
     models_port: Arc<dyn CompatibilityModelsPort>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
@@ -565,22 +645,25 @@ pub(crate) fn compile_registry(
     compiler.compile()
 }
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-pub(crate) fn compile_registry_for_test(
+test_support_item! { pub(crate), [
+#[cfg(any(test,feature="test-support"))]
+]
+fn compile_registry_for_test(
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
     compile_registry(
         Arc::new(UnavailableCompatibilityBlockingPort),
         models::unavailable_port(),
     )
 }
+}
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
+test_support_item! { , [
+#[cfg(any(test,feature="test-support"))]
+]
 struct UnavailableCompatibilityBlockingPort;
+}
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl CompatibilityBlockingPort for UnavailableCompatibilityBlockingPort {
     fn execute<'a>(
         &'a self,
@@ -627,13 +710,16 @@ impl CompatibilityBlockingPort for UnavailableCompatibilityBlockingPort {
     }
 }
 
+test_support_item! { pub(crate), [
 /// HTTP retains the authentication attempt; established WebSocket turns get fresh invocation IDs.
-pub(crate) enum ApplicationInvocationAuthentication {
+]
+enum ApplicationInvocationAuthentication {
     Authenticated {
         snapshot: Arc<interface_runtime::CompiledInterfaceRegistry>,
         authenticated: Box<crate::extension_bus::AuthenticatedInvocation<ApplicationPrincipal>>,
     },
     Established(ApplicationPrincipal),
+}
 }
 impl From<ApplicationPrincipal> for ApplicationInvocationAuthentication {
     fn from(principal: ApplicationPrincipal) -> Self {
@@ -691,7 +777,9 @@ impl ApplicationInvocationAuthentication {
     }
 }
 
-pub(crate) async fn authenticate_application_principal(
+test_support_item! { pub(crate), [
+]
+async fn authenticate_application_principal(
     state: Arc<ApiState>,
     binding_id: &'static str,
     bearer_token: String,
@@ -739,6 +827,7 @@ pub(crate) async fn authenticate_application_principal(
             },
         )
         .map_err(native::service_error)
+}
 }
 
 pub(crate) async fn invoke_typed_stream_with_principal(
@@ -870,11 +959,12 @@ fn project_stream_invocation(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
+test_support_item! { pub(super), [
 /// The protocol terminal ends delivery; the independent Kernel owner still
 /// settles the invocation even when the client has stopped reading.
-#[cfg(test)]
-pub(super) fn project_compatibility_stream(
+#[cfg(any(test,feature="test-support"))]
+]
+fn project_compatibility_stream(
     events: tokio::sync::mpsc::Receiver<CompatibilityStreamEvent>,
     completion: interface_runtime::InterfaceStreamCompletion<
         CompatibilityBlockingOutput,
@@ -885,6 +975,7 @@ pub(super) fn project_compatibility_stream(
     owner: Arc<crate::generation_dispatch::GenerationDispatch>,
 ) -> impl std::future::Future<Output = ()> + Send + 'static {
     project_observed_compatibility_stream(events, completion, projection, sender, None, owner)
+}
 }
 
 fn project_observed_compatibility_stream(
@@ -1241,3 +1332,30 @@ mod binding_declarations;
 use registry_bindings::*;
 
 use binding_declarations::*;
+
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+impl CompatibilityBlockingOutput {
+    pub fn for_test_support(run: NativeRunResult) -> Self {
+        Self(run)
+    }
+    pub fn inner_for_test_support(&self) -> &NativeRunResult {
+        &self.0
+    }
+}
+
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+impl CompatibilityBlockingInput {
+    pub fn for_test_support(
+        response_projection: Option<http_result::Projection>,
+        document: Result<document_projection::ProtocolRequestDocument, Arc<str>>,
+        command: CompatibilityInvocationCommand,
+    ) -> Self {
+        Self {
+            response_projection,
+            document,
+            command,
+        }
+    }
+}

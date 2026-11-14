@@ -22,17 +22,23 @@ use interface_runtime::{
 
 use super::native::NativeApiError;
 
-pub(crate) const BINDING_ID: &str = "http.workflow-extension.invoke.v1";
+test_support_item! { pub(crate), [
+]
+const BINDING_ID: &str = "http.workflow-extension.invoke.v1";
+}
 const INTERFACE_ID: &str = "workflow-extension.invoke";
 const HANDLER: &str = "api-server.workflow-extension.invoke";
 const OPERATION: &str = "workflow-extension.invoke";
 mod document_observation;
-pub(crate) use document_observation::document_descriptor_for_entry;
+pub use document_observation::document_descriptor_for_entry;
 
-pub(crate) struct WorkflowExtensionInput {
+test_support_item! { pub(crate), [
+]
+struct WorkflowExtensionInput {
     pub(crate) request_path: String,
     pub(crate) method: WorkflowExtensionHttpMethod,
     pub(crate) parameters: WorkflowExtensionRequestParameters,
+}
 }
 
 impl InterfaceContract for WorkflowExtensionInput {
@@ -80,16 +86,19 @@ impl InterfaceContract for WorkflowExtensionInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+test_support_item! { pub(crate), [
 #[expect(
     clippy::large_enum_variant,
     reason = "the typed output is projected immediately into the public protocol response"
 )]
-pub(crate) enum WorkflowExtensionOutput {
+]
+enum WorkflowExtensionOutput {
     Accepted {
         run_id: uuid::Uuid,
         status: domain::FlowRunStatus,
     },
     Completed(domain::ApplicationRunDetail),
+}
 }
 
 impl InterfaceContract for WorkflowExtensionOutput {
@@ -759,7 +768,10 @@ impl InterfaceContract for WorkflowExtensionOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct WorkflowExtensionTargetError(pub(crate) NativeApiError);
+test_support_item! { pub(crate), [
+]
+struct WorkflowExtensionTargetError(pub(crate) NativeApiError);
+}
 
 impl InterfaceContract for WorkflowExtensionTargetError {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -798,15 +810,20 @@ impl InterfaceContract for WorkflowExtensionTargetError {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) type WorkflowExtensionFuture<'a> = Pin<
+test_support_item! { pub(crate), [
+]
+type WorkflowExtensionFuture<'a> = Pin<
     Box<
         dyn Future<Output = Result<WorkflowExtensionOutput, WorkflowExtensionTargetError>>
             + Send
             + 'a,
     >,
 >;
+}
 
-pub(crate) type WorkflowExtensionAuthorizeFuture<'a> = Pin<
+test_support_item! { pub(crate), [
+]
+type WorkflowExtensionAuthorizeFuture<'a> = Pin<
     Box<
         dyn Future<
                 Output = Result<AuthorizedPublishedWorkflowOperation, WorkflowExtensionTargetError>,
@@ -814,7 +831,8 @@ pub(crate) type WorkflowExtensionAuthorizeFuture<'a> = Pin<
             + 'a,
     >,
 >;
-pub(crate) trait WorkflowExtensionPort: Send + Sync + 'static {
+}
+pub trait WorkflowExtensionPort: Send + Sync + 'static {
     fn authorize<'a>(
         &'a self,
         actor: &'a domain::ActorContext,
@@ -893,7 +911,9 @@ impl InterfaceAuthorizationPort<UserPrincipal> for WorkflowExtensionAuthorizatio
     }
 }
 
-pub(crate) fn compile_registry(
+test_support_item! { pub(crate), [
+]
+fn compile_registry(
     port: Arc<dyn WorkflowExtensionPort>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
     let interface_id = InterfaceId::new(INTERFACE_ID).expect("static interface id is valid");
@@ -994,6 +1014,7 @@ pub(crate) fn compile_registry(
         ),
     )?;
     compiler.compile()
+}
 }
 
 fn contract<T: InterfaceContract>() -> ContractIdentity {

@@ -14,16 +14,39 @@ use crate::{
 };
 use axum::{extract::State, http::HeaderMap, response::Response};
 
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod actor;
+#[cfg(not(any(test, feature = "test-support")))]
 mod actor;
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod auth;
+#[cfg(not(any(test, feature = "test-support")))]
 mod auth;
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod projector;
+#[cfg(not(any(test, feature = "test-support")))]
 mod projector;
-pub(crate) mod schema;
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod schema;
+#[cfg(not(any(test, feature = "test-support")))]
+mod schema;
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod tests;
 
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod transport;
+#[cfg(not(any(test, feature = "test-support")))]
 mod transport;
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod turn_bridge;
+#[cfg(not(any(test, feature = "test-support")))]
 mod turn_bridge;
 use transport::WebSocketUpgrade;
 
@@ -72,4 +95,10 @@ pub(crate) async fn upgrade(
         })
         .await;
     Ok(response)
+}
+
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support {
+    pub use super::{actor, auth, projector, schema, transport, turn_bridge};
 }

@@ -9,7 +9,9 @@ enum OpenAiResponseStreamState {
     Terminal,
 }
 
-pub(crate) struct OpenAiResponseStreamMapper {
+test_support_item! { pub(crate), [
+]
+struct OpenAiResponseStreamMapper {
     model: String,
     previous_response_id: Option<String>,
     active_output_item: Option<OpenAiResponseOutputItemKind>,
@@ -21,11 +23,13 @@ pub(crate) struct OpenAiResponseStreamMapper {
     state: OpenAiResponseStreamState,
     usage_baseline: crate::routes::application_public_api::openai::usage::ResponseUsageBaseline,
 }
+}
 
 impl OpenAiResponseStreamMapper {
-    #[cfg_attr(test, api_test_selection::group(public_api))]
-    #[cfg(test)]
-    pub(in crate::routes::application_public_api::compat_sse) fn new(
+    test_support_item! { pub(in crate::routes::application_public_api::compat_sse), [
+        #[cfg(any(test,feature="test-support"))]
+    ]
+    fn new(
         model: String,
         previous_response_id: Option<String>,
     ) -> Self {
@@ -35,8 +39,11 @@ impl OpenAiResponseStreamMapper {
             ResponsesProjectionMode::SemanticNativeResponses,
         )
     }
+    }
 
-    pub(in crate::routes::application_public_api) fn with_mode(
+    test_support_item! { pub(in crate::routes::application_public_api), [
+    ]
+    fn with_mode(
         model: String,
         previous_response_id: Option<String>,
         mode: ResponsesProjectionMode,
@@ -53,6 +60,7 @@ impl OpenAiResponseStreamMapper {
             state: OpenAiResponseStreamState::Initial,
             usage_baseline: Default::default(),
         }
+    }
     }
 
     pub(in crate::routes::application_public_api) fn with_usage_baseline(
@@ -165,7 +173,9 @@ impl OpenAiResponseStreamMapper {
         true
     }
 
-    pub(in crate::routes::application_public_api::compat_sse) fn runtime_event_to_sse(
+    test_support_item! { pub(in crate::routes::application_public_api::compat_sse), [
+    ]
+    fn runtime_event_to_sse(
         &mut self,
         initial_run: &NativeRunResult,
         event: impl Into<CompatibleRuntimeEventView>,
@@ -274,6 +284,7 @@ impl OpenAiResponseStreamMapper {
             self.state = OpenAiResponseStreamState::Terminal;
         }
         events
+    }
     }
 }
 

@@ -1,7 +1,9 @@
 use super::*;
 use control_plane::application_public_api::callback_resume::PreparedPublishedCallback;
 
-pub(crate) async fn execute_compatible_resume_for_actor(
+test_support_item! { pub(crate), [
+]
+async fn execute_compatible_resume_for_actor(
     dependencies: CompatibilityExecutionDependencies,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
     command: ResumePublishedCallbackCommand,
@@ -90,8 +92,11 @@ pub(crate) async fn execute_compatible_resume_for_actor(
     .await
     .map_err(|error| service_error(anyhow::anyhow!(error)))?
 }
+}
 
-pub(super) async fn open_compatible_turn_with_invoker(
+test_support_item! { pub(super), [
+]
+async fn open_compatible_turn_with_invoker(
     dependencies: CompatibilityExecutionDependencies,
     initial_run: NativeRunResult,
     mut action: CompatibleTurnAction,
@@ -389,10 +394,13 @@ pub(super) async fn open_compatible_turn_with_invoker(
         },
     })
 }
+}
 
 // Ordinary NoExecution preserves the selected execution scope even when the
 // current run is Waiting for a distinct successor callback.
-pub(super) async fn open_compatible_no_execution_replay(
+test_support_item! { pub(super), [
+]
+async fn open_compatible_no_execution_replay(
     dependencies: &CompatibilityExecutionDependencies,
     initial_run: &NativeRunResult,
     result: control_plane::application_public_api::callback_resume::ResumePublishedCallbackResult,
@@ -427,4 +435,5 @@ pub(super) async fn open_compatible_no_execution_replay(
             execution: tokio::spawn(async {}),
         },
     })
+}
 }

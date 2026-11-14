@@ -15,14 +15,20 @@ use tokio_tungstenite_deflate::tungstenite::{
 
 mod io;
 mod socket;
-pub(crate) use socket::Socket;
+test_support_item! { pub(crate), [
+]
+use socket::Socket;
+}
 
-pub(crate) struct WebSocketUpgrade {
+test_support_item! { pub(crate), [
+]
+struct WebSocketUpgrade {
     validated: AxumUpgrade,
     upgrade: hyper::upgrade::OnUpgrade,
     headers: HeaderMap,
     http1: bool,
     config: WebSocketConfig,
+}
 }
 
 impl<S: Send + Sync> FromRequestParts<S> for WebSocketUpgrade {
@@ -81,7 +87,9 @@ impl Callback for CaptureHandshake<'_> {
 }
 
 impl WebSocketUpgrade {
-    pub(crate) async fn on_upgrade<C, Fut>(self, callback: C) -> Response
+    test_support_item! { pub(crate), [
+    ]
+    async fn on_upgrade<C, Fut>(self, callback: C) -> Response
     where
         C: FnOnce(Socket) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
@@ -116,5 +124,6 @@ impl WebSocketUpgrade {
             }
         });
         response.map(|()| Body::empty())
+    }
     }
 }

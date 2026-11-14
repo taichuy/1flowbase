@@ -6,28 +6,39 @@ use crate::routes::application_public_api::sse::{
     is_public_terminal_runtime_event, native_sse_payload_for_runtime_event, IncludeWorkflowEvents,
 };
 
+test_support_item! { pub(crate), [
 #[derive(Debug, Error)]
-pub(crate) enum NativeWebSocketProjectionError {
+]
+enum NativeWebSocketProjectionError {
     #[error("Native WebSocket event serialization failed")]
     SerializationFailed,
 }
+}
 
-pub(crate) struct NativeWebSocketProjector {
+test_support_item! { pub(crate), [
+]
+struct NativeWebSocketProjector {
     request_id: String,
     visibility: IncludeWorkflowEvents,
     terminal: bool,
 }
+}
 
 impl NativeWebSocketProjector {
-    pub(crate) fn new(request_id: String, visibility: IncludeWorkflowEvents) -> Self {
+    test_support_item! { pub(crate), [
+    ]
+    fn new(request_id: String, visibility: IncludeWorkflowEvents) -> Self {
         Self {
             request_id,
             visibility,
             terminal: false,
         }
     }
+    }
 
-    pub(crate) fn project(
+    test_support_item! { pub(crate), [
+    ]
+    fn project(
         &mut self,
         run: &NativeRunResult,
         envelope: RuntimeEventEnvelope,
@@ -55,8 +66,12 @@ impl NativeWebSocketProjector {
         .map(Some)
         .map_err(|_| NativeWebSocketProjectionError::SerializationFailed)
     }
+    }
 
-    pub(crate) fn has_terminal(&self) -> bool {
+    test_support_item! { pub(crate), [
+    ]
+    fn has_terminal(&self) -> bool {
         self.terminal
+    }
     }
 }

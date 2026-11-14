@@ -25,20 +25,28 @@ use tracing::warn;
 use std::sync::Arc;
 
 mod cold_replay;
-pub(super) use cold_replay::durable_record_to_runtime_event_envelope;
-pub(crate) use cold_replay::{cold_runtime_event_subscription, durable_round_prefix};
+test_support_item! { pub(super), [
+]
+use cold_replay::durable_record_to_runtime_event_envelope;
+}
+test_support_item! { pub(crate), [
+]
+use cold_replay::{cold_runtime_event_subscription, durable_round_prefix};
+}
 
 use crate::provider_runtime::{ApiProviderRuntime, ApiRuntimeServices};
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 type DeliveryReadSamples = Arc<std::sync::Mutex<Vec<(bool, usize, usize, usize)>>>;
 
+test_support_item! { pub(crate), [
 #[derive(Clone)]
-pub(crate) struct NativeRunTerminalDependencies {
+]
+struct NativeRunTerminalDependencies {
     published_plan_cache: Option<Arc<dyn control_plane::ports::PublishedPlanCache>>,
-    #[cfg(test)]
+    #[cfg(any(test,feature="test-support"))]
     pub(crate) delivery_read_samples: Option<DeliveryReadSamples>,
-    #[cfg(test)]
+    #[cfg(any(test,feature="test-support"))]
     pub(crate) delivery_read_attempts: Option<Arc<std::sync::atomic::AtomicUsize>>,
     store: storage_durable_postgres::MainDurableStore,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
@@ -48,9 +56,12 @@ pub(crate) struct NativeRunTerminalDependencies {
     provider_transport_store: Arc<dyn control_plane::ports::ProviderTransportStore>,
     runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
 }
+}
 
 impl NativeRunTerminalDependencies {
-    pub(crate) fn new(
+    test_support_item! { pub(crate), [
+    ]
+    fn new(
         store: storage_durable_postgres::MainDurableStore,
         runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
         provider_runtime: Arc<ApiRuntimeServices>,
@@ -61,9 +72,9 @@ impl NativeRunTerminalDependencies {
     ) -> Self {
         Self {
             published_plan_cache: None,
-            #[cfg(test)]
+            #[cfg(any(test,feature="test-support"))]
             delivery_read_samples: None,
-            #[cfg(test)]
+            #[cfg(any(test,feature="test-support"))]
             delivery_read_attempts: None,
             store,
             runtime_engine,
@@ -73,6 +84,7 @@ impl NativeRunTerminalDependencies {
             provider_transport_store,
             runtime_event_stream,
         }
+    }
     }
 
     pub(crate) fn with_published_plan_cache(
@@ -130,7 +142,7 @@ impl NativeRunTerminalDependencies {
         scope: control_plane::ports::RuntimeEventDeliveryScope,
         include_membership: bool,
     ) -> anyhow::Result<control_plane::ports::RuntimeEventDeliveryBatch> {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.observe_delivery_read_attempt();
         let batch = self
             .store
@@ -142,19 +154,19 @@ impl NativeRunTerminalDependencies {
                 lease_seconds: 30,
             })
             .await?;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.observe_delivery_read(&batch);
         Ok(batch)
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn observe_delivery_read_attempt(&self) {
         if let Some(counter) = &self.delivery_read_attempts {
             counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn observe_delivery_read(&self, batch: &control_plane::ports::RuntimeEventDeliveryBatch) {
         if let Some(samples) = &self.delivery_read_samples {
             let bytes = batch
@@ -235,17 +247,22 @@ pub(crate) struct TerminalAnswerDelta {
     pub text: String,
 }
 
+test_support_item! { pub(crate), [
 /// A public terminal may only be projected from a durable run snapshot. A load
 /// failure is therefore a barrier failure, not permission to reuse the stale
 /// pre-execution snapshot.
-pub(crate) async fn load_durable_native_run_for_terminal_projection_with_dependencies(
+]
+async fn load_durable_native_run_for_terminal_projection_with_dependencies(
     dependencies: &NativeRunTerminalDependencies,
     initial_run: &NativeRunResult,
 ) -> anyhow::Result<NativeRunResult> {
     load_latest_native_run_strict_with_dependencies(dependencies, initial_run).await
 }
+}
 
-pub(crate) fn durable_native_run_matches_terminal(run: &NativeRunResult, event_type: &str) -> bool {
+test_support_item! { pub(crate), [
+]
+fn durable_native_run_matches_terminal(run: &NativeRunResult, event_type: &str) -> bool {
     matches!(
         (run.status, event_type),
         (NativeRunStatus::Succeeded, "flow_finished")
@@ -258,11 +275,14 @@ pub(crate) fn durable_native_run_matches_terminal(run: &NativeRunResult, event_t
             )
     )
 }
+}
 
+test_support_item! { pub(crate), [
 /// Resolves a confirmed producer EOF to the durable winner before an API adapter projects it.
 /// Callers must use this only after execution has ended or a runtime stream closed without a
 /// terminal event; transport failures and client disconnects are not EOF evidence.
-pub(crate) async fn recover_missing_stream_terminal_winner_with_dependencies(
+]
+async fn recover_missing_stream_terminal_winner_with_dependencies(
     dependencies: &NativeRunTerminalDependencies,
     initial_run: &NativeRunResult,
 ) -> anyhow::Result<NativeRunResult> {
@@ -322,6 +342,7 @@ pub(crate) async fn recover_missing_stream_terminal_winner_with_dependencies(
         Err(error) => Err(error),
     }
 }
+}
 
 async fn load_latest_native_run_strict_with_dependencies(
     dependencies: &NativeRunTerminalDependencies,
@@ -338,7 +359,9 @@ async fn load_latest_native_run_strict_with_dependencies(
     ))
 }
 
-pub(crate) fn terminal_runtime_event_from_native_run(
+test_support_item! { pub(crate), [
+]
+fn terminal_runtime_event_from_native_run(
     run: &NativeRunResult,
 ) -> Option<RuntimeEventEnvelope> {
     let payload = match run.status {
@@ -359,8 +382,11 @@ pub(crate) fn terminal_runtime_event_from_native_run(
     };
     Some(RuntimeEventEnvelope::new(run.id, 0, payload))
 }
+}
 
-pub(crate) fn durable_canonical_partial_runtime_events_from_native_run(
+test_support_item! { pub(crate), [
+]
+fn durable_canonical_partial_runtime_events_from_native_run(
     run: &NativeRunResult,
 ) -> Vec<RuntimeEventEnvelope> {
     if !matches!(
@@ -397,6 +423,7 @@ pub(crate) fn durable_canonical_partial_runtime_events_from_native_run(
             RuntimeEventEnvelope::new(run.id, index as i64 + 1, payload)
         })
         .collect()
+}
 }
 
 fn terminal_output_payload(run: &NativeRunResult) -> Value {
@@ -619,7 +646,6 @@ fn decode_runtime_debug_artifact_preview(payload: &Value) -> Option<Value> {
     })
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod tests {
     use control_plane::application_public_api::native::{
@@ -824,5 +850,22 @@ mod tests {
         assert_eq!(deltas[0].text, "结构化思考");
         assert_eq!(deltas[1].kind, TerminalAnswerDeltaKind::Text);
         assert_eq!(deltas[1].text, "结构化回答");
+    }
+}
+
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+impl NativeRunTerminalDependencies {
+    pub fn set_delivery_read_samples_for_test_support(
+        &mut self,
+        samples: Option<DeliveryReadSamples>,
+    ) {
+        self.delivery_read_samples = samples;
+    }
+    pub fn set_delivery_read_attempts_for_test_support(
+        &mut self,
+        attempts: Option<Arc<std::sync::atomic::AtomicUsize>>,
+    ) {
+        self.delivery_read_attempts = attempts;
     }
 }

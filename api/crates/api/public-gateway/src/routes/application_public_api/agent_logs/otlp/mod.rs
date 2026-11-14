@@ -19,8 +19,8 @@ mod interface;
 mod projection;
 mod transport;
 
-pub(crate) use interface::compile_registry;
-pub(crate) use transport::route_assembly;
+pub use interface::compile_registry;
+pub use transport::route_assembly;
 pub use transport::{__path_ingest_traces, ingest_traces};
 
 pub(crate) const BINDING: &str = "http.application.logs.otlp.traces.ingest.v1";
@@ -100,7 +100,7 @@ struct Input {
 struct PreparedInput {
     batches: Vec<AgentLogsBatch>,
     counts: SourceSpanCounts,
-    document: Result<crate::routes::applications_group::application_runtime::log_exchange::event_projection::OtlpDocument, Arc<str>>,
+    document: Result<crate::openapi_interface::otlp_document::OtlpDocument, Arc<str>>,
 }
 impl Input {
     fn new(format: WireFormat, encoding: ContentEncoding, body: Bytes) -> Self {
@@ -116,9 +116,8 @@ impl Input {
                     .map_err(|_| "agent_logs_otlp_payload")?;
             let (batches, counts) =
                 validated_batches(&request).map_err(|_| "agent_logs_otlp_payload")?;
-            let document = crate::openapi_interface::contract::to_value(&request).and_then(|value| {
-                crate::routes::applications_group::application_runtime::log_exchange::event_projection::document(&value)
-            });
+            let document = crate::openapi_interface::contract::to_value(&request)
+                .and_then(|value| crate::openapi_interface::otlp_document::document(&value));
             Ok(PreparedInput {
                 batches,
                 counts,
@@ -255,6 +254,5 @@ fn validated_batches(
     Ok((batches, counts))
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod _tests;

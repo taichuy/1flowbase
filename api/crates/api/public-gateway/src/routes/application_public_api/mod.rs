@@ -1,26 +1,26 @@
 pub mod agent_logs;
 pub mod anthropic;
 #[path = "tool_callbacks/callback_adapter.rs"]
-pub(crate) mod callback_adapter;
+pub mod callback_adapter;
 mod client_observer;
 pub mod compat_sse;
-pub(crate) mod compatibility_interface;
-pub(crate) mod delivery_receipt;
+pub mod compatibility_interface;
+pub mod delivery_receipt;
 pub mod ex;
 #[path = "tool_callbacks/llm_tool_visibility.rs"]
-pub(crate) mod llm_tool_visibility;
+pub mod llm_tool_visibility;
 pub mod native;
-pub(crate) mod native_interface;
-pub(crate) mod native_read_interface;
-pub(crate) mod native_websocket;
+pub mod native_interface;
+pub mod native_read_interface;
+pub mod native_websocket;
 pub mod openai;
 mod provider_session;
-pub(crate) mod responses_websocket;
+pub mod responses_websocket;
 pub mod sse;
-pub(crate) mod stream_terminal_fallback;
+pub mod stream_terminal_fallback;
 #[path = "tool_callbacks/tool_callback_ids.rs"]
-pub(crate) mod tool_callback_ids;
-pub(crate) mod workflow_extension_interface;
+pub mod tool_callback_ids;
+pub mod workflow_extension_interface;
 
 use std::sync::Arc;
 
@@ -32,8 +32,7 @@ pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
 }
 
-pub(crate) fn route_assembly(
-) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
+pub fn route_assembly() -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
     crate::external_route_assembly::ExternalRouteAssembly::new()
         .route(
             "/models",
@@ -70,7 +69,7 @@ pub fn compatible_router() -> Router<Arc<ApiState>> {
     compatible_route_assembly().into_router()
 }
 
-pub(crate) fn compatible_route_assembly(
+pub fn compatible_route_assembly(
 ) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
     crate::external_route_assembly::ExternalRouteAssembly::new()
         .route(

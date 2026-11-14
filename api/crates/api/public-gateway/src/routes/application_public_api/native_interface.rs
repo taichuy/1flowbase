@@ -25,9 +25,18 @@ use super::native::NativeApiError;
 pub(crate) const ASYNC_INTERFACE_ID: &str = "application.native.runs.create-async";
 pub(crate) const BLOCKING_INTERFACE_ID: &str = "application.native.runs.execute-blocking";
 pub(crate) const STREAM_INTERFACE_ID: &str = "application.native.runs.execute-stream";
-pub(crate) const ASYNC_BINDING_ID: &str = "http.application.native.runs.create-async.v1";
-pub(crate) const BLOCKING_BINDING_ID: &str = "http.application.native.runs.execute-blocking.v1";
-pub(crate) const STREAM_BINDING_ID: &str = "http.application.native.runs.execute-stream.v1";
+test_support_item! { pub(crate), [
+]
+const ASYNC_BINDING_ID: &str = "http.application.native.runs.create-async.v1";
+}
+test_support_item! { pub(crate), [
+]
+const BLOCKING_BINDING_ID: &str = "http.application.native.runs.execute-blocking.v1";
+}
+test_support_item! { pub(crate), [
+]
+const STREAM_BINDING_ID: &str = "http.application.native.runs.execute-stream.v1";
+}
 const INTERFACE_VERSION: &str = "1";
 const ASYNC_HANDLER_REFERENCE: &str = "api-server.application-native-run.create-async";
 const BLOCKING_HANDLER_REFERENCE: &str = "api-server.application-native-run.execute-blocking";
@@ -36,9 +45,12 @@ const TARGET_REFERENCE: &str = "control-plane.application-native-run.create";
 const OWNER: &str = "api-server.application-public-api";
 const OPERATION: &str = "application.native.runs.create";
 
-pub(crate) struct ApplicationNativeRunInput {
+test_support_item! { pub(crate), [
+]
+struct ApplicationNativeRunInput {
     pub(crate) request: NativeRunRequest,
     pub(crate) protocol: TranslationProtocol,
+}
 }
 
 impl InterfaceContract for ApplicationNativeRunInput {
@@ -130,7 +142,10 @@ impl InterfaceContract for ApplicationNativeRunInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct ApplicationNativeRunOutput(pub(crate) NativeRunResult);
+test_support_item! { pub(crate), [
+]
+struct ApplicationNativeRunOutput(pub(crate) NativeRunResult);
+}
 
 impl InterfaceContract for ApplicationNativeRunOutput {
     fn event_projection_schema() -> Option<serde_json::Value> {
@@ -199,7 +214,10 @@ impl InterfaceContract for ApplicationNativeRunOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct ApplicationNativeRunTargetError(pub(crate) NativeApiError);
+test_support_item! { pub(crate), [
+]
+struct ApplicationNativeRunTargetError(pub(crate) NativeApiError);
+}
 
 impl InterfaceContract for ApplicationNativeRunTargetError {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -246,9 +264,12 @@ pub(crate) type ApplicationNativeRunFuture<'a> = Pin<
     >,
 >;
 
-pub(crate) struct ApplicationNativeRunStreamEvent(
+test_support_item! { pub(crate), [
+]
+struct ApplicationNativeRunStreamEvent(
     pub(crate) Result<axum::response::sse::Event, std::convert::Infallible>,
 );
+}
 
 impl InterfaceContract for ApplicationNativeRunStreamEvent {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -286,7 +307,7 @@ pub(crate) type ApplicationNativeRunStreamFuture<'a> = Pin<
     >,
 >;
 
-pub(crate) trait ApplicationNativeRunPort: Send + Sync + 'static {
+pub trait ApplicationNativeRunPort: Send + Sync + 'static {
     fn create<'a>(
         &'a self,
         principal: &'a ApplicationPrincipal,
@@ -373,7 +394,10 @@ impl
     }
 }
 
-pub(crate) struct ApplicationNativeRunAuthorization;
+test_support_item! { pub(crate), [
+]
+struct ApplicationNativeRunAuthorization;
+}
 
 impl InterfaceAuthorizationPort<ApplicationPrincipal> for ApplicationNativeRunAuthorization {
     fn adapter_reference(&self) -> AuthorizationAdapterReference {
@@ -542,4 +566,15 @@ fn adapter_plan() -> InvocationAdapterPlan {
 fn contract<T: InterfaceContract>() -> ContractIdentity {
     ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
         .expect("static interface contract is valid")
+}
+
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+impl ApplicationNativeRunInput {
+    pub fn for_test_support(request: NativeRunRequest, protocol: TranslationProtocol) -> Self {
+        Self { request, protocol }
+    }
+    pub fn request_for_test_support(&self) -> &NativeRunRequest {
+        &self.request
+    }
 }

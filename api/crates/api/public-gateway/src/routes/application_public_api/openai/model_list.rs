@@ -1,6 +1,5 @@
 use super::*;
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "_tests/model_list.rs"]
 mod tests;

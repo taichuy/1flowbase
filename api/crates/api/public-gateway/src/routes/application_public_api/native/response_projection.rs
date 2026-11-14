@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn native_error(
+pub fn native_error(
     error: impl Into<control_plane::application_public_api::native::NativeRunError>,
 ) -> NativeApiError {
     use control_plane::application_public_api::native::NativeRunError;
@@ -100,7 +100,7 @@ impl From<AgentModelReasoning> for NativeModelReasoning {
     }
 }
 
-pub(crate) fn service_error(error: anyhow::Error) -> NativeApiError {
+pub fn service_error(error: anyhow::Error) -> NativeApiError {
     if error
         .downcast_ref::<control_plane::errors::ControlPlaneError>()
         .is_some_and(|error| {

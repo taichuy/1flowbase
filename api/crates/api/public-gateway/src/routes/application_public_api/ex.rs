@@ -49,8 +49,7 @@ pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
 }
 
-pub(crate) fn route_assembly(
-) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
+pub fn route_assembly() -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
     crate::external_route_assembly::ExternalRouteAssembly::new().route(
         "/*slug",
         crate::external_route_assembly::any(invoke_workflow_extension),
@@ -233,7 +232,7 @@ impl WorkflowExtensionPort for WorkflowExtensionAdapter {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn workflow_extension_port(
+pub fn workflow_extension_port(
     store: MainDurableStore,
     runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
     provider_runtime: ApiProviderRuntime,
@@ -271,7 +270,7 @@ pub(crate) fn workflow_extension_port(
     })
 }
 
-pub(crate) fn compile_workflow_extension_registry(
+pub fn compile_workflow_extension_registry(
     port: Arc<dyn WorkflowExtensionPort>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -585,7 +584,6 @@ fn accepted_response(run_id: uuid::Uuid, status: domain::FlowRunStatus) -> Respo
         .into_response()
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod error_mapping_tests {
     use super::*;

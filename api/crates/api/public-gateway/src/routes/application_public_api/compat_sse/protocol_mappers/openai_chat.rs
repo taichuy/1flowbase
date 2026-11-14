@@ -7,15 +7,20 @@ enum OpenAiChatStreamState {
     Terminal,
 }
 
-pub(crate) struct OpenAiChatStreamMapper {
+test_support_item! { pub(crate), [
+]
+struct OpenAiChatStreamMapper {
     model: String,
     chat_completion_id: String,
     state: OpenAiChatStreamState,
     usage_baseline: crate::routes::application_public_api::openai::usage::ResponseUsageBaseline,
 }
+}
 
 impl OpenAiChatStreamMapper {
-    pub(in crate::routes::application_public_api::compat_sse) fn new(
+    test_support_item! { pub(in crate::routes::application_public_api::compat_sse), [
+    ]
+    fn new(
         model: String,
         chat_completion_id: String,
     ) -> Self {
@@ -25,6 +30,7 @@ impl OpenAiChatStreamMapper {
             state: OpenAiChatStreamState::Streaming,
             usage_baseline: Default::default(),
         }
+    }
     }
 
     pub(in crate::routes::application_public_api::compat_sse) fn with_usage_baseline(
@@ -49,7 +55,9 @@ impl OpenAiChatStreamMapper {
         payload
     }
 
-    pub(in crate::routes::application_public_api::compat_sse) fn runtime_event_to_sse(
+    test_support_item! { pub(in crate::routes::application_public_api::compat_sse), [
+    ]
+    fn runtime_event_to_sse(
         &mut self,
         initial_run: &NativeRunResult,
         event: impl Into<CompatibleRuntimeEventView>,
@@ -138,6 +146,7 @@ impl OpenAiChatStreamMapper {
             _ => Vec::new(),
         }
     }
+    }
 
     fn finish(
         &mut self,
@@ -152,7 +161,9 @@ impl OpenAiChatStreamMapper {
     }
 }
 
-pub(in crate::routes::application_public_api::compat_sse) fn openai_delta_chunk_payload(
+test_support_item! { pub(in crate::routes::application_public_api::compat_sse), [
+]
+fn openai_delta_chunk_payload(
     initial_run: &NativeRunResult,
     model: &str,
     chat_completion_id: &str,
@@ -177,8 +188,11 @@ pub(in crate::routes::application_public_api::compat_sse) fn openai_delta_chunk_
         }]
     }))
 }
+}
 
-pub(in crate::routes::application_public_api::compat_sse) fn openai_tool_call_chunk_payload(
+test_support_item! { pub(in crate::routes::application_public_api::compat_sse), [
+]
+fn openai_tool_call_chunk_payload(
     initial_run: &NativeRunResult,
     model: &str,
     chat_completion_id: &str,
@@ -224,8 +238,11 @@ pub(in crate::routes::application_public_api::compat_sse) fn openai_tool_call_ch
         }]
     }))
 }
+}
 
-pub(in crate::routes::application_public_api::compat_sse) fn openai_finish_chunk_payload(
+test_support_item! { pub(in crate::routes::application_public_api::compat_sse), [
+]
+fn openai_finish_chunk_payload(
     initial_run: &NativeRunResult,
     model: &str,
     chat_completion_id: &str,
@@ -246,6 +263,7 @@ pub(in crate::routes::application_public_api::compat_sse) fn openai_finish_chunk
         }],
         "usage": openai_chat_usage_payload(initial_run.usage.as_ref())
     })
+}
 }
 
 fn openai_chat_usage_payload(usage: Option<&NativeUsage>) -> Value {

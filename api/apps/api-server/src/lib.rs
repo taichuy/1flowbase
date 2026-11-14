@@ -1,5 +1,7 @@
 #[path = "boot_composition/managed_runtime_assembly/mod.rs"]
 mod managed_runtime_assembly;
+#[path = "boot_composition/public_gateway_assembly/mod.rs"]
+mod public_gateway_assembly;
 use event_center::catalog::EventSourceCatalogAssembly;
 use extension_bus::SnapshotAssembly;
 #[path = "boot_composition/generation_dispatch.rs"]

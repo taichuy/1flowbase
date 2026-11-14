@@ -71,7 +71,10 @@ fn workflow_extension_publishes_one_typed_user_plan() {
 
 #[test]
 fn workflow_extension_route_has_one_frozen_authentication_and_execution_owner() {
-    let source = include_str!("../../routes/application_public_api/ex.rs");
+    let source = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../crates/api/public-gateway/src/routes/application_public_api/ex.rs"
+    ));
 
     assert_eq!(source.matches(".authenticate_invocation").count(), 1);
     assert!(!source.contains("require_session(&state"));
@@ -91,7 +94,10 @@ fn workflow_extension_route_has_one_frozen_authentication_and_execution_owner() 
 
 #[test]
 fn workflow_extension_projects_only_after_terminal_receipt() {
-    let source = include_str!("../../routes/application_public_api/ex.rs");
+    let source = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../crates/api/public-gateway/src/routes/application_public_api/ex.rs"
+    ));
     let receipt = source
         .find("outcome.receipt().clone().projected()")
         .expect("terminal receipt must be projected");

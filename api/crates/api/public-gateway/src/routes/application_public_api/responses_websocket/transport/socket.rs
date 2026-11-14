@@ -15,7 +15,10 @@ use tokio_tungstenite_deflate::{
     WebSocketStream,
 };
 
-pub(crate) struct Socket(Inner);
+test_support_item! { pub(crate), [
+]
+struct Socket(Inner);
+}
 enum Inner {
     Axum(Box<WebSocket>),
     Codec(Box<WebSocketStream<UpgradeIo>>),

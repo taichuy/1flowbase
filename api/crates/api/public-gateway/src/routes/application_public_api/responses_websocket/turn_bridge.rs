@@ -19,8 +19,10 @@ use crate::{
     },
 };
 
+test_support_item! { pub(crate), [
 #[derive(Debug, Error)]
-pub(crate) enum ResponsesTurnBridgeError {
+]
+enum ResponsesTurnBridgeError {
     #[error("Responses ingress rejected the turn")]
     IngressRejected,
     #[error("Responses typed runtime stream could not be opened")]
@@ -31,6 +33,7 @@ pub(crate) enum ResponsesTurnBridgeError {
     SocketWriterClosed,
     #[error("Responses typed runtime stream ended without one terminal event")]
     MissingTerminal,
+}
 }
 
 /// Bridges a generated WebSocket turn into the existing OpenAI Responses
@@ -104,9 +107,10 @@ impl ResponsesTurnBridge {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
-pub(super) async fn project_turn(
+test_support_item! { pub(super), [
+#[cfg(any(test,feature="test-support"))]
+]
+async fn project_turn(
     events: mpsc::Receiver<CompatibilityStreamEvent>,
     completion: InterfaceStreamCompletion<
         CompatibilityBlockingOutput,
@@ -116,6 +120,7 @@ pub(super) async fn project_turn(
     frames: mpsc::Sender<String>,
 ) -> Result<(), ResponsesTurnBridgeError> {
     project_observed_turn(events, completion, projector, frames, None, None).await
+}
 }
 
 async fn project_observed_turn(

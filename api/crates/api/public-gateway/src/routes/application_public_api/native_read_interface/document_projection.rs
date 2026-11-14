@@ -38,7 +38,6 @@ impl ApiInput for NativeUploadFileInput {
         Err(Arc::from("binary_request"))
     }
 }
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "_tests/document_projection.rs"]
 mod tests;

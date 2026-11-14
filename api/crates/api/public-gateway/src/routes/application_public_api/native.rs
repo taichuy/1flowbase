@@ -10,7 +10,7 @@ use axum::{
     },
     Json,
 };
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use control_plane::application_public_api::protocol_translation::TranslationReport;
 use control_plane::{
     application_public_api::{
@@ -67,26 +67,16 @@ use crate::{
             },
         },
         files::UploadedFileResponse,
-        mcp_protocol::virtual_ui,
     },
     runtime_activity::{scope_application_activity, ApplicationActivityKind},
 };
 
 mod response_projection;
 
-pub(crate) use response_projection::{blocking_run_projection_error, native_error, service_error};
+pub use response_projection::service_error;
+pub(crate) use response_projection::{blocking_run_projection_error, native_error};
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
-#[path = "native/_tests/authentication_failures.rs"]
-mod authentication_failure_tests;
-
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
-#[path = "native/_tests/catalog_admission.rs"]
-mod catalog_admission_tests;
-
-pub(crate) fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
+pub fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
     ApiProviderRuntime::new_with_activity(
         state.provider_runtime.clone(),
         state.runtime_activity.clone(),
@@ -98,26 +88,25 @@ pub(crate) fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
 // case the existing catalog path remains authoritative.
 
 #[derive(Clone)]
-pub(crate) struct ApplicationNativeRunDependencies {
-    pub(crate) store: storage_durable_postgres::MainDurableStore,
-    pub(crate) cache_store: Arc<dyn crate::host_infrastructure::CacheStore>,
-    pub(crate) published_plan_cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
-    pub(crate) published_publication_cache:
-        Arc<dyn control_plane::ports::PublishedPublicationCache>,
-    pub(crate) runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
-    pub(crate) provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
-    pub(crate) network_egress: Arc<crate::network_egress_client::NetworkEgressHttpClientResolver>,
-    pub(crate) provider_secret_master_key: String,
-    pub(crate) model_billing_require_provider_usage: bool,
-    pub(crate) api_node_id: String,
-    pub(crate) provider_install_root: String,
-    pub(crate) file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
-    pub(crate) notification_sender: Arc<dyn control_plane::notifications::NotificationSenderPort>,
-    pub(crate) task_queue: Arc<dyn crate::host_infrastructure::TaskQueue>,
-    pub(crate) provider_transport_store: Arc<dyn ProviderTransportStore>,
-    pub(crate) runtime_event_stream: Arc<dyn RuntimeEventStream>,
-    pub(crate) runtime_activity: Arc<crate::runtime_activity::ApplicationRuntimeActivityTracker>,
-    pub(crate) runtime_invoker_factory: Arc<dyn NativeRuntimeInvokerFactory>,
+pub struct ApplicationNativeRunDependencies {
+    pub store: storage_durable_postgres::MainDurableStore,
+    pub cache_store: Arc<dyn crate::host_infrastructure::CacheStore>,
+    pub published_plan_cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
+    pub published_publication_cache: Arc<dyn control_plane::ports::PublishedPublicationCache>,
+    pub runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
+    pub provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
+    pub network_egress: Arc<crate::network_egress_client::NetworkEgressHttpClientResolver>,
+    pub provider_secret_master_key: String,
+    pub model_billing_require_provider_usage: bool,
+    pub api_node_id: String,
+    pub provider_install_root: String,
+    pub file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    pub notification_sender: Arc<dyn control_plane::notifications::NotificationSenderPort>,
+    pub task_queue: Arc<dyn crate::host_infrastructure::TaskQueue>,
+    pub provider_transport_store: Arc<dyn ProviderTransportStore>,
+    pub runtime_event_stream: Arc<dyn RuntimeEventStream>,
+    pub runtime_activity: Arc<crate::runtime_activity::ApplicationRuntimeActivityTracker>,
+    pub runtime_invoker_factory: Arc<dyn NativeRuntimeInvokerFactory>,
 }
 
 struct ApplicationNativeRunAdapter(ApplicationNativeRunDependencies);
@@ -222,13 +211,15 @@ impl ApplicationNativeRunPort for ApplicationNativeRunAdapter {
     }
 }
 
-pub(crate) fn application_native_run_port(
+pub fn application_native_run_port(
     dependencies: ApplicationNativeRunDependencies,
 ) -> Arc<dyn ApplicationNativeRunPort> {
     Arc::new(ApplicationNativeRunAdapter(dependencies))
 }
 
-pub(crate) fn native_runtime_service(
+test_support_item! { pub(crate), [
+]
+fn native_runtime_service(
     dependencies: &ApplicationNativeRunDependencies,
     runtime_internal_tool_invoker: Arc<
         dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
@@ -257,6 +248,7 @@ pub(crate) fn native_runtime_service(
     .with_llm_routing_counter_store(dependencies.cache_store.clone())
     .with_provider_request_log_queue(dependencies.task_queue.clone())
 }
+}
 
 fn native_run_sse_dependencies(
     dependencies: &ApplicationNativeRunDependencies,
@@ -267,7 +259,9 @@ fn native_run_sse_dependencies(
     )
 }
 
-pub(crate) fn native_run_terminal_dependencies(
+test_support_item! { pub(crate), [
+]
+fn native_run_terminal_dependencies(
     dependencies: &ApplicationNativeRunDependencies,
 ) -> NativeRunTerminalDependencies {
     NativeRunTerminalDependencies::new(
@@ -280,6 +274,7 @@ pub(crate) fn native_run_terminal_dependencies(
         dependencies.runtime_event_stream.clone(),
     )
     .with_published_plan_cache(dependencies.published_plan_cache.clone())
+}
 }
 
 pub(crate) fn application_actor_from_principal(
@@ -295,7 +290,7 @@ pub(crate) fn application_actor_from_principal(
     }
 }
 
-pub(crate) fn compile_native_interface_registry(
+pub fn compile_native_interface_registry(
     port: Arc<dyn ApplicationNativeRunPort>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -476,13 +471,15 @@ pub struct NativeApiError {
     pub(crate) message: String,
 }
 
-#[cfg_attr(test, api_test_selection::fixture(contracts))]
+test_support_item! { pub(crate), [
 #[derive(Debug)]
-pub(crate) struct NativeRunRequestParseError {
+]
+struct NativeRunRequestParseError {
     pub(crate) code: &'static str,
     pub(crate) message: String,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) report: TranslationReport,
+}
 }
 
 impl NativeApiError {
@@ -561,11 +558,13 @@ pub async fn list_native_models(
     Ok(Json(output.0))
 }
 
+test_support_item! { pub(crate), [
 #[allow(
     clippy::result_large_err,
     reason = "the Native route parser preserves the complete typed compatibility diagnostics"
 )]
-pub(crate) fn parse_native_run_request(
+]
+fn parse_native_run_request(
     bytes: Bytes,
 ) -> Result<TranslatedNativeRunRequest, NativeRunRequestParseError> {
     let value = serde_json::from_slice::<Value>(&bytes).map_err(|_| {
@@ -580,7 +579,7 @@ pub(crate) fn parse_native_run_request(
         NativeRunRequestParseError {
             code: "json",
             message: "invalid JSON body".to_string(),
-            #[cfg(test)]
+            #[cfg(any(test,feature="test-support"))]
             report: report.into_report(),
         }
     })?;
@@ -594,13 +593,16 @@ pub(crate) fn parse_native_run_request(
         NativeRunRequestParseError {
             code: error.code,
             message: error.message,
-            #[cfg(test)]
+            #[cfg(any(test,feature="test-support"))]
             report: error.report,
         }
     })
 }
+}
 
-pub(crate) fn to_native_run_response(run: NativeRunResult) -> NativeRunResponse {
+test_support_item! { pub(crate), [
+]
+fn to_native_run_response(run: NativeRunResult) -> NativeRunResponse {
     let exposes_answer = matches!(
         run.status,
         NativeRunStatus::Succeeded | NativeRunStatus::Incomplete
@@ -633,6 +635,7 @@ pub(crate) fn to_native_run_response(run: NativeRunResult) -> NativeRunResponse 
         }),
         created_at: run.created_at.to_string(),
     }
+}
 }
 
 pub(crate) async fn execute_blocking_native_run_for_actor_with_dependencies(
@@ -1123,16 +1126,39 @@ mod runtime_invoker;
 #[path = "native/native_streams.rs"]
 mod native_streams;
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 use runtime_invoker::compiled_plan_has_mcp_bindings;
 
-pub(crate) use runtime_invoker::native_runtime_invoker_factory;
 pub(crate) use runtime_invoker::public_mcp_runtime_invoker_for_actor;
 pub(crate) use runtime_invoker::runtime_internal_tool_invoker_for_run;
-pub(crate) use runtime_invoker::NativeRuntimeInvokerFactoryDependencies;
 
 pub(crate) use native_streams::application_runtime_target;
 pub(crate) use native_streams::include_workflow_event_visibility;
 pub(crate) use native_streams::include_workflow_events;
 use native_streams::*;
+
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support {
+    pub use super::native_streams::application_runtime_target;
+    pub use super::response_projection::native_error;
+    pub use super::runtime_invoker::compiled_plan_has_mcp_bindings;
+}
+
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+impl NativeApiError {
+    pub fn status_for_test_support(&self) -> StatusCode {
+        self.status
+    }
+    pub fn code_for_test_support(&self) -> &'static str {
+        self.code
+    }
+}
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+impl NativeRunRequestParseError {
+    pub fn report_for_test_support(&self) -> &TranslationReport {
+        &self.report
+    }
+}

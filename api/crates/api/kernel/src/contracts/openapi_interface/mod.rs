@@ -29,3 +29,5 @@ pub use dispatcher::{
 };
 
 pub use catalog::close_api_event_schema;
+
+pub mod otlp_document;

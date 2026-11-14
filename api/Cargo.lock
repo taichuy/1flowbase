@@ -125,12 +125,63 @@ dependencies = [
 ]
 
 [[package]]
+name = "api-public-gateway"
+version = "0.6.3"
+dependencies = [
+ "anyhow",
+ "api-host-kernel",
+ "async-trait",
+ "axum",
+ "base16ct",
+ "base64 0.23.1",
+ "control-plane",
+ "control-plane-contracts",
+ "domain",
+ "extension-contracts",
+ "flate2",
+ "form_urlencoded",
+ "futures-util",
+ "http-body",
+ "hyper",
+ "hyper-util",
+ "interface-runtime",
+ "jsonschema",
+ "opentelemetry-proto",
+ "orchestration-runtime",
+ "plugin-framework",
+ "postgres-test-support",
+ "prost",
+ "runtime-core",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "storage-durable-postgres",
+ "storage-ephemeral",
+ "storage-object",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite 0.28.0",
+ "tokio-tungstenite 0.30.0",
+ "tonic-types",
+ "tracing",
+ "tungstenite 0.27.0",
+ "url",
+ "utoipa",
+ "uuid",
+ "zip 9.0.3",
+]
+
+[[package]]
 name = "api-server"
 version = "0.6.3"
 dependencies = [
  "access-control",
  "anyhow",
  "api-host-kernel",
+ "api-public-gateway",
  "api-server",
  "api-test-selection",
  "argon2",

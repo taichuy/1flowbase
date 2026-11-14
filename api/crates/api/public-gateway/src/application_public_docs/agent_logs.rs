@@ -9,7 +9,8 @@ pub(super) const DOC_KEY: &str = "application_public_api.logs.ingest";
 pub(super) const OTLP_OPERATION_ID: &str = "applicationAgentLogsIngestOtlpTraces";
 pub(super) const OTLP_DOC_KEY: &str = "application_public_api.logs.otlp.traces.ingest";
 
-pub(super) static OPERATIONS: &[PublicOperation] = &[PublicOperation {
+test_support_item! {pub(super), []
+static OPERATIONS: &[PublicOperation] = &[PublicOperation {
     id: OPERATION_ID,
     method: "POST",
     path: "/api/logs/v1/events",
@@ -34,6 +35,9 @@ pub(super) static OPERATIONS: &[PublicOperation] = &[PublicOperation {
         en_us: "Set the OTLP endpoint to HOST/api/logs/otlp; the client appends /v1/traces. Authenticate with this application's API key as a Bearer token. Supports application/json, application/x-protobuf and Content-Encoding: gzip, for Trace only. The whole request is validated first, and each source batch commits atomically. Full success returns the standard OTLP ACK (JSON {} or empty protobuf), without data/meta. A failure after earlier source commits returns HTTP 200 partialSuccess with the exact rejectedSpans count; do not retry a partial ACK. Disabled reception or an unsupported application type returns 403. Errors use standard google.rpc.Status with the actual HTTP status. No publication, model execution or balance debit is required.",
     },
 }];
+
+
+}
 
 fn text<'a>(docs: &DocTextResolver, zh: &'a str, en: &'a str) -> &'a str {
     match docs.locale {

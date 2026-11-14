@@ -14,7 +14,10 @@ enum ProjectionError {
     Missing,
 }
 pub(crate) type Projection = Box<dyn FnOnce(&NativeRunResult) -> ProtocolResult + Send + Sync>;
-pub(crate) struct ProtocolResult(Result<Value, ProjectionError>);
+test_support_item! { pub(crate), [
+]
+struct ProtocolResult(Result<Value, ProjectionError>);
+}
 #[derive(Debug)]
 pub(crate) struct CompatibilityProtocolTargetError {
     run: Option<Box<NativeRunResult>>,
@@ -184,7 +187,6 @@ impl ApiOutput for CompatibilityProtocolOutput {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "_tests/http_result.rs"]
 mod tests;

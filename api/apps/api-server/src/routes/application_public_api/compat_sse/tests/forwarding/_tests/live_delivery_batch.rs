@@ -163,17 +163,17 @@ async fn native_deltas_survive_real_subscription_typed_cursor_and_transparent_ss
         stream,
     );
     let mut forwarding = tokio::spawn(send_subscribed_compatible_typed_event_stream(
-        SubscribedCompatibleTypedEventStream {
-            terminal_dependencies: dependencies,
-            initial_run: run.clone(),
-            delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
-            delivery_scope: RuntimeEventDeliveryScope::Start,
-            from_sequence: None,
-            durable_round_replay: Vec::new(),
-            ignored_waiting_callback_task_id: None,
+        SubscribedCompatibleTypedEventStream::for_test_support(
+            dependencies,
+            run.clone(),
+            CompatibleDeliveryPolicy::ScopedResponses,
+            RuntimeEventDeliveryScope::Start,
+            None,
+            Vec::new(),
+            None,
             subscription,
             sender,
-        },
+        ),
     ));
     let mut mapper = OpenAiResponseStreamMapper::with_mode(
         "fixture".into(),

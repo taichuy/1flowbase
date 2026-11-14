@@ -1,6 +1,8 @@
 use super::*;
 
-pub(in super::super) async fn append_compatible_resume_terminal_event(
+test_support_item! { pub(in super::super), [
+]
+async fn append_compatible_resume_terminal_event(
     terminal_writer: &dyn control_plane::ports::RuntimeEventTerminalWriter,
     run: &NativeRunResult,
 ) {
@@ -27,9 +29,9 @@ pub(in super::super) async fn append_compatible_resume_terminal_event(
         .append_terminal_if_missing_and_close(payload)
         .await;
 }
+}
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(super) struct CompatibleTerminalFallback<'a, F> {
     pub(super) state: &'a ApiState,
     pub(super) initial_run: &'a NativeRunResult,
@@ -41,8 +43,7 @@ pub(super) struct CompatibleTerminalFallback<'a, F> {
     pub(super) ignored_waiting_callback_task_id: Option<uuid::Uuid>,
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(super) enum CompatibleTerminalFallbackOutcome {
     NotTerminal,
     Sent { event_type: String },
@@ -50,8 +51,7 @@ pub(super) enum CompatibleTerminalFallbackOutcome {
     IgnoredWaitingCallback,
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(super) async fn emit_compatible_terminal_fallback<F>(
     fallback: CompatibleTerminalFallback<'_, F>,
 ) -> CompatibleTerminalFallbackOutcome
@@ -178,7 +178,9 @@ pub(super) fn is_ignored_waiting_callback(
         == Some(ignored_task_id)
 }
 
-pub(in super::super) fn is_public_terminal_runtime_event(event_type: &str) -> bool {
+test_support_item! { pub(in super::super), [
+]
+fn is_public_terminal_runtime_event(event_type: &str) -> bool {
     matches!(
         event_type,
         "flow_finished"
@@ -188,6 +190,7 @@ pub(in super::super) fn is_public_terminal_runtime_event(event_type: &str) -> bo
             | "waiting_human"
             | "waiting_callback"
     )
+}
 }
 
 pub(in super::super) fn is_answer_presentation_delta(envelope: &RuntimeEventEnvelope) -> bool {

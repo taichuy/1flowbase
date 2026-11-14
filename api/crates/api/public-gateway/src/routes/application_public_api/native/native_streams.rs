@@ -1,6 +1,8 @@
 use super::*;
 
-pub(crate) fn application_runtime_target(
+test_support_item! { pub(crate), [
+]
+fn application_runtime_target(
     state: &ApiState,
     registry: &interface_runtime::CompiledInterfaceRegistry,
     binding_id: &interface_runtime::BindingId,
@@ -37,6 +39,7 @@ pub(crate) fn application_runtime_target(
         ))
         .expect("worker generation identity is valid"),
     }
+}
 }
 
 pub(crate) fn include_workflow_events(

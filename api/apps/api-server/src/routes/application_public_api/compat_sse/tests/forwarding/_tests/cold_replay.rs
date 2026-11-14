@@ -184,9 +184,12 @@ async fn assert_gc_cold_attach_scope(tool_wait: bool) {
         let mut indices = Vec::new();
         let mut tool_count = 0;
         let mut terminal_count = 0;
-        while let Some(input) = tokio::time::timeout(Duration::from_secs(3), attached.events.recv())
-            .await
-            .unwrap()
+        while let Some(input) = tokio::time::timeout(
+            Duration::from_secs(3),
+            attached.events_for_test_support().recv(),
+        )
+        .await
+        .unwrap()
         {
             let (_snapshot, event, receipt) = input.into_parts();
             assert!(
@@ -534,9 +537,12 @@ async fn assert_cold_callback_scope(
         // Keep writes frozen across a complete follower poll: the old terminal
         // must neither end this subscription nor cause an executor to be built.
         assert!(
-            tokio::time::timeout(Duration::from_millis(1100), attached.events.recv())
-                .await
-                .is_err(),
+            tokio::time::timeout(
+                Duration::from_millis(1100),
+                attached.events_for_test_support().recv()
+            )
+            .await
+            .is_err(),
             "an anchor awaiting its marker must keep the subscriber alive",
         );
         append_compat_sse_runtime_event(
@@ -655,9 +661,12 @@ async fn assert_cold_callback_scope(
         let mut indices = Vec::new();
         let mut terminal_count = 0;
         let mut tool_count = 0;
-        while let Some(input) = tokio::time::timeout(Duration::from_secs(3), attached.events.recv())
-            .await
-            .unwrap()
+        while let Some(input) = tokio::time::timeout(
+            Duration::from_secs(3),
+            attached.events_for_test_support().recv(),
+        )
+        .await
+        .unwrap()
         {
             let (_snapshot, event, receipt) = input.into_parts();
             if let Some(receipt) = receipt {
@@ -872,11 +881,17 @@ async fn cold_anchored_admission_rejects_previous_waiting_and_uses_current_termi
     )
     .await
     .unwrap();
-    let started = tokio::time::timeout(Duration::from_secs(3), admitted.events.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(started.envelope.event_type, "flow_started");
+    let started = tokio::time::timeout(
+        Duration::from_secs(3),
+        admitted.events_for_test_support().recv(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        started.envelope_for_test_support().event_type,
+        "flow_started"
+    );
 
     for index in 0..65 {
         append_compat_sse_runtime_event(&state, run.id, "node_started", json!({"index": index, "stream_generation_id": generation, "stream_sequence": index + 2})).await;
@@ -959,9 +974,12 @@ async fn cold_anchored_admission_rejects_previous_waiting_and_uses_current_termi
     .unwrap();
     let mut terminal_types = Vec::new();
     let mut items = Vec::new();
-    while let Some(input) = tokio::time::timeout(Duration::from_secs(3), attached.events.recv())
-        .await
-        .unwrap()
+    while let Some(input) = tokio::time::timeout(
+        Duration::from_secs(3),
+        attached.events_for_test_support().recv(),
+    )
+    .await
+    .unwrap()
     {
         let (_snapshot, event, receipt) = input.into_parts();
         assert!(receipt.is_none());
@@ -1001,12 +1019,18 @@ async fn cold_anchored_admission_rejects_previous_waiting_and_uses_current_termi
         RuntimeEventCloseReason::Finished
     );
     let mut admitted_terminals = Vec::new();
-    while let Some(input) = tokio::time::timeout(Duration::from_secs(3), admitted.events.recv())
-        .await
-        .unwrap()
+    while let Some(input) = tokio::time::timeout(
+        Duration::from_secs(3),
+        admitted.events_for_test_support().recv(),
+    )
+    .await
+    .unwrap()
     {
-        if event_forwarding::is_public_terminal_runtime_event(&input.envelope.event_type) {
-            admitted_terminals.push(input.envelope.event_type);
+        if event_forwarding::is_public_terminal_runtime_event(
+            &input.envelope_for_test_support().event_type,
+        ) {
+            let (_snapshot, envelope, _delivery) = input.into_parts();
+            admitted_terminals.push(envelope.event_type);
         }
     }
     assert_eq!(admitted_terminals, vec!["flow_finished"]);

@@ -3,8 +3,7 @@
 use super::*;
 use crate::routes::application_public_api::llm_tool_visibility::external_llm_tool_call_values;
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use crate::routes::application_public_api::stream_terminal_fallback::{
     terminal_answer_deltas_from_payload, terminal_answer_text_from_payload, TerminalAnswerDelta,
     TerminalAnswerDeltaKind,
@@ -12,7 +11,10 @@ use crate::routes::application_public_api::stream_terminal_fallback::{
 
 mod openai_responses;
 use openai_responses::OpenAiResponseOutputItemKind;
-pub(super) use openai_responses::OpenAiResponseStreamMapper;
+test_support_item! { pub(super), [
+]
+use openai_responses::OpenAiResponseStreamMapper;
+}
 
 fn openai_response_output_item_payload(
     initial_run: &NativeRunResult,
@@ -26,8 +28,7 @@ fn openai_response_output_item_payload(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn terminal_answer_text(run: &NativeRunResult, payload: &Value) -> Option<String> {
     terminal_answer_text_from_payload(payload).or_else(|| {
         run.answer
@@ -37,9 +38,10 @@ fn terminal_answer_text(run: &NativeRunResult, payload: &Value) -> Option<String
     })
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
-pub(super) fn terminal_answer_deltas_from_run_or_payload(
+test_support_item! { pub(super), [
+#[cfg(any(test,feature="test-support"))]
+]
+fn terminal_answer_deltas_from_run_or_payload(
     run: &NativeRunResult,
     payload: &Value,
 ) -> Vec<TerminalAnswerDelta> {
@@ -61,6 +63,7 @@ pub(super) fn terminal_answer_deltas_from_run_or_payload(
     terminal_answer_text(run, payload)
         .map(|answer| terminal_answer_deltas_from_payload(&json!({ "answer": answer })))
         .unwrap_or_default()
+}
 }
 
 fn openai_response_runtime_event_to_sse(
@@ -328,7 +331,9 @@ fn anthropic_cache_read_input_tokens(usage: &NativeUsage) -> u64 {
         .unwrap_or_default()
 }
 
-pub(super) fn openai_response_function_call_output_items(payload: &Value) -> Option<Vec<Value>> {
+test_support_item! { pub(super), [
+]
+fn openai_response_function_call_output_items(payload: &Value) -> Option<Vec<Value>> {
     llm_tool_callback_task_id(payload)?;
     let calls = llm_tool_calls(payload)?;
     let output =
@@ -336,6 +341,7 @@ pub(super) fn openai_response_function_call_output_items(payload: &Value) -> Opt
             calls,
         );
     (!output.is_empty()).then_some(output)
+}
 }
 
 fn openai_response_function_call_sse(
@@ -403,7 +409,9 @@ fn openai_response_stream_snapshot_with_output(
     response
 }
 
-pub(super) fn anthropic_tool_use_blocks_from_waiting_payload(
+test_support_item! { pub(super), [
+]
+fn anthropic_tool_use_blocks_from_waiting_payload(
     payload: &Value,
 ) -> Option<Vec<Value>> {
     let callback_task_id = llm_tool_callback_task_id(payload)?;
@@ -428,10 +436,12 @@ pub(super) fn anthropic_tool_use_blocks_from_waiting_payload(
         .collect::<Vec<_>>();
     (!blocks.is_empty()).then_some(blocks)
 }
+}
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
-pub(super) fn anthropic_completed_run_to_sse(
+test_support_item! { pub(super), [
+#[cfg(any(test,feature="test-support"))]
+]
+fn anthropic_completed_run_to_sse(
     run: &NativeRunResult,
     model: &str,
 ) -> Vec<Result<Event, Infallible>> {
@@ -456,9 +466,11 @@ pub(super) fn anthropic_completed_run_to_sse(
     events.extend(mapper.anthropic_stop_events(run.usage.as_ref()));
     events
 }
+}
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+test_support_item! { , [
+#[cfg(any(test,feature="test-support"))]
+]
 fn terminal_answer_delta_to_runtime_event(
     run: &NativeRunResult,
     sequence: i64,
@@ -484,9 +496,11 @@ fn terminal_answer_delta_to_runtime_event(
     };
     RuntimeEventEnvelope::new(run.id, sequence, payload)
 }
+}
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+test_support_item! { , [
+#[cfg(any(test,feature="test-support"))]
+]
 fn waiting_payload_from_run(run: &NativeRunResult) -> Option<Value> {
     let action = run.required_action.as_ref()?;
     Some(json!({
@@ -494,6 +508,7 @@ fn waiting_payload_from_run(run: &NativeRunResult) -> Option<Value> {
         "callback_task_id": action.payload.get("callback_task_id").cloned().unwrap_or(Value::Null),
         "tool_calls": run.tool_calls.clone().unwrap_or(Value::Null),
     }))
+}
 }
 
 fn llm_tool_callback_task_id(payload: &Value) -> Option<uuid::Uuid> {
@@ -575,18 +590,27 @@ fn required_action_not_supported_anthropic_sse() -> Vec<Result<Event, Infallible
 mod anthropic_stream;
 mod openai_chat;
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
-pub(super) use anthropic_stream::anthropic_delta_payload;
+test_support_item! { pub(super), [
+#[cfg(any(test,feature="test-support"))]
+]
+use anthropic_stream::anthropic_delta_payload;
+}
 
-pub(super) use anthropic_stream::AnthropicStreamMapper;
-pub(super) use openai_chat::OpenAiChatStreamMapper;
+test_support_item! { pub(super), [
+]
+use anthropic_stream::AnthropicStreamMapper;
+}
+test_support_item! { pub(super), [
+]
+use openai_chat::OpenAiChatStreamMapper;
+}
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
-pub(super) use openai_chat::{
+#[cfg(any(test, feature = "test-support"))]
+test_support_item! {pub(super), []
+use openai_chat::{
     openai_delta_chunk_payload, openai_finish_chunk_payload, openai_tool_call_chunk_payload,
 };
+}
 
 pub(super) fn canonical_runtime_error_message(run: &NativeRunResult) -> &str {
     run.error

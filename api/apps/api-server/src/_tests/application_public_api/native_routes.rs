@@ -84,8 +84,11 @@ fn ac_007_callback_payload_conflict_maps_to_http_409() {
             .into(),
     );
 
-    assert_eq!(error.status, StatusCode::CONFLICT);
-    assert_eq!(error.code, "callback_resume_payload_conflict");
+    assert_eq!(error.status_for_test_support(), StatusCode::CONFLICT);
+    assert_eq!(
+        error.code_for_test_support(),
+        "callback_resume_payload_conflict"
+    );
 }
 
 #[test]
@@ -94,9 +97,12 @@ fn d2_ac_001_native_malformed_json_has_one_safe_adapter_receipt() {
     let error = parse_native_run_request(Bytes::from(format!("{{\"raw\":\"{sentinel}\"")))
         .expect_err("malformed Native JSON must be rejected by the adapter boundary");
 
-    assert_eq!(error.report.protocol, TranslationProtocol::Native);
-    assert_eq!(error.report.decisions.len(), 1);
-    let decision = &error.report.decisions[0];
+    assert_eq!(
+        error.report_for_test_support().protocol,
+        TranslationProtocol::Native
+    );
+    assert_eq!(error.report_for_test_support().decisions.len(), 1);
+    let decision = &error.report_for_test_support().decisions[0];
     assert_eq!(decision.source_path, "$.body");
     assert_eq!(decision.kind, TranslationDecisionKind::Rejected);
     assert_eq!(
@@ -104,7 +110,7 @@ fn d2_ac_001_native_malformed_json_has_one_safe_adapter_receipt() {
         TranslationSafeRepresentation::Present
     );
     assert!(
-        !serde_json::to_string(&error.report)
+        !serde_json::to_string(&error.report_for_test_support())
             .expect("receipt should serialize")
             .contains(sentinel),
         "malformed JSON must not be retained in the receipt"
@@ -1068,8 +1074,8 @@ fn increment_model_admission_errors_project_as_client_or_configuration_errors() 
         ),
     ] {
         let projected = native_error(error);
-        assert_eq!(projected.status, status);
-        assert_eq!(projected.code, code);
+        assert_eq!(projected.status_for_test_support(), status);
+        assert_eq!(projected.code_for_test_support(), code);
     }
 }
 

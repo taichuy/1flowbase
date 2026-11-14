@@ -124,12 +124,15 @@ document!(
     ]
 );
 
+test_support_item! { pub(crate), [
 #[derive(Clone, Serialize)]
 #[serde(untagged)]
-pub(crate) enum ProtocolRequestDocument {
+]
+enum ProtocolRequestDocument {
     Chat(ChatDocument),
     Responses(ResponsesDocument),
     Anthropic(AnthropicDocument),
+}
 }
 fn decode<T: for<'de> Deserialize<'de>>(value: &Value) -> Result<T, Arc<str>> {
     T::deserialize(value).map_err(|_| Arc::from("invalid_safe_protocol_document"))
@@ -206,7 +209,6 @@ impl ApiOutput for CompatibilityBlockingOutput {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "_tests/document_projection.rs"]
 mod tests;

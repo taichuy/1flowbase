@@ -75,17 +75,26 @@ async fn callback_attach_replays_exact_output_and_disconnect_leaves_round_open()
     )
     .await
     .unwrap();
-    let first = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    let second = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(first.envelope.event_type, "flow_started");
-    assert_eq!(second.envelope.event_type, "provider_output_item_done");
-    assert_eq!(second.envelope.payload, exact_output);
+    let first = tokio::time::timeout(
+        Duration::from_secs(2),
+        attached.events_for_test_support().recv(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let second = tokio::time::timeout(
+        Duration::from_secs(2),
+        attached.events_for_test_support().recv(),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(first.envelope_for_test_support().event_type, "flow_started");
+    assert_eq!(
+        second.envelope_for_test_support().event_type,
+        "provider_output_item_done"
+    );
+    assert_eq!(second.envelope_for_test_support().payload, exact_output);
     drop(attached);
 
     let next = stream
@@ -323,10 +332,13 @@ async fn assert_terminal_callback_attach_scenario(
         } else {
             1
         } {
-            let input = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
-                .await
-                .expect("live delivery must remain immediate")
-                .unwrap();
+            let input = tokio::time::timeout(
+                Duration::from_secs(2),
+                attached.events_for_test_support().recv(),
+            )
+            .await
+            .expect("live delivery must remain immediate")
+            .unwrap();
             let (_, event, receipt) = input.into_parts();
             if let Some(receipt) = receipt {
                 receipt.projected();
@@ -336,9 +348,12 @@ async fn assert_terminal_callback_attach_scenario(
     }
     if terminal_after_subscribe && !tool_wait {
         assert!(
-            tokio::time::timeout(Duration::from_millis(50), attached.events.recv())
-                .await
-                .is_err(),
+            tokio::time::timeout(
+                Duration::from_millis(50),
+                attached.events_for_test_support().recv()
+            )
+            .await
+            .is_err(),
             "a missing local marker must wait for durable completion"
         );
         // Diagnostic persistence can expose the terminal fact before its
@@ -346,7 +361,7 @@ async fn assert_terminal_callback_attach_scenario(
         // that legal write window until the delayed identity has committed.
         append_attached_callback_round_events(
             &state,
-            attached.initial_run.id,
+            attached.initial_run_for_test_support().id,
             &first_item,
             &second_item,
         )
@@ -355,7 +370,7 @@ async fn assert_terminal_callback_attach_scenario(
             assert!(matches!(
                 durable_compatible_round_replay(
                     &dependencies,
-                    &attached.initial_run,
+                    &attached.initial_run_for_test_support(),
                     callback_task_id,
                 )
                 .await
@@ -365,14 +380,17 @@ async fn assert_terminal_callback_attach_scenario(
             // Let the bridge consume the terminal page while its durable
             // identity remains Pending. The next write contains no terminal.
             assert!(
-                tokio::time::timeout(Duration::from_millis(1100), attached.events.recv())
-                    .await
-                    .is_err(),
+                tokio::time::timeout(
+                    Duration::from_millis(1100),
+                    attached.events_for_test_support().recv()
+                )
+                .await
+                .is_err(),
                 "unidentified terminal must not close attachment"
             );
             append_compat_sse_runtime_event(
                 &state,
-                attached.initial_run.id,
+                attached.initial_run_for_test_support().id,
                 "flow_started",
                 json!({"response_round_id": callback_task_id, "stream_generation_id": generation}),
             )
@@ -380,13 +398,17 @@ async fn assert_terminal_callback_attach_scenario(
         }
         // Seal only after all diagnostic writes: the repository correctly
         // rejects late flow_started writes once this status is terminal.
-        seal_attached_callback_round(&state, attached.initial_run.id).await;
+        seal_attached_callback_round(&state, attached.initial_run_for_test_support().id).await;
     }
-    while let Some(input) = tokio::time::timeout(Duration::from_secs(2), attached.events.recv())
-        .await
-        .expect("terminal replay must finish")
+    while let Some(input) = tokio::time::timeout(
+        Duration::from_secs(2),
+        attached.events_for_test_support().recv(),
+    )
+    .await
+    .expect("terminal replay must finish")
     {
-        events.push(input.envelope);
+        let (_snapshot, envelope, _delivery) = input.into_parts();
+        events.push(envelope);
     }
     let types = events
         .iter()
@@ -443,7 +465,7 @@ async fn assert_terminal_callback_attach_scenario(
     let attempt_count: i64 = sqlx::query_scalar(
         "select count(*) from flow_run_callback_resume_attempts where flow_run_id = $1",
     )
-    .bind(attached.initial_run.id)
+    .bind(attached.initial_run_for_test_support().id)
     .fetch_one(state.store.pool())
     .await
     .unwrap();
@@ -451,7 +473,7 @@ async fn assert_terminal_callback_attach_scenario(
     if !live_enabled {
         assert!(
             stream
-                .replay(attached.initial_run.id, None, 1)
+                .replay(attached.initial_run_for_test_support().id, None, 1)
                 .await
                 .is_err(),
             "durable terminal replay must not create an empty local stream"
@@ -459,7 +481,7 @@ async fn assert_terminal_callback_attach_scenario(
     } else {
         assert!(
             stream
-                .subscribe(attached.initial_run.id, None)
+                .subscribe(attached.initial_run_for_test_support().id, None)
                 .await
                 .unwrap()
                 .closure

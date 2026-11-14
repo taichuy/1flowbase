@@ -1,5 +1,5 @@
 //! Application-key admitted observational ingestion, independent of generation.
-pub(crate) mod event_projection;
+pub mod event_projection;
 pub mod otlp;
 mod projection;
 use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
@@ -58,12 +58,10 @@ contract!(
 );
 contract!(TargetError, "application-agent-logs-error");
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "agent_logs/_tests/managed_projection.rs"]
 mod managed_projection_tests;
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "agent_logs/_tests/event_projection.rs"]
 mod event_projection_tests;
@@ -109,7 +107,7 @@ impl InterfaceAuthorizationPort<ApplicationPrincipal> for Authorization {
         Box::pin(async { Ok(()) })
     }
 }
-pub(crate) fn compile_registry<R>(
+pub fn compile_registry<R>(
     store: R,
 ) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError>
 where
@@ -264,15 +262,13 @@ pub async fn ingest_events(
         })?;
     Ok(Json(ApiSuccess::new(result.into_value().0)))
 }
-pub(crate) fn route_assembly(
-) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
+pub fn route_assembly() -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
     crate::external_route_assembly::ExternalRouteAssembly::new().route(
         "/api/logs/v1/events",
         crate::external_route_assembly::post(ingest_events.layer(DefaultBodyLimit::disable())),
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "agent_logs/_tests/document_projection.rs"]
 mod document_projection_tests;

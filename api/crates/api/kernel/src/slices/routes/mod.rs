@@ -22,3 +22,6 @@ pub mod mcp_protocol;
 pub mod notifications;
 #[path = "settings/runtime_status/system.rs"]
 pub mod system;
+
+#[path = "../../contracts/routes/files.rs"]
+pub mod files;

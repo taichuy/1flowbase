@@ -186,7 +186,7 @@ pub(super) fn collect_blocking_response_output_item(
     }
 }
 
-pub(in super::super) fn native_response_id(run: &NativeRunResult) -> String {
+pub fn native_response_id(run: &NativeRunResult) -> String {
     run.metadata
         .get("response_round_id")
         .and_then(Value::as_str)
@@ -194,7 +194,6 @@ pub(in super::super) fn native_response_id(run: &NativeRunResult) -> String {
         .unwrap_or_else(|| response_id_from_run_id(run.id))
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(in super::super) fn to_openai_responses_response(
     run: NativeRunResult,

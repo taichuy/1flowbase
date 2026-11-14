@@ -485,14 +485,14 @@ async fn start_native_stream(
         principal.application_id(),
     );
     let activation = registry.authentication(&binding).unwrap();
-    let input = ApplicationNativeRunInput {
-        protocol:
-            control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
-        request: serde_json::from_value(
+    let input = {
+        let protocol=control_plane::application_public_api::protocol_translation::TranslationProtocol::Native;
+        let request = serde_json::from_value(
             json!({"query":"Root 2014 native stream", "response_mode":"streaming",
             "stream_options": {"include_workflow_events": if invalid { "debug" } else { "none" }}}),
         )
-        .unwrap(),
+        .unwrap();
+        ApplicationNativeRunInput::for_test_support(request, protocol)
     };
     let envelope = InvocationEnvelope::with_principal_and_controls(
         lineage,

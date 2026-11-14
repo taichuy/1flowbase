@@ -65,7 +65,6 @@ pub(crate) mod usage;
 use response_dispatch::dispatch_response_for_endpoint;
 mod session_context;
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod tests;
 
@@ -1041,7 +1040,6 @@ pub(super) use response_projection::native_response_id;
 pub(super) use response_projection::openai_responses_usage;
 pub(super) use response_projection::openai_usage;
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 pub(super) use response_projection::to_openai_responses_response;
 
@@ -1151,4 +1149,10 @@ pub(super) fn chat_protocol_projection(
             None => to_openai_response(run.clone(), model, completion_id),
         }
     })
+}
+
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support {
+    pub use super::response_projection::native_response_id;
 }

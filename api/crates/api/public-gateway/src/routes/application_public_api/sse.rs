@@ -29,14 +29,19 @@ pub enum IncludeWorkflowEvents {
     Public,
 }
 
+test_support_item! { pub(crate), [
 #[derive(Clone)]
-pub(crate) struct NativeRunSseDependencies {
+]
+struct NativeRunSseDependencies {
     runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
     terminal: NativeRunTerminalDependencies,
 }
+}
 
 impl NativeRunSseDependencies {
-    pub(crate) fn new(
+    test_support_item! { pub(crate), [
+    ]
+    fn new(
         runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
         terminal: NativeRunTerminalDependencies,
     ) -> Self {
@@ -45,10 +50,13 @@ impl NativeRunSseDependencies {
             terminal,
         }
     }
+    }
 }
 
+test_support_item! { pub(crate), [
 #[derive(Debug, Serialize)]
-pub(crate) struct NativeSsePayload {
+]
+struct NativeSsePayload {
     run_id: Uuid,
     status: &'static str,
     created_at: String,
@@ -70,6 +78,7 @@ pub(crate) struct NativeSsePayload {
     workflow: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     required_action: Option<Value>,
+}
 }
 
 fn event_created_at(envelope: &RuntimeEventEnvelope) -> String {
@@ -140,7 +149,9 @@ fn runtime_event_to_native_sse(
         .expect("native SSE payload should serialize")))
 }
 
-pub(crate) fn native_sse_payload_for_runtime_event(
+test_support_item! { pub(crate), [
+]
+fn native_sse_payload_for_runtime_event(
     initial_run: &NativeRunResult,
     include_workflow_events: IncludeWorkflowEvents,
     envelope: RuntimeEventEnvelope,
@@ -333,6 +344,7 @@ pub(crate) fn native_sse_payload_for_runtime_event(
         _ => return None,
     })
 }
+}
 
 fn native_required_action_payload(
     initial_run: &NativeRunResult,
@@ -350,7 +362,9 @@ fn native_required_action_payload(
         })
 }
 
-pub(crate) fn is_public_terminal_runtime_event(event_type: &str) -> bool {
+test_support_item! { pub(crate), [
+]
+fn is_public_terminal_runtime_event(event_type: &str) -> bool {
     matches!(
         event_type,
         "flow_finished"
@@ -361,6 +375,7 @@ pub(crate) fn is_public_terminal_runtime_event(event_type: &str) -> bool {
             | "waiting_callback"
     )
 }
+}
 
 pub(crate) fn is_answer_presentation_delta(envelope: &RuntimeEventEnvelope) -> bool {
     matches!(
@@ -369,7 +384,9 @@ pub(crate) fn is_answer_presentation_delta(envelope: &RuntimeEventEnvelope) -> b
     ) && debug_stream_events::is_answer_presentation_delta_payload(&envelope.payload)
 }
 
-pub(crate) async fn send_native_runtime_event_stream_with_dependencies(
+test_support_item! { pub(crate), [
+]
+async fn send_native_runtime_event_stream_with_dependencies(
     dependencies: NativeRunSseDependencies,
     initial_run: NativeRunResult,
     include_workflow_events: IncludeWorkflowEvents,
@@ -541,6 +558,7 @@ pub(crate) async fn send_native_runtime_event_stream_with_dependencies(
     })
     .await;
 }
+}
 
 async fn send_native_sse_event(
     sender: &mpsc::Sender<Result<Event, Infallible>>,
@@ -691,6 +709,8 @@ fn is_ignored_waiting_callback(
         == Some(ignored_task_id)
 }
 
+test_support_item! { , [
+]
 fn terminal_answer_delta_to_runtime_event(
     run: &NativeRunResult,
     sequence: i64,
@@ -715,6 +735,7 @@ fn terminal_answer_delta_to_runtime_event(
         ),
     };
     RuntimeEventEnvelope::new(run.id, sequence, payload)
+}
 }
 
 fn terminal_answer_delta_sse_events(
@@ -745,7 +766,6 @@ fn terminal_answer_delta_sse_events(
         .collect()
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod tests {
     use super::*;

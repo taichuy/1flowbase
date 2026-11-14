@@ -19,7 +19,6 @@ use crate::routes::application_public_api::{
 
 mod prewarm;
 mod projector;
-mod turn_finalization;
 
 #[test]
 fn reuses_openai_bearer_and_x_api_key_credential_semantics() {

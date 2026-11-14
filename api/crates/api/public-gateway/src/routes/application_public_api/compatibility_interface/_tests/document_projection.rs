@@ -20,11 +20,11 @@ fn source_fields(source: &str, name: &str) -> Vec<String> {
 fn compatibility_document_field_inventory_tracks_actual_protocol_translation_owners() {
     let openai = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../crates/control-plane/src/application_public_api/compat/openai.rs"
+        "/../../control-plane/src/application_public_api/compat/openai.rs"
     ));
     let anthropic = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../crates/control-plane/src/application_public_api/compat/anthropic.rs"
+        "/../../control-plane/src/application_public_api/compat/anthropic.rs"
     ));
     assert_eq!(
         ChatDocument::FIELDS,

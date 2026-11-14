@@ -309,33 +309,37 @@ fn oversized_typed_values() {
         native_interface::ApplicationNativeRunInput, native_read_interface::NativeUploadFileInput,
     };
     use crate::routes::console_identity_interface::ConsoleIdentityInput;
-    let input = NativeUploadFileInput {
-        file_table_id: Uuid::new_v4(),
-        original_filename: SECRET.into(),
-        content_type: Some("application/octet-stream".into()),
-        bytes: SECRET.repeat(100_000).into_bytes(),
-    };
+    let input = NativeUploadFileInput::for_test_support(
+        Uuid::new_v4(),
+        SECRET.into(),
+        Some("application/octet-stream".into()),
+        SECRET.repeat(100_000).into_bytes(),
+    );
     let projected = view(&input);
-    assert_eq!(projected.value["bytes"]["byte_count"], input.bytes.len());
+    assert_eq!(
+        projected.value["bytes"]["byte_count"],
+        input.bytes_for_test_support().len()
+    );
     assert_safe_frame(ManagedInterfaceInput::Before { input: projected });
-    assert!(input.bytes.starts_with(SECRET.as_bytes()));
+    assert!(input
+        .bytes_for_test_support()
+        .starts_with(SECRET.as_bytes()));
     assert!(ConsoleIdentityInput::SwitchWorkspace {
         workspace_id: "x".repeat(257)
     }
     .project_for_managed_hook()
     .is_none());
-    let run = ApplicationNativeRunInput {
-        request: serde_json::from_value(json!({"query":"hello", "system":
+    let run = ApplicationNativeRunInput::for_test_support(
+        serde_json::from_value(json!({"query":"hello", "system":
             vec![json!({"type":"text","text":"hello"});33]}))
         .unwrap(),
-        protocol:
-            control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
-    };
+        control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
+    );
     assert!(
         run.project_for_managed_hook().is_none(),
         "typed lists have a hard item budget"
     );
-    assert_eq!(run.request.system.len(), 33);
+    assert_eq!(run.request_for_test_support().system.len(), 33);
 }
 
 /// Root #2014 AC-015/016/018: frozen host owner validates real safe projection before transport.

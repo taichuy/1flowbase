@@ -18,7 +18,9 @@ impl RuntimeEventTerminalWriter for ColdTerminalWriter {
     }
 }
 
-pub(crate) async fn cold_runtime_event_subscription(
+test_support_item! { pub(crate), [
+]
+async fn cold_runtime_event_subscription(
     dependencies: &NativeRunTerminalDependencies,
     initial_run: &NativeRunResult,
     from_sequence: Option<i64>,
@@ -136,8 +138,11 @@ pub(crate) async fn cold_runtime_event_subscription(
         closure,
     })
 }
+}
 
-pub(crate) fn durable_round_prefix(
+test_support_item! { pub(crate), [
+]
+fn durable_round_prefix(
     records: Vec<domain::RuntimeEventRecord>,
 ) -> Vec<RuntimeEventEnvelope> {
     let mut prefix = Vec::new();
@@ -180,8 +185,11 @@ pub(crate) fn durable_round_prefix(
     }
     prefix
 }
+}
 
-pub(crate) fn durable_record_to_runtime_event_envelope(
+test_support_item! { pub(crate), [
+]
+fn durable_record_to_runtime_event_envelope(
     record: domain::RuntimeEventRecord,
 ) -> RuntimeEventEnvelope {
     let text = compat_payload_string(&record.payload, "text")
@@ -225,6 +233,7 @@ pub(crate) fn durable_record_to_runtime_event_envelope(
         trace_visible: true,
         payload: record.payload,
     }
+}
 }
 
 fn compat_payload_i64(payload: &Value, key: &str) -> Option<i64> {

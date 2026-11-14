@@ -2,8 +2,10 @@ use super::*;
 use control_plane::application_public_api::callback_resume::ApplicationPublishedCallbackAttemptRepository;
 use event_forwarding::is_public_terminal_runtime_event;
 
+test_support_item! { pub(super), [
 /// Diagnostic tails and their synthetic start do not establish a round.
-pub(super) fn callback_round_replay_established(
+]
+fn callback_round_replay_established(
     replay: &[RuntimeEventEnvelope],
     round_id: uuid::Uuid,
 ) -> bool {
@@ -12,6 +14,7 @@ pub(super) fn callback_round_replay_established(
             && event.payload["response_round_id"] == json!(round_id))
             || event_forwarding::is_public_terminal_runtime_event(&event.event_type)
     })
+}
 }
 
 pub(super) async fn attach_live_compatible_callback_round(
@@ -45,10 +48,12 @@ pub(super) async fn attach_live_compatible_callback_round(
     ))
 }
 
+test_support_item! { pub(super), [
 /// A callback producer can finish durably after its original transport consumer
 /// exits. Keep live delivery, but do not mistake an open ephemeral lane for the
 /// owner of the callback's committed outcome.
-pub(super) fn follow_callback_subscription(
+]
+fn follow_callback_subscription(
     dependencies: CompatibilityExecutionDependencies,
     initial_run: NativeRunResult,
     round_id: uuid::Uuid,
@@ -180,6 +185,7 @@ pub(super) fn follow_callback_subscription(
         live_events: control_plane::ports::RuntimeEventReceiver::new(receiver, diagnostic),
         closure,
     }
+}
 }
 
 fn completed_output_index(event: &RuntimeEventEnvelope) -> Option<u64> {

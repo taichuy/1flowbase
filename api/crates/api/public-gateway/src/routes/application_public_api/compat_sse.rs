@@ -3,8 +3,7 @@ use std::{convert::Infallible, sync::Arc, time::Duration};
 
 use control_plane::ports::OrchestrationRuntimeRepository;
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use std::collections::HashSet;
 
 use axum::response::{
@@ -37,8 +36,7 @@ use tokio::sync::mpsc;
 use crate::routes::application_public_api::delivery_receipt::RuntimeEventDeliveryReceipt;
 use tracing::warn;
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use tracing::{debug, info};
 
 use crate::routes::application_public_api::tool_callback_ids::{
@@ -60,8 +58,20 @@ use crate::{
     },
 };
 
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod callback_attachment;
+#[cfg(not(any(test, feature = "test-support")))]
 mod callback_attachment;
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod callback_execution;
+#[cfg(not(any(test, feature = "test-support")))]
 mod callback_execution;
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod callback_reservation;
+#[cfg(not(any(test, feature = "test-support")))]
 mod callback_reservation;
 use callback_attachment::{
     attach_live_compatible_callback_round, callback_round_replay_established,
@@ -70,10 +80,17 @@ use callback_attachment::{
 pub(crate) use callback_execution::execute_compatible_resume_for_actor;
 use callback_execution::open_compatible_turn_with_invoker;
 pub(crate) use callback_reservation::CompatibleCallbackReservation;
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod event_forwarding;
+#[cfg(not(any(test, feature = "test-support")))]
 mod event_forwarding;
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod protocol_mappers;
+#[cfg(not(any(test, feature = "test-support")))]
 mod protocol_mappers;
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod tests;
 
@@ -82,21 +99,22 @@ use event_forwarding::{
     send_subscribed_compatible_typed_event_stream, SubscribedCompatibleTypedEventStream,
 };
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use event_forwarding::{send_compatible_runtime_event_stream, take_ordered_compatible_event};
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use protocol_mappers::anthropic_completed_run_to_sse;
 
 use protocol_mappers::{AnthropicStreamMapper, OpenAiChatStreamMapper, OpenAiResponseStreamMapper};
 
+test_support_item! { pub(crate), [
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ResponsesProjectionMode {
+]
+enum ResponsesProjectionMode {
     TransparentProviderResponses,
     SemanticNativeResponses,
     AwaitingHostSelection,
+}
 }
 
 impl ResponsesProjectionMode {
@@ -111,13 +129,18 @@ impl ResponsesProjectionMode {
     }
 }
 
-pub(crate) struct CompatibleResumePlan {
+test_support_item! { pub(crate), [
+]
+struct CompatibleResumePlan {
     pub(crate) initial_run: NativeRunResult,
     pub(crate) command: ResumePublishedCallbackCommand,
     pub(crate) reservation: Option<CompatibleCallbackReservation>,
 }
+}
 
-pub(crate) enum CompatibleResumeAdmission {
+test_support_item! { pub(crate), [
+]
+enum CompatibleResumeAdmission {
     Resume(Box<CompatibleResumePlan>),
     StartNewTurnFromHistory {
         recovery: Option<
@@ -125,11 +148,14 @@ pub(crate) enum CompatibleResumeAdmission {
         >,
     },
 }
+}
 
+test_support_item! { , [
 #[expect(
     clippy::large_enum_variant,
     reason = "the compatibility turn command is consumed immediately and preserves typed actor ownership"
 )]
+]
 enum CompatibleTurnAction {
     Start {
         transport_connection_scope: Option<String>,
@@ -141,32 +167,44 @@ enum CompatibleTurnAction {
         actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
     },
 }
+}
 
+test_support_item! { pub(crate), [
 /// One cursor-ordered runtime fact. Payload identity never participates in
 /// admission; a terminal fact carries the latest durable run snapshot.
 #[derive(Debug)]
-pub(crate) struct CompatibleProjectionInput {
+]
+struct CompatibleProjectionInput {
     run_snapshot: Arc<NativeRunResult>,
     envelope: RuntimeEventEnvelope,
     /// Present only for a committed tool delivery; the protocol writer settles it.
     delivery: Option<RuntimeEventDeliveryReceipt>,
 }
+}
 
+test_support_item! { , [
 /// Host-selected consumer capability, never inferred from request JSON or scope absence.
 #[derive(Clone, Copy, PartialEq, Eq)]
+]
 enum CompatibleDeliveryPolicy {
     ScopedResponses,
     NativeRunAttachment,
 }
+}
 
+test_support_item! { pub(crate), [
 /// A Native-only consumer cannot be passed to a Responses stream projector.
 /// Its sole production constructor is the authenticated Native WS attach path.
-pub(crate) struct NativeRunAttachmentStream {
+]
+struct NativeRunAttachmentStream {
     events: mpsc::Receiver<CompatibleProjectionInput>,
+}
 }
 
 impl NativeRunAttachmentStream {
-    pub(crate) async fn next_native(
+    test_support_item! { pub(crate), [
+    ]
+    async fn next_native(
         &mut self,
     ) -> Option<(Arc<NativeRunResult>, RuntimeEventEnvelope)> {
         self.events
@@ -174,11 +212,15 @@ impl NativeRunAttachmentStream {
             .await
             .map(|input| (input.run_snapshot, input.envelope))
     }
+    }
 }
 
-pub(crate) struct CompatibleTypedTurnStream {
+test_support_item! { pub(crate), [
+]
+struct CompatibleTypedTurnStream {
     initial_run: NativeRunResult,
     events: mpsc::Receiver<CompatibleProjectionInput>,
+}
 }
 
 impl CompatibleProjectionInput {
@@ -204,7 +246,9 @@ impl CompatibleProjectionInput {
         }
     }
 
-    pub(crate) fn into_parts(
+    test_support_item! { pub(crate), [
+    ]
+    fn into_parts(
         self,
     ) -> (
         Arc<NativeRunResult>,
@@ -212,6 +256,7 @@ impl CompatibleProjectionInput {
         Option<RuntimeEventDeliveryReceipt>,
     ) {
         (self.run_snapshot, self.envelope, self.delivery)
+    }
     }
 }
 
@@ -223,28 +268,39 @@ impl CompatibleTypedTurnStream {
 
 #[derive(Clone, Copy)]
 pub(crate) struct NativeWaitingReceiptConsumer(());
+test_support_item! { pub(crate), [
 #[derive(Clone, Copy)]
-pub(crate) enum CompatibleResumeConsumer {
+]
+enum CompatibleResumeConsumer {
     Scoped,
     NativeWaiting(NativeWaitingReceiptConsumer),
 }
+}
 impl CompatibleResumeConsumer {
+    test_support_item! { pub(crate), [
     /// Selected from the actual registered protocol binding, never request JSON.
-    pub(crate) fn for_binding(binding: &str) -> Self {
+    ]
+    fn for_binding(binding: &str) -> Self {
         if binding == super::compatibility_interface::NATIVE_WEBSOCKET_STREAM_BINDING_ID {
             Self::NativeWaiting(NativeWaitingReceiptConsumer(()))
         } else {
             Self::Scoped
         }
     }
+    }
 }
 
+test_support_item! { , [
+]
 struct OpenedCompatibleTurn {
     initial_run: NativeRunResult,
     delivery_scope: RuntimeEventDeliveryScope,
     ignored_waiting_callback_task_id: Option<uuid::Uuid>,
     projection: CompatibleTurnProjection,
 }
+}
+test_support_item! { , [
+]
 enum CompatibleTurnProjection {
     Scoped {
         from_sequence: Option<i64>,
@@ -253,6 +309,7 @@ enum CompatibleTurnProjection {
         execution: tokio::task::JoinHandle<()>,
     },
     PendingNativeWaiting(Box<PendingNativeWaitingReceipt>),
+}
 }
 
 fn consume_pending_native_waiting(
@@ -279,6 +336,8 @@ fn consume_pending_native_waiting(
     Ok(receipt.into_result())
 }
 
+test_support_item! { , [
+]
 fn selected_delivery_scope(run: &NativeRunResult) -> RuntimeEventDeliveryScope {
     match run.metadata["response_round_id"]
         .as_str()
@@ -289,7 +348,10 @@ fn selected_delivery_scope(run: &NativeRunResult) -> RuntimeEventDeliveryScope {
         None => RuntimeEventDeliveryScope::Unresolved,
     }
 }
+}
 
+test_support_item! { , [
+]
 fn freeze_delivery_scope(run: &mut NativeRunResult, scope: RuntimeEventDeliveryScope) {
     let id = match scope {
         RuntimeEventDeliveryScope::Start => run.id,
@@ -297,6 +359,7 @@ fn freeze_delivery_scope(run: &mut NativeRunResult, scope: RuntimeEventDeliveryS
         RuntimeEventDeliveryScope::Unresolved => return,
     };
     run.metadata["response_round_id"] = json!(id);
+}
 }
 
 impl CompatibleTurnAction {
@@ -317,7 +380,9 @@ impl CompatibleTurnAction {
     }
 }
 
-pub(crate) enum CompatibleProtocolProjection {
+test_support_item! { pub(crate), [
+]
+enum CompatibleProtocolProjection {
     OpenAiChat(OpenAiChatStreamMapper),
     OpenAiChatDeferred {
         model: String,
@@ -326,14 +391,20 @@ pub(crate) enum CompatibleProtocolProjection {
     OpenAiResponses(OpenAiResponseStreamMapper),
     AnthropicMessages(AnthropicStreamMapper),
 }
+}
 
+test_support_item! { , [
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+]
 enum CompatibleAnswerDeltaKind {
     Reasoning,
     Text,
 }
+}
 
+test_support_item! { , [
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+]
 enum CompatibleTerminalKind {
     Finished,
     Incomplete,
@@ -342,20 +413,30 @@ enum CompatibleTerminalKind {
     WaitingHuman,
     WaitingCallback,
 }
+}
 
+test_support_item! { , [
+]
 struct CompatibleRuntimeEventView {
     envelope: RuntimeEventEnvelope,
     answer_delta: Option<CompatibleAnswerDeltaKind>,
     terminal: Option<CompatibleTerminalKind>,
 }
+}
 
 impl CompatibleRuntimeEventView {
+    test_support_item! { , [
+    ]
     fn answer_delta(&self) -> Option<CompatibleAnswerDeltaKind> {
         self.answer_delta
     }
+    }
 
+    test_support_item! { , [
+    ]
     fn terminal(&self) -> Option<CompatibleTerminalKind> {
         self.terminal
+    }
     }
 
     fn envelope(&self) -> &RuntimeEventEnvelope {
@@ -433,9 +514,10 @@ pub(crate) fn openai_chat_resume_interface_projection(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
-pub(crate) fn openai_responses_interface_projection(
+test_support_item! { pub(crate), [
+#[cfg(any(test,feature="test-support"))]
+]
+fn openai_responses_interface_projection(
     model: String,
     previous_response_id: Option<String>,
 ) -> CompatibleProtocolProjection {
@@ -444,8 +526,11 @@ pub(crate) fn openai_responses_interface_projection(
         previous_response_id,
     ))
 }
+}
 
-pub(crate) fn openai_responses_interface_projection_with_mode(
+test_support_item! { pub(crate), [
+]
+fn openai_responses_interface_projection_with_mode(
     model: String,
     previous_response_id: Option<String>,
     mode: ResponsesProjectionMode,
@@ -455,6 +540,7 @@ pub(crate) fn openai_responses_interface_projection_with_mode(
         previous_response_id,
         mode,
     ))
+}
 }
 
 pub(crate) fn openai_responses_resume_interface_projection(
@@ -482,7 +568,9 @@ pub(crate) fn anthropic_resume_interface_projection(
     )
 }
 
-pub(crate) async fn prepare_compatible_resume_for_actor(
+test_support_item! { pub(crate), [
+]
+async fn prepare_compatible_resume_for_actor(
     state: Arc<ApiState>,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
     mut command: ResumePublishedCallbackCommand,
@@ -587,6 +675,7 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
         });
     }
 }
+}
 
 fn compatible_resume_plan(
     mut initial_run: Box<NativeRunResult>,
@@ -611,18 +700,21 @@ fn compatible_resume_plan(
     }))
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+test_support_item! { , [
+#[cfg(any(test,feature="test-support"))]
 #[derive(Debug, Default)]
+]
 struct CompatibleStreamStats {
     emitted_public_event: bool,
     emitted_content_bytes: usize,
     forwarded_event_identities: HashSet<CompatiblePublicEventIdentity>,
 }
+}
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+test_support_item! { , [
+#[cfg(any(test,feature="test-support"))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+]
 struct CompatiblePublicEventIdentity {
     event_type: String,
     node_id: Option<String>,
@@ -632,14 +724,19 @@ struct CompatiblePublicEventIdentity {
     source_node_run_id: Option<String>,
     source_output_key: Option<String>,
 }
+}
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl CompatibleStreamStats {
+    test_support_item! { , [
+    ]
     fn emitted_content(&self) -> bool {
         self.emitted_content_bytes > 0
     }
+    }
 
+    test_support_item! { , [
+    ]
     fn claim_runtime_event(&mut self, event: &RuntimeEventEnvelope) -> bool {
         let Some(identity) = compatible_public_event_identity(event) else {
             return true;
@@ -651,7 +748,10 @@ impl CompatibleStreamStats {
         }
         self.forwarded_event_identities.insert(identity)
     }
+    }
 
+    test_support_item! { , [
+    ]
     fn record_sent_runtime_event(
         &mut self,
         _run: &NativeRunResult,
@@ -669,10 +769,10 @@ impl CompatibleStreamStats {
             self.emitted_content_bytes += text.len();
         }
     }
+    }
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn compatible_public_event_identity(
     event: &RuntimeEventEnvelope,
 ) -> Option<CompatiblePublicEventIdentity> {
@@ -707,8 +807,7 @@ fn compatible_public_event_identity(
     })
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 fn presentation_value_identity(presentation: Option<&Value>, key: &str) -> Option<String> {
     presentation
         .and_then(|value| value.get(key))
@@ -747,8 +846,9 @@ pub(crate) fn openai_compact_sse_response(response: Value) -> Result<Response, N
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+test_support_item! { , [
+#[cfg(any(test,feature="test-support"))]
+]
 fn test_projected_events_response(events: Vec<Result<Event, Infallible>>) -> Response {
     Sse::new(tokio_stream::iter(events))
         .keep_alive(
@@ -757,6 +857,7 @@ fn test_projected_events_response(events: Vec<Result<Event, Infallible>>) -> Res
                 .text("heartbeat"),
         )
         .into_response()
+}
 }
 
 pub(crate) async fn start_compatible_typed_start_stream_for_actor(
@@ -787,7 +888,9 @@ pub(crate) async fn start_compatible_typed_start_stream_for_actor(
     opened_compatible_typed_stream(dependencies, opened)
 }
 
-pub(crate) async fn start_compatible_typed_resume_stream_for_actor(
+test_support_item! { pub(crate), [
+]
+async fn start_compatible_typed_resume_stream_for_actor(
     dependencies: CompatibilityExecutionDependencies,
     initial_run: NativeRunResult,
     command: ResumePublishedCallbackCommand,
@@ -803,6 +906,7 @@ pub(crate) async fn start_compatible_typed_resume_stream_for_actor(
         CompatibleResumeConsumer::Scoped,
     )
     .await
+}
 }
 
 pub(crate) async fn start_compatible_typed_resume_stream_for_consumer(
@@ -994,6 +1098,8 @@ fn follow_missing_compatible_round(
     Ok(result)
 }
 
+test_support_item! { , [
+]
 fn opened_compatible_typed_stream(
     dependencies: CompatibilityExecutionDependencies,
     opened: OpenedCompatibleTurn,
@@ -1004,7 +1110,10 @@ fn opened_compatible_typed_stream(
         CompatibleResumeConsumer::Scoped,
     )
 }
+}
 
+test_support_item! { , [
+]
 fn opened_compatible_typed_stream_for_consumer(
     dependencies: CompatibilityExecutionDependencies,
     opened: OpenedCompatibleTurn,
@@ -1016,7 +1125,10 @@ fn opened_compatible_typed_stream_for_consumer(
         consumer,
     )
 }
+}
 
+test_support_item! { , [
+]
 fn project_opened_compatible_turn(
     terminal_dependencies: NativeRunTerminalDependencies,
     opened: OpenedCompatibleTurn,
@@ -1104,10 +1216,13 @@ fn project_opened_compatible_turn(
         events,
     })
 }
+}
 
+test_support_item! { pub(crate), [
 /// Called only after the Native WebSocket owner authenticated and read this run.
 /// Native cold recovery deliberately does not select a Responses callback round.
-pub(crate) async fn start_native_run_attachment_stream(
+]
+async fn start_native_run_attachment_stream(
     terminal_dependencies: NativeRunTerminalDependencies,
     runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
     initial_run: NativeRunResult,
@@ -1141,6 +1256,7 @@ pub(crate) async fn start_native_run_attachment_stream(
     ));
     Ok(NativeRunAttachmentStream { events })
 }
+}
 
 async fn attach_compatible_typed_stream(
     terminal_dependencies: NativeRunTerminalDependencies,
@@ -1158,6 +1274,8 @@ async fn attach_compatible_typed_stream(
     .await
 }
 
+test_support_item! { , [
+]
 async fn attach_compatible_typed_stream_with_replay(
     terminal_dependencies: NativeRunTerminalDependencies,
     runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
@@ -1224,7 +1342,10 @@ async fn attach_compatible_typed_stream_with_replay(
         subscription,
     ))
 }
+}
 
+test_support_item! { , [
+]
 fn attach_compatible_typed_stream_from_subscription(
     terminal_dependencies: NativeRunTerminalDependencies,
     mut initial_run: NativeRunResult,
@@ -1253,10 +1374,13 @@ fn attach_compatible_typed_stream_from_subscription(
         events,
     }
 }
+}
 
 // A newly committed anchor can precede the persister's flow_started batch.
 // Followers wait for that identity; cold recovery cannot treat it as replayable.
 
+test_support_item! { , [
+]
 fn callback_task_id_from_resume_command(command: &ResumePublishedCallbackCommand) -> uuid::Uuid {
     match &command.target {
         PublishedCallbackResumeTarget::FlowRun {
@@ -1265,30 +1389,53 @@ fn callback_task_id_from_resume_command(command: &ResumePublishedCallbackCommand
         | PublishedCallbackResumeTarget::CallbackTask { callback_task_id } => *callback_task_id,
     }
 }
-
-pub(crate) fn openai_chat_completion_id_from_run_id(run_id: uuid::Uuid) -> String {
-    format!("chatcmpl-{run_id}")
 }
 
-pub(crate) fn openai_chat_completion_id_from_callback_task(
+test_support_item! { pub(crate), [
+]
+fn openai_chat_completion_id_from_run_id(run_id: uuid::Uuid) -> String {
+    format!("chatcmpl-{run_id}")
+}
+}
+
+test_support_item! { pub(crate), [
+]
+fn openai_chat_completion_id_from_callback_task(
     run_id: uuid::Uuid,
     callback_task_id: uuid::Uuid,
 ) -> String {
     format!("chatcmpl-{run_id}-{callback_task_id}")
 }
+}
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+test_support_item! { , [
+#[cfg(any(test,feature="test-support"))]
+]
 const OPENAI_CHAT_SSE_PROJECTION: &str = "openai_chat";
+}
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+test_support_item! { , [
+#[cfg(any(test,feature="test-support"))]
+]
 const ANTHROPIC_SSE_PROJECTION: &str = "anthropic";
+}
 
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod responses_projection;
+#[cfg(not(any(test, feature = "test-support")))]
 mod responses_projection;
 pub(crate) use responses_projection::ResponsesProjectionSelector;
 
 #[path = "compat_sse/durable_replay.rs"]
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod durable_replay;
+#[cfg(not(any(test, feature = "test-support")))]
 mod durable_replay;
 
 use durable_replay::*;
+
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;

@@ -17,12 +17,15 @@ use tracing::warn;
 
 use super::stream_terminal_fallback::NativeRunTerminalDependencies;
 
+test_support_item! { pub(crate), [
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(not(test), allow(dead_code))]
-pub(crate) enum RuntimeEventDeliveryVerdict {
+]
+enum RuntimeEventDeliveryVerdict {
     Projected,
     Released,
     Uncertain,
+}
 }
 
 #[derive(Debug)]
@@ -31,29 +34,40 @@ struct RuntimeEventDeliveryOutcome {
     verdict: RuntimeEventDeliveryVerdict,
 }
 
+test_support_item! { pub(crate), [
 #[derive(Debug)]
-pub(crate) struct RuntimeEventDeliveryReceipt {
+]
+struct RuntimeEventDeliveryReceipt {
     claim: Option<RuntimeEventDeliveryClaim>,
     write_started: bool,
     settler: mpsc::UnboundedSender<RuntimeEventDeliveryOutcome>,
 }
+}
 
 impl RuntimeEventDeliveryReceipt {
+    test_support_item! { pub(crate), [
     /// The writer is about to hand the first frame to the transport. From
     /// here on, losing the transport is an uncertain delivery.
-    pub(crate) fn begin_write(&mut self) {
+    ]
+    fn begin_write(&mut self) {
         self.write_started = true;
     }
-
-    /// Every frame reached the transport sender.
-    pub(crate) fn projected(mut self) {
-        self.settle(RuntimeEventDeliveryVerdict::Projected);
     }
 
-    #[cfg_attr(test, api_test_selection::group(public_api))]
-    #[cfg(test)]
-    pub(crate) fn event_id(&self) -> Option<uuid::Uuid> {
+    test_support_item! { pub(crate), [
+    /// Every frame reached the transport sender.
+    ]
+    fn projected(mut self) {
+        self.settle(RuntimeEventDeliveryVerdict::Projected);
+    }
+    }
+
+    test_support_item! { pub(crate), [
+    #[cfg(any(test, feature = "test-support"))]
+    ]
+    fn event_id(&self) -> Option<uuid::Uuid> {
         self.claim.as_ref().map(|claim| claim.event.id)
+    }
     }
 
     fn settle(&mut self, verdict: RuntimeEventDeliveryVerdict) {
@@ -64,10 +78,11 @@ impl RuntimeEventDeliveryReceipt {
         }
     }
 
-    #[cfg_attr(test, api_test_selection::group(public_api))]
+    test_support_item! { pub(crate), [
     /// A receipt whose verdict is observed by the test instead of the store.
-    #[cfg(test)]
-    pub(crate) fn probe(
+    #[cfg(any(test, feature = "test-support"))]
+    ]
+    fn probe(
         claim: RuntimeEventDeliveryClaim,
     ) -> (Self, RuntimeEventDeliveryVerdictProbe) {
         let (sender, receiver) = mpsc::unbounded_channel();
@@ -80,19 +95,24 @@ impl RuntimeEventDeliveryReceipt {
             RuntimeEventDeliveryVerdictProbe { receiver },
         )
     }
+    }
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
-pub(crate) struct RuntimeEventDeliveryVerdictProbe {
+test_support_item! { pub(crate), [
+#[cfg(any(test, feature = "test-support"))]
+]
+struct RuntimeEventDeliveryVerdictProbe {
     receiver: mpsc::UnboundedReceiver<RuntimeEventDeliveryOutcome>,
 }
+}
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl RuntimeEventDeliveryVerdictProbe {
-    pub(crate) async fn verdict(mut self) -> Option<RuntimeEventDeliveryVerdict> {
+    test_support_item! { pub(crate), [
+    ]
+    async fn verdict(mut self) -> Option<RuntimeEventDeliveryVerdict> {
         self.receiver.recv().await.map(|outcome| outcome.verdict)
+    }
     }
 }
 

@@ -4,11 +4,11 @@ use interface_runtime::{InterfaceEventContext, InterfaceEventPrincipal, Invocati
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-pub(crate) const CONSOLE_IMPORT_OPERATION: &str = "applications.logs.otlp.import";
-pub(crate) const OPERATIONS: &[&str] = &[super::ID, super::otlp::ID, CONSOLE_IMPORT_OPERATION];
+pub const CONSOLE_IMPORT_OPERATION: &str = "applications.logs.otlp.import";
+pub const OPERATIONS: &[&str] = &[super::ID, super::otlp::ID, CONSOLE_IMPORT_OPERATION];
 
 /// An operation subject, never a native run or an external task terminal.
-pub(crate) struct ApplicationLogOperationContext {
+pub struct ApplicationLogOperationContext {
     pub application_id: Uuid,
     pub workspace_id: Uuid,
     pub invocation_id: InvocationId,
@@ -17,7 +17,7 @@ pub(crate) struct ApplicationLogOperationContext {
 
 /// Only the sealed Application principal can supply public-ingress ownership.
 /// Console import retains the route application_id in its admitted typed input.
-pub(crate) fn application_operation_context(
+pub fn application_operation_context(
     context: &InterfaceEventContext,
     input: Option<&Value>,
 ) -> Option<ApplicationLogOperationContext> {
@@ -42,7 +42,7 @@ pub(crate) fn application_operation_context(
     })
 }
 
-pub(crate) fn object_schema(fields: impl IntoIterator<Item = (&'static str, Value)>) -> Value {
+pub fn object_schema(fields: impl IntoIterator<Item = (&'static str, Value)>) -> Value {
     let properties = fields
         .into_iter()
         .map(|(name, schema)| (name.to_owned(), schema))
@@ -50,13 +50,13 @@ pub(crate) fn object_schema(fields: impl IntoIterator<Item = (&'static str, Valu
     let required = properties.keys().cloned().collect::<Vec<_>>();
     json!({"type":"object","properties":properties,"required":required,"additionalProperties":false})
 }
-pub(crate) fn array_schema(items: Value) -> Value {
+pub fn array_schema(items: Value) -> Value {
     json!({"type":"array","items":items})
 }
 fn nullable(schema: Value) -> Value {
     json!({"anyOf":[schema,{"type":"null"}]})
 }
-pub(crate) fn batch_schema() -> Value {
+pub fn batch_schema() -> Value {
     let text = || json!({"type":"string"});
     let usage = object_schema([
         (
@@ -116,7 +116,7 @@ pub(crate) fn batch_schema() -> Value {
         ("events", array_schema(event)),
     ])
 }
-pub(crate) fn batch_value(batch: &AgentLogsBatch) -> Value {
+pub fn batch_value(batch: &AgentLogsBatch) -> Value {
     let events = batch
         .events
         .iter()
@@ -143,7 +143,7 @@ pub(crate) fn batch_value(batch: &AgentLogsBatch) -> Value {
         .collect::<Vec<_>>();
     json!({"schema_version":batch.schema_version,"source_id":batch.source_id,"source_client":batch.source_client,"events":events})
 }
-pub(crate) fn receipt_schema() -> Value {
+pub fn receipt_schema() -> Value {
     object_schema([
         ("accepted_events", json!({"type":"integer","minimum":0})),
         ("duplicate_events", json!({"type":"integer","minimum":0})),

@@ -115,11 +115,17 @@ async fn collect_native_waiting(
     };
     let mut projector =
         NativeWebSocketProjector::new("pending-receipt".into(), IncludeWorkflowEvents::Public);
-    let expected_action =
-        serde_json::to_value(typed.initial_run.required_action.as_ref().unwrap()).unwrap();
+    let expected_action = serde_json::to_value(
+        typed
+            .initial_run_for_test_support()
+            .required_action
+            .as_ref()
+            .unwrap(),
+    )
+    .unwrap();
     let mut events = Vec::new();
     let mut frames = Vec::new();
-    while let Some(input) = typed.events.recv().await {
+    while let Some(input) = typed.events_for_test_support().recv().await {
         let (run, event, receipt) = input.into_parts();
         assert!(
             receipt.is_none(),
@@ -618,19 +624,30 @@ async fn callback_preclaim_invoker_failure_retries_through_ingress_prepare() {
     // real ingress call fails with callback_resume_not_completed before CAS.
     command.reserved_attempt_id = None;
     let plan = ingress_retry_plan(&state, actor.clone(), &command).await;
-    assert_eq!(plan.initial_run.id, run.id);
-    assert_ne!(plan.initial_run.metadata["active_callback_attach"], true);
-    assert_eq!(plan.command.reserved_attempt_id, Some(id));
-    assert!(plan.reservation.as_ref().unwrap().is_acquired());
+    assert_eq!(plan.initial_run_for_test_support().id, run.id);
+    assert_ne!(
+        plan.initial_run_for_test_support().metadata["active_callback_attach"],
+        true
+    );
+    assert_eq!(
+        plan.command_for_test_support().reserved_attempt_id,
+        Some(id)
+    );
+    assert!(plan
+        .reservation_for_test_support()
+        .as_ref()
+        .unwrap()
+        .is_acquired());
     // Continue through real CP prepared execution. This test's stream rejects
     // open before provider handoff; the PG sibling tests complete the consumer.
+    let (plan_initial_run, plan_command, plan_reservation) = plan.into_parts_for_test_support();
     let retried = open_compatible_turn_with_invoker(
         dependencies,
-        plan.initial_run,
+        plan_initial_run,
         CompatibleTurnAction::ResumeForActor {
             actor,
-            command: plan.command,
-            reservation: plan.reservation,
+            command: plan_command,
+            reservation: plan_reservation,
         },
         None,
         None,
@@ -707,9 +724,8 @@ async fn callback_open_and_subscribe_failure_release_own_receipt_for_immediate_r
             );
         }
         let plan = ingress_retry_plan(&state, actor, &command).await;
-        let mut retry = plan
-            .reservation
-            .expect("ingress retry must own reservation");
+        let (_plan_run, _plan_command, reservation) = plan.into_parts_for_test_support();
+        let mut retry = reservation.expect("ingress retry must own reservation");
         assert!(retry.is_acquired());
         assert_eq!(retry.attempt_id(), id);
         retry.release().await;
@@ -753,9 +769,8 @@ async fn cancelled_callback_preparation_releases_receipt_but_handoff_disarms_dro
     await_received(&state, id).await;
     assert_single_cleaned_claim(&state, callback_task_id_from_resume_command(&command)).await;
     let plan = ingress_retry_plan(&state, actor, &command).await;
-    let mut guard = plan
-        .reservation
-        .expect("ingress retry must own reservation");
+    let (_plan_run, _plan_command, reservation) = plan.into_parts_for_test_support();
+    let mut guard = reservation.expect("ingress retry must own reservation");
     assert!(guard.is_acquired());
     assert_eq!(
         guard.attempt_id(),
@@ -814,7 +829,7 @@ async fn partial_tool_results_keep_waiting_receipt_without_opening_or_execution(
     let before = delivery_rows(&state, run.id).await;
     let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut terminal_dependencies = super::delivery_proof::terminal_dependencies(&state);
-    terminal_dependencies.delivery_read_attempts = Some(attempts.clone());
+    terminal_dependencies.set_delivery_read_attempts_for_test_support(Some(attempts.clone()));
     let prior_generation = stream
         .local
         .terminal_writer(run.id)
@@ -844,15 +859,20 @@ async fn partial_tool_results_keep_waiting_receipt_without_opening_or_execution(
     )
     .await
     .expect("partial tool results must return their waiting receipt despite a rejecting open port");
-    assert_eq!(opened.initial_run.status, NativeRunStatus::Waiting);
     assert_eq!(
-        opened.delivery_scope,
+        opened.initial_run_for_test_support().status,
+        NativeRunStatus::Waiting
+    );
+    assert_eq!(
+        opened.delivery_scope_for_test_support(),
         RuntimeEventDeliveryScope::Resume {
             callback_task_id: callback_id
         },
         "NoExecution must keep the command identity even when ignored waiting ID is absent"
     );
-    assert!(opened.ignored_waiting_callback_task_id.is_none());
+    assert!(opened
+        .ignored_waiting_callback_task_id_for_test_support()
+        .is_none());
     assert_eq!(
         stream
             .local
@@ -940,11 +960,11 @@ async fn repeated_partial_native_receipt_keeps_inbox_and_rejects_incompatible_bi
         )
         .await;
         assert!(matches!(
-            &opened.projection,
+            &opened.projection_for_test_support(),
             CompatibleTurnProjection::PendingNativeWaiting(_)
         ));
         let mut terminal = super::delivery_proof::terminal_dependencies(&state);
-        terminal.delivery_read_attempts = Some(attempts.clone());
+        terminal.set_delivery_read_attempts_for_test_support(Some(attempts.clone()));
         let projected =
             project_opened_compatible_turn(terminal, opened, native_receipt_consumer()).unwrap();
         collect_native_waiting(projected, callback).await;
@@ -987,7 +1007,10 @@ async fn repeated_partial_native_receipt_keeps_inbox_and_rejects_incompatible_bi
             Ok(_) => panic!("incompatible consumer must not receive old executable calls"),
             Err(error) => error,
         };
-        assert_eq!(error.code, "native_waiting_receipt_consumer_required");
+        assert_eq!(
+            error.code_for_test_support(),
+            "native_waiting_receipt_consumer_required"
+        );
     }
     assert_eq!(attempts.load(std::sync::atomic::Ordering::SeqCst), 0);
     assert_eq!(delivery_rows(&state, run.id).await, before);
@@ -1065,7 +1088,10 @@ async fn pending_native_receipt_freezes_a_after_real_successor_b_commits() {
         stream.clone(),
     )
     .await;
-    let frozen = opened.initial_run.required_action.clone();
+    let frozen = opened
+        .initial_run_for_test_support()
+        .required_action
+        .clone();
     complete_original_callback(&state, &run, &full).await;
     let next = super::delivery_proof::commit_wait(
         &state,
@@ -1077,10 +1103,13 @@ async fn pending_native_receipt_freezes_a_after_real_successor_b_commits() {
     let before = delivery_rows(&state, run.id).await;
     let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut terminal = super::delivery_proof::terminal_dependencies(&state);
-    terminal.delivery_read_attempts = Some(attempts.clone());
+    terminal.set_delivery_read_attempts_for_test_support(Some(attempts.clone()));
     let projected =
         project_opened_compatible_turn(terminal, opened, native_receipt_consumer()).unwrap();
-    assert_eq!(projected.initial_run.required_action, frozen);
+    assert_eq!(
+        projected.initial_run_for_test_support().required_action,
+        frozen
+    );
     let events = collect_native_waiting(projected, callback).await;
     assert_eq!(events[0].payload["callback_task_id"], json!(callback));
     assert_eq!(attempts.load(std::sync::atomic::Ordering::SeqCst), 0);
@@ -1143,7 +1172,10 @@ async fn blocking_native_partial_receipt_and_duplicate_do_not_execute_or_settle_
     )
     .await
     .unwrap_err();
-    assert_eq!(error.code, "native_waiting_receipt_consumer_required");
+    assert_eq!(
+        error.code_for_test_support(),
+        "native_waiting_receipt_consumer_required"
+    );
     assert_eq!(delivery_rows(&state, run.id).await, before);
     assert_eq!(
         stream
@@ -1253,7 +1285,7 @@ async fn native_attach_keeps_llm_required_action_and_native_resume_owner_checks(
     stream.append(run.id, expected.clone()).await.unwrap();
     let attempts = Arc::new(AtomicUsize::new(0));
     let mut terminal_dependencies = native::native_run_terminal_dependencies(&dependencies.native);
-    terminal_dependencies.delivery_read_attempts = Some(attempts.clone());
+    terminal_dependencies.set_delivery_read_attempts_for_test_support(Some(attempts.clone()));
     let mut attached =
         start_native_run_attachment_stream(terminal_dependencies, stream, actual, None)
             .await
@@ -1429,12 +1461,16 @@ async fn completed_a_waiting_b_no_execution_keeps_ordinary_scoped_projection() {
     .await
     .unwrap();
     assert!(matches!(
-        &opened.projection,
+        &opened.projection_for_test_support(),
         CompatibleTurnProjection::Scoped { .. }
     ));
-    assert_eq!(opened.ignored_waiting_callback_task_id, Some(callback));
+    assert_eq!(
+        opened.ignored_waiting_callback_task_id_for_test_support(),
+        Some(callback)
+    );
     let typed = opened_compatible_typed_stream(dependencies, opened).unwrap();
-    let (events, claims) = super::delivery_proof::collect_projection(typed.events).await;
+    let (events, claims) =
+        super::delivery_proof::collect_projection(typed.into_events_for_test_support()).await;
     super::delivery_proof::assert_exact_response(&events, &[payload], callback);
     assert_eq!(
         claims, 1,

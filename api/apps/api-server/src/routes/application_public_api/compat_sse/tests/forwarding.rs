@@ -197,32 +197,34 @@ fn spawn_scoped_typed_stream(
     let run = run.clone();
     tokio::spawn(async move {
         let _closure_sender = closure_sender;
-        send_subscribed_compatible_typed_event_stream(SubscribedCompatibleTypedEventStream {
-            terminal_dependencies: NativeRunTerminalDependencies::new(
-                state.store.clone(),
-                state.runtime_engine.clone(),
-                state.provider_runtime.clone(),
-                state.provider_secret_master_key.clone(),
-                state.model_billing_require_provider_usage,
-                state.infrastructure.provider_transport_store(),
-                state.runtime_event_stream.clone(),
-            ),
-            initial_run: run.clone(),
-            delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
-            delivery_scope,
-            from_sequence: None,
-            durable_round_replay,
-            ignored_waiting_callback_task_id: None,
-            subscription: RuntimeEventSubscription {
-                terminal_writer: Arc::new(UnusedTerminalWriter),
-                replay,
-                live_events: control_plane::ports::RuntimeEventReceiver::from_unbounded(
-                    live_events,
+        send_subscribed_compatible_typed_event_stream(
+            SubscribedCompatibleTypedEventStream::for_test_support(
+                NativeRunTerminalDependencies::new(
+                    state.store.clone(),
+                    state.runtime_engine.clone(),
+                    state.provider_runtime.clone(),
+                    state.provider_secret_master_key.clone(),
+                    state.model_billing_require_provider_usage,
+                    state.infrastructure.provider_transport_store(),
+                    state.runtime_event_stream.clone(),
                 ),
-                closure,
-            },
-            sender,
-        })
+                run.clone(),
+                CompatibleDeliveryPolicy::ScopedResponses,
+                delivery_scope,
+                None,
+                durable_round_replay,
+                None,
+                RuntimeEventSubscription {
+                    terminal_writer: Arc::new(UnusedTerminalWriter),
+                    replay,
+                    live_events: control_plane::ports::RuntimeEventReceiver::from_unbounded(
+                        live_events,
+                    ),
+                    closure,
+                },
+                sender,
+            ),
+        )
         .await
     })
 }
@@ -977,11 +979,8 @@ fn typed_projection_input_keeps_runtime_identity_and_canonical_envelope() {
         9,
         debug_stream_events::flow_finished(run.id, json!({ "answer": "done" })),
     );
-    let input = CompatibleProjectionInput {
-        run_snapshot: Arc::new(run.clone()),
-        envelope: envelope.clone(),
-        delivery: None,
-    };
+    let input =
+        CompatibleProjectionInput::for_test_support(Arc::new(run.clone()), envelope.clone(), None);
     let (run_snapshot, projected_envelope, delivery) = input.into_parts();
     assert!(delivery.is_none());
 

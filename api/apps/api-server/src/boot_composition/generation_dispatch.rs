@@ -50,6 +50,7 @@ impl GenerationDispatchAssembly for GenerationDispatch {
                     router,
                 ),
             ),
+            Arc::new(crate::public_gateway_assembly::PublicRuntimeInvokerAdapter),
         )
     }
     #[cfg_attr(test, api_test_selection::group(contracts))]

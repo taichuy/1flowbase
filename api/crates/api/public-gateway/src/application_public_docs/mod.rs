@@ -8,7 +8,7 @@ use crate::openapi_docs::{
     DocsCatalogOperation,
 };
 
-mod agent_logs;
+test_support_item! { , [] mod agent_logs; }
 mod schemas;
 
 use schemas::{
@@ -39,7 +39,9 @@ pub struct ApplicationPublicDocsContext {
     pub api_docs: Arc<ApiDocsRegistry>,
 }
 
+test_support_item! { , [
 #[derive(Debug, Clone, Copy)]
+]
 struct PublicOperation {
     id: &'static str,
     method: &'static str,
@@ -49,6 +51,7 @@ struct PublicOperation {
     request_body: Option<RequestBodyBuilder>,
     responses: ResponseBuilder,
     notes: OperationNotes,
+}
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -60,10 +63,13 @@ enum OperationNotes {
     },
 }
 
+test_support_item! { , [
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+]
 enum DocsLocale {
     EnUs,
     ZhHans,
+}
 }
 
 fn docs_locale(context: &ApplicationPublicDocsContext) -> DocsLocale {
@@ -235,14 +241,20 @@ fn decorate_assistant_spec(context: &ApplicationPublicDocsContext, mut spec: Val
     spec
 }
 
+test_support_item! { , [
 #[derive(Debug, Clone, Copy)]
+]
 struct DocTextResolver {
     locale: DocsLocale,
 }
+}
 
 impl DocTextResolver {
+    test_support_item! { , [
+    ]
     fn new(locale: DocsLocale) -> Self {
         Self { locale }
+    }
     }
 
     fn operation_summary(&self, doc_key: &str) -> &'static str {
@@ -636,6 +648,8 @@ impl DocTextResolver {
     }
 }
 
+test_support_item! { , [
+]
 fn category_label(category_id: &str, locale: DocsLocale) -> Option<&'static str> {
     match (category_id, locale) {
         (NATIVE_CATEGORY_ID, DocsLocale::ZhHans) => Some("应用原生 API"),
@@ -650,6 +664,7 @@ fn category_label(category_id: &str, locale: DocsLocale) -> Option<&'static str>
         (agent_logs::CATEGORY_ID, DocsLocale::EnUs) => Some("Log ingestion API"),
         _ => None,
     }
+}
 }
 
 fn to_catalog_operation(operation: &PublicOperation, locale: DocsLocale) -> DocsCatalogOperation {
@@ -884,6 +899,7 @@ fn public_operations(context: &ApplicationPublicDocsContext) -> &'static [Public
     }
 }
 
+test_support_item! { , []
 static PUBLIC_OPERATION_REGISTRY: &[PublicOperation] = &[
     PublicOperation {
         id: "applicationNativeCreateRun",
@@ -1022,75 +1038,28 @@ static PUBLIC_OPERATION_REGISTRY: &[PublicOperation] = &[
         },
     },
 ];
+}
 
-#[cfg_attr(test, api_test_selection::group(core))]
-#[cfg(test)]
-mod tests {
-    use std::collections::HashSet;
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support {
+    pub use super::agent_logs;
+    pub use super::schemas::{operation_request_body, operation_responses};
+}
 
-    use super::*;
-    use utoipa::OpenApi;
-
-    #[test]
-    fn public_operation_registry_declares_unique_documented_operations() {
-        let docs = DocTextResolver::new(DocsLocale::EnUs);
-        let mut ids = HashSet::new();
-        let mut routes = HashSet::new();
-
-        for operation in PUBLIC_OPERATION_REGISTRY
-            .iter()
-            .chain(agent_logs::OPERATIONS)
-        {
-            assert!(ids.insert(operation.id), "duplicate operation id");
-            assert!(
-                routes.insert((operation.method, operation.path)),
-                "duplicate public route"
-            );
-            assert!(
-                category_label(operation.category_id, DocsLocale::EnUs).is_some(),
-                "unknown category {}",
-                operation.category_id
-            );
-            assert!(
-                !operation_responses(operation, &docs)
-                    .as_object()
-                    .expect("operation responses should be an object")
-                    .is_empty(),
-                "operation {} must declare responses",
-                operation.id
-            );
-            if let Some(request_body) = operation_request_body(operation, &docs) {
-                assert!(
-                    request_body.as_object().is_some(),
-                    "operation {} request body should be an object",
-                    operation.id
-                );
-            }
-        }
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+impl PublicOperation {
+    pub fn id_for_test_support(&self) -> &'static str {
+        self.id
     }
-
-    #[test]
-    fn public_operation_registry_matches_global_openapi_paths() {
-        let spec = serde_json::to_value(crate::openapi::ApiDoc::openapi())
-            .expect("global openapi should serialize");
-        let paths = spec["paths"]
-            .as_object()
-            .expect("global openapi paths should be an object");
-
-        for operation in PUBLIC_OPERATION_REGISTRY
-            .iter()
-            .chain(agent_logs::OPERATIONS)
-        {
-            let Some(path_item) = paths.get(operation.path) else {
-                panic!("global openapi missing path {}", operation.path);
-            };
-            let method = operation.method.to_ascii_lowercase();
-            assert!(
-                path_item.get(&method).is_some(),
-                "global openapi missing {} {}",
-                operation.method,
-                operation.path
-            );
-        }
+    pub fn method_for_test_support(&self) -> &'static str {
+        self.method
+    }
+    pub fn path_for_test_support(&self) -> &'static str {
+        self.path
+    }
+    pub fn category_id_for_test_support(&self) -> &'static str {
+        self.category_id
     }
 }

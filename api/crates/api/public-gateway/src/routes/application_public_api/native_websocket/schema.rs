@@ -48,7 +48,7 @@ impl NativeWebSocketClientCommand {
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
-pub(crate) enum NativeWebSocketCommandError {
+pub enum NativeWebSocketCommandError {
     #[error("binary client messages are not supported")]
     BinaryNotSupported,
     #[error("invalid Native WebSocket command")]
@@ -76,7 +76,7 @@ pub(crate) fn decode_client_message(
     }
 }
 
-pub(crate) fn sequence_from_event_id(
+pub fn sequence_from_event_id(
     run_id: Uuid,
     event_id: Option<&str>,
 ) -> Result<Option<i64>, NativeWebSocketCommandError> {

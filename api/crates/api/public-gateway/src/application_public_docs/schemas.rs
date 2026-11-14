@@ -8,15 +8,21 @@ use request_schemas::{
     openai_response_create_schema,
 };
 
-pub(super) fn operation_request_body(
+test_support_item! { pub(super), [
+]
+fn operation_request_body(
     operation: &PublicOperation,
     docs: &DocTextResolver,
 ) -> Option<Value> {
     operation.request_body.map(|builder| builder(docs))
 }
+}
 
-pub(super) fn operation_responses(operation: &PublicOperation, docs: &DocTextResolver) -> Value {
+test_support_item! { pub(super), [
+]
+fn operation_responses(operation: &PublicOperation, docs: &DocTextResolver) -> Value {
     (operation.responses)(docs)
+}
 }
 
 pub(super) fn native_create_run_request_body(docs: &DocTextResolver) -> Value {

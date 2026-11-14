@@ -16,13 +16,14 @@ use axum::{
 mod actor;
 mod projector;
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
-pub(crate) use projector::NativeWebSocketProjector;
+test_support_item! { pub(crate), [
+#[cfg(any(test,feature="test-support"))]
+]
+use projector::NativeWebSocketProjector;
+}
 
-pub(crate) mod schema;
+pub mod schema;
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod tests;
 

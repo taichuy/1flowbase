@@ -158,7 +158,7 @@ impl DocumentOperationCodec<WorkflowExtensionInput, WorkflowExtensionOutput> for
     }
 }
 
-pub(crate) async fn document_descriptor_for_entry(
+pub async fn document_descriptor_for_entry(
     dependencies: &crate::openapi_interface::OpenApiCapabilityCatalogDependencies,
     actor: &domain::ActorContext,
     entry: &crate::openapi_interface::OpenApiCapabilityCatalogEntry,
@@ -190,7 +190,6 @@ pub(crate) async fn document_descriptor_for_entry(
     })
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "_tests/document_observation.rs"]
 mod tests;

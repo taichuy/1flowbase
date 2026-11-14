@@ -141,8 +141,7 @@ pub async fn ingest_traces(
     run.map_err(|error: ApiError| OtlpError::new(error, format))
 }
 
-pub(crate) fn route_assembly(
-) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
+pub fn route_assembly() -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
     crate::external_route_assembly::ExternalRouteAssembly::new().route(
         ROUTE,
         crate::external_route_assembly::post(ingest_traces.layer(DefaultBodyLimit::disable())),

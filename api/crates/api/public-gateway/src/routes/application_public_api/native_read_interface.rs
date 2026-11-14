@@ -41,11 +41,26 @@ use crate::{
     provider_runtime::ApiProviderRuntime, runtime_activity::ApplicationRuntimeActivityTracker,
 };
 
-pub(crate) const MODELS_BINDING_ID: &str = "http.application.native.models.list.v1";
-pub(crate) const GET_RUN_BINDING_ID: &str = "http.application.native.runs.get.v1";
-pub(crate) const CANCEL_RUN_BINDING_ID: &str = "http.application.native.runs.cancel.v1";
-pub(crate) const RESUME_RUN_BINDING_ID: &str = "http.application.native.runs.resume.v1";
-pub(crate) const UPLOAD_FILE_BINDING_ID: &str = "http.application.native.files.upload.v1";
+test_support_item! { pub(crate), [
+]
+const MODELS_BINDING_ID: &str = "http.application.native.models.list.v1";
+}
+test_support_item! { pub(crate), [
+]
+const GET_RUN_BINDING_ID: &str = "http.application.native.runs.get.v1";
+}
+test_support_item! { pub(crate), [
+]
+const CANCEL_RUN_BINDING_ID: &str = "http.application.native.runs.cancel.v1";
+}
+test_support_item! { pub(crate), [
+]
+const RESUME_RUN_BINDING_ID: &str = "http.application.native.runs.resume.v1";
+}
+test_support_item! { pub(crate), [
+]
+const UPLOAD_FILE_BINDING_ID: &str = "http.application.native.files.upload.v1";
+}
 
 #[derive(serde::Serialize)]
 pub(crate) struct NativeModelsInput;
@@ -215,11 +230,14 @@ impl crate::openapi_interface::json_contract::JsonApiInput for NativeGetRunInput
         crate::openapi_interface::json_contract::JsonInputLocation::Path;
 }
 
-pub(crate) struct NativeUploadFileInput {
+test_support_item! { pub(crate), [
+]
+struct NativeUploadFileInput {
     pub(crate) file_table_id: Uuid,
     pub(crate) original_filename: String,
     pub(crate) content_type: Option<String>,
     pub(crate) bytes: Vec<u8>,
+}
 }
 impl InterfaceContract for NativeUploadFileInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -335,7 +353,7 @@ impl InterfaceContract for NativeReadTargetError {
 type ReadFuture<'a, T> =
     Pin<Box<dyn Future<Output = Result<T, NativeReadTargetError>> + Send + 'a>>;
 
-pub(crate) trait NativeReadPort: Send + Sync + 'static {
+pub trait NativeReadPort: Send + Sync + 'static {
     fn list_models<'a>(
         &'a self,
         principal: &'a ApplicationPrincipal,
@@ -355,7 +373,7 @@ pub(crate) trait NativeReadPort: Send + Sync + 'static {
     ) -> ReadFuture<'a, NativeCancelRunOutput>;
 }
 
-pub(crate) type RuntimeInvokerFuture<'a> = Pin<
+pub type RuntimeInvokerFuture<'a> = Pin<
     Box<
         dyn Future<Output = Result<Arc<dyn RuntimeInternalToolInvoker>, NativeApiError>>
             + Send
@@ -363,7 +381,7 @@ pub(crate) type RuntimeInvokerFuture<'a> = Pin<
     >,
 >;
 
-pub(crate) trait NativeRuntimeInvokerFactory: Send + Sync + 'static {
+pub trait NativeRuntimeInvokerFactory: Send + Sync + 'static {
     /// Bind the credential host to the actual actor and selected generation without loading MCP.
     fn without_mcp<'a>(&'a self, actor: &'a domain::ActorContext) -> RuntimeInvokerFuture<'a>;
 
@@ -373,7 +391,7 @@ pub(crate) trait NativeRuntimeInvokerFactory: Send + Sync + 'static {
     ) -> RuntimeInvokerFuture<'a>;
 }
 
-pub(crate) trait NativeResumePort: Send + Sync + 'static {
+pub trait NativeResumePort: Send + Sync + 'static {
     fn resume<'a>(
         &'a self,
         principal: &'a ApplicationPrincipal,
@@ -381,7 +399,7 @@ pub(crate) trait NativeResumePort: Send + Sync + 'static {
     ) -> ReadFuture<'a, NativeResumeRunOutput>;
 }
 
-pub(crate) trait NativeFilePort: Send + Sync + 'static {
+pub trait NativeFilePort: Send + Sync + 'static {
     fn upload<'a>(
         &'a self,
         principal: &'a ApplicationPrincipal,
@@ -455,7 +473,7 @@ impl NativeFilePort for NativeFileAdapter {
     }
 }
 
-pub(crate) fn native_file_port(
+pub fn native_file_port(
     store: MainDurableStore,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     runtime_engine: Arc<RuntimeEngine>,
@@ -535,7 +553,7 @@ impl NativeResumePort for NativeResumeAdapter {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn native_resume_port(
+pub fn native_resume_port(
     store: MainDurableStore,
     published_plan_cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
     provider_runtime: ApiProviderRuntime,
@@ -634,7 +652,7 @@ impl NativeReadPort for NativeReadAdapter {
     }
 }
 
-pub(crate) fn native_read_port(
+pub fn native_read_port(
     store: MainDurableStore,
     cache_store: Arc<dyn CacheStore>,
     runtime_event_stream: Arc<dyn RuntimeEventStream>,
@@ -797,7 +815,7 @@ impl InterfaceAuthorizationPort<ApplicationPrincipal> for NativeReadAuthorizatio
     }
 }
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn NativeReadPort>,
     resume_port: Arc<dyn NativeResumePort>,
     file_port: Arc<dyn NativeFilePort>,
@@ -1030,3 +1048,24 @@ pub(crate) use run_contracts::NativeCancelRunOutput;
 pub(crate) use run_contracts::NativeGetRunOutput;
 pub(crate) use run_contracts::NativeResumeRunInput;
 pub(crate) use run_contracts::NativeResumeRunOutput;
+
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+impl NativeUploadFileInput {
+    pub fn for_test_support(
+        file_table_id: Uuid,
+        original_filename: String,
+        content_type: Option<String>,
+        bytes: Vec<u8>,
+    ) -> Self {
+        Self {
+            file_table_id,
+            original_filename,
+            content_type,
+            bytes,
+        }
+    }
+    pub fn bytes_for_test_support(&self) -> &[u8] {
+        &self.bytes
+    }
+}

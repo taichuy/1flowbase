@@ -2,6 +2,7 @@
 members = [
   "apps/api-server",
   "crates/api/kernel",
+  "crates/api/public-gateway",
   "crates/api-test-selection",
   "crates/domain",
   "crates/control-plane-contracts",
@@ -134,3 +135,10 @@ tungstenite = { path = "vendor/tungstenite-0.27.0-openai-memory" }
 
 [patch.crates-io]
 tungstenite = { path = "vendor/tungstenite-0.29.0-memory" }
+
+[profile.dev.package.api-public-gateway]
+debug="line-tables-only"
+[profile.test.package.api-public-gateway]
+incremental=false
+debug=0
+codegen-units=256

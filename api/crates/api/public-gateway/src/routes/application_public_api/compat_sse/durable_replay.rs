@@ -1,6 +1,8 @@
 use super::*;
 
-pub(super) async fn compatible_round_replay(
+test_support_item! { pub(super), [
+]
+async fn compatible_round_replay(
     dependencies: &CompatibilityExecutionDependencies,
     initial_run: &NativeRunResult,
     round_id: uuid::Uuid,
@@ -16,10 +18,14 @@ pub(super) async fn compatible_round_replay(
         ))),
     }
 }
+}
 
-pub(super) enum DurableCompatibleRoundReplay {
+test_support_item! { pub(super), [
+]
+enum DurableCompatibleRoundReplay {
     Ready(Vec<RuntimeEventEnvelope>),
     PendingIdentity,
+}
 }
 
 pub(super) enum DurableCompatibleRoundIdentity {
@@ -28,7 +34,9 @@ pub(super) enum DurableCompatibleRoundIdentity {
     Pending,
 }
 
-pub(super) async fn durable_compatible_round_replay(
+test_support_item! { pub(super), [
+]
+async fn durable_compatible_round_replay(
     dependencies: &CompatibilityExecutionDependencies,
     initial_run: &NativeRunResult,
     round_id: uuid::Uuid,
@@ -39,6 +47,7 @@ pub(super) async fn durable_compatible_round_replay(
         round_id,
     )
     .await
+}
 }
 
 pub(super) async fn durable_callback_replay(

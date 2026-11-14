@@ -50,7 +50,11 @@ async fn public_plan(
     else {
         panic!("Native tool delivery must reach its existing reservation owner")
     };
-    assert!(plan.reservation.as_ref().unwrap().is_acquired());
+    assert!(plan
+        .reservation_for_test_support()
+        .as_ref()
+        .unwrap()
+        .is_acquired());
     plan
 }
 
@@ -77,6 +81,7 @@ async fn invoke_plan(
         &binding_id,
         principal.application_id(),
     );
+    let (plan_initial_run, plan_command, plan_reservation) = plan.into_parts_for_test_support();
     let envelope = InvocationEnvelope::with_principal(
         InvocationLineage::root(InvocationId::now_v7()),
         binding_id.clone(),
@@ -85,15 +90,15 @@ async fn invoke_plan(
         activation.activation().clone(),
         principal,
         None,
-        binding::CompatibilityBlockingInput {
-            response_projection: None,
-            document: Err(std::sync::Arc::from("websocket_frame_has_no_http_body")),
-            command: binding::CompatibilityInvocationCommand::Resume {
-                initial_run: plan.initial_run,
-                command: plan.command,
-                reservation: plan.reservation,
+        binding::CompatibilityBlockingInput::for_test_support(
+            None,
+            Err(std::sync::Arc::from("websocket_frame_has_no_http_body")),
+            binding::CompatibilityInvocationCommand::Resume {
+                initial_run: plan_initial_run,
+                command: plan_command,
+                reservation: plan_reservation,
             },
-        },
+        ),
     );
     InterfaceInvocationKernel::new(Arc::new(binding::CompatibilityBlockingAuthorization))
         .invoke_server_stream_with_dispatch_target::<binding::CompatibilityBlockingInput,
@@ -130,9 +135,17 @@ async fn native_waiting(invocation: Invocation, callback: Uuid, expected: &Value
     let InterfaceStreamTerminal::Completed(output) = outcome.terminal() else {
         panic!("Native waiting observation must complete the compiled invocation")
     };
-    assert_eq!(output.0.status, NativeRunStatus::Waiting);
     assert_eq!(
-        output.0.required_action.as_ref().unwrap().payload["callback_task_id"],
+        output.inner_for_test_support().status,
+        NativeRunStatus::Waiting
+    );
+    assert_eq!(
+        output
+            .inner_for_test_support()
+            .required_action
+            .as_ref()
+            .unwrap()
+            .payload["callback_task_id"],
         json!(callback)
     );
 }
@@ -201,7 +214,12 @@ async fn public_native_partial_duplicate_and_c2_reach_compiled_binding_and_singl
         let acquired = attempt(&state, callback).await;
         assert_eq!(acquired.1, "processing");
         assert_eq!(acquired.3, c1.response_payload);
-        let receipt = plan.reservation.as_ref().unwrap().receipt().unwrap();
+        let receipt = plan
+            .reservation_for_test_support()
+            .as_ref()
+            .unwrap()
+            .receipt()
+            .unwrap();
         if let Some(original) = &first_receipt {
             assert_ne!(&receipt, original);
         }
@@ -306,7 +324,12 @@ async fn public_native_partial_duplicate_and_c2_reach_compiled_binding_and_singl
         assert!(prior.closure().is_none());
     }
     let plan = public_plan(state.clone(), actor.clone(), c2.clone()).await;
-    let final_receipt = plan.reservation.as_ref().unwrap().receipt().unwrap();
+    let final_receipt = plan
+        .reservation_for_test_support()
+        .as_ref()
+        .unwrap()
+        .receipt()
+        .unwrap();
     assert_eq!(
         final_receipt.attempt_id(),
         first_receipt.as_ref().unwrap().attempt_id()
@@ -413,7 +436,7 @@ async fn public_native_non_tool_retains_ordinary_plan_and_tool_owner_rejects_for
         panic!("ordinary Native callback must retain Resume")
     };
     assert!(
-        plan.reservation.is_none(),
+        plan.reservation_for_test_support().is_none(),
         "non-LLM Native must never acquire prepared admission"
     );
     assert_eq!(stream.open_attempts.load(Ordering::SeqCst), 0);
@@ -450,7 +473,11 @@ async fn public_native_non_tool_retains_ordinary_plan_and_tool_owner_rejects_for
             Ok(_) => panic!("{field} must be rejected before Native classification"),
             Err(error) => error,
         };
-        assert_eq!(error.status, axum::http::StatusCode::FORBIDDEN, "{field}");
+        assert_eq!(
+            error.status_for_test_support(),
+            axum::http::StatusCode::FORBIDDEN,
+            "{field}"
+        );
     }
     let callback = callback_task_id_from_resume_command(&c1);
     let plan = public_plan(state.clone(), actor.clone(), c1.clone()).await;

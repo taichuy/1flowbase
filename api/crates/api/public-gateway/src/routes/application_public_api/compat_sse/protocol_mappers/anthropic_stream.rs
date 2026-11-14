@@ -28,7 +28,9 @@ impl AnthropicMessageStopReason {
     }
 }
 
-pub(crate) struct AnthropicStreamMapper {
+test_support_item! { pub(crate), [
+]
+struct AnthropicStreamMapper {
     model: String,
     usage_baseline: crate::routes::application_public_api::openai::usage::ResponseUsageBaseline,
     message_id: String,
@@ -38,9 +40,12 @@ pub(crate) struct AnthropicStreamMapper {
     stream_state: AnthropicStreamState,
     message_start_emitted: bool,
 }
+}
 
 impl AnthropicStreamMapper {
-    pub(in crate::routes::application_public_api::compat_sse) fn new(model: String) -> Self {
+    test_support_item! { pub(in crate::routes::application_public_api::compat_sse), [
+    ]
+    fn new(model: String) -> Self {
         Self {
             model,
             usage_baseline: Default::default(),
@@ -52,6 +57,7 @@ impl AnthropicStreamMapper {
             message_start_emitted: false,
         }
     }
+    }
 
     pub(in crate::routes::application_public_api::compat_sse) fn with_usage_baseline(
         mut self,
@@ -61,7 +67,9 @@ impl AnthropicStreamMapper {
         self
     }
 
-    pub(in crate::routes::application_public_api::compat_sse) fn runtime_event_to_sse(
+    test_support_item! { pub(in crate::routes::application_public_api::compat_sse), [
+    ]
+    fn runtime_event_to_sse(
         &mut self,
         initial_run: &NativeRunResult,
         event: impl Into<CompatibleRuntimeEventView>,
@@ -145,6 +153,7 @@ impl AnthropicStreamMapper {
             "finish" => Vec::new(),
             _ => Vec::new(),
         }
+    }
     }
 
     fn anthropic_terminal_events(
@@ -369,7 +378,9 @@ impl AnthropicStreamMapper {
     }
 }
 
-pub(in crate::routes::application_public_api::compat_sse) fn anthropic_delta_payload(
+test_support_item! { pub(in crate::routes::application_public_api::compat_sse), [
+]
+fn anthropic_delta_payload(
     index: u32,
     event_type: &str,
     text: String,
@@ -395,8 +406,8 @@ pub(in crate::routes::application_public_api::compat_sse) fn anthropic_delta_pay
         }),
     ))
 }
+}
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "_tests/anthropic_errors.rs"]
 mod error_tests;

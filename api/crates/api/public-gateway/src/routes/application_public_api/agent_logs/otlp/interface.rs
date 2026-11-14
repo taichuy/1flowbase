@@ -13,7 +13,7 @@ impl InterfaceAuthorizationPort<ApplicationPrincipal> for Authorization {
         Box::pin(async { Ok(()) })
     }
 }
-pub(crate) fn compile_registry<R>(
+pub fn compile_registry<R>(
     store: R,
 ) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError>
 where

@@ -183,7 +183,7 @@ type CompatibilityModelsFuture<'a> = Pin<
     >,
 >;
 
-pub(crate) trait CompatibilityModelsPort: Send + Sync + 'static {
+pub trait CompatibilityModelsPort: Send + Sync + 'static {
     fn list<'a>(
         &'a self,
         principal: &'a ApplicationPrincipal,
@@ -225,9 +225,7 @@ impl CompatibilityModelsPort for CompatibilityModelsAdapter {
     }
 }
 
-pub(crate) fn compatibility_models_port(
-    store: MainDurableStore,
-) -> Arc<dyn CompatibilityModelsPort> {
+pub fn compatibility_models_port(store: MainDurableStore) -> Arc<dyn CompatibilityModelsPort> {
     Arc::new(CompatibilityModelsAdapter { store })
 }
 
@@ -373,7 +371,7 @@ fn register_binding(
     Ok(())
 }
 
-pub(crate) async fn invoke_models(
+pub async fn invoke_models(
     state: Arc<ApiState>,
     binding_id: &'static str,
     bearer_token: String,
@@ -434,12 +432,10 @@ fn contract<T: InterfaceContract>() -> ContractIdentity {
         .expect("static compatibility models contract is valid")
 }
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 struct UnavailableCompatibilityModelsPort;
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl CompatibilityModelsPort for UnavailableCompatibilityModelsPort {
     fn list<'a>(
         &'a self,
@@ -456,10 +452,12 @@ impl CompatibilityModelsPort for UnavailableCompatibilityModelsPort {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-pub(super) fn unavailable_port() -> Arc<dyn CompatibilityModelsPort> {
+test_support_item! { pub(super), [
+#[cfg(any(test,feature="test-support"))]
+]
+fn unavailable_port() -> Arc<dyn CompatibilityModelsPort> {
     Arc::new(UnavailableCompatibilityModelsPort)
+}
 }
 
 impl crate::openapi_interface::contract::ApiInput for CompatibilityModelsInput {

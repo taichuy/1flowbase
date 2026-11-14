@@ -92,7 +92,12 @@ impl crate::openapi_interface::contract::ApiInput for Input {
     fn document_input_schema(
         _: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<Value> {
-        Some(ep::object_schema([("body", crate::openapi_interface::contract::schema::<crate::routes::applications_group::application_runtime::log_exchange::event_projection::OtlpDocument>())]))
+        Some(ep::object_schema([(
+            "body",
+            crate::openapi_interface::contract::schema::<
+                crate::openapi_interface::otlp_document::OtlpDocument,
+            >(),
+        )]))
     }
     fn project_document_input(
         &self,
@@ -117,7 +122,6 @@ impl crate::openapi_interface::contract::ApiOutput for Output {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 #[path = "_tests/document_projection.rs"]
 mod document_projection_tests;

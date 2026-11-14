@@ -1,4 +1,6 @@
-//! One precompiled internal router per generation. Registry descendants only hold Weak edges.
+#[path = "public_runtime_invoker.rs"]
+pub mod public_runtime_invoker;
+// One precompiled internal router per generation. Registry descendants only hold Weak edges.
 use crate::{
     app_state::ApiState,
     error_response::{ApiError, ApiServiceUnavailable},
@@ -43,6 +45,7 @@ pub struct GenerationDispatch {
 struct DispatchPorts {
     callable: Arc<dyn CallableDispatchPort>,
     mcp: Arc<dyn McpInterfaceDispatchPort>,
+    public_runtime_invoker: Arc<dyn public_runtime_invoker::PublicRuntimeInvokerPort>,
 }
 
 pub fn unavailable() -> ApiError {
@@ -50,6 +53,17 @@ pub fn unavailable() -> ApiError {
 }
 
 impl GenerationDispatch {
+    pub async fn public_runtime_invoker(
+        &self,
+        state: &Arc<ApiState>,
+        actor: &control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+    ) -> Result<
+        Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>,
+        ApiError,
+    > {
+        let ports = self.ports.get().ok_or_else(unavailable)?;
+        ports.public_runtime_invoker.for_actor(state, actor).await
+    }
     pub fn is_ready(&self) -> bool {
         self.ports.get().is_some()
     }
@@ -57,9 +71,14 @@ impl GenerationDispatch {
         &self,
         callable: Arc<dyn CallableDispatchPort>,
         mcp: Arc<dyn McpInterfaceDispatchPort>,
+        public_runtime_invoker: Arc<dyn public_runtime_invoker::PublicRuntimeInvokerPort>,
     ) -> Result<(), ApiError> {
         self.ports
-            .set(DispatchPorts { callable, mcp })
+            .set(DispatchPorts {
+                callable,
+                mcp,
+                public_runtime_invoker,
+            })
             .map_err(|_| unavailable())
     }
 

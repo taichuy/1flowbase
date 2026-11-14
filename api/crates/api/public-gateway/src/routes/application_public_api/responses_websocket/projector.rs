@@ -32,8 +32,10 @@ enum ProjectionState {
     Terminal,
 }
 
+test_support_item! { pub(crate), [
 /// Projects ordered typed runtime facts onto one Responses WebSocket turn.
-pub(crate) struct ResponsesWebSocketProjector {
+]
+struct ResponsesWebSocketProjector {
     model: String,
     previous_response_id: Option<String>,
     active_output_item: Option<OutputItemKind>,
@@ -45,19 +47,24 @@ pub(crate) struct ResponsesWebSocketProjector {
     state: ProjectionState,
     usage_baseline: crate::routes::application_public_api::openai::usage::ResponseUsageBaseline,
 }
+}
 
 impl ResponsesWebSocketProjector {
-    #[cfg_attr(test, api_test_selection::group(public_api))]
-    #[cfg(test)]
-    pub(crate) fn new(model: String, previous_response_id: Option<String>) -> Self {
+    test_support_item! { pub(crate), [
+    #[cfg(any(test, feature = "test-support"))]
+    ]
+    fn new(model: String, previous_response_id: Option<String>) -> Self {
         Self::with_mode(
             model,
             previous_response_id,
             ResponsesProjectionMode::SemanticNativeResponses,
         )
     }
+    }
 
-    pub(crate) fn with_mode(
+    test_support_item! { pub(crate), [
+    ]
+    fn with_mode(
         model: String,
         previous_response_id: Option<String>,
         mode: ResponsesProjectionMode,
@@ -77,6 +84,7 @@ impl ResponsesWebSocketProjector {
             state: ProjectionState::Initial,
             usage_baseline: Default::default(),
         }
+    }
     }
 
     pub(crate) fn with_usage_baseline(

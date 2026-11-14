@@ -87,7 +87,6 @@ pub(super) fn output(output: &ApplicationNativeRunOutput) -> Value {
     }})
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "event_projection/_tests/events.rs"]
 mod _tests;

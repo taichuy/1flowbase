@@ -30,8 +30,8 @@ fn authentication_projection_uses_typed_rejection_and_retains_service_statuses()
                 error
             };
             let projected = native_error(NativeRunError::Service(error));
-            assert_eq!(projected.status, expected);
-            assert_eq!(projected.code, code);
+            assert_eq!(projected.status_for_test_support(), expected);
+            assert_eq!(projected.code_for_test_support(), code);
         }
     }
 }
@@ -101,6 +101,10 @@ async fn isolated_closed_pool_is_not_invalid_key_for_compatibility_and_native_ro
         .await
         .err()
         .unwrap();
-        assert_eq!(error.status, StatusCode::INTERNAL_SERVER_ERROR, "{binding}");
+        assert_eq!(
+            error.status_for_test_support(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "{binding}"
+        );
     }
 }
