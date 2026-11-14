@@ -758,6 +758,8 @@ test('moved API owners cannot construct outbound clients outside the exact Host 
     'api/crates/api/applications/src/routes/applications/unowned.rs',
     'api/crates/api/console-settings/src/routes/settings/unowned.rs',
     'api/crates/api/mcp/src/routes/mcp_protocol/unowned.rs',
+    'api/crates/api/plugins-models/src/routes/plugins_and_models/unowned.rs',
+    'api/crates/api/console-interaction/src/routes/terminal/unowned.rs',
   ]) {
     const findings = scanSourceFile({ relativePath, content: 'let client = reqwest::Client::new();\n' });
     assert.equal(findings.some((item) => item.rule === 'unowned-outbound-http-client'), true);

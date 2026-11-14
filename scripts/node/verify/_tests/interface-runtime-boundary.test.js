@@ -120,10 +120,11 @@ test('Delivery 1944 routes cannot inject decision or hook plans and plugin decis
   const kernel = productionRustSources(path.join(runtimeRoot, 'src/invocation.rs'));
   const decision = read('api/crates/interface-runtime/src/decision.rs');
   const routes = [
-    'api/apps/api-server/src/routes/identity/auth.rs',
+    'api/crates/api/console-interaction/src/routes/identity/auth.rs',
     'api/crates/api/public-gateway/src/routes/application_public_api/native.rs',
     'api/crates/api/mcp/src/routes/mcp_protocol.rs',
     'api/crates/api/console-settings/src/routes/settings/host_infrastructure/interface_operation.rs',
+    'api/crates/api/kernel/src/contracts/interaction_shared/console_invocation.rs',
   ].map(read).join('\n');
 
   assert.doesNotMatch(
@@ -148,10 +149,11 @@ test('Delivery 1944 protocol adapters authenticate through the frozen factory be
   const boot = read('api/apps/api-server/src/extension_bus/boot_snapshot.rs') + '\n'
     + read('api/crates/api/kernel/src/contracts/extension_bus/boot_snapshot.rs');
   const routes = [
-    'api/apps/api-server/src/routes/identity/auth.rs',
+    'api/crates/api/console-interaction/src/routes/identity/auth.rs',
     'api/crates/api/public-gateway/src/routes/application_public_api/native.rs',
     'api/crates/api/mcp/src/routes/mcp_protocol.rs',
     'api/crates/api/console-settings/src/routes/settings/host_infrastructure/interface_operation.rs',
+    'api/crates/api/kernel/src/contracts/interaction_shared/console_invocation.rs',
   ].map(read).join('\n');
   const runtime = productionRustSources(path.join(runtimeRoot, 'src'));
 
@@ -171,7 +173,7 @@ test('Delivery 1944 protocol adapters authenticate through the frozen factory be
 test('Delivery 1944 typed production handlers do not import request or host capabilities', () => {
   const handlers = [
     [
-      'api/apps/api-server/src/routes/identity/login_entries_interface.rs',
+      'api/crates/api/console-interaction/src/routes/identity/login_entries_interface.rs',
       'PublicLoginEntriesHandler',
       'PublicLoginEntriesAuthorization',
     ],
@@ -202,9 +204,10 @@ test('Delivery 1944 typed production handlers do not import request or host capa
 test('Delivery 1917 binds one graph-frozen hook plan and commits facts through durable outbox', () => {
   const boot = read('api/apps/api-server/src/extension_bus/boot_snapshot.rs') + '\n'
     + read('api/crates/api/kernel/src/contracts/extension_bus/boot_snapshot.rs');
-  const operation = read(
+  const operation = [
     'api/crates/api/console-settings/src/routes/settings/host_infrastructure/interface_operation.rs',
-  );
+    'api/crates/api/kernel/src/contracts/interaction_shared/console_invocation.rs',
+  ].map(read).join('\n');
   const transaction = read(
     'api/crates/storage/durable/postgres/src/model_definition_repository/create.rs',
   );

@@ -155,3 +155,35 @@ test('formal repository reviews all bind source and distinct evidence without hi
     }
   }
 });
+
+
+test('model-provider JSON reviews retain exact source evidence after the Plugins owner move', (t) => {
+  const repoRoot = path.resolve(__dirname, '../../../..');
+  const baseline = JSON.parse(fs.readFileSync(path.join(repoRoot, 'scripts/node/check-rust-backend/baseline.json'), 'utf8'));
+  const entries = baseline.allowedFindings.filter(entry => ['json-model-provider-catalog', 'json-model-provider-options'].includes(entry.id));
+  assert.equal(entries.length, 2);
+  const file = 'api/crates/api/plugins-models/src/routes/plugins_and_models/model_providers/response_mapping.rs';
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-json-reviews-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  function write(relative, bytes) {
+    fs.mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
+    fs.writeFileSync(path.join(root, relative), bytes);
+  }
+  for (const entry of entries) {
+    assert.equal(entry.file, file);
+    for (const [source, hash] of [[entry.file, entry.source_sha256], ...entry.evidence.map(item => [item.file, item.sha256])]) {
+      const bytes = fs.readFileSync(path.join(repoRoot, source));
+      assert.equal(sha256(bytes), hash, source);
+      write(source, bytes);
+    }
+  }
+  write('scripts/node/check-rust-backend/baseline.json', JSON.stringify({ ...baseline, allowedFindings: entries }));
+  const current = collectRustBackendFindings({ repoRoot: root, includeSuppressed: true });
+  assert.deepEqual(current.filter(item => item.suppressed).map(item => item.reviewId).sort(), entries.map(entry => entry.id).sort());
+  assert.deepEqual(current.filter(item => /^(?:invalid|retired)-baseline-review$/u.test(item.rule)), []);
+  const former = 'api/apps/api-server/src/routes/plugins_and_models/model_providers/response_mapping.rs';
+  write(former, fs.readFileSync(path.join(root, file)));
+  const formerFindings = collectRustBackendFindings({ repoRoot: root, includeSuppressed: true }).filter(item => item.file === former && item.rule === 'no-production-escape');
+  assert.equal(formerFindings.length, 2);
+  assert.equal(formerFindings.every(item => !item.suppressed), true);
+});

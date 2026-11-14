@@ -21,13 +21,13 @@ test('PDM boundary keeps manifest as the single additive declaration', () => {
 
 test('PDM production path consumes compiler, preview, apply, and retain lifecycle', () => {
   const composition = read(
-    'api/apps/api-server/src/routes/plugins_and_models/plugins/extension_center/managed_schema.rs',
+    'api/crates/api/plugins-models/src/routes/plugins_and_models/plugins/extension_center/managed_schema.rs',
   );
   const routes = read(
-    'api/apps/api-server/src/routes/plugins_and_models/plugins/extension_center.rs',
+    'api/crates/api/plugins-models/src/routes/plugins_and_models/plugins/extension_center.rs',
   );
   const upload = read(
-    'api/apps/api-server/src/routes/plugins_and_models/plugins/extension_center/upload.rs',
+    'api/crates/api/plugins-models/src/routes/plugins_and_models/plugins/extension_center/upload.rs',
   );
 
   const service = read(

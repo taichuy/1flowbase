@@ -141,7 +141,7 @@ test('scanRustSource does not treat static log message text as sensitive leakage
 
 test('scanRustSource reports async blocking patterns as warnings', () => {
   const findings = scanRustSource({
-    relativePath: 'api/apps/api-server/src/routes/files.rs',
+    relativePath: 'api/crates/api/console-interaction/src/routes/files.rs',
     content: [
       'pub async fn upload() -> Result<(), AppError> {',
       '    let bytes = std::fs::read("upload.bin")?;',

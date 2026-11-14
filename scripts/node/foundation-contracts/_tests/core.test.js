@@ -45,7 +45,7 @@ test('AC-001/006 routes four foundations and ignores legal non-contract changes'
   assert.deepEqual(legalPlan.selectedFoundations, []);
 
   const providerSettingsPlan = buildFoundationPlan({
-    changedFiles: ['api/apps/api-server/src/routes/plugins_and_models/model_providers/dto.rs'],
+    changedFiles: ['api/crates/api/plugins-models/src/routes/plugins_and_models/model_providers/dto.rs'],
   });
   assert.equal(providerSettingsPlan.selectedFoundations.includes('application-backend'), false);
 });
@@ -70,7 +70,7 @@ test('routes current protocol and invocation owners without selecting unrelated 
     'api/crates/control-plane/src/settings/mod.rs',
     'api/crates/api/public-gateway/src/routes/application_public_api/anthropic_settings.rs',
     'api/crates/api/public-gateway/src/routes/application_public_api/client_observer_settings.rs',
-    'api/apps/api-server/src/routes/plugins_and_models/model_providers/dto.rs',
+    'api/crates/api/plugins-models/src/routes/plugins_and_models/model_providers/dto.rs',
     'docs/architecture/interface-lifecycle.md',
   ]) {
     assert.deepEqual(buildFoundationPlan({ changedFiles: [changedFile] }).selectedFoundations, [], changedFile);
@@ -117,7 +117,7 @@ test('native transport routing excludes non-Rust assets and unrelated runtime ow
     'api/crates/api/public-gateway/src/routes/application_public_api/native/i18n/en_US.json',
     'api/crates/api/public-gateway/src/routes/application_public_api/native/styles.css',
     'api/crates/api/public-gateway/src/routes/application_public_api/native_settings.rs',
-    'api/apps/api-server/src/routes/plugins_and_models/model_providers/dto.rs',
+    'api/crates/api/plugins-models/src/routes/plugins_and_models/model_providers/dto.rs',
     'api/crates/api/kernel/src/host/host_infrastructure/local.rs',
     'api/crates/api/kernel/src/host/provider_runtime/README.md',
     'api/crates/control-plane/src/orchestration_runtime/tests/billing_usage_guard.rs',

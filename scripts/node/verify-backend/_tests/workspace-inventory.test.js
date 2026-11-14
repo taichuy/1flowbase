@@ -47,9 +47,10 @@ test('workspace inventory rejects a new unassigned member and stale package targ
 
 test('API app checks and every hash shard select all actual API owners', () => {
   const packages = require('../../testing/contracts/api-source-owners.js').apiSourceOwners(repoRoot).map((owner) => owner.packageName);
-  assert.deepEqual(packages.slice(0, 6), [
+  assert.deepEqual(packages, [
     'api-server', 'api-host-kernel', 'api-public-gateway', 'api-applications', 'api-console-settings', 'api-mcp',
-  ], 'all six current API owners must be selected in registry order');
+    'api-plugins-models', 'api-console-interaction',
+  ], 'all eight current API owners must be selected in registry order');
   for (const shard of ['apps', ...Array.from({ length: 4 }, (_, index) => `api-server-${index + 1}-of-4`)]) {
     const [command] = buildBackendCommands({ repoRoot, cargoJobs: 2, cargoTestThreads: 2, target: shard === 'apps' ? 'clippy' : 'test', shard });
     const selected = command.args.filter((_arg, index) => command.args[index - 1] === '--package');
@@ -85,4 +86,29 @@ test('pricing CI watches the current Settings implementation and Root billing in
   assert.equal(fs.existsSync(path.join(repoRoot, 'api/crates/api/console-settings/src/routes/settings/billing.rs')), true);
   assert.ok(workflow.includes("'api/apps/api-server/src/_tests/system_settings/billing_routes/**'"));
   assert.ok(workflow.includes('-p api-server --test api_private_contracts _tests::billing_routes'));
+});
+
+
+test('identity and Terminal CI follow the new owners and retain the Root acceptance targets', () => {
+  const authentication = fs.readFileSync(path.join(repoRoot, '.github/workflows/github-authentication.yml'), 'utf8');
+  assert.equal(authentication.split('      - api/crates/api/console-interaction/src/routes/identity/**').length - 1, 2);
+  assert.ok(authentication.includes('-p api-console-interaction --lib external_auth'));
+  assert.ok(authentication.includes('-p api-server --lib --test api_private_contracts --test api_private_routes --features tikv-jemallocator/stats external_auth'));
+  assert.ok(authentication.includes('-p api-server --test api_private_routes --features tikv-jemallocator/stats me_authentication_methods'));
+  const external = 'api/crates/api/console-interaction/src/routes/identity/external_auth';
+  for (const [mount, leaf] of [['event_projection.rs', '_tests/security.rs'], ['transaction.rs', '_tests/transaction_tests.rs']]) {
+    assert.ok(fs.readFileSync(path.join(repoRoot, external, mount), 'utf8').includes(`#[path = "${leaf}"]`));
+    assert.match(fs.readFileSync(path.join(repoRoot, external, leaf), 'utf8'), /#\[(?:tokio::)?test\]/u);
+  }
+  const terminal = fs.readFileSync(path.join(repoRoot, '.github/workflows/local-command.yml'), 'utf8');
+  for (const trigger of [
+    'api/crates/api/kernel/src/slices/local_command/**',
+    'api/crates/api/console-interaction/src/local_command/**',
+    'api/crates/api/console-interaction/src/local_terminal/**',
+    'api/crates/api/console-interaction/src/routes/local_commands/**',
+    'api/crates/api/console-interaction/src/routes/terminal/**',
+    'api/crates/api/kernel/src/contracts/interaction_shared/terminal_host.rs',
+  ]) assert.ok(terminal.includes(`'${trigger}'`), trigger);
+  assert.ok(terminal.includes('run_case terminal --test api_private_routes routes::terminal::'));
+  assert.ok(terminal.includes('run_case existing-local-command --test api_private_routes local_commands'));
 });

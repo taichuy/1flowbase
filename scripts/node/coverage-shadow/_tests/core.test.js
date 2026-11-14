@@ -317,6 +317,8 @@ test('all existing API owners share list/run/cleanup selection and the original 
   for (const [owner, packages] of [
     ['console-settings', ['api-server', 'api-host-kernel', 'api-public-gateway', 'api-applications', 'api-console-settings']],
     ['mcp', ['api-server', 'api-host-kernel', 'api-public-gateway', 'api-applications', 'api-console-settings', 'api-mcp']],
+    ['plugins-models', ['api-server', 'api-host-kernel', 'api-public-gateway', 'api-applications', 'api-console-settings', 'api-mcp', 'api-plugins-models']],
+    ['console-interaction', ['api-server', 'api-host-kernel', 'api-public-gateway', 'api-applications', 'api-console-settings', 'api-mcp', 'api-plugins-models', 'api-console-interaction']],
   ]) {
     const ownerManifest = path.join(root, 'api/crates/api', owner, 'Cargo.toml');
     fs.mkdirSync(path.dirname(ownerManifest), { recursive: true });

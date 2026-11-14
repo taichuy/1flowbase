@@ -104,8 +104,8 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
   const anthropic = read(repoRoot, 'api/crates/api/public-gateway/src/routes/application_public_api/anthropic.rs');
   const workflowExtension = read(repoRoot, 'api/crates/api/public-gateway/src/routes/application_public_api/ex.rs');
   const contributions = read(repoRoot, 'api/apps/api-server/src/extension_bus/interface_contributions.rs');
-  const publicAuth = read(repoRoot, 'api/apps/api-server/src/routes/identity/auth.rs');
-  const publicSignIn = read(repoRoot, 'api/apps/api-server/src/routes/identity/sign_in_interface.rs');
+  const publicAuth = read(repoRoot, 'api/crates/api/console-interaction/src/routes/identity/auth.rs');
+  const publicSignIn = read(repoRoot, 'api/crates/api/console-interaction/src/routes/identity/sign_in_interface.rs');
   const native = read(repoRoot, 'api/crates/api/public-gateway/src/routes/application_public_api/native.rs');
   const compatibility = read(repoRoot, 'api/crates/api/public-gateway/src/routes/application_public_api/compatibility_interface.rs');
   const mcp = read(repoRoot, 'api/crates/api/mcp/src/routes/mcp_protocol.rs');
@@ -205,10 +205,10 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
     // This signal-only transport is a declared Protocol Control, not a business
     // invocation. The exact catalog declaration must remain present; a pathname
     // or comment alone never exempts direct authentication in ordinary routes.
-    const notificationProtocolControl = relativePath === 'api/apps/api-server/src/routes/notifications/events.rs'
+    const notificationProtocolControl = relativePath === 'api/crates/api/console-interaction/src/routes/notifications/events.rs'
       && /Self::NotificationEvents\s*=>\s*ExternalEndpointContribution::protocol_control_http\(\s*"notification-refresh-signal",\s*"GET",\s*"\/api\/console\/notifications\/events",\s*\)/u.test(endpointCatalog);
     if ((source.includes('require_session(&state') || source.includes('require_csrf(&headers'))
-      && relativePath !== 'api/apps/api-server/src/routes/assistant/websocket.rs'
+      && relativePath !== 'api/crates/api/console-interaction/src/routes/assistant/websocket.rs'
       && relativePath !== 'api/crates/api/console-settings/src/routes/settings/system_backups/mod.rs'
       && !notificationProtocolControl) {
       violations.push(`${relativePath} retains a direct route authentication owner`);

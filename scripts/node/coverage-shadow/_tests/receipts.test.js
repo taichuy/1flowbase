@@ -113,7 +113,8 @@ test('metadata rejects missing or wrong package, partition, SHA, execution, inve
   }
   for (const patch of [
     { package: 'control-plane' }, { packages: ['api-server', 'api-host-kernel'] }, { packages: ['api-server', 'api-applications'] },
-    { packages: ['api-server', 'api-console-settings'] }, { packages: ['api-server', 'api-mcp'] }, { partition: 'hash:2/4' }, { sha: 'old-sha' },
+    { packages: ['api-server', 'api-console-settings'] }, { packages: ['api-server', 'api-mcp'] },
+    { packages: ['api-server', 'api-plugins-models'] }, { packages: ['api-server', 'api-console-interaction'] }, { partition: 'hash:2/4' }, { sha: 'old-sha' },
     { testCount: 0 }, { testCount: 2 }, { ignoredCount: 0 },
     { exitCode: 1 }, { passedCount: 0 }, { passedCount: 2 }, { failedCount: 1 },
     { profileCount: 0 }, { profileCount: 2 },
@@ -238,8 +239,8 @@ test('API coverage cannot pass with an empty or malformed owned line denominator
   }
 });
 
-test('merge applies the same owner selection and stale-source rejection to Kernel, Gateway, Applications, Settings and MCP', (t) => {
-  for (const owner of ['kernel', 'public-gateway', 'applications', 'console-settings', 'mcp']) {
+test('merge applies the same owner selection and stale-source rejection to every current API owner', (t) => {
+  for (const owner of ['kernel', 'public-gateway', 'applications', 'console-settings', 'mcp', 'plugins-models', 'console-interaction']) {
     const { repoRoot, directory } = prepareMerge(t);
     const packageName = owner === 'kernel' ? 'api-host-kernel' : `api-${owner}`;
     const manifest = path.join(repoRoot, 'api/crates/api', owner, 'Cargo.toml');
@@ -267,7 +268,7 @@ test('merge applies the same owner selection and stale-source rejection to Kerne
 });
 
 
-for (const owner of ['applications', 'console-settings', 'mcp']) {
+for (const owner of ['applications', 'console-settings', 'mcp', 'plugins-models', 'console-interaction']) {
   test(`${owner} shard provenance merges only with its exact current package identity and live source`, (t) => {
     const { repoRoot, root, directory, finalPath } = prepareMerge(t);
     const sources = ['api/apps/api-server/src/lib.rs', `api/crates/api/${owner}/src/lib.rs`];
