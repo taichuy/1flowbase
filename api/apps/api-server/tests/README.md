@@ -2,7 +2,9 @@
 
 Use a Cargo target to select what is compiled, then a test-name filter to select what runs.
 `--lib <filter>` still compiles the whole library test harness. The repository CLI already
-supports `--test`; no additional test runner is required.
+supports `--test`; no additional test runner is required. Every CLI selection also
+runs the existing full Rust static gate. Native Cargo under the shared task budget
+is available for bounded component feedback.
 
 先选择 Cargo 编译目标，再按需过滤测试名。`--lib` 下的名称过滤仍需编译整个库测试程序。
 仓库测试 CLI 已支持 `--test`，直接复用既有资源预算、退出码与非零执行检查。
@@ -66,13 +68,42 @@ workspace 全量预热的 feature 图。上述验收清除额外 test-debug 环�
 此结论绑定报告所列源码、Cargo 版本及 `api_config` 目标；相关依赖变化后应重新检查。
 `--workspace` 与 `--package`/`-p` 互斥；原 package 选择继续可用。
 
+## Current source owners / 当前源码 owner
+
+`api-server` is the only composition root. Its seven API libraries are
+`api-host-kernel`, `api-public-gateway`, `api-applications`, `api-console-settings`,
+`api-mcp`, `api-plugins-models` and `api-console-interaction`. Domain libraries depend
+on Kernel; there are no domain-to-domain Cargo edges or Kernel-to-Root/domain edges.
+Root merges executable Router/Catalog/frozen contributions. Each domain generates
+its OpenAPI fragments; Root preserves the original category and collision order,
+and retains its own health paths/schema.
+
+纯模块测试随 canonical crate；跨域装配、完整 HTTP 与混合白盒测试留在 Root。
+`test-support` 仅提供这些消费者需要的窄 fixture / accessor，不切换生产构造行为。
+`api-server` 的 reexport 不会让域的 `#[cfg(test)]` 模块在 Root 再次执行。
+API 聚合由 `scripts/node/testing/contracts/api-source-owners.js` 发现当前真实 manifest，
+覆盖 Root + Kernel + 六域；coverage 仍为原 API 聚合，阈值与分母口径不变。
+不要把只选 `--package api-server` 当作完整 API 测试。
+
+```bash
+node scripts/node/test-backend.js --package api-host-kernel --lib --filter transport_session_lifecycle
+node scripts/node/test-backend.js --package api-public-gateway --lib --filter routes::application_public_api::compat_sse
+node scripts/node/test-backend.js --package api-mcp --lib --filter result_delivery::media::tests
+node scripts/node/test-backend.js --package api-server --test api_private_contracts --filter _tests::runtime_event_stream
+```
+
+These selections identify current owners; they do not assert a completed test run.
+A filter may span a domain library and retained Root integration cases. Select the
+actual owners/targets from their module mounts, and retain the union and nonzero
+case evidence rather than assuming a historical count still describes one crate.
+
 ## HTTP behavior partitions
 
 The `test-support` feature is enabled by the package's dev self-dependency. It adds
 explicit fixture factories; ordinary production constructors keep their behavior.
 Each target below mounts original test leaves and shares one fixture library.
 Private implementation cases retain their original source, test names and private
-bindings across the four private harness partitions below.
+bindings across the four include roots below (the library plus three private integration targets).
 
 | Target | Scope |
 | --- | --- |
@@ -104,9 +135,11 @@ Its ordinary dev profile retains line-table debug information and the existing i
 原库测试按自然模块划分，原测试名、过滤器与私有绑定保留。
 其中 24 个 console route assembly 用例只由薄 `console_core_registry_tests` 目标发现，
 通过 `test-support` 调用 crate 内原断言；旧 private routes 目标不再重复发现这些用例。
-以下数量描述旧默认集合的静态分区，不代表已经完成运行验收或资源验收。
+以下数量是拆出七个 API 库之前的历史静态分区记录；迁出的纯测试如今由对应库发现，
+不得用这些旧计数代表当前 Root 单包集合或已完成的运行 / 资源验收。完整集合需实际
+workspace 发现与迁移映射取证，原测试集合与 coverage 分母不能按新包边界缩小。
 
-| Selection / 目标选择 | Original test-name owner / 原测试名归属 | Default reference count / 默认参考数 |
+| Historical Root selection / 历史 Root 选择 | Original test-name owner / 原测试名归属 | Pre-extraction reference count / 拆分前参考数 |
 | --- | --- | ---: |
 | `--lib` | 非 `routes::` 且非 `_tests::` 的所属模块测试 | 312 |
 | `--test api_private_contracts` | 中央 `_tests::` | 522 |
@@ -114,17 +147,20 @@ Its ordinary dev profile retains line-table debug information and the existing i
 | `--test api_private_routes` | 其余 `routes::`，除迁出的 console route assembly 用例 | 359 |
 | `--test console_core_registry_tests --features test-support` | 迁出的 console route assembly 用例（另保留既有 7 个公开契约测试） | 24 + 7 |
 
-`src/lib.rs` 仍是同源生产文本；`src/lib_root.rs` 库入口与原生测试入口共享生产实现，
-只选择不同的测试挂载。既有七个公开 HTTP native targets 和其他原生契约目标继续保留。
+`src/lib.rs` 仍是同源生产装配文本；`src/lib_root.rs` 库入口以及
+`private_contracts_test.rs`、`public_api_test.rs`、`private_routes_test.rs` 三个私有
+integration 根都保留 `include!("lib.rs")`，只选择不同测试挂载。
+`api-test-selection` 的 core / contracts / public_api / routes 分别对应这四个 Cargo 根，
+不迁移或改写该分区机制。既有七个公开 HTTP native targets 和其他原生契约目标继续保留。
 `root-1805-consumer-fixture` 保持原来的 `--lib` 专项入口，不按默认 `_tests::` 归属改写。
 Cargo 自动发现各目标；现有 self dev-dependency 启用 `test-support`，普通 package 测试
 继续发现这 24 个用例且只发现一次。定向 assembly 命令显式保留 `--features test-support`。
 
 ```bash
 node scripts/node/test-backend.js --workspace --test api_private_contracts --filter _tests::runtime_event_stream
-node scripts/node/test-backend.js --workspace --test api_public_api --filter routes::application_public_api::compat_sse
-node scripts/node/test-backend.js --workspace --test api_private_routes --filter result_delivery::media::tests
-node scripts/node/test-backend.js --package api-server --lib --filter provider_runtime::transport_session_lifecycle
+node scripts/node/test-backend.js --package api-public-gateway --lib --filter routes::application_public_api::compat_sse
+node scripts/node/test-backend.js --package api-mcp --lib --filter result_delivery::media::tests
+node scripts/node/test-backend.js --package api-host-kernel --lib --filter transport_session_lifecycle
 ```
 
 A filter can match more than one private partition. Native Cargo accepts multiple
@@ -134,7 +170,8 @@ explicit targets; select precisely the partitions that contained the original ma
 cargo test --manifest-path api/Cargo.toml -p api-server --test api_private_contracts --test api_private_routes runtime_event_stream
 ```
 
-此过滤器原有 54 个中央契约测试和 4 个非 public-api 路由测试，两目标并集保留原命中。
+此例说明 Root 的跨分区选择；历史 54 个中央契约 / 4 个非 public-api 路由命中
+不能代替当前发现证据。迁至域内的同名纯测试还需选择其域 lib，保留原测试并集。
 原生 Cargo 支持 `--lib` 与多个 `--test` 的组合；测试 CLI 每次只接受一个目标，
 需要时分别执行，并保留每条命令的零匹配检查。不要用 package 全目标替换定向并集，
 因为其他既有 native target 可能有额外同名命中。

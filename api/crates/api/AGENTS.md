@@ -25,14 +25,16 @@
 
 # Source And Test Boundaries
 
-- 路由注册与接口贡献留在所属域；根只合并 Router、Catalog、OpenAPI 和冻结注册结果。
+- 路由注册、接口贡献、Handler 与 OpenAPI path / schema 的泛型实例化留在所属域；Root 合并真实 Router、Catalog、OpenAPI 和冻结注册结果，保留自有 health / console_health 及 HealthResponse。
+- 域 `src/openapi/` 按原 category 提供编译结果；Root 保持 application → console → extensions 顺序。category 内原 path / schema 顺序及碰撞优先级不变：path 先值、显式 schema 后值，随后 handler schema 后值，最后原 modifier；外层 utoipa merge 保留先 category 的同名 component。
 - 不改 HTTP / SSE / WebSocket / MCP / WebMCP 路由、DTO、授权、状态流转或持久化语义。
-- 纯模块白盒测试随 owner；整应用测试留在根。根需要的窄访问器使用 `test-support` 和 `#[doc(hidden)]`，不公开整个私有业务模块。
+- 纯模块白盒测试随 canonical owner；跨域 / 整应用 / 混合白盒测试留在根。根需要的窄访问器使用 `test-support` 和 `#[doc(hidden)]`，不公开整个私有业务模块。
+- `api-server` 的 lib_root.rs 与 private_contracts_test.rs / public_api_test.rs / private_routes_test.rs 四个入口共享 include!("lib.rs")；库加三个私有 integration 分区保留 `api-test-selection`。域纯测试直接由各域 lib 发现；完整 API 选择包含 Root、Kernel 和六域，不以 Root 单包代替并集。
 - 单元测试放 `src/_tests`；按职责组织子目录，单目录文件不超过 15 个。保留既有测试断言与属性。
 - `git mv` 移动与引用修正分别提交；路径敏感资源、治理入口与测试挂载随 owner 同步。
 
 # Evidence And Stop
 
 - 依赖规则由 `control-plane-postgres-tests --test dependency_boundaries` 对实际 resolved metadata 验证，坏 fixture 须证明 rename 不能绕过。
-- 尚未创建的域不作为当前成员检查；最终完整装配必须包含七个 crate。
+- 当前七个库均为 workspace 成员；API 聚合选择包含这七个库及 `api-server`。实际发现 / 执行集合与行为证据分别验收，文档或编译通过不代表完整 QA 通过。
 - 出现域间 Cargo 边、内核反向依赖、对外语义变化或需要弱化断言时停止并返回 Root。
