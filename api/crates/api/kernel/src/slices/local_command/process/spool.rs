@@ -51,7 +51,7 @@ impl Spool {
         }
     }
     /// Decode the exact JSON string fragment without changing the owned file cursor.
-    pub(super) fn text(&self) -> io::Result<String> {
+    pub fn text(&self) -> io::Result<String> {
         let file = self
             .file
             .as_ref()
@@ -146,12 +146,10 @@ pub(super) fn capture(mut reader: impl Read, mut spool: Spool) -> io::Result<Spo
     Ok(spool)
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/spool.rs"]
 mod tests;
 
-#[cfg_attr(test, api_test_selection::group(core, routes))]
 #[cfg(test)]
 #[path = "_tests/spool_event.rs"]
 mod event_tests;

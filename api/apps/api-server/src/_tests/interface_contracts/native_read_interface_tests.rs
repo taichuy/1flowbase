@@ -1,3 +1,4 @@
+use crate::generation_dispatch::GenerationDispatchAssembly;
 use interface_runtime::{BindingId, GraphFingerprint, InterfaceProtocol};
 
 use crate::{

@@ -9,20 +9,20 @@ use std::sync::Arc;
 
 /// Opt-in means this type serializes only its public business request fields.
 /// It does not make every serializable InterfaceContract observable.
-pub(crate) trait JsonApiInput: InterfaceContract + Serialize {
+pub trait JsonApiInput: InterfaceContract + Serialize {
     const LOCATION: JsonInputLocation = JsonInputLocation::Envelope;
 }
 #[derive(Clone, Copy)]
-pub(crate) enum JsonInputLocation {
+pub enum JsonInputLocation {
     Envelope,
     Body,
     Query,
     Path,
 }
 /// The unwrapped business JSON; HTTP status/envelope and MCP result mapping stay outside.
-pub(crate) trait JsonApiOutput: InterfaceContract + Serialize {}
+pub trait JsonApiOutput: InterfaceContract + Serialize {}
 
-pub(crate) fn request<T: JsonApiInput>(input: &T, route: &str) -> Result<Value, Arc<str>> {
+pub fn request<T: JsonApiInput>(input: &T, route: &str) -> Result<Value, Arc<str>> {
     let value = serde_json::to_value(input)
         .map_err(|_| Arc::<str>::from("api-json-input-serialization"))?;
     let value = match T::LOCATION {
@@ -85,15 +85,15 @@ pub(crate) fn request<T: JsonApiInput>(input: &T, route: &str) -> Result<Value, 
     Ok(Value::Object(fields))
 }
 
-pub(crate) fn result<T: JsonApiOutput>(output: &T) -> serde_json::Result<Value> {
+pub fn result<T: JsonApiOutput>(output: &T) -> serde_json::Result<Value> {
     serde_json::to_value(output)
 }
-pub(crate) fn response<T: JsonApiOutput>(output: &T) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+pub fn response<T: JsonApiOutput>(output: &T) -> Result<Json<ApiSuccess<Value>>, ApiError> {
     Ok(Json(ApiSuccess::new(result(output)?)))
 }
 
 /// Serde variant annotation: borrow the actual DTO rather than repeating its field inventory.
-pub(crate) fn body<T: Serialize + ?Sized, S: Serializer>(
+pub fn body<T: Serialize + ?Sized, S: Serializer>(
     value: &T,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
@@ -109,7 +109,7 @@ pub(super) fn omit_query_nulls(mut value: Value) -> Result<Value, &'static str> 
     fields.retain(|_, value| !value.is_null());
     Ok(value)
 }
-pub(crate) fn query_fields<T: Serialize + ?Sized, S: Serializer>(
+pub fn query_fields<T: Serialize + ?Sized, S: Serializer>(
     value: &T,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
@@ -118,7 +118,7 @@ pub(crate) fn query_fields<T: Serialize + ?Sized, S: Serializer>(
         .map_err(serde::ser::Error::custom)?
         .serialize(serializer)
 }
-pub(crate) fn query<T: Serialize + ?Sized, S: Serializer>(
+pub fn query<T: Serialize + ?Sized, S: Serializer>(
     value: &T,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
@@ -130,7 +130,7 @@ pub(crate) fn query<T: Serialize + ?Sized, S: Serializer>(
     Query { query: value }.serialize(serializer)
 }
 /// Some existing contracts deliberately retain nulls; this is an explicit owner choice.
-pub(crate) fn query_with_nulls<T: Serialize + ?Sized, S: Serializer>(
+pub fn query_with_nulls<T: Serialize + ?Sized, S: Serializer>(
     query: &T,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
@@ -140,7 +140,7 @@ pub(crate) fn query_with_nulls<T: Serialize + ?Sized, S: Serializer>(
     }
     Query { query }.serialize(serializer)
 }
-pub(crate) fn path<T: Serialize + ?Sized, S: Serializer>(
+pub fn path<T: Serialize + ?Sized, S: Serializer>(
     path: &T,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
@@ -150,14 +150,14 @@ pub(crate) fn path<T: Serialize + ?Sized, S: Serializer>(
     }
     Path { path }.serialize(serializer)
 }
-pub(crate) fn path2<A: Serialize, B: Serialize, S: Serializer>(
+pub fn path2<A: Serialize, B: Serialize, S: Serializer>(
     a: &A,
     b: &B,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
     path(&(a, b), serializer)
 }
-pub(crate) fn path_body<P: Serialize, B: Serialize, S: Serializer>(
+pub fn path_body<P: Serialize, B: Serialize, S: Serializer>(
     path: &P,
     body: &B,
     serializer: S,
@@ -169,7 +169,7 @@ pub(crate) fn path_body<P: Serialize, B: Serialize, S: Serializer>(
     }
     Parts { path, body }.serialize(serializer)
 }
-pub(crate) fn path_query<P: Serialize, Q: Serialize, S: Serializer>(
+pub fn path_query<P: Serialize, Q: Serialize, S: Serializer>(
     path: &P,
     query: &Q,
     serializer: S,
@@ -181,7 +181,7 @@ pub(crate) fn path_query<P: Serialize, Q: Serialize, S: Serializer>(
     }
     Parts { path, query }.serialize(serializer)
 }
-pub(crate) fn path_query_omit_nulls<P: Serialize, Q: Serialize, S: Serializer>(
+pub fn path_query_omit_nulls<P: Serialize, Q: Serialize, S: Serializer>(
     path: &P,
     query: &Q,
     serializer: S,
@@ -194,7 +194,7 @@ pub(crate) fn path_query_omit_nulls<P: Serialize, Q: Serialize, S: Serializer>(
     }
     Parts { path, query }.serialize(serializer)
 }
-pub(crate) fn path2_query_omit_nulls<A: Serialize, B: Serialize, Q: Serialize, S: Serializer>(
+pub fn path2_query_omit_nulls<A: Serialize, B: Serialize, Q: Serialize, S: Serializer>(
     a: &A,
     b: &B,
     query: &Q,
@@ -202,7 +202,7 @@ pub(crate) fn path2_query_omit_nulls<A: Serialize, B: Serialize, Q: Serialize, S
 ) -> Result<S::Ok, S::Error> {
     path_query_omit_nulls(&(a, b), query, serializer)
 }
-pub(crate) fn query_body<Q: Serialize, B: Serialize, S: Serializer>(
+pub fn query_body<Q: Serialize, B: Serialize, S: Serializer>(
     query: &Q,
     body: &B,
     serializer: S,
@@ -214,8 +214,3 @@ pub(crate) fn query_body<Q: Serialize, B: Serialize, S: Serializer>(
     }
     Parts { query, body }.serialize(serializer)
 }
-
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-#[path = "_tests/json_contract.rs"]
-mod tests;

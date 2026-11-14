@@ -663,7 +663,6 @@ fn process_rss_bytes() -> Option<u64> {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -836,7 +835,6 @@ mod tests {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "runtime_activity/_tests/sampling.rs"]
 mod sampling_tests;

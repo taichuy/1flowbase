@@ -1,10 +1,10 @@
-pub(crate) struct TestResources {
+pub struct TestResources {
     _database: postgres_test_support::PostgresTestSchema,
     filesystem_roots: Vec<std::path::PathBuf>,
 }
 
 impl TestResources {
-    pub(crate) fn new(
+    pub fn new(
         database: postgres_test_support::PostgresTestSchema,
         filesystem_roots: Vec<std::path::PathBuf>,
     ) -> Self {

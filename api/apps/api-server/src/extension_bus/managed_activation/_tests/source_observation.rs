@@ -1,5 +1,6 @@
 //! Actual managed graph publication, SDK transactions and original dispatcher observation.
 use super::*;
+use crate::event_center::catalog::EventSourceCatalogAssembly;
 use crate::{
     app_state::ApiState,
     extension_bus::ManagedWorkspacePublicationSource,

@@ -111,9 +111,8 @@ pub const fn recovery_intent_ttl() -> Duration {
     RECOVERY_INTENT_TTL
 }
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-pub(crate) fn expire_reauth_challenge(token: Uuid) {
+#[cfg(any(test, feature = "test-support"))]
+pub fn expire_reauth_challenge(token: Uuid) {
     if let Some(challenge) = state()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -124,9 +123,8 @@ pub(crate) fn expire_reauth_challenge(token: Uuid) {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-pub(crate) fn mark_reauth_challenge_consumed(token: Uuid) {
+#[cfg(any(test, feature = "test-support"))]
+pub fn mark_reauth_challenge_consumed(token: Uuid) {
     if let Some(challenge) = state()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -137,8 +135,7 @@ pub(crate) fn mark_reauth_challenge_consumed(token: Uuid) {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 mod tests {
     use super::*;
 

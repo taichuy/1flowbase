@@ -150,19 +150,19 @@ async fn root_2007_ac_001_002_package_activation() {
         .unwrap(),
     );
     host.mark_ready().unwrap();
-    let services = Arc::new(
-        ApiRuntimeServices::new_with_runtime_backend(
-            host,
-            Arc::new(assembly.compile_graph().unwrap()),
-        )
-        .unwrap()
-        .with_managed_composition(
-            state.store.clone(),
-            state.api_node_id.clone(),
-            assembly.module_descriptors().to_vec(),
+    let (services, composition) = crate::managed_runtime_assembly::bind_managed_runtime(
+        crate::provider_runtime::services_for_current_cfg(
+            ApiRuntimeServices::new_with_runtime_backend(
+                host,
+                Arc::new(assembly.compile_graph().unwrap()),
+            )
+            .unwrap(),
         ),
+        state.store.clone(),
+        state.api_node_id.clone(),
+        assembly.module_descriptors().to_vec(),
     );
-    let composition = services.managed_composition().unwrap();
+    let services = Arc::new(services);
     let management = Arc::new(
         PluginManagementService::new(
             state.store.clone(),

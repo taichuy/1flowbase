@@ -8,24 +8,40 @@ use crate::{app_state::ApiState, routes::console_route_assembly::ConsoleRouteAss
 /// A console route source is linked into this API binary. It intentionally is not a native
 /// library ABI: route handlers remain ordinary Axum handlers compiled with this host.
 #[derive(Clone, Copy)]
-pub(crate) struct LinkedHostConsoleRouteSource {
+pub struct LinkedHostConsoleRouteSource {
     pub(crate) extension_id: &'static str,
     pub(crate) version: &'static str,
     pub(crate) route_assembly: fn() -> ConsoleRouteAssembly<Arc<ApiState>>,
 }
 
-pub(crate) struct ResolvedHostExtensionConsoleContribution {
-    pub(crate) contribution: HostExtensionContributionManifest,
-    pub(crate) route_assembly: Option<ConsoleRouteAssembly<Arc<ApiState>>>,
+impl LinkedHostConsoleRouteSource {
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn for_test_support(
+        extension_id: &'static str,
+        version: &'static str,
+        route_assembly: fn() -> ConsoleRouteAssembly<Arc<ApiState>>,
+    ) -> Self {
+        Self {
+            extension_id,
+            version,
+            route_assembly,
+        }
+    }
+}
+
+pub struct ResolvedHostExtensionConsoleContribution {
+    pub contribution: HostExtensionContributionManifest,
+    pub route_assembly: Option<ConsoleRouteAssembly<Arc<ApiState>>>,
 }
 
 const LINKED_HOST_CONSOLE_ROUTE_SOURCES: &[LinkedHostConsoleRouteSource] = &[];
 
-pub(crate) fn linked_host_console_route_sources() -> &'static [LinkedHostConsoleRouteSource] {
+pub fn linked_host_console_route_sources() -> &'static [LinkedHostConsoleRouteSource] {
     LINKED_HOST_CONSOLE_ROUTE_SOURCES
 }
 
-pub(crate) fn resolve_linked_host_extension_console_contribution(
+pub fn resolve_linked_host_extension_console_contribution(
     contribution: HostExtensionContributionManifest,
     sources: &[LinkedHostConsoleRouteSource],
 ) -> Result<ResolvedHostExtensionConsoleContribution> {

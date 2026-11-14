@@ -37,7 +37,7 @@ use plugin_framework::{
     },
     ForwardProxyLease,
 };
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use runtime_core::runtime_backend::RuntimeBackendSlot;
 use runtime_core::{
     runtime_backend::{
@@ -48,7 +48,7 @@ use runtime_core::{
     },
     runtime_engine::DataSourceRuntimeRecordBackend,
 };
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use runtime_extension_host::RuntimeExtensionHost;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
@@ -70,7 +70,7 @@ mod model_provider_slot;
 mod provider_port;
 mod transport_session_lifecycle;
 
-pub(crate) use transport_session_lifecycle::{
+pub use transport_session_lifecycle::{
     TransportConnectionScope, TransportConnectionScopeGuard, TransportTerminationNotice,
 };
 
@@ -97,8 +97,10 @@ pub use model_provider_slot::{
 
 #[derive(Clone)]
 pub struct ApiRuntimeServices {
-    managed_composition: Option<Arc<crate::extension_bus::ManagedExtensionComposition>>,
+    managed_composition:
+        Option<Arc<dyn crate::extension_bus::managed_activation::ManagedCompositionPort>>,
     runtime_backend: Arc<dyn RuntimeBackend>,
+    local_artifact_references: bool,
     orchestration_backend: orchestration_runtime::runtime_backend::OrchestrationRuntimeBackend,
     data_model_template_catalog:
         runtime_core::data_model_template_registry::DataModelTemplateCatalog,
@@ -113,14 +115,14 @@ pub struct ApiRuntimeServices {
 }
 
 #[derive(Clone)]
-pub(crate) struct ApiRuntimeArtifactResolver {
+pub struct ApiRuntimeArtifactResolver {
     store: MainDurableStore,
     api_node_id: String,
     provider_install_root: PathBuf,
 }
 
 impl ApiRuntimeArtifactResolver {
-    pub(crate) fn new(
+    pub fn new(
         store: MainDurableStore,
         api_node_id: impl Into<String>,
         provider_install_root: impl Into<PathBuf>,
@@ -165,10 +167,10 @@ impl runtime_extension_host::RuntimeArtifactResolver for ApiRuntimeArtifactResol
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 struct TestRuntimeArtifactResolver;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 #[async_trait]
 impl runtime_extension_host::RuntimeArtifactResolver for TestRuntimeArtifactResolver {
     async fn resolve(
@@ -180,32 +182,34 @@ impl runtime_extension_host::RuntimeArtifactResolver for TestRuntimeArtifactReso
 }
 
 impl ApiRuntimeServices {
-    pub(crate) fn with_managed_composition(
-        mut self,
-        store: MainDurableStore,
-        node_id: String,
-        base_modules: Vec<plugin_framework::extension_bus::ModuleDescriptor>,
-    ) -> Self {
-        self.managed_composition = Some(Arc::new(
-            crate::extension_bus::ManagedExtensionComposition::new(
-                store,
-                node_id,
-                self.runtime_backend.clone(),
-                base_modules,
-            ),
-        ));
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_local_artifact_references_for_test_support(mut self) -> Self {
+        self.local_artifact_references = true;
+        self.model_provider_slot_resolver = self
+            .model_provider_slot_resolver
+            .map(|resolver| resolver.with_local_artifact_references_for_test_support());
         self
     }
 
-    pub(crate) fn managed_composition(
+    pub fn with_managed_composition(
+        mut self,
+        composition: Arc<dyn crate::extension_bus::managed_activation::ManagedCompositionPort>,
+    ) -> Self {
+        self.managed_composition = Some(composition);
+        self
+    }
+
+    pub fn managed_composition(
         &self,
-    ) -> anyhow::Result<Arc<crate::extension_bus::ManagedExtensionComposition>> {
+    ) -> anyhow::Result<Arc<dyn crate::extension_bus::managed_activation::ManagedCompositionPort>>
+    {
         self.managed_composition
             .clone()
             .ok_or_else(|| anyhow::anyhow!("managed contribution composition is not configured"))
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn new(
         extension_graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
     ) -> anyhow::Result<Self> {
@@ -218,6 +222,7 @@ impl ApiRuntimeServices {
         slot.bind(runtime_host)?;
         let runtime_backend = slot.backend()?;
         Self::new_with_runtime_backend(runtime_backend, extension_graph)
+            .map(Self::with_local_artifact_references_for_test_support)
     }
 
     pub fn new_with_runtime_backend(
@@ -257,6 +262,7 @@ impl ApiRuntimeServices {
             #[cfg(feature = "test-support")]
             fixture_resources: None,
             managed_composition: None,
+            local_artifact_references: cfg!(test),
             runtime_backend,
             orchestration_backend,
             data_model_template_catalog:
@@ -273,7 +279,7 @@ impl ApiRuntimeServices {
     /// Explicit escape hatch for lightweight and legacy test states.
     /// Production boot must use [`Self::new_with_runtime_backend`] with the published graph.
     #[doc(hidden)]
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn new_without_model_provider_extension_graph_for_tests() -> Self {
         let runtime_host = Arc::new(
             RuntimeExtensionHost::new_with_artifact_resolver(
@@ -305,6 +311,7 @@ impl ApiRuntimeServices {
             #[cfg(feature = "test-support")]
             fixture_resources: None,
             managed_composition: None,
+            local_artifact_references: true,
             runtime_backend,
             orchestration_backend,
             data_model_template_catalog:
@@ -321,7 +328,7 @@ impl ApiRuntimeServices {
 
     /// Explicit fixture factory: the ordinary library keeps production UUID artifact references.
     #[cfg(all(feature = "test-support", not(test)))]
-    pub(crate) fn for_test_support(
+    pub fn for_test_support(
         store: MainDurableStore,
         api_node_id: &str,
         provider_install_root: &str,
@@ -360,6 +367,7 @@ impl ApiRuntimeServices {
             #[cfg(feature = "test-support")]
             fixture_resources: None,
             managed_composition: None,
+            local_artifact_references: cfg!(test),
             runtime_backend,
             orchestration_backend,
             data_model_template_catalog:
@@ -375,7 +383,7 @@ impl ApiRuntimeServices {
     }
 
     #[cfg(feature = "test-support")]
-    pub(crate) fn with_fixture_resources(
+    pub fn with_fixture_resources(
         mut self,
         owner: Arc<crate::test_support::TestResources>,
     ) -> Self {
@@ -383,11 +391,8 @@ impl ApiRuntimeServices {
         self
     }
 
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn fixture_resource_owner(
-        &self,
-    ) -> std::sync::Weak<crate::test_support::TestResources> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn fixture_resource_owner(&self) -> std::sync::Weak<crate::test_support::TestResources> {
         Arc::downgrade(
             self.fixture_resources
                 .as_ref()
@@ -395,35 +400,35 @@ impl ApiRuntimeServices {
         )
     }
 
-    pub(crate) fn start_transport_session_scheduler(&self) {
+    pub fn start_transport_session_scheduler(&self) {
         self.transport_sessions.start();
     }
 
-    pub(crate) fn subscribe_transport_terminations(
+    pub fn subscribe_transport_terminations(
         &self,
     ) -> tokio::sync::broadcast::Receiver<TransportTerminationNotice> {
         self.transport_sessions.subscribe()
     }
 
-    pub(crate) fn open_transport_connection_scope(&self) -> Arc<TransportConnectionScope> {
+    pub fn open_transport_connection_scope(&self) -> Arc<TransportConnectionScope> {
         self.transport_sessions.open_connection_scope()
     }
 
-    pub(crate) fn open_http_transport_scope(&self) -> TransportConnectionScopeGuard {
+    pub fn open_http_transport_scope(&self) -> TransportConnectionScopeGuard {
         self.transport_sessions.open_http_connection_scope()
     }
 
-    pub(crate) async fn close_transport_connection_scope(&self, scope: &TransportConnectionScope) {
+    pub async fn close_transport_connection_scope(&self, scope: &TransportConnectionScope) {
         self.transport_sessions.close_connection_scope(scope).await;
     }
 
-    pub(crate) async fn transport_session_snapshot(
+    pub async fn transport_session_snapshot(
         &self,
     ) -> orchestration_runtime::transport_session::SafeRegistrySnapshot {
         self.transport_sessions.safe_snapshot().await
     }
 
-    pub(crate) async fn shutdown_transport_sessions(&self, timeout: std::time::Duration) {
+    pub async fn shutdown_transport_sessions(&self, timeout: std::time::Duration) {
         self.transport_sessions.shutdown(timeout).await;
     }
 
@@ -473,7 +478,11 @@ impl ApiRuntimeServices {
             PathBuf::from(package_root).as_path(),
         )?;
         self.runtime_backend
-            .activate_provider_distribution_rule(runtime_package_activation(installation, None)?)
+            .activate_provider_distribution_rule(runtime_package_activation(
+                installation,
+                None,
+                self.local_artifact_references,
+            )?)
             .await
             .map_err(map_runtime_backend_error)?;
         *snapshot = next;
@@ -543,7 +552,7 @@ impl ApiProviderRuntime {
         }
     }
 
-    pub(crate) fn with_communication_activity(
+    pub fn with_communication_activity(
         mut self,
         activity: Arc<crate::communication_runtime::CommunicationActivity>,
     ) -> Self {
@@ -631,6 +640,7 @@ impl ApiProviderRuntime {
                 provider_id,
                 installation,
                 secret,
+                self.services.local_artifact_references,
             )?)
             .await
             .map_err(map_runtime_backend_error)
@@ -838,7 +848,10 @@ impl ApiProviderRuntime {
     ) -> anyhow::Result<ModelProviderSlotBinding> {
         match self.services.model_provider_slot_resolver.as_ref() {
             Some(resolver) => resolver.resolve(installation),
-            None => ModelProviderSlotBinding::legacy_for_tests(installation),
+            None => ModelProviderSlotBinding::legacy_for_tests(
+                installation,
+                self.services.local_artifact_references,
+            ),
         }
     }
 
@@ -874,7 +887,11 @@ impl ApiProviderRuntime {
     ) -> anyhow::Result<()> {
         self.services
             .runtime_backend
-            .activate_capability(runtime_package_activation(installation, None)?)
+            .activate_capability(runtime_package_activation(
+                installation,
+                None,
+                self.services.local_artifact_references,
+            )?)
             .await
             .map_err(map_runtime_backend_error)
     }
@@ -886,7 +903,11 @@ impl ApiProviderRuntime {
         let templates = self
             .services
             .runtime_backend
-            .activate_data_source(runtime_package_activation(installation, None)?)
+            .activate_data_source(runtime_package_activation(
+                installation,
+                None,
+                self.services.local_artifact_references,
+            )?)
             .await
             .map_err(map_runtime_backend_error)?;
         self.services
@@ -927,7 +948,10 @@ impl ApiProviderRuntime {
             .network_egress_activate(RuntimeNetworkEgressActivation {
                 runtime_id: provider_id.to_string(),
                 plugin_id: installation.plugin_id.clone(),
-                artifact: runtime_artifact_reference(installation)?,
+                artifact: runtime_artifact_reference(
+                    installation,
+                    self.services.local_artifact_references,
+                )?,
                 source_identity,
                 secret_json: secret.secret_json,
             })
@@ -1001,18 +1025,16 @@ fn runtime_legacy_eligibility(
 
 fn runtime_artifact_reference(
     installation: &domain::LocalPluginInstallationRecord,
+    local_artifact_references: bool,
 ) -> anyhow::Result<RuntimeArtifactReference> {
-    #[cfg(test)]
-    {
+    if local_artifact_references {
         RuntimeArtifactReference::new(
             installation
                 .local_path()
                 .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
         )
         .map_err(Into::into)
-    }
-    #[cfg(not(test))]
-    {
+    } else {
         RuntimeArtifactReference::new(installation.id.to_string()).map_err(Into::into)
     }
 }
@@ -1020,10 +1042,11 @@ fn runtime_artifact_reference(
 fn runtime_package_activation(
     installation: &domain::LocalPluginInstallationRecord,
     source_identity: Option<String>,
+    local_artifact_references: bool,
 ) -> anyhow::Result<RuntimePackageActivation> {
     Ok(RuntimePackageActivation {
         plugin_id: installation.plugin_id.clone(),
-        artifact: runtime_artifact_reference(installation)?,
+        artifact: runtime_artifact_reference(installation, local_artifact_references)?,
         source_identity,
         legacy_eligibility: legacy_manifest_eligibility(installation)?
             .as_ref()
@@ -1035,11 +1058,12 @@ fn runtime_network_egress_activation(
     provider_id: Uuid,
     installation: &domain::LocalPluginInstallationRecord,
     secret: NetworkEgressSecretMaterial,
+    local_artifact_references: bool,
 ) -> anyhow::Result<RuntimeNetworkEgressActivation> {
     Ok(RuntimeNetworkEgressActivation {
         runtime_id: provider_id.to_string(),
         plugin_id: installation.plugin_id.clone(),
-        artifact: runtime_artifact_reference(installation)?,
+        artifact: runtime_artifact_reference(installation, local_artifact_references)?,
         source_identity: format!(
             "installation_id={};checksum={};manifest_fingerprint={};updated_at={}",
             installation.id,
@@ -1118,7 +1142,6 @@ fn preserve_provider_invocation_outcome(
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/invocation_outcome.rs"]
 mod invocation_outcome_tests;
@@ -1187,3 +1210,4 @@ fn map_framework_error(error: PluginFrameworkError, service_name: &'static str) 
 }
 
 mod data_source_ports;
+pub mod http_delivery;

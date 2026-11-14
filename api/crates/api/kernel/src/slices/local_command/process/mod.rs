@@ -216,12 +216,10 @@ fn collect<R: Read + Send, E: Read + Send>(
     })
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/mod.rs"]
 mod tests;
 
-#[cfg_attr(test, api_test_selection::group(core, routes))]
 #[cfg(test)]
 #[path = "_tests/event_projection.rs"]
 mod event_projection_tests;

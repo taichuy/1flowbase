@@ -1,3 +1,4 @@
+use crate::extension_bus::SnapshotAssembly;
 use interface_runtime::{BindingId, InterfaceExecutionMode, ProtocolProjection};
 
 use super::support::test_api_state_with_database_url;

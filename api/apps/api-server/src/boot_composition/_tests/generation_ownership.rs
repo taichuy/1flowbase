@@ -1,4 +1,5 @@
 use super::*;
+use crate::extension_bus::SnapshotAssembly;
 use crate::{
     _tests::support::{default_test_config, test_api_state_with_database_url},
     generation_dispatch::{GenerationDispatch, WeakGenerationDispatch},

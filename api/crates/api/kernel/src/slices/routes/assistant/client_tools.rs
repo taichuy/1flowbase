@@ -43,7 +43,7 @@ pub struct AssistantClientToolBridge {
 }
 
 impl AssistantClientToolBridge {
-    pub(super) fn new() -> (Self, mpsc::Receiver<String>) {
+    pub fn new() -> (Self, mpsc::Receiver<String>) {
         let (outbound, frames) = mpsc::channel(8);
         let connection_id = Uuid::now_v7();
         (
@@ -60,7 +60,7 @@ impl AssistantClientToolBridge {
         )
     }
 
-    pub(super) async fn for_tools(
+    pub async fn for_tools(
         &self,
         enabled_tools: Vec<AssistantClientToolId>,
         declared_tools: Vec<AssistantClientToolId>,
@@ -77,7 +77,7 @@ impl AssistantClientToolBridge {
         }
     }
 
-    pub(super) async fn complete_for_connection(
+    pub async fn complete_for_connection(
         &self,
         connection_id: Uuid,
         call_id: Uuid,
@@ -98,7 +98,7 @@ impl AssistantClientToolBridge {
             })
     }
 
-    pub(super) async fn replace_connection(
+    pub async fn replace_connection(
         &self,
         connection: &Self,
         declared_tools: Vec<AssistantClientToolId>,
@@ -112,11 +112,11 @@ impl AssistantClientToolBridge {
         self.connected.store(true, Ordering::Release);
     }
 
-    pub(super) fn connection_id(&self) -> Uuid {
+    pub fn connection_id(&self) -> Uuid {
         self.connection_id
     }
 
-    pub(super) async fn close_connection(&self, connection_id: Uuid) {
+    pub async fn close_connection(&self, connection_id: Uuid) {
         if *self.active_connection_id.lock().await != connection_id {
             return;
         }
@@ -125,7 +125,7 @@ impl AssistantClientToolBridge {
             .await;
     }
 
-    pub(super) async fn close(&self) {
+    pub async fn close(&self) {
         self.connected.store(false, Ordering::Release);
         self.fail_pending("assistant client connection closed")
             .await;
@@ -230,7 +230,7 @@ impl AssistantClientToolBridge {
         Ok((call_id, result))
     }
 
-    pub(crate) async fn invoke_capability(
+    pub async fn invoke_capability(
         &self,
         capability_code: &str,
         arguments: Value,
@@ -239,7 +239,7 @@ impl AssistantClientToolBridge {
         Ok((result.result, result.is_error))
     }
 
-    pub(crate) async fn has_declared_capability(&self, capability_code: &str) -> bool {
+    pub async fn has_declared_capability(&self, capability_code: &str) -> bool {
         if !self.connected.load(Ordering::Acquire) {
             return false;
         }
@@ -250,7 +250,7 @@ impl AssistantClientToolBridge {
             .any(|tool| tool.as_str() == capability_code)
     }
 
-    pub(crate) async fn has_frontstage_capability_bundle(&self) -> bool {
+    pub async fn has_frontstage_capability_bundle(&self) -> bool {
         if !self.connected.load(Ordering::Acquire) {
             return false;
         }
@@ -322,7 +322,6 @@ impl RuntimeInternalToolInvoker for AssistantClientToolBridge {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod tests {
@@ -482,13 +481,13 @@ mod tests {
     }
 }
 
-pub(super) struct AssistantRuntimeToolInvoker {
+pub struct AssistantRuntimeToolInvoker {
     mcp: Arc<dyn RuntimeInternalToolInvoker>,
     client: Option<Arc<AssistantClientToolBridge>>,
 }
 
 impl AssistantRuntimeToolInvoker {
-    pub(super) fn new(
+    pub fn new(
         mcp: Arc<dyn RuntimeInternalToolInvoker>,
         client: Option<Arc<AssistantClientToolBridge>>,
     ) -> Self {

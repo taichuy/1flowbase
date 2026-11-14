@@ -1,3 +1,4 @@
+use crate::extension_bus::SnapshotAssembly;
 use std::sync::Arc;
 
 use access_control::{ConsoleAuthorization, ConsolePolicyGroup, ConsoleRouteOwnership};
@@ -18,11 +19,11 @@ use crate::{
 fn ac_001_active_linked_host_console_contribution_is_compiled_and_mounted() {
     let contribution = parse_host_extension_contribution_manifest(&fixture_manifest())
         .expect("fixture HostExtension manifest should be valid");
-    let source = LinkedHostConsoleRouteSource {
-        extension_id: "fixture-host",
-        version: "0.1.0",
-        route_assembly: fixture_host_console_route_assembly,
-    };
+    let source = LinkedHostConsoleRouteSource::for_test_support(
+        "fixture-host",
+        "0.1.0",
+        fixture_host_console_route_assembly,
+    );
 
     let host = resolve_linked_host_extension_console_contribution(contribution, &[source])
         .expect("active linked HostExtension contribution should resolve");
@@ -106,11 +107,11 @@ fn ac_002_duplicate_host_settings_feature_cannot_compile_a_console_plan() {
         .expect("fixture HostExtension manifest should be valid");
     let second = parse_host_extension_contribution_manifest(&fixture_manifest())
         .expect("fixture HostExtension manifest should be valid");
-    let source = LinkedHostConsoleRouteSource {
-        extension_id: "fixture-host",
-        version: "0.1.0",
-        route_assembly: fixture_host_console_route_assembly,
-    };
+    let source = LinkedHostConsoleRouteSource::for_test_support(
+        "fixture-host",
+        "0.1.0",
+        fixture_host_console_route_assembly,
+    );
 
     let first = resolve_linked_host_extension_console_contribution(first, &[source])
         .expect("the first contribution should resolve");

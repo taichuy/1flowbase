@@ -31,7 +31,7 @@ pub struct ConsoleSurfaceRegistry {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct NativeSettingsPage {
+pub struct NativeSettingsPage {
     pub route_id: String,
     pub feature_id: String,
     pub plugin_code: String,
@@ -112,12 +112,10 @@ impl ConsoleSurfaceRegistry {
         })
     }
 
-    pub(crate) fn managed_services(
-        &self,
-    ) -> &[crate::managed_services::ManagedServiceRegistration] {
+    pub fn managed_services(&self) -> &[crate::managed_services::ManagedServiceRegistration] {
         &self.managed_services
     }
-    pub(crate) fn with_managed_services(
+    pub fn with_managed_services(
         mut self,
         services: Vec<crate::managed_services::ManagedServiceRegistration>,
     ) -> Result<Self, ConsoleSurfaceRegistryError> {
@@ -207,24 +205,21 @@ impl ConsoleSurfaceRegistry {
         Ok(self)
     }
 
-    pub(crate) fn with_native_targets(mut self, targets: Vec<domain::NativePluginTarget>) -> Self {
+    pub fn with_native_targets(mut self, targets: Vec<domain::NativePluginTarget>) -> Self {
         self.native_targets = targets;
         self
     }
 
-    pub(crate) fn native_targets(&self) -> &[domain::NativePluginTarget] {
+    pub fn native_targets(&self) -> &[domain::NativePluginTarget] {
         &self.native_targets
     }
-    pub(crate) fn page(&self, route_id: &str) -> Option<&NativeSettingsPage> {
+    pub fn page(&self, route_id: &str) -> Option<&NativeSettingsPage> {
         self.pages.iter().find(|p| p.route_id == route_id)
     }
-    pub(crate) fn pages(&self) -> &[NativeSettingsPage] {
+    pub fn pages(&self) -> &[NativeSettingsPage] {
         &self.pages
     }
-    pub(crate) fn target_for_feature(
-        &self,
-        feature_id: &str,
-    ) -> Option<&domain::NativePluginTarget> {
+    pub fn target_for_feature(&self, feature_id: &str) -> Option<&domain::NativePluginTarget> {
         let (_, owner, _) = self
             .native_features
             .iter()

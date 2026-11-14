@@ -119,7 +119,7 @@ impl ExtensionGraphInputAssembly {
         compile_extension_graph(self.module_descriptors.clone()).map_err(anyhow::Error::from)
     }
 
-    pub(crate) fn extend_active_host_extensions(
+    pub fn extend_active_host_extensions(
         &mut self,
         extensions: &[(PluginManifestV1, HostExtensionContributionManifest)],
     ) -> Result<()> {

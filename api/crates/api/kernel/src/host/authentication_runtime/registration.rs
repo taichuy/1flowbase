@@ -44,7 +44,7 @@ pub(super) async fn active_declarations(
     Ok(declarations)
 }
 
-pub(crate) async fn registry_for(
+pub async fn registry_for(
     store: &MainDurableStore,
     node_id: &str,
     install_root: &str,

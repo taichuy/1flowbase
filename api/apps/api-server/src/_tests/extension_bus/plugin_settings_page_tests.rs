@@ -1,3 +1,4 @@
+use crate::extension_bus::SnapshotAssembly;
 use std::sync::Arc;
 
 use crate::{

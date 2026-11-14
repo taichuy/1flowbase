@@ -12,7 +12,7 @@ pub use recovery_adapters::{
     StoppedServerRecoveryEphemeralState,
 };
 pub(crate) use runtime::SystemBackupDetail;
-pub use runtime::{SystemBackupRuntime, SystemBackupRuntimeError};
+pub use runtime::{SystemBackupRuntime, SystemBackupRuntimeAssembly, SystemBackupRuntimeError};
 pub use toolchain::{
     discover_postgres_toolchain, PostgreSqlToolchainDiscoveryError, PG_DUMP_PATH_ENV,
     PG_RESTORE_PATH_ENV,

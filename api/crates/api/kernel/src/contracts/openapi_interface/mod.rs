@@ -1,9 +1,9 @@
 mod capability_catalog;
 mod catalog;
-pub(crate) mod contract;
+pub mod contract;
 mod dispatcher;
-pub(crate) mod json_contract;
-pub(crate) mod schema_projection;
+pub mod json_contract;
+pub mod schema_projection;
 
 pub use capability_catalog::{
     build_openapi_capability_catalog, get_openapi_capability, get_openapi_capability_by_route,
@@ -11,12 +11,12 @@ pub use capability_catalog::{
     OpenApiCapabilityCatalogEntry, OpenApiCapabilityCatalogPage, OpenApiCapabilityCatalogQuery,
     OpenApiCapabilityCatalogSummary, OpenApiCapabilitySource,
 };
-pub(crate) use capability_catalog::{
+pub use capability_catalog::{
     build_openapi_capability_catalog_with, get_openapi_capability_by_route_with,
     get_openapi_capability_with, query_openapi_capability_catalog_with,
     OpenApiCapabilityCatalogDependencies,
 };
-pub(crate) use catalog::catalog_entry_from_view;
+pub use catalog::catalog_entry_from_view;
 pub use catalog::{
     catalog_entry_from_operation, OpenApiInterfaceCatalogEntry, OpenApiParameterDescriptor,
     OpenApiParameterLocation,
@@ -28,4 +28,4 @@ pub use dispatcher::{
     DispatchError, DispatchSuccess,
 };
 
-pub(crate) use catalog::close_api_event_schema;
+pub use catalog::close_api_event_schema;

@@ -1,4 +1,7 @@
 use super::*;
+use crate::event_center::catalog::EventSourceCatalogAssembly;
+use crate::extension_bus::SnapshotAssembly;
+use crate::system_backup::SystemBackupRuntimeAssembly;
 
 pub(super) async fn app_and_runtime_host_from_config(
     config: &ApiConfig,
@@ -212,19 +215,20 @@ pub(super) async fn app_and_runtime_host_from_config(
     let mut runtime_backend_slot = runtime_core::runtime_backend::RuntimeBackendSlot::default();
     runtime_backend_slot.bind(runtime_extension_host.clone())?;
     let runtime_backend = runtime_backend_slot.backend()?;
-    let provider_runtime = Arc::new(
-        ApiRuntimeServices::new_with_runtime_backend_and_transport_config(
-            runtime_backend,
-            Arc::clone(&extension_graph),
-            config.transport_session_registry.clone(),
-        )?
-        .with_managed_composition(
+    let (provider_runtime, managed_composition) =
+        crate::managed_runtime_assembly::bind_managed_runtime(
+            crate::provider_runtime::services_for_current_cfg(
+                ApiRuntimeServices::new_with_runtime_backend_and_transport_config(
+                    runtime_backend,
+                    Arc::clone(&extension_graph),
+                    config.transport_session_registry.clone(),
+                )?,
+            ),
             store.clone(),
             config.api_node_id.clone(),
             managed_base_modules,
-        ),
-    );
-    let managed_composition = provider_runtime.managed_composition()?;
+        );
+    let provider_runtime = Arc::new(provider_runtime);
     managed_composition.attach_native_lifecycle_plan(lifecycle_plan.clone())?;
     managed_composition
         .attach_lifecycle_source_observer(lifecycle_source_observer.clone())
@@ -232,7 +236,9 @@ pub(super) async fn app_and_runtime_host_from_config(
     lifecycle_publication_catalog.attach_workspace_source(Arc::new(
         extension_bus::ManagedWorkspacePublicationSource(Arc::downgrade(&managed_composition)),
     ))?;
-    let lifecycle_delivery = lifecycle_delivery.with_managed(&managed_composition);
+    let lifecycle_delivery = lifecycle_delivery.with_managed(
+        &(managed_composition.clone() as Arc<dyn extension_bus::ManagedCompositionPort>),
+    );
     let lifecycle_worker =
         control_plane::lifecycle_outbox_dispatcher::LifecycleOutboxDispatcher::new(
             store.clone(),
@@ -432,7 +438,7 @@ pub(super) async fn app_and_runtime_host_from_config(
     runtime_extension_host.mark_ready()?;
 
     let state = Arc::new(ApiState {
-        #[cfg(test)]
+        #[cfg(any(test,feature="test-support"))]
         test_resources: None,
         console_policy_reader: Arc::new(store.clone()),
         store: store.clone(),

@@ -1,5 +1,8 @@
+#[path = "openapi_docs/cache.rs"]
 mod cache;
-pub(crate) mod managed_projection;
+#[path = "openapi_docs/managed_projection.rs"]
+pub mod managed_projection;
+#[path = "openapi_docs/scope_plan.rs"]
 mod scope_plan;
 pub use cache::SharedApiDocument;
 use cache::{DocumentCache, EncodedApiDocument, ScopeKey};
@@ -12,13 +15,13 @@ use std::sync::Arc;
 use anyhow::{anyhow, bail, Context, Result};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
-use utoipa::{OpenApi, ToSchema};
+use utoipa::ToSchema;
 
 const HTTP_METHODS: &[&str] = &[
     "get", "put", "post", "delete", "options", "head", "patch", "trace",
 ];
 const DEFAULT_DOCS_SERVER_URL: &str = "/";
-const DEFAULT_SESSION_COOKIE_NAME: &str = "flowbase_console_session";
+pub const DEFAULT_SESSION_COOKIE_NAME: &str = "flowbase_console_session";
 const SESSION_COOKIE_SECURITY_SCHEME: &str = "sessionCookie";
 const CSRF_HEADER_SECURITY_SCHEME: &str = "csrfHeader";
 const CSRF_HEADER_NAME: &str = "x-csrf-token";
@@ -82,12 +85,12 @@ pub struct ApiDocsRegistry {
 
 impl ApiDocsRegistry {
     /// Enable the disposable response cache only at the asynchronous host assembly boundary.
-    pub(crate) fn with_default_cache(self) -> Result<Self> {
+    pub fn with_default_cache(self) -> Result<Self> {
         self.with_cache_policy(Some(cache::default_policy()?))
     }
 
     /// Independent, runtime-free placeholder; generation preparation replaces it before use.
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             catalog: DocsCatalog {
                 title: String::new(),
@@ -154,7 +157,7 @@ impl ApiDocsRegistry {
             .map(|plan| plan.materialize(&self.canonical))
     }
 
-    pub(crate) fn operation_spec_view(&self, operation_id: &str) -> Option<OperationSpecView<'_>> {
+    pub fn operation_spec_view(&self, operation_id: &str) -> Option<OperationSpecView<'_>> {
         self.operation_plans
             .get(operation_id)
             .map(|plan| OperationSpecView {
@@ -180,19 +183,6 @@ impl ApiDocsRegistry {
             .get(category_id)
             .map(|plan| plan.materialize(&self.canonical))
     }
-}
-
-pub fn build_default_api_docs_registry() -> Result<ApiDocsRegistry> {
-    build_default_api_docs_registry_with_cookie_name(DEFAULT_SESSION_COOKIE_NAME)
-}
-
-pub fn build_default_api_docs_registry_with_cookie_name(
-    cookie_name: &str,
-) -> Result<ApiDocsRegistry> {
-    build_api_docs_registry_with_cookie_name(
-        serde_json::to_value(crate::openapi::ApiDoc::openapi())?,
-        cookie_name,
-    )
 }
 
 pub fn build_api_docs_registry(canonical: Value) -> Result<ApiDocsRegistry> {
@@ -266,7 +256,7 @@ pub fn filter_category_operations(
     }
 }
 
-pub(crate) fn build_api_docs_registry_with_cookie_name(
+pub fn build_api_docs_registry_with_cookie_name(
     canonical: Value,
     cookie_name: &str,
 ) -> Result<ApiDocsRegistry> {
@@ -541,7 +531,7 @@ fn ensure_security_schemes(
     Ok(())
 }
 
-pub(crate) fn ensure_session_security_schemes(
+pub fn ensure_session_security_schemes(
     canonical_map: &mut Map<String, Value>,
     cookie_name: &str,
 ) -> Result<()> {

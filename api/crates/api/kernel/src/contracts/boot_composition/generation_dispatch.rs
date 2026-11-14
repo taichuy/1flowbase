@@ -3,16 +3,14 @@ use crate::{
     app_state::ApiState,
     error_response::{ApiError, ApiServiceUnavailable},
     openapi_interface::{
-        self, CallableDispatchError, CallableDispatchForwarding, CallableDispatchPort,
+        CallableDispatchError, CallableDispatchForwarding, CallableDispatchPort,
         CallableDispatchResult, DispatchArguments, OpenApiInterfaceCatalogEntry,
     },
     routes::{
         mcp_management::debug_execute::{
             McpDebugExecuteBody, McpDebugExecuteError, McpServerBoundInputs,
         },
-        mcp_protocol::virtual_ui::{
-            ConsoleRouterMcpInterfaceDispatchPort, McpInterfaceDispatchPort,
-        },
+        mcp_protocol::virtual_ui::McpInterfaceDispatchPort,
     },
 };
 use axum::{
@@ -35,96 +33,56 @@ type DispatchFuture<'a> = Pin<
     Box<dyn Future<Output = Result<CallableDispatchResult, CallableDispatchError>> + Send + 'a>,
 >;
 
-pub(crate) struct GenerationDispatch {
+pub struct GenerationDispatch {
     generation_id: uuid::Uuid,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     retired: Arc<tokio::sync::Notify>,
     ports: OnceLock<DispatchPorts>,
 }
 
 struct DispatchPorts {
     callable: Arc<dyn CallableDispatchPort>,
-    mcp: ConsoleRouterMcpInterfaceDispatchPort,
+    mcp: Arc<dyn McpInterfaceDispatchPort>,
 }
 
-pub(crate) fn unavailable() -> ApiError {
+pub fn unavailable() -> ApiError {
     ApiServiceUnavailable("selected host generation is unavailable").into()
 }
 
 impl GenerationDispatch {
-    pub(crate) fn new(generation_id: uuid::Uuid) -> Arc<Self> {
+    pub fn is_ready(&self) -> bool {
+        self.ports.get().is_some()
+    }
+    pub fn publish_ready(
+        &self,
+        callable: Arc<dyn CallableDispatchPort>,
+        mcp: Arc<dyn McpInterfaceDispatchPort>,
+    ) -> Result<(), ApiError> {
+        self.ports
+            .set(DispatchPorts { callable, mcp })
+            .map_err(|_| unavailable())
+    }
+
+    pub fn new(generation_id: uuid::Uuid) -> Arc<Self> {
         Arc::new(Self {
             generation_id,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             retired: Arc::new(tokio::sync::Notify::new()),
             ports: OnceLock::new(),
         })
     }
 
-    /// Finalize exactly once against the complete candidate, before any serving root admits it.
-    pub(crate) fn compile_router(
-        &self,
-        state: &Arc<ApiState>,
-        registry: &interface_runtime::CompiledInterfaceRegistry,
-        assembly: Option<
-            crate::routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>>,
-        >,
-    ) -> Result<(), ApiError> {
-        if self.ports.get().is_some()
-            || state
-                .extension_boot_snapshot
-                .as_ref()
-                .map(|boot| boot.generation_id())
-                != Some(self.generation_id)
-        {
-            return Err(unavailable());
-        }
-        // Never wrap this internal router with serving_router: that would create O -> R -> O.
-        let router = match assembly {
-            Some(assembly) => {
-                #[cfg(test)]
-                if let Some(boot) = &state.extension_boot_snapshot {
-                    boot.record_dispatch_assembly();
-                }
-                crate::console_router_with_assembly(state.clone(), true, assembly).0
-            }
-            None => crate::console_router_for_registry(state.clone(), true, Some(registry)),
-        };
-        self.ports
-            .set(DispatchPorts {
-                callable: openapi_interface::console_router_callable_dispatch_port(router.clone()),
-                mcp: ConsoleRouterMcpInterfaceDispatchPort::new(router),
-            })
-            .map_err(|_| unavailable())
-    }
-
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn compile(state: &Arc<ApiState>) -> Result<Arc<Self>, ApiError> {
-        let boot = state
-            .extension_boot_snapshot
-            .as_ref()
-            .ok_or_else(unavailable)?;
-        let registry = boot
-            .interface_registry()
-            .ok_or_else(unavailable)?
-            .snapshot();
-        let owner = Self::new(boot.generation_id());
-        owner.compile_router(state, &registry, None)?;
-        Ok(owner)
-    }
-
-    #[cfg(test)]
-    #[cfg_attr(test, api_test_selection::group(core, contracts, public_api))]
-    pub(crate) fn retirement_notification(&self) -> Arc<tokio::sync::Notify> {
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn retirement_notification(&self) -> Arc<tokio::sync::Notify> {
         self.retired.clone()
     }
 
-    pub(crate) fn generation_id(&self) -> uuid::Uuid {
+    pub fn generation_id(&self) -> uuid::Uuid {
         self.generation_id
     }
 
-    pub(crate) fn acquire(state: &ApiState) -> Result<Arc<Self>, ApiError> {
+    pub fn acquire(state: &ApiState) -> Result<Arc<Self>, ApiError> {
         let boot = state
             .extension_boot_snapshot
             .as_ref()
@@ -138,7 +96,7 @@ impl GenerationDispatch {
 }
 
 /// The completion task owns its lease independently of the HTTP projection task.
-pub(crate) fn spawn_with_lease<F>(
+pub fn spawn_with_lease<F>(
     owner: Arc<GenerationDispatch>,
     future: F,
 ) -> tokio::task::JoinHandle<F::Output>
@@ -200,7 +158,7 @@ impl McpInterfaceDispatchPort for GenerationDispatch {
     }
 }
 
-pub(crate) struct WeakGenerationDispatch(pub(crate) Weak<GenerationDispatch>);
+pub struct WeakGenerationDispatch(pub Weak<GenerationDispatch>);
 impl CallableDispatchPort for WeakGenerationDispatch {
     fn dispatch<'a>(
         &'a self,
@@ -248,9 +206,9 @@ impl McpInterfaceDispatchPort for WeakGenerationDispatch {
 }
 
 /// A host callback selects state and owner together under the publisher's read lock.
-pub(crate) struct GenerationLease {
-    pub(crate) state: Arc<ApiState>,
-    pub(crate) owner: Arc<GenerationDispatch>,
+pub struct GenerationLease {
+    pub state: Arc<ApiState>,
+    pub owner: Arc<GenerationDispatch>,
 }
 impl std::ops::Deref for GenerationLease {
     type Target = Arc<ApiState>;
@@ -260,7 +218,7 @@ impl std::ops::Deref for GenerationLease {
 }
 
 /// Only external serving routers own this layer; internal dispatch must stay acyclic.
-pub(crate) fn serving_router(router: Router, owner: Arc<GenerationDispatch>) -> Router {
+pub fn serving_router(router: Router, owner: Arc<GenerationDispatch>) -> Router {
     router.layer(axum::middleware::from_fn(
         move |request: Request, next: axum::middleware::Next| {
             let owner = owner.clone();
@@ -269,7 +227,7 @@ pub(crate) fn serving_router(router: Router, owner: Arc<GenerationDispatch>) -> 
     ))
 }
 
-pub(crate) fn bind_response(response: Response, owner: Arc<GenerationDispatch>) -> Response {
+pub fn bind_response(response: Response, owner: Arc<GenerationDispatch>) -> Response {
     let (parts, inner) = response.into_parts();
     Response::from_parts(
         parts,
@@ -305,7 +263,7 @@ impl HttpBody for GenerationBody {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl Drop for GenerationDispatch {
     fn drop(&mut self) {
         self.retired.notify_one();

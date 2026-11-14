@@ -1,3 +1,4 @@
+use crate::extension_bus::SnapshotAssembly;
 use crate::extension_bus::{
     assemble_extension_graph_input, ExtensionBootSnapshot, DEFAULT_PLUGIN_SET_PATH,
 };

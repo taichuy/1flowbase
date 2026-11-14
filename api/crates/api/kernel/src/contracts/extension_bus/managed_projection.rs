@@ -4,23 +4,23 @@ use serde_json::{json, Value};
 
 pub(crate) const MAX_TEXT_BYTES: usize = 256;
 
-pub(crate) fn text(value: &str) -> Option<Value> {
+pub fn text(value: &str) -> Option<Value> {
     (value.len() <= MAX_TEXT_BYTES).then(|| Value::String(value.to_owned()))
 }
 
-pub(crate) fn text_schema() -> Value {
+pub fn text_schema() -> Value {
     json!({"type": "string", "maxLength": MAX_TEXT_BYTES})
 }
 
-pub(crate) fn tag_schema(tag: &str) -> Value {
+pub fn tag_schema(tag: &str) -> Value {
     json!({"type": "string", "maxLength": MAX_TEXT_BYTES, "const": tag})
 }
 
-pub(crate) fn count_schema() -> Value {
+pub fn count_schema() -> Value {
     json!({"type": "integer", "minimum": 0})
 }
 
-pub(crate) fn object_schema<'a>(fields: impl IntoIterator<Item = (&'a str, Value)>) -> Value {
+pub fn object_schema<'a>(fields: impl IntoIterator<Item = (&'a str, Value)>) -> Value {
     let fields = fields.into_iter();
     let field_count = fields.size_hint().0;
     let mut properties = serde_json::Map::with_capacity(field_count);
@@ -37,7 +37,7 @@ pub(crate) fn object_schema<'a>(fields: impl IntoIterator<Item = (&'a str, Value
     ])
 }
 
-pub(crate) fn json_summary_schema() -> Value {
+pub fn json_summary_schema() -> Value {
     object_schema([
         (
             "kind",
@@ -50,7 +50,7 @@ pub(crate) fn json_summary_schema() -> Value {
 }
 
 /// O(1) metadata only: never visits keys, nested values, defaults, examples, or error text.
-pub(crate) fn json_summary(value: &Value) -> Value {
+pub fn json_summary(value: &Value) -> Value {
     let (kind, count, bytes) = match value {
         Value::Null => ("null", 0, 0),
         Value::Bool(_) => ("boolean", 0, 0),
@@ -62,7 +62,7 @@ pub(crate) fn json_summary(value: &Value) -> Value {
     json!({"kind": kind, "item_count": count, "byte_count": bytes})
 }
 
-pub(crate) fn object_value<'a>(fields: impl IntoIterator<Item = (&'a str, Value)>) -> Value {
+pub fn object_value<'a>(fields: impl IntoIterator<Item = (&'a str, Value)>) -> Value {
     Value::Object(
         fields
             .into_iter()
@@ -71,6 +71,6 @@ pub(crate) fn object_value<'a>(fields: impl IntoIterator<Item = (&'a str, Value)
     )
 }
 
-pub(crate) fn union_schema(variants: Vec<Value>) -> Value {
+pub fn union_schema(variants: Vec<Value>) -> Value {
     object_value([("oneOf", Value::Array(variants))])
 }

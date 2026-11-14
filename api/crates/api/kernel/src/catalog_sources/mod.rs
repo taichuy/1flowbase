@@ -1,0 +1,12 @@
+#[path = "model_pricing_catalog.rs"]
+pub mod model_pricing_catalog;
+#[path = "official_extension_catalog.rs"]
+pub mod official_extension_catalog;
+#[path = "official_i18n_catalog_seed.rs"]
+pub mod official_i18n_catalog_seed;
+#[path = "official_i18n_catalog_source.rs"]
+pub mod official_i18n_catalog_source;
+#[path = "official_mcp_bundles.rs"]
+pub mod official_mcp_bundles;
+#[path = "ui_component_catalog_source.rs"]
+pub mod ui_component_catalog_source;

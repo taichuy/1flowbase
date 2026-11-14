@@ -120,10 +120,7 @@ pub(super) struct ScopePlan {
 }
 
 impl ScopePlan {
-    pub(super) fn compile(
-        canonical: &Value,
-        scoped_operations: &[(String, String)],
-    ) -> Result<Self> {
+    pub fn compile(canonical: &Value, scoped_operations: &[(String, String)]) -> Result<Self> {
         let canonical_map = canonical
             .as_object()
             .context("canonical OpenAPI document must be a JSON object")?;
@@ -270,7 +267,7 @@ impl ScopePlan {
 /// Narrow access for catalog consumers: borrow path metadata and resolve against
 /// the validated component projection, including legacy overlapping writes.
 /// It never retains or constructs a complete operation document.
-pub(crate) struct OperationSpecView<'a> {
+pub struct OperationSpecView<'a> {
     pub(super) canonical: &'a Value,
     pub(super) plan: &'a ScopePlan,
 }

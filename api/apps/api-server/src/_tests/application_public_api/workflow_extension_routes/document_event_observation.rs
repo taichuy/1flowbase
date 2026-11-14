@@ -1,4 +1,5 @@
 use super::*;
+use crate::event_center::catalog::EventSourceCatalogAssembly;
 use control_plane::application_public_api::workflow_extension::{
     AuthorizedPublishedWorkflowOperation, WorkflowExtensionRunService,
 };

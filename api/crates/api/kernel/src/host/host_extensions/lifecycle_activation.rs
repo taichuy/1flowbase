@@ -8,7 +8,7 @@ use plugin_framework::{
 type LifecycleHandlerFactory = Arc<dyn Fn() -> Result<Vec<LifecycleHandlerBinding>> + Send + Sync>;
 
 #[derive(Default)]
-pub(crate) struct HostExtensionLifecycleFactoryCatalog {
+pub struct HostExtensionLifecycleFactoryCatalog {
     factories: BTreeMap<(String, String), LifecycleHandlerFactory>,
 }
 
@@ -30,7 +30,7 @@ impl HostExtensionLifecycleFactoryCatalog {
         Ok(())
     }
 
-    pub(crate) fn activate(
+    pub fn activate(
         &self,
         active_extensions: &[(PluginManifestV1, HostExtensionContributionManifest)],
     ) -> Result<Vec<LifecycleHandlerBinding>> {

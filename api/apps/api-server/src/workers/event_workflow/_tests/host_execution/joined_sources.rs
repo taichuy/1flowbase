@@ -1,5 +1,6 @@
 //! Joined evidence: original owners produce and consume; the serving worker executes publications.
 use super::*;
+use crate::event_center::catalog::EventSourceCatalogAssembly;
 use control_plane::{
     application_public_api::workflow_invocation::{
         InvokeWorkflowCommand, WorkflowInvocationService, WorkflowInvocationTrigger,

@@ -288,30 +288,26 @@ impl LocalRuntimeEventStream {
         self
     }
 
-    #[cfg(test)]
-    #[cfg_attr(test, api_test_selection::group(contracts, public_api))]
-    pub(crate) fn with_broadcast_capacity_for_tests(broadcast_capacity: usize) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn with_broadcast_capacity_for_tests(broadcast_capacity: usize) -> Self {
         Self {
             broadcast_capacity: broadcast_capacity.max(1),
             ..Self::default()
         }
     }
 
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn contains_run_without_purge_for_tests(&self, run_id: Uuid) -> bool {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn contains_run_without_purge_for_tests(&self, run_id: Uuid) -> bool {
         self.runs
             .lock()
             .expect("runtime event stream runs lock poisoned")
             .contains_key(&run_id)
     }
 
-    #[cfg(test)]
-    #[cfg_attr(test, api_test_selection::group(contracts, public_api))]
-    pub(crate) fn run_probe_for_tests(
-        &self,
-        run_id: Uuid,
-    ) -> Result<impl Fn() -> (usize, usize, usize)> {
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn run_probe_for_tests(&self, run_id: Uuid) -> Result<impl Fn() -> (usize, usize, usize)> {
         let run = Arc::downgrade(&self.run(run_id)?);
         Ok(move || {
             let strong_count = run.strong_count();
@@ -404,9 +400,8 @@ impl LocalRuntimeEventStream {
         runs.values().map(|run| run.retention_deadline()).min()
     }
 
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn has_live_broadcast_for_tests(&self, run_id: Uuid) -> Result<bool> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn has_live_broadcast_for_tests(&self, run_id: Uuid) -> Result<bool> {
         let run = self.run(run_id)?;
         let has_broadcast = run
             .broadcaster
@@ -435,9 +430,8 @@ impl LocalRuntimeEventStream {
         Self::purge_and_next_deadline(&self.runs, self.recoverable_byte_budget);
     }
 
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn set_run_timestamps_for_tests(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_run_timestamps_for_tests(
         &self,
         run_id: Uuid,
         last_event_at: OffsetDateTime,
@@ -454,9 +448,8 @@ impl LocalRuntimeEventStream {
         Ok(())
     }
 
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn set_confirmation_timestamp_for_tests(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_confirmation_timestamp_for_tests(
         &self,
         run_id: Uuid,
         confirmed_at: OffsetDateTime,
@@ -472,9 +465,8 @@ impl LocalRuntimeEventStream {
         Ok(())
     }
 
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn retention_deadline_for_tests(&self, run_id: Uuid) -> Result<OffsetDateTime> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn retention_deadline_for_tests(&self, run_id: Uuid) -> Result<OffsetDateTime> {
         Ok(self.run(run_id)?.retention_deadline())
     }
 

@@ -13,7 +13,7 @@ use storage_ephemeral::{MemoryDistributedLock, MokaCacheStore};
 use time::OffsetDateTime;
 
 use super::super::{ApiRuntimeProfilePort, RuntimeHostSystemPort, RuntimeProfileSnapshotCache};
-use crate::_tests::support::{sample_api_profile, sample_runner_profile};
+use crate::test_support::profiles::{sample_api_profile, sample_runner_profile};
 
 #[derive(Clone)]
 struct CountingApiRuntimeProfileCollector {

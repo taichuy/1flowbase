@@ -73,7 +73,7 @@ struct SearchPageReference {
 }
 
 // Own only the small index and a shared HTTP client, never the complete rule catalog.
-pub(crate) struct RemotePricingCatalogReader {
+pub struct RemotePricingCatalogReader {
     client: reqwest::Client,
     index_url: String,
     index: Index,
@@ -92,7 +92,7 @@ fn verify_checksum(bytes: &[u8], expected: &str, error: &'static str) -> Result<
 }
 
 impl RemotePricingCatalogReader {
-    pub(crate) async fn open(client: &reqwest::Client, index_url: &str) -> Result<Self, ApiError> {
+    pub async fn open(client: &reqwest::Client, index_url: &str) -> Result<Self, ApiError> {
         let bytes = fetch_document(client, index_url, 512 * 1024).await?;
         let index: Index = serde_json::from_slice(&bytes)?;
         if index.schema_version != "1flowbase.model-pricing-index/v2"
@@ -159,14 +159,14 @@ impl RemotePricingCatalogReader {
         })
     }
 
-    pub(crate) fn catalog_version(&self) -> &str {
+    pub fn catalog_version(&self) -> &str {
         &self.index.catalog_version
     }
-    pub(crate) fn page_count(&self) -> usize {
+    pub fn page_count(&self) -> usize {
         self.index.pages.len()
     }
 
-    pub(crate) async fn read_page(&self, number: usize) -> Result<Vec<PricingRuleBody>, ApiError> {
+    pub async fn read_page(&self, number: usize) -> Result<Vec<PricingRuleBody>, ApiError> {
         let reference = number
             .checked_sub(1)
             .and_then(|i| self.index.pages.get(i))
@@ -371,7 +371,7 @@ impl RemotePricingCatalogReader {
         Ok(result)
     }
 
-    pub(crate) async fn count(
+    pub async fn count(
         &self,
         provider: Option<&str>,
         model: Option<&str>,
@@ -390,7 +390,7 @@ impl RemotePricingCatalogReader {
             .count())
     }
 
-    pub(crate) async fn query(
+    pub async fn query(
         &self,
         provider: Option<&str>,
         model: Option<&str>,
@@ -435,7 +435,7 @@ impl RemotePricingCatalogReader {
         Ok((self.selected(&selected).await?, total))
     }
 
-    pub(crate) async fn select_ids(&self, ids: &[Uuid]) -> Result<Vec<PricingRuleBody>, ApiError> {
+    pub async fn select_ids(&self, ids: &[Uuid]) -> Result<Vec<PricingRuleBody>, ApiError> {
         let wanted: HashSet<_> = ids.iter().copied().collect();
         if wanted.len() != ids.len() {
             return Err(invalid("pricing_catalog_id"));

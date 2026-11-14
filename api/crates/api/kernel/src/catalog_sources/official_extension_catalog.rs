@@ -34,7 +34,7 @@ mod catalog_port;
 #[path = "official_extension_catalog/runtime_projection.rs"]
 mod runtime_projection;
 
-pub(crate) use artifact_download::rewrite_github_raw_url;
+pub use artifact_download::rewrite_github_raw_url;
 pub use runtime_projection::ApiOfficialRuntimeExtensionSource;
 
 const EXTENSION_CATALOG_SCHEMA_VERSION: &str = "1flowbase.extension-catalog/v1";
@@ -142,7 +142,7 @@ pub struct OfficialExtensionCatalogEntrySource {
 }
 
 impl OfficialExtensionCatalogEntrySource {
-    pub(crate) fn client_collector(&self) -> Result<Option<domain::ClientCollectorDescriptor>> {
+    pub fn client_collector(&self) -> Result<Option<domain::ClientCollectorDescriptor>> {
         let Some(value) = self.metadata.get("distribution_kind") else {
             return Ok(None);
         };
@@ -432,9 +432,8 @@ impl ApiOfficialExtensionCatalogSource {
         }
     }
 
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn new_with_request_timeouts(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn new_with_request_timeouts(
         sources: BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>,
         catalog_request_timeout: Duration,
         artifact_download_timeout: Duration,

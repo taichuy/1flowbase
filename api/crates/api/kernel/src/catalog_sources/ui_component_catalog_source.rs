@@ -276,7 +276,7 @@ fn digest(bytes: &[u8]) -> String {
     format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(bytes)))
 }
 
-pub(crate) fn canonical_json_bytes(value: &Value) -> Result<Vec<u8>> {
+pub fn canonical_json_bytes(value: &Value) -> Result<Vec<u8>> {
     fn sorted(value: &Value) -> Value {
         match value {
             Value::Object(object) => {

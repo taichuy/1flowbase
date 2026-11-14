@@ -10,19 +10,19 @@ use runtime_core::runtime_backend::RuntimeExecutionPrincipal;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::extension_bus::{ManagedExtensionComposition, ManagedWorkspaceSnapshot};
+use crate::extension_bus::{ManagedCompositionPort, ManagedWorkspaceSnapshot};
 
-pub(crate) struct ManagedNotificationProvider {
-    composition: Arc<ManagedExtensionComposition>,
+pub struct ManagedNotificationProvider {
+    composition: Arc<dyn ManagedCompositionPort>,
 }
 
 impl ManagedNotificationProvider {
-    pub(crate) fn new(composition: Arc<ManagedExtensionComposition>) -> Self {
+    pub fn new(composition: Arc<dyn ManagedCompositionPort>) -> Self {
         Self { composition }
     }
 
     /// Receive and attachment download have their own independently granted contribution.
-    pub(crate) async fn execute_receive(
+    pub async fn execute_receive(
         &self,
         actor: &ActorContext,
         installation_id: Uuid,

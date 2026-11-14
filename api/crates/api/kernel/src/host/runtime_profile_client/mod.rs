@@ -71,7 +71,7 @@ impl RuntimeHostSystemPort for runtime_extension_host::RuntimeExtensionHost {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RuntimeProfilesSnapshot {
+pub struct RuntimeProfilesSnapshot {
     pub api_profile: RuntimeProfile,
     pub host_profile: RuntimeProfile,
 }
@@ -118,7 +118,7 @@ impl CachedRuntimeTargetObservation {
 }
 
 #[derive(Clone)]
-pub(crate) struct RuntimeProfileSnapshotCache {
+pub struct RuntimeProfileSnapshotCache {
     cache_store: Arc<dyn CacheStore>,
     refresh_lock: Arc<dyn DistributedLock>,
     api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
@@ -128,7 +128,7 @@ pub(crate) struct RuntimeProfileSnapshotCache {
 }
 
 impl RuntimeProfileSnapshotCache {
-    pub(crate) fn new(
+    pub fn new(
         cache_store: Arc<dyn CacheStore>,
         refresh_lock: Arc<dyn DistributedLock>,
         api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
@@ -146,7 +146,7 @@ impl RuntimeProfileSnapshotCache {
         }
     }
 
-    pub(crate) async fn get_or_refresh(&self) -> Result<RuntimeProfilesSnapshot> {
+    pub async fn get_or_refresh(&self) -> Result<RuntimeProfilesSnapshot> {
         if let Some(snapshot) = self.read_fresh_snapshot().await? {
             return Ok(snapshot);
         }
@@ -297,6 +297,5 @@ impl RuntimeProfileSnapshotCache {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod _tests;

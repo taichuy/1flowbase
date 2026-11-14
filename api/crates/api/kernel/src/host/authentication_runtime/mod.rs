@@ -1,6 +1,6 @@
 //! Host-owned verifier admission/configuration and fresh durable authentication views.
 mod registration;
-pub(crate) use registration::registry_for;
+pub use registration::registry_for;
 
 use crate::{
     app_state::ApiState, error_response::ApiError, extension_bus::ManagedWorkspaceSnapshot,
@@ -20,15 +20,15 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 /// Read fresh durable authentication facts without reusing a request actor override.
-pub(crate) fn fresh_authentication_store(store: &MainDurableStore) -> MainDurableStore {
+pub fn fresh_authentication_store(store: &MainDurableStore) -> MainDurableStore {
     MainDurableStore::new(store.pool().clone())
 }
 
 /// Provider admission and invocation resources. The runtime reference is weak:
 /// its composition owns compiled registries which retain authentication handlers.
 #[derive(Clone)]
-pub(crate) struct AuthenticationRuntime {
-    pub(crate) store: MainDurableStore,
+pub struct AuthenticationRuntime {
+    pub store: MainDurableStore,
     runtime: Weak<crate::provider_runtime::ApiRuntimeServices>,
     api_node_id: String,
     provider_install_root: String,
@@ -36,12 +36,12 @@ pub(crate) struct AuthenticationRuntime {
 }
 
 /// Keeps the runtime alive for one handler execution without exposing its services.
-pub(crate) struct AuthenticationRuntimeLease {
+pub struct AuthenticationRuntimeLease {
     _runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
 }
 
 impl AuthenticationRuntime {
-    pub(crate) fn from_state(state: &ApiState) -> Self {
+    pub fn from_state(state: &ApiState) -> Self {
         Self {
             store: state.store.clone(),
             runtime: Arc::downgrade(&state.provider_runtime),
@@ -51,7 +51,7 @@ impl AuthenticationRuntime {
         }
     }
 
-    pub(crate) fn retain_runtime(&self) -> Option<AuthenticationRuntimeLease> {
+    pub fn retain_runtime(&self) -> Option<AuthenticationRuntimeLease> {
         self.runtime
             .upgrade()
             .map(|runtime| AuthenticationRuntimeLease { _runtime: runtime })
@@ -59,7 +59,8 @@ impl AuthenticationRuntime {
 
     fn composition(
         &self,
-    ) -> Result<Arc<crate::extension_bus::ManagedExtensionComposition>, ApiError> {
+    ) -> Result<Arc<dyn crate::extension_bus::managed_activation::ManagedCompositionPort>, ApiError>
+    {
         self.runtime
             .upgrade()
             .ok_or(Error::PluginUnavailable)?
@@ -68,14 +69,14 @@ impl AuthenticationRuntime {
     }
 }
 
-pub(crate) struct AuthenticationProvider {
+pub struct AuthenticationProvider {
     pub descriptor: AuthenticationProviderDescriptor,
     pub installation_id: Uuid,
     pub fingerprint: String,
     pub authority_namespace: String,
 }
 
-pub(crate) fn callback_url() -> Result<String, ApiError> {
+pub fn callback_url() -> Result<String, ApiError> {
     let origin = std::env::var("API_AUTH_PUBLIC_ORIGIN")
         .map_err(|_| Error::InvalidInput("authentication_public_origin"))?;
     let url = url::Url::parse(&origin)
@@ -114,7 +115,7 @@ fn fingerprint(
     ))
 }
 
-pub(crate) async fn provider(
+pub async fn provider(
     state: &AuthenticationRuntime,
     auth_type: &str,
 ) -> Result<AuthenticationProvider, ApiError> {
@@ -162,7 +163,7 @@ pub(crate) async fn provider(
 
 /// Resolve a single current graph and retain one live authority batch for all
 /// candidate providers. No worker invocation runs while this lease is held.
-pub(crate) async fn authorize_available_providers(
+pub async fn authorize_available_providers(
     state: &AuthenticationRuntime,
     providers: &[AuthenticationProvider],
     entries: &[domain::LoginEntryRecord],
@@ -224,7 +225,7 @@ pub(crate) async fn authorize_available_providers(
 impl AuthenticationProvider {
     /// Final authority barrier after every verifier/eligibility worker call. The
     /// Host holds this lease until the identity/session business effect finishes.
-    pub(crate) async fn authorize_completion(
+    pub async fn authorize_completion(
         &self,
         state: &AuthenticationRuntime,
         entry: &domain::LoginEntryRecord,
@@ -254,7 +255,7 @@ impl AuthenticationProvider {
             .map_err(|_| Error::PermissionDenied("authentication_provider_changed").into())
     }
 
-    pub(crate) async fn invoke(
+    pub async fn invoke(
         &self,
         state: &AuthenticationRuntime,
         entry: &domain::LoginEntryRecord,
@@ -347,7 +348,7 @@ impl AuthenticationProvider {
     }
 }
 
-pub(crate) async fn active_providers(
+pub async fn active_providers(
     state: &AuthenticationRuntime,
 ) -> Result<Vec<AuthenticationProvider>, ApiError> {
     let declarations = registration::active_declarations(

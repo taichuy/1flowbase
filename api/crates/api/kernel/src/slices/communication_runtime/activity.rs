@@ -25,7 +25,7 @@ fn lock<T>(state: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 #[derive(Default)]
 pub struct CommunicationActivity {
-    pub(super) native_status: super::provider_activity::ProviderActivity,
+    pub native_status: super::provider_activity::ProviderActivity,
     sessions: Mutex<HashMap<Uuid, Weak<SessionActivity>>>,
     executions: Mutex<HashMap<Uuid, CommunicationExecutionBinding>>,
     provider_runs: Mutex<HashMap<Uuid, ProviderRunActivity>>,
@@ -37,7 +37,7 @@ struct ProviderRunActivity {
     registered: bool,
 }
 
-pub(crate) struct SessionActivity {
+pub struct SessionActivity {
     id: Uuid,
     epoch: i64,
     state: Mutex<SessionState>,
@@ -48,7 +48,7 @@ struct SessionState {
     leases: usize,
     cancellation_failure: Option<String>,
 }
-pub(crate) struct SessionLease(Arc<SessionActivity>);
+pub struct SessionLease(Arc<SessionActivity>);
 impl Drop for SessionLease {
     fn drop(&mut self) {
         let mut state = lock(&self.0.state);
@@ -57,13 +57,13 @@ impl Drop for SessionLease {
     }
 }
 impl SessionActivity {
-    pub(crate) fn enter(self: &Arc<Self>) -> Result<SessionLease> {
+    pub fn enter(self: &Arc<Self>) -> Result<SessionLease> {
         let mut state = lock(&self.state);
         ensure!(!state.cancelled, "communication_session_cancelled");
         state.leases += 1;
         Ok(SessionLease(self.clone()))
     }
-    pub(crate) async fn cancelled(&self) {
+    pub async fn cancelled(&self) {
         let mut changed = self.changed.subscribe();
         loop {
             if lock(&self.state).cancelled {
@@ -74,7 +74,7 @@ impl SessionActivity {
             }
         }
     }
-    pub(crate) fn cancel(&self) {
+    pub fn cancel(&self) {
         let mut state = lock(&self.state);
         state.cancelled = true;
         self.changed.send_replace(state.leases);
@@ -105,7 +105,7 @@ impl SessionActivity {
     }
 }
 impl CommunicationActivity {
-    pub(crate) fn session(&self, id: Uuid, epoch: i64) -> Result<Arc<SessionActivity>> {
+    pub fn session(&self, id: Uuid, epoch: i64) -> Result<Arc<SessionActivity>> {
         ensure!(
             !lock(&self.cancellation_failures).contains_key(&id),
             "communication_provider_cancel_join_failed"
@@ -137,7 +137,7 @@ impl CommunicationActivity {
         sessions.insert(id, Arc::downgrade(&session));
         Ok(session)
     }
-    pub(crate) async fn cancel_session(&self, id: Uuid) -> Result<()> {
+    pub async fn cancel_session(&self, id: Uuid) -> Result<()> {
         let session = lock(&self.sessions).get(&id).and_then(Weak::upgrade);
         if let Some(session) = session {
             session.cancel_and_join().await?;
@@ -149,7 +149,7 @@ impl CommunicationActivity {
         Ok(())
     }
 
-    pub(crate) fn register_provider_run(
+    pub fn register_provider_run(
         self: &Arc<Self>,
         run_id: Uuid,
         session: Arc<SessionActivity>,
@@ -174,7 +174,7 @@ impl CommunicationActivity {
         })
     }
 
-    pub(crate) async fn execute_provider(
+    pub async fn execute_provider(
         self: &Arc<Self>,
         run_id: Uuid,
         backend: &orchestration_runtime::runtime_backend::OrchestrationRuntimeBackend,
@@ -227,7 +227,7 @@ impl CommunicationActivity {
             message: format!("communication provider owner failed: {error}"),
         })?
     }
-    pub(crate) fn register_run(
+    pub fn register_run(
         self: &Arc<Self>,
         run_id: Uuid,
         binding: CommunicationExecutionBinding,
@@ -244,7 +244,7 @@ impl CommunicationActivity {
         })
     }
 }
-pub(crate) struct ProviderRunRegistration {
+pub struct ProviderRunRegistration {
     activity: Arc<CommunicationActivity>,
     run_id: Uuid,
     session: Arc<SessionActivity>,
@@ -284,7 +284,7 @@ impl Drop for ProviderRequestOwner {
     }
 }
 
-pub(crate) struct RunRegistration {
+pub struct RunRegistration {
     activity: Arc<CommunicationActivity>,
     run_id: Uuid,
 }
@@ -343,7 +343,11 @@ impl CommunicationExecutionResolver for CommunicationActivity {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/activity.rs"]
-pub(crate) mod tests;
+pub mod tests;
+
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+#[path = "activity/test_support.rs"]
+pub mod test_support;

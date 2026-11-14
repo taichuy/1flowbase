@@ -1,4 +1,5 @@
 use super::*;
+use crate::extension_bus::SnapshotAssembly;
 
 #[tokio::test]
 async fn strict_runtime_uses_one_boot_graph_for_model_provider_and_empty_input_pipeline() {
@@ -44,9 +45,11 @@ async fn strict_model_provider_binding_loads_the_stateful_lifecycle_host() {
         .expect("strict binding should dispatch through the stateful provider host");
     assert_eq!(output["provider"], "fixture");
     assert!(spawn_marker.exists());
-    let binding = crate::provider_runtime::ModelProviderSlotResolver::new(graph)
-        .resolve(&installation)
-        .unwrap();
+    let binding = crate::provider_runtime::resolver_for_current_cfg(
+        crate::provider_runtime::ModelProviderSlotResolver::new(graph),
+    )
+    .resolve(&installation)
+    .unwrap();
     assert_eq!(binding.installation_id, installation.id);
     assert_eq!(binding.plugin_id, installation.plugin_id);
     assert_eq!(binding.provider_code, installation.provider_code);
@@ -162,8 +165,10 @@ async fn strict_model_provider_binding_rejects_wrong_provider_code_and_missing_p
         .await
         .is_err());
 
-    let missing_point_error = crate::provider_runtime::ModelProviderSlotResolver::new(
-        graph_without_model_provider_point(),
+    let missing_point_error = crate::provider_runtime::resolver_for_current_cfg(
+        crate::provider_runtime::ModelProviderSlotResolver::new(
+            graph_without_model_provider_point(),
+        ),
     )
     .resolve(&installation)
     .unwrap_err();
@@ -176,20 +181,24 @@ async fn strict_model_provider_binding_rejects_wrong_provider_code_and_missing_p
 #[test]
 fn provider_runtime_consumer_has_no_provider_specific_branch_and_production_wires_strict_graph() {
     let consumer = concat!(
-        include_str!("../../provider_runtime/mod.rs"),
+        include_str!("../../../../../crates/api/kernel/src/host/provider_runtime/mod.rs"),
         "\n",
-        include_str!("../../provider_runtime/provider_port.rs"),
+        include_str!("../../../../../crates/api/kernel/src/host/provider_runtime/provider_port.rs"),
         "\n",
-        include_str!("../../provider_runtime/capability_port.rs"),
+        include_str!(
+            "../../../../../crates/api/kernel/src/host/provider_runtime/capability_port.rs"
+        ),
         "\n",
-        include_str!("../../provider_runtime/data_source_ports.rs"),
+        include_str!(
+            "../../../../../crates/api/kernel/src/host/provider_runtime/data_source_ports.rs"
+        ),
     );
     let transport_lifecycle = concat!(
-        include_str!("../../provider_runtime/transport_session_lifecycle.rs"),
+        include_str!("../../../../../crates/api/kernel/src/host/provider_runtime/transport_session_lifecycle.rs"),
         "\n",
-        include_str!("../../provider_runtime/transport_session_lifecycle/admission.rs"),
+        include_str!("../../../../../crates/api/kernel/src/host/provider_runtime/transport_session_lifecycle/admission.rs"),
         "\n",
-        include_str!("../../provider_runtime/transport_session_lifecycle/termination_dispatch.rs"),
+        include_str!("../../../../../crates/api/kernel/src/host/provider_runtime/transport_session_lifecycle/termination_dispatch.rs"),
     );
     let boot = concat!(
         include_str!("../../lib.rs"),

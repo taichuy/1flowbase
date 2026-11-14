@@ -18,7 +18,7 @@ use super::{ModelDefinitionsInput, ModelDefinitionsOutput};
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    extension_bus::{ManagedExtensionComposition, ManagedWorkspaceSnapshot},
+    extension_bus::{ManagedCompositionPort, ManagedWorkspaceSnapshot},
 };
 
 const CREATE: &str = "model_definitions.create";
@@ -32,7 +32,7 @@ const PHASES: [HookPhase; 6] = [
 ];
 
 struct FrozenWorkspaceHooks {
-    composition: Arc<ManagedExtensionComposition>,
+    composition: Arc<dyn ManagedCompositionPort>,
     snapshot: Arc<ManagedWorkspaceSnapshot>,
     _invocation_reference: Box<dyn Send + Sync>,
     create: ManagedCreateView,
@@ -288,7 +288,7 @@ impl ManagedCreateBridge {
                         graph_fingerprint: workspace.snapshot.graph.fingerprint().as_str().into(),
                         authority_revision: 0,
                     },
-                    input.clone(),
+                    input.clone().into(),
                 )
                 .await;
             match result {
@@ -522,4 +522,19 @@ pub(super) fn bind(
         ),
     )?;
     Ok(())
+}
+
+pub(crate) struct ModelDefinitionPreparation;
+#[async_trait::async_trait]
+impl<I: InterfaceContract> crate::routes::console_interface::ConsoleInvocationPreparation<I>
+    for ModelDefinitionPreparation
+{
+    async fn prepare(
+        &self,
+        state: &ApiState,
+        registry: &Arc<CompiledInterfaceRegistry>,
+        envelope: InvocationEnvelope<I, UserPrincipal>,
+    ) -> Result<InvocationEnvelope<I, UserPrincipal>, ApiError> {
+        freeze(state, registry, envelope).await
+    }
 }

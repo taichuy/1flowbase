@@ -1,3 +1,4 @@
+use crate::extension_bus::SnapshotAssembly;
 use control_plane::ports::PluginRepository;
 use domain::NativePluginTarget;
 

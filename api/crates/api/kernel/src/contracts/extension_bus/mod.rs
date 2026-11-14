@@ -1,31 +1,26 @@
-mod authentication_activation;
+pub mod authentication_activation;
 mod authentication_invocation;
-mod managed_interface;
-#[cfg(test)]
-#[cfg_attr(test, api_test_selection::group(contracts, routes))]
-pub(crate) use managed_interface::FrozenManagedProjection;
-pub(crate) mod managed_projection;
-pub(crate) use authentication_invocation::AuthenticatedInvocation;
-mod boot_snapshot;
-mod input_assembly;
-mod managed_activation;
+pub mod managed_interface;
+#[cfg(any(test, feature = "test-support"))]
+pub use managed_interface::FrozenManagedProjection;
+pub mod managed_projection;
+pub use authentication_invocation::AuthenticatedInvocation;
+pub mod boot_snapshot;
+pub mod input_assembly;
+#[path = "../../slices/extension_bus/managed_activation.rs"]
+pub mod managed_activation;
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-pub(crate) use managed_activation::validate_interface_protocol;
-
-pub(crate) use managed_activation::{
-    ManagedCommunicationCommandProvider, ManagedExecutionInput, ManagedExtensionComposition,
-    ManagedWorkspacePublicationSource, ManagedWorkspaceSnapshot,
+pub use managed_activation::{
+    ManagedCompositionPort, ManagedExecutionInput, ManagedWorkspaceSnapshot,
 };
-mod interface_contributions;
-pub(crate) use interface_contributions::InterfaceRegistryContribution;
+#[path = "../../slices/extension_bus/interface_contributions.rs"]
+pub mod interface_contributions;
+pub use interface_contributions::InterfaceRegistryContribution;
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-pub(crate) use authentication_activation::HostExtensionAuthenticationFactoryCatalog;
+#[cfg(any(test, feature = "test-support"))]
+pub use authentication_activation::HostExtensionAuthenticationFactoryCatalog;
 
-pub(crate) use authentication_activation::{
+pub use authentication_activation::{
     production_host_extension_authentication_factories, ApplicationApiKeyAuthenticationCredential,
     AuthenticationAdapterFactoryBinding, AuthenticationAdapterFactoryRegistry,
     ConsoleAuthenticationCredential, ConsoleProtocolAdmission,
@@ -33,8 +28,7 @@ pub(crate) use authentication_activation::{
     RuntimeModelAuthenticationCredential,
 };
 pub use boot_snapshot::{
-    compile_extension_boot_snapshot, EffectiveExtensionPlan, ExtensionBootSnapshot,
-    EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1,
+    EffectiveExtensionPlan, ExtensionBootSnapshot, EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1,
 };
 pub(crate) use input_assembly::infrastructure_provider_contribution_id;
 pub use input_assembly::{
@@ -52,6 +46,4 @@ pub use input_assembly::{
     RUNTIME_EVENT_DIAGNOSTIC_POINT_ID, RUNTIME_EVENT_LANE_CONTRACT_VERSION,
     RUNTIME_EVENT_REQUIRED_CONTRACT_ID, RUNTIME_EVENT_REQUIRED_POINT_ID,
 };
-pub(crate) use interface_contributions::{
-    production_interface_contributions, InterfaceContributionCollector,
-};
+pub use interface_contributions::InterfaceContributionCollector;

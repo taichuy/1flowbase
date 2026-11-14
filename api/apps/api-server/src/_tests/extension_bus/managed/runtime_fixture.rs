@@ -56,16 +56,15 @@ impl RuntimeFixture {
             .unwrap(),
         );
         host.mark_ready().unwrap();
-        let services = Arc::new(
-            ApiRuntimeServices::new_with_runtime_backend(host.clone(), graph)
-                .unwrap()
-                .with_managed_composition(
-                    store.clone(),
-                    state.api_node_id.clone(),
-                    assembly.module_descriptors().to_vec(),
-                ),
+        let (services, composition) = crate::managed_runtime_assembly::bind_managed_runtime(
+            crate::provider_runtime::services_for_current_cfg(
+                ApiRuntimeServices::new_with_runtime_backend(host.clone(), graph).unwrap(),
+            ),
+            store.clone(),
+            state.api_node_id.clone(),
+            assembly.module_descriptors().to_vec(),
         );
-        let composition = services.managed_composition().unwrap();
+        let services = Arc::new(services);
         composition.attach_native_lifecycle_plan(native).unwrap();
         catalog
             .attach_workspace_source(Arc::new(ManagedWorkspacePublicationSource(Arc::downgrade(
@@ -75,7 +74,9 @@ impl RuntimeFixture {
         Self {
             host,
             services,
-            delivery: Arc::new(delivery.with_managed(&composition)),
+            delivery: Arc::new(delivery.with_managed(
+                &(composition.clone() as Arc<dyn crate::extension_bus::ManagedCompositionPort>),
+            )),
             composition,
             store,
         }

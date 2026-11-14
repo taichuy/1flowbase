@@ -229,6 +229,7 @@ async fn fixture_state() -> (
     )
     .expect("test event center runtime");
     let state = Arc::new(ApiState {
+        test_resources: None,
         store: store.clone(),
         console_policy_reader: Arc::new(store.clone()),
         system_backup,
@@ -238,7 +239,7 @@ async fn fixture_state() -> (
         console_operation_registry,
         infrastructure,
         event_center,
-        event_sources: Arc::default(),
+        event_sources: api_server::test_support::default_event_source_catalog(),
         event_workflow_changes: Arc::default(),
         event_workflow_statuses: Default::default(),
         console_surface_registry: Arc::new(

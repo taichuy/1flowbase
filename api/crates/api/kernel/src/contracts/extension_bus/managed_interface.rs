@@ -1,5 +1,5 @@
 //! Canonical host bridge: one frozen workspace graph for all phases and actual stream terminal.
-use super::{ManagedExtensionComposition, ManagedWorkspaceSnapshot};
+use super::{managed_activation::ManagedCompositionPort, ManagedWorkspaceSnapshot};
 use crate::app_state::ApiState;
 use extension_contracts::{
     CompiledManagedProjection, HookPhase, ManagedHookInvocation, ManagedHookOutcome,
@@ -20,21 +20,21 @@ use std::{
 
 type Contracts = BTreeMap<ContractIdentity, FrozenManagedProjection>;
 
-pub(crate) struct FrozenManagedProjection {
+pub struct FrozenManagedProjection {
     schema: Arc<serde_json::Value>,
     compiled: CompiledManagedProjection,
 }
 impl FrozenManagedProjection {
-    #[cfg(test)]
-    #[cfg_attr(test, api_test_selection::group(contracts, routes))]
-    pub(crate) fn compile(contract: ManagedProjectionContract) -> anyhow::Result<Self> {
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn compile(contract: ManagedProjectionContract) -> anyhow::Result<Self> {
         let compiled = contract.compile_for_registration()?;
         Ok(Self {
             schema: Arc::new(contract.schema),
             compiled,
         })
     }
-    pub(crate) fn validate_projection(
+    pub fn validate_projection(
         &self,
         projection: &ManagedInterfaceProjection,
     ) -> Result<ManagedInterfaceReferenceView, &'static str> {
@@ -56,7 +56,7 @@ impl FrozenManagedProjection {
             .map_err(|_| "managed-projection-invalid")?;
         Ok(view)
     }
-    pub(crate) fn validate_reference(
+    pub fn validate_reference(
         &self,
         view: &ManagedInterfaceReferenceView,
     ) -> Result<(), &'static str> {
@@ -66,7 +66,7 @@ impl FrozenManagedProjection {
     }
 }
 
-pub(crate) struct ManagedInterfaceFactory {
+pub struct ManagedInterfaceFactory {
     state: Weak<ApiState>,
     baseline: Arc<EffectiveExtensionGraph>,
     managed_service_interfaces: BTreeSet<String>,
@@ -74,7 +74,7 @@ pub(crate) struct ManagedInterfaceFactory {
     interface_module: OnceLock<plugin_framework::extension_bus::ModuleDescriptor>,
 }
 impl ManagedInterfaceFactory {
-    pub(crate) fn new(state: &Arc<ApiState>, baseline: Arc<EffectiveExtensionGraph>) -> Arc<Self> {
+    pub fn new(state: &Arc<ApiState>, baseline: Arc<EffectiveExtensionGraph>) -> Arc<Self> {
         Arc::new(Self {
             state: Arc::downgrade(state),
             baseline,
@@ -94,7 +94,7 @@ impl ManagedInterfaceFactory {
             interface_module: OnceLock::new(),
         })
     }
-    pub(crate) fn bind_registry(&self, registry: &CompiledInterfaceRegistry) -> anyhow::Result<()> {
+    pub fn bind_registry(&self, registry: &CompiledInterfaceRegistry) -> anyhow::Result<()> {
         let mut contracts = BTreeMap::new();
         let mut schema_failures = Vec::new();
         let mut compiler = ManagedProjectionCompiler::default();
@@ -170,7 +170,7 @@ impl ManagedInterfaceFactory {
 }
 
 struct WorkspaceInvocation {
-    composition: Arc<ManagedExtensionComposition>,
+    composition: Arc<dyn ManagedCompositionPort>,
     snapshot: Arc<ManagedWorkspaceSnapshot>,
     _reference: Box<dyn Send + Sync>,
     stages: BTreeMap<HookPhase, Vec<ContributionId>>,

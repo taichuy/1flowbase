@@ -37,6 +37,7 @@ const PHASES: [&str; 6] = [
     "completion",
 ];
 pub(super) struct Fixture {
+    pub(super) composition: Arc<crate::extension_bus::ManagedExtensionComposition>,
     pub(super) state: Arc<ApiState>,
     pub(super) app: Router,
     pub(super) cookie: String,
@@ -177,18 +178,19 @@ impl Fixture {
             .unwrap(),
         );
         host.mark_ready().unwrap();
-        let services = Arc::new(
-            ApiRuntimeServices::new_with_runtime_backend(
-                host,
-                Arc::new(assembly.compile_graph().unwrap()),
-            )
-            .unwrap()
-            .with_managed_composition(
-                initial.store.clone(),
-                initial.api_node_id.clone(),
-                assembly.module_descriptors().to_vec(),
+        let (services, composition) = crate::managed_runtime_assembly::bind_managed_runtime(
+            crate::provider_runtime::services_for_current_cfg(
+                ApiRuntimeServices::new_with_runtime_backend(
+                    host,
+                    Arc::new(assembly.compile_graph().unwrap()),
+                )
+                .unwrap(),
             ),
+            initial.store.clone(),
+            initial.api_node_id.clone(),
+            assembly.module_descriptors().to_vec(),
         );
+        let services = Arc::new(services);
         let mut owned = (*initial).clone();
         owned.provider_runtime = services.clone();
         let state = Arc::new(owned);
@@ -250,6 +252,7 @@ impl Fixture {
         let worker =
             Path::new(installed.local_artifact.local_path.as_ref().unwrap()).join("bin/worker.py");
         Self {
+            composition,
             state,
             app,
             cookie,
@@ -648,11 +651,7 @@ async fn core_deny(fixture: &Fixture, mcp: bool) {
 }
 
 async fn frozen_graph(fixture: &Fixture, mcp: bool) {
-    let composition = fixture
-        .state
-        .provider_runtime
-        .managed_composition()
-        .unwrap();
+    let composition = fixture.composition.clone();
     let old = composition
         .snapshot(fixture.actor.current_workspace_id)
         .await
@@ -761,10 +760,8 @@ async fn revoked_between_stages(fixture: &Fixture, mcp: bool) {
         .await
         .unwrap();
     fixture
-        .state
-        .provider_runtime
-        .managed_composition()
-        .unwrap()
+        .composition
+        .clone()
         .rebuild_installation(fixture.installation_id)
         .await
         .unwrap();

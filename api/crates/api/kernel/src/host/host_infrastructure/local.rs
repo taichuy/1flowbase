@@ -77,7 +77,7 @@ pub fn build_host_infrastructure_from_host_extensions(
     Ok(registry)
 }
 
-pub(crate) fn build_local_host_infrastructure_from_host_extensions_with_cache_factories(
+pub fn build_local_host_infrastructure_from_host_extensions_with_cache_factories(
     host_extensions: &HostExtensionRegistry,
     graph: &Arc<EffectiveExtensionGraph>,
     cache_store_factories: &CacheStoreActivationFactoryRegistry,
@@ -197,7 +197,7 @@ fn configured_runtime_event_stream() -> LocalRuntimeEventStream {
 }
 
 /// Install before any run/store clone escapes boot, using the existing retention configuration.
-pub(crate) fn attach_local_event_source_observer(
+pub fn attach_local_event_source_observer(
     registry: &mut HostInfrastructureRegistry,
     observer: Arc<dyn control_plane_contracts::ports::EventSourceObserver>,
 ) -> Result<()> {

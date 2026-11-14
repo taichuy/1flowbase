@@ -1,9 +1,9 @@
 //! Opt-in fixtures; no production constructor switches behavior with this feature.
 #[path = "../_tests/application/application_runtime_routes.rs"]
 pub mod application;
-mod resources;
 #[path = "../_tests/crate_split_contract_baseline.rs"]
 pub mod crate_split_contract_baseline;
+mod resources;
 #[path = "../_tests/support/mod.rs"]
 pub mod support;
 pub(crate) use resources::TestResources;
@@ -67,4 +67,18 @@ pub mod console_route_assembly {
         ac_002_013_workspaces_route_binding_is_explicit_and_stable,
         organization_console_route_assembly_keeps_each_operation_independent,
     };
+}
+
+/// Build the same unavailable-by-default source projection as lightweight Root states.
+#[doc(hidden)]
+pub fn default_event_source_catalog() -> std::sync::Arc<crate::app_state::EventSourceCatalog> {
+    use crate::event_center::catalog::EventSourceCatalogAssembly;
+    std::sync::Arc::new(crate::app_state::EventSourceCatalog::default())
+}
+
+#[doc(hidden)]
+pub fn event_source_catalog_for_test_support(
+) -> std::sync::Arc<crate::app_state::EventSourceCatalog> {
+    use crate::event_center::catalog::EventSourceCatalogAssembly;
+    std::sync::Arc::new(crate::app_state::EventSourceCatalog::for_test_support())
 }

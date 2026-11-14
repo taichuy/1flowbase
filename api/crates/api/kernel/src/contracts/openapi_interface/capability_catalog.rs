@@ -115,7 +115,7 @@ pub async fn query_openapi_capability_catalog(
     .await
 }
 
-pub(crate) async fn query_openapi_capability_catalog_with(
+pub async fn query_openapi_capability_catalog_with(
     dependencies: &OpenApiCapabilityCatalogDependencies,
     workspace_id: uuid::Uuid,
     query: OpenApiCapabilityCatalogQuery,
@@ -211,7 +211,7 @@ pub async fn get_openapi_capability(
     .await
 }
 
-pub(crate) async fn get_openapi_capability_with(
+pub async fn get_openapi_capability_with(
     dependencies: &OpenApiCapabilityCatalogDependencies,
     workspace_id: uuid::Uuid,
     interface_id: &str,
@@ -249,7 +249,7 @@ pub async fn get_openapi_capability_by_route(
     .await
 }
 
-pub(crate) async fn get_openapi_capability_by_route_with(
+pub async fn get_openapi_capability_by_route_with(
     dependencies: &OpenApiCapabilityCatalogDependencies,
     workspace_id: uuid::Uuid,
     method: &str,
@@ -323,16 +323,15 @@ pub async fn build_openapi_capability_catalog(
 }
 
 #[derive(Clone)]
-pub(crate) struct OpenApiCapabilityCatalogDependencies {
-    pub(crate) store: storage_durable_postgres::MainDurableStore,
-    pub(crate) console_operations: access_control::ConsoleOperationCompiledInventory,
-    pub(crate) interface_registry: Option<Arc<interface_runtime::CompiledInterfaceRegistry>>,
-    pub(crate) api_docs: Arc<crate::openapi_docs::ApiDocsRegistry>,
-    pub(crate) template_catalog:
-        runtime_core::data_model_template_registry::DataModelTemplateCatalog,
+pub struct OpenApiCapabilityCatalogDependencies {
+    pub store: storage_durable_postgres::MainDurableStore,
+    pub console_operations: access_control::ConsoleOperationCompiledInventory,
+    pub interface_registry: Option<Arc<interface_runtime::CompiledInterfaceRegistry>>,
+    pub api_docs: Arc<crate::openapi_docs::ApiDocsRegistry>,
+    pub template_catalog: runtime_core::data_model_template_registry::DataModelTemplateCatalog,
 }
 
-pub(crate) async fn build_openapi_capability_catalog_with(
+pub async fn build_openapi_capability_catalog_with(
     dependencies: &OpenApiCapabilityCatalogDependencies,
     workspace_id: uuid::Uuid,
 ) -> Result<Vec<OpenApiCapabilityCatalogEntry>, ApiError> {
@@ -490,9 +489,9 @@ pub fn operation_risk_level(method: &str) -> &'static str {
 }
 
 fn static_operation_is_bindable(path: &str) -> bool {
-    path == crate::routes::runtime_models::metadata_interface::OPENAPI_PATH
+    path == "/api/runtime/models/{model_code}/metadata"
         || path.starts_with("/api/console/")
-        || path.starts_with(crate::routes::PUBLIC_API_PATH_PREFIX)
+        || path.starts_with("/api/public/")
 }
 
 fn static_disabled_reason(

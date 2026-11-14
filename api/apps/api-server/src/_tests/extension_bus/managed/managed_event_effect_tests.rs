@@ -125,16 +125,15 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
         .unwrap(),
     );
     host.mark_ready().unwrap();
-    let services = Arc::new(
-        ApiRuntimeServices::new_with_runtime_backend(host, graph)
-            .unwrap()
-            .with_managed_composition(
-                store.clone(),
-                state.api_node_id.clone(),
-                assembly.module_descriptors().to_vec(),
-            ),
+    let (services, composition) = crate::managed_runtime_assembly::bind_managed_runtime(
+        crate::provider_runtime::services_for_current_cfg(
+            ApiRuntimeServices::new_with_runtime_backend(host, graph).unwrap(),
+        ),
+        store.clone(),
+        state.api_node_id.clone(),
+        assembly.module_descriptors().to_vec(),
     );
-    let composition = services.managed_composition().unwrap();
+    let services = Arc::new(services);
     composition
         .attach_native_lifecycle_plan(native_plan.clone())
         .unwrap();
@@ -142,7 +141,9 @@ async fn root_2007_ac_007_ack_loss_and_claim_fencing() {
         Arc::downgrade(&composition),
     ));
     catalog.attach_workspace_source(source.clone()).unwrap();
-    let delivery = delivery.with_managed(&composition);
+    let delivery = delivery.with_managed(
+        &(composition.clone() as Arc<dyn crate::extension_bus::ManagedCompositionPort>),
+    );
     let management = PluginManagementService::new(
         store.clone(),
         ApiProviderRuntime::new(services.clone()),

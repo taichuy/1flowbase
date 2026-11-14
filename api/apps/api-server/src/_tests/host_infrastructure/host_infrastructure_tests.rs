@@ -1,3 +1,4 @@
+use crate::extension_bus::SnapshotAssembly;
 #[test]
 fn local_infra_host_provides_required_defaults() {
     let registry = crate::host_infrastructure::build_local_host_infrastructure();

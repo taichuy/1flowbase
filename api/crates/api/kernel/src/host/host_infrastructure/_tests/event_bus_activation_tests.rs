@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 fn declared(source: &str, provider_code: &str) -> HostExtensionRegistry {
     let mut contribution =
         plugin_framework::parse_host_extension_contribution_manifest(include_str!(
-            "../../../../../plugins/host-extensions/official.local-infra-host/host-extension.yaml"
+            "../../../../../../../plugins/host-extensions/official.local-infra-host/host-extension.yaml"
         ))
         .unwrap();
     contribution.extension_id = source.into();

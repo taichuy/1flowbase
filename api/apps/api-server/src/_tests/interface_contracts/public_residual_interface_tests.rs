@@ -1,3 +1,4 @@
+use crate::generation_dispatch::GenerationDispatchAssembly;
 use interface_runtime::{GraphFingerprint, RouteIdentity};
 
 use crate::extension_bus::{production_interface_contributions, InterfaceContributionCollector};

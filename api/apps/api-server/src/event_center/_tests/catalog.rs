@@ -27,7 +27,7 @@ fn runtime_capabilities_exist_before_first_run_without_fake_queues_or_subscripti
     let mut actor = ActorContext::root(uuid::Uuid::now_v7(), domain::SYSTEM_SCOPE_ID, "root");
     let catalog = EventSourceCatalog {
         runtime_bound: true,
-        ..Default::default()
+        ..EventSourceCatalog::default()
     };
     let entries = catalog.registered_events(&actor, &runtime);
     assert_eq!(
@@ -79,7 +79,7 @@ fn policy_and_provider_binding_are_real_capability_requirements() {
     for (configured, bound) in [(false, true), (true, false)] {
         let catalog = EventSourceCatalog {
             runtime_bound: bound,
-            ..Default::default()
+            ..EventSourceCatalog::default()
         };
         let entries = catalog.registered_events(&actor, &runtime(configured));
         assert!(
@@ -121,7 +121,7 @@ fn registered_runtime_schema_and_catalog_do_not_add_unbound_graph_placeholders()
     let actor = ActorContext::root(uuid::Uuid::now_v7(), uuid::Uuid::now_v7(), "root");
     let catalog = EventSourceCatalog {
         runtime_bound: true,
-        ..Default::default()
+        ..EventSourceCatalog::default()
     };
     let entries = catalog.registered_events(&actor, &runtime);
     let is_runtime = |entry: &&EventCatalogEntry| {
@@ -193,7 +193,7 @@ fn concurrent_runtime_registrations_share_one_catalog_definition_per_scope() {
     let _second = runtime.register_source(descriptor.clone()).unwrap();
     let catalog = EventSourceCatalog {
         runtime_bound: true,
-        ..Default::default()
+        ..EventSourceCatalog::default()
     };
     let entries = catalog.registered_events(&actor, &runtime);
     let matching = entries

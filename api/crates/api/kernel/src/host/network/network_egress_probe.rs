@@ -286,7 +286,6 @@ fn classify_acquire_error(error: &anyhow::Error) -> &'static str {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::*;

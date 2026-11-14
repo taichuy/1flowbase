@@ -13,10 +13,12 @@ use sha2::{Digest, Sha256};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use uuid::Uuid;
 
-pub(crate) const OFFICIAL_SEED_BYTES: &[u8] =
-    include_bytes!("../../resources/i18n/catalog-seed.json");
-pub(crate) const OFFICIAL_SEED_SOURCE_BYTES: &[u8] =
-    include_bytes!("../../resources/i18n/catalog-seed.source.json");
+#[doc(hidden)]
+pub const OFFICIAL_SEED_BYTES: &[u8] =
+    include_bytes!("../../../../../apps/api-server/resources/i18n/catalog-seed.json");
+#[doc(hidden)]
+pub const OFFICIAL_SEED_SOURCE_BYTES: &[u8] =
+    include_bytes!("../../../../../apps/api-server/resources/i18n/catalog-seed.source.json");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -63,17 +65,17 @@ struct CatalogSeedSource {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CatalogSeedInspection {
-    pub(crate) catalog_version: CatalogVersion,
-    pub(crate) semantic_sha256: CatalogDigest,
-    pub(crate) seed_sha256: CatalogDigest,
+pub struct CatalogSeedInspection {
+    pub catalog_version: CatalogVersion,
+    pub semantic_sha256: CatalogDigest,
+    pub seed_sha256: CatalogDigest,
 }
 
 pub fn load_official_i18n_catalog_seed() -> Result<VerifiedOfficialCatalogSeed> {
     decode_catalog_seed(OFFICIAL_SEED_BYTES, OFFICIAL_SEED_SOURCE_BYTES)
 }
 
-pub(crate) fn decode_catalog_seed(
+pub fn decode_catalog_seed(
     seed_bytes: &[u8],
     source_bytes: &[u8],
 ) -> Result<VerifiedOfficialCatalogSeed> {
@@ -91,7 +93,7 @@ pub(crate) fn decode_catalog_seed(
     )
 }
 
-pub(crate) fn inspect_catalog_seed(seed_bytes: &[u8]) -> Result<CatalogSeedInspection> {
+pub fn inspect_catalog_seed(seed_bytes: &[u8]) -> Result<CatalogSeedInspection> {
     let seed: CatalogSeed =
         serde_json::from_slice(seed_bytes).context("invalid official Seed JSON")?;
     validate_seed_header(&seed)?;
@@ -106,7 +108,7 @@ pub(crate) fn inspect_catalog_seed(seed_bytes: &[u8]) -> Result<CatalogSeedInspe
     })
 }
 
-pub(crate) fn decode_downloaded_catalog_seed(
+pub fn decode_downloaded_catalog_seed(
     seed_bytes: &[u8],
     expected: &CatalogSeedInspection,
 ) -> Result<VerifiedOfficialCatalogSeed> {

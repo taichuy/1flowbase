@@ -32,15 +32,12 @@ pub struct EventWorkflowStatuses(
     Arc<Mutex<BTreeMap<Uuid, PendingActivation>>>,
 );
 #[derive(Clone, Copy)]
-pub(super) struct PendingActivation {
+pub struct PendingActivation {
     pub token: Uuid,
     pub revision_micros: i128,
 }
 impl EventWorkflowStatuses {
-    pub(crate) fn request_activation(
-        &self,
-        trigger: &domain::event_center::WorkflowEventTriggerRecord,
-    ) {
+    pub fn request_activation(&self, trigger: &domain::event_center::WorkflowEventTriggerRecord) {
         self.2
             .lock()
             .unwrap_or_else(|error| error.into_inner())
@@ -52,14 +49,14 @@ impl EventWorkflowStatuses {
                 },
             );
     }
-    pub(super) fn pending_activation(&self, subscription_id: Uuid) -> Option<PendingActivation> {
+    pub fn pending_activation(&self, subscription_id: Uuid) -> Option<PendingActivation> {
         self.2
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .get(&subscription_id)
             .copied()
     }
-    pub(super) fn activation_recorded(&self, subscription_id: Uuid, activation: PendingActivation) {
+    pub fn activation_recorded(&self, subscription_id: Uuid, activation: PendingActivation) {
         let mut pending = self.2.lock().unwrap_or_else(|error| error.into_inner());
         if pending
             .get(&subscription_id)
@@ -68,7 +65,7 @@ impl EventWorkflowStatuses {
             pending.remove(&subscription_id);
         }
     }
-    pub(super) fn retain_activations(&self, subscriptions: &std::collections::BTreeSet<Uuid>) {
+    pub fn retain_activations(&self, subscriptions: &std::collections::BTreeSet<Uuid>) {
         self.2
             .lock()
             .unwrap_or_else(|error| error.into_inner())
@@ -81,7 +78,7 @@ impl EventWorkflowStatuses {
             .unwrap_or_else(|error| error.into_inner())
             .clone()
     }
-    pub(super) fn refreshed(&self, error: Option<&'static str>) {
+    pub fn refreshed(&self, error: Option<&'static str>) {
         *self.1.lock().unwrap_or_else(|error| error.into_inner()) = error.map(str::to_owned);
     }
 
@@ -94,7 +91,7 @@ impl EventWorkflowStatuses {
             .cloned()
             .collect()
     }
-    pub(super) fn activation(
+    pub fn activation(
         &self,
         trigger: &domain::event_center::WorkflowEventTriggerRecord,
         state: &'static str,
@@ -125,7 +122,7 @@ impl EventWorkflowStatuses {
         row.activation = state;
         row.reason = reason.map(str::to_owned);
     }
-    pub(super) fn delivery(
+    pub fn delivery(
         &self,
         application_id: Uuid,
         signal: Uuid,
@@ -147,7 +144,7 @@ impl EventWorkflowStatuses {
             row.last_delivery_reason = reason.map(str::to_owned);
         }
     }
-    pub(super) fn retain(&self, configured: &std::collections::BTreeSet<Uuid>) {
+    pub fn retain(&self, configured: &std::collections::BTreeSet<Uuid>) {
         self.0
             .lock()
             .unwrap_or_else(|error| error.into_inner())
@@ -157,7 +154,7 @@ impl EventWorkflowStatuses {
 
 /// Public observation stores stable classifications only. Detailed owner errors stay in their
 /// existing logs; provider/SQL errors and dynamic fields are never copied into this read model.
-pub(super) fn public_error_code(error: &anyhow::Error, fallback: &'static str) -> &'static str {
+pub fn public_error_code(error: &anyhow::Error, fallback: &'static str) -> &'static str {
     use control_plane_contracts::{ports::EventBusError, ControlPlaneContractError as Error};
     match error.downcast_ref::<Error>() {
         Some(Error::NotAuthenticated) => return "not_authenticated",

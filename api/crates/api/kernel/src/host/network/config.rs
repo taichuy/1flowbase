@@ -366,7 +366,7 @@ impl ApiConfig {
                 .cloned()
                 .unwrap_or_else(|| {
                     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                        .join("../../resources/application-templates")
+                        .join("../../../resources/application-templates")
                         .to_string_lossy()
                         .into_owned()
                 }),

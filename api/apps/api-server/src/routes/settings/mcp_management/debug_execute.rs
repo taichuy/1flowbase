@@ -1,0 +1,740 @@
+pub use api_host_kernel::routes::mcp_management::debug_execute::*;
+use std::collections::BTreeMap;
+
+use axum::{http::HeaderMap, Router};
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+use utoipa::ToSchema;
+
+use domain::mcp_management::{McpInputValueSource, McpServerBinding};
+use domain::mcp_management::{McpParameterDescriptor, McpParameterType};
+use uuid::Uuid;
+
+pub enum McpDebugDispatchError {
+    Api(anyhow::Error),
+    Target(crate::openapi_interface::CallableDispatchHttpResponse),
+}
+
+impl From<anyhow::Error> for McpDebugDispatchError {
+    fn from(value: anyhow::Error) -> Self {
+        Self::Api(value)
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct McpDebugExecuteDetailsResponse {
+    #[schema(value_type = Object)]
+    pub mcp_arguments: Value,
+    #[schema(value_type = Object)]
+    pub interface_arguments: Value,
+    #[schema(value_type = Object)]
+    pub interface_response: Value,
+    #[schema(value_type = Object)]
+    pub tool_result: Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct McpInputMapping {
+    #[serde(default)]
+    mappings: Vec<McpInputMappingEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct McpInputMappingEntry {
+    #[serde(flatten)]
+    defaults: domain::mcp_management::input_defaults::McpInputDefaults,
+    interface_param: String,
+    #[serde(default)]
+    mcp_param: Option<String>,
+    source: Option<McpInputValueSource>,
+    #[serde(default)]
+    required: bool,
+}
+
+#[derive(Default)]
+struct TargetArguments {
+    path: Map<String, Value>,
+    query: Map<String, Value>,
+    body: Map<String, Value>,
+}
+
+#[derive(Clone, Copy)]
+enum InterfaceParameterTarget {
+    Path,
+    Query,
+    Body,
+}
+
+#[allow(clippy::result_large_err)]
+pub async fn execute_with_console_router(
+    console_router: Router,
+    headers: HeaderMap,
+    interface_entry: domain::McpInterfaceCatalogEntry,
+    body: McpDebugExecuteBody,
+    server_bound_inputs: McpServerBoundInputs,
+) -> Result<Value, McpDebugExecuteError> {
+    let interface_arguments = build_interface_arguments(
+        &interface_entry,
+        &body.input_mapping,
+        &body.mcp_arguments,
+        server_bound_inputs,
+    )?;
+    let dispatch_entry = crate::openapi_interface::OpenApiInterfaceCatalogEntry {
+        operation_id: interface_entry.interface_id.clone(),
+        method: interface_entry.method.clone(),
+        path: interface_entry.path.clone(),
+        name: interface_entry.name.clone(),
+        description: interface_entry.short_description.clone(),
+        parameter_descriptors: Vec::new(),
+        request_schema: interface_entry.parameter_schema.clone(),
+        response_schema: interface_entry.result_schema.clone(),
+        request_media_type: Some("application/json".to_string()),
+        response_media_type: Some("application/json".to_string()),
+        security: interface_entry.security.clone(),
+    };
+    let dispatch_arguments = crate::openapi_interface::DispatchArguments {
+        path: interface_arguments.path.clone(),
+        query: interface_arguments.query.clone(),
+        headers: Map::new(),
+        body: interface_arguments.body_value(&interface_entry.parameter_schema),
+    };
+    let interface_response = match crate::openapi_interface::dispatch_with_console_router(
+        console_router,
+        &headers,
+        &dispatch_entry,
+        dispatch_arguments,
+        BTreeMap::new(),
+    )
+    .await
+    {
+        Ok(crate::openapi_interface::DispatchSuccess::Json(value)) => value,
+        Ok(crate::openapi_interface::DispatchSuccess::NoContent) => Value::Null,
+        Ok(crate::openapi_interface::DispatchSuccess::Media(_)) => {
+            return Err(
+                anyhow::anyhow!("MCP debug execute requires a JSON interface response").into(),
+            )
+        }
+        Err(crate::openapi_interface::DispatchError::Api(error)) => {
+            return Err(McpDebugExecuteError::Api(error))
+        }
+        Err(crate::openapi_interface::DispatchError::Target(response)) => {
+            return Err(McpDebugExecuteError::TargetResponse(*response))
+        }
+    };
+    let tool_result = map_tool_result(&body.output_mapping, &interface_response);
+    if matches!(body.debug_response_mode, McpDebugResponseMode::ToolResult) {
+        return Ok(tool_result);
+    }
+    serde_json::to_value(McpDebugExecuteDetailsResponse {
+        mcp_arguments: body.mcp_arguments,
+        interface_arguments: interface_arguments.to_value(&interface_entry.parameter_schema),
+        interface_response,
+        tool_result,
+    })
+    .map_err(|error| anyhow::anyhow!("failed to serialize MCP debug details: {error}").into())
+}
+
+pub async fn execute_with_dispatch_port(
+    dispatcher: &dyn crate::openapi_interface::CallableDispatchPort,
+    forwarding: crate::openapi_interface::CallableDispatchForwarding,
+    interface_entry: domain::McpInterfaceCatalogEntry,
+    body: McpDebugExecuteBody,
+    server_bound_inputs: McpServerBoundInputs,
+    activated_interface_response: Option<Value>,
+) -> Result<Value, McpDebugDispatchError> {
+    let interface_arguments = build_interface_arguments(
+        &interface_entry,
+        &body.input_mapping,
+        &body.mcp_arguments,
+        server_bound_inputs,
+    )?;
+    let dispatch_entry = crate::openapi_interface::OpenApiInterfaceCatalogEntry {
+        operation_id: interface_entry.interface_id.clone(),
+        method: interface_entry.method.clone(),
+        path: interface_entry.path.clone(),
+        name: interface_entry.name.clone(),
+        description: interface_entry.short_description.clone(),
+        parameter_descriptors: Vec::new(),
+        request_schema: interface_entry.parameter_schema.clone(),
+        response_schema: interface_entry.result_schema.clone(),
+        request_media_type: Some("application/json".to_string()),
+        response_media_type: Some("application/json".to_string()),
+        security: interface_entry.security.clone(),
+    };
+    let dispatch_arguments = crate::openapi_interface::DispatchArguments {
+        path: interface_arguments.path.clone(),
+        query: interface_arguments.query.clone(),
+        headers: Map::new(),
+        body: interface_arguments.body_value(&interface_entry.parameter_schema),
+    };
+    let interface_response = if let Some(value) = activated_interface_response {
+        value
+    } else {
+        match dispatcher
+            .dispatch(
+                &dispatch_entry,
+                dispatch_arguments,
+                BTreeMap::new(),
+                forwarding,
+            )
+            .await
+        {
+            Ok(crate::openapi_interface::CallableDispatchResult::Json(value)) => value,
+            Ok(crate::openapi_interface::CallableDispatchResult::NoContent) => Value::Null,
+            Ok(crate::openapi_interface::CallableDispatchResult::Media(_)) => {
+                return Err(
+                    anyhow::anyhow!("MCP debug execute requires a JSON interface response").into(),
+                )
+            }
+            Err(crate::openapi_interface::CallableDispatchError::Api(error)) => {
+                return Err(McpDebugDispatchError::Api(error));
+            }
+            Err(crate::openapi_interface::CallableDispatchError::Target(response)) => {
+                return Err(McpDebugDispatchError::Target(response));
+            }
+        }
+    };
+    let tool_result = map_tool_result(&body.output_mapping, &interface_response);
+    if matches!(body.debug_response_mode, McpDebugResponseMode::ToolResult) {
+        return Ok(tool_result);
+    }
+    serde_json::to_value(McpDebugExecuteDetailsResponse {
+        mcp_arguments: body.mcp_arguments,
+        interface_arguments: interface_arguments.to_value(&interface_entry.parameter_schema),
+        interface_response,
+        tool_result,
+    })
+    .map_err(|error| anyhow::anyhow!("failed to serialize MCP debug details: {error}").into())
+}
+
+fn build_interface_arguments(
+    interface_entry: &domain::McpInterfaceCatalogEntry,
+    input_mapping: &Value,
+    mcp_arguments: &Value,
+    server_bound_inputs: McpServerBoundInputs,
+) -> anyhow::Result<TargetArguments> {
+    if !mcp_arguments.is_object() {
+        return Err(control_plane::errors::ControlPlaneError::InvalidInput("mcp_arguments").into());
+    }
+    domain::mcp_management::input_defaults::validate_input_defaults(
+        input_mapping,
+        &interface_entry.parameter_descriptors,
+    )
+    .map_err(control_plane::errors::ControlPlaneError::InvalidInput)?;
+    let input_mapping: McpInputMapping = serde_json::from_value(input_mapping.clone())
+        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("input_mapping"))?;
+    let server_bound_parameters = input_mapping
+        .mappings
+        .iter()
+        .filter(|mapping| {
+            matches!(
+                mapping.source.as_ref(),
+                Some(McpInputValueSource::ServerBinding { .. })
+            )
+        })
+        .map(|mapping| mapping.interface_param.clone())
+        .collect::<std::collections::HashSet<_>>();
+    let mut arguments = TargetArguments::default();
+    let mut next_parameter_target = BTreeMap::<String, usize>::new();
+
+    for mapping in &input_mapping.mappings {
+        if matches!(
+            mapping.source.as_ref(),
+            Some(McpInputValueSource::McpCall { .. })
+        ) {
+            continue;
+        }
+        if server_bound_parameters.contains(mapping.interface_param.as_str())
+            && !matches!(
+                mapping.source.as_ref(),
+                Some(McpInputValueSource::ServerBinding { .. })
+            )
+        {
+            continue;
+        }
+        // The persisted mapping identifies a parameter by name, so repeated names consume the
+        // canonical OpenAPI location order independently of which optional values are present.
+        let target_index = {
+            let next_index = next_parameter_target
+                .entry(mapping.interface_param.clone())
+                .or_default();
+            let current_index = *next_index;
+            *next_index = (*next_index).saturating_add(1);
+            current_index
+        };
+        let mut mcp_value = match mapping.source {
+            Some(McpInputValueSource::ServerBinding {
+                binding: McpServerBinding::WorkspaceId,
+            }) => Value::String(server_bound_inputs.workspace_id.to_string()),
+            ref source => {
+                if matches!(source, Some(McpInputValueSource::McpCall { .. })) {
+                    continue;
+                }
+                let path = match source {
+                    Some(McpInputValueSource::McpArgument { path }) => Some(path.as_str()),
+                    _ => mapping.mcp_param.as_deref(),
+                };
+                match mapping
+                    .defaults
+                    .resolve(path.and_then(|path| get_path_value(mcp_arguments, path)))
+                {
+                    Some(value) => value.clone(),
+                    None if mapping.required => {
+                        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                            "mcp_arguments",
+                        )
+                        .into())
+                    }
+                    None => continue,
+                }
+            }
+        };
+        // Visible parent-object mappings must not override hidden descendants, in either order.
+        for hidden in input_mapping
+            .mappings
+            .iter()
+            .filter(|entry| entry.defaults.hidden)
+        {
+            if let Some(relative) = hidden
+                .interface_param
+                .strip_prefix(&format!("{}.", mapping.interface_param))
+            {
+                if let Some(object) = mcp_value.as_object_mut() {
+                    if let Some(value) = hidden.defaults.default_value.as_ref() {
+                        set_path_value(object, relative, value.clone());
+                    } else {
+                        remove_path_value(object, relative);
+                    }
+                }
+            }
+        }
+        let targets = parameter_targets(interface_entry, &mapping.interface_param)?;
+        let target = targets
+            .get(target_index)
+            .or_else(|| targets.first())
+            .copied()
+            .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+                "input_mapping",
+            ))?;
+
+        match target {
+            InterfaceParameterTarget::Path => {
+                arguments
+                    .path
+                    .insert(mapping.interface_param.clone(), mcp_value);
+            }
+            InterfaceParameterTarget::Query => {
+                arguments
+                    .query
+                    .insert(mapping.interface_param.clone(), mcp_value);
+            }
+            InterfaceParameterTarget::Body => {
+                set_path_value(&mut arguments.body, &mapping.interface_param, mcp_value);
+            }
+        }
+    }
+
+    materialize_required_object_containers(
+        interface_entry.parameter_schema.pointer("/properties/path"),
+        &mut arguments.path,
+    );
+    materialize_required_object_containers(
+        interface_entry
+            .parameter_schema
+            .pointer("/properties/query"),
+        &mut arguments.query,
+    );
+    materialize_required_object_containers(
+        interface_entry.parameter_schema.pointer("/properties/body"),
+        &mut arguments.body,
+    );
+
+    Ok(arguments)
+}
+
+fn remove_path_value(object: &mut Map<String, Value>, path: &str) {
+    if let Some((head, tail)) = path.split_once('.') {
+        if let Some(child) = object.get_mut(head).and_then(Value::as_object_mut) {
+            remove_path_value(child, tail);
+        }
+    } else {
+        object.remove(path);
+    }
+}
+
+fn materialize_required_object_containers(schema: Option<&Value>, target: &mut Map<String, Value>) {
+    let Some(schema) = schema else {
+        return;
+    };
+    let required = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<std::collections::BTreeSet<_>>();
+    let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
+        return;
+    };
+
+    for (name, property_schema) in properties {
+        if required.contains(name.as_str())
+            && !target.contains_key(name)
+            && schema_describes_object(property_schema)
+        {
+            target.insert(name.clone(), Value::Object(Map::new()));
+        }
+        if let Some(value) = target.get_mut(name).and_then(Value::as_object_mut) {
+            materialize_required_object_containers(Some(property_schema), value);
+        }
+    }
+}
+
+fn schema_describes_object(schema: &Value) -> bool {
+    schema.get("type").and_then(Value::as_str) == Some("object")
+        || schema.get("properties").is_some_and(Value::is_object)
+}
+
+fn parameter_target(
+    interface_entry: &domain::McpInterfaceCatalogEntry,
+    descriptor: &McpParameterDescriptor,
+) -> InterfaceParameterTarget {
+    match descriptor.parameter_type {
+        McpParameterType::JsonBody | McpParameterType::Form => InterfaceParameterTarget::Body,
+        McpParameterType::Url => {
+            if parameter_schema_has_location_field(
+                &interface_entry.parameter_schema,
+                "path",
+                &descriptor.name,
+            ) {
+                InterfaceParameterTarget::Path
+            } else {
+                InterfaceParameterTarget::Query
+            }
+        }
+    }
+}
+
+fn parameter_targets(
+    interface_entry: &domain::McpInterfaceCatalogEntry,
+    parameter_name: &str,
+) -> anyhow::Result<Vec<InterfaceParameterTarget>> {
+    let mut targets = Vec::new();
+    if parameter_schema_has_location_field(
+        &interface_entry.parameter_schema,
+        "path",
+        parameter_name,
+    ) {
+        targets.push(InterfaceParameterTarget::Path);
+    }
+    if parameter_schema_has_location_field(
+        &interface_entry.parameter_schema,
+        "query",
+        parameter_name,
+    ) {
+        targets.push(InterfaceParameterTarget::Query);
+    }
+    if parameter_schema_has_location_field(
+        &interface_entry.parameter_schema,
+        "body",
+        parameter_name,
+    ) {
+        targets.push(InterfaceParameterTarget::Body);
+    }
+    if !targets.is_empty() {
+        return Ok(targets);
+    }
+
+    interface_entry
+        .parameter_descriptors
+        .iter()
+        .find(|descriptor| descriptor.name == parameter_name)
+        .map(|descriptor| vec![parameter_target(interface_entry, descriptor)])
+        .ok_or_else(|| {
+            control_plane::errors::ControlPlaneError::InvalidInput("input_mapping").into()
+        })
+}
+
+fn parameter_schema_has_location_field(schema: &Value, location: &str, field: &str) -> bool {
+    let Some(mut cursor) = schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .and_then(|properties| properties.get(location))
+    else {
+        return false;
+    };
+    for segment in field.split('.').filter(|segment| !segment.is_empty()) {
+        let Some(next) = schema_property(cursor, segment) else {
+            return false;
+        };
+        cursor = next;
+    }
+    true
+}
+
+fn schema_property<'a>(schema: &'a Value, name: &str) -> Option<&'a Value> {
+    schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .and_then(|properties| properties.get(name))
+        .or_else(|| {
+            schema
+                .get("allOf")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .find_map(|branch| schema_property(branch, name))
+        })
+}
+
+fn map_tool_result(output_mapping: &Value, interface_response: &Value) -> Value {
+    let source = interface_response.get("data").unwrap_or(interface_response);
+    filter_schema_object(output_mapping, source)
+}
+
+fn filter_schema_object(schema: &Value, source: &Value) -> Value {
+    let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
+        return source.clone();
+    };
+
+    let mut mapped = Map::new();
+    for (field, field_schema) in properties {
+        let Some(field_source) = get_path_value(source, field) else {
+            continue;
+        };
+        let mapped_value = filter_schema_value(field_schema, field_source);
+        set_path_value(&mut mapped, field, mapped_value);
+    }
+
+    if mapped.is_empty() {
+        source.clone()
+    } else {
+        Value::Object(mapped)
+    }
+}
+
+fn filter_schema_value(schema: &Value, source: &Value) -> Value {
+    if let (Some(item_schema), Some(items)) = (schema.get("items"), source.as_array()) {
+        return Value::Array(
+            items
+                .iter()
+                .map(|item| filter_schema_value(item_schema, item))
+                .collect(),
+        );
+    }
+
+    if schema.get("properties").is_some() {
+        return filter_schema_object(schema, source);
+    }
+
+    source.clone()
+}
+
+impl TargetArguments {
+    fn body_value(&self, parameter_schema: &Value) -> Value {
+        let required_object = parameter_schema
+            .get("required")
+            .and_then(Value::as_array)
+            .is_some_and(|fields| fields.iter().any(|field| field.as_str() == Some("body")))
+            && parameter_schema
+                .pointer("/properties/body")
+                .is_some_and(schema_describes_object);
+        if !self.body.is_empty() || required_object {
+            Value::Object(self.body.clone())
+        } else {
+            Value::Null
+        }
+    }
+
+    fn to_value(&self, parameter_schema: &Value) -> Value {
+        let mut value = Map::new();
+        if !self.path.is_empty() {
+            value.insert("path".into(), Value::Object(self.path.clone()));
+        }
+        if !self.query.is_empty() {
+            value.insert("query".into(), Value::Object(self.query.clone()));
+        }
+        let body = self.body_value(parameter_schema);
+        if !body.is_null() {
+            value.insert("body".into(), body);
+        }
+        Value::Object(value)
+    }
+}
+
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "debug_execute/_tests/empty_body.rs"]
+mod empty_body_tests;
+
+fn get_path_value<'a>(source: &'a Value, path: &str) -> Option<&'a Value> {
+    let mut cursor = source;
+    for segment in path.split('.').filter(|segment| !segment.is_empty()) {
+        cursor = cursor.get(segment)?;
+    }
+    Some(cursor)
+}
+
+fn set_path_value(target: &mut Map<String, Value>, path: &str, value: Value) {
+    let segments = path
+        .split('.')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    if segments.is_empty() {
+        return;
+    }
+
+    let mut cursor = target;
+    for segment in &segments[..segments.len() - 1] {
+        let entry = cursor
+            .entry((*segment).to_string())
+            .or_insert_with(|| Value::Object(Map::new()));
+        if !entry.is_object() {
+            *entry = Value::Object(Map::new());
+        }
+        cursor = entry
+            .as_object_mut()
+            .expect("entry was just initialized as an object");
+    }
+    cursor.insert(segments[segments.len() - 1].to_string(), value);
+}
+
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+mod server_binding_tests {
+    use super::*;
+    use domain::mcp_management::{McpInterfaceCatalogSource, McpRiskLevel};
+    use serde_json::json;
+
+    #[test]
+    fn mcp_call_mapping_does_not_reach_interface_arguments() {
+        let interface = domain::McpInterfaceCatalogEntry {
+            interface_id: "empty".into(),
+            source: McpInterfaceCatalogSource::StaticApi,
+            method: "POST".into(),
+            path: "/empty".into(),
+            name: "Empty".into(),
+            short_description: String::new(),
+            parameter_descriptors: vec![],
+            parameter_schema: json!({"type":"object","properties":{}}),
+            result_schema: json!({}),
+            permission_code: None,
+            security: json!({}),
+            risk_level: McpRiskLevel::Low,
+            bindable: true,
+            disabled_reason: None,
+        };
+        let mapped = build_interface_arguments(
+            &interface,
+            &json!({"mappings":[{"interface_param":"max_inline_chars","mcp_param":"max_inline_chars","required":false,"source":{"kind":"mcp_call","path":"max_inline_chars"}}]}),
+            &json!({"max_inline_chars":100}),
+            McpServerBoundInputs { workspace_id: Uuid::nil() },
+        ).unwrap();
+
+        assert!(mapped.path.is_empty());
+        assert!(mapped.query.is_empty());
+        assert!(mapped.body.is_empty());
+    }
+
+    #[test]
+    fn frontstage_workspace_scope_is_not_an_mcp_path_argument() {
+        let interface = domain::McpInterfaceCatalogEntry {
+            interface_id: "frontstage_list_pages".into(),
+            source: McpInterfaceCatalogSource::StaticApi,
+            method: "GET".into(),
+            path: "/api/console/frontstage/pages".into(),
+            name: "List pages".into(),
+            short_description: String::new(),
+            parameter_descriptors: vec![],
+            parameter_schema: json!({"type":"object","properties":{}}),
+            result_schema: json!({}),
+            permission_code: None,
+            security: json!({}),
+            risk_level: McpRiskLevel::Low,
+            bindable: true,
+            disabled_reason: None,
+        };
+        let mapped = build_interface_arguments(
+            &interface,
+            &json!({"mappings":[]}),
+            &json!({"workspace_id":Uuid::nil()}),
+            McpServerBoundInputs {
+                workspace_id: Uuid::now_v7(),
+            },
+        )
+        .unwrap();
+
+        assert!(mapped.path.is_empty());
+    }
+
+    #[test]
+    fn maps_flattened_json_body_fields_declared_with_all_of() {
+        let interface = domain::McpInterfaceCatalogEntry {
+            interface_id: "create_frontstage_block_node".into(),
+            source: McpInterfaceCatalogSource::StaticApi,
+            method: "POST".into(),
+            path: "/api/console/frontstage/pages/{page_id}/blocks".into(),
+            name: "Create Frontstage block".into(),
+            short_description: String::new(),
+            parameter_descriptors: vec![McpParameterDescriptor {
+                name: "body".into(),
+                field_type: "object".into(),
+                parameter_type: McpParameterType::JsonBody,
+                description: None,
+                required: true,
+                schema: json!({"type":"object"}),
+            }],
+            parameter_schema: json!({
+                "type": "object",
+                "properties": {
+                    "body": {
+                        "allOf": [
+                            {
+                                "type": "object",
+                                "required": ["source_code"],
+                                "properties": {"source_code": {"type": "string"}}
+                            },
+                            {
+                                "type": "object",
+                                "required": ["title"],
+                                "properties": {"title": {"type": "string"}}
+                            }
+                        ]
+                    }
+                }
+            }),
+            result_schema: json!({}),
+            permission_code: None,
+            security: json!({}),
+            risk_level: McpRiskLevel::High,
+            bindable: true,
+            disabled_reason: None,
+        };
+
+        let mapped = build_interface_arguments(
+            &interface,
+            &json!({"mappings":[
+                {"interface_param":"source_code","mcp_param":"body.source_code","required":true},
+                {"interface_param":"title","mcp_param":"body.title","required":true}
+            ]}),
+            &json!({"body":{"source_code":"export default () => null","title":"Materials"}}),
+            McpServerBoundInputs {
+                workspace_id: Uuid::now_v7(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            mapped.body,
+            serde_json::Map::from_iter([
+                ("source_code".into(), json!("export default () => null")),
+                ("title".into(), json!("Materials")),
+            ])
+        );
+    }
+}
+
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "_tests/input_defaults.rs"]
+mod input_defaults_tests;

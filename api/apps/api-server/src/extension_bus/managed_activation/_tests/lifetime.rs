@@ -180,10 +180,10 @@ async fn root_2007_ac_010_lane_budgets_snapshot_capacity() {
 #[test]
 fn root_2325_reference_overflow_preserves_count_and_recoverable_close() {
     let lifetime = Arc::new(SnapshotLifetime::default());
-    lifetime.0.lock().unwrap().references = usize::MAX;
+    lifetime.set_reference_count_for_test_support(usize::MAX);
     assert!(lifetime.acquire().is_err());
     assert_eq!(lifetime.reference_count(), usize::MAX);
-    lifetime.0.lock().unwrap().references = 0;
+    lifetime.set_reference_count_for_test_support(0);
     let references = (0..600)
         .map(|_| lifetime.acquire().unwrap())
         .collect::<Vec<_>>();

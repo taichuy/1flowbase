@@ -13,7 +13,7 @@ use crate::provider_runtime::TransportConnectionScopeGuard;
 
 /// The guard is created before dispatch and moved here only when headers are ready.
 /// In particular, dropping a silent or never-polled body must still detach delivery.
-pub(crate) fn bind_response(response: Response, scope: TransportConnectionScopeGuard) -> Response {
+pub fn bind_response(response: Response, scope: TransportConnectionScopeGuard) -> Response {
     let (parts, inner) = response.into_parts();
     Response::from_parts(parts, Body::new(ScopedBody { inner, scope }))
 }

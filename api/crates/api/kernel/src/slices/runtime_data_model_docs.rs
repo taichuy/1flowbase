@@ -1,4 +1,3 @@
-use control_plane::{errors::ControlPlaneError, model_definition::ModelDefinitionService};
 use plugin_framework::{DataModelTemplateIdentity, DataModelTemplateOperation};
 use runtime_core::{
     data_model_template_registry::{CompiledDataModelTemplate, DataModelTemplateCatalog},
@@ -8,9 +7,8 @@ use runtime_core::{
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::{
-    error_response::ApiError,
-    openapi_docs::{DocsCatalogCategory, DocsCatalogCategoryOperations, DocsCatalogOperation},
+use crate::openapi_docs::{
+    DocsCatalogCategory, DocsCatalogCategoryOperations, DocsCatalogOperation,
 };
 
 pub const DATA_MODEL_DOCS_CATEGORY_ID: &str = "data-model-apis";
@@ -35,57 +33,6 @@ pub fn parse_operation_id(
         return Err("missing operation code");
     }
     Ok(Some((model_id, suffix.to_owned())))
-}
-
-pub async fn ready_models_with(
-    store: storage_durable_postgres::MainDurableStore,
-    actor_user_id: Uuid,
-) -> Result<Vec<domain::ModelDefinitionRecord>, ApiError> {
-    let models = match ModelDefinitionService::new(store)
-        .list_models(actor_user_id)
-        .await
-    {
-        Ok(models) => models,
-        Err(error) => {
-            if let Some(ControlPlaneError::PermissionDenied(_)) =
-                error.downcast_ref::<ControlPlaneError>()
-            {
-                return Ok(vec![]);
-            }
-            return Err(error.into());
-        }
-    };
-    let mut models = models
-        .into_iter()
-        .filter(|model| model.status == domain::DataModelStatus::Published)
-        .collect::<Vec<_>>();
-    models.sort_by(|left, right| left.code.cmp(&right.code));
-    Ok(models)
-}
-
-pub async fn ready_model_with(
-    store: storage_durable_postgres::MainDurableStore,
-    actor_user_id: Uuid,
-    model_id: Uuid,
-) -> Result<Option<domain::ModelDefinitionRecord>, ApiError> {
-    let model = match ModelDefinitionService::new(store)
-        .get_model(actor_user_id, model_id)
-        .await
-    {
-        Ok(model) => model,
-        Err(error) => {
-            if let Some(ControlPlaneError::PermissionDenied(_) | ControlPlaneError::NotFound(_)) =
-                error.downcast_ref::<ControlPlaneError>()
-            {
-                return Ok(None);
-            }
-            return Err(error.into());
-        }
-    };
-    if model.status != domain::DataModelStatus::Published {
-        return Ok(None);
-    }
-    Ok(Some(model))
 }
 
 fn template_for_model(
@@ -579,7 +526,6 @@ fn descriptor_operation_definition(
     Value::Object(definition)
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::*;

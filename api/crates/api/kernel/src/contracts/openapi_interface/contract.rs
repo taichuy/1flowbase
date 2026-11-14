@@ -9,13 +9,13 @@ use serde_json::Value;
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
-pub(crate) struct ApiOperationContext {
+pub struct ApiOperationContext {
     pub interface_id: String,
     pub method: String,
     pub path: String,
 }
 
-pub(crate) trait ApiInput: InterfaceContract {
+pub trait ApiInput: InterfaceContract {
     /// None inherits the actual shared API document schema at serving composition.
     fn document_input_schema(_operation: &ApiOperationContext) -> Option<Value> {
         None
@@ -27,7 +27,7 @@ pub(crate) trait ApiInput: InterfaceContract {
     }
     fn project_document_input(&self, operation: &ApiOperationContext) -> Result<Value, Arc<str>>;
 }
-pub(crate) trait ApiOutput: InterfaceContract {
+pub trait ApiOutput: InterfaceContract {
     fn document_output_schema(_operation: &ApiOperationContext) -> Option<Value> {
         None
     }
@@ -56,10 +56,10 @@ fn reason_code(reason: domain::event_center::ApiEventUnavailableReason) -> Arc<s
     Arc::from(encoded.as_str().expect("owner reason is a string"))
 }
 /// Explicit owner opt-in for an already safe DTO. Does not implement either codec trait.
-pub(crate) fn to_value<T: serde::Serialize>(value: &T) -> Result<Value, Arc<str>> {
+pub fn to_value<T: serde::Serialize>(value: &T) -> Result<Value, Arc<str>> {
     serde_json::to_value(value).map_err(|_| Arc::from("api-event-safe-dto-serialization-failed"))
 }
-pub(crate) fn schema<T: utoipa::ToSchema>() -> Value {
+pub fn schema<T: utoipa::ToSchema>() -> Value {
     let mut schemas = Vec::new();
     T::schemas(&mut schemas);
     schemas.push((T::name().into_owned(), T::schema()));
@@ -91,7 +91,7 @@ impl<I: ApiInput, O: ApiOutput> DocumentOperationCodec<I, O> for Codec<I, O> {
 }
 /// Called by typed family registration. Final composition replaces only document metadata
 /// from the unique shared API-doc method/route correspondence before publishing the registry.
-pub(crate) fn register_static_api_operation<I: ApiInput, O: ApiOutput>(
+pub fn register_static_api_operation<I: ApiInput, O: ApiOutput>(
     compiler: &mut RegistryCompiler,
     binding: &ProtocolBinding,
     generation: &str,
@@ -153,7 +153,7 @@ pub(crate) fn register_static_api_operation<I: ApiInput, O: ApiOutput>(
 }
 
 /// Refine only unpublished observation metadata using the sole static API document source.
-pub(crate) fn refine_static_api_operations(
+pub fn refine_static_api_operations(
     compiler: &mut RegistryCompiler,
     docs: &crate::openapi_docs::ApiDocsRegistry,
     snapshots: &[Arc<interface_runtime::CompiledInterfaceRegistry>],
@@ -247,7 +247,7 @@ pub(crate) fn refine_static_api_operations(
     }
     Ok(())
 }
-pub(crate) fn route_identity(method: &str, path: &str) -> (String, String) {
+pub fn route_identity(method: &str, path: &str) -> (String, String) {
     (
         method.to_ascii_uppercase(),
         path.split('/')
@@ -263,7 +263,7 @@ pub(crate) fn route_identity(method: &str, path: &str) -> (String, String) {
     )
 }
 
-pub(crate) fn safe_document_request_schema(mut schema: Value) -> Value {
+pub fn safe_document_request_schema(mut schema: Value) -> Value {
     if let Some(properties) = schema.get_mut("properties").and_then(Value::as_object_mut) {
         properties.remove("headers");
     }

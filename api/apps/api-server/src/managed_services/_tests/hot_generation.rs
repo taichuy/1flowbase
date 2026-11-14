@@ -1,5 +1,6 @@
 //! Real host generation compilation and HTTP ingress; runtime execution has separate fixtures.
 use super::*;
+use crate::extension_bus::SnapshotAssembly;
 use crate::{
     _tests::support::{login_and_capture_cookie, test_api_state_with_database_url, test_config},
     managed_publication::ManagedGenerationPublisher,

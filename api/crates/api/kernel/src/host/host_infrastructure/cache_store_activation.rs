@@ -30,7 +30,7 @@ pub(crate) struct ActivatedCacheStore {
 }
 
 #[derive(Default)]
-pub(crate) struct CacheStoreActivationFactoryRegistry {
+pub struct CacheStoreActivationFactoryRegistry {
     factories: BTreeMap<ContributionId, CacheStoreFactory>,
 }
 

@@ -12,7 +12,7 @@ use crate::{
 
 const SOURCE_SCHEMA_VERSION: &str = "1flowbase.model-pricing-source/v2";
 const BUILTIN_ZERO_SOURCE: &[u8] =
-    include_bytes!("../../resources/model-pricing/@zero/any/pricing.json");
+    include_bytes!("../../../../../apps/api-server/resources/model-pricing/@zero/any/pricing.json");
 
 #[derive(Debug, Deserialize)]
 struct CatalogSourceMetadata {
@@ -21,21 +21,39 @@ struct CatalogSourceMetadata {
 
 #[path = "model_pricing_catalog/remote_reader.rs"]
 mod remote_reader;
-pub(crate) use remote_reader::RemotePricingCatalogReader;
+pub use remote_reader::RemotePricingCatalogReader;
 
 #[derive(Debug, Default, Serialize, PartialEq, Eq)]
-pub(crate) struct PricingRuleInstallSummary {
-    pub(crate) inserted: usize,
-    pub(crate) skipped: usize,
+pub struct PricingRuleInstallSummary {
+    pub inserted: usize,
+    pub skipped: usize,
     pub(crate) updated: usize,
     pub(crate) deleted: usize,
 }
 
-pub(crate) fn builtin_pricing_rules() -> Result<Vec<PricingRuleBody>> {
+impl PricingRuleInstallSummary {
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn for_test_support(
+        inserted: usize,
+        skipped: usize,
+        updated: usize,
+        deleted: usize,
+    ) -> Self {
+        Self {
+            inserted,
+            skipped,
+            updated,
+            deleted,
+        }
+    }
+}
+
+pub fn builtin_pricing_rules() -> Result<Vec<PricingRuleBody>> {
     decode_source(BUILTIN_ZERO_SOURCE, None, Some("zero"))
 }
 
-pub(crate) fn load_bootstrap_pricing_rules(root: &Path) -> Result<Vec<PricingRuleBody>> {
+pub fn load_bootstrap_pricing_rules(root: &Path) -> Result<Vec<PricingRuleBody>> {
     if !root.exists() {
         return Ok(Vec::new());
     }
@@ -140,7 +158,7 @@ fn validate_catalog_rules(rules: &[PricingRuleBody]) -> Result<(), ApiError> {
     Ok(())
 }
 
-pub(crate) async fn install_pricing_rules_if_absent<R: BillingRepository>(
+pub async fn install_pricing_rules_if_absent<R: BillingRepository>(
     repository: &R,
     actor_user_id: Uuid,
     rules: Vec<PricingRuleBody>,

@@ -191,27 +191,26 @@ impl Fixture {
             .unwrap(),
         );
         host.mark_ready().unwrap();
-        let services = Arc::new(
-            ApiRuntimeServices::new_with_runtime_backend(
-                host.clone(),
-                Arc::new(assembly.compile_graph().unwrap()),
-            )
-            .unwrap()
-            .with_managed_composition(
-                initial.store.clone(),
-                initial.api_node_id.clone(),
-                assembly.module_descriptors().to_vec(),
+        let (services, composition) = crate::managed_runtime_assembly::bind_managed_runtime(
+            crate::provider_runtime::services_for_current_cfg(
+                ApiRuntimeServices::new_with_runtime_backend(
+                    host.clone(),
+                    Arc::new(assembly.compile_graph().unwrap()),
+                )
+                .unwrap(),
             ),
+            initial.store.clone(),
+            initial.api_node_id.clone(),
+            assembly.module_descriptors().to_vec(),
         );
+        let services = Arc::new(services);
         let mut owned = (*initial).clone();
         owned.provider_runtime = services.clone();
         let state = Arc::new(owned);
         let initial_app = crate::app_with_state(state.clone());
         let publisher =
             ManagedGenerationPublisher::new(&state, test_config(), vec![], initial_app).unwrap();
-        services
-            .managed_composition()
-            .unwrap()
+        composition
             .attach_generation_publisher(Arc::downgrade(&publisher))
             .unwrap();
         let app = publisher.ingress();

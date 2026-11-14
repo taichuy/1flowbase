@@ -19,11 +19,22 @@ use crate::extension_bus::{
 #[derive(Debug, Clone)]
 pub struct ModelProviderSlotResolver {
     graph: Arc<EffectiveExtensionGraph>,
+    local_artifact_references: bool,
 }
 
 impl ModelProviderSlotResolver {
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn with_local_artifact_references_for_test_support(mut self) -> Self {
+        self.local_artifact_references = true;
+        self
+    }
+
     pub fn new(graph: Arc<EffectiveExtensionGraph>) -> Self {
-        Self { graph }
+        Self {
+            graph,
+            local_artifact_references: cfg!(test),
+        }
     }
 
     pub fn graph_arc(&self) -> &Arc<EffectiveExtensionGraph> {
@@ -70,6 +81,7 @@ impl ModelProviderSlotResolver {
             ModelProviderBindingProvenance::BootGraph(point.provenance().clone()),
             self.graph.fingerprint().as_str().to_string(),
             installation,
+            self.local_artifact_references,
         )
     }
 }
@@ -104,6 +116,7 @@ impl ModelProviderSlotBinding {
         provenance: ModelProviderBindingProvenance,
         graph_fingerprint: String,
         installation: &domain::LocalPluginInstallationRecord,
+        local_artifact_references: bool,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             point_id,
@@ -121,13 +134,17 @@ impl ModelProviderSlotBinding {
             source_kind: installation.source_kind.clone(),
             provenance,
             graph_fingerprint,
-            artifact_reference: runtime_artifact_reference(installation)?,
+            artifact_reference: runtime_artifact_reference(
+                installation,
+                local_artifact_references,
+            )?,
             legacy_manifest_eligibility: legacy_manifest_eligibility(installation)?,
         })
     }
 
     pub(crate) fn legacy_for_tests(
         installation: &domain::LocalPluginInstallationRecord,
+        local_artifact_references: bool,
     ) -> anyhow::Result<Self> {
         Self::from_installation(
             ExtensionPointId::new(MODEL_PROVIDER_EXTENSION_POINT_ID)?,
@@ -135,6 +152,7 @@ impl ModelProviderSlotBinding {
             ModelProviderBindingProvenance::LegacyTestOnly,
             "legacy-test-only".to_string(),
             installation,
+            local_artifact_references,
         )
     }
 
@@ -158,16 +176,14 @@ impl ModelProviderSlotBinding {
 
 fn runtime_artifact_reference(
     installation: &domain::LocalPluginInstallationRecord,
+    local_artifact_references: bool,
 ) -> anyhow::Result<String> {
-    #[cfg(test)]
-    {
+    if local_artifact_references {
         installation
             .local_path()
             .map(str::to_string)
             .ok_or_else(|| ControlPlaneError::Conflict("plugin_artifact_path_missing").into())
-    }
-    #[cfg(not(test))]
-    {
+    } else {
         Ok(installation.id.to_string())
     }
 }

@@ -51,7 +51,7 @@ pub fn catalog_entry_from_operation(
     catalog_entry(operation, &CatalogSpec::Full(spec))
 }
 
-pub(crate) fn catalog_entry_from_view(
+pub fn catalog_entry_from_view(
     operation: &DocsCatalogOperation,
     spec: &OperationSpecView<'_>,
 ) -> Option<OpenApiInterfaceCatalogEntry> {
@@ -433,6 +433,6 @@ fn field_type(schema: &Value) -> String {
         .to_string()
 }
 
-pub(crate) fn close_api_event_schema(source: &Value, schema: &Value) -> Value {
+pub fn close_api_event_schema(source: &Value, schema: &Value) -> Value {
     resolve_schema(&CatalogSpec::Full(source), schema)
 }

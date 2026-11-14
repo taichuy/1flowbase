@@ -54,7 +54,6 @@ impl DocumentCache {
         cache.get_or_load(key, load).await
     }
 
-    #[cfg_attr(test, api_test_selection::group(core))]
     #[cfg(test)]
     async fn run_pending_tasks(&self) {
         if let Some(cache) = self.0.active.get() {
@@ -62,7 +61,6 @@ impl DocumentCache {
         }
     }
 
-    #[cfg_attr(test, api_test_selection::group(core))]
     #[cfg(test)]
     fn entry_count(&self) -> u64 {
         self.0.active.get().map_or(0, |cache| cache.entry_count())
@@ -116,10 +114,10 @@ impl From<Arc<EncodedApiDocument>> for SharedApiDocument {
 impl SharedApiDocument {
     /// Explicit projection of this typed immutable JSON document, independent of HTTP response
     /// construction. The owner retains encoded JSON, so decode only when observation needs it.
-    pub(crate) fn document_value(&self) -> Result<Value, serde_json::Error> {
+    pub fn document_value(&self) -> Result<Value, serde_json::Error> {
         serde_json::from_slice(&self.0.body)
     }
-    pub(crate) fn managed_projection(&self) -> Value {
+    pub fn managed_projection(&self) -> Value {
         self.0.managed_projection.clone()
     }
 }
@@ -138,7 +136,6 @@ pub(super) fn document_weight(value: &EncodedApiDocument) -> u64 {
     value.body.len() as u64
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
-#[path = "../_tests/route_docs/docs_cache_tests.rs"]
+#[path = "_tests/docs_cache_tests.rs"]
 mod tests;

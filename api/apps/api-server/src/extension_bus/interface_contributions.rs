@@ -1,0 +1,1126 @@
+mod mcp;
+mod network;
+mod plugins;
+mod provider_operations;
+mod system;
+
+use std::{collections::BTreeSet, sync::Arc};
+
+use interface_runtime::{
+    CompiledInterfaceRegistry, GraphFingerprint, InterfaceId, RegistryCompilationError,
+};
+
+use crate::console_operation_compilation::{
+    compile_console_operation_snapshot, migration_contributions_from_plan,
+    policy_contributions_from_inventory, CompiledConsoleOperationSnapshot, ConsoleBindingOwnerKind,
+    ConsoleBindingOwnershipContribution,
+};
+
+pub use api_host_kernel::extension_bus::interface_contributions::*;
+pub(crate) trait InterfaceContributionCollectorAssembly {
+    fn compile_complete_console_snapshot(
+        self,
+        inventory: &access_control::ConsoleOperationCompiledInventory,
+    ) -> anyhow::Result<(
+        Arc<CompiledInterfaceRegistry>,
+        CompiledConsoleOperationSnapshot,
+    )>;
+}
+impl InterfaceContributionCollectorAssembly for InterfaceContributionCollector {
+    fn compile_complete_console_snapshot(
+        self,
+        console_inventory: &access_control::ConsoleOperationCompiledInventory,
+    ) -> anyhow::Result<(
+        Arc<CompiledInterfaceRegistry>,
+        CompiledConsoleOperationSnapshot,
+    )> {
+        let migration =
+            crate::console_policy_migration::compile_core_console_policy_migration_plan(
+                console_inventory,
+            )?;
+        let mut binding_contributions = Vec::new();
+        let mut known_binding_owners = BTreeSet::new();
+        for contribution in self.contributions() {
+            binding_contributions.extend(console_bindings_from_registry(
+                contribution.contribution_id(),
+                ConsoleBindingOwnerKind::Family,
+                contribution.registry(),
+            ));
+            known_binding_owners.extend(
+                contribution
+                    .registry()
+                    .definitions()
+                    .map(|definition| definition.owner().as_str().to_string()),
+            );
+        }
+        let mut migrations = migration_contributions_from_plan(&migration);
+        migrations.extend(console_inventory.operations.iter().filter(|operation| operation.owner.kind == access_control::SettingsFeatureOwnerKind::ManagedService).map(|operation| crate::console_operation_compilation::ConsoleMigrationDispositionContribution {
+            operation_id: operation.operation_id.clone(),
+            disposition: crate::console_operation_compilation::ConsoleMigrationDisposition::DefaultDisabled { evidence: "New managed service operation requires explicit role policy; no legacy grants".into() },
+        }));
+        let managed_stream_controls = self
+            .contributions()
+            .iter()
+            .filter(|contribution| {
+                contribution
+                    .contribution_id()
+                    .starts_with("managed-service.")
+            })
+            .flat_map(|contribution| {
+                contribution
+                    .registry()
+                    .bindings()
+                    .filter_map(|binding| {
+                        let definition = contribution
+                            .registry()
+                            .definition(binding.interface_identity().interface_id())?;
+                        let route = binding.projection().http_route()?;
+                        (definition.execution_mode()
+                            == interface_runtime::InterfaceExecutionMode::ServerStream
+                            && route.method() == "POST")
+                            .then(|| access_control::ConsoleRouteBinding {
+                                method: "GET".into(),
+                                path: route.path().into(),
+                            })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        let snapshot = compile_console_operation_snapshot(
+            policy_contributions_from_inventory(console_inventory, &managed_stream_controls),
+            binding_contributions,
+            migrations,
+            known_binding_owners,
+        )?;
+        let registry = self.compile()?;
+        Ok((registry, snapshot))
+    }
+}
+fn console_bindings_from_registry(
+    contribution_id: &str,
+    owner_kind: ConsoleBindingOwnerKind,
+    registry: &CompiledInterfaceRegistry,
+) -> Vec<ConsoleBindingOwnershipContribution> {
+    registry
+        .bindings()
+        .filter_map(|binding| {
+            let route = binding.projection().http_route()?;
+            if !route.path().starts_with("/api/console") {
+                return None;
+            }
+            let definition = registry.definition(binding.interface_identity().interface_id())?;
+            Some(ConsoleBindingOwnershipContribution {
+                contribution_id: contribution_id.to_string(),
+                owner_kind,
+                owner_id: definition.owner().as_str().to_string(),
+                owner_active: true,
+                interface_id: definition.interface_id().as_str().to_string(),
+                binding_id: binding.binding_id().as_str().to_string(),
+                protocol: match binding.projection().protocol() {
+                    interface_runtime::InterfaceProtocol::Http => "http",
+                    interface_runtime::InterfaceProtocol::Mcp => "mcp",
+                    interface_runtime::InterfaceProtocol::Internal => "internal",
+                    interface_runtime::InterfaceProtocol::Worker => "worker",
+                }
+                .to_string(),
+                route: access_control::ConsoleRouteBinding {
+                    method: route.method().to_string(),
+                    path: route.path().to_string(),
+                },
+            })
+        })
+        .collect()
+}
+pub(crate) fn production_interface_contributions(
+    state: &Arc<crate::app_state::ApiState>,
+    owner: &Arc<crate::generation_dispatch::GenerationDispatch>,
+) -> Result<Vec<InterfaceRegistryContribution>, RegistryCompilationError> {
+    let console_frontstage_callable_dispatch: Arc<
+        dyn crate::openapi_interface::CallableDispatchPort,
+    > = Arc::new(crate::generation_dispatch::WeakGenerationDispatch(
+        Arc::downgrade(owner),
+    ));
+    let public_login_entries = crate::routes::auth::public_login_entries_port(
+        state.store.clone(),
+        Arc::clone(&state.authenticator_registry),
+        state.bootstrap_workspace_id,
+        state.api_node_id.clone(),
+        state.provider_install_root.clone(),
+    );
+    let public_sign_in = crate::routes::sign_in_interface::public_sign_in_port(
+        state.store.clone(),
+        Arc::clone(&state.session_store),
+        state.session_ttl_days,
+        Arc::clone(&state.authenticator_registry),
+    );
+    let public_providers = crate::routes::auth::public_providers_port(
+        state.store.clone(),
+        state.bootstrap_workspace_id,
+    );
+    let public_sign_up = crate::routes::auth::public_sign_up_port(
+        state.store.clone(),
+        Arc::clone(&state.session_store),
+        state.session_ttl_days,
+    );
+    let console_identity = crate::routes::console_identity_interface::console_identity_port(
+        state.store.clone(),
+        Arc::clone(&state.session_store),
+        state.cookie_name.clone(),
+    );
+    let console_membership = crate::routes::membership_interface::membership_port(
+        state.store.clone(),
+        state.event_workflow_changes.clone(),
+    );
+    let console_organization = crate::routes::organization::interface::port(
+        state.store.clone(),
+        control_plane::navigation_cache::NavigationCache(state.infrastructure.cache_store()),
+    );
+    let console_navigation = crate::routes::navigation_interface::port(
+        crate::routes::navigation_interface::ConsoleNavigationDependencies {
+            navigation_cache: control_plane::navigation_cache::NavigationCache(
+                state.infrastructure.cache_store(),
+            ),
+            store: state.store.clone(),
+            surfaces: Arc::clone(&state.console_surface_registry),
+            settings_features: state.settings_feature_registry.inventory().features.clone(),
+        },
+    );
+    let console_i18n_catalog = crate::routes::i18n_catalog::interface::port(
+        crate::routes::i18n_catalog::interface::I18nCatalogDependencies {
+            store: state.store.clone(),
+            bootstrap_workspace_id: state.bootstrap_workspace_id,
+            update_service: Arc::clone(&state.official_i18n_catalog_update_service),
+            api_node_id: state.api_node_id.clone(),
+            provider_install_root: state.provider_install_root.clone(),
+        },
+    );
+    let console_role_access = crate::routes::role_access_interface::role_access_port(
+        control_plane::navigation_cache::NavigationCache(state.infrastructure.cache_store()),
+        state.store.clone(),
+        state.console_operation_registry.inventory().clone(),
+        state.settings_feature_registry.inventory().features.clone(),
+        state.bootstrap_workspace_id,
+        state.event_workflow_changes.clone(),
+    );
+    let console_auth_center = crate::routes::auth_center_interface::auth_center_port(
+        state.store.clone(),
+        Arc::clone(&state.authenticator_registry),
+        state.bootstrap_workspace_id,
+        state.api_node_id.clone(),
+        state.provider_install_root.clone(),
+        state.provider_secret_master_key.clone(),
+    );
+    let console_ui_management = crate::routes::ui_management_interface::ui_management_port(
+        crate::routes::ui_management_interface::UiManagementDependencies {
+            store: state.store.clone(),
+            api_node_id: state.api_node_id.clone(),
+            surfaces: state.console_surface_registry.clone(),
+            network_egress: state.network_egress_http_clients(),
+        },
+    );
+    let console_billing = crate::routes::billing_interface::port(
+        crate::routes::billing_interface::BillingDependencies {
+            store: state.store.clone(),
+            cache_store: state.infrastructure.cache_store(),
+            catalog_index_url: state.official_model_pricing_catalog_index_url.clone(),
+            network_egress: state.network_egress_http_clients(),
+        },
+    );
+    let console_application_orchestration =
+        crate::routes::application_orchestration::interface::port(
+            state.store.clone(),
+            state.bootstrap_workspace_id,
+            state.api_node_id.clone(),
+            state.provider_install_root.clone(),
+            state.event_workflow_changes.clone(),
+        );
+    let console_applications = crate::routes::applications::interface::applications_port(
+        state.store.clone(),
+        state.bootstrap_workspace_id,
+        crate::routes::applications::collectors::CollectorCatalogDependencies {
+            source: state.official_extension_catalog_source.clone(),
+            install_root: state.provider_install_root.clone(),
+            node_id: state.api_node_id.clone(),
+        },
+        state.event_workflow_changes.clone(),
+    );
+    let console_application_api_keys =
+        crate::routes::application_api::interface_keys::port(state.store.clone());
+    let console_application_publication =
+        crate::routes::application_api::interface_publication::port(
+            state.store.clone(),
+            state.infrastructure.cache_store(),
+            state.event_workflow_changes.clone(),
+        );
+    let console_workflow_schedule =
+        crate::routes::application_api::interface_schedule::port(state.store.clone());
+    let console_application_docs = crate::routes::application_api::interface_docs::port(
+        state.store.clone(),
+        Arc::clone(&state.api_docs),
+    );
+    let native_interface_registry = state
+        .extension_boot_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.interface_registry())
+        .cloned()
+        .expect("native runtime invoker requires a published dynamic interface registry");
+    let runtime_tool_invoker_dependencies =
+        crate::routes::mcp_protocol::virtual_ui::RuntimeInternalToolInvokerDependencies::new(
+            state.store.clone(),
+            state.infrastructure.cache_store(),
+            state.provider_secret_master_key.clone(),
+        )
+        .with_managed_services(state.console_surface_registry.managed_services().to_vec());
+    let mcp_interface_catalog_dependencies =
+        crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies {
+            store: state.store.clone(),
+            openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
+                store: state.store.clone(),
+                console_operations: state.console_operation_registry.inventory().clone(),
+                interface_registry: None,
+                api_docs: Arc::clone(&state.api_docs),
+                template_catalog: state.runtime_engine.template_catalog().clone(),
+            },
+        };
+    let mcp_interface_dispatch: Arc<
+        dyn crate::routes::mcp_protocol::virtual_ui::McpInterfaceDispatchPort,
+    > = Arc::new(crate::generation_dispatch::WeakGenerationDispatch(
+        Arc::downgrade(owner),
+    ));
+    let native_runtime_invoker_factory =
+        crate::routes::application_public_api::native::native_runtime_invoker_factory(
+            crate::routes::application_public_api::native::NativeRuntimeInvokerFactoryDependencies {
+                generation: Arc::downgrade(owner),
+                runtime_dependencies: runtime_tool_invoker_dependencies.clone(),
+                interface_catalog: mcp_interface_catalog_dependencies.clone(),
+                interface_registry: Arc::new(
+                    crate::routes::mcp_management::interface_catalog::DynamicMcpInterfaceRegistrySnapshotPort::new(
+                        Arc::clone(&native_interface_registry),
+                    ),
+                ),
+            },
+        );
+    let webmcp_port = crate::routes::webmcp::port(
+        state.store.clone(),
+        crate::routes::mcp_protocol::McpToolCallDependencies {
+            runtime_dependencies: runtime_tool_invoker_dependencies.clone(),
+            interface_catalog: mcp_interface_catalog_dependencies.clone(),
+            interface_registry: Arc::new(
+                crate::routes::mcp_management::interface_catalog::DynamicMcpInterfaceRegistrySnapshotPort::new(
+                    Arc::clone(&native_interface_registry),
+                ),
+            ),
+            interface_dispatch: Arc::clone(&mcp_interface_dispatch),
+        },
+    );
+    let mcp_tool_call_port = crate::routes::mcp_protocol::mcp_tool_call_port(
+        crate::routes::mcp_protocol::McpToolCallDependencies {
+            runtime_dependencies: runtime_tool_invoker_dependencies,
+            interface_catalog: mcp_interface_catalog_dependencies.clone(),
+            interface_registry: Arc::new(
+                crate::routes::mcp_management::interface_catalog::DynamicMcpInterfaceRegistrySnapshotPort::new(
+                    native_interface_registry,
+                ),
+            ),
+            interface_dispatch: mcp_interface_dispatch,
+        },
+    );
+    let native_run_dependencies =
+        crate::routes::application_public_api::native::ApplicationNativeRunDependencies {
+            store: state.store.clone(),
+            cache_store: state.infrastructure.cache_store(),
+            published_plan_cache: state.infrastructure.published_plan_cache(),
+            published_publication_cache: state.infrastructure.published_publication_cache(),
+            runtime_engine: state.runtime_engine.clone(),
+            provider_runtime: state.provider_runtime.clone(),
+            network_egress: Arc::new(state.network_egress_http_clients()),
+            provider_secret_master_key: state.provider_secret_master_key.clone(),
+            model_billing_require_provider_usage: state.model_billing_require_provider_usage,
+            api_node_id: state.api_node_id.clone(),
+            provider_install_root: state.provider_install_root.clone(),
+            file_storage_registry: state.file_storage_registry.clone(),
+            notification_sender: state.notification_service.clone(),
+            task_queue: state.infrastructure.task_queue(),
+            provider_transport_store: state.infrastructure.provider_transport_store(),
+            runtime_event_stream: state.runtime_event_stream.clone(),
+            runtime_activity: state.runtime_activity.clone(),
+            runtime_invoker_factory: Arc::clone(&native_runtime_invoker_factory),
+        };
+    let native_run_port =
+        crate::routes::application_public_api::native::application_native_run_port(
+            native_run_dependencies.clone(),
+        );
+    let compatibility_execution_port = crate::routes::application_public_api::compatibility_interface::compatibility_execution_port(
+        crate::routes::application_public_api::compatibility_interface::CompatibilityExecutionDependencies {
+            native: native_run_dependencies,
+            provider_transport_store: state.infrastructure.provider_transport_store(),
+        },
+    );
+
+    let mut contributions = vec![
+        InterfaceRegistryContribution::new(
+            "api-server.me-authentication-methods",
+            crate::routes::me_authentication_methods::interface::OPERATIONS,
+            &[crate::routes::me_authentication_methods::interface::OWNER],
+            crate::routes::me_authentication_methods::interface::compile_registry(state)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.external-auth",
+            crate::routes::external_auth::interface::OPERATIONS,
+            &[crate::routes::external_auth::interface::OWNER],
+            crate::routes::external_auth::interface::compile_registry(state)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.client-collectors",
+            &["public.client-collectors.assets.read"],
+            &["api-server.client-collectors"],
+            crate::routes::client_collectors::compile_registry(state)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.webmcp",
+            &["webmcp.registrations.list", "webmcp.tools.invoke"],
+            &[crate::routes::webmcp::interface::OWNER],
+            crate::routes::webmcp::interface::compile_registry(webmcp_port)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.public-login-entries",
+            &["public.auth.login-entries.read"],
+            &["api-server.public-auth"],
+            crate::routes::auth::compile_public_login_entries_registry(public_login_entries)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.public-sign-in",
+            &["public.auth.sign-in"],
+            &["api-server.public-auth"],
+            crate::routes::sign_in_interface::compile_registry(public_sign_in)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.public-auth-residual",
+            &["public.auth.providers.read", "public.auth.sign-up"],
+            &["api-server.public-auth"],
+            crate::routes::auth::compile_public_residual_registry(
+                public_providers,
+                public_sign_up,
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-identity",
+            &[
+                "console.identity.session.get",
+                "console.identity.session.delete",
+                "console.identity.session.revoke-all",
+                "console.identity.session.switch-workspace",
+                "console.identity.session.switch-role",
+                "console.identity.me.get",
+                "console.identity.me.patch",
+                "console.identity.me.meta.patch",
+                "console.identity.me.change-password",
+                "console.identity.user-api-keys.list",
+                "console.identity.user-api-keys.create",
+                "console.identity.user-api-keys.role-options",
+                "console.identity.user-api-keys.revoke",
+            ],
+            &["api-server.console-identity"],
+            crate::routes::console_identity_interface::compile_registry(console_identity)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-organization",
+            &[
+                "console.departments.access",
+                "departments.list",
+                "departments.create",
+                "departments.update",
+                "departments.delete",
+                "members.departments.replace",
+            ],
+            &["api-server.console-organization"],
+            crate::routes::organization::interface::compile_registry(console_organization)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-communications",
+            &[
+                "communications.management.conversations.messages.list",
+                "communications.management.conversations.list",
+                "communications.management.messages.list",
+                "communications.management.messages.get",
+                "communications.options.get",
+                "communications.binding.get",
+                "communications.binding.update",
+                "communications.conversations.list",
+                "communications.messages.list",
+                "communications.files.list",
+                "communications.files.get",
+                "communications.files.info",
+                "communications.files.image",
+                "communications.messages.retry",
+            ],
+            &["api-server.console-communications"],
+            crate::routes::communications::interface::compile_registry(
+                crate::routes::communications::interface::Dependencies::new(
+                    state,
+                    mcp_interface_catalog_dependencies.clone(),
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-notifications",
+            &[
+                "notifications.channels.list",
+                "notifications.channels.read_all",
+                "notifications.messages.unread",
+                "notifications.types.list",
+                "notifications.instances.list",
+                "notifications.instances.get",
+                "notifications.instances.create",
+                "notifications.instances.update",
+                "notifications.instances.delete",
+                "notifications.instances.send",
+                "notifications.instances.authorization",
+                "notifications.logs.list",
+                "notifications.logs.get",
+                "notifications.messages.list",
+                "notifications.messages.unread_count",
+                "notifications.messages.read",
+                "notifications.messages.read_all",
+            ],
+            &["api-server.console-notifications"],
+            crate::routes::notifications::interface::compile_registry(
+                state.notification_service.clone(),
+                crate::routes::communications::interface::Dependencies::new(
+                    state,
+                    mcp_interface_catalog_dependencies.clone(),
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-membership",
+            &[
+                "members.role_options.list",
+                "members.list",
+                "members.create",
+                "members.update",
+                "members.disable",
+                "members.enable",
+                "members.delete",
+                "members.password.reset",
+                "members.roles.replace",
+                "console.workspace.get",
+                "workspace.update",
+                "console.workspaces.list",
+            ],
+            &["api-server.console-membership"],
+            crate::routes::membership_interface::compile_registry(console_membership)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-navigation",
+            &["console.navigation.view"],
+            &["api-server.console-navigation"],
+            crate::routes::navigation_interface::compile_registry(console_navigation)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-i18n-catalog",
+            &[
+                "i18n_catalog.state.get",
+                "i18n_catalog.update.check",
+                "i18n_catalog.update.activate",
+                "i18n_catalog.installed_extension.preview",
+                "i18n_catalog.installed_extension.activate",
+                "i18n_catalog.entries.list",
+                "i18n_catalog.entries.detail",
+                "i18n_catalog.overrides.upsert",
+                "i18n_catalog.overrides.restore",
+                "i18n_catalog.custom_translations.upsert",
+                "i18n_catalog.custom_keys.delete",
+                "i18n_catalog.overrides.restore_all",
+            ],
+            &["api-server.console-i18n-catalog"],
+            crate::routes::i18n_catalog::interface::compile_registry(console_i18n_catalog)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.record-permissions",
+            &[
+                "roles.record_permissions.view",
+                "roles.record_permissions.replace",
+                "roles.record_capabilities.get",
+            ],
+            &["api-server.record-permissions"],
+            crate::managed_services::record_permissions::compile_registry(state)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-role-access",
+            &[
+                "roles.data_model_options.list",
+                "roles.console_policy_catalog.view",
+                "roles.console_settings_order.replace",
+                "roles.console_policy.view",
+                "roles.console_policy.replace",
+                "roles.list",
+                "roles.create",
+                "roles.update",
+                "roles.delete",
+                "roles.permissions.view",
+                "roles.permissions.replace",
+                "roles.frontstage_routes.view",
+                "roles.frontstage_routes.replace",
+                "roles.data_policy.view",
+                "roles.data_policy.replace",
+                "roles.permission_options.list",
+            ],
+            &["api-server.console-role-access"],
+            crate::routes::role_access_interface::compile_registry(console_role_access)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-assistant-settings",
+            &["assistant.settings.get", "assistant.settings.update"],
+            &["api-server.console-assistant-settings"],
+            crate::routes::assistant::interface::compile_registry(state.store.clone())?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-assistant-conversations",
+            &[
+                "assistant.runs.activity.get",
+                "assistant.conversations.create",
+                "assistant.conversations.list",
+                "assistant.conversations.messages.get",
+                "assistant.legacy-runs.messages.get",
+            ],
+            &["api-server.console-assistant-conversations"],
+            crate::routes::assistant::interface::compile_conversations_registry(
+                state.store.clone(),
+                Arc::clone(&state.assistant_conversation_events),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-assistant-runs",
+            &["assistant.runs.create"],
+            &["api-server.console-assistant-runs"],
+            crate::routes::assistant::interface::compile_runs_registry(
+                crate::routes::assistant::run_dependencies(state.clone()),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-assistant-run-stream",
+            &["assistant.runs.stream.create"],
+            &["api-server.console-assistant-run-stream"],
+            crate::routes::assistant::interface::compile_run_stream_registry(
+                crate::routes::assistant::run_dependencies(state.clone()),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-assistant-websocket-ticket",
+            &["assistant.runs.websocket-ticket.create"],
+            &["api-server.console-assistant-websocket-ticket"],
+            crate::routes::assistant::websocket_ticket_interface::compile_registry(
+                state.store.clone(),
+                state.infrastructure.cache_store(),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-assistant-websocket-commands",
+            &["assistant.runs.websocket.command"],
+            &["api-server.console-assistant-websocket-commands"],
+            crate::routes::assistant::websocket_interface::compile_registry(
+                crate::routes::assistant::run_dependencies(state.clone()),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-applications",
+            &[
+                "applications.list",
+                "applications.create",
+                "applications.get",
+                "applications.update",
+                "applications.delete",
+                "applications.catalog.get",
+                "applications.tags.create",
+                "applications.environment-variables.list",
+                "applications.environment-variables.replace",
+                "applications.js-dependencies.list",
+                "applications.js-dependencies.replace",
+            ],
+            &["api-server.console-applications"],
+            crate::routes::applications::interface::compile_registry(console_applications)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-application-api-keys",
+            &[
+                "applications.api-keys.list",
+                "applications.api-keys.create",
+                "applications.api-keys.revoke",
+            ],
+            &["api-server.console-application-api-keys"],
+            crate::routes::application_api::interface_keys::compile_registry(
+                console_application_api_keys,
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-application-publication",
+            &[
+                "applications.api-mapping.get",
+                "applications.api-mapping.replace",
+                "applications.api-publication.get",
+                "applications.api-publication.publish",
+                "applications.api-publication.unpublish",
+                "applications.api-status.update",
+            ],
+            &["api-server.console-application-publication"],
+            crate::routes::application_api::interface_publication::compile_registry(
+                console_application_publication,
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-events",
+            &[
+                "events.api_operations.list",
+                "events.api_operations.get",
+                "events.catalog.list",
+                "events.definitions.create",
+                "events.definitions.update",
+                "events.runtime.get",
+            ],
+            &["api-server.console-events"],
+            crate::routes::events::interface::compile_registry(
+                crate::routes::events::interface::Dependencies::new(state),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-workflow-event",
+            &[
+                "applications.workflow-event.get",
+                "applications.workflow-event.replace",
+            ],
+            &["api-server.console-workflow-event"],
+            crate::routes::application_api::interface_event::compile_registry(
+                crate::routes::application_api::interface_event::port(state),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-workflow-schedule",
+            &[
+                "applications.workflow-schedule.get",
+                "applications.workflow-schedule.replace",
+            ],
+            &["api-server.console-workflow-schedule"],
+            crate::routes::application_api::interface_schedule::compile_registry(
+                console_workflow_schedule,
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-application-docs",
+            &[
+                "applications.api-docs.catalog",
+                "applications.api-docs.category-operations",
+                "applications.api-docs.category-openapi",
+                "applications.api-docs.operation-openapi",
+            ],
+            &["api-server.console-application-docs"],
+            crate::routes::application_api::interface_docs::compile_registry(
+                console_application_docs,
+            )?,
+        ),
+    ];
+    contributions.extend(runtime_interfaces::contributions(state)?);
+    contributions.extend(vec![
+        InterfaceRegistryContribution::new(
+            "api-server.console-application-orchestration",
+            &[
+                "applications.orchestration.analysis",
+                "applications.orchestration.get",
+                "applications.orchestration.draft.save",
+                "applications.orchestration.version.restore",
+                "applications.orchestration.version.update",
+                "applications.archive.export",
+                "applications.archive.preview",
+                "applications.archive.import",
+                "applications.archive.installed.preview",
+                "applications.archive.installed.import",
+            ],
+            &["api-server.console-application-orchestration"],
+            crate::routes::application_orchestration::interface::compile_registry(
+                console_application_orchestration,
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-auth-center",
+            &[
+                "auth_center.overview.view",
+                "auth_center.login_entries.create",
+                "auth_center.login_entries.order",
+                "auth_center.login_entries.enabled.update",
+                "auth_center.login_entries.copy",
+                "auth_center.login_entries.update.config",
+                "auth_center.login_entries.update.public-ui-block",
+                "auth_center.login_entries.delete",
+            ],
+            &["api-server.console-auth-center"],
+            crate::routes::auth_center_interface::compile_registry(console_auth_center)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-ui-management",
+            &[
+                "ui_management.plugin_settings_page.view",
+                "ui_management.plugin_settings_module_asset.view",
+                "ui_management.templates.list",
+                "ui_management.templates.create",
+                "ui_management.templates.default.reset",
+                "ui_management.templates.update",
+                "ui_management.templates.publish",
+                "ui_management.templates.default.set",
+                "ui_management.templates.delete",
+                "ui_management.components.list",
+                "ui_management.components.create",
+                "ui_management.components.view",
+                "ui_management.components.update",
+                "ui_management.components.delete",
+                "ui_management.catalog.index",
+                "ui_management.catalog.page",
+                "ui_management.catalog.search",
+                "ui_management.catalog.update_status",
+                "ui_management.catalog.download",
+                "ui_management.catalog.sync_group",
+            ],
+            &["api-server.console-ui-management"],
+            crate::routes::ui_management_interface::compile_registry(console_ui_management)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-billing",
+            &[
+                "billing.pricing_rules.list",
+                "billing.pricing_rules.create",
+                "billing.pricing_rules.update",
+                "billing.pricing_rules.delete",
+                "billing.pricing_catalog.view",
+                "billing.pricing_catalog.import",
+                "billing.pricing_catalog.sync",
+                "billing.credit_accounts.list",
+                "billing.credit_accounts.view",
+                "billing.credit_ledger.list",
+                "billing.credit.grant",
+                "billing.credit.charge",
+                "billing.credit.adjust",
+                "billing.credit.enable",
+                "billing.credit.disable",
+                "billing.credit.refund",
+            ],
+            &["api-server.console-billing"],
+            crate::routes::billing_interface::compile_registry(console_billing)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-file-storages",
+            &[
+                "file_storages.list",
+                "file_storages.create",
+                "file_storages.update",
+                "file_storages.delete",
+            ],
+            &["api-server.console-file-storages"],
+            crate::routes::file_storages::compile_registry(
+                state.store.clone(),
+                state.bootstrap_workspace_id,
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-file-tables",
+            &[
+                "file_tables.list",
+                "file_tables.create",
+                "file_tables.delete",
+                "file_tables.storage.bind",
+            ],
+            &["api-server.console-file-tables"],
+            crate::routes::file_tables::compile_registry(
+                state.store.clone(),
+                state.bootstrap_workspace_id,
+                Arc::new(crate::runtime_registry_sync::ApiRuntimeRegistrySync::new(
+                    state.store.clone(),
+                    state.runtime_engine.registry().clone(),
+                )),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-business-files",
+            &[
+                "files.upload",
+                "files.import_remote",
+                "files.content.download",
+                "files.access_links.create",
+            ],
+            &["api-server.console-business-files"],
+            crate::routes::files::compile_registry(
+                state.store.clone(),
+                state.file_storage_registry.clone(),
+                state.runtime_engine.clone(),
+                state.infrastructure.ephemeral_kv_store(),
+                state.network_egress_http_clients(),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.temporary-files",
+            &["public.files.temporary.read"],
+            &["api-server.temporary-files"],
+            crate::routes::files::public::compile_registry(state)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-data-sources",
+            &[
+                "agent_flow.data_source_options.list",
+                "settings_feature.access.system.data-models",
+                "data_sources.list",
+                "data_sources.create",
+                "data_sources.defaults.update",
+                "data_sources.validate",
+                "data_sources.secret.rotate",
+                "data_sources.view",
+                "data_sources.discover",
+                "data_sources.preview",
+                "data_sources.map_to_model",
+            ],
+            &["api-server.console-data-sources"],
+            crate::routes::data_sources::compile_registry(
+                state.store.clone(),
+                state.provider_runtime.clone(),
+                state.provider_secret_master_key.clone(),
+                state.api_node_id.clone(),
+                state.provider_install_root.clone(),
+                state.runtime_engine.clone(),
+                Arc::new(crate::runtime_registry_sync::ApiRuntimeRegistrySync::new(
+                    state.store.clone(),
+                    state.runtime_engine.registry().clone(),
+                )),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-model-definitions",
+            &[
+                "model_definitions.list",
+                "model_templates.list",
+                "agent_flow.data_model_options.list",
+                "model_definitions.create",
+                "model_definitions.advisor.view",
+                "model_scope_grants.list",
+                "model_definitions.update",
+                "model_definitions.delete",
+                "model_fields.create",
+                "model_fields.update",
+                "model_fields.delete",
+                "model_scope_grants.create",
+                "model_scope_grants.update",
+            ],
+            &["api-server.console-model-definitions"],
+            crate::routes::model_definitions::interface::compile_registry(
+                crate::routes::model_definitions::interface::dependencies(
+                    state.store.clone(),
+                    state.bootstrap_workspace_id,
+                    state.runtime_engine.clone(),
+                    state.provider_runtime.clone(),
+                    state.provider_secret_master_key.clone(),
+                    state.api_node_id.clone(),
+                    state.provider_install_root.clone(),
+                ),
+                GraphFingerprint::new(
+                    state
+                        .extension_boot_snapshot
+                        .as_ref()
+                        .ok_or_else(|| {
+                            RegistryCompilationError::ExtensionGraphFingerprintMismatch(
+                                InterfaceId::new("model_definitions.create")
+                                    .expect("static interface id"),
+                            )
+                        })?
+                        .graph()
+                        .fingerprint()
+                        .as_str(),
+                )
+                .map_err(|_| {
+                    RegistryCompilationError::ExtensionGraphFingerprintMismatch(
+                        InterfaceId::new("model_definitions.create").expect("static interface id"),
+                    )
+                })?,
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-docs",
+            &[
+                "docs.catalog.view",
+                "docs.categories.operations.list",
+                "docs.categories.openapi.view",
+                "docs.operations.openapi.view",
+            ],
+            &["api-server.console-docs"],
+            crate::routes::docs::interface::compile_registry(
+                crate::routes::docs::interface::port(
+                    crate::routes::docs::interface::DocsDependencies {
+                        store: state.store.clone(),
+                        api_docs: Arc::clone(&state.api_docs),
+                        template_catalog: state.runtime_engine.template_catalog().clone(),
+                        cookie_name: state.cookie_name.clone(),
+                    },
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-data-model-openapi",
+            &["model_definitions.openapi.view"],
+            &["api-server.console-data-model-openapi"],
+            crate::routes::docs::data_model_openapi_interface::compile_registry(
+                state.store.clone(),
+                state.runtime_engine.clone(),
+            )?,
+        ),
+    ]);
+    contributions.extend(provider_operations::contributions(state)?);
+    contributions.extend(vec![
+        InterfaceRegistryContribution::new(
+            "api-server.native-runs",
+            &["application.native.runs.create"],
+            &["api-server.application-public-api"],
+            crate::routes::application_public_api::native::compile_native_interface_registry(
+                Arc::clone(&native_run_port),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-provider-icons",
+            &["model_providers.icons.view"],
+            &["api-server.console-provider-icons"],
+            crate::routes::model_providers::icons::compile_registry(
+                state.store.clone(),
+                state.provider_runtime.clone(),
+                state.provider_secret_master_key.clone(),
+                state.api_node_id.clone(),
+                state.provider_install_root.clone(),
+            )?,
+        ),
+    ]);
+    contributions.extend(network::contributions(state)?);
+    contributions.extend(plugins::contributions(state)?);
+    contributions.extend(mcp::contributions(state)?);
+    contributions.extend(console_tools::contributions(
+        state,
+        &console_frontstage_callable_dispatch,
+    )?);
+    contributions.extend(system::contributions(
+        state,
+        &mcp_interface_catalog_dependencies,
+    )?);
+    contributions.extend(vec![
+        InterfaceRegistryContribution::new(
+            "api-server.application-agent-logs",
+            &["application.logs.events.ingest"],
+            &["api-server.application-agent-logs"],
+            crate::routes::application_public_api::agent_logs::compile_registry(state.store.clone())?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.application-agent-logs-otlp",
+            &["application.logs.otlp.traces.ingest"],
+            &["api-server.application-agent-logs-otlp"],
+            crate::routes::application_public_api::agent_logs::otlp::compile_registry(state.store.clone())?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.native-read",
+            &[
+                "application.native.models.list",
+                "application.native.runs.read",
+                "application.native.runs.cancel",
+                "application.native.runs.resume",
+                "application.native.files.upload",
+            ],
+            &["api-server.application-public-api"],
+            crate::routes::application_public_api::native_read_interface::compile_registry(
+                crate::routes::application_public_api::native_read_interface::native_read_port(
+                    state.store.clone(),
+                    state.infrastructure.cache_store(),
+                    Arc::clone(&state.runtime_event_stream),
+                ),
+                crate::routes::application_public_api::native_read_interface::native_resume_port(
+                    state.store.clone(),
+                    state.infrastructure.published_plan_cache(),
+                    crate::routes::application_public_api::native::api_provider_runtime(state),
+                    Arc::clone(&state.runtime_engine),
+                    state.provider_secret_master_key.clone(),
+                    state.model_billing_require_provider_usage,
+                    state.api_node_id.clone(),
+                    state.provider_install_root.clone(),
+                    Arc::clone(&state.file_storage_registry),
+                    state.notification_service.clone(),
+                    state.infrastructure.cache_store(),
+                    state.infrastructure.task_queue(),
+                    state.infrastructure.provider_transport_store(),
+                    Arc::clone(&state.runtime_event_stream),
+                    Arc::clone(&state.runtime_activity),
+                    Arc::clone(&native_runtime_invoker_factory),
+                ),
+                crate::routes::application_public_api::native_read_interface::native_file_port(
+                    state.store.clone(),
+                    Arc::clone(&state.file_storage_registry),
+                    Arc::clone(&state.runtime_engine),
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.compatibility",
+            &[
+                "application.native.runs.create",
+                "application.compatibility.models.list",
+            ],
+            &["api-server.application-public-api"],
+            crate::routes::application_public_api::compatibility_interface::compile_registry(
+                Arc::clone(&compatibility_execution_port),
+                crate::routes::application_public_api::compatibility_interface::compatibility_models_port(
+                    state.store.clone(),
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.mcp",
+            &["mcp.tools.invoke"],
+            &["api-server.mcp-protocol"],
+            crate::routes::mcp_protocol::compile_mcp_interface_registry(Arc::clone(
+                &mcp_tool_call_port,
+            ))?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.workflow-extension",
+            &["workflow-extension.invoke"],
+            &["api-server.workflow-extension"],
+            crate::routes::application_public_api::ex::compile_workflow_extension_registry(
+                crate::routes::application_public_api::ex::workflow_extension_port(
+                    state.store.clone(),
+                    Arc::clone(&state.runtime_activity),
+                    crate::routes::application_public_api::native::api_provider_runtime(state),
+                    Arc::clone(&state.runtime_engine),
+                    state.provider_secret_master_key.clone(),
+                    state.model_billing_require_provider_usage,
+                    state.infrastructure.provider_transport_store(),
+                    state.api_node_id.clone(),
+                    state.provider_install_root.clone(),
+                    Arc::clone(&state.file_storage_registry),
+                    state.infrastructure.cache_store(),
+                    state.infrastructure.published_plan_cache(),
+                    state.infrastructure.task_queue(),
+                    Arc::clone(&state.runtime_event_stream),
+                    state.notification_service.clone(),
+                    Arc::clone(&native_runtime_invoker_factory),
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.runtime-model-operations",
+            &["runtime.models.invoke"],
+            &["api-server.runtime-models"],
+            crate::routes::runtime_models::compile_runtime_model_interface_registry(
+                crate::routes::runtime_models::runtime_model_operation_port(
+                    state.store.clone(),
+                    Arc::clone(&state.runtime_engine),
+                    state.infrastructure.cache_store(),
+                ),
+            )?,
+        ),
+    ]);
+    Ok(contributions)
+}
+
+#[path = "interface_contributions/runtime_interfaces.rs"]
+mod runtime_interfaces;
+
+#[path = "interface_contributions/console_tools.rs"]
+mod console_tools;

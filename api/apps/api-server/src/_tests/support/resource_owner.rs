@@ -47,9 +47,11 @@ async fn fixture_resources_outlive_state_clones_and_release_after_last_provider_
         .unwrap(),
     );
     let runtime = Arc::new(
-        crate::provider_runtime::ApiRuntimeServices::new_with_runtime_backend(backend, graph)
-            .unwrap()
-            .with_fixture_resources(resources),
+        crate::provider_runtime::services_for_current_cfg(
+            crate::provider_runtime::ApiRuntimeServices::new_with_runtime_backend(backend, graph)
+                .unwrap(),
+        )
+        .with_fixture_resources(resources),
     );
     let state_clone = Arc::clone(&state);
     let provider = crate::provider_runtime::ApiProviderRuntime::new(Arc::clone(&runtime));

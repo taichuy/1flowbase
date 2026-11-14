@@ -159,7 +159,9 @@ fn capabilities() -> AssistantRunCapabilities {
 
 #[tokio::test]
 async fn communication_command_new_persists_join_failure_reply_and_releases_admission() {
-    use crate::communication_runtime::activity::tests::{provider_request, OwnedProviderFixture};
+    use crate::communication_runtime::activity::test_support::{
+        provider_request, OwnedProviderFixture,
+    };
     let fixture = Fixture::new().await;
     let (scope, _) = fixture.receive("alice", "ordinary", "old answer").await;
     super::super::admission::admit_available(&fixture.state, fixture.key)

@@ -19,13 +19,13 @@ use crate::openapi_interface::contract::{register_static_api_operation, ApiInput
 use crate::{app_state::ApiState, error_response::ApiError};
 
 #[derive(Clone)]
-pub(crate) struct ConsoleLocaleHints {
+pub struct ConsoleLocaleHints {
     explicit_header_locale: Option<String>,
     accept_language: Option<String>,
 }
 
 impl ConsoleLocaleHints {
-    pub(crate) fn from_headers(headers: &axum::http::HeaderMap) -> Self {
+    pub fn from_headers(headers: &axum::http::HeaderMap) -> Self {
         Self {
             explicit_header_locale: headers
                 .get("x-1flowbase-locale")
@@ -38,11 +38,11 @@ impl ConsoleLocaleHints {
         }
     }
 
-    pub(crate) fn resolve(&self, preferred_locale: Option<String>) -> domain::CatalogLocale {
+    pub fn resolve(&self, preferred_locale: Option<String>) -> domain::CatalogLocale {
         self.resolve_with_query(None, preferred_locale)
     }
 
-    pub(crate) fn resolve_with_query(
+    pub fn resolve_with_query(
         &self,
         query_locale: Option<String>,
         preferred_locale: Option<String>,
@@ -62,7 +62,7 @@ impl ConsoleLocaleHints {
             .expect("runtime profile must resolve a supported catalog locale")
     }
 
-    pub(crate) fn resolve_meta(
+    pub fn resolve_meta(
         &self,
         query_locale: Option<String>,
         preferred_locale: Option<String>,
@@ -87,15 +87,15 @@ const AUTHENTICATION_ACTIVATION: &str = "api-server.console.require-session.acti
 const AUTHORIZATION_ADAPTER: &str = "api-server.console.compiled-operation";
 const ADMISSION_ADAPTER: &str = "api-server.console.protocol-admission";
 
-pub(crate) struct ConsoleInterfaceDeclaration<'a> {
-    pub(crate) interface_id: &'a str,
-    pub(crate) binding_id: &'a str,
-    pub(crate) method: &'a str,
-    pub(crate) path: &'a str,
-    pub(crate) mutating: bool,
+pub struct ConsoleInterfaceDeclaration<'a> {
+    pub interface_id: &'a str,
+    pub binding_id: &'a str,
+    pub method: &'a str,
+    pub path: &'a str,
+    pub mutating: bool,
 }
 
-pub(crate) struct ConsoleInterfaceTargetError(pub(crate) ApiError);
+pub struct ConsoleInterfaceTargetError(pub ApiError);
 
 impl InterfaceContract for ConsoleInterfaceTargetError {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -117,10 +117,10 @@ impl InterfaceContract for ConsoleInterfaceTargetError {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) type ConsoleInterfaceFuture<'a, O> =
+pub type ConsoleInterfaceFuture<'a, O> =
     Pin<Box<dyn Future<Output = Result<O, ConsoleInterfaceTargetError>> + Send + 'a>>;
 
-pub(crate) trait ConsoleInterfacePort<I, O>: Send + Sync + 'static {
+pub trait ConsoleInterfacePort<I, O>: Send + Sync + 'static {
     fn execute<'a>(
         &'a self,
         principal: &'a UserPrincipal,
@@ -128,10 +128,10 @@ pub(crate) trait ConsoleInterfacePort<I, O>: Send + Sync + 'static {
     ) -> ConsoleInterfaceFuture<'a, O>;
 }
 
-pub(crate) type ConsoleServerStreamFuture<S, O> =
+pub type ConsoleServerStreamFuture<S, O> =
     InterfaceStreamHandlerFuture<S, O, ConsoleInterfaceTargetError>;
 
-pub(crate) trait ConsoleServerStreamPort<I, S, O>: Send + Sync + 'static
+pub trait ConsoleServerStreamPort<I, S, O>: Send + Sync + 'static
 where
     I: InterfaceContract,
     S: InterfaceContract,
@@ -224,7 +224,7 @@ where
     }
 }
 
-pub(crate) fn compile_registry<I, O>(
+pub fn compile_registry<I, O>(
     owner: &str,
     graph: &str,
     declarations: &[ConsoleInterfaceDeclaration],
@@ -237,7 +237,7 @@ where
     compile_registry_with_scope(owner, graph, declarations, port, InterfaceScope::Workspace)
 }
 
-pub(crate) fn compile_registry_with_event_observation<I, O>(
+pub fn compile_registry_with_event_observation<I, O>(
     owner: &str,
     graph: &str,
     declarations: &[ConsoleInterfaceDeclaration],
@@ -258,7 +258,7 @@ where
     )
 }
 
-pub(crate) fn compile_registry_with_scope<I, O>(
+pub fn compile_registry_with_scope<I, O>(
     owner: &str,
     graph: &str,
     declarations: &[ConsoleInterfaceDeclaration],
@@ -394,7 +394,7 @@ where
     compiler.compile()
 }
 
-pub(crate) fn compile_server_stream_registry<I, S, O>(
+pub fn compile_server_stream_registry<I, S, O>(
     owner: &'static str,
     graph: &'static str,
     declarations: &'static [ConsoleInterfaceDeclaration],
@@ -414,7 +414,7 @@ where
     )
 }
 
-pub(crate) fn compile_server_stream_registry_with_event_observation<I, S, O>(
+pub fn compile_server_stream_registry_with_event_observation<I, S, O>(
     owner: &str,
     graph: &str,
     declarations: &[ConsoleInterfaceDeclaration],
@@ -436,7 +436,7 @@ where
     )
 }
 
-pub(crate) fn compile_server_stream_registry_with_scope<I, S, O>(
+pub fn compile_server_stream_registry_with_scope<I, S, O>(
     owner: &str,
     graph: &str,
     declarations: &[ConsoleInterfaceDeclaration],
@@ -592,15 +592,17 @@ fn register_authentication(
     )
 }
 
-pub(crate) async fn invoke<I, O>(
+pub async fn invoke_prepared<I, O, P>(
     state: Arc<ApiState>,
     binding_id: &str,
     credential: crate::extension_bus::ConsoleAuthenticationCredential,
     input: I,
+    preparation: P,
 ) -> Result<O, ApiError>
 where
     I: InterfaceContract,
     O: InterfaceContract,
+    P: ConsoleInvocationPreparation<I>,
 {
     let boot_snapshot = state.extension_boot_snapshot.as_ref().ok_or(
         control_plane::errors::ControlPlaneError::NotFound("interface_operation"),
@@ -623,12 +625,9 @@ where
         .await
         .map_err(ApiError::from)?;
     let kernel = console_invocation_kernel(&state, admission);
-    let envelope = crate::routes::model_definitions::interface::managed_hooks::freeze(
-        &state,
-        &snapshot,
-        authenticated.into_envelope(input),
-    )
-    .await?;
+    let envelope = preparation
+        .prepare(&state, &snapshot, authenticated.into_envelope(input))
+        .await?;
     match kernel
         .invoke::<I, O, ConsoleInterfaceTargetError>(snapshot, envelope)
         .await
@@ -654,15 +653,17 @@ fn log_observer_receipt(receipt: &interface_runtime::InterfaceInvocationReceipt)
 /// Invokes a unary Console interface with an already authenticated principal.
 /// The binding is still resolved from the frozen boot snapshot and dispatched
 /// through the same Console authorization/admission/hook kernel as HTTP.
-pub(crate) async fn invoke_with_principal<I, O>(
+pub async fn invoke_with_principal_prepared<I, O, P>(
     state: Arc<ApiState>,
     binding_id: &str,
     principal: UserPrincipal,
     input: I,
+    preparation: P,
 ) -> Result<O, ApiError>
 where
     I: InterfaceContract,
     O: InterfaceContract,
+    P: ConsoleInvocationPreparation<I>,
 {
     let snapshot = frozen_snapshot(&state)?;
     let binding_id = BindingId::new(binding_id).expect("static Console binding is valid");
@@ -681,10 +682,7 @@ where
         None,
         input,
     );
-    let envelope = crate::routes::model_definitions::interface::managed_hooks::freeze(
-        &state, &snapshot, envelope,
-    )
-    .await?;
+    let envelope = preparation.prepare(&state, &snapshot, envelope).await?;
     match kernel
         .invoke::<I, O, ConsoleInterfaceTargetError>(snapshot, envelope)
         .await
@@ -694,7 +692,7 @@ where
     }
 }
 
-pub(crate) async fn invoke_server_stream<I, S, O>(
+pub async fn invoke_server_stream<I, S, O>(
     state: Arc<ApiState>,
     binding_id: &str,
     credential: crate::extension_bus::ConsoleAuthenticationCredential,
@@ -761,7 +759,7 @@ fn activated_authentication(
         .ok_or_else(|| anyhow::anyhow!("Console authentication activation is unavailable").into())
 }
 
-pub(crate) fn console_invocation_kernel(
+pub fn console_invocation_kernel(
     state: &ApiState,
     admission: crate::extension_bus::ConsoleProtocolAdmission,
 ) -> Arc<interface_runtime::InterfaceInvocationKernel<UserPrincipal>> {
@@ -817,4 +815,14 @@ fn console_invocation_error(error: interface_runtime::InterfaceInvocationError) 
 fn contract<T: InterfaceContract>() -> ContractIdentity {
     ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
         .expect("static Console family contract is valid")
+}
+
+#[async_trait::async_trait]
+pub trait ConsoleInvocationPreparation<I: InterfaceContract>: Send + Sync {
+    async fn prepare(
+        &self,
+        state: &ApiState,
+        registry: &Arc<CompiledInterfaceRegistry>,
+        envelope: InvocationEnvelope<I, UserPrincipal>,
+    ) -> Result<InvocationEnvelope<I, UserPrincipal>, ApiError>;
 }

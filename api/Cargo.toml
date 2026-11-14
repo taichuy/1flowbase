@@ -98,6 +98,9 @@ debug = 1
 [profile.dev.package.api-server]
 debug = "line-tables-only"
 
+[profile.dev.package.api-host-kernel]
+debug = "line-tables-only"
+
 # Gateway history and durable facts hash their complete input in development too.
 # Keep SHA-256 compression optimized without disabling application debug checks.
 [profile.dev.package.sha2]
@@ -110,6 +113,11 @@ debug = 0
 # Avoid the composition root test harness incremental cache and inherited dev DWARF.
 # Other crates retain the configured incremental policy; development keeps line tables.
 [profile.test.package.api-server]
+incremental = false
+debug = 0
+codegen-units = 256
+
+[profile.test.package.api-host-kernel]
 incremental = false
 debug = 0
 codegen-units = 256

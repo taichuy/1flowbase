@@ -8,24 +8,24 @@ use interface_runtime::{
 };
 use std::{any::Any, sync::Arc};
 
-pub(crate) struct AuthenticatedInvocation<P: InvocationPrincipal> {
+pub struct AuthenticatedInvocation<P: InvocationPrincipal> {
     attempt: InterfaceAuthenticationAttempt,
     principal: P,
 }
 impl<P: InvocationPrincipal> AuthenticatedInvocation<P> {
-    pub(crate) fn principal(&self) -> &P {
+    pub fn principal(&self) -> &P {
         &self.principal
     }
-    #[cfg(test)]
-    #[cfg_attr(test, api_test_selection::group(contracts, routes))]
-    pub(crate) fn lineage(&self) -> &InvocationLineage {
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn lineage(&self) -> &InvocationLineage {
         self.attempt.lineage()
     }
-    pub(crate) fn into_envelope<I: InterfaceContract>(self, input: I) -> InvocationEnvelope<I, P> {
+    pub fn into_envelope<I: InterfaceContract>(self, input: I) -> InvocationEnvelope<I, P> {
         self.attempt.into_envelope(self.principal, input)
     }
 
-    pub(crate) fn into_same_http_carrier_envelope<I: InterfaceContract>(
+    pub fn into_same_http_carrier_envelope<I: InterfaceContract>(
         self,
         binding: &BindingId,
         input: I,
@@ -36,7 +36,7 @@ impl<P: InvocationPrincipal> AuthenticatedInvocation<P> {
 }
 
 impl AuthenticationAdapterFactoryRegistry {
-    pub(crate) async fn authenticate_invocation<C, P>(
+    pub async fn authenticate_invocation<C, P>(
         &self,
         snapshot: Arc<CompiledInterfaceRegistry>,
         binding: &BindingId,

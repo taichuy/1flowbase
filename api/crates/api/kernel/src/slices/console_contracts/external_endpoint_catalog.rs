@@ -1,20 +1,16 @@
+use interface_runtime::{ProtocolBinding, ProtocolProjection};
 use std::collections::{BTreeMap, BTreeSet};
-
-use interface_runtime::{CompiledInterfaceRegistry, ProtocolBinding, ProtocolProjection};
-use thiserror::Error;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "test-support", derive(serde::Serialize))]
-pub(crate) enum ExternalEndpointClassification {
+pub enum ExternalEndpointClassification {
     CanonicalBusinessInterface,
     ProtocolControl,
     OperationalControl,
     Unclassified,
 }
-
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "test-support", derive(serde::Serialize))]
-pub(crate) enum ExternalEndpointIdentity {
+pub enum ExternalEndpointIdentity {
     Http {
         method: String,
         route_template: String,
@@ -25,9 +21,8 @@ pub(crate) enum ExternalEndpointIdentity {
         variant: Option<String>,
     },
 }
-
 impl ExternalEndpointIdentity {
-    pub(crate) fn http(method: &str, route_template: &str) -> Self {
+    pub fn http(method: &str, route_template: &str) -> Self {
         Self::Http {
             method: method.to_ascii_uppercase(),
             route_template: normalize_route_template(route_template),
@@ -35,7 +30,7 @@ impl ExternalEndpointIdentity {
         }
     }
 
-    pub(crate) fn http_variant(method: &str, route_template: &str, variant: &str) -> Self {
+    pub fn http_variant(method: &str, route_template: &str, variant: &str) -> Self {
         Self::Http {
             method: method.to_ascii_uppercase(),
             route_template: normalize_route_template(route_template),
@@ -43,14 +38,14 @@ impl ExternalEndpointIdentity {
         }
     }
 
-    pub(crate) fn mcp(protocol_method: &str) -> Self {
+    pub fn mcp(protocol_method: &str) -> Self {
         Self::Mcp {
             protocol_method: protocol_method.to_string(),
             variant: None,
         }
     }
 
-    fn http_control_variant(method: &str, route_template: &str, variant: &str) -> Self {
+    pub fn http_control_variant(method: &str, route_template: &str, variant: &str) -> Self {
         Self::Http {
             method: method.to_ascii_uppercase(),
             route_template: normalize_route_template(route_template),
@@ -58,19 +53,17 @@ impl ExternalEndpointIdentity {
         }
     }
 }
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "test-support", derive(serde::Serialize))]
-pub(crate) struct ExternalEndpointContribution {
-    identity: ExternalEndpointIdentity,
-    source: String,
-    classification: ExternalEndpointClassification,
-    binding_id: Option<String>,
-    carrier_projection: Option<ExternalEndpointIdentity>,
+pub struct ExternalEndpointContribution {
+    pub identity: ExternalEndpointIdentity,
+    pub source: String,
+    pub classification: ExternalEndpointClassification,
+    pub binding_id: Option<String>,
+    pub carrier_projection: Option<ExternalEndpointIdentity>,
 }
-
 impl ExternalEndpointContribution {
-    pub(crate) fn unclassified_http(source: &str, method: &str, route_template: &str) -> Self {
+    pub fn unclassified_http(source: &str, method: &str, route_template: &str) -> Self {
         Self {
             identity: ExternalEndpointIdentity::http(method, route_template),
             source: source.to_string(),
@@ -95,7 +88,7 @@ impl ExternalEndpointContribution {
         }
     }
 
-    fn protocol_control_http(source: &str, method: &str, route_template: &str) -> Self {
+    pub fn protocol_control_http(source: &str, method: &str, route_template: &str) -> Self {
         Self {
             identity: ExternalEndpointIdentity::http(method, route_template),
             source: source.to_string(),
@@ -115,7 +108,7 @@ impl ExternalEndpointContribution {
         }
     }
 
-    fn protocol_control_identity(source: &str, identity: ExternalEndpointIdentity) -> Self {
+    pub fn protocol_control_identity(source: &str, identity: ExternalEndpointIdentity) -> Self {
         Self {
             identity,
             source: source.to_string(),
@@ -125,7 +118,7 @@ impl ExternalEndpointContribution {
         }
     }
 
-    fn from_binding(source: &str, binding: &ProtocolBinding) -> Option<Self> {
+    pub fn from_binding(source: &str, binding: &ProtocolBinding) -> Option<Self> {
         let identity = match binding.projection() {
             ProtocolProjection::Http(route) => {
                 ExternalEndpointIdentity::http(route.method(), route.path())
@@ -145,81 +138,35 @@ impl ExternalEndpointContribution {
         })
     }
 }
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "test-support", derive(serde::Serialize))]
-pub(crate) struct ExternalEndpointRow {
-    identity: ExternalEndpointIdentity,
-    sources: BTreeSet<String>,
-    classification: ExternalEndpointClassification,
-    binding_id: Option<String>,
+pub struct ExternalEndpointRow {
+    pub identity: ExternalEndpointIdentity,
+    pub sources: BTreeSet<String>,
+    pub classification: ExternalEndpointClassification,
+    pub binding_id: Option<String>,
 }
-
 impl ExternalEndpointRow {
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn classification(&self) -> ExternalEndpointClassification {
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn classification(&self) -> ExternalEndpointClassification {
         self.classification
     }
 
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn sources(&self) -> &BTreeSet<String> {
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn sources(&self) -> &BTreeSet<String> {
         &self.sources
     }
 
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn binding_id(&self) -> Option<&str> {
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn binding_id(&self) -> Option<&str> {
         self.binding_id.as_deref()
     }
 }
-
-#[derive(Debug, Error, PartialEq, Eq)]
-pub(crate) enum ExternalEndpointCatalogError {
-    #[error("duplicate external endpoint contribution `{origin}` for {identity:?}")]
-    DuplicateContribution {
-        origin: String,
-        identity: ExternalEndpointIdentity,
-    },
-    #[error("conflicting external endpoint classifications for {identity:?}")]
-    ConflictingClassification { identity: ExternalEndpointIdentity },
-    #[error("conflicting canonical bindings for {identity:?}: `{first}` and `{second}`")]
-    ConflictingBinding {
-        identity: ExternalEndpointIdentity,
-        first: String,
-        second: String,
-    },
-    #[error("external endpoint is not an approved control: {identity:?}")]
-    UnknownControl { identity: ExternalEndpointIdentity },
-    #[error("external endpoint catalog contains unclassified rows: {identities:?}")]
-    UnclassifiedRows {
-        identities: Vec<ExternalEndpointIdentity>,
-    },
-    #[error(
-        "external endpoint catalog contains HTTP rows without an executable mount: {identities:?}"
-    )]
-    UnmountedHttpRows {
-        identities: Vec<ExternalEndpointIdentity>,
-    },
-    #[error("external endpoint {identity:?} references unknown binding `{binding_id}`")]
-    UnknownBinding {
-        identity: ExternalEndpointIdentity,
-        binding_id: String,
-    },
-    #[error(
-        "HTTP carrier {identity:?} is not owned by the expected protocol binding {projection:?}"
-    )]
-    InvalidCarrierBinding {
-        identity: ExternalEndpointIdentity,
-        projection: Box<ExternalEndpointIdentity>,
-    },
-    #[error("OpenAPI endpoint inventory is invalid: {0}")]
-    InvalidOpenApi(String),
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ApprovedExternalControl {
+pub enum ApprovedExternalControl {
     OAuthOriginMetadata,
     OAuthOriginOidcMetadata,
     OAuthOriginApiMetadata,
@@ -254,9 +201,8 @@ pub(crate) enum ApprovedExternalControl {
     AssistantWebSocketUpgrade,
     NotificationEvents,
 }
-
 impl ApprovedExternalControl {
-    const ALL: [Self; 32] = [
+    pub const ALL: [Self; 32] = [
         Self::OAuthOriginMetadata,
         Self::OAuthOriginOidcMetadata,
         Self::OAuthOriginApiMetadata,
@@ -291,7 +237,7 @@ impl ApprovedExternalControl {
         Self::NotificationEvents,
     ];
 
-    fn contribution(self) -> ExternalEndpointContribution {
+    pub fn contribution(self) -> ExternalEndpointContribution {
         match self {
             Self::OAuthOriginMetadata => ExternalEndpointContribution::protocol_control_http(
                 "mcp-oauth-protocol-control",
@@ -479,18 +425,16 @@ impl ApprovedExternalControl {
         }
     }
 }
-
-pub(crate) fn is_approved_external_control_http(method: &str, route_template: &str) -> bool {
+pub fn is_approved_external_control_http(method: &str, route_template: &str) -> bool {
     let identity = ExternalEndpointIdentity::http(method, route_template);
     ApprovedExternalControl::ALL
         .into_iter()
         .map(ApprovedExternalControl::contribution)
         .any(|control| control.identity == identity)
 }
-
 /// Project the existing control owner for a documented HTTP carrier. Callers must
 /// first exclude a canonical business binding: SSE/frame controls can share its URL.
-pub(crate) fn approved_http_control_classification(
+pub fn approved_http_control_classification(
     method: &str,
     route_template: &str,
 ) -> Option<ExternalEndpointClassification> {
@@ -516,535 +460,13 @@ pub(crate) fn approved_http_control_classification(
             _ => None,
         })
 }
-
-#[derive(Default)]
-pub(crate) struct ExternalEndpointCatalogCompiler {
-    managed_stream_controls: BTreeSet<ExternalEndpointIdentity>,
-    rows: BTreeMap<ExternalEndpointIdentity, ExternalEndpointRow>,
-    required_frozen_bindings: BTreeMap<ExternalEndpointIdentity, ExternalEndpointIdentity>,
-    mounted_routes: BTreeSet<ExternalEndpointIdentity>,
-    carrier_projections: BTreeMap<ExternalEndpointIdentity, ExternalEndpointIdentity>,
+pub struct ExternalEndpointCatalog {
+    pub rows: BTreeMap<ExternalEndpointIdentity, ExternalEndpointRow>,
 }
-
-impl ExternalEndpointCatalogCompiler {
-    /// Exact protocol ingress is derived only from a validated managed stream declaration and its
-    /// frozen canonical POST binding; package paths alone never grant an external control surface.
-    pub(crate) fn contribute_managed_stream_controls(
-        &mut self,
-        services: &[crate::managed_services::ManagedServiceRegistration],
-        registry: &interface_runtime::CompiledInterfaceRegistry,
-    ) -> anyhow::Result<()> {
-        for op in services
-            .iter()
-            .flat_map(|service| &service.declaration.operations)
-            .filter(|op| op.stream.is_some())
-        {
-            let binding = registry
-                .binding(&interface_runtime::BindingId::new(format!(
-                    "http.{}.v1",
-                    op.interface_id
-                ))?)
-                .ok_or_else(|| anyhow::anyhow!("managed stream canonical binding missing"))?;
-            let route = binding
-                .projection()
-                .http_route()
-                .ok_or_else(|| anyhow::anyhow!("managed stream HTTP binding missing"))?;
-            anyhow::ensure!(
-                op.method == "POST" && route.method() == "POST" && route.path() == op.path,
-                "managed stream canonical route mismatch"
-            );
-            let identity = ExternalEndpointIdentity::http("GET", &op.path);
-            self.managed_stream_controls.insert(identity);
-            self.contribute(ExternalEndpointContribution::protocol_control_http(
-                "managed-service-stream",
-                "GET",
-                &op.path,
-            ))?;
-        }
-        Ok(())
-    }
-
-    /// Reconcile the inventory emitted by the executable mount, after compiling binding
-    /// and descriptor projections. A registry or OpenAPI-only inventory cannot supply it.
-    pub(crate) fn contribute_mounted_routes(
-        &mut self,
-        mounted: &[ExternalEndpointContribution],
-    ) -> Result<(), ExternalEndpointCatalogError> {
-        for contribution in mounted {
-            if !self.mounted_routes.insert(contribution.identity.clone()) {
-                return Err(ExternalEndpointCatalogError::DuplicateContribution {
-                    origin: contribution.source.clone(),
-                    identity: contribution.identity.clone(),
-                });
-            }
-            let ExternalEndpointIdentity::Http {
-                method,
-                route_template,
-                ..
-            } = &contribution.identity
-            else {
-                continue;
-            };
-            if contribution.carrier_projection.is_some() {
-                self.contribute(contribution.clone())?;
-                // The transport first becomes an HTTP row at its actual mount. Its CORS
-                // projection has the same owner as every other mounted HTTP surface.
-                let preflight = ExternalEndpointContribution::protocol_control_identity(
-                    "tower-http.cors",
-                    ExternalEndpointIdentity::http_control_variant(
-                        "OPTIONS",
-                        route_template,
-                        "cors-preflight",
-                    ),
-                );
-                if !self.rows.contains_key(&preflight.identity) {
-                    self.contribute(preflight)?;
-                }
-                continue;
-            }
-            // An Axum any handler is a dispatch surface: its frozen per-method bindings
-            // (or a single ANY binding) own the accepted operations, including rejection.
-            let identities = self
-                .rows
-                .values()
-                .filter(|row| match &row.identity {
-                    ExternalEndpointIdentity::Http {
-                        method: candidate,
-                        route_template: path,
-                        ..
-                    } => {
-                        path == route_template
-                            && ((method == "ANY" && row.binding_id.is_some())
-                                || candidate == method
-                                || candidate == "ANY")
-                    }
-                    _ => false,
-                })
-                .map(|row| row.identity.clone())
-                .collect::<Vec<_>>();
-            if identities.is_empty() {
-                self.contribute(contribution.clone())?;
-            } else {
-                for identity in identities {
-                    self.contribute(ExternalEndpointContribution {
-                        identity,
-                        source: contribution.source.clone(),
-                        carrier_projection: None,
-                        classification: ExternalEndpointClassification::Unclassified,
-                        binding_id: None,
-                    })?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub(crate) fn contribute_openapi_document(
-        &mut self,
-        source: &str,
-        document: &serde_json::Value,
-    ) -> Result<(), ExternalEndpointCatalogError> {
-        let paths = document
-            .get("paths")
-            .and_then(serde_json::Value::as_object)
-            .ok_or_else(|| {
-                ExternalEndpointCatalogError::InvalidOpenApi(
-                    "document does not contain an object `paths` member".to_string(),
-                )
-            })?;
-        const HTTP_METHODS: [&str; 8] = [
-            "get", "post", "put", "patch", "delete", "options", "head", "trace",
-        ];
-        for (path, path_item) in paths {
-            let path_item = path_item.as_object().ok_or_else(|| {
-                ExternalEndpointCatalogError::InvalidOpenApi(format!(
-                    "path item `{path}` is not an object"
-                ))
-            })?;
-            for method in HTTP_METHODS {
-                let Some(operation) = path_item.get(method) else {
-                    continue;
-                };
-                let identity = match (method, path.as_str()) {
-                    (
-                        "get",
-                        "/api/agent/v1/runs/websocket"
-                        | "/v1/responses"
-                        | "/api/console/assistant/runs/websocket",
-                    ) => ExternalEndpointIdentity::http_control_variant(
-                        method,
-                        path,
-                        "websocket-upgrade",
-                    ),
-                    _ => ExternalEndpointIdentity::http(method, path),
-                };
-                let required_frozen_binding = descriptor_frozen_binding(method, path, operation);
-                self.contribute(ExternalEndpointContribution {
-                    identity: identity.clone(),
-                    source: source.to_string(),
-                    carrier_projection: None,
-                    classification: ExternalEndpointClassification::Unclassified,
-                    binding_id: None,
-                })?;
-                if let Some(required_frozen_binding) = required_frozen_binding {
-                    self.required_frozen_bindings
-                        .insert(identity, required_frozen_binding);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub(crate) fn contribute_mcp_protocol_surface(
-        &mut self,
-        binding_id: &str,
-    ) -> Result<(), ExternalEndpointCatalogError> {
-        for method in ["initialize", "notifications/initialized"] {
-            self.contribute(ExternalEndpointContribution {
-                identity: ExternalEndpointIdentity::mcp(method),
-                source: "api-server.mcp-router".to_string(),
-                carrier_projection: None,
-                classification: ExternalEndpointClassification::Unclassified,
-                binding_id: None,
-            })?;
-        }
-        for method in ["tools/list", "tools/call"] {
-            self.contribute(ExternalEndpointContribution {
-                identity: ExternalEndpointIdentity::mcp(method),
-                source: "api-server.mcp-router".to_string(),
-                carrier_projection: None,
-                classification: ExternalEndpointClassification::CanonicalBusinessInterface,
-                binding_id: Some(binding_id.to_string()),
-            })?;
-        }
-        Ok(())
-    }
-
-    pub(crate) fn contribute(
-        &mut self,
-        contribution: ExternalEndpointContribution,
-    ) -> Result<(), ExternalEndpointCatalogError> {
-        if matches!(
-            contribution.classification,
-            ExternalEndpointClassification::ProtocolControl
-                | ExternalEndpointClassification::OperationalControl
-        ) {
-            let approved = ApprovedExternalControl::ALL
-                .into_iter()
-                .map(ApprovedExternalControl::contribution)
-                .any(|control| {
-                    control.identity == contribution.identity
-                        && control.classification == contribution.classification
-                });
-            let derived = matches!((&contribution.identity, contribution.source.as_str()),
-                (ExternalEndpointIdentity::Http { method, variant: Some(variant), .. }, "tower-http.cors")
-                    if method == "OPTIONS" && variant == "cors-preflight")
-                || matches!((&contribution.identity, contribution.source.as_str()),
-                    (ExternalEndpointIdentity::Http { method, variant: Some(variant), .. }, "axum.auto-head")
-                        if method == "HEAD" && variant == "get-mirror");
-            let managed_stream = contribution.source == "managed-service-stream"
-                && self
-                    .managed_stream_controls
-                    .contains(&contribution.identity);
-            if !approved && !derived && !managed_stream {
-                return Err(ExternalEndpointCatalogError::UnknownControl {
-                    identity: contribution.identity,
-                });
-            }
-        }
-        let ExternalEndpointContribution {
-            identity,
-            source,
-            classification,
-            binding_id,
-            carrier_projection,
-        } = contribution;
-        if let Some(projection) = carrier_projection {
-            self.carrier_projections
-                .insert(identity.clone(), projection);
-        }
-        match self.rows.get_mut(&identity) {
-            None => {
-                self.rows.insert(
-                    identity.clone(),
-                    ExternalEndpointRow {
-                        identity,
-                        sources: BTreeSet::from([source]),
-                        classification,
-                        binding_id,
-                    },
-                );
-            }
-            Some(row) => {
-                if !row.sources.insert(source.clone()) {
-                    return Err(ExternalEndpointCatalogError::DuplicateContribution {
-                        origin: source,
-                        identity,
-                    });
-                }
-                row.classification =
-                    merge_classification(row.classification, classification, row.identity.clone())?;
-                match (&row.binding_id, binding_id) {
-                    (Some(first), Some(second)) if first != &second => {
-                        return Err(ExternalEndpointCatalogError::ConflictingBinding {
-                            identity,
-                            first: first.clone(),
-                            second,
-                        });
-                    }
-                    (None, Some(binding_id)) => row.binding_id = Some(binding_id),
-                    (Some(_), Some(_)) | (Some(_), None) | (None, None) => {}
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub(crate) fn absorb_registry(
-        &mut self,
-        source: &str,
-        registry: &CompiledInterfaceRegistry,
-    ) -> Result<(), ExternalEndpointCatalogError> {
-        for binding in registry.bindings() {
-            if let Some(contribution) = ExternalEndpointContribution::from_binding(source, binding)
-            {
-                let frozen_identity = contribution.identity.clone();
-                let binding_id = contribution
-                    .binding_id
-                    .clone()
-                    .expect("external protocol binding contribution has a binding id");
-                self.contribute(contribution)?;
-                let concrete_identities = self
-                    .required_frozen_bindings
-                    .iter()
-                    .filter_map(|(identity, required)| {
-                        (required == &frozen_identity).then_some(identity.clone())
-                    })
-                    .collect::<Vec<_>>();
-                for identity in concrete_identities {
-                    self.contribute(ExternalEndpointContribution {
-                        identity,
-                        source: format!("{source}.descriptor-projection"),
-                        carrier_projection: None,
-                        classification: ExternalEndpointClassification::CanonicalBusinessInterface,
-                        binding_id: Some(binding_id.clone()),
-                    })?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub(crate) fn contribute_approved_controls(
-        &mut self,
-        include_docs: bool,
-    ) -> Result<(), ExternalEndpointCatalogError> {
-        for control in ApprovedExternalControl::ALL {
-            if !include_docs
-                && matches!(
-                    control,
-                    ApprovedExternalControl::Docs
-                        | ApprovedExternalControl::DocsAssets
-                        | ApprovedExternalControl::OpenApi
-                )
-            {
-                continue;
-            }
-            self.contribute(control.contribution())?;
-        }
-        self.contribute_derived_cors_and_head_controls()
-    }
-
-    fn contribute_derived_cors_and_head_controls(
-        &mut self,
-    ) -> Result<(), ExternalEndpointCatalogError> {
-        let routes = self
-            .rows
-            .keys()
-            .filter_map(|identity| match identity {
-                ExternalEndpointIdentity::Http {
-                    method,
-                    route_template,
-                    variant: None,
-                } => Some((method.clone(), route_template.clone())),
-                ExternalEndpointIdentity::Http {
-                    variant: Some(_), ..
-                }
-                | ExternalEndpointIdentity::Mcp { .. } => None,
-            })
-            .collect::<BTreeSet<_>>();
-        let paths = routes
-            .iter()
-            .map(|(_, path)| path.clone())
-            .collect::<BTreeSet<_>>();
-        for route_template in paths {
-            if route_template != "/api/ex/*slug" {
-                self.contribute(ExternalEndpointContribution::protocol_control_identity(
-                    "tower-http.cors",
-                    ExternalEndpointIdentity::http_control_variant(
-                        "OPTIONS",
-                        &route_template,
-                        "cors-preflight",
-                    ),
-                ))?;
-            }
-        }
-        for (method, route_template) in routes {
-            if method == "GET" {
-                self.contribute(ExternalEndpointContribution::protocol_control_identity(
-                    "axum.auto-head",
-                    ExternalEndpointIdentity::http_control_variant(
-                        "HEAD",
-                        &route_template,
-                        "get-mirror",
-                    ),
-                ))?;
-            }
-        }
-        Ok(())
-    }
-
-    fn http_endpoint_is_mounted(&self, identity: &ExternalEndpointIdentity) -> bool {
-        if let Some(required) = self.required_frozen_bindings.get(identity) {
-            // Descriptor paths are projections of an explicitly registered wildcard binding.
-            // They are not additional Axum routes, but that binding must itself be mounted.
-            if required != identity {
-                return self.http_endpoint_is_mounted(required);
-            }
-        }
-        let ExternalEndpointIdentity::Http {
-            method,
-            route_template,
-            variant,
-        } = identity
-        else {
-            // MCP protocol methods are semantic projections of the transport, not HTTP routes.
-            return true;
-        };
-        match (method.as_str(), variant.as_deref()) {
-            ("HEAD", Some("get-mirror")) => self.http_endpoint_is_mounted(
-                &ExternalEndpointIdentity::http("GET", route_template),
-            ),
-            ("OPTIONS", Some("cors-preflight")) => self.rows.keys().any(|candidate| {
-                matches!(candidate, ExternalEndpointIdentity::Http {
-                    route_template: path, variant: None, ..
-                } if path == route_template) && self.http_endpoint_is_mounted(candidate)
-            }),
-            _ => self.mounted_routes.iter().any(|mounted| {
-                matches!(mounted, ExternalEndpointIdentity::Http {
-                    method: mounted_method, route_template: mounted_path, variant: None
-                } if mounted_path == route_template && (mounted_method == method || mounted_method == "ANY"))
-            }),
-        }
-    }
-
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn reject_unapproved_control(
-        &self,
-        identity: ExternalEndpointIdentity,
-    ) -> ExternalEndpointCatalogError {
-        ExternalEndpointCatalogError::UnknownControl { identity }
-    }
-
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn compile(self) -> ExternalEndpointCatalog {
-        ExternalEndpointCatalog { rows: self.rows }
-    }
-
-    pub(crate) fn compile_complete(
-        self,
-        registry: &CompiledInterfaceRegistry,
-    ) -> Result<ExternalEndpointCatalog, ExternalEndpointCatalogError> {
-        let valid_bindings = registry
-            .bindings()
-            .map(|binding| binding.binding_id().as_str().to_string())
-            .collect::<BTreeSet<_>>();
-        let unclassified = self
-            .rows
-            .values()
-            .filter(|row| row.classification == ExternalEndpointClassification::Unclassified)
-            .map(|row| row.identity.clone())
-            .collect::<Vec<_>>();
-        if !unclassified.is_empty() {
-            return Err(ExternalEndpointCatalogError::UnclassifiedRows {
-                identities: unclassified,
-            });
-        }
-        for row in self.rows.values() {
-            if let Some(binding_id) = &row.binding_id {
-                if !valid_bindings.contains(binding_id) {
-                    return Err(ExternalEndpointCatalogError::UnknownBinding {
-                        identity: row.identity.clone(),
-                        binding_id: binding_id.clone(),
-                    });
-                }
-            }
-        }
-        for (identity, projection) in &self.carrier_projections {
-            let row = &self.rows[identity];
-            let owns_carrier = registry.bindings().any(|binding| {
-                row.binding_id.as_deref() == Some(binding.binding_id().as_str())
-                    && ExternalEndpointContribution::from_binding("carrier-validation", binding)
-                        .is_some_and(|contribution| &contribution.identity == projection)
-            });
-            if !owns_carrier {
-                return Err(ExternalEndpointCatalogError::InvalidCarrierBinding {
-                    identity: identity.clone(),
-                    projection: Box::new(projection.clone()),
-                });
-            }
-        }
-        let unmounted = self
-            .rows
-            .keys()
-            .filter(|identity| !self.http_endpoint_is_mounted(identity))
-            .cloned()
-            .collect::<Vec<_>>();
-        if !unmounted.is_empty() {
-            return Err(ExternalEndpointCatalogError::UnmountedHttpRows {
-                identities: unmounted,
-            });
-        }
-        Ok(ExternalEndpointCatalog { rows: self.rows })
-    }
-}
-
-fn descriptor_frozen_binding(
-    method: &str,
-    path: &str,
-    operation: &serde_json::Value,
-) -> Option<ExternalEndpointIdentity> {
-    let is_descriptor_operation = operation
-        .get("x-data-model-templates")
-        .and_then(serde_json::Value::as_array)
-        .is_some_and(|templates| !templates.is_empty());
-    if is_descriptor_operation && path.starts_with("/api/runtime/models/{model_code}/") {
-        return Some(ExternalEndpointIdentity::http(
-            method,
-            "/api/runtime/models/:model_code/*operation_path",
-        ));
-    }
-    let is_published_workflow = operation
-        .get("operationId")
-        .and_then(serde_json::Value::as_str)
-        .and_then(|id| id.strip_prefix("published_workflow_operation:"))
-        .is_some_and(|application_id| uuid::Uuid::parse_str(application_id).is_ok());
-    // Concrete publications are descriptors of the existing wildcard invocation binding.
-    // Classification still requires that binding to exist in the compiled registry.
-    (is_published_workflow && path.starts_with("/api/ex/"))
-        .then(|| ExternalEndpointIdentity::http("ANY", "/api/ex/*slug"))
-}
-
-pub(crate) struct ExternalEndpointCatalog {
-    rows: BTreeMap<ExternalEndpointIdentity, ExternalEndpointRow>,
-}
-
 impl ExternalEndpointCatalog {
     /// The published generation owns both static controls and validated managed stream upgrades.
     /// A canonical business variant at the same URL remains independently projected by its binding.
-    pub(crate) fn http_control_classification(
+    pub fn http_control_classification(
         &self,
         method: &str,
         route_template: &str,
@@ -1075,27 +497,22 @@ impl ExternalEndpointCatalog {
             _ => None,
         })
     }
-    pub(crate) fn rows(&self) -> impl ExactSizeIterator<Item = &ExternalEndpointRow> {
+    pub fn rows(&self) -> impl ExactSizeIterator<Item = &ExternalEndpointRow> {
         self.rows.values()
     }
 
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn row(&self, identity: &ExternalEndpointIdentity) -> Option<&ExternalEndpointRow> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn row(&self, identity: &ExternalEndpointIdentity) -> Option<&ExternalEndpointRow> {
         self.rows.get(identity)
     }
 
-    pub(crate) fn classification_count(
-        &self,
-        classification: ExternalEndpointClassification,
-    ) -> usize {
+    pub fn classification_count(&self, classification: ExternalEndpointClassification) -> usize {
         self.rows
             .values()
             .filter(|row| row.classification == classification)
             .count()
     }
 }
-
 fn normalize_route_template(route_template: &str) -> String {
     let route_template = if route_template.len() > 1 {
         route_template.trim_end_matches('/')
@@ -1113,37 +530,4 @@ fn normalize_route_template(route_template: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("/")
-}
-
-fn merge_classification(
-    current: ExternalEndpointClassification,
-    incoming: ExternalEndpointClassification,
-    identity: ExternalEndpointIdentity,
-) -> Result<ExternalEndpointClassification, ExternalEndpointCatalogError> {
-    match (current, incoming) {
-        (left, right) if left == right => Ok(left),
-        (ExternalEndpointClassification::Unclassified, classified)
-        | (classified, ExternalEndpointClassification::Unclassified) => Ok(classified),
-        _ => Err(ExternalEndpointCatalogError::ConflictingClassification { identity }),
-    }
-}
-
-#[cfg_attr(test, api_test_selection::group(core))]
-#[cfg(test)]
-mod construction_controls {
-    use super::*;
-
-    #[test]
-    fn root_1998_fake_business_control_is_rejected_during_contribution() {
-        let mut compiler = ExternalEndpointCatalogCompiler::default();
-        let result = compiler.contribute(ExternalEndpointContribution::protocol_control_http(
-            "fake-protocol-owner",
-            "POST",
-            "/business/write",
-        ));
-        assert!(matches!(
-            result,
-            Err(ExternalEndpointCatalogError::UnknownControl { .. })
-        ));
-    }
 }

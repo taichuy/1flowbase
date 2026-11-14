@@ -9,11 +9,11 @@ use control_plane_contracts::ports::{
 /// Factories bind before the final publication catalog exists. Activation installs the
 /// actual final store once, so no handler retains a pre-catalog store clone.
 #[derive(Default)]
-pub(crate) struct HostOptionalNotificationPublication {
+pub struct HostOptionalNotificationPublication {
     port: OnceLock<Arc<dyn OptionalNotificationPublicationPort>>,
 }
 impl HostOptionalNotificationPublication {
-    pub(crate) fn activate(
+    pub fn activate(
         &self,
         port: Arc<dyn OptionalNotificationPublicationPort>,
     ) -> anyhow::Result<()> {
@@ -36,7 +36,6 @@ impl OptionalNotificationPublicationPort for HostOptionalNotificationPublication
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::*;

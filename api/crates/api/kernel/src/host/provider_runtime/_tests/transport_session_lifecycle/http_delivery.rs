@@ -1,5 +1,5 @@
 use super::*;
-use crate::routes::application_public_api::openai::http_delivery::bind_response;
+use crate::provider_runtime::http_delivery::bind_response;
 use axum::{
     body::{Body, Bytes},
     response::Response,

@@ -232,6 +232,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
 
     app_with_state_and_config(
         std::sync::Arc::new(ApiState {
+        test_resources:None,
             store: store.clone(),
             console_policy_reader: std::sync::Arc::new(store.clone()),
             system_backup,
@@ -243,7 +244,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             console_operation_registry,
             infrastructure,
             event_center,
-            event_sources: std::sync::Arc::default(),
+            event_sources: api_server::test_support::default_event_source_catalog(),
             event_workflow_changes: std::sync::Arc::default(),
             event_workflow_statuses: Default::default(),
             console_surface_registry: std::sync::Arc::new(

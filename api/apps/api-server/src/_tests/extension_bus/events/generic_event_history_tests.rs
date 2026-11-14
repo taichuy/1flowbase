@@ -23,7 +23,7 @@ async fn root_2014_ac_008_generic_history_and_f01() {
         .unwrap();
     let id = fixture.installations[1];
     let workspace = fixture.actor.current_workspace_id;
-    let composition = fixture._services.managed_composition().unwrap();
+    let composition = fixture.composition.clone();
     let management = PluginManagementService::new(
         fixture.store.clone(),
         ApiProviderRuntime::new(fixture._services.clone()),

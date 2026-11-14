@@ -19,12 +19,12 @@ pub(crate) enum SystemMaintenanceRequestClass {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct SystemMaintenanceRequestClassifier {
+pub struct SystemMaintenanceRequestClassifier {
     coordinator_control_routes: Arc<[ConsoleRouteBinding]>,
 }
 
 impl SystemMaintenanceRequestClassifier {
-    pub(crate) fn new(coordinator_control_routes: Vec<ConsoleRouteBinding>) -> Self {
+    pub fn new(coordinator_control_routes: Vec<ConsoleRouteBinding>) -> Self {
         Self {
             coordinator_control_routes: coordinator_control_routes.into(),
         }
@@ -41,7 +41,7 @@ impl SystemMaintenanceRequestClassifier {
     }
 }
 
-pub(crate) async fn classify_system_maintenance_request(
+pub async fn classify_system_maintenance_request(
     State(classifier): State<SystemMaintenanceRequestClassifier>,
     mut request: Request,
     next: Next,
@@ -117,7 +117,6 @@ fn is_read_only_method(method: &Method) -> bool {
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::{

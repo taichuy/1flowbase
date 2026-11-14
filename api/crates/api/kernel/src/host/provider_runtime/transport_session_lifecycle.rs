@@ -56,17 +56,37 @@ fn handoff_wait_budget(
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TransportTerminationNotice {
+pub struct TransportTerminationNotice {
     pub(crate) owner_id: String,
     pub(crate) fence: TransportFence,
     pub(crate) invocation_sequence: Option<u64>,
     pub(crate) connection_scope_id: Option<String>,
-    pub(crate) code: &'static str,
+    pub code: &'static str,
+}
+
+impl TransportTerminationNotice {
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn for_test_support(
+        owner_id: String,
+        fence: TransportFence,
+        invocation_sequence: Option<u64>,
+        connection_scope_id: Option<String>,
+        code: &'static str,
+    ) -> Self {
+        Self {
+            owner_id,
+            fence,
+            invocation_sequence,
+            connection_scope_id,
+            code,
+        }
+    }
 }
 
 /// A socket owns only leases actually admitted for it, never all sessions with
 /// the same client thread identity. This is a bounded attachment to the registry.
-pub(crate) struct TransportConnectionScope {
+pub struct TransportConnectionScope {
     id: String,
     carrier: ProviderClientTransport,
     state: StdMutex<TransportConnectionBindings>,
@@ -75,13 +95,13 @@ pub(crate) struct TransportConnectionScope {
 /// The delivery owns this guard, not the execution or a clone of the scope.
 /// Closing may await coordinator locks, so Drop transfers the whole close future
 /// to an independent task rather than letting request cancellation interrupt it.
-pub(crate) struct TransportConnectionScopeGuard {
+pub struct TransportConnectionScopeGuard {
     scope: Arc<TransportConnectionScope>,
     on_close: Option<Box<dyn FnOnce() + Send + Sync>>,
 }
 
 impl TransportConnectionScopeGuard {
-    pub(crate) fn id(&self) -> &str {
+    pub fn id(&self) -> &str {
         self.scope.id()
     }
 
@@ -106,9 +126,8 @@ struct TransportConnectionBindings {
 }
 
 impl TransportConnectionScope {
-    #[cfg_attr(test, api_test_selection::group(public_api))]
-    #[cfg(test)]
-    pub(crate) fn for_test(lease: InvocationLease) -> Arc<Self> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn for_test(lease: InvocationLease) -> Arc<Self> {
         Arc::new(Self {
             id: uuid::Uuid::now_v7().to_string(),
             carrier: ProviderClientTransport::Websocket,
@@ -120,11 +139,11 @@ impl TransportConnectionScope {
         })
     }
 
-    pub(crate) fn id(&self) -> &str {
+    pub fn id(&self) -> &str {
         &self.id
     }
 
-    pub(crate) fn accepts_termination(&self, notice: &TransportTerminationNotice) -> bool {
+    pub fn accepts_termination(&self, notice: &TransportTerminationNotice) -> bool {
         let state = self.state.lock().expect("transport connection bindings");
         !state.closed
             && notice.connection_scope_id.as_deref() == Some(self.id.as_str())
@@ -1007,7 +1026,6 @@ fn _assert_runtime_error_is_send(error: RuntimeBackendError) -> RuntimeBackendEr
     error
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/transport_session_lifecycle.rs"]
 mod tests;

@@ -3,7 +3,7 @@ use control_plane::mcp_oauth::{validate_origin, OAuthError};
 
 /// The ingress preserves Host and overwrites X-Forwarded-Proto. Never use a
 /// caller-supplied Origin or X-Forwarded-Host to choose the public origin.
-pub(crate) fn request_origin(headers: &HeaderMap) -> Result<String, OAuthError> {
+pub fn request_origin(headers: &HeaderMap) -> Result<String, OAuthError> {
     if headers.get_all(HOST).iter().count() != 1
         || headers.get_all("x-forwarded-proto").iter().count() > 1
     {
@@ -31,14 +31,13 @@ pub(crate) fn request_origin(headers: &HeaderMap) -> Result<String, OAuthError> 
     validate_origin(&format!("{scheme}://{host}"), false).map_err(|_| OAuthError::invalid())
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/origin.rs"]
 mod tests;
 
 /// The explicit origin is request-scoped, never a global deployment setting.
 #[derive(Clone, Debug)]
-pub(crate) struct PublicOrigin {
+pub struct PublicOrigin {
     pub origin: String,
     pub explicit: bool,
 }
@@ -65,7 +64,7 @@ impl PublicOrigin {
         }
     }
 }
-pub(crate) fn request_public_origin(
+pub fn request_public_origin(
     headers: &HeaderMap,
     uri: &axum::http::Uri,
 ) -> Result<PublicOrigin, OAuthError> {

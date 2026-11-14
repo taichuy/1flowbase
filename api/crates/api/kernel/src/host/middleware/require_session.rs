@@ -89,7 +89,7 @@ tokio::task_local! {
 }
 
 /// Trusted in-process delegation only; request headers cannot populate this context.
-pub(crate) fn server_delegated_request_context() -> Option<RequestContext> {
+pub fn server_delegated_request_context() -> Option<RequestContext> {
     SERVER_DELEGATED_REQUEST_CONTEXT.try_with(Clone::clone).ok()
 }
 
@@ -241,7 +241,7 @@ pub(crate) async fn apply_console_policy_permissions_to_actor(
 
 /// A settings surface is discoverable if at least one active operation is granted.
 /// Row visibility is not a row-data grant: the request's resource/workspace checks still apply.
-pub(crate) fn settings_feature_navigation_permissions(
+pub fn settings_feature_navigation_permissions(
     inventory: &access_control::ConsoleOperationCompiledInventory,
     policies: &[domain::RoleConsolePolicy],
     settings_features: &[access_control::SettingsFeatureInventoryEntry],

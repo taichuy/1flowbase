@@ -152,7 +152,6 @@ pub(super) fn run(
     Ok(result)
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/unix.rs"]
 mod tests;

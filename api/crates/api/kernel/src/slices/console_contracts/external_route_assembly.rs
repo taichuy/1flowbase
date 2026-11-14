@@ -20,14 +20,14 @@ pub(crate) fn axum_route_path(path: &str) -> String {
         .join("/")
 }
 
-pub(crate) struct ExternalMethodRouter<S> {
+pub struct ExternalMethodRouter<S> {
     router: MethodRouter<S>,
     methods: Vec<(&'static str, Option<&'static str>)>,
 }
 
 macro_rules! method {
     ($name:ident, $verb:literal) => {
-        pub(crate) fn $name<H, T, S>(handler: H) -> ExternalMethodRouter<S>
+        pub fn $name<H, T, S>(handler: H) -> ExternalMethodRouter<S>
         where
             H: Handler<T, S>,
             T: 'static,
@@ -45,7 +45,7 @@ method!(post, "POST");
 method!(any, "ANY");
 
 /// A JSON-RPC POST carrier retains the canonical MCP invocation binding as it is nested.
-pub(crate) fn mcp_post<H, T, S>(handler: H, binding_id: &'static str) -> ExternalMethodRouter<S>
+pub fn mcp_post<H, T, S>(handler: H, binding_id: &'static str) -> ExternalMethodRouter<S>
 where
     H: Handler<T, S>,
     T: 'static,
@@ -58,7 +58,7 @@ where
 }
 
 impl<S: Clone + Send + Sync + 'static> ExternalMethodRouter<S> {
-    pub(crate) fn post<H, T>(mut self, handler: H) -> Self
+    pub fn post<H, T>(mut self, handler: H) -> Self
     where
         H: Handler<T, S>,
         T: 'static,
@@ -69,20 +69,20 @@ impl<S: Clone + Send + Sync + 'static> ExternalMethodRouter<S> {
     }
 }
 
-pub(crate) struct ExternalRouteAssembly<S> {
+pub struct ExternalRouteAssembly<S> {
     router: Router<S>,
     routes: Vec<(String, String, Option<&'static str>)>,
 }
 
 impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             router: Router::new(),
             routes: Vec::new(),
         }
     }
 
-    pub(crate) fn route(mut self, path: &str, methods: ExternalMethodRouter<S>) -> Self {
+    pub fn route(mut self, path: &str, methods: ExternalMethodRouter<S>) -> Self {
         self.routes.extend(
             methods
                 .methods
@@ -93,19 +93,19 @@ impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
         self
     }
 
-    pub(crate) fn merge(mut self, other: Self) -> Self {
+    pub fn merge(mut self, other: Self) -> Self {
         self.routes.extend(other.routes);
         self.router = self.router.merge(other.router);
         self
     }
 
     /// Apply an extractor policy without losing the mounted endpoint inventory.
-    pub(crate) fn default_body_limit(mut self, limit: axum::extract::DefaultBodyLimit) -> Self {
+    pub fn default_body_limit(mut self, limit: axum::extract::DefaultBodyLimit) -> Self {
         self.router = self.router.layer(limit);
         self
     }
 
-    pub(crate) fn nest(mut self, prefix: &str, other: Self) -> Self {
+    pub fn nest(mut self, prefix: &str, other: Self) -> Self {
         self.routes
             .extend(other.routes.into_iter().map(|(method, path, binding)| {
                 (
@@ -119,7 +119,7 @@ impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
     }
 
     // The sole adapter for the existing Console construction boundary; no raw Router input.
-    pub(crate) fn console(
+    pub fn console(
         assembly: crate::routes::console_route_assembly::ConsoleRouteAssembly<S>,
     ) -> Self {
         let routes = assembly
@@ -145,7 +145,7 @@ impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
     }
 
     // Swagger owns these three routes in utoipa-swagger-ui; arbitrary Router conversion is absent.
-    pub(crate) fn docs() -> Self {
+    pub fn docs() -> Self {
         Self {
             router: utoipa_swagger_ui::SwaggerUi::new("/docs")
                 .config(utoipa_swagger_ui::Config::from("/openapi.json"))
@@ -157,7 +157,7 @@ impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
         }
     }
 
-    pub(crate) fn contributions(&self) -> Vec<ExternalEndpointContribution> {
+    pub fn contributions(&self) -> Vec<ExternalEndpointContribution> {
         self.routes
             .iter()
             .map(|(method, path, binding)| {
@@ -178,7 +178,7 @@ impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
             .collect()
     }
 
-    pub(crate) fn into_router(self) -> Router<S> {
+    pub fn into_router(self) -> Router<S> {
         self.router
     }
 }

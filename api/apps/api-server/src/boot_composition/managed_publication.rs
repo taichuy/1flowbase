@@ -1,5 +1,6 @@
 //! The ingress selects one complete host generation. Candidate construction never mutates the
 //! serving router, and publication contains no fallible work or await point.
+use crate::extension_bus::SnapshotAssembly;
 use std::{
     collections::BTreeMap,
     panic::AssertUnwindSafe,

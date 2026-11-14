@@ -1,23 +1,10 @@
-//! Generation-frozen managed services. Package declarations become ordinary host-owned console APIs.
-mod event_projection;
-mod interface;
-mod record_acl;
-pub(crate) mod record_permissions;
-mod registration;
-mod routes;
-pub(crate) mod stream;
-pub(crate) mod stream_ticket;
-pub(crate) use interface::registry_contribution;
-pub(crate) use registration::{
-    append_openapi, load, load_installations, ManagedServiceRegistration,
-};
-pub(crate) use routes::route_assembly;
-
+pub mod registration;
+pub use registration::ManagedServiceRegistration;
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
-pub(crate) struct ManagedServiceFailure(pub(crate) String);
+pub struct ManagedServiceFailure(pub String);
 impl ManagedServiceFailure {
-    fn from_runtime(error: &anyhow::Error) -> Option<Self> {
+    pub fn from_runtime(error: &anyhow::Error) -> Option<Self> {
         let runtime_core::runtime_backend::RuntimeBackendError::Contract(contract) =
             error.downcast_ref()?
         else {
@@ -40,8 +27,3 @@ impl ManagedServiceFailure {
         }
     }
 }
-
-#[cfg_attr(test, api_test_selection::group(core))]
-#[cfg(test)]
-#[path = "_tests/mod.rs"]
-mod tests;

@@ -9,22 +9,17 @@ use plugin_framework::extension_bus::{
 };
 use serde::Serialize;
 
-use super::{
-    input_assembly::ExtensionGraphInputAssembly,
-    production_host_extension_authentication_factories, production_interface_contributions,
-    AuthenticationAdapterFactoryBinding, AuthenticationAdapterFactoryRegistry,
-    InterfaceContributionCollector,
-};
+use super::{AuthenticationAdapterFactoryBinding, AuthenticationAdapterFactoryRegistry};
 
 pub const EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1: &str = "1flowbase.effective-extension-plan/v1";
 
 pub struct ExtensionBootSnapshot {
     generation_id: uuid::Uuid,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     dispatch_assemblies: std::sync::atomic::AtomicUsize,
     dispatch_owner: OnceLock<Weak<crate::generation_dispatch::GenerationDispatch>>,
     publication: Mutex<()>,
-    managed_composition: OnceLock<Arc<super::ManagedExtensionComposition>>,
+    managed_composition: OnceLock<Arc<dyn super::managed_activation::ManagedCompositionPort>>,
     graph: Arc<EffectiveExtensionGraph>,
     interface_registry: Option<Arc<interface_runtime::DynamicInterfaceRegistry>>,
     authentication_factories: Arc<AuthenticationAdapterFactoryRegistry>,
@@ -33,19 +28,6 @@ pub struct ExtensionBootSnapshot {
         OnceLock<Arc<crate::external_endpoint_catalog::ExternalEndpointCatalog>>,
     console_operation_snapshot:
         OnceLock<Arc<crate::console_operation_compilation::CompiledConsoleOperationSnapshot>>,
-}
-
-pub fn compile_extension_boot_snapshot(
-    graph: Arc<EffectiveExtensionGraph>,
-    assembly: &ExtensionGraphInputAssembly,
-) -> anyhow::Result<ExtensionBootSnapshot> {
-    let host_authentication_factories = production_host_extension_authentication_factories()
-        .activate(assembly.host_extension_manifests())?;
-    ExtensionBootSnapshot::compile(
-        graph,
-        assembly.interface_operations(),
-        host_authentication_factories,
-    )
 }
 
 impl std::fmt::Debug for ExtensionBootSnapshot {
@@ -59,25 +41,69 @@ impl std::fmt::Debug for ExtensionBootSnapshot {
 }
 
 impl ExtensionBootSnapshot {
-    #[cfg(test)]
-    pub(crate) fn record_dispatch_assembly(&self) {
+    pub fn begin_publication(
+        &self,
+        state: &Arc<crate::app_state::ApiState>,
+    ) -> anyhow::Result<std::sync::MutexGuard<'_, ()>> {
+        let guard = self
+            .publication
+            .lock()
+            .map_err(|_| anyhow::anyhow!("catalog publication lock poisoned"))?;
+        if self.console_operation_snapshot.get().is_some() || self.dispatch_owner.get().is_some() {
+            anyhow::bail!("complete catalog is already published");
+        }
+        if state
+            .extension_boot_snapshot
+            .as_ref()
+            .map(|boot| boot.generation_id())
+            != Some(self.generation_id)
+        {
+            anyhow::bail!("catalog state belongs to another generation");
+        }
+        Ok(guard)
+    }
+    pub fn publish_ready(
+        &self,
+        console: crate::console_operation_compilation::CompiledConsoleOperationSnapshot,
+        owner: &Arc<crate::generation_dispatch::GenerationDispatch>,
+        candidate: Arc<interface_runtime::CompiledInterfaceRegistry>,
+    ) -> anyhow::Result<()> {
+        self.console_operation_snapshot
+            .set(Arc::new(console))
+            .map_err(|_| {
+                anyhow::anyhow!("compiled Console operation snapshot is already published")
+            })?;
+        self.dispatch_owner
+            .set(Arc::downgrade(owner))
+            .map_err(|_| anyhow::anyhow!("generation dispatch already published"))?;
+        self.interface_registry
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("interface registry is absent"))?
+            .publish(candidate);
+        Ok(())
+    }
+    pub fn authentication_factories(&self) -> &AuthenticationAdapterFactoryRegistry {
+        &self.authentication_factories
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn record_dispatch_assembly(&self) {
         self.dispatch_assemblies
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    #[cfg_attr(test, api_test_selection::group(core, contracts))]
-    #[cfg(test)]
-    pub(crate) fn dispatch_assembly_count(&self) -> usize {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn dispatch_assembly_count(&self) -> usize {
         self.dispatch_assemblies
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 
-    pub(crate) fn generation_id(&self) -> uuid::Uuid {
+    pub fn generation_id(&self) -> uuid::Uuid {
         self.generation_id
     }
-    pub(crate) fn attach_managed_composition(
+    pub fn attach_managed_composition(
         &self,
-        composition: Arc<super::ManagedExtensionComposition>,
+        composition: Arc<dyn super::managed_activation::ManagedCompositionPort>,
     ) -> anyhow::Result<()> {
         self.managed_composition
             .set(composition)
@@ -85,7 +111,7 @@ impl ExtensionBootSnapshot {
     }
     /// A host generation owns a separate registry and projections, but keeps the boot-scoped
     /// native graph and activated authentication factories unchanged.
-    pub(crate) fn fork_generation(
+    pub fn fork_generation(
         &self,
         snapshots: BTreeMap<uuid::Uuid, Arc<super::ManagedWorkspaceSnapshot>>,
     ) -> anyhow::Result<Self> {
@@ -97,7 +123,7 @@ impl ExtensionBootSnapshot {
         .compile()?;
         let fork = Self {
             generation_id: uuid::Uuid::now_v7(),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             dispatch_assemblies: std::sync::atomic::AtomicUsize::new(0),
             dispatch_owner: OnceLock::new(),
             publication: Mutex::new(()),
@@ -115,7 +141,7 @@ impl ExtensionBootSnapshot {
         Ok(fork)
     }
 
-    pub(crate) fn set_pinned_managed_snapshots(
+    pub fn set_pinned_managed_snapshots(
         &self,
         snapshots: BTreeMap<uuid::Uuid, Arc<super::ManagedWorkspaceSnapshot>>,
     ) -> anyhow::Result<()> {
@@ -124,32 +150,31 @@ impl ExtensionBootSnapshot {
             .map_err(|_| anyhow::anyhow!("managed snapshots already pinned"))
     }
 
-    pub(crate) fn has_pinned_managed_snapshots(&self) -> bool {
+    pub fn has_pinned_managed_snapshots(&self) -> bool {
         self.managed_snapshots.get().is_some()
     }
 
-    pub(crate) fn managed_snapshot(
+    pub fn managed_snapshot(
         &self,
         workspace_id: uuid::Uuid,
     ) -> Option<Arc<super::ManagedWorkspaceSnapshot>> {
         self.managed_snapshots.get()?.get(&workspace_id).cloned()
     }
 
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn new(graph: Arc<EffectiveExtensionGraph>) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn new_ready(
+        graph: Arc<EffectiveExtensionGraph>,
+        authentication_factories: AuthenticationAdapterFactoryRegistry,
+    ) -> Self {
         Self {
             generation_id: uuid::Uuid::now_v7(),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             dispatch_assemblies: std::sync::atomic::AtomicUsize::new(0),
             dispatch_owner: OnceLock::new(),
             publication: Mutex::new(()),
             graph,
             interface_registry: None,
-            authentication_factories: Arc::new(
-                AuthenticationAdapterFactoryRegistry::built_in()
-                    .expect("built-in authentication factories must be valid"),
-            ),
+            authentication_factories: Arc::new(authentication_factories),
             managed_snapshots: OnceLock::new(),
             managed_composition: OnceLock::new(),
             external_endpoint_catalog: OnceLock::new(),
@@ -157,10 +182,11 @@ impl ExtensionBootSnapshot {
         }
     }
 
-    pub(crate) fn compile(
+    pub fn compile_ready(
         graph: Arc<EffectiveExtensionGraph>,
         descriptors: &[plugin_framework::HostExtensionInterfaceOperationManifest],
         host_authentication_factories: Vec<AuthenticationAdapterFactoryBinding>,
+        mut authentication_factories: AuthenticationAdapterFactoryRegistry,
     ) -> anyhow::Result<Self> {
         if !descriptors.is_empty() {
             anyhow::bail!("host interface operation descriptors have no registered native handler");
@@ -174,11 +200,10 @@ impl ExtensionBootSnapshot {
         let interface_registry = Arc::new(interface_runtime::DynamicInterfaceRegistry::new(
             interface_snapshot,
         ));
-        let mut authentication_factories = AuthenticationAdapterFactoryRegistry::built_in()?;
         authentication_factories.activate_host_extensions(host_authentication_factories)?;
         Ok(Self {
             generation_id: uuid::Uuid::now_v7(),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             dispatch_assemblies: std::sync::atomic::AtomicUsize::new(0),
             dispatch_owner: OnceLock::new(),
             publication: Mutex::new(()),
@@ -190,15 +215,6 @@ impl ExtensionBootSnapshot {
             external_endpoint_catalog: OnceLock::new(),
             console_operation_snapshot: OnceLock::new(),
         })
-    }
-
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn compile_for_test(
-        graph: Arc<EffectiveExtensionGraph>,
-        descriptors: &[plugin_framework::HostExtensionInterfaceOperationManifest],
-    ) -> anyhow::Result<Self> {
-        Self::compile(graph, descriptors, Vec::new())
     }
 
     pub fn graph(&self) -> &EffectiveExtensionGraph {
@@ -217,7 +233,7 @@ impl ExtensionBootSnapshot {
         self.interface_registry.as_ref()
     }
 
-    pub(crate) fn publish_external_endpoint_catalog(
+    pub fn publish_external_endpoint_catalog(
         &self,
         catalog: crate::external_endpoint_catalog::ExternalEndpointCatalog,
     ) -> &Arc<crate::external_endpoint_catalog::ExternalEndpointCatalog> {
@@ -225,20 +241,20 @@ impl ExtensionBootSnapshot {
             .get_or_init(|| Arc::new(catalog))
     }
 
-    pub(crate) fn external_endpoint_catalog(
+    pub fn external_endpoint_catalog(
         &self,
     ) -> Option<&Arc<crate::external_endpoint_catalog::ExternalEndpointCatalog>> {
         self.external_endpoint_catalog.get()
     }
 
     #[cfg(feature = "test-support")]
-    pub(crate) fn console_operation_snapshot_for_test_support(
+    pub fn console_operation_snapshot_for_test_support(
         &self,
     ) -> Option<&crate::console_operation_compilation::CompiledConsoleOperationSnapshot> {
         self.console_operation_snapshot.get().map(AsRef::as_ref)
     }
 
-    pub(crate) fn dispatch_owner(
+    pub fn dispatch_owner(
         &self,
     ) -> Result<Arc<crate::generation_dispatch::GenerationDispatch>, crate::error_response::ApiError>
     {
@@ -248,107 +264,7 @@ impl ExtensionBootSnapshot {
             .ok_or_else(crate::generation_dispatch::unavailable)
     }
 
-    /// Transfer the returned strong owner into an external serving/candidate root.
-    /// This snapshot only stores Weak; retaining state or metadata alone is not execution admission.
-    pub(crate) fn publish_complete_catalog(
-        &self,
-        state: &Arc<crate::app_state::ApiState>,
-    ) -> anyhow::Result<Arc<crate::generation_dispatch::GenerationDispatch>> {
-        self.publish_complete_catalog_inner(state, None)
-    }
-
-    pub(crate) fn publish_complete_catalog_with_route_assembly(
-        &self,
-        state: &Arc<crate::app_state::ApiState>,
-        assembly: crate::routes::console_route_assembly::ConsoleRouteAssembly<
-            Arc<crate::app_state::ApiState>,
-        >,
-    ) -> anyhow::Result<Arc<crate::generation_dispatch::GenerationDispatch>> {
-        self.publish_complete_catalog_inner(state, Some(assembly))
-    }
-
-    fn publish_complete_catalog_inner(
-        &self,
-        state: &Arc<crate::app_state::ApiState>,
-        assembly: Option<
-            crate::routes::console_route_assembly::ConsoleRouteAssembly<
-                Arc<crate::app_state::ApiState>,
-            >,
-        >,
-    ) -> anyhow::Result<Arc<crate::generation_dispatch::GenerationDispatch>> {
-        let _publication = self
-            .publication
-            .lock()
-            .map_err(|_| anyhow::anyhow!("catalog publication lock poisoned"))?;
-        if self.console_operation_snapshot.get().is_some() || self.dispatch_owner.get().is_some() {
-            anyhow::bail!("complete catalog is already published");
-        }
-        if state
-            .extension_boot_snapshot
-            .as_ref()
-            .map(|boot| boot.generation_id())
-            != Some(self.generation_id)
-        {
-            anyhow::bail!("catalog state belongs to another generation");
-        }
-        let owner = crate::generation_dispatch::GenerationDispatch::new(self.generation_id);
-        let registry = self
-            .interface_registry
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("interface registry is absent"))?;
-        let managed =
-            super::managed_interface::ManagedInterfaceFactory::new(state, self.graph.clone());
-        let mut collector = InterfaceContributionCollector::new(
-            interface_runtime::GraphFingerprint::new(self.graph.fingerprint().as_str())?,
-        )
-        .with_managed_invocations(managed.clone())
-        .with_api_event_observation(
-            state.api_docs.clone(),
-            crate::event_center::api_observer::ApiOperationRuleObserver::new(state),
-        )
-        .with_event_observer(crate::event_center::interface::InterfaceRuleObserver::new(
-            state,
-        ));
-        for contribution in production_interface_contributions(state, &owner)? {
-            collector.add(contribution)?;
-        }
-        for service in state.console_surface_registry.managed_services() {
-            collector.add(crate::managed_services::registry_contribution(
-                state, service,
-            )?)?;
-        }
-        let (candidate, console_operation_snapshot) = collector
-            .compile_complete_console_snapshot(state.console_operation_registry.inventory())?;
-        crate::event_center::api_catalog::validate_static_inventory(&candidate, &state.api_docs)?;
-        managed.bind_registry(&candidate)?;
-        let module = plugin_framework::extension_bus::compile_managed_interface_module(
-            candidate
-                .definitions()
-                .map(|definition| definition.interface_id().as_str()),
-        )?;
-        if !self.has_pinned_managed_snapshots() {
-            if let Ok(composition) = state.provider_runtime.managed_composition() {
-                composition.attach_interface_module(module)?;
-            }
-        }
-        self.authentication_factories
-            .validate_registry(&candidate)?;
-        owner
-            .compile_router(state, &candidate, assembly)
-            .map_err(|error| error.0)?;
-        self.console_operation_snapshot
-            .set(Arc::new(console_operation_snapshot))
-            .map_err(|_| {
-                anyhow::anyhow!("compiled Console operation snapshot is already published")
-            })?;
-        self.dispatch_owner
-            .set(Arc::downgrade(&owner))
-            .map_err(|_| anyhow::anyhow!("generation dispatch already published"))?;
-        registry.publish(candidate);
-        Ok(owner)
-    }
-
-    pub(crate) async fn authenticate_invocation<C, P>(
+    pub async fn authenticate_invocation<C, P>(
         &self,
         snapshot: Arc<interface_runtime::CompiledInterfaceRegistry>,
         binding: &interface_runtime::BindingId,

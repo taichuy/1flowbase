@@ -198,12 +198,7 @@ fn billing_credit_document_schemas_match_real_record_and_summary_serialization()
     };
     assert_wire_schema::<BillingCreditTransactionResponse>(&transaction);
     assert_wire_schema::<BillingPricingCatalogImportResponse>(
-        &crate::model_pricing_catalog::PricingRuleInstallSummary {
-            inserted: 1,
-            skipped: 2,
-            updated: 3,
-            deleted: 4,
-        },
+        &crate::model_pricing_catalog::PricingRuleInstallSummary::for_test_support(1, 2, 3, 4),
     );
     assert_wire_schema::<BillingPricingCatalogSyncResponse>(
         &control_plane::ports::PricingCatalogSyncSummary {

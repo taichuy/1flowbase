@@ -94,12 +94,12 @@ where
     }
 }
 
-pub(crate) struct AuthenticationAdapterFactoryBinding {
+pub struct AuthenticationAdapterFactoryBinding {
     factory: Arc<dyn ErasedAuthenticationAdapterFactory>,
 }
 
 impl AuthenticationAdapterFactoryBinding {
-    pub(crate) fn typed<C, P, F, Fut>(
+    pub fn typed<C, P, F, Fut>(
         activation: ActivatedAuthenticationAdapter,
         authenticate: F,
     ) -> Result<Self>
@@ -129,21 +129,21 @@ impl AuthenticationAdapterFactoryBinding {
 }
 
 #[derive(Default)]
-pub(crate) struct AuthenticationAdapterFactoryRegistry {
+pub struct AuthenticationAdapterFactoryRegistry {
     factories:
         BTreeMap<AuthenticationActivationIdentity, Arc<dyn ErasedAuthenticationAdapterFactory>>,
 }
 
 impl AuthenticationAdapterFactoryRegistry {
-    pub(crate) fn built_in() -> Result<Self> {
+    pub fn built_in_ready(domain: Vec<AuthenticationAdapterFactoryBinding>) -> Result<Self> {
         let mut registry = Self::default();
-        for binding in built_in_authentication_factories()? {
+        for binding in built_in_authentication_factories(domain)? {
             registry.register(binding)?;
         }
         Ok(registry)
     }
 
-    pub(crate) fn extend(
+    pub fn extend(
         &mut self,
         bindings: impl IntoIterator<Item = AuthenticationAdapterFactoryBinding>,
     ) -> Result<()> {
@@ -153,7 +153,7 @@ impl AuthenticationAdapterFactoryRegistry {
         Ok(())
     }
 
-    pub(crate) fn activate_host_extensions(
+    pub fn activate_host_extensions(
         &mut self,
         bindings: impl IntoIterator<Item = AuthenticationAdapterFactoryBinding>,
     ) -> Result<()> {
@@ -172,7 +172,7 @@ impl AuthenticationAdapterFactoryRegistry {
         Ok(())
     }
 
-    pub(crate) fn validate_registry(&self, registry: &CompiledInterfaceRegistry) -> Result<()> {
+    pub fn validate_registry(&self, registry: &CompiledInterfaceRegistry) -> Result<()> {
         let mut expected = BTreeMap::new();
         for binding in registry.bindings() {
             let activation = registry
@@ -203,7 +203,7 @@ impl AuthenticationAdapterFactoryRegistry {
         self.factory(activation).map(|_| ())
     }
 
-    pub(crate) async fn authenticate<C, P>(
+    pub async fn authenticate<C, P>(
         &self,
         activation: &ActivatedAuthenticationAdapter,
         credential: C,
@@ -241,13 +241,13 @@ impl AuthenticationAdapterFactoryRegistry {
     }
 }
 
-pub(crate) struct PublicAuthenticationCredential;
+pub struct PublicAuthenticationCredential;
 
 pub(crate) const CONSOLE_SESSION_CREDENTIAL_CONTRACT_ID: &str =
     "api-server.console-session-credential";
 pub(crate) const CONSOLE_SESSION_CREDENTIAL_CONTRACT_VERSION: &str = "1";
 
-pub(crate) enum ConsoleAuthenticationCredential {
+pub enum ConsoleAuthenticationCredential {
     Protocol {
         state: Arc<ApiState>,
         headers: HeaderMap,
@@ -273,7 +273,7 @@ pub(crate) enum ConsoleAuthenticationCredential {
 }
 
 #[derive(Clone)]
-pub(crate) struct ConsoleProtocolAdmission {
+pub struct ConsoleProtocolAdmission {
     result: Arc<Mutex<Option<Result<(), crate::error_response::ApiError>>>>,
 }
 
@@ -284,7 +284,7 @@ impl ConsoleProtocolAdmission {
         }
     }
 
-    pub(crate) fn allowed() -> Self {
+    pub fn allowed() -> Self {
         Self {
             result: Arc::new(Mutex::new(Some(Ok(())))),
         }
@@ -336,24 +336,24 @@ impl ConsoleAuthenticationCredential {
     }
 }
 
-pub(crate) struct McpUserApiKeyAuthenticationCredential {
-    pub(crate) public_origin: Option<crate::routes::mcp_oauth::PublicOrigin>,
-    pub(crate) instance_id: String,
-    pub(crate) state: Arc<ApiState>,
-    pub(crate) headers: HeaderMap,
+pub struct McpUserApiKeyAuthenticationCredential {
+    pub public_origin: Option<crate::routes::mcp_oauth::PublicOrigin>,
+    pub instance_id: String,
+    pub state: Arc<ApiState>,
+    pub headers: HeaderMap,
 }
 
-pub(crate) struct ApplicationApiKeyAuthenticationCredential {
-    pub(crate) state: Arc<ApiState>,
-    pub(crate) bearer_token: String,
+pub struct ApplicationApiKeyAuthenticationCredential {
+    pub state: Arc<ApiState>,
+    pub bearer_token: String,
 }
 
-pub(crate) struct RuntimeModelAuthenticationCredential {
-    pub(crate) state: Arc<ApiState>,
-    pub(crate) headers: HeaderMap,
-    pub(crate) method: plugin_framework::DataModelOperationMethod,
-    pub(crate) model_code: String,
-    pub(crate) path: String,
+pub struct RuntimeModelAuthenticationCredential {
+    pub state: Arc<ApiState>,
+    pub headers: HeaderMap,
+    pub method: plugin_framework::DataModelOperationMethod,
+    pub model_code: String,
+    pub path: String,
 }
 
 fn activation(
@@ -372,8 +372,10 @@ fn activation(
     ))
 }
 
-fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactoryBinding>> {
-    Ok(vec![
+fn built_in_authentication_factories(
+    domain: Vec<AuthenticationAdapterFactoryBinding>,
+) -> Result<Vec<AuthenticationAdapterFactoryBinding>> {
+    let mut factories = vec![
         AuthenticationAdapterFactoryBinding::typed(
             activation(
                 "api-server.public-authentication",
@@ -384,44 +386,6 @@ fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactor
             )?,
             |_credential: PublicAuthenticationCredential| async {
                 Ok(interface_runtime::PublicPrincipal::new())
-            },
-        )?,
-        AuthenticationAdapterFactoryBinding::typed(
-            activation(
-                crate::routes::external_auth::interface::CALLBACK_AUTH_PLUGIN,
-                InterfaceExtensionTier::BuiltIn,
-                crate::routes::external_auth::interface::CALLBACK_AUTH_ADAPTER,
-                crate::routes::external_auth::interface::CALLBACK_AUTH_ACTIVATION,
-                PrincipalProfile::Public,
-            )?,
-            |credential: crate::routes::external_auth::ExternalCallbackCredential| async move {
-                credential.authenticate().await.map_err(|error| error.0)
-            },
-        )?,
-        AuthenticationAdapterFactoryBinding::typed(
-            activation(
-                "api-server.runtime-model-authentication",
-                InterfaceExtensionTier::BuiltIn,
-                "api-server.runtime-user",
-                "api-server.runtime-user.activation.v1",
-                PrincipalProfile::User,
-            )?,
-            |credential: RuntimeModelAuthenticationCredential| async move {
-                let context = require_session(&credential.state, &credential.headers)
-                    .await
-                    .map_err(|error| error.0)?;
-                if crate::routes::runtime_models::runtime_operation_requires_csrf(
-                    credential.state.as_ref(),
-                    &context.actor,
-                    credential.method,
-                    &credential.model_code,
-                    &credential.path,
-                ) && matches!(context.credential, RequestCredential::CookieSession(_))
-                {
-                    crate::middleware::require_csrf::require_csrf(&credential.headers, &context)
-                        .map_err(|error| error.0)?;
-                }
-                Ok(context.interface_principal())
             },
         )?,
         AuthenticationAdapterFactoryBinding::typed(
@@ -571,7 +535,9 @@ fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactor
                 .map_err(anyhow::Error::from)
             },
         )?,
-    ])
+    ];
+    factories.splice(1..1, domain);
+    Ok(factories)
 }
 
 type HostExtensionAuthenticationFactory = Arc<
@@ -581,7 +547,7 @@ type HostExtensionAuthenticationFactory = Arc<
 >;
 
 #[derive(Default)]
-pub(crate) struct HostExtensionAuthenticationFactoryCatalog {
+pub struct HostExtensionAuthenticationFactoryCatalog {
     factories: BTreeMap<(String, String), HostExtensionAuthenticationFactory>,
 }
 
@@ -593,7 +559,7 @@ impl HostExtensionAuthenticationFactoryCatalog {
             reason = "production registration Port; the baseline installs no authentication HostExtension"
         )
     )]
-    pub(crate) fn register(
+    pub fn register(
         &mut self,
         library: impl Into<String>,
         entry_symbol: impl Into<String>,
@@ -610,7 +576,7 @@ impl HostExtensionAuthenticationFactoryCatalog {
         Ok(())
     }
 
-    pub(crate) fn activate(
+    pub fn activate(
         &self,
         active_extensions: &[(PluginManifestV1, HostExtensionContributionManifest)],
     ) -> Result<Vec<AuthenticationAdapterFactoryBinding>> {
@@ -637,7 +603,7 @@ impl HostExtensionAuthenticationFactoryCatalog {
     }
 }
 
-pub(crate) fn production_host_extension_authentication_factories(
+pub fn production_host_extension_authentication_factories(
 ) -> HostExtensionAuthenticationFactoryCatalog {
     let mut catalog = HostExtensionAuthenticationFactoryCatalog::default();
     catalog

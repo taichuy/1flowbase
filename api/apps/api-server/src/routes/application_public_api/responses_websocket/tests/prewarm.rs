@@ -155,7 +155,7 @@ async fn delivered_failure_is_not_replaced_by_late_success_or_transport_close() 
         assert_eq!(first["type"], "response.failed");
         assert_eq!(first["response"]["error"]["code"], "original-provider-error");
         // Receiving the first terminal is the causal barrier before physical close.
-        notices.send(TransportTerminationNotice { owner_id:"owner-fixture".into(), fence, invocation_sequence:Some(lease.sequence()), connection_scope_id:Some(scope.id().into()), code:"provider_connection_max_age" }).unwrap();
+        notices.send(TransportTerminationNotice::for_test_support("owner-fixture".into(),fence,Some(lease.sequence()),Some(scope.id().into()),"provider_connection_max_age")).unwrap();
         assert!(matches!(socket.next().await.unwrap().unwrap(), Message::Close(_)), "close must not append another success or failure terminal");
         let _ = socket.close(None).await;
         finish.notify_one();

@@ -30,7 +30,7 @@ pub(crate) const BUNDLED_FRONTSTAGE_ORGANIZATION: &str = "1flowbase";
 pub(crate) const BUNDLED_FRONTSTAGE_BUNDLE_ID: &str = "frontstage_assistant";
 pub(crate) const BUNDLED_FRONTSTAGE_VERSION: &str = "1.2.0";
 const BUNDLED_FRONTSTAGE_PACKAGE_BYTES: &[u8] =
-    include_bytes!("../../resources/mcp/frontstage-assistant.json");
+    include_bytes!("../../../../../apps/api-server/resources/mcp/frontstage-assistant.json");
 
 fn rewrite_github_release_url(url: &str, github_proxy_url: Option<&str>) -> String {
     let Some(github_proxy_url) = github_proxy_url
@@ -224,18 +224,18 @@ pub struct ApiOfficialMcpBundleRegistry {
     workspace_id: Uuid,
 }
 
-pub(crate) struct OfficialMcpBundleRegistryDependencies {
-    pub(crate) root: PathBuf,
-    pub(crate) installation_repository: Arc<dyn ExtensionInstallationRepository>,
-    pub(crate) node_id: String,
-    pub(crate) actor_user_id: Uuid,
-    pub(crate) trusted_public_keys: Vec<plugin_framework::TrustedPublicKey>,
-    pub(crate) network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
-    pub(crate) workspace_id: Uuid,
+pub struct OfficialMcpBundleRegistryDependencies {
+    pub root: PathBuf,
+    pub installation_repository: Arc<dyn ExtensionInstallationRepository>,
+    pub node_id: String,
+    pub actor_user_id: Uuid,
+    pub trusted_public_keys: Vec<plugin_framework::TrustedPublicKey>,
+    pub network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
+    pub workspace_id: Uuid,
 }
 
 impl ApiOfficialMcpBundleRegistry {
-    pub(crate) fn bundled_frontstage_assistant_package() -> Result<domain::McpBundlePackage> {
+    pub fn bundled_frontstage_assistant_package() -> Result<domain::McpBundlePackage> {
         let package: domain::McpBundlePackage =
             serde_json::from_slice(BUNDLED_FRONTSTAGE_PACKAGE_BYTES)
                 .context("built-in Frontstage MCP package file is invalid")?;
@@ -284,7 +284,7 @@ impl ApiOfficialMcpBundleRegistry {
         }
         Ok(())
     }
-    pub(crate) fn new(
+    pub fn new(
         source: ResolvedOfficialMcpBundleSourceConfig,
         dependencies: OfficialMcpBundleRegistryDependencies,
     ) -> Self {

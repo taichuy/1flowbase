@@ -3,7 +3,7 @@ use super::*;
 use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
-pub(super) struct SnapshotLifetime(
+pub struct SnapshotLifetime(
     Mutex<LifetimeState>,
     tokio::sync::Notify,
     Option<Arc<tokio::sync::Notify>>,
@@ -14,15 +14,21 @@ struct LifetimeState {
     closed: bool,
     retired: bool,
 }
-pub(crate) struct SnapshotReference(Arc<SnapshotLifetime>);
+pub struct SnapshotReference(Arc<SnapshotLifetime>);
 impl SnapshotLifetime {
-    pub(super) fn with_reclamation_notify(notify: Arc<tokio::sync::Notify>) -> Self {
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_reference_count_for_test_support(&self, references: usize) {
+        self.0.lock().unwrap().references = references;
+    }
+
+    pub fn with_reclamation_notify(notify: Arc<tokio::sync::Notify>) -> Self {
         Self(Mutex::default(), tokio::sync::Notify::new(), Some(notify))
     }
-    pub(super) fn close_for_shutdown(&self) {
+    pub fn close_for_shutdown(&self) {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).closed = true;
     }
-    pub(super) async fn wait_references(&self) {
+    pub async fn wait_references(&self) {
         loop {
             let notified = self.1.notified();
             tokio::pin!(notified);
@@ -33,7 +39,7 @@ impl SnapshotLifetime {
             notified.await;
         }
     }
-    pub(super) fn ensure_open(&self) -> Result<()> {
+    pub fn ensure_open(&self) -> Result<()> {
         let state = self.0.lock().unwrap_or_else(|error| error.into_inner());
         if state.closed || state.retired {
             return Err(control_plane::errors::ControlPlaneError::Conflict(
@@ -44,14 +50,14 @@ impl SnapshotLifetime {
         Ok(())
     }
 
-    pub(super) fn reference_count(&self) -> usize {
+    pub fn reference_count(&self) -> usize {
         self.0
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .references
     }
 
-    pub(super) fn acquire(self: &Arc<Self>) -> Result<SnapshotReference> {
+    pub fn acquire(self: &Arc<Self>) -> Result<SnapshotReference> {
         let mut state = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if state.closed || state.retired {
             bail!("managed snapshot is closed for retirement");
@@ -62,7 +68,7 @@ impl SnapshotLifetime {
             .context("managed snapshot reference count is not representable")?;
         Ok(SnapshotReference(self.clone()))
     }
-    pub(super) fn close(self: &Arc<Self>) -> Result<SnapshotRetirement> {
+    pub fn close(self: &Arc<Self>) -> Result<SnapshotRetirement> {
         let mut state = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if state.closed || state.retired {
             bail!("managed snapshot retirement already started");
@@ -84,9 +90,9 @@ impl Drop for SnapshotReference {
         }
     }
 }
-pub(super) struct SnapshotRetirement(Arc<SnapshotLifetime>);
+pub struct SnapshotRetirement(Arc<SnapshotLifetime>);
 impl SnapshotRetirement {
-    pub(super) fn ensure_unreferenced(&self) -> Result<()> {
+    pub fn ensure_unreferenced(&self) -> Result<()> {
         if self
             .0
              .0
@@ -102,7 +108,7 @@ impl SnapshotRetirement {
         }
         Ok(())
     }
-    pub(super) fn retire(&self) {
+    pub fn retire(&self) {
         self.0 .0.lock().unwrap_or_else(|e| e.into_inner()).retired = true;
     }
 }
@@ -115,10 +121,10 @@ impl Drop for SnapshotRetirement {
     }
 }
 impl ManagedWorkspaceSnapshot {
-    pub(crate) fn freeze_reference(&self) -> Result<SnapshotReference> {
+    pub fn freeze_reference(&self) -> Result<SnapshotReference> {
         self.lifetime.acquire()
     }
-    pub(crate) fn freeze_publication(
+    pub fn freeze_publication(
         &self,
         contract: &str,
         version: &str,
@@ -132,54 +138,3 @@ impl ManagedWorkspaceSnapshot {
         }))
     }
 }
-
-impl ManagedExtensionComposition {
-    pub(crate) fn close_owned_admission(&self) {
-        self.reclamation.stop();
-        self.operations.close();
-    }
-    pub(crate) async fn wait_owned_shutdown(&self, budget: std::time::Duration) -> Result<()> {
-        self.reclamation.wait_stopped(budget).await?;
-        self.operations.wait(budget).await
-    }
-    pub(crate) async fn wait_for_shutdown(&self, budget: std::time::Duration) -> Result<()> {
-        self.reclamation.wait_stopped(budget).await?;
-        self.operations.wait(budget).await?;
-        // Assembly completes before graph gates close; admitted Create/E2 references may finish.
-        let lifetimes = {
-            let visible = self.snapshots.lock().await;
-            visible
-                .current
-                .values()
-                .chain(visible.retained.values().flatten())
-                .map(|snapshot| snapshot.lifetime.clone())
-                .collect::<Vec<_>>()
-        };
-        for lifetime in &lifetimes {
-            lifetime.close_for_shutdown();
-        }
-        tokio::time::timeout(budget, async {
-            for lifetime in &lifetimes {
-                lifetime.wait_references().await;
-            }
-        })
-        .await
-        .map_err(|_| {
-            anyhow::anyhow!(
-                "managed frozen references unfinished: {}",
-                lifetimes.iter().map(|l| l.reference_count()).sum::<usize>()
-            )
-        })?;
-        Ok(())
-    }
-    /// Called only after every owned operation, frozen reference and runtime worker has completed.
-    pub(crate) async fn cleanup_after_shutdown(&self) {
-        *self.snapshots.lock().await = ManagedSnapshots::default();
-        self.refresh_lifecycle_source_observations().await;
-    }
-}
-
-#[cfg_attr(test, api_test_selection::group(core))]
-#[cfg(test)]
-#[path = "_tests/lifetime.rs"]
-mod tests;

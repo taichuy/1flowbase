@@ -190,16 +190,19 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
     );
     host.mark_ready().unwrap();
     owned.provider_runtime = Arc::new(
-        ApiRuntimeServices::new_with_runtime_backend(
-            host.clone(),
-            Arc::new(assembly.compile_graph().unwrap()),
-        )
-        .unwrap()
-        .with_managed_composition(
+        crate::managed_runtime_assembly::bind_managed_runtime(
+            crate::provider_runtime::services_for_current_cfg(
+                ApiRuntimeServices::new_with_runtime_backend(
+                    host.clone(),
+                    Arc::new(assembly.compile_graph().unwrap()),
+                )
+                .unwrap(),
+            ),
             owned.store.clone(),
             owned.api_node_id.clone(),
             assembly.module_descriptors().to_vec(),
-        ),
+        )
+        .0,
     );
     let state = Arc::new(owned);
     let root_id: Uuid = sqlx::query_scalar("select id from users where account='root'")
@@ -499,16 +502,19 @@ pub(crate) async fn installed_verifier_fixture_with_second_provider(
     );
     host.mark_ready().unwrap();
     owned.provider_runtime = Arc::new(
-        ApiRuntimeServices::new_with_runtime_backend(
-            host.clone(),
-            Arc::new(assembly.compile_graph().unwrap()),
-        )
-        .unwrap()
-        .with_managed_composition(
+        crate::managed_runtime_assembly::bind_managed_runtime(
+            crate::provider_runtime::services_for_current_cfg(
+                ApiRuntimeServices::new_with_runtime_backend(
+                    host.clone(),
+                    Arc::new(assembly.compile_graph().unwrap()),
+                )
+                .unwrap(),
+            ),
             owned.store.clone(),
             owned.api_node_id.clone(),
             assembly.module_descriptors().to_vec(),
-        ),
+        )
+        .0,
     );
     let state = Arc::new(owned);
     let root_id: Uuid = sqlx::query_scalar("select id from users where account='root'")

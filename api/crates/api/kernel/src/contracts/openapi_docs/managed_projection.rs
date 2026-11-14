@@ -3,14 +3,14 @@
 use super::{DocsCatalog, DocsCatalogCategoryOperationsPage};
 use serde_json::Value;
 
-pub(crate) enum DocsOutputProjection<'a> {
+pub enum DocsOutputProjection<'a> {
     Catalog(&'a DocsCatalog),
     CategoryOperations(&'a DocsCatalogCategoryOperationsPage),
     OpenApi(&'a Value),
 }
 
 impl DocsOutputProjection<'_> {
-    pub(crate) fn managed_projection_schema() -> Option<serde_json::Value> {
+    pub fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(mp::union_schema(vec![
             mp::object_schema([
@@ -61,7 +61,7 @@ impl DocsOutputProjection<'_> {
             ]),
         ]))
     }
-    pub(crate) fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+    pub fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
         Some(match self {
             Self::Catalog(_field_0) => mp::object_value([
@@ -207,7 +207,6 @@ impl DocsOutputProjection<'_> {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/managed_projection.rs"]
 mod tests;

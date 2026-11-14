@@ -53,7 +53,7 @@ impl ApiOfficialI18nCatalogSource {
             .to_vec())
     }
 
-    pub(crate) fn fixed_release_urls(&self, catalog_version: &str) -> (String, String) {
+    pub fn fixed_release_urls(&self, catalog_version: &str) -> (String, String) {
         let release_tag = format!("i18n-catalog-v{catalog_version}");
         let asset = format!("i18n-catalog-seed-v{catalog_version}.json");
         let asset_url = format!("{}/{release_tag}/{asset}", self.release_base_url);
@@ -61,9 +61,8 @@ impl ApiOfficialI18nCatalogSource {
         (asset_url.clone(), format!("{asset_url}.sha256"))
     }
 
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn latest_url(&self) -> &str {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn latest_url(&self) -> &str {
         &self.latest_url
     }
 }
@@ -133,11 +132,7 @@ impl OfficialI18nCatalogSourcePort for ApiOfficialI18nCatalogSource {
     }
 }
 
-pub(crate) fn validate_sidecar(
-    bytes: &[u8],
-    expected_digest: &str,
-    catalog_version: &str,
-) -> Result<()> {
+pub fn validate_sidecar(bytes: &[u8], expected_digest: &str, catalog_version: &str) -> Result<()> {
     let document = std::str::from_utf8(bytes).context("official Seed SHA sidecar is not UTF-8")?;
     let mut fields = document.split_whitespace();
     let digest = fields

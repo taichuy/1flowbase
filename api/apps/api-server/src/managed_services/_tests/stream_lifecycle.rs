@@ -1,4 +1,5 @@
 use super::*;
+use crate::extension_bus::SnapshotAssembly;
 #[tokio::test]
 async fn socket_exit_and_mutation_cancel_the_ephemeral_call_and_release_registration() {
     let generation = streams()
