@@ -1,9 +1,16 @@
 use serde_json::{json, Value};
 
-pub(crate) const DEFAULT_INLINE_CHARS: usize = 4_000;
+test_support_item! { pub(crate), [
+
+]
+const DEFAULT_INLINE_CHARS: usize = 4_000;
+}
 const PAGE_ENVELOPE_RESERVE_CHARS: usize = 768;
 
-pub(crate) fn inline_limit(arguments: &Value) -> Result<usize, &'static str> {
+test_support_item! { pub(crate), [
+
+]
+fn inline_limit(arguments: &Value) -> Result<usize, &'static str> {
     let Some(value) = arguments.get("max_inline_chars") else {
         return Ok(DEFAULT_INLINE_CHARS);
     };
@@ -14,6 +21,7 @@ pub(crate) fn inline_limit(arguments: &Value) -> Result<usize, &'static str> {
         return Err("Invalid max_inline_chars");
     }
     Ok(value)
+}
 }
 
 pub(super) fn bounded_page(
@@ -68,42 +76,49 @@ pub(super) struct JsonLeaf {
     pub(super) total_chars: Option<usize>,
 }
 
+test_support_item! { pub(crate), [
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ContinuationCursor {
+]
+struct ContinuationCursor {
     pub(super) leaf_index: usize,
     pub(super) char_offset: usize,
     pub(super) selection_id: Option<u64>,
 }
+}
 
 impl ContinuationCursor {
-    pub(crate) fn parse(value: &str) -> Option<Self> {
-        if let Some(encoded) = value.strip_prefix("v3:") {
-            let mut parts = encoded.split(':');
-            let selection_id = u64::from_str_radix(parts.next()?, 16).ok()?;
-            let leaf_index = parts.next()?.parse().ok()?;
-            let char_offset = parts.next()?.parse().ok()?;
-            if parts.next().is_some() {
-                return None;
+    test_support_item! { pub(crate), [
+
+    ]
+    fn parse(value: &str) -> Option<Self> {
+            if let Some(encoded) = value.strip_prefix("v3:") {
+                let mut parts = encoded.split(':');
+                let selection_id = u64::from_str_radix(parts.next()?, 16).ok()?;
+                let leaf_index = parts.next()?.parse().ok()?;
+                let char_offset = parts.next()?.parse().ok()?;
+                if parts.next().is_some() {
+                    return None;
+                }
+                return Some(Self {
+                    leaf_index,
+                    char_offset,
+                    selection_id: Some(selection_id),
+                });
             }
-            return Some(Self {
-                leaf_index,
-                char_offset,
-                selection_id: Some(selection_id),
-            });
-        }
-        if let Some(encoded) = value.strip_prefix("v2:") {
-            let (leaf_index, char_offset) = encoded.split_once(':')?;
-            return Some(Self {
-                leaf_index: leaf_index.parse().ok()?,
-                char_offset: char_offset.parse().ok()?,
+            if let Some(encoded) = value.strip_prefix("v2:") {
+                let (leaf_index, char_offset) = encoded.split_once(':')?;
+                return Some(Self {
+                    leaf_index: leaf_index.parse().ok()?,
+                    char_offset: char_offset.parse().ok()?,
+                    selection_id: None,
+                });
+            }
+            Some(Self {
+                leaf_index: value.parse().ok()?,
+                char_offset: 0,
                 selection_id: None,
-            });
+            })
         }
-        Some(Self {
-            leaf_index: value.parse().ok()?,
-            char_offset: 0,
-            selection_id: None,
-        })
     }
 
     pub(super) fn encode(self) -> String {
@@ -282,11 +297,9 @@ pub(super) fn serialized(value: &Value) -> String {
     serde_json::to_string(value).expect("serde_json::Value serialization must be infallible")
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use super::ResultSelection;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/paging.rs"]
 mod tests;

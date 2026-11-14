@@ -193,9 +193,7 @@ async fn host_workflow_credentials_preserve_actual_role_revalidate_and_reject_re
         snapshot
     );
     let mut wrong_workspace = invoker.clone();
-    let super::super::super::RuntimeMcpAuthorization::ServerDelegation(delegation) =
-        &mut wrong_workspace.authorization;
-    delegation.workspace_id = Uuid::now_v7();
+    wrong_workspace.set_workflow_workspace_for_test(Uuid::now_v7());
     assert_eq!(
         wrong_workspace
             .prepare_workflow_credentials(run)

@@ -1,7 +1,11 @@
 use super::*;
 
-pub(super) async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiError> {
+test_support_item! { pub(super), [
+
+]
+async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiError> {
     call_inner(request, None).await
+}
 }
 
 pub(in super::super) async fn call_inner(
@@ -318,7 +322,10 @@ pub(in super::super) async fn call_inner(
     }
 }
 
-pub(super) async fn target_interface_failure(response: Response) -> VirtualToolOutcome {
+test_support_item! { pub(super), [
+
+]
+async fn target_interface_failure(response: Response) -> VirtualToolOutcome {
     let status = response.status();
     let payload = if matches!(
         status,
@@ -366,6 +373,7 @@ pub(super) async fn target_interface_failure(response: Response) -> VirtualToolO
         }
     }
     outcome
+}
 }
 
 pub(super) fn target_failure(

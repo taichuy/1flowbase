@@ -21,9 +21,12 @@ pub(super) fn file_schema() -> Value {
     })
 }
 
+test_support_item! { pub(super), [
 /// Merge the optional outer mcp_call.file into the nested business-tool arguments.
 /// No URL fetching, file bytes, or storage decisions occur at the MCP adapter.
-pub(super) fn merge_call_file(
+
+]
+fn merge_call_file(
     tool: &domain::McpToolRecord,
     call: &Value,
 ) -> Result<Option<Value>, &'static str> {
@@ -51,6 +54,7 @@ pub(super) fn merge_call_file(
         .expect("call is an object")
         .remove("file");
     Ok(Some(merged))
+}
 }
 
 fn valid_file_value(file: &Value) -> bool {

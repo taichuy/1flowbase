@@ -1,5 +1,5 @@
 pub use api_host_kernel::routes::mcp_management::bundles::*;
-pub(crate) mod openapi;
+pub mod openapi;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -47,7 +47,13 @@ async fn invoke(
     } else {
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
     };
-    crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
+    crate::routes::console_interface::invoke_non_create(
+        snapshot_state,
+        binding_id,
+        credential,
+        input,
+    )
+    .await
 }
 
 pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
@@ -163,48 +169,48 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(untagged)]
-pub(crate) enum McpBundleSourceBody {
+pub enum McpBundleSourceBody {
     OfficialCatalog(OfficialMcpBundleSelector),
     InstalledExtension(InstalledMcpExtensionSelector),
     BuiltinTemplate(BuiltinMcpTemplateSelector),
 }
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
-pub(crate) struct OfficialMcpBundleSelector {
+pub struct OfficialMcpBundleSelector {
     pub(crate) organization: String,
     pub(crate) bundle_id: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub(crate) struct InstalledMcpExtensionSelector {
+pub struct InstalledMcpExtensionSelector {
     pub(crate) extension_installation_id: String,
     pub(crate) instance_id: Option<String>,
-    pub(crate) integrity_override: Option<crate::routes::plugins::PluginRiskOverrideBody>,
+    pub(crate) integrity_override: Option<api_host_kernel::plugin_risk::PluginRiskOverrideBody>,
 }
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
-pub(crate) struct BuiltinMcpTemplateSelector {
+pub struct BuiltinMcpTemplateSelector {
     pub(crate) builtin_template_id: String,
     pub(crate) instance_id: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(untagged)]
-pub(crate) enum McpBundlePreviewSourceResponse {
+pub enum McpBundlePreviewSourceResponse {
     OfficialCatalog(domain::McpBundlePreview),
     InstalledExtension(InstalledMcpExtensionPreviewResponse),
     BuiltinTemplate(BuiltinMcpTemplatePreviewResponse),
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct BuiltinMcpTemplatePreviewResponse {
+pub struct BuiltinMcpTemplatePreviewResponse {
     pub(crate) builtin_template_id: String,
     pub(crate) workspace_application_status: String,
     pub(crate) preview: domain::McpBundlePreview,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct InstalledMcpExtensionPreviewResponse {
+pub struct InstalledMcpExtensionPreviewResponse {
     pub(crate) extension_installation_id: String,
     pub(crate) artifact_installation_status: String,
     pub(crate) workspace_application_status: String,
@@ -217,21 +223,21 @@ pub(crate) struct InstalledMcpExtensionPreviewResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(untagged)]
-pub(crate) enum McpBundleImportSourceResponse {
+pub enum McpBundleImportSourceResponse {
     OfficialCatalog(domain::McpBundleImportReport),
     InstalledExtension(InstalledMcpExtensionImportResponse),
     BuiltinTemplate(BuiltinMcpTemplateImportResponse),
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct BuiltinMcpTemplateImportResponse {
+pub struct BuiltinMcpTemplateImportResponse {
     pub(crate) builtin_template_id: String,
     pub(crate) workspace_application_status: String,
     pub(crate) import_report: domain::McpBundleImportReport,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct InstalledMcpExtensionImportResponse {
+pub struct InstalledMcpExtensionImportResponse {
     pub(crate) extension_installation_id: String,
     pub(crate) artifact_installation_status: String,
     pub(crate) workspace_application_status: String,
@@ -241,7 +247,7 @@ pub(crate) struct InstalledMcpExtensionImportResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct InstalledMcpExtensionIntegrityChallengeResponse {
+pub struct InstalledMcpExtensionIntegrityChallengeResponse {
     pub(crate) status: u16,
     pub(crate) code: String,
     pub(crate) message: String,
@@ -256,7 +262,7 @@ pub(crate) struct InstalledMcpExtensionIntegrityChallengeResponse {
 }
 
 #[derive(Debug, Default, Deserialize, utoipa::ToSchema, Serialize)]
-pub(crate) struct McpBundleLibraryVersionBody {
+pub struct McpBundleLibraryVersionBody {
     pub(crate) bundle_version: Option<String>,
 }
 
@@ -612,7 +618,7 @@ pub(crate) async fn import_official_bundle(
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ExportMcpBundleBody {
+pub struct ExportMcpBundleBody {
     pub(crate) organization: String,
     pub(crate) bundle_id: String,
     pub(crate) bundle_version: String,
@@ -621,7 +627,7 @@ pub(crate) struct ExportMcpBundleBody {
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ExportMcpInstanceBundleBody {
+pub struct ExportMcpInstanceBundleBody {
     pub(crate) organization: String,
     pub(crate) bundle_id: String,
     pub(crate) bundle_version: String,
@@ -637,7 +643,7 @@ pub(crate) enum McpInstanceBundleExportProfile {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct McpBundleExportDefaults {
+pub struct McpBundleExportDefaults {
     pub(crate) minimum_host_version: String,
     pub(crate) current_system_version: String,
 }
@@ -831,9 +837,7 @@ async fn read_bundle_bytes(multipart: &mut Multipart) -> Result<Vec<u8>, ApiErro
     Err(ControlPlaneError::InvalidInput("mcp_bundle_file").into())
 }
 
-pub(crate) fn parse_bundle_archive(
-    bytes: &[u8],
-) -> Result<domain::McpBundlePackage, ControlPlaneError> {
+pub fn parse_bundle_archive(bytes: &[u8]) -> Result<domain::McpBundlePackage, ControlPlaneError> {
     let mut archive = ZipArchive::new(Cursor::new(bytes))
         .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_archive"))?;
     if archive.is_empty() || archive.len() > MAX_BUNDLE_FILES {
@@ -929,7 +933,6 @@ pub(crate) fn parse_bundle_archive(
     })
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::parse_bundle_archive;

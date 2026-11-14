@@ -376,7 +376,6 @@ fn add_required_property(schema: &mut Value, property: &str) {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -416,12 +415,10 @@ mod tests {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/input_defaults.rs"]
 mod input_defaults_tests;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/empty_body_schema.rs"]
 mod empty_body_tests;

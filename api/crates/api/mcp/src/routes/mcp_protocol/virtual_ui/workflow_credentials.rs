@@ -251,6 +251,9 @@ async fn identity_context(
     Ok(RequestContext::server_delegation(user, actor))
 }
 
+test_support_item! { , [
+
+]
 fn console_request(request: WorkflowInternalHttpRequest) -> Result<(Request<Body>, usize)> {
     let uri: Uri = request
         .url
@@ -307,8 +310,12 @@ fn console_request(request: WorkflowInternalHttpRequest) -> Result<(Request<Body
     }
     Ok((output, request.max_response_bytes))
 }
+}
 
-pub(super) async fn dispatch_console_http(
+test_support_item! { pub(super), [
+
+]
+async fn dispatch_console_http(
     router: Router,
     request: WorkflowInternalHttpRequest,
 ) -> Result<WorkflowInternalHttpResponse> {
@@ -340,8 +347,4 @@ pub(super) async fn dispatch_console_http(
         body,
     })
 }
-
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-#[path = "../_tests/workflow_credentials/mod.rs"]
-mod tests;
+}

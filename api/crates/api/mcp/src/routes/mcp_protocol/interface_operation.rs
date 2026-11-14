@@ -37,12 +37,12 @@ pub(super) enum McpInvocationInput {
     },
 }
 
-pub(crate) struct McpForwardHeader {
+pub struct McpForwardHeader {
     pub(super) name: String,
     pub(super) value: Vec<u8>,
 }
 
-pub(crate) struct McpToolInvocationContext {
+pub struct McpToolInvocationContext {
     pub(super) headers: Vec<McpForwardHeader>,
     pub(super) client_context: super::client_context::McpClientContext,
     pub(super) user: domain::UserRecord,
@@ -535,7 +535,7 @@ impl InterfaceContract for McpInvocationTargetError {
 pub(super) type McpCallFuture<'a> =
     Pin<Box<dyn Future<Output = Result<McpCallOutcome, ApiError>> + Send + 'a>>;
 
-pub(crate) trait McpToolCallPort: Send + Sync + 'static {
+pub trait McpToolCallPort: Send + Sync + 'static {
     fn call(
         &self,
         name: String,

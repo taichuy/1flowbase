@@ -1,6 +1,5 @@
 //! Host-owned replay references are locators, never authorization credentials.
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 
@@ -13,20 +12,34 @@ use super::{
 };
 use crate::error_response::ApiError;
 
-pub(super) const READ_TOOL: &str = "mcp_resources_read";
-pub(super) const LIST_TOOL: &str = "mcp_resources_list";
-pub(super) const TEMPLATES_TOOL: &str = "mcp_resource_templates_list";
+test_support_item! { pub(super), [
+
+]
+const READ_TOOL: &str = "mcp_resources_read";
+}
+test_support_item! { pub(super), [
+
+]
+const LIST_TOOL: &str = "mcp_resources_list";
+}
+test_support_item! { pub(super), [
+
+]
+const TEMPLATES_TOOL: &str = "mcp_resource_templates_list";
+}
 #[path = "resources/discovery.rs"]
 mod discovery;
 pub(super) use discovery::list_result;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 const PREFIX: &str = "flowbase-resource://read/";
 
+test_support_item! { pub(super), [
 #[derive(Clone, Debug, serde::Serialize)]
 #[serde(transparent)]
-pub(super) struct ResourceReference(pub(super) extension_contracts::ResourceReference);
+]
+struct ResourceReference(pub(super) extension_contracts::ResourceReference);
+}
 impl std::ops::Deref for ResourceReference {
     type Target = extension_contracts::ResourceReference;
     fn deref(&self) -> &Self::Target {
@@ -39,13 +52,17 @@ impl std::ops::DerefMut for ResourceReference {
     }
 }
 impl ResourceReference {
-    pub(super) fn encode(&self) -> Result<String, &'static str> {
-        McpToolArguments::from_protocol(self.arguments.clone())
-            .map_err(|_| "Resource reference exceeds transport budget")?;
-        let uri = self.0.encode()?;
-        McpToolArguments::from_protocol(json!({"uri":uri}))
-            .map_err(|_| "Resource reference exceeds transport budget")?;
-        Ok(uri)
+    test_support_item! { pub(super), [
+
+    ]
+    fn encode(&self) -> Result<String, &'static str> {
+            McpToolArguments::from_protocol(self.arguments.clone())
+                .map_err(|_| "Resource reference exceeds transport budget")?;
+            let uri = self.0.encode()?;
+            McpToolArguments::from_protocol(json!({"uri":uri}))
+                .map_err(|_| "Resource reference exceeds transport budget")?;
+            Ok(uri)
+        }
     }
     pub(super) fn decode(uri: &str) -> Result<Self, &'static str> {
         McpToolArguments::from_protocol(json!({"uri":uri}))
@@ -270,8 +287,11 @@ pub(crate) async fn replay_for_import(
     .await
 }
 
+test_support_item! { pub(crate), [
 /// Replays an authorized source for either a native caller or a managed Host callback.
-pub(crate) async fn replay_for_actor(
+
+]
+async fn replay_for_actor(
     generation: &crate::generation_dispatch::GenerationLease,
     actor: &domain::ActorContext,
     user: domain::UserRecord,
@@ -391,6 +411,7 @@ pub(crate) async fn replay_for_actor(
         _ => Err(FileImportError::new("file_import_resource_read_failed")),
     }
 }
+}
 
 fn imported_file(
     result: &Value,
@@ -474,7 +495,14 @@ fn imported_file(
     })
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/resources.rs"]
 mod tests;
+
+#[cfg(any(test, feature = "test-support"))]
+impl ResourceReference {
+    #[doc(hidden)]
+    pub fn for_test(reference: extension_contracts::ResourceReference) -> Self {
+        Self(reference)
+    }
+}

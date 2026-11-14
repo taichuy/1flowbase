@@ -50,7 +50,6 @@ fn model_tool_content(value: Value) -> Value {
     }).collect())
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "../_tests/runtime_output.rs"]
 mod tests;

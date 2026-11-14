@@ -11,12 +11,12 @@ use crate::routes::console_interface::{
 };
 
 #[derive(Clone)]
-pub(crate) struct McpCoreDependencies {
-    pub(crate) store: storage_durable_postgres::MainDurableStore,
-    pub(crate) provider_secret_master_key: String,
+pub struct McpCoreDependencies {
+    pub store: storage_durable_postgres::MainDurableStore,
+    pub provider_secret_master_key: String,
 }
 
-pub(crate) enum McpCoreInput {
+pub enum McpCoreInput {
     GetCredential(String),
     SaveCredential(String, SaveMcpClientCredentialBody),
     DeleteCredential(String),
@@ -35,7 +35,7 @@ pub(crate) enum McpCoreInput {
     UpdateDiscoveryPolicy(String, UpdateMcpInstanceDiscoveryPolicyBody),
 }
 
-pub(crate) enum McpCoreOutput {
+pub enum McpCoreOutput {
     Credential(McpClientCredentialResponse),
     Instances(Vec<McpInstanceResponse>),
     Instance(Box<McpInstanceResponse>),
@@ -375,7 +375,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: McpCoreDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

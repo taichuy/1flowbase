@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 mod adapter;
-pub(crate) mod interface;
+pub mod interface;
 mod protocol;
-pub(crate) use adapter::port;
+pub use adapter::port;
 
 #[derive(Debug, Serialize)]
 pub struct WebMcpRegistrationResponse {
@@ -56,8 +56,7 @@ pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
 }
 
-pub(crate) fn route_assembly(
-) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
+pub fn route_assembly() -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
     crate::external_route_assembly::ExternalRouteAssembly::new()
         .route(
             "/webmcp/registrations",

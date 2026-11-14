@@ -13,7 +13,6 @@ use domain::{
     McpToolBindingRecord, McpToolRecord, McpToolStatus,
 };
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 use serde_json::json;
 
@@ -215,7 +214,10 @@ fn identity(kind: &str, owner: &str, key: &str) -> Uuid {
     id.copy_from_slice(&digest[..16]);
     Uuid::from_bytes(id)
 }
-pub(crate) fn append_service(
+test_support_item! { pub(crate), [
+
+]
+fn append_service(
     catalog: &mut McpCatalogSnapshot,
     instance: &McpInstanceRecord,
     service: &ManagedServiceRegistration,
@@ -344,8 +346,8 @@ pub(crate) fn append_service(
     }
     Ok(())
 }
+}
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/mcp_routes/managed_service_mcp.rs"]
 mod tests;

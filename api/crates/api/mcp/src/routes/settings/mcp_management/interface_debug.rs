@@ -20,13 +20,13 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub(crate) struct McpDebugDependencies {
-    pub(crate) store: storage_durable_postgres::MainDurableStore,
-    pub(crate) catalog: McpInterfaceCatalogDependencies,
-    pub(crate) dispatcher: Arc<dyn CallableDispatchPort>,
+pub struct McpDebugDependencies {
+    pub store: storage_durable_postgres::MainDurableStore,
+    pub catalog: McpInterfaceCatalogDependencies,
+    pub dispatcher: Arc<dyn CallableDispatchPort>,
 }
 
-pub(crate) struct McpDebugInput {
+pub struct McpDebugInput {
     pub(crate) body: McpDebugExecuteBody,
     pub(crate) forwarding: CallableDispatchForwarding,
 }
@@ -60,7 +60,7 @@ impl InterfaceContract for McpDebugInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) enum McpDebugOutput {
+pub enum McpDebugOutput {
     Json(Value),
     Target(CallableDispatchHttpResponse),
 }
@@ -120,7 +120,7 @@ impl InterfaceContract for McpDebugOutput {
 
 struct McpDebugAdapter(McpDebugDependencies);
 
-pub(crate) fn port(
+pub fn port(
     dependencies: McpDebugDependencies,
 ) -> Arc<dyn ConsoleInterfacePort<McpDebugInput, McpDebugOutput>> {
     Arc::new(McpDebugAdapter(dependencies))
@@ -179,7 +179,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[ConsoleInterfa
     mutating: true,
 }];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<McpDebugInput, McpDebugOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -193,11 +193,9 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableMcpDebugPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<McpDebugInput, McpDebugOutput> for UnavailableMcpDebugPort {
     fn execute<'a>(
@@ -213,7 +211,6 @@ impl ConsoleInterfacePort<McpDebugInput, McpDebugOutput> for UnavailableMcpDebug
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,3 +230,19 @@ mod tests {
 
 #[path = "interface_debug/event_projection.rs"]
 mod event_projection;
+
+#[cfg(any(test, feature = "test-support"))]
+impl McpDebugInput {
+    #[doc(hidden)]
+    pub fn forwarding_for_test(&self) -> &CallableDispatchForwarding {
+        &self.forwarding
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl McpDebugInput {
+    #[doc(hidden)]
+    pub fn for_test(body: McpDebugExecuteBody, forwarding: CallableDispatchForwarding) -> Self {
+        Self { body, forwarding }
+    }
+}

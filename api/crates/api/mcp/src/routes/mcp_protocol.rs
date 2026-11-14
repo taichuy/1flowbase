@@ -25,18 +25,18 @@ use interface_operation::{
     McpToolCallPort, McpToolInvocationContext,
 };
 
-pub(crate) mod client_context;
+pub mod client_context;
 mod input_schema;
 mod interface_operation;
 mod protocol_version;
-pub(crate) mod resources;
-pub(crate) mod result_delivery;
-pub(crate) mod virtual_ui;
+pub mod resources;
+pub mod result_delivery;
+pub mod virtual_ui;
 
 pub(crate) const JSON_RPC_RESPONSE_MAX_BYTES: usize = 256 * 1024;
-pub(crate) const MCP_INVOCATION_BINDING_ID: &str = "mcp.user-api-key.invoke.v1";
+pub const MCP_INVOCATION_BINDING_ID: &str = "mcp.user-api-key.invoke.v1";
 
-pub(crate) struct McpToolArguments(Value);
+pub struct McpToolArguments(Value);
 
 impl McpToolArguments {
     fn from_protocol(value: Value) -> Result<Self, ()> {
@@ -51,7 +51,7 @@ impl McpToolArguments {
     }
 }
 
-pub(crate) enum McpCallOutcome {
+pub enum McpCallOutcome {
     Success(Value),
     Error {
         code: i32,
@@ -83,8 +83,7 @@ pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
 }
 
-pub(crate) fn route_assembly(
-) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
+pub fn route_assembly() -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
     crate::external_route_assembly::ExternalRouteAssembly::new().route(
         "/mcp/:instance_id",
         crate::external_route_assembly::mcp_post(handle_mcp_request, MCP_INVOCATION_BINDING_ID),
@@ -334,20 +333,18 @@ fn protocol_call<'a>(method: &str, params: &'a Value) -> Result<(&'a str, Value)
     }
 }
 
-pub(crate) struct McpToolCallDependencies {
-    pub(crate) runtime_dependencies: virtual_ui::RuntimeInternalToolInvokerDependencies,
-    pub(crate) interface_catalog:
+pub struct McpToolCallDependencies {
+    pub runtime_dependencies: virtual_ui::RuntimeInternalToolInvokerDependencies,
+    pub interface_catalog:
         crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies,
-    pub(crate) interface_registry:
+    pub interface_registry:
         Arc<dyn crate::routes::mcp_management::interface_catalog::McpInterfaceRegistrySnapshotPort>,
-    pub(crate) interface_dispatch: Arc<dyn virtual_ui::McpInterfaceDispatchPort>,
+    pub interface_dispatch: Arc<dyn virtual_ui::McpInterfaceDispatchPort>,
 }
 
 struct McpToolCallAdapter(McpToolCallDependencies);
 
-pub(crate) fn mcp_tool_call_port(
-    dependencies: McpToolCallDependencies,
-) -> Arc<dyn McpToolCallPort> {
+pub fn mcp_tool_call_port(dependencies: McpToolCallDependencies) -> Arc<dyn McpToolCallPort> {
     Arc::new(McpToolCallAdapter(dependencies))
 }
 
@@ -415,7 +412,7 @@ impl McpToolCallPort for McpToolCallAdapter {
     }
 }
 
-pub(crate) fn compile_mcp_interface_registry(
+pub fn compile_mcp_interface_registry(
     port: Arc<dyn McpToolCallPort>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -531,18 +528,15 @@ fn response_envelope_bytes(response: &JsonRpcResponse) -> Option<usize> {
     counter.0.checked_sub(media_bytes)
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 fn valid_image_base64(data: &str) -> bool {
     result_delivery::media::valid_base64(data, false)
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "mcp_protocol/_tests/native_response.rs"]
 mod native_response_tests;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod issue_1246_tests {
     use super::*;

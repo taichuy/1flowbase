@@ -36,7 +36,7 @@ use crate::{
 };
 
 #[async_trait]
-pub(crate) trait McpUpstreamTransportPort: Send + Sync {
+pub trait McpUpstreamTransportPort: Send + Sync {
     async fn test_configuration(
         &self,
         endpoint: &str,
@@ -69,7 +69,7 @@ pub(crate) trait McpUpstreamTransportPort: Send + Sync {
 }
 
 #[derive(Debug)]
-pub(crate) struct McpUpstreamTransportError(String);
+pub struct McpUpstreamTransportError(String);
 
 impl McpUpstreamTransportError {
     pub(crate) fn new(message: String) -> Self {
@@ -83,19 +83,19 @@ impl std::fmt::Display for McpUpstreamTransportError {
     }
 }
 
-pub(crate) enum McpProxyTransportError {
+pub enum McpProxyTransportError {
     Connection,
     Execution,
 }
 
 #[derive(Clone)]
-pub(crate) struct McpUpstreamDependencies {
-    pub(crate) store: storage_durable_postgres::MainDurableStore,
-    pub(crate) provider_secret_master_key: String,
-    pub(crate) transport: Arc<dyn McpUpstreamTransportPort>,
+pub struct McpUpstreamDependencies {
+    pub store: storage_durable_postgres::MainDurableStore,
+    pub provider_secret_master_key: String,
+    pub transport: Arc<dyn McpUpstreamTransportPort>,
 }
 
-pub(crate) enum McpUpstreamInput {
+pub enum McpUpstreamInput {
     List,
     Create(SaveMcpUpstreamConnectionBody),
     Update {
@@ -121,7 +121,7 @@ pub(crate) enum McpUpstreamInput {
     },
 }
 
-pub(crate) enum McpUpstreamOutput {
+pub enum McpUpstreamOutput {
     Connections(Vec<McpUpstreamConnectionResponse>),
     Created(McpUpstreamConnectionResponse),
     Connection(McpUpstreamConnectionResponse),
@@ -135,7 +135,7 @@ pub(crate) enum McpUpstreamOutput {
 
 struct McpUpstreamAdapter(McpUpstreamDependencies);
 
-pub(crate) fn port(
+pub fn port(
     dependencies: McpUpstreamDependencies,
 ) -> Arc<dyn ConsoleInterfacePort<McpUpstreamInput, McpUpstreamOutput>> {
     Arc::new(McpUpstreamAdapter(dependencies))
@@ -709,7 +709,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<McpUpstreamInput, McpUpstreamOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -723,11 +723,9 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableMcpUpstreamPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<McpUpstreamInput, McpUpstreamOutput> for UnavailableMcpUpstreamPort {
     fn execute<'a>(
@@ -743,7 +741,6 @@ impl ConsoleInterfacePort<McpUpstreamInput, McpUpstreamOutput> for UnavailableMc
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

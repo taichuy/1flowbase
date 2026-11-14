@@ -1099,7 +1099,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: interface_catalog::McpInterfaceCatalogDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -1121,7 +1121,7 @@ use serde_json::json;
 
 #[cfg(test)]
 use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
-#[cfg_attr(test, api_test_selection::group(routes))]
+
 #[cfg(test)]
 #[path = "interface_catalog_routes/_tests/event_projection.rs"]
 mod event_tests;

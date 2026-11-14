@@ -260,27 +260,27 @@ fn forwarding_and_bytes() {
         interface_debug::{McpDebugInput, McpDebugOutput},
     };
     let nested = json!({SECRET: {"innocent": SECRET, "url": format!("https://user:{SECRET}@example.invalid")}});
-    let input = McpDebugInput {
-        body: McpDebugExecuteBody {
+    let input = McpDebugInput::for_test(
+        McpDebugExecuteBody {
             interface_id: "target.interface".into(),
             debug_response_mode: McpDebugResponseMode::ToolResult,
             mcp_arguments: nested.clone(),
             input_mapping: nested.clone(),
             output_mapping: nested,
         },
-        forwarding: CallableDispatchForwarding {
+        CallableDispatchForwarding {
             cookie: Some(SECRET.as_bytes().to_vec()),
             authorization: Some(SECRET.as_bytes().to_vec()),
             csrf_token: Some(SECRET.as_bytes().to_vec()),
             ..Default::default()
         },
-    };
+    );
     let projected = view(&input);
     assert!(projected.value.get("forwarding").is_none());
     assert_eq!(projected.value["body"]["mcp_arguments"]["kind"], "object");
     assert_safe_frame(ManagedInterfaceInput::Before { input: projected });
     assert_eq!(
-        input.forwarding.authorization.as_deref(),
+        input.forwarding_for_test().authorization.as_deref(),
         Some(SECRET.as_bytes())
     );
     let body = SECRET.repeat(100_000).into_bytes();

@@ -556,7 +556,8 @@ pub(super) async fn app_and_runtime_host_from_config(
     let generation_publisher = managed_publication::ManagedGenerationPublisher::new(
         &state, config.clone(), generation_host_contributions, initial_router,
     )?;
-    file_import_port.bind(&generation_publisher)?;
+    let file_import_publisher: Arc<dyn api_host_kernel::resource_import_ports::CurrentGenerationSource> = generation_publisher.clone();
+    file_import_port.bind(Arc::downgrade(&file_import_publisher), Arc::new(crate::mcp_assembly::ApplicationLogExchange))?;
     managed_composition.attach_generation_publisher(Arc::downgrade(&generation_publisher))?;
     let communication_worker = crate::communication_runtime::CommunicationWorker::spawn(state.clone(), generation_owner);
     Ok((

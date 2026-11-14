@@ -49,8 +49,13 @@ impl ApplicationLogsPort for ApiFileImportPort {
         Box::pin(async move {
             request.validate()?;
             let (state, actor, lease) = self.exchange_caller(binding, request.permission()).await?;
-            let result =
-                crate::application_log_exchange::execute(&state, &actor, request.clone()).await;
+            let result = self
+                .binding
+                .get()
+                .ok_or_else(|| HostServiceError::new("host_service_unavailable"))?
+                .application_logs
+                .execute(&state.state, &actor, request.clone())
+                .await;
             let result = match result {
                 Ok(value) => Ok(value),
                 Err(error) => Err(safe_api_error(error).await),
@@ -203,7 +208,6 @@ async fn http_request(
         .map_err(|_| HostServiceError::new("http_egress_request_failed"))
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "../_tests/exchange_host_service_errors.rs"]
 mod exchange_host_service_errors;

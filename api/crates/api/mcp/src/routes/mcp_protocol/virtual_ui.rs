@@ -31,10 +31,16 @@ use super::{input_schema, resources, result_delivery};
 
 #[path = "virtual_ui/description_guard.rs"]
 mod description_guard;
+test_support_item! { , [
 #[path = "virtual_ui/file_params.rs"]
+]
 mod file_params;
+}
+test_support_item! { , [
 #[path = "virtual_ui/workflow_credentials.rs"]
+]
 mod workflow_credentials;
+}
 use crate::{
     error_response::ApiError,
     middleware::require_session::{with_server_delegated_request_context, RequestContext},
@@ -49,10 +55,17 @@ use description_guard::{description_tool, validate_tool_call_controls};
 const MCP_LIST: &str = portable_meta_tool_name("mcp_list");
 const MCP_GET: &str = portable_meta_tool_name("mcp_get");
 const MCP_RESULT: &str = portable_meta_tool_name("mcp_result");
+test_support_item! { , [
+
+]
 const MCP_CALL: &str = portable_meta_tool_name("mcp_call");
+}
 const CSRF_HEADER: HeaderName = HeaderName::from_static("x-csrf-token");
 const TARGET_INTERFACE_ERROR_BODY_LIMIT: usize = 16 * 1024;
 
+test_support_item! { , [
+
+]
 const fn portable_meta_tool_name(name: &'static str) -> &'static str {
     let bytes = name.as_bytes();
     assert!(
@@ -75,23 +88,27 @@ const fn portable_meta_tool_name(name: &'static str) -> &'static str {
     }
     name
 }
+}
 
+test_support_item! { pub(crate), [
 #[derive(Clone, Debug)]
-pub(crate) struct VirtualMcpScope {
+]
+struct VirtualMcpScope {
     instance_ids: Vec<String>,
+}
 }
 
 impl VirtualMcpScope {
-    pub(crate) fn from_instance_ids(instance_ids: Vec<String>) -> Self {
+    pub fn from_instance_ids(instance_ids: Vec<String>) -> Self {
         Self { instance_ids }
     }
-    pub(crate) fn instance_ids(&self) -> &[String] {
+    pub fn instance_ids(&self) -> &[String] {
         &self.instance_ids
     }
 
-    #[cfg_attr(test, api_test_selection::group(routes))]
-    #[cfg(test)]
-    pub(crate) fn selected(
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn selected(
         catalog: &domain::McpCatalogSnapshot,
         selected_instance_ids: &[String],
     ) -> Self {
@@ -109,7 +126,7 @@ impl VirtualMcpScope {
         }
     }
 
-    pub(crate) fn single(instance_id: String) -> Self {
+    pub fn single(instance_id: String) -> Self {
         Self {
             instance_ids: vec![instance_id],
         }
@@ -119,7 +136,7 @@ impl VirtualMcpScope {
         self.instance_ids.contains(&instance.instance_id)
     }
 
-    pub(crate) fn path_regex_enabled(&self, catalog: &domain::McpCatalogSnapshot) -> bool {
+    pub fn path_regex_enabled(&self, catalog: &domain::McpCatalogSnapshot) -> bool {
         let mut selected_instances = catalog
             .instances
             .iter()
@@ -137,7 +154,10 @@ impl VirtualMcpScope {
     }
 }
 
-pub(crate) enum VirtualToolOutcome {
+test_support_item! { pub(crate), [
+
+]
+enum VirtualToolOutcome {
     Success(Value),
     Error {
         code: i32,
@@ -145,9 +165,10 @@ pub(crate) enum VirtualToolOutcome {
         data: Option<Value>,
     },
 }
+}
 
 #[derive(Clone)]
-pub(crate) struct ApiMcpRuntimeToolInvoker {
+pub struct ApiMcpRuntimeToolInvoker {
     dependencies: RuntimeInternalToolInvokerDependencies,
     interface_catalog: Arc<dyn McpInterfaceCatalogPort>,
     interface_dispatch: Arc<dyn McpInterfaceDispatchPort>,
@@ -158,7 +179,7 @@ pub(crate) struct ApiMcpRuntimeToolInvoker {
     assistant_client: Option<Arc<crate::routes::assistant::AssistantClientToolBridge>>,
 }
 
-pub(crate) trait McpInterfaceCatalogPort: Send + Sync + 'static {
+pub trait McpInterfaceCatalogPort: Send + Sync + 'static {
     fn bindable_interface(
         &self,
         interface_id: &str,
@@ -166,12 +187,12 @@ pub(crate) trait McpInterfaceCatalogPort: Send + Sync + 'static {
 }
 
 #[derive(Clone)]
-pub(crate) struct McpInterfaceCatalogSnapshot {
+pub struct McpInterfaceCatalogSnapshot {
     entries: HashMap<String, domain::McpInterfaceCatalogEntry>,
 }
 
 impl McpInterfaceCatalogSnapshot {
-    pub(crate) fn new(entries: Vec<domain::McpInterfaceCatalogEntry>) -> Self {
+    pub fn new(entries: Vec<domain::McpInterfaceCatalogEntry>) -> Self {
         Self {
             entries: entries
                 .into_iter()
@@ -193,12 +214,12 @@ impl McpInterfaceCatalogPort for McpInterfaceCatalogSnapshot {
 }
 
 #[derive(Clone)]
-pub(crate) struct ConsoleRouterMcpInterfaceDispatchPort {
+pub struct ConsoleRouterMcpInterfaceDispatchPort {
     console_router: Router,
 }
 
 impl ConsoleRouterMcpInterfaceDispatchPort {
-    pub(crate) fn new(console_router: Router) -> Self {
+    pub fn new(console_router: Router) -> Self {
         Self { console_router }
     }
 }
@@ -235,7 +256,7 @@ impl McpInterfaceDispatchPort for ConsoleRouterMcpInterfaceDispatchPort {
 /// Interface catalog lookup and Console dispatch deliberately remain outside
 /// this boundary until their API-root port is extracted in the follow-up split.
 #[derive(Clone)]
-pub(crate) struct RuntimeInternalToolInvokerDependencies {
+pub struct RuntimeInternalToolInvokerDependencies {
     managed_services: Arc<[crate::managed_services::ManagedServiceRegistration]>,
     store: MainDurableStore,
     provider_secret_master_key: String,
@@ -243,7 +264,7 @@ pub(crate) struct RuntimeInternalToolInvokerDependencies {
 }
 
 impl RuntimeInternalToolInvokerDependencies {
-    pub(crate) fn new(
+    pub fn new(
         store: MainDurableStore,
         cache_store: Arc<dyn crate::host_infrastructure::CacheStore>,
         provider_secret_master_key: String,
@@ -258,7 +279,7 @@ impl RuntimeInternalToolInvokerDependencies {
             provider_secret_master_key,
         }
     }
-    pub(crate) fn with_managed_services(
+    pub fn with_managed_services(
         mut self,
         services: Vec<crate::managed_services::ManagedServiceRegistration>,
     ) -> Self {
@@ -270,14 +291,14 @@ impl RuntimeInternalToolInvokerDependencies {
 /// Creates runtime tool invokers from explicit runtime data dependencies.
 /// It owns no API state; interface catalog and dispatch are explicit ports.
 #[derive(Clone)]
-pub(crate) struct RuntimeInternalToolInvokerFactory {
+pub struct RuntimeInternalToolInvokerFactory {
     dependencies: RuntimeInternalToolInvokerDependencies,
     interface_catalog: Arc<dyn McpInterfaceCatalogPort>,
     interface_dispatch: Arc<dyn McpInterfaceDispatchPort>,
 }
 
 impl RuntimeInternalToolInvokerFactory {
-    pub(crate) fn new(
+    pub fn new(
         dependencies: RuntimeInternalToolInvokerDependencies,
         interface_catalog: Arc<dyn McpInterfaceCatalogPort>,
         interface_dispatch: Arc<dyn McpInterfaceDispatchPort>,
@@ -289,7 +310,7 @@ impl RuntimeInternalToolInvokerFactory {
         }
     }
 
-    pub(crate) async fn create_server_delegated(
+    pub async fn create_server_delegated(
         &self,
         headers: HeaderMap,
         actor: domain::ActorContext,
@@ -328,7 +349,7 @@ impl RuntimeInternalToolInvokerFactory {
     }
 
     /// Credential-only runs keep their Console host without loading the MCP catalog.
-    pub(crate) async fn create_workflow_credential_host(
+    pub async fn create_workflow_credential_host(
         &self,
         actor: domain::ActorContext,
     ) -> Result<ApiMcpRuntimeToolInvoker, ApiError> {
@@ -427,7 +448,7 @@ impl RuntimeActorDelegation {
 }
 
 impl ApiMcpRuntimeToolInvoker {
-    pub(crate) async fn new(
+    pub async fn new(
         factory: RuntimeInternalToolInvokerFactory,
         headers: HeaderMap,
         actor: domain::ActorContext,
@@ -438,7 +459,7 @@ impl ApiMcpRuntimeToolInvoker {
             .await
     }
 
-    pub(crate) fn with_assistant_client(
+    pub fn with_assistant_client(
         mut self,
         assistant_client: Option<Arc<crate::routes::assistant::AssistantClientToolBridge>>,
     ) -> Self {
@@ -632,7 +653,10 @@ impl VirtualToolOutcome {
     }
 }
 
-pub(crate) fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
+test_support_item! { pub(crate), [
+
+]
+fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
     let mut list_properties = serde_json::Map::from_iter([
         (
             "path".to_string(),
@@ -728,9 +752,11 @@ pub(crate) fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
     tools
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-pub(crate) fn provider_tools(
+}
+test_support_item! { pub(crate), [
+#[cfg(any(test, feature = "test-support"))]
+]
+fn provider_tools(
     catalog: &domain::McpCatalogSnapshot,
     scope: &VirtualMcpScope,
 ) -> Vec<Value> {
@@ -752,6 +778,7 @@ pub(crate) fn provider_tools(
             registration.provider_tool
         })
         .collect()
+}
 }
 
 pub(crate) fn apply_catalog_registration_capabilities(
@@ -785,8 +812,10 @@ pub(crate) fn apply_catalog_registration_capabilities(
     }
 }
 
+test_support_item! { pub(crate), [
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn dispatch(
+]
+async fn dispatch(
     dependencies: &RuntimeInternalToolInvokerDependencies,
     interface_catalog: &dyn McpInterfaceCatalogPort,
     interface_dispatch: &dyn McpInterfaceDispatchPort,
@@ -931,6 +960,7 @@ pub(crate) async fn dispatch(
         }),
     }
 }
+}
 
 async fn list(
     _dependencies: &RuntimeInternalToolInvokerDependencies,
@@ -1003,6 +1033,9 @@ async fn list(
     )))
 }
 
+test_support_item! { , [
+
+]
 fn get(
     catalog: &domain::McpCatalogSnapshot,
     scope: &VirtualMcpScope,
@@ -1037,6 +1070,7 @@ fn get(
         "response_fields": tool.response_fields
     })))
 }
+}
 
 async fn result(
     dependencies: &result_delivery::McpResultDeliveryDependencies,
@@ -1061,7 +1095,10 @@ async fn result(
     ))
 }
 
-pub(super) struct McpCallRequest<'a> {
+test_support_item! { pub(super), [
+
+]
+struct McpCallRequest<'a> {
     pub(super) dependencies: &'a RuntimeInternalToolInvokerDependencies,
     pub(super) interface_catalog: &'a dyn McpInterfaceCatalogPort,
     pub(super) interface_dispatch: &'a dyn McpInterfaceDispatchPort,
@@ -1071,6 +1108,7 @@ pub(super) struct McpCallRequest<'a> {
     pub(super) scope: &'a VirtualMcpScope,
     pub(super) arguments: &'a Value,
     pub(super) assistant_client: Option<&'a crate::routes::assistant::AssistantClientToolBridge>,
+}
 }
 
 fn string_argument<'a>(arguments: &'a Value, field: &str) -> Option<&'a str> {
@@ -1167,12 +1205,6 @@ pub(crate) fn interface_error(error: &anyhow::Error) -> VirtualToolOutcome {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-#[path = "_tests/virtual_ui.rs"]
-mod tests;
-
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/target_error_diagnostics.rs"]
 mod target_error_diagnostics;
@@ -1190,3 +1222,53 @@ mod interface_dispatch;
 
 pub(super) use interface_dispatch::call_inner;
 use interface_dispatch::*;
+
+#[cfg(any(test, feature = "test-support"))]
+impl RuntimeInternalToolInvokerDependencies {
+    #[doc(hidden)]
+    pub fn result_delivery_for_test(&self) -> &result_delivery::McpResultDeliveryDependencies {
+        &self.result_delivery
+    }
+}
+#[cfg(any(test, feature = "test-support"))]
+impl ApiMcpRuntimeToolInvoker {
+    #[doc(hidden)]
+    pub fn set_workflow_workspace_for_test(&mut self, workspace_id: uuid::Uuid) {
+        let RuntimeMcpAuthorization::ServerDelegation(delegation) = &mut self.authorization;
+        delegation.workspace_id = workspace_id;
+    }
+}
+#[cfg(any(test, feature = "test-support"))]
+impl<'a> McpCallRequest<'a> {
+    #[doc(hidden)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn for_test(
+        dependencies: &'a RuntimeInternalToolInvokerDependencies,
+        interface_catalog: &'a dyn McpInterfaceCatalogPort,
+        interface_dispatch: &'a dyn McpInterfaceDispatchPort,
+        headers: &'a HeaderMap,
+        actor: &'a domain::ActorContext,
+        catalog: &'a domain::McpCatalogSnapshot,
+        scope: &'a VirtualMcpScope,
+        arguments: &'a Value,
+        assistant_client: Option<&'a crate::routes::assistant::AssistantClientToolBridge>,
+    ) -> Self {
+        Self {
+            dependencies,
+            interface_catalog,
+            interface_dispatch,
+            headers,
+            actor,
+            catalog,
+            scope,
+            arguments,
+            assistant_client,
+        }
+    }
+}
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub mod test_support {
+    pub use super::description_guard::{description_tool, validate_tool_call_controls};
+    pub use super::interface_dispatch::{call, target_interface_failure};
+}

@@ -293,3 +293,11 @@ impl ManagedGenerationPublisher {
 #[cfg(test)]
 #[path = "_tests/generation_ownership.rs"]
 mod generation_ownership;
+
+impl api_host_kernel::resource_import_ports::CurrentGenerationSource
+    for ManagedGenerationPublisher
+{
+    fn current_generation(&self) -> Option<crate::generation_dispatch::GenerationLease> {
+        ManagedGenerationPublisher::current_generation(self)
+    }
+}

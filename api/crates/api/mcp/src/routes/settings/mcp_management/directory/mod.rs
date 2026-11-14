@@ -1,5 +1,5 @@
 mod typed;
-pub(crate) use typed::{compile_registry, McpDirectoryDependencies};
+pub use typed::{compile_registry, McpDirectoryDependencies};
 
 use super::*;
 use typed::{McpDirectoryInput, McpDirectoryOutput};
@@ -50,7 +50,7 @@ pub async fn get_instance_directory(
     Path(instance_id): Path<String>,
 ) -> Result<Json<ApiSuccess<McpInstanceDirectoryResponse>>, ApiError> {
     let snapshot_state = Arc::clone(&state);
-    let McpDirectoryOutput(snapshot) = crate::routes::console_interface::invoke(
+    let McpDirectoryOutput(snapshot) = crate::routes::console_interface::invoke_non_create(
         snapshot_state,
         "http.console.mcp.directory.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -74,7 +74,7 @@ pub async fn replace_instance_directory(
     Json(body): Json<ReplaceMcpInstanceDirectoryBody>,
 ) -> Result<Json<ApiSuccess<McpInstanceDirectoryResponse>>, ApiError> {
     let snapshot_state = Arc::clone(&state);
-    let McpDirectoryOutput(snapshot) = crate::routes::console_interface::invoke(
+    let McpDirectoryOutput(snapshot) = crate::routes::console_interface::invoke_non_create(
         snapshot_state,
         "http.console.mcp.directory.put.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },

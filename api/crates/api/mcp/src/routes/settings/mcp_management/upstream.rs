@@ -20,7 +20,7 @@ use crate::{
 use super::{upstream_interface, McpToolResponse};
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub(crate) struct SaveMcpUpstreamConnectionBody {
+pub struct SaveMcpUpstreamConnectionBody {
     pub(crate) name: String,
     pub(crate) endpoint: String,
     pub(crate) transport: String,
@@ -30,7 +30,7 @@ pub(crate) struct SaveMcpUpstreamConnectionBody {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct McpUpstreamConnectionResponse {
+pub struct McpUpstreamConnectionResponse {
     pub(crate) connection_id: String,
     pub(crate) workspace_id: String,
     pub(crate) name: String,
@@ -49,7 +49,7 @@ pub(crate) struct McpUpstreamConnectionResponse {
 
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub(crate) enum SaveMcpUpstreamCredentialBody {
+pub enum SaveMcpUpstreamCredentialBody {
     Bearer {
         token: String,
     },
@@ -60,7 +60,7 @@ pub(crate) enum SaveMcpUpstreamCredentialBody {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct McpUpstreamTestResponse {
+pub struct McpUpstreamTestResponse {
     pub(crate) connection_id: String,
     pub(crate) ok: bool,
     pub(crate) server_name: Option<String>,
@@ -71,7 +71,7 @@ pub(crate) struct McpUpstreamTestResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub(crate) struct TestMcpUpstreamConnectionDraftBody {
+pub struct TestMcpUpstreamConnectionDraftBody {
     pub(crate) connection_id: Option<String>,
     pub(crate) endpoint: String,
     pub(crate) transport: String,
@@ -81,7 +81,7 @@ pub(crate) struct TestMcpUpstreamConnectionDraftBody {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct McpUpstreamDraftTestResponse {
+pub struct McpUpstreamDraftTestResponse {
     pub(crate) ok: bool,
     pub(crate) server_name: Option<String>,
     pub(crate) server_version: Option<String>,
@@ -91,7 +91,7 @@ pub(crate) struct McpUpstreamDraftTestResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct McpUpstreamToolResponse {
+pub struct McpUpstreamToolResponse {
     pub(crate) remote_tool_name: String,
     pub(crate) description: Option<String>,
     #[schema(value_type = Object)]
@@ -104,7 +104,7 @@ pub(crate) struct McpUpstreamToolResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct McpUpstreamDiscoverResponse {
+pub struct McpUpstreamDiscoverResponse {
     pub(crate) connection_id: String,
     pub(crate) server_name: Option<String>,
     pub(crate) server_version: Option<String>,
@@ -114,18 +114,18 @@ pub(crate) struct McpUpstreamDiscoverResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema, Serialize)]
-pub(crate) struct ImportMcpUpstreamToolsBody {
+pub struct ImportMcpUpstreamToolsBody {
     pub(crate) remote_tool_names: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema, Serialize)]
-pub(crate) struct DebugMcpProxyToolBody {
+pub struct DebugMcpProxyToolBody {
     #[schema(value_type = Object)]
     pub(crate) arguments: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct DebugMcpProxyToolResponse {
+pub struct DebugMcpProxyToolResponse {
     #[schema(value_type = Object)]
     pub(crate) local_arguments: serde_json::Value,
     #[schema(value_type = Object)]
@@ -223,7 +223,13 @@ async fn invoke(
     } else {
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
     };
-    crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
+    crate::routes::console_interface::invoke_non_create(
+        snapshot_state,
+        binding_id,
+        credential,
+        input,
+    )
+    .await
 }
 
 #[utoipa::path(get, path = "/api/console/mcp/upstream-connections", responses((status = 200, body = [McpUpstreamConnectionResponse])))]

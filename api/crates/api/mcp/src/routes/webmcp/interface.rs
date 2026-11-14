@@ -18,19 +18,19 @@ use interface_runtime::{
 use serde_json::Value;
 use std::{future::Future, pin::Pin, sync::Arc};
 
-pub(crate) const OWNER: &str = "api-server.webmcp";
+pub const OWNER: &str = "api-server.webmcp";
 pub(crate) const REGISTRATIONS_BINDING: &str = "http.webmcp.registrations.v1";
 pub(crate) const TOOLS_BINDING: &str = "http.webmcp.tools.invoke.v1";
 const AUTHENTICATION: &str = "api-server.console.require-session";
 const ACTIVATION: &str = "api-server.console.require-session.activation.v1";
 const AUTHORIZATION: &str = "api-server.webmcp.cookie-session";
 
-pub(crate) struct WebMcpForwardHeader {
+pub struct WebMcpForwardHeader {
     pub(crate) name: String,
     pub(crate) value: Vec<u8>,
 }
 
-pub(crate) enum WebMcpInput {
+pub enum WebMcpInput {
     Registrations,
     Tool {
         instance_id: String,
@@ -40,12 +40,12 @@ pub(crate) enum WebMcpInput {
     },
 }
 
-pub(crate) enum WebMcpOutput {
+pub enum WebMcpOutput {
     Registrations(Vec<WebMcpRegistrationResponse>),
     Tool(InvokeWebMcpToolResponse),
 }
 
-pub(crate) struct WebMcpTargetError(pub(crate) ApiError);
+pub struct WebMcpTargetError(pub(crate) ApiError);
 impl InterfaceContract for WebMcpInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;
@@ -158,7 +158,7 @@ impl InterfaceContract for WebMcpTargetError {
 
 pub(crate) type WebMcpFuture<'a> =
     Pin<Box<dyn Future<Output = Result<WebMcpOutput, ApiError>> + Send + 'a>>;
-pub(crate) trait WebMcpPort: Send + Sync + 'static {
+pub trait WebMcpPort: Send + Sync + 'static {
     fn execute<'a>(&'a self, principal: &'a UserPrincipal, input: WebMcpInput) -> WebMcpFuture<'a>;
 }
 
@@ -207,7 +207,7 @@ impl InterfaceAuthorizationPort<UserPrincipal> for WebMcpAuthorization {
     }
 }
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn WebMcpPort>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError> {
     let owner = InterfaceOwner::new(OWNER).expect("static WebMCP owner");

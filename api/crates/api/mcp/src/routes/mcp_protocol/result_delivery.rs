@@ -15,54 +15,55 @@ use crate::host_infrastructure::CacheStore;
 mod selection;
 
 #[path = "result_delivery/media.rs"]
-pub(crate) mod media;
-pub(crate) use selection::ResultSelection;
+pub mod media;
+test_support_item! { pub(crate), [] use selection::ResultSelection; }
 
 #[path = "result_delivery/paging.rs"]
 mod paging;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use paging::page_leaves;
 
 use paging::{bounded_page, json_leaves, serialized, JsonLeaf};
-pub(crate) use paging::{inline_limit, ContinuationCursor, DEFAULT_INLINE_CHARS};
+test_support_item! { pub(crate), [] use paging::{inline_limit, ContinuationCursor, DEFAULT_INLINE_CHARS}; }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "result_delivery/_tests/cache.rs"]
 mod cache_tests;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "result_delivery/_tests/chunked_cache.rs"]
 mod chunked_cache_tests;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "result_delivery/_tests/protocol.rs"]
 mod protocol_tests;
 
+test_support_item! { pub(crate), [
 /// Storage dependencies for MCP result continuation and receipt delivery.
 ///
 /// The result-delivery core intentionally has no dependency on API state or
 /// route composition so runtime execution can retain only the resources it
 /// needs to persist and page a tool result.
 #[derive(Clone)]
-pub(crate) struct McpResultDeliveryDependencies {
+]
+struct McpResultDeliveryDependencies {
     store: MainDurableStore,
     cache_store: Arc<dyn CacheStore>,
 }
+}
 
 impl McpResultDeliveryDependencies {
-    pub(crate) fn new(store: MainDurableStore, cache_store: Arc<dyn CacheStore>) -> Self {
+    pub fn new(store: MainDurableStore, cache_store: Arc<dyn CacheStore>) -> Self {
         Self { store, cache_store }
     }
 }
 
-#[cfg(test)]
-#[cfg_attr(test, api_test_selection::group(contracts, routes))]
-pub(crate) const MAX_INLINE_CHARS: usize = 16_000;
+test_support_item! { pub(crate), [
+#[cfg(any(test, feature = "test-support"))]
+]
+const MAX_INLINE_CHARS: usize = 16_000;
+}
 pub(crate) const DETAIL_TTL_SECONDS: i64 = 10 * 60;
 
 const CACHE_KEY_PREFIX: &str = "mcp-result";
@@ -75,10 +76,13 @@ const DETAIL_CHUNK_MAX_BYTES: usize = EPHEMERAL_VALUE_MAX_BYTES;
 const MAX_DETAIL_TOTAL_BYTES: usize = MAX_DETAIL_CHUNKS * (EPHEMERAL_VALUE_MAX_BYTES / 2);
 const MAX_DETAIL_CHUNKS: usize = 16;
 
+test_support_item! { pub(crate), [
 #[derive(Clone, Copy)]
-pub(crate) enum CompletedOperation<'a> {
+]
+enum CompletedOperation<'a> {
     Read { operation_id: &'a str },
     Write { operation_id: &'a str },
+}
 }
 
 impl<'a> CompletedOperation<'a> {
@@ -93,8 +97,12 @@ impl<'a> CompletedOperation<'a> {
     }
 }
 
-pub(crate) fn exceeds_inline_limit(detail: &Value, inline_chars: usize) -> bool {
+test_support_item! { pub(crate), [
+
+]
+fn exceeds_inline_limit(detail: &Value, inline_chars: usize) -> bool {
     contains_base64_like(detail, None) || serialized(detail).chars().count() > inline_chars
+}
 }
 
 pub(crate) fn tool_inline_limit(
@@ -114,7 +122,10 @@ pub(crate) fn tool_inline_limit(
         .unwrap_or(Ok(DEFAULT_INLINE_CHARS))
 }
 
-pub(crate) async fn deliver_result(
+test_support_item! { pub(crate), [
+
+]
+async fn deliver_result(
     dependencies: &McpResultDeliveryDependencies,
     actor: &ActorContext,
     operation: CompletedOperation<'_>,
@@ -188,6 +199,7 @@ pub(crate) async fn deliver_result(
     compact["detail"]["next_cursor"] = Value::Null;
     tool_result(bounded_page(&leaves, cursor, inline_chars, compact.clone()))
 }
+}
 
 fn selection_key(workspace_id: Uuid, result_ref: Uuid, selection_id: u64) -> String {
     format!("{CACHE_KEY_PREFIX}-selection:{workspace_id}:{result_ref}:{selection_id:016x}")
@@ -215,15 +227,17 @@ async fn save_selection(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-pub(crate) async fn deliver_oversized_result(
+test_support_item! { pub(crate), [
+#[cfg(any(test, feature = "test-support"))]
+]
+async fn deliver_oversized_result(
     dependencies: &McpResultDeliveryDependencies,
     actor: &ActorContext,
     operation: CompletedOperation<'_>,
     detail: Value,
 ) -> Value {
     deliver_cached_result(dependencies, actor, operation, &detail, None).await
+}
 }
 
 async fn deliver_cached_result(
@@ -300,7 +314,10 @@ async fn deliver_cached_result(
     tool_result(compact)
 }
 
-pub(crate) async fn read_result(
+test_support_item! { pub(crate), [
+
+]
+async fn read_result(
     dependencies: &McpResultDeliveryDependencies,
     actor: &ActorContext,
     result_ref: Uuid,
@@ -467,6 +484,7 @@ pub(crate) async fn read_result(
     }
     tool_result(bounded_page(&leaves, cursor, inline_chars, page))
 }
+}
 
 pub(crate) fn tool_result(value: Value) -> Value {
     // MCP CallToolResult.structuredContent must be an object. Keep business
@@ -484,9 +502,10 @@ pub(crate) fn tool_result(value: Value) -> Value {
     })
 }
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-pub(crate) async fn read_continuation(
+test_support_item! { pub(crate), [
+#[cfg(any(test, feature = "test-support"))]
+]
+async fn read_continuation(
     dependencies: &McpResultDeliveryDependencies,
     actor: &ActorContext,
     result_ref: Uuid,
@@ -502,6 +521,7 @@ pub(crate) async fn read_continuation(
         }),
     )
     .await
+}
 }
 
 fn receipt_projection(receipt: &control_plane::ports::McpResultReceipt) -> Value {
@@ -751,7 +771,6 @@ fn contains_base64_like(value: &Value, field_name: Option<&str>) -> bool {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod assistant_mcp_tests {
     use super::*;

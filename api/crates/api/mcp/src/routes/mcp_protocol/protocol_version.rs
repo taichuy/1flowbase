@@ -73,7 +73,6 @@ pub(super) fn project(mut result: Value, version: &str) -> Value {
     result
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/protocol_version.rs"]
 mod tests;

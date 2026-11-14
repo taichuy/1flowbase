@@ -1,20 +1,20 @@
-pub(crate) mod bundles;
-pub(crate) mod bundles_interface;
-pub(crate) mod debug_execute;
-pub(crate) mod directory;
+pub mod bundles;
+pub mod bundles_interface;
+pub mod debug_execute;
+pub mod directory;
 mod dto;
-pub(crate) mod interface_catalog;
-pub(crate) mod interface_catalog_routes;
-pub(crate) mod interface_core;
-pub(crate) mod interface_debug;
-pub(crate) mod interface_tools;
-pub(crate) use interface_catalog::mcp_interface_entry_from_capability;
+pub mod interface_catalog;
+pub mod interface_catalog_routes;
+pub mod interface_core;
+pub mod interface_debug;
+pub mod interface_tools;
+pub use interface_catalog::mcp_interface_entry_from_capability;
 mod projections;
-pub(crate) mod upstream;
-pub(crate) mod upstream_client;
-pub(crate) mod upstream_interface;
+pub mod upstream;
+pub mod upstream_client;
+pub mod upstream_interface;
 
-pub(crate) use interface_catalog::*;
+pub use interface_catalog::*;
 use projections::*;
 
 use std::{
@@ -22,7 +22,6 @@ use std::{
     sync::Arc,
 };
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use crate::openapi_docs::DocsCatalogOperation;
 
@@ -43,7 +42,6 @@ use control_plane::mcp_management::{
 use domain::mcp_management::{McpParameterDescriptor, McpParameterType};
 use serde::{Deserialize, Serialize};
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use serde_json::Value;
 
@@ -79,7 +77,13 @@ async fn invoke_core(
     } else {
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
     };
-    crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
+    crate::routes::console_interface::invoke_non_create(
+        snapshot_state,
+        binding_id,
+        credential,
+        input,
+    )
+    .await
 }
 
 async fn invoke_catalog(
@@ -91,7 +95,13 @@ async fn invoke_catalog(
     let snapshot_state = Arc::clone(&state);
     let credential =
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers };
-    crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
+    crate::routes::console_interface::invoke_non_create(
+        snapshot_state,
+        binding_id,
+        credential,
+        input,
+    )
+    .await
 }
 
 async fn invoke_tools(
@@ -107,7 +117,13 @@ async fn invoke_tools(
     } else {
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
     };
-    crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
+    crate::routes::console_interface::invoke_non_create(
+        snapshot_state,
+        binding_id,
+        credential,
+        input,
+    )
+    .await
 }
 
 async fn invoke_debug(
@@ -116,7 +132,7 @@ async fn invoke_debug(
     input: interface_debug::McpDebugInput,
 ) -> Result<interface_debug::McpDebugOutput, ApiError> {
     let snapshot_state = Arc::clone(&state);
-    crate::routes::console_interface::invoke(
+    crate::routes::console_interface::invoke_non_create(
         snapshot_state,
         "http.console.mcp.debug.execute.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -1096,6 +1112,5 @@ fn to_update_tool_command(
     })
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests;

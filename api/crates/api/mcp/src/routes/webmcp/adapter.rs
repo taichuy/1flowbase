@@ -23,10 +23,7 @@ struct WebMcpAdapter {
     dispatch: McpToolCallDependencies,
 }
 
-pub(crate) fn port(
-    store: MainDurableStore,
-    dispatch: McpToolCallDependencies,
-) -> Arc<dyn WebMcpPort> {
+pub fn port(store: MainDurableStore, dispatch: McpToolCallDependencies) -> Arc<dyn WebMcpPort> {
     Arc::new(WebMcpAdapter { store, dispatch })
 }
 

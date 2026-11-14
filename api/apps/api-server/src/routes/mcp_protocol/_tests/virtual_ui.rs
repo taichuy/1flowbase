@@ -533,17 +533,17 @@ async fn interface_wrapper_media_preserves_image_under_low_text_budget_and_conti
         domain::ActorContext::root(uuid::Uuid::from_u128(10), uuid::Uuid::from_u128(10), "root");
     let scope = VirtualMcpScope::single("selected".into());
     let arguments = json!({"tool_id":"lookup","arguments":{"query":"image"}});
-    let result = call(McpCallRequest {
-        dependencies: &dependencies,
-        interface_catalog: &interfaces,
-        interface_dispatch: &dispatch,
-        headers: &HeaderMap::new(),
-        actor: &actor,
-        catalog: &catalog,
-        scope: &scope,
-        arguments: &arguments,
-        assistant_client: None,
-    })
+    let result = call(McpCallRequest::for_test(
+        &dependencies,
+        &interfaces,
+        &dispatch,
+        &HeaderMap::new(),
+        &actor,
+        &catalog,
+        &scope,
+        &arguments,
+        None,
+    ))
     .await
     .unwrap();
     let VirtualToolOutcome::Success(result) = result else {
@@ -577,7 +577,7 @@ async fn interface_wrapper_media_preserves_image_under_low_text_budget_and_conti
     let result_ref =
         uuid::Uuid::parse_str(structured["detail"]["result_ref"].as_str().unwrap()).unwrap();
     let page = result_delivery::read_result(
-        &dependencies.result_delivery,
+        dependencies.result_delivery_for_test(),
         &actor,
         result_ref,
         &json!({"response_fields":["/path","/byte_count"],"max_inline_chars":1600}),
@@ -609,17 +609,17 @@ async fn interface_wrapper_media_invalid_results_fail_and_plain_text_remains_unc
             value: source,
             calls: Default::default(),
         };
-        let result = call(McpCallRequest {
-            dependencies: &dependencies,
-            interface_catalog: &interfaces,
-            interface_dispatch: &dispatch,
-            headers: &HeaderMap::new(),
-            actor: &actor,
-            catalog: &catalog,
-            scope: &scope,
-            arguments: &arguments,
-            assistant_client: None,
-        })
+        let result = call(McpCallRequest::for_test(
+            &dependencies,
+            &interfaces,
+            &dispatch,
+            &HeaderMap::new(),
+            &actor,
+            &catalog,
+            &scope,
+            &arguments,
+            None,
+        ))
         .await
         .unwrap();
         assert!(matches!(
@@ -635,17 +635,17 @@ async fn interface_wrapper_media_invalid_results_fail_and_plain_text_remains_unc
         calls: Default::default(),
     };
     catalog.tools[0].output_mapping = json!({"mcp_content":[]});
-    let result = call(McpCallRequest {
-        dependencies: &dependencies,
-        interface_catalog: &interfaces,
-        interface_dispatch: &dispatch,
-        headers: &HeaderMap::new(),
-        actor: &actor,
-        catalog: &catalog,
-        scope: &scope,
-        arguments: &arguments,
-        assistant_client: None,
-    })
+    let result = call(McpCallRequest::for_test(
+        &dependencies,
+        &interfaces,
+        &dispatch,
+        &HeaderMap::new(),
+        &actor,
+        &catalog,
+        &scope,
+        &arguments,
+        None,
+    ))
     .await
     .unwrap();
     assert!(matches!(
@@ -657,17 +657,17 @@ async fn interface_wrapper_media_invalid_results_fail_and_plain_text_remains_unc
     ));
     assert_eq!(dispatch.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
     catalog.tools[0].output_mapping = json!({"mappings":[]});
-    let result = call(McpCallRequest {
-        dependencies: &dependencies,
-        interface_catalog: &interfaces,
-        interface_dispatch: &dispatch,
-        headers: &HeaderMap::new(),
-        actor: &actor,
-        catalog: &catalog,
-        scope: &scope,
-        arguments: &arguments,
-        assistant_client: None,
-    })
+    let result = call(McpCallRequest::for_test(
+        &dependencies,
+        &interfaces,
+        &dispatch,
+        &HeaderMap::new(),
+        &actor,
+        &catalog,
+        &scope,
+        &arguments,
+        None,
+    ))
     .await
     .unwrap();
     let VirtualToolOutcome::Success(result) = result else {
@@ -888,16 +888,17 @@ async fn stale_or_unauthorized_resource_reads_reject_before_interface_dispatch()
     let catalog = readable_resource_catalog();
     let actor =
         domain::ActorContext::root(uuid::Uuid::from_u128(10), uuid::Uuid::from_u128(10), "root");
-    let reference = resources::ResourceReference(extension_contracts::ResourceReference {
-        v: 1,
-        user_id: actor.user_id,
-        workspace_id: actor.current_workspace_id,
-        instance_id: "selected".into(),
-        tool_id: "lookup".into(),
-        des_id: catalog.tools[0].des_id.clone(),
-        arguments: json!({"query":"file"}),
-        resource_uri: "file:///tmp/file.bin".into(),
-    });
+    let reference =
+        resources::ResourceReference::for_test(extension_contracts::ResourceReference {
+            v: 1,
+            user_id: actor.user_id,
+            workspace_id: actor.current_workspace_id,
+            instance_id: "selected".into(),
+            tool_id: "lookup".into(),
+            des_id: catalog.tools[0].des_id.clone(),
+            arguments: json!({"query":"file"}),
+            resource_uri: "file:///tmp/file.bin".into(),
+        });
     let uri = reference.encode().unwrap();
     let (_state, dependencies) = resource_dispatch_fixture().await;
     let interfaces = media_fixture_interfaces();
@@ -1161,17 +1162,17 @@ async fn mcp_call_file_param_reaches_existing_interface_dispatch() {
         "arguments":{"file_table_id":"attachments"},
         "file":image_file
     });
-    let result = call(McpCallRequest {
-        dependencies: &media_fixture_dependencies(),
-        interface_catalog: &media_fixture_interfaces(),
-        interface_dispatch: &dispatch_port,
-        headers: &headers,
-        actor: &actor,
-        catalog: &catalog,
-        scope: &scope,
-        arguments: &arguments,
-        assistant_client: None,
-    })
+    let result = call(McpCallRequest::for_test(
+        &media_fixture_dependencies(),
+        &media_fixture_interfaces(),
+        &dispatch_port,
+        &headers,
+        &actor,
+        &catalog,
+        &scope,
+        &arguments,
+        None,
+    ))
     .await
     .unwrap();
     assert!(matches!(result, VirtualToolOutcome::Success(_)));

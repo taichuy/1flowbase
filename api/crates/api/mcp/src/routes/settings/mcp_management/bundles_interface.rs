@@ -1,3 +1,4 @@
+use api_host_kernel::builtin_mcp::BUILTIN_FRONTSTAGE_CATALOG_ID;
 mod managed_projection;
 
 use std::sync::Arc;
@@ -37,16 +38,13 @@ use crate::{
         OfficialExtensionCatalogSourcePort,
     },
     official_mcp_bundles::OfficialMcpBundleSourcePort,
-    routes::{
-        console_interface::{
-            self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
-            ConsoleInterfaceTargetError, ConsoleLocaleHints,
-        },
-        plugins::extension_center::BUILTIN_FRONTSTAGE_CATALOG_ID,
+    routes::console_interface::{
+        self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
+        ConsoleInterfaceTargetError, ConsoleLocaleHints,
     },
 };
 
-pub(crate) enum McpBundlesInput {
+pub enum McpBundlesInput {
     ListOfficial {
         locale: ConsoleLocaleHints,
     },
@@ -99,7 +97,7 @@ pub(crate) enum McpBundlesInput {
     },
 }
 
-pub(crate) struct BundleArchive {
+pub struct BundleArchive {
     pub(crate) status: u16,
     pub(crate) content_type: &'static str,
     pub(crate) filename: String,
@@ -107,7 +105,7 @@ pub(crate) struct BundleArchive {
     pub(crate) headers: Vec<(String, String)>,
 }
 
-pub(crate) enum McpBundlesOutput {
+pub enum McpBundlesOutput {
     OfficialCatalog(crate::official_mcp_bundles::OfficialMcpBundleCatalogSnapshot),
     PreviewOfficial(McpBundlePreviewSourceResponse),
     ImportOfficial(McpBundleImportSourceResponse),
@@ -121,19 +119,19 @@ pub(crate) enum McpBundlesOutput {
     Deleted,
 }
 
-pub(crate) struct McpBundlesDependencies {
-    pub(crate) store: storage_durable_postgres::MainDurableStore,
-    pub(crate) official_mcp_bundle_source: Arc<dyn OfficialMcpBundleSourcePort>,
-    pub(crate) official_extension_catalog_source: Arc<dyn OfficialExtensionCatalogSourcePort>,
-    pub(crate) provider_install_root: String,
-    pub(crate) api_node_id: String,
-    pub(crate) bootstrap_workspace_id: Uuid,
-    pub(crate) interface_catalog: McpInterfaceCatalogDependencies,
+pub struct McpBundlesDependencies {
+    pub store: storage_durable_postgres::MainDurableStore,
+    pub official_mcp_bundle_source: Arc<dyn OfficialMcpBundleSourcePort>,
+    pub official_extension_catalog_source: Arc<dyn OfficialExtensionCatalogSourcePort>,
+    pub provider_install_root: String,
+    pub api_node_id: String,
+    pub bootstrap_workspace_id: Uuid,
+    pub interface_catalog: McpInterfaceCatalogDependencies,
 }
 
 struct McpBundlesAdapter(McpBundlesDependencies);
 
-pub(crate) fn port(
+pub fn port(
     dependencies: McpBundlesDependencies,
 ) -> Arc<dyn ConsoleInterfacePort<McpBundlesInput, McpBundlesOutput>> {
     Arc::new(McpBundlesAdapter(dependencies))
@@ -924,7 +922,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: true,
     },
 ];
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<McpBundlesInput, McpBundlesOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -938,11 +936,9 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableMcpBundlesPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<McpBundlesInput, McpBundlesOutput> for UnavailableMcpBundlesPort {
     fn execute<'a>(
@@ -958,7 +954,6 @@ impl ConsoleInterfacePort<McpBundlesInput, McpBundlesOutput> for UnavailableMcpB
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

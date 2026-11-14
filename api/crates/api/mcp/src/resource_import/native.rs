@@ -3,11 +3,15 @@ use super::*;
 use control_plane::file_management::{FileUploadService, FileUploadTarget, UploadFileCommand};
 use extension_contracts::FileImportResponse;
 
+test_support_item! { , [
+
+]
 const IMPORT_INTERFACE: &str = "terminal.files.import_resource";
+}
 
 /// Invoke inside the canonical handler before spawning work so selected MCP scope is captured.
 /// No task is spawned here; the generation and captured caller survive both authorization checks.
-pub(crate) async fn import_for_principal(
+pub async fn import_for_principal(
     state: Arc<ApiState>,
     principal: &interface_runtime::UserPrincipal,
     resource_uri: &str,
@@ -71,6 +75,9 @@ pub(crate) async fn import_for_principal(
     })
 }
 
+test_support_item! { , [
+
+]
 async fn current_native_caller(
     state: &ApiState,
     caller: &RuntimeCallerContext,
@@ -119,8 +126,4 @@ async fn current_native_caller(
     .await?;
     Ok((actor, user))
 }
-
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-#[path = "_tests/native.rs"]
-mod tests;
+}

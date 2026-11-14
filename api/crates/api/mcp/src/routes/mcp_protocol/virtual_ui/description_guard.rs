@@ -1,8 +1,11 @@
 use super::{visible_tool, VirtualMcpScope};
 use serde_json::Value;
 
+test_support_item! { pub(super), [
 /// Resolve only the referenced tool's current description; its own dependency is not traversed.
-pub(super) fn description_tool<'a>(
+
+]
+fn description_tool<'a>(
     catalog: &'a domain::McpCatalogSnapshot,
     scope: &VirtualMcpScope,
     tool: &'a domain::McpToolRecord,
@@ -15,8 +18,12 @@ pub(super) fn description_tool<'a>(
         None => Some(tool),
     }
 }
+}
 
-pub(super) fn validate_tool_call_controls(
+test_support_item! { pub(super), [
+
+]
+fn validate_tool_call_controls(
     arguments: &Value,
     tool: &domain::McpToolRecord,
     description: Option<&domain::McpToolRecord>,
@@ -75,4 +82,5 @@ pub(super) fn validate_tool_call_controls(
         }
     }
     Ok(())
+}
 }

@@ -6,10 +6,13 @@ use sha2::{Digest, Sha256};
 
 use super::{json_leaves, JsonLeaf};
 
+test_support_item! { pub(crate), [
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub(crate) struct ResultSelection {
+]
+struct ResultSelection {
     pub(crate) response_fields: Option<Vec<String>>,
     pub(crate) string_ranges: BTreeMap<String, StringRange>,
+}
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -21,7 +24,7 @@ pub(crate) struct StringRange {
 }
 
 impl ResultSelection {
-    pub(crate) fn parse(
+    pub fn parse(
         arguments: &Value,
         default_fields: Option<&[String]>,
     ) -> Result<Self, &'static str> {
@@ -115,7 +118,6 @@ fn includes(parent: &str, pointer: &str) -> bool {
             .is_some_and(|suffix| suffix.starts_with('/'))
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/selection.rs"]
 mod tests;

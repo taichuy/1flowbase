@@ -23,8 +23,8 @@ use std::sync::Arc;
 const COOKIE: &str = "mcp_oauth_browser";
 const PREFIX: &str = oauth::AUTHORIZATION_SERVER_PATH;
 type Service = crate::app_state::ApiMcpOAuthService;
-mod origin;
-pub(crate) use self::origin::request_public_origin;
+pub mod origin;
+pub use self::origin::request_public_origin;
 
 fn invalid() -> ProtocolError {
     OAuthError::invalid().into()
@@ -99,7 +99,7 @@ async fn rate_limit(state: &ApiState, key: &str, limit: u64) -> Result<(), Proto
     }
     Ok(())
 }
-pub(crate) fn route_assembly() -> ExternalRouteAssembly<Arc<ApiState>> {
+pub fn route_assembly() -> ExternalRouteAssembly<Arc<ApiState>> {
     ExternalRouteAssembly::new()
         .route(
             "/.well-known/oauth-authorization-server/api/public/mcp-oauth",

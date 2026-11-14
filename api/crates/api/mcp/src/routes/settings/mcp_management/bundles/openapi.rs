@@ -66,7 +66,6 @@ pub(crate) struct McpBundleLibraryDeleteResponse {
     pub deleted: bool,
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/openapi_contract.rs"]
 mod tests;

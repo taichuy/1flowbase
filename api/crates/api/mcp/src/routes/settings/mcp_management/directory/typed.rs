@@ -7,13 +7,13 @@ use crate::routes::console_interface::{
 use interface_runtime::{InterfaceContract, UserPrincipal};
 
 #[derive(Clone)]
-pub(crate) struct McpDirectoryDependencies {
-    pub(crate) store: storage_durable_postgres::MainDurableStore,
+pub struct McpDirectoryDependencies {
+    pub store: storage_durable_postgres::MainDurableStore,
 }
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum McpDirectoryInput {
+pub enum McpDirectoryInput {
     #[serde(serialize_with = "json_contract::path")]
     Read(String),
     #[serde(serialize_with = "json_contract::path_body")]
@@ -22,7 +22,7 @@ pub(crate) enum McpDirectoryInput {
 
 #[derive(serde::Serialize)]
 #[serde(transparent)]
-pub(crate) struct McpDirectoryOutput(pub(super) McpInstanceDirectoryResponse);
+pub struct McpDirectoryOutput(pub(super) McpInstanceDirectoryResponse);
 
 impl InterfaceContract for McpDirectoryInput {
     const CONTRACT_ID: &'static str = "console-mcp-directory-input";
@@ -129,7 +129,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: McpDirectoryDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -151,7 +151,7 @@ use serde_json::json;
 
 #[cfg(test)]
 use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
-#[cfg_attr(test, api_test_selection::group(routes))]
+
 #[cfg(test)]
 #[path = "_tests/event_projection.rs"]
 mod event_tests;

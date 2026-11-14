@@ -562,7 +562,6 @@ impl TargetArguments {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "debug_execute/_tests/empty_body.rs"]
 mod empty_body_tests;
@@ -599,7 +598,6 @@ fn set_path_value(target: &mut Map<String, Value>, path: &str, value: Value) {
     cursor.insert(segments[segments.len() - 1].to_string(), value);
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod server_binding_tests {
     use super::*;
@@ -734,7 +732,6 @@ mod server_binding_tests {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/input_defaults.rs"]
 mod input_defaults_tests;

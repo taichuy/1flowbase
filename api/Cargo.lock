@@ -168,6 +168,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "api-mcp"
+version = "0.6.3"
+dependencies = [
+ "access-control",
+ "anyhow",
+ "api-host-kernel",
+ "async-trait",
+ "axum",
+ "base16ct",
+ "base64 0.23.1",
+ "control-plane",
+ "control-plane-contracts",
+ "domain",
+ "extension-contracts",
+ "flate2",
+ "form_urlencoded",
+ "futures-util",
+ "http",
+ "interface-runtime",
+ "jsonschema",
+ "orchestration-runtime",
+ "percent-encoding",
+ "plugin-framework",
+ "postgres-test-support",
+ "rand 0.10.3",
+ "regex",
+ "reqwest",
+ "runtime-core",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "storage-durable-postgres",
+ "storage-ephemeral",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tower",
+ "tracing",
+ "url",
+ "utoipa",
+ "uuid",
+ "zip 9.0.3",
+]
+
+[[package]]
 name = "api-public-gateway"
 version = "0.6.3"
 dependencies = [
@@ -225,6 +271,7 @@ dependencies = [
  "anyhow",
  "api-applications",
  "api-host-kernel",
+ "api-mcp",
  "api-public-gateway",
  "api-server",
  "api-test-selection",
