@@ -82,3 +82,6 @@ pub fn event_source_catalog_for_test_support(
     use crate::event_center::catalog::EventSourceCatalogAssembly;
     std::sync::Arc::new(crate::app_state::EventSourceCatalog::for_test_support())
 }
+
+#[doc(hidden)]
+pub use support::runtime_event_stream_projection;

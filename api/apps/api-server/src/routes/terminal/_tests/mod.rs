@@ -371,3 +371,5 @@ async fn terminal_mcp_bindable_catalog_and_tool_creation_preserve_canonical_ids(
         );
     }
 }
+
+mod lifetime;

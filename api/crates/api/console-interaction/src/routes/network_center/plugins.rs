@@ -97,7 +97,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     route_assembly_with_plugin_upload_max_bytes(crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES)
 }
 
-pub(crate) mod plugins_interface;
+pub mod plugins_interface;
 
 pub(crate) fn route_assembly_with_plugin_upload_max_bytes(
     plugin_upload_max_bytes: usize,
@@ -551,7 +551,6 @@ pub(super) async fn mark_referenced_versions_not_uninstallable(
     Ok(())
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/plugins.rs"]
 mod tests;

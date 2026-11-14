@@ -118,7 +118,7 @@ async fn validated_actor(
     validate_binding(&state.store, &current).await
 }
 
-pub(crate) async fn validate_binding(
+pub async fn validate_binding(
     store: &storage_durable_postgres::MainDurableStore,
     current: &CommunicationBindingRecord,
 ) -> Result<ActorContext> {
@@ -349,7 +349,7 @@ async fn spawn_dispatch(
         "binding_application_changed"
     );
     let actor = validated_actor(state, input).await?;
-    let inner = crate::runtime_internal_tool_invoker_factory(state, &actor)
+    let inner = crate::generation_dispatch::GenerationDispatch::acquire(state).map_err(|_| anyhow::anyhow!("mcp_access_denied"))?.runtime_debug_mcp_factory(state, &actor)
         .await
         .map_err(|_| anyhow::anyhow!("mcp_access_denied"))?
         .create_server_delegated(
@@ -360,7 +360,7 @@ async fn spawn_dispatch(
         .await
         .map_err(|_| anyhow::anyhow!("mcp_access_denied"))?;
     let invoker = Arc::new(scoped_tools::ScopedTools {
-        inner: Arc::new(inner),
+        inner,
         scope: CommunicationHistoryScope {
             workspace_id: input.binding.workspace_id,
             instance_id: input.binding.instance_id,
@@ -571,7 +571,6 @@ pub(super) fn send_failure(error: &anyhow::Error) -> CommunicationProgress {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/execution.rs"]
 mod tests;

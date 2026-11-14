@@ -1,75 +1,13 @@
+use api_host_kernel::plugin_transport::{to_installation_response_with_artifact, to_artifact_instance_response, to_task_response, runtime_slot_for_contract};
 use super::*;
 
-pub(super) fn to_installation_response_with_artifact(
-    installation: domain::PluginInstallationRecord,
-    local_artifact: Option<domain::PluginArtifactInstanceRecord>,
-) -> Result<PluginInstallationResponse, ApiError> {
-    Ok(PluginInstallationResponse {
-        id: installation.id.to_string(),
-        provider_code: installation.provider_code,
-        runtime_slot: runtime_slot_for_contract(&installation.contract_version),
-        plugin_id: installation.plugin_id,
-        plugin_version: installation.plugin_version,
-        contract_version: installation.contract_version,
-        protocol: installation.protocol,
-        display_name: installation.display_name,
-        source_kind: installation.source_kind,
-        trust_level: installation.trust_level,
-        verification_status: installation.verification_status.as_str().to_string(),
-        desired_state: installation.desired_state.as_str().to_string(),
-        expected_checksum: installation.expected_checksum,
-        signature_status: installation.signature_status.as_str().to_string(),
-        signature_algorithm: installation.signature_algorithm,
-        signing_key_id: installation.signing_key_id,
-        local_artifact: local_artifact
-            .map(to_artifact_instance_response)
-            .transpose()?,
-        metadata_json: installation.metadata_json,
-        created_at: format_time(installation.created_at)?,
-        updated_at: format_time(installation.updated_at)?,
-    })
-}
 
-pub(super) fn to_artifact_instance_response(
-    artifact: domain::PluginArtifactInstanceRecord,
-) -> Result<PluginArtifactInstanceResponse, ApiError> {
-    Ok(PluginArtifactInstanceResponse {
-        node_id: artifact.node_id,
-        installation_id: artifact.installation_id.to_string(),
-        local_version: artifact.local_version,
-        local_checksum: artifact.local_checksum,
-        local_path: artifact.local_path,
-        package_path: artifact.package_path,
-        manifest_fingerprint: artifact.manifest_fingerprint,
-        artifact_status: artifact.artifact_status.as_str().to_string(),
-        runtime_status: artifact.runtime_status.as_str().to_string(),
-        availability_status: artifact.availability_status.as_str().to_string(),
-        checked_at: format_time(artifact.checked_at)?,
-        last_error: artifact.last_error,
-    })
-}
 
-test_support_item! { pub(crate), []
-fn runtime_slot_for_contract(contract_version: &str) -> Option<String> {
-    match contract_version {
-        CURRENT_PROVIDER_CONTRACT => Some("model_provider".to_string()),
-        "1flowbase.data_source/v1" => Some("data_source".to_string()),
-        _ => None,
-    }
-}
-}
 
-pub fn to_install_response(
-    result: InstallPluginResult,
-) -> Result<InstallPluginResponse, ApiError> {
-    Ok(InstallPluginResponse {
-        installation: to_installation_response_with_artifact(
-            result.installation,
-            Some(result.local_artifact),
-        )?,
-        task: to_task_response(result.task)?,
-    })
-}
+
+
+
+
 
 pub(super) fn to_catalog_response(
     entry: PluginCatalogEntry,
@@ -184,23 +122,5 @@ pub(super) fn to_family_response(
             .into_iter()
             .map(to_installed_version_response)
             .collect::<Result<Vec<_>, _>>()?,
-    })
-}
-
-pub(super) fn to_task_response(
-    task: domain::PluginTaskRecord,
-) -> Result<PluginTaskResponse, ApiError> {
-    Ok(PluginTaskResponse {
-        id: task.id.to_string(),
-        installation_id: task.installation_id.map(|id| id.to_string()),
-        workspace_id: task.workspace_id.map(|id| id.to_string()),
-        provider_code: task.provider_code,
-        task_kind: task.task_kind.as_str().to_string(),
-        status: task.status.as_str().to_string(),
-        status_message: task.status_message,
-        detail_json: task.detail_json,
-        created_at: format_time(task.created_at)?,
-        updated_at: format_time(task.updated_at)?,
-        finished_at: format_optional_time(task.finished_at)?,
     })
 }

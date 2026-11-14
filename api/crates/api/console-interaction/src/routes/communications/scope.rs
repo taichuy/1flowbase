@@ -27,7 +27,6 @@ pub(crate) fn for_channel(
     Ok(scope)
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/scope.rs"]
 mod tests;

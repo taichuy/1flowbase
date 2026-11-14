@@ -1,3 +1,4 @@
+pub use api_host_kernel::plugin_transport::*;
 use std::sync::Arc;
 
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
@@ -39,26 +40,11 @@ pub struct InstallPluginBody {
     pub package_root: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema, Serialize)]
-pub struct InstallOfficialPluginBody {
-    pub plugin_id: String,
-    pub compatibility_override: Option<PluginCompatibilityOverrideBody>,
-    pub risk_override: Option<PluginRiskOverrideBody>,
-}
 
-#[derive(ToSchema)]
-#[allow(dead_code)]
-pub struct PluginUploadMultipartBody {
-    #[schema(value_type = String, format = Binary)]
-    file: Vec<u8>,
-}
 
-#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
-pub struct PluginCompatibilityOverrideBody {
-    pub reason: String,
-    pub acknowledged_current_host_version: String,
-    pub acknowledged_minimum_host_version: String,
-}
+
+
+
 
 pub use api_host_kernel::plugin_risk::PluginRiskOverrideBody;
 
@@ -82,62 +68,11 @@ pub struct PluginCatalogQuery {
     pub locale: Option<String>,
 }
 
-#[derive(Debug, Deserialize, IntoParams, Clone, Serialize)]
-pub struct OfficialPluginCatalogQuery {
-    /// Optional plugin kind filter for official catalog views.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub plugin_type: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub locale: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub q: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cursor: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub limit: Option<usize>,
-}
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-#[schema(description = "Installation record returned by the plugin API.")]
-pub struct PluginInstallationResponse {
-    pub id: String,
-    pub provider_code: String,
-    pub runtime_slot: Option<String>,
-    pub plugin_id: String,
-    pub plugin_version: String,
-    pub contract_version: String,
-    pub protocol: String,
-    pub display_name: String,
-    pub source_kind: String,
-    pub trust_level: String,
-    pub verification_status: String,
-    pub desired_state: String,
-    pub expected_checksum: Option<String>,
-    pub signature_status: String,
-    pub signature_algorithm: Option<String>,
-    pub signing_key_id: Option<String>,
-    pub local_artifact: Option<PluginArtifactInstanceResponse>,
-    #[schema(value_type = Object)]
-    pub metadata_json: serde_json::Value,
-    pub created_at: String,
-    pub updated_at: String,
-}
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct PluginArtifactInstanceResponse {
-    pub node_id: String,
-    pub installation_id: String,
-    pub local_version: Option<String>,
-    pub local_checksum: Option<String>,
-    pub local_path: Option<String>,
-    pub package_path: Option<String>,
-    pub manifest_fingerprint: Option<String>,
-    pub artifact_status: String,
-    pub runtime_status: String,
-    pub availability_status: String,
-    pub checked_at: String,
-    pub last_error: Option<String>,
-}
+
+
+
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(description = "Catalog entry returned by the plugin API.")]
@@ -177,44 +112,11 @@ pub struct PluginCatalogProjectionResponse {
     pub updated_at: String,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-pub struct OfficialPluginArtifactResponse {
-    pub os: String,
-    pub arch: String,
-    pub libc: Option<String>,
-    pub rust_target: String,
-    pub download_url: String,
-    pub checksum: String,
-    pub signature_algorithm: Option<String>,
-    pub signing_key_id: Option<String>,
-}
 
-#[derive(Debug, Serialize, ToSchema)]
-#[schema(description = "Official registry entry returned by the plugin API.")]
-pub struct OfficialPluginCatalogEntryResponse {
-    pub plugin_id: String,
-    pub plugin_type: String,
-    pub provider_code: String,
-    pub display_name: String,
-    pub description: Option<String>,
-    pub icon: Option<String>,
-    pub protocol: String,
-    pub latest_version: String,
-    pub minimum_host_version: String,
-    pub current_host_version: String,
-    pub compatibility_status: String,
-    pub compatibility_warning_reason: Option<String>,
-    pub selected_artifact: OfficialPluginArtifactResponse,
-    pub help_url: Option<String>,
-    pub model_discovery_mode: String,
-    pub install_status: String,
-}
 
-#[derive(Debug, Serialize, ToSchema)]
-pub struct OfficialPluginCatalogPageResponse {
-    pub limit: usize,
-    pub next_cursor: Option<String>,
-}
+
+
+
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct OfficialPluginCatalogResponse {
@@ -271,27 +173,9 @@ pub struct PluginFamilyCatalogResponse {
     pub entries: Vec<PluginFamilyResponse>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct PluginTaskResponse {
-    pub id: String,
-    pub installation_id: Option<String>,
-    pub workspace_id: Option<String>,
-    pub provider_code: String,
-    pub task_kind: String,
-    pub status: String,
-    pub status_message: Option<String>,
-    #[schema(value_type = Object)]
-    pub detail_json: serde_json::Value,
-    pub created_at: String,
-    pub updated_at: String,
-    pub finished_at: Option<String>,
-}
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct InstallPluginResponse {
-    pub installation: PluginInstallationResponse,
-    pub task: PluginTaskResponse,
-}
+
+
 
 pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
@@ -517,13 +401,9 @@ async fn invoke_plugin_interface(
     crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
 }
 
-fn format_time(value: time::OffsetDateTime) -> Result<String, ApiError> {
-    Ok(value.format(&Rfc3339)?)
-}
 
-fn format_optional_time(value: Option<time::OffsetDateTime>) -> Result<Option<String>, ApiError> {
-    value.map(format_time).transpose()
-}
+
+
 
 fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(raw)
@@ -549,63 +429,11 @@ pub(crate) fn to_risk_override(
     })
 }
 
-pub async fn enforce_plugin_upload_limit(
-    plugin_upload_max_bytes: usize,
-    request: Request<Body>,
-    next: Next,
-) -> Response {
-    let (parts, body) = request.into_parts();
-    match to_bytes(body, plugin_upload_max_bytes).await {
-        Ok(bytes) => {
-            next.run(Request::from_parts(parts, Body::from(bytes)))
-                .await
-        }
-        Err(_) => StatusCode::PAYLOAD_TOO_LARGE.into_response(),
-    }
-}
 
-pub async fn read_upload_file(
-    multipart: &mut Multipart,
-) -> Result<(String, Vec<u8>), ApiError> {
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("plugin_file"))?
-    {
-        if field.name() != Some("file") {
-            continue;
-        }
 
-        let file_name = field
-            .file_name()
-            .map(str::to_string)
-            .filter(|value| !value.trim().is_empty())
-            .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
-                "plugin_file_name",
-            ))?;
-        let bytes = field
-            .bytes()
-            .await
-            .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("plugin_file"))?;
-        if bytes.is_empty() {
-            return Err(
-                control_plane::errors::ControlPlaneError::InvalidInput("plugin_file").into(),
-            );
-        }
-        return Ok((file_name, bytes.to_vec()));
-    }
 
-    Err(control_plane::errors::ControlPlaneError::InvalidInput("plugin_file").into())
-}
 
-pub fn requested_locales(
-    locale_meta: &LocaleMetaResponse,
-) -> control_plane::i18n::RequestedLocales {
-    control_plane::i18n::RequestedLocales::new(
-        locale_meta.resolved_locale.clone(),
-        locale_meta.fallback_locale.clone(),
-    )
-}
+
 
 fn filter_from_query(query: &PluginCatalogQuery) -> PluginCatalogFilter {
     PluginCatalogFilter {
@@ -1069,9 +897,7 @@ mod time_response_tests;
 #[path = "plugins/response_mapping.rs"]
 mod response_mapping;
 
-#[cfg(any(test, feature = "test-support"))]
-#[doc(hidden)]
-pub use response_mapping::runtime_slot_for_contract;
 
-pub use response_mapping::to_install_response;
+
+
 use response_mapping::*;

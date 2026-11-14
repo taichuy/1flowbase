@@ -1,3 +1,4 @@
+pub use api_host_kernel::native_websocket_cursor::{NativeWebSocketCommandError, sequence_from_event_id};
 use axum::extract::ws::Message;
 use control_plane::application_public_api::native::NativeStreamOptions;
 use serde::{Deserialize, Serialize};
@@ -47,22 +48,9 @@ impl NativeWebSocketClientCommand {
     }
 }
 
-#[derive(Debug, Error, PartialEq, Eq)]
-pub enum NativeWebSocketCommandError {
-    #[error("binary client messages are not supported")]
-    BinaryNotSupported,
-    #[error("invalid Native WebSocket command")]
-    InvalidEnvelope,
-}
 
-impl NativeWebSocketCommandError {
-    pub(crate) fn code(&self) -> &'static str {
-        match self {
-            Self::BinaryNotSupported => "binary_not_supported",
-            Self::InvalidEnvelope => "invalid_command",
-        }
-    }
-}
+
+
 
 pub(crate) fn decode_client_message(
     message: Message,
@@ -74,25 +62,4 @@ pub(crate) fn decode_client_message(
         Message::Binary(_) => Err(NativeWebSocketCommandError::BinaryNotSupported),
         Message::Ping(_) | Message::Pong(_) | Message::Close(_) => Ok(None),
     }
-}
-
-pub fn sequence_from_event_id(
-    run_id: Uuid,
-    event_id: Option<&str>,
-) -> Result<Option<i64>, NativeWebSocketCommandError> {
-    let Some(event_id) = event_id else {
-        return Ok(None);
-    };
-    let (event_run_id, sequence) = event_id
-        .rsplit_once(':')
-        .ok_or(NativeWebSocketCommandError::InvalidEnvelope)?;
-    if event_run_id != run_id.to_string() {
-        return Err(NativeWebSocketCommandError::InvalidEnvelope);
-    }
-    sequence
-        .parse::<i64>()
-        .ok()
-        .filter(|sequence| *sequence >= 0)
-        .map(Some)
-        .ok_or(NativeWebSocketCommandError::InvalidEnvelope)
 }

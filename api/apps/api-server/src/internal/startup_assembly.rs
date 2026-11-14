@@ -457,6 +457,8 @@ pub(super) async fn app_and_runtime_host_from_config(
         file_storage_registry,
         runtime_engine,
         provider_runtime: provider_runtime.clone(),
+        runtime_event_stream_projection: Arc::new(crate::interaction_assembly::RuntimeEventSseAdapter),
+        native_resource_import: Arc::new(api_mcp::resource_import::NativeResourceImportAdapter),
         terminal_jobs: Default::default(),
         process_started_at,
         runtime_activity,

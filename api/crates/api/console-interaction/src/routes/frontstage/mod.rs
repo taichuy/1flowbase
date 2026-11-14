@@ -2,14 +2,14 @@ use std::sync::Arc;
 
 pub mod block_context_contract;
 pub mod block_tree;
-pub(crate) mod callable_interface_catalog;
-pub(crate) mod callable_interface_dispatch;
+pub mod callable_interface_catalog;
+pub mod callable_interface_dispatch;
 pub mod callable_interfaces;
 pub mod components;
 pub mod data_capabilities;
 pub mod dispatch_openapi;
 pub(crate) mod event_projection;
-pub(crate) mod interface_pages;
+pub mod interface_pages;
 
 use axum::{
     extract::{Path, State},

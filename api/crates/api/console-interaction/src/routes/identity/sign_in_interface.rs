@@ -20,12 +20,16 @@ use crate::error_response::ApiError;
 use control_plane::ports::SessionStore;
 use storage_durable_postgres::MainDurableStore;
 
-pub(crate) const BINDING_ID: &str = "http.public.auth.sign-in.v1";
+test_support_item! { pub(crate), []
+const BINDING_ID: &str = "http.public.auth.sign-in.v1";
+}
 const INTERFACE_ID: &str = "public.auth.sign-in";
 const HANDLER: &str = "api-server.public-auth.sign-in";
 const OPERATION: &str = "public.auth.sign-in";
 
-pub(crate) struct PublicSignInInput(pub(crate) LoginCommand);
+test_support_item! { pub(crate), []
+struct PublicSignInInput(pub(crate) LoginCommand);
+}
 
 impl InterfaceContract for PublicSignInInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -50,7 +54,9 @@ impl InterfaceContract for PublicSignInInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct PublicSignInOutput(pub(crate) LoginResult);
+test_support_item! { pub(crate), []
+struct PublicSignInOutput(pub(crate) LoginResult);
+}
 
 impl InterfaceContract for PublicSignInOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -119,7 +125,9 @@ impl InterfaceContract for PublicSignInOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct PublicSignInTargetError(pub(crate) ApiError);
+test_support_item! { pub(crate), []
+struct PublicSignInTargetError(pub(crate) ApiError);
+}
 
 impl InterfaceContract for PublicSignInTargetError {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -144,7 +152,7 @@ impl InterfaceContract for PublicSignInTargetError {
 type PublicSignInFuture<'a> =
     Pin<Box<dyn Future<Output = Result<PublicSignInOutput, PublicSignInTargetError>> + Send + 'a>>;
 
-pub(crate) trait PublicSignInPort: Send + Sync + 'static {
+pub trait PublicSignInPort: Send + Sync + 'static {
     fn sign_in(&self, input: PublicSignInInput) -> PublicSignInFuture<'_>;
 }
 
@@ -217,7 +225,7 @@ impl InterfaceAuthorizationPort<PublicPrincipal> for PublicSignInAuthorization {
     }
 }
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn PublicSignInPort>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
     let interface_id = InterfaceId::new(INTERFACE_ID).expect("static interface id is valid");
@@ -316,7 +324,7 @@ pub(crate) fn compile_registry(
     compiler.compile()
 }
 
-pub(crate) fn public_sign_in_port(
+pub fn public_sign_in_port(
     store: MainDurableStore,
     session_store: Arc<dyn SessionStore>,
     session_ttl_days: i64,
@@ -330,28 +338,12 @@ pub(crate) fn public_sign_in_port(
     })
 }
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-pub(crate) fn compile_registry_for_test(
-) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
-    compile_registry(Arc::new(UnavailablePublicSignInPort))
-}
-
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-struct UnavailablePublicSignInPort;
-
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-impl PublicSignInPort for UnavailablePublicSignInPort {
-    fn sign_in(&self, _input: PublicSignInInput) -> PublicSignInFuture<'_> {
-        Box::pin(async {
-            Err(PublicSignInTargetError(
-                anyhow::anyhow!("test public sign-in port is unavailable").into(),
-            ))
-        })
-    }
-}
+#[cfg(any(test, feature = "test-support"))]
+#[path = "sign_in_interface/_tests/support/mod.rs"]
+mod test_support;
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use test_support::compile_registry_for_test;
 
 fn contract<T: InterfaceContract>() -> ContractIdentity {
     ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)

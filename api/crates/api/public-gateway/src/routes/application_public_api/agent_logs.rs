@@ -16,7 +16,7 @@ use interface_runtime::*;
 use std::sync::Arc;
 
 pub(crate) const BINDING: &str = "http.application.logs.events.ingest.v1";
-pub(crate) const ID: &str = "application.logs.events.ingest";
+pub(crate) use api_host_kernel::agent_logs_event_projection::PUBLIC_INGEST_ID as ID;
 const OWNER: &str = "api-server.application-agent-logs";
 struct Input(AgentLogsBatch);
 struct Output(AgentLogsReceipt);

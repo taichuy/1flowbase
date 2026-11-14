@@ -535,10 +535,10 @@ impl InterfaceContract for FrontstageBlocksOutput {
 }
 
 #[derive(Clone)]
-pub(crate) struct FrontstageBlocksDependencies {
-    pub(crate) store: storage_durable_postgres::MainDurableStore,
-    pub(crate) api_node_id: String,
-    pub(crate) block_code_cache: control_plane::frontstage::BlockCodeCache,
+pub struct FrontstageBlocksDependencies {
+    pub store: storage_durable_postgres::MainDurableStore,
+    pub api_node_id: String,
+    pub block_code_cache: control_plane::frontstage::BlockCodeCache,
 }
 
 struct FrontstageBlocksAdapter(FrontstageBlocksDependencies);
@@ -1060,7 +1060,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: FrontstageBlocksDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

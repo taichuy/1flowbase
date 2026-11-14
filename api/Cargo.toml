@@ -7,6 +7,7 @@ members = [
   "crates/api/mcp",
   "crates/api/console-settings",
   "crates/api/plugins-models",
+  "crates/api/console-interaction",
   "crates/api-test-selection",
   "crates/domain",
   "crates/control-plane-contracts",
@@ -177,3 +178,10 @@ debug = "line-tables-only"
 incremental = false
 debug = 0
 codegen-units = 256
+
+[profile.dev.package.api-console-interaction]
+debug="line-tables-only"
+[profile.test.package.api-console-interaction]
+incremental=false
+debug=0
+codegen-units=256

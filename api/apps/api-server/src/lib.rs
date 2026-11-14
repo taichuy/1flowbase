@@ -12,6 +12,8 @@ mod generation_dispatch;
 mod managed_publication;
 mod managed_service_mcp;
 mod managed_services;
+#[path = "boot_composition/interaction_assembly.rs"]
+mod interaction_assembly;
 #[path = "boot_composition/mcp_assembly.rs"]
 mod mcp_assembly;
 mod resource_import;

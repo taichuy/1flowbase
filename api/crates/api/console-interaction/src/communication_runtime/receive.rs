@@ -8,7 +8,8 @@ use extension_contracts::{
     NOTIFICATION_MAX_RECEIVE_MESSAGES, NOTIFICATION_MAX_RECEIVE_WAIT_SECONDS,
 };
 
-pub(super) async fn run(state: Arc<ApiState>, key: (Uuid, Uuid), mut stop: watch::Receiver<bool>) {
+test_support_item! { pub(super), []
+async fn run(state: Arc<ApiState>, key: (Uuid, Uuid), mut stop: watch::Receiver<bool>) {
     loop {
         tokio::select! {
             _ = stop.changed() => return,
@@ -21,6 +22,7 @@ pub(super) async fn run(state: Arc<ApiState>, key: (Uuid, Uuid), mut stop: watch
         }
         tokio::select! { _ = stop.changed() => return, _ = tokio::time::sleep(RETRY_DELAY) => {} }
     }
+}
 }
 async fn receive(state: &ApiState, key: (Uuid, Uuid)) -> Result<()> {
     let _write_permit = match state

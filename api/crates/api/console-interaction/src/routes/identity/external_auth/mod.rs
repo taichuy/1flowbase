@@ -1,7 +1,9 @@
 //! Host OAuth protocol boundary. Raw code, PKCE and browser/session cookies never
 //! enter the canonical business input or managed plugin hook projections.
-pub(crate) mod interface;
-pub(crate) mod transaction;
+pub mod interface;
+test_support_item! { pub(crate), []
+mod transaction;
+}
 
 use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
 use axum::{
@@ -31,8 +33,9 @@ fn safe_failure(code: &'static str) -> ApiError {
     SafeFailure(code).into()
 }
 
-/// Finite UI vocabulary. Neither plugin reason text nor error strings can become
+test_support_item! { , [/// Finite UI vocabulary. Neither plugin reason text nor error strings can become
 /// a query parameter; every redirect target below is a host-owned constant.
+]
 fn failure_redirect(error: &ApiError) -> &'static str {
     use control_plane::errors::ControlPlaneError as E;
     let safe = error.0.downcast_ref::<SafeFailure>().map(|error| error.0);
@@ -73,6 +76,7 @@ fn failure_redirect(error: &ApiError) -> &'static str {
         _ => "/sign-in?auth_error=external_auth_failed",
     }
 }
+}
 
 fn security_failure_redirect(error: &ApiError) -> &'static str {
     match failure_redirect(error) {
@@ -87,6 +91,7 @@ fn security_failure_redirect(error: &ApiError) -> &'static str {
     }
 }
 
+test_support_item! { , []
 fn eligibility_failure(reason_code: Option<&str>) -> ApiError {
     safe_failure(match reason_code {
         Some("account_too_new" | "github_account_too_new") => "account_too_new",
@@ -95,8 +100,9 @@ fn eligibility_failure(reason_code: Option<&str>) -> ApiError {
         _ => "registration_ineligible",
     })
 }
+}
 
-pub(crate) fn console_route_assembly(
+pub fn console_route_assembly(
 ) -> crate::routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>> {
     crate::routes::console_route_assembly::ConsoleRouteAssembly::new().route(
         "/me/external-identities/authorize",
@@ -117,7 +123,8 @@ pub struct AuthorizeResponse {
     pub authorization_url: String,
 }
 
-pub(super) fn validate_entry(entry: &LoginEntryRecord) -> Result<(), ApiError> {
+test_support_item! { pub(super), []
+fn validate_entry(entry: &LoginEntryRecord) -> Result<(), ApiError> {
     if !entry.enabled {
         return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
             "login_entry_disabled",
@@ -132,11 +139,13 @@ pub(super) fn validate_entry(entry: &LoginEntryRecord) -> Result<(), ApiError> {
     }
     Ok(())
 }
+}
 
 pub(crate) fn fingerprint<T: Serialize>(value: &T) -> Result<String, ApiError> {
     Ok(transaction::digest(&serde_json::to_string(value)?))
 }
 
+test_support_item! { , []
 fn unique_query(raw: Option<&str>) -> Result<BTreeMap<String, String>, ApiError> {
     let mut query = BTreeMap::new();
     for (key, value) in url::form_urlencoded::parse(raw.unwrap_or_default().as_bytes()) {
@@ -146,7 +155,9 @@ fn unique_query(raw: Option<&str>) -> Result<BTreeMap<String, String>, ApiError>
     }
     Ok(query)
 }
+}
 
+test_support_item! { , []
 fn start_entry_id(raw: Option<&str>) -> Result<Uuid, ApiError> {
     let query = unique_query(raw)?;
     if query.len() != 1 {
@@ -156,6 +167,7 @@ fn start_entry_id(raw: Option<&str>) -> Result<Uuid, ApiError> {
         .get("login_entry_id")
         .and_then(|id| Uuid::parse_str(id).ok())
         .ok_or_else(transaction::denied)
+}
 }
 
 fn no_store(response: &mut Response) {
@@ -217,6 +229,7 @@ pub async fn authorize(
     Ok(response)
 }
 
+test_support_item! { , []
 fn authorization_url(
     value: String,
     state: &str,
@@ -246,17 +259,21 @@ fn authorization_url(
     }
     Ok(url.to_string())
 }
+}
 
-/// Resources for starting external authentication and issuing session-bound proofs.
+test_support_item! { pub(crate), [/// Resources for starting external authentication and issuing session-bound proofs.
 #[derive(Clone)]
-pub(crate) struct ExternalAuthentication {
+]
+struct ExternalAuthentication {
     pub(crate) runtime: crate::authentication_runtime::AuthenticationRuntime,
     pub(crate) cache: Arc<dyn control_plane::ports::CacheStore>,
     cookie_secure: bool,
 }
+}
 
 impl ExternalAuthentication {
-    pub(crate) fn from_state(state: &ApiState) -> Self {
+test_support_item! { pub(crate), []
+    fn from_state(state: &ApiState) -> Self {
         Self {
             runtime: crate::authentication_runtime::AuthenticationRuntime::from_state(state),
             cache: state.infrastructure.cache_store(),
@@ -264,7 +281,9 @@ impl ExternalAuthentication {
         }
     }
 }
+}
 
+test_support_item! { , []
 async fn begin(
     state: &ExternalAuthentication,
     entry: LoginEntryRecord,
@@ -272,8 +291,10 @@ async fn begin(
 ) -> Result<(CookieJar, String), ApiError> {
     begin_for_purpose(state, entry, binding, transaction::Purpose::Bind).await
 }
+}
 
-pub(crate) async fn begin_for_purpose(
+test_support_item! { pub(crate), []
+async fn begin_for_purpose(
     state: &ExternalAuthentication,
     entry: LoginEntryRecord,
     binding: Option<BindingIntent>,
@@ -341,8 +362,10 @@ pub(crate) async fn begin_for_purpose(
         .build();
     Ok((CookieJar::new().add(cookie), value))
 }
+}
 
-pub(super) struct VerifiedCallback {
+test_support_item! { pub(super), []
+struct VerifiedCallback {
     login_entry_id: Uuid,
     identity: VerifiedExternalIdentity,
     registration_eligible: bool,
@@ -350,6 +373,7 @@ pub(super) struct VerifiedCallback {
     authority: CompletionAuthority,
     purpose: transaction::Purpose,
     binding_session_hash: Option<String>,
+}
 }
 
 /// The lease is Send; this one-shot Host holder also makes the canonical sealed
@@ -367,6 +391,8 @@ impl CompletionAuthority {
             .map_err(|_| transaction::denied())?
             .ok_or_else(transaction::denied)
     }
+
+
 }
 
 #[derive(Default)]
@@ -376,11 +402,14 @@ struct CallbackAdmissionState {
     security_return: bool,
 }
 
-/// Host-only one-shot side port, analogous to ConsoleProtocolAdmission. The
+test_support_item! { pub(super), [/// Host-only one-shot side port, analogous to ConsoleProtocolAdmission. The
 /// PublicPrincipal stays anonymous; it never fabricates a user for an unbound identity.
 #[derive(Clone, Default)]
-pub(super) struct CallbackAdmission(Arc<Mutex<CallbackAdmissionState>>);
+]
+struct CallbackAdmission(Arc<Mutex<CallbackAdmissionState>>);
+}
 impl CallbackAdmission {
+    test_support_item! { , []
     fn take(&self) -> Result<VerifiedCallback, ApiError> {
         self.0
             .lock()
@@ -388,6 +417,7 @@ impl CallbackAdmission {
             .verified
             .take()
             .ok_or_else(transaction::denied)
+    }
     }
     fn security_return(&self) -> bool {
         self.0.lock().map(|s| s.security_return).unwrap_or(false)
@@ -399,7 +429,7 @@ impl CallbackAdmission {
 
 /// Only the activated BuiltIn factory may consume the original OAuth carrier.
 /// Neither this credential nor its side port is serializable or hook-projectable.
-pub(crate) struct ExternalCallbackCredential {
+pub struct ExternalCallbackCredential {
     state: Arc<ApiState>,
     headers: HeaderMap,
     jar: CookieJar,
@@ -407,7 +437,7 @@ pub(crate) struct ExternalCallbackCredential {
     admission: CallbackAdmission,
 }
 impl ExternalCallbackCredential {
-    pub(crate) async fn authenticate(self) -> Result<interface_runtime::PublicPrincipal, ApiError> {
+    pub async fn authenticate(self) -> Result<interface_runtime::PublicPrincipal, ApiError> {
         let query = unique_query(self.raw_query.as_deref())?;
         self.admission
             .0
@@ -434,6 +464,7 @@ impl ExternalCallbackCredential {
     }
 }
 
+test_support_item! { , []
 fn callback_code(query: &BTreeMap<String, String>) -> Result<&str, ApiError> {
     if let Some(error) = query.get("error") {
         return Err(safe_failure(
@@ -449,6 +480,7 @@ fn callback_code(query: &BTreeMap<String, String>) -> Result<&str, ApiError> {
         .filter(|code| !code.is_empty())
         .map(String::as_str)
         .ok_or_else(transaction::denied)
+}
 }
 
 async fn frozen_context(
@@ -701,17 +733,13 @@ pub async fn callback(
     response
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-#[path = "_tests/protocol_tests.rs"]
-mod tests;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-#[path = "_tests/authentication_tests.rs"]
-mod authentication_tests;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-#[path = "_tests/authority_tests.rs"]
-pub(crate) mod authority_tests;
+
+
+
+
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "_tests/support/accessors.rs"]
+mod test_accessors;

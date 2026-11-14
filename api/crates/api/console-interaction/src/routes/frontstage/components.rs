@@ -614,10 +614,10 @@ pub(crate) struct FrontstageComponentAsset {
 }
 
 #[derive(Clone)]
-pub(crate) struct FrontstageComponentsDependencies {
-    pub(crate) store: storage_durable_postgres::MainDurableStore,
-    pub(crate) api_node_id: String,
-    pub(crate) graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
+pub struct FrontstageComponentsDependencies {
+    pub store: storage_durable_postgres::MainDurableStore,
+    pub api_node_id: String,
+    pub graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
 }
 struct FrontstageComponentsAdapter(FrontstageComponentsDependencies);
 
@@ -726,7 +726,7 @@ impl
     }
 }
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: FrontstageComponentsDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

@@ -253,6 +253,8 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             file_storage_registry,
             runtime_engine,
             provider_runtime: provider_runtime.clone(),
+            native_resource_import: std::sync::Arc::new(api_mcp::resource_import::NativeResourceImportAdapter),
+            runtime_event_stream_projection: api_server::test_support::runtime_event_stream_projection(),
             terminal_jobs: Default::default(),
             process_started_at,
             communication_activity: Default::default(),

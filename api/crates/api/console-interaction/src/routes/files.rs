@@ -1,6 +1,6 @@
 pub use api_host_kernel::routes::files::UploadedFileResponse;
 #[path = "files/public/mod.rs"]
-pub(crate) mod public;
+pub mod public;
 
 use std::sync::Arc;
 
@@ -324,7 +324,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: MainDurableStore,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,

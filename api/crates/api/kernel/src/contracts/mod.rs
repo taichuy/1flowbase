@@ -33,3 +33,9 @@ pub mod console_settings_ports;
 pub mod frontend_block_dependencies;
 
 pub mod mcp_bundle_archive;
+
+
+
+
+mod interaction_shared;
+pub use interaction_shared::*;

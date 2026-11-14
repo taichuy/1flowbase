@@ -31,7 +31,6 @@ pub enum FrontstageActionResultSchema {
     ModelRecord(FrontstageModelRecordResultSchema),
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/dispatch_openapi.rs"]
 mod tests;

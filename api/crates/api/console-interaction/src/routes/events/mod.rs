@@ -12,10 +12,10 @@ use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
 
-pub(crate) mod interface;
+pub mod interface;
 use interface::{Input, Output};
 
-pub(crate) fn route_assembly(
+pub fn route_assembly(
 ) -> crate::routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>> {
     use crate::routes::console_route_assembly::{console_get, console_put, ConsoleRouteAssembly};
     use access_control::ConsoleRouteOwnership::ConsoleOperation as Op;

@@ -84,7 +84,7 @@ pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
 }
 
-pub(crate) fn route_assembly(
+pub fn route_assembly(
 ) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
     crate::external_route_assembly::ExternalRouteAssembly::new()
         .route(
@@ -114,6 +114,7 @@ fn public_login_entry_description(options: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
+test_support_item! { , []
 fn to_public_login_entry(
     entry: domain::LoginEntryRecord,
     registry: &AuthenticatorRegistry,
@@ -135,6 +136,7 @@ fn to_public_login_entry(
         public_ui_block: entry.public_ui_block,
         public_variables,
     })
+}
 }
 
 #[utoipa::path(
@@ -288,7 +290,7 @@ impl PublicLoginEntriesPort for PublicLoginEntriesAdapter {
     }
 }
 
-pub(crate) fn compile_public_login_entries_registry(
+pub fn compile_public_login_entries_registry(
     port: Arc<dyn PublicLoginEntriesPort>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -297,7 +299,7 @@ pub(crate) fn compile_public_login_entries_registry(
     login_entries_interface::compile_registry(port)
 }
 
-pub(crate) fn public_login_entries_port(
+pub fn public_login_entries_port(
     store: MainDurableStore,
     authenticator_registry: Arc<AuthenticatorRegistry>,
     bootstrap_workspace_id: Uuid,
@@ -467,7 +469,7 @@ impl PublicSignUpPort for PublicSignUpAdapter {
     }
 }
 
-pub(crate) fn compile_public_residual_registry(
+pub fn compile_public_residual_registry(
     providers: Arc<dyn PublicProvidersPort>,
     sign_up: Arc<dyn PublicSignUpPort>,
 ) -> Result<
@@ -477,7 +479,7 @@ pub(crate) fn compile_public_residual_registry(
     public_residual_interface::compile_registry(providers, sign_up)
 }
 
-pub(crate) fn public_providers_port(
+pub fn public_providers_port(
     store: MainDurableStore,
     bootstrap_workspace_id: Uuid,
 ) -> Arc<dyn PublicProvidersPort> {
@@ -487,7 +489,7 @@ pub(crate) fn public_providers_port(
     })
 }
 
-pub(crate) fn public_sign_up_port(
+pub fn public_sign_up_port(
     store: MainDurableStore,
     session_store: Arc<dyn SessionStore>,
     session_ttl_days: i64,
@@ -543,8 +545,3 @@ where
     let _receipt = outcome.receipt().clone().projected();
     Ok(outcome.into_value())
 }
-
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-#[path = "../../_tests/identity_routes/entry_action.rs"]
-mod entry_action_tests;

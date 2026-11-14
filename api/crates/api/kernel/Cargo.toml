@@ -10,6 +10,7 @@ publish = false
 test-support=["dep:postgres-test-support"]
 
 [dependencies]
+tokio-stream = "0.1.19"
 postgres-test-support = { path = "../../postgres-test-support", optional = true }
 rand.workspace = true
 base16ct.workspace = true

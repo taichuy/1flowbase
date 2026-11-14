@@ -1,3 +1,4 @@
+use api_host_kernel::mcp_catalog::McpInterfaceCatalogDependencies;
 use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 mod event_projection;
 
@@ -10,7 +11,7 @@ use crate::{
             self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
             ConsoleInterfaceTargetError,
         },
-        mcp_management::interface_catalog::McpInterfaceCatalogDependencies,
+
     },
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -22,22 +23,24 @@ use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
 #[derive(Clone)]
-pub(crate) struct Dependencies {
-    pub(crate) store: storage_durable_postgres::MainDurableStore,
-    pub(crate) service: Arc<ApiNotificationService>,
-    pub(crate) catalog: McpInterfaceCatalogDependencies,
-    pub(crate) file_service: Arc<
+pub struct Dependencies {
+    pub store: storage_durable_postgres::MainDurableStore,
+    pub service: Arc<ApiNotificationService>,
+    pub catalog: McpInterfaceCatalogDependencies,
+    pub catalog_provider: Arc<dyn api_host_kernel::mcp_catalog::McpInterfaceCatalogProvider>,
+    pub file_service: Arc<
         control_plane::file_management::FileAccessService<
             storage_durable_postgres::MainDurableStore,
         >,
     >,
 }
 impl Dependencies {
-    pub(crate) fn new(state: &ApiState, catalog: McpInterfaceCatalogDependencies) -> Self {
+    pub fn new(state: &ApiState, catalog: McpInterfaceCatalogDependencies, catalog_provider: Arc<dyn api_host_kernel::mcp_catalog::McpInterfaceCatalogProvider>) -> Self {
         Self {
             store: state.store.clone(),
             service: state.notification_service.clone(),
             catalog,
+            catalog_provider,
             file_service: Arc::new(control_plane::file_management::FileAccessService::new(
                 state.store.clone(),
                 state.file_storage_registry.clone(),
@@ -47,9 +50,10 @@ impl Dependencies {
         }
     }
 }
-#[derive(serde::Serialize)]
+test_support_item! { pub(crate), [#[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum Input {
+]
+enum Input {
     #[serde(serialize_with = "json_contract::query")]
     ManagementConversations(domain::CommunicationManagementQuery),
     #[serde(serialize_with = "json_contract::path_query_omit_nulls")]
@@ -79,6 +83,7 @@ pub(crate) enum Input {
     #[serde(serialize_with = "json_contract::path2_query_omit_nulls")]
     FileImage(Uuid, Uuid, ImageQuery),
 }
+}
 impl Input {
     fn authorize_scope(&self) -> Result<(), ApiError> {
         match self {
@@ -90,9 +95,11 @@ impl Input {
         }
     }
 }
-#[derive(serde::Serialize)]
+test_support_item! { pub(crate), [#[derive(serde::Serialize)]
 #[serde(transparent)]
-pub(crate) struct Output(pub Value);
+]
+struct Output(pub Value);
+}
 impl InterfaceContract for Input {
     fn event_projection_schema() -> Option<Value> {
         Some(event_projection::input_schema())
@@ -465,7 +472,7 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
         self.execute_inner(principal, input)
     }
 }
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: Dependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -580,7 +587,6 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/management_scope.rs"]
 mod management_scope_tests;
@@ -604,7 +610,7 @@ fn serialize_options<S: serde::Serializer>(
 
 #[cfg(test)]
 use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
-#[cfg_attr(test, api_test_selection::group(routes))]
+
 #[cfg(test)]
 #[path = "interface/_tests/api_event_projection.rs"]
 mod api_event_tests;

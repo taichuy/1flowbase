@@ -15,7 +15,8 @@ use std::sync::atomic::{AtomicU8, Ordering};
 mod delivery;
 mod dispatch;
 
-pub(super) async fn run(state: Arc<ApiState>, key: (Uuid, Uuid), mut stop: watch::Receiver<bool>) {
+test_support_item! { pub(super), []
+async fn run(state: Arc<ApiState>, key: (Uuid, Uuid), mut stop: watch::Receiver<bool>) {
     let mut tasks = JoinSet::new();
     loop {
         if *stop.borrow() {
@@ -47,6 +48,7 @@ pub(super) async fn run(state: Arc<ApiState>, key: (Uuid, Uuid), mut stop: watch
         }
     }
     while tasks.join_next().await.is_some() {}
+}
 }
 
 async fn own_turn(

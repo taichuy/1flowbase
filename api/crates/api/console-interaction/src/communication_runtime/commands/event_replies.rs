@@ -42,7 +42,7 @@ impl NotificationSenderPort for EventReplySender {
     }
 }
 
-pub(crate) async fn sender_for_event(
+pub async fn sender_for_event(
     state: &Arc<ApiState>,
     signal: &EventCenterSignal,
     run_id: Uuid,

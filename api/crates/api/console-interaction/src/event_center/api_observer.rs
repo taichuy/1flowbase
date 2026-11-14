@@ -14,9 +14,9 @@ struct MatchSnapshot {
     ancestors: Vec<uuid::Uuid>,
     definitions: Mutex<Vec<EventDefinitionRecord>>,
 }
-pub(crate) struct ApiOperationRuleObserver(Weak<ApiState>);
+pub struct ApiOperationRuleObserver(Weak<ApiState>);
 impl ApiOperationRuleObserver {
-    pub(crate) fn new(state: &Arc<ApiState>) -> Arc<Self> {
+    pub fn new(state: &Arc<ApiState>) -> Arc<Self> {
         Arc::new(Self(Arc::downgrade(state)))
     }
 }

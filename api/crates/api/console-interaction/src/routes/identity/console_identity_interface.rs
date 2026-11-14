@@ -34,7 +34,8 @@ const AUTHENTICATION_ADAPTER: &str = "api-server.console.require-session";
 const AUTHENTICATION_ACTIVATION: &str = "api-server.console.require-session.activation.v1";
 const AUTHORIZATION_ADAPTER: &str = "api-server.console.compiled-operation";
 
-pub(crate) enum ConsoleIdentityInput {
+test_support_item! { pub(crate), []
+enum ConsoleIdentityInput {
     GetSession,
     DeleteSession,
     RevokeAllSessions,
@@ -48,6 +49,7 @@ pub(crate) enum ConsoleIdentityInput {
     ListUserApiKeyRoleOptions,
     CreateUserApiKey(user_api_keys::CreateUserApiKeyRequest),
     RevokeUserApiKey { api_key_id: Uuid },
+}
 }
 
 impl InterfaceContract for ConsoleIdentityInput {
@@ -329,7 +331,7 @@ type ConsoleIdentityFuture<'a> = Pin<
     Box<dyn Future<Output = Result<ConsoleIdentityOutput, ConsoleIdentityTargetError>> + Send + 'a>,
 >;
 
-pub(crate) trait ConsoleIdentityPort: Send + Sync + 'static {
+pub trait ConsoleIdentityPort: Send + Sync + 'static {
     fn execute<'a>(
         &'a self,
         principal: &'a UserPrincipal,
@@ -343,7 +345,7 @@ struct ConsoleIdentityAdapter {
     cookie_name: String,
 }
 
-pub(crate) fn console_identity_port(
+pub fn console_identity_port(
     store: MainDurableStore,
     session_store: Arc<dyn SessionStore>,
     cookie_name: String,
@@ -738,7 +740,7 @@ const DECLARATIONS: &[Declaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleIdentityPort>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
     let owner = InterfaceOwner::new(OWNER).expect("static console identity owner is valid");
@@ -884,7 +886,7 @@ pub(crate) async fn invoke(
         )
         .await
         .map_err(ApiError::from)?;
-    let kernel = crate::routes::host_infrastructure::interface_operation::invocation_kernel(
+    let kernel = api_host_kernel::console_invocation::invocation_kernel(
         Arc::clone(&state.console_policy_reader),
         Arc::clone(&state.console_operation_registry),
     );
@@ -921,11 +923,9 @@ fn contract<T: InterfaceContract>() -> ContractIdentity {
         .expect("static console identity contract is valid")
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableConsoleIdentityPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleIdentityPort for UnavailableConsoleIdentityPort {
     fn execute<'a>(
@@ -941,7 +941,6 @@ impl ConsoleIdentityPort for UnavailableConsoleIdentityPort {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

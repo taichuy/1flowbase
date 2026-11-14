@@ -216,7 +216,7 @@ impl Fixture {
                     template_catalog: state.runtime_engine.template_catalog().clone(),
                 },
             };
-        let deps = crate::routes::communications::interface::Dependencies::new(&state, catalog);
+        let deps = crate::routes::communications::interface::Dependencies::new(&state, catalog, Arc::new(crate::mcp_assembly::InterfaceCatalog));
         let mcp =
             crate::routes::communications::provisioning::ensure_channel_mcp(&deps, &actor, channel)
                 .await

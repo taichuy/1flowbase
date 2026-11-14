@@ -7,9 +7,9 @@ use domain::event_center::*;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-pub(crate) struct BusinessSourceObserver(pub(crate) EventCenterRuntime);
+pub struct BusinessSourceObserver(pub(crate) EventCenterRuntime);
 impl BusinessSourceObserver {
-    pub(crate) fn new(runtime: &EventCenterRuntime) -> Arc<Self> {
+    pub fn new(runtime: &EventCenterRuntime) -> Arc<Self> {
         Arc::new(Self(runtime.clone()))
     }
 }
@@ -189,7 +189,6 @@ pub(crate) fn catalog(scope: EventSourceScope) -> Vec<EventCatalogEntry> {
     entries
 }
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 #[path = "_tests/business.rs"]
 mod tests;

@@ -15,6 +15,7 @@ use interface_runtime::{
 
 pub(crate) async fn summaries_with(
     dependencies: &OpenApiCapabilityCatalogDependencies,
+    descriptors: &dyn api_host_kernel::event_descriptor_ports::ApiEventDescriptorPort,
     actor: &ActorContext,
     external_catalog: Option<&ExternalEndpointCatalog>,
 ) -> Result<Vec<ApiEventOperationSummary>, ApiError> {
@@ -26,7 +27,7 @@ pub(crate) async fn summaries_with(
     let mut summaries = Vec::with_capacity(entries.len());
     for entry in &entries {
         summaries.push(
-            project_current_entry(dependencies, actor, entry, false, external_catalog)
+            project_current_entry(dependencies, descriptors, actor, entry, false, external_catalog)
                 .await?
                 .operation,
         );
@@ -35,6 +36,7 @@ pub(crate) async fn summaries_with(
 }
 pub(crate) async fn get_with(
     dependencies: &OpenApiCapabilityCatalogDependencies,
+    descriptors: &dyn api_host_kernel::event_descriptor_ports::ApiEventDescriptorPort,
     actor: &ActorContext,
     operation_id: &str,
     external_catalog: Option<&ExternalEndpointCatalog>,
@@ -50,20 +52,21 @@ pub(crate) async fn get_with(
     else {
         return Ok(None);
     };
-    project_current_entry(dependencies, actor, entry, true, external_catalog)
+    project_current_entry(dependencies, descriptors, actor, entry, true, external_catalog)
         .await
         .map(Some)
 }
 async fn project_current_entry(
     dependencies: &OpenApiCapabilityCatalogDependencies,
+    descriptors: &dyn api_host_kernel::event_descriptor_ports::ApiEventDescriptorPort,
     actor: &ActorContext,
     entry: &OpenApiCapabilityCatalogEntry,
     include_schemas: bool,
     external_catalog: Option<&ExternalEndpointCatalog>,
 ) -> Result<ApiEventOperationDetails, ApiError> {
     let selected = match entry.source {
-        OpenApiCapabilitySource::PublishedWorkflow => crate::routes::application_public_api::workflow_extension_interface::document_descriptor_for_entry(dependencies,actor,entry).await,
-        OpenApiCapabilitySource::BuiltinDataModelCrud|OpenApiCapabilitySource::WorkspaceDataModelCrud => crate::routes::runtime_models::event_projection::document_descriptor_for_entry(dependencies,actor,entry).await,
+        OpenApiCapabilitySource::PublishedWorkflow => descriptors.workflow(dependencies,actor,entry).await,
+        OpenApiCapabilitySource::BuiltinDataModelCrud|OpenApiCapabilitySource::WorkspaceDataModelCrud => descriptors.runtime_model(dependencies,actor,entry).await,
         _=>Ok(None),
     };
     let descriptor = match selected {
@@ -360,7 +363,7 @@ fn phase_contract(
 
 /// Gate ordinary documented JSON operations against actual compiled typed codec evidence.
 /// Explicit owner restrictions and protocols without a workspace principal remain discoverable.
-pub(crate) fn validate_static_inventory(
+pub fn validate_static_inventory(
     registry: &CompiledInterfaceRegistry,
     docs: &crate::openapi_docs::ApiDocsRegistry,
 ) -> anyhow::Result<()> {
@@ -428,7 +431,6 @@ pub(crate) fn validate_static_inventory(
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 #[path = "_tests/api_catalog.rs"]
 mod tests;

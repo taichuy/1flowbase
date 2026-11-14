@@ -6,19 +6,21 @@ use crate::routes::console_interface::{
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 
-pub(crate) const OWNER: &str = "api-server.me-authentication-methods";
-pub(crate) const OPERATIONS: &[&str] = &[
+pub const OWNER: &str = "api-server.me-authentication-methods";
+pub const OPERATIONS: &[&str] = &[
     "console.identity.authentication-methods.read",
     "console.identity.external-identity.unlink",
     "console.identity.password-setup.authorize",
     "console.identity.password.initialize",
 ];
-pub(crate) const BINDING_IDS: &[&str] = &[
+test_support_item! { pub(crate), []
+const BINDING_IDS: &[&str] = &[
     "http.console.identity.authentication-methods.read.v1",
     "http.console.identity.external-identity.unlink.v1",
     "http.console.identity.password-setup.authorize.v1",
     "http.console.identity.password.initialize.v1",
 ];
+}
 const PATHS: &[&str] = &[
     "/api/console/me/authentication-methods",
     "/api/console/me/authentication-methods/external-identities/:identity_id/unlink",
@@ -32,7 +34,7 @@ const SUMMARIES: &[&str] = &[
     "Initialize a local password",
 ];
 const DESCRIPTIONS:&[&str]=&["Return current password availability and owned external identity bindings without configuration secrets.","Retain the external subject owner while disabling its login binding; preserve another usable method atomically.","Start a browser and session bound provider verification for setting the account's first password.","Consume a short-lived session bound verification, create a local account credential atomically and revoke existing sessions."];
-pub(crate) fn metadata(method: &str, path: &str) -> Option<(&'static str, &'static str)> {
+pub fn metadata(method: &str, path: &str) -> Option<(&'static str, &'static str)> {
     PATHS
         .iter()
         .enumerate()
@@ -41,11 +43,13 @@ pub(crate) fn metadata(method: &str, path: &str) -> Option<(&'static str, &'stat
         })
         .map(|(i, _)| (SUMMARIES[i], DESCRIPTIONS[i]))
 }
-pub(crate) enum Input {
+test_support_item! { pub(crate), []
+enum Input {
     Read,
     Unlink(Uuid),
     AuthorizePassword(Uuid),
     InitializePassword(String),
+}
 }
 pub(crate) enum Output {
     Methods(AuthenticationMethodsResponse),
@@ -202,7 +206,7 @@ impl ConsoleInterfacePort<Input, Output> for Port {
         })
     }
 }
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     state: &Arc<ApiState>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

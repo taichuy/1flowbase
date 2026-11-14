@@ -24,7 +24,7 @@ pub use transport::route_assembly;
 pub use transport::{__path_ingest_traces, ingest_traces};
 
 pub(crate) const BINDING: &str = "http.application.logs.otlp.traces.ingest.v1";
-pub(crate) const ID: &str = "application.logs.otlp.traces.ingest";
+pub(crate) use api_host_kernel::agent_logs_event_projection::OTLP_INGEST_ID as ID;
 const OWNER: &str = "api-server.application-agent-logs-otlp";
 const ROUTE: &str = "/api/logs/otlp/v1/traces";
 

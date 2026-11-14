@@ -1,9 +1,11 @@
 //! API-host adapter for the native one-shot execution module.
 use control_plane::local_command::{LocalCommandExecutor, LocalCommandFuture};
 use std::sync::Arc;
-pub(crate) mod jobs;
-pub(crate) mod process;
-pub(crate) struct HostCommandExecutor;
+pub mod jobs;
+test_support_item! { pub(crate), []
+mod process;
+}
+pub struct HostCommandExecutor;
 
 impl LocalCommandExecutor for HostCommandExecutor {
     type Output = process::CompletedCommand;
@@ -25,6 +27,6 @@ impl LocalCommandExecutor for HostCommandExecutor {
         })
     }
 }
-pub(crate) fn executor() -> Arc<HostCommandExecutor> {
+pub fn executor() -> Arc<HostCommandExecutor> {
     Arc::new(HostCommandExecutor)
 }

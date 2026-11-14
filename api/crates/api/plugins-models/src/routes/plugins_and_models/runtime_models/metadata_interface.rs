@@ -1,3 +1,4 @@
+pub use api_host_kernel::runtime_model_metadata_contract::*;
 use super::{interface::*, metadata::RuntimeDataModelMetadata};
 use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
 use axum::{
@@ -8,9 +9,9 @@ use axum::{
 use interface_runtime::*;
 use std::sync::Arc;
 
-pub const BINDING_ID: &str = "http.runtime.models.metadata.get.v1";
-pub const INTERFACE_ID: &str = "runtime.models.metadata.get";
-pub const OPENAPI_PATH: &str = "/api/runtime/models/{model_code}/metadata";
+
+
+
 
 struct RuntimeModelMetadataInput {
     model_code: String,

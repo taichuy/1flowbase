@@ -460,6 +460,7 @@ pub(crate) fn production_interface_contributions(
                 crate::routes::communications::interface::Dependencies::new(
                     state,
                     mcp_interface_catalog_dependencies.clone(),
+                    Arc::new(crate::mcp_assembly::InterfaceCatalog),
                 ),
             )?,
         ),
@@ -490,6 +491,7 @@ pub(crate) fn production_interface_contributions(
                 crate::routes::communications::interface::Dependencies::new(
                     state,
                     mcp_interface_catalog_dependencies.clone(),
+                    Arc::new(crate::mcp_assembly::InterfaceCatalog),
                 ),
             )?,
         ),
@@ -681,7 +683,7 @@ pub(crate) fn production_interface_contributions(
             ],
             &["api-server.console-events"],
             crate::routes::events::interface::compile_registry(
-                crate::routes::events::interface::Dependencies::new(state),
+                crate::routes::events::interface::Dependencies::new(state, Arc::new(crate::interaction_assembly::ApiEventDescriptors)),
             )?,
         ),
         InterfaceRegistryContribution::new(

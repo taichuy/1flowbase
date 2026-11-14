@@ -86,7 +86,7 @@ impl EventSourceCatalogPort for CatalogProjection {
             .collect()
     }
 }
-pub(crate) trait EventSourceCatalogAssembly {
+pub trait EventSourceCatalogAssembly {
     fn default() -> Self;
     #[cfg(any(test, feature = "test-support"))]
     fn for_test_support() -> Self;
@@ -153,7 +153,7 @@ impl EventSourceCatalogAssembly for EventSourceCatalog {
         ))
     }
 }
-pub(crate) fn visible_scopes(actor: &ActorContext) -> Vec<EventSourceScope> {
+pub fn visible_scopes(actor: &ActorContext) -> Vec<EventSourceScope> {
     let mut scopes = vec![EventSourceScope::Workspace {
         workspace_id: actor.current_workspace_id,
     }];
@@ -206,7 +206,6 @@ fn insert(entries: &mut BTreeMap<Key, EventCatalogEntry>, entry: EventCatalogEnt
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 #[path = "_tests/catalog.rs"]
 mod tests;

@@ -44,17 +44,16 @@ use tokio::sync::{mpsc, oneshot};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod _tests;
 
 mod client_tools;
 pub mod conversation_events;
-pub(crate) mod interface;
+pub mod interface;
 mod run_activity;
-pub(crate) mod websocket;
-pub(crate) mod websocket_interface;
-pub(crate) mod websocket_ticket_interface;
+pub mod websocket;
+pub mod websocket_interface;
+pub mod websocket_ticket_interface;
 
 pub use self::client_tools::AssistantClientToolBridge;
 use self::client_tools::AssistantRuntimeToolInvoker;
@@ -62,9 +61,7 @@ pub use self::conversation_events::AssistantConversationSummaryResponse;
 use self::conversation_events::{AssistantConversationEventKind, AssistantConversationEventScope};
 pub use run_activity::AssistantRunActivityPageResponse;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-use crate::routes::mcp_protocol::virtual_ui::VirtualMcpScope;
+
 
 use crate::{
     app_state::ApiState,
@@ -74,7 +71,7 @@ use crate::{
     routes::{
         console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
         debug_run_stream,
-        mcp_protocol::virtual_ui,
+
     },
 };
 
@@ -264,7 +261,7 @@ pub(super) struct PreparedAssistantExecution {
 /// retaining the API composition state, so the lifecycle can be invoked from
 /// HTTP and future non-HTTP Console transports through the same boundary.
 #[derive(Clone)]
-pub(crate) struct AssistantRunDependencies {
+pub struct AssistantRunDependencies {
     store: MainDurableStore,
     provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
     runtime_activity: Arc<crate::runtime_activity::ApplicationRuntimeActivityTracker>,
@@ -281,27 +278,32 @@ pub(crate) struct AssistantRunDependencies {
     published_publication_cache: Arc<dyn control_plane::ports::PublishedPublicationCache>,
     task_queue: Arc<dyn TaskQueue>,
     runtime_event_stream: Arc<dyn RuntimeEventStream>,
+    debug_sse: Arc<dyn api_host_kernel::debug_stream_contract::RuntimeEventSsePort>,
     conversation_events: Arc<conversation_events::AssistantConversationEventHub>,
     assistant_executions: Arc<Mutex<HashMap<Uuid, tokio::task::AbortHandle>>>,
     assistant_client_sessions: Arc<Mutex<HashMap<Uuid, Arc<AssistantClientToolBridge>>>>,
     runtime_tool_invoker_factory: Arc<dyn AssistantRuntimeToolInvokerFactory>,
 }
 
-pub(crate) trait AssistantRuntimeToolInvokerFactory: Send + Sync + 'static {
+test_support_item! { pub(crate), []
+trait AssistantRuntimeToolInvokerFactory: Send + Sync + 'static {
     fn for_actor<'a>(
         &'a self,
         actor: &'a domain::ActorContext,
     ) -> Pin<
         Box<
-            dyn Future<Output = Result<virtual_ui::RuntimeInternalToolInvokerFactory, ApiError>>
+            dyn Future<Output = Result<Arc<dyn api_host_kernel::runtime_ports::RuntimeToolInvokerFactoryHandle>, ApiError>>
                 + Send
                 + 'a,
         >,
     >;
 }
+}
 
+test_support_item! { , []
 struct StateAssistantRuntimeToolInvokerFactory {
     state: std::sync::Weak<ApiState>,
+}
 }
 
 impl AssistantRuntimeToolInvokerFactory for StateAssistantRuntimeToolInvokerFactory {
@@ -310,7 +312,7 @@ impl AssistantRuntimeToolInvokerFactory for StateAssistantRuntimeToolInvokerFact
         actor: &'a domain::ActorContext,
     ) -> Pin<
         Box<
-            dyn Future<Output = Result<virtual_ui::RuntimeInternalToolInvokerFactory, ApiError>>
+            dyn Future<Output = Result<Arc<dyn api_host_kernel::runtime_ports::RuntimeToolInvokerFactoryHandle>, ApiError>>
                 + Send
                 + 'a,
         >,
@@ -320,12 +322,12 @@ impl AssistantRuntimeToolInvokerFactory for StateAssistantRuntimeToolInvokerFact
                 .state
                 .upgrade()
                 .ok_or_else(crate::generation_dispatch::unavailable)?;
-            crate::runtime_internal_tool_invoker_factory(&state, actor).await
+            crate::generation_dispatch::GenerationDispatch::acquire(&state)?.runtime_debug_mcp_factory(&state, actor).await
         })
     }
 }
 
-pub(crate) fn run_dependencies(state: Arc<ApiState>) -> AssistantRunDependencies {
+pub fn run_dependencies(state: Arc<ApiState>) -> AssistantRunDependencies {
     AssistantRunDependencies {
         store: state.store.clone(),
         provider_runtime: state.provider_runtime.clone(),
@@ -343,6 +345,7 @@ pub(crate) fn run_dependencies(state: Arc<ApiState>) -> AssistantRunDependencies
         published_publication_cache: state.infrastructure.published_publication_cache(),
         task_queue: state.infrastructure.task_queue(),
         runtime_event_stream: state.runtime_event_stream.clone(),
+        debug_sse: state.runtime_event_stream_projection.clone(),
         conversation_events: state.assistant_conversation_events.clone(),
         assistant_executions: state.assistant_executions.clone(),
         assistant_client_sessions: state.assistant_client_sessions.clone(),
@@ -1034,6 +1037,7 @@ pub(crate) async fn validate_preference(
     Ok(())
 }
 
+test_support_item! { , []
 fn read_preference(meta: &Value, workspace_id: Uuid) -> AssistantPreferenceBody {
     meta.get(ASSISTANT_META_KEY)
         .and_then(|value| value.get("workspaces"))
@@ -1042,20 +1046,22 @@ fn read_preference(meta: &Value, workspace_id: Uuid) -> AssistantPreferenceBody 
         .and_then(|value| serde_json::from_value(value).ok())
         .unwrap_or_default()
 }
+}
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-#[path = "assistant/_tests/route_contracts.rs"]
-mod tests;
+
 
 #[path = "assistant/execution_lifecycle.rs"]
 mod execution_lifecycle;
 
 pub(crate) use execution_lifecycle::abort_assistant_execution_in;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use execution_lifecycle::abort_registered_assistant_execution;
 
 pub(crate) use execution_lifecycle::execute_assistant_run;
 pub(super) use execution_lifecycle::launch_assistant_execution;
+
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "assistant/_tests/support/accessors.rs"]
+mod test_accessors;

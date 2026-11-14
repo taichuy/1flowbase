@@ -8,7 +8,8 @@ enum Part {
     File(tokio::fs::File),
 }
 
-pub(super) fn response(output: CompletedCommand) -> io::Result<Response> {
+test_support_item! { pub(super), []
+fn response(output: CompletedCommand) -> io::Result<Response> {
     let parts: VecDeque<_> = output
         .into_json_parts()?
         .into_iter()
@@ -44,4 +45,5 @@ pub(super) fn response(output: CompletedCommand) -> io::Result<Response> {
         .header(CONTENT_TYPE, "application/json")
         .body(Body::from_stream(stream))
         .map_err(io::Error::other)
+}
 }

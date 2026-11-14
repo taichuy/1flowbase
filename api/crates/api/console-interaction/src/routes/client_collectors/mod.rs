@@ -12,7 +12,7 @@ use std::sync::Arc;
 pub(crate) mod interface;
 use interface::*;
 
-pub(crate) fn route_assembly(
+pub fn route_assembly(
 ) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
     crate::external_route_assembly::ExternalRouteAssembly::new().route(
         "/api/public/client-collectors/:organization/:artifact_id/:version/assets/:asset",
@@ -45,7 +45,7 @@ impl CollectorAssetPort for CollectorAssetAdapter {
         })
     }
 }
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     state: &ApiState,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -156,6 +156,5 @@ fn asset_stream(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod _tests;

@@ -34,7 +34,7 @@ use crate::{
 
 use super::parse_uuid;
 
-pub(crate) mod interface;
+pub mod interface;
 mod source_editing;
 pub use source_editing::*;
 

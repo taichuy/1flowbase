@@ -10,7 +10,8 @@ use extension_contracts::provider_contract::NativePromptBlock;
 use orchestration_runtime::execution_engine::communication::CommunicationExecutionInput;
 use serde_json::json;
 
-pub(super) fn request(
+test_support_item! { pub(super), []
+fn request(
     input: &ClaimedCommunicationInput,
     files: Vec<Value>,
 ) -> Result<NativeRunRequest> {
@@ -31,6 +32,7 @@ pub(super) fn request(
         .map(serde_json::from_value)
         .collect::<std::result::Result<_, _>>()?;
     Ok(request)
+}
 }
 
 pub(super) fn turn_request(

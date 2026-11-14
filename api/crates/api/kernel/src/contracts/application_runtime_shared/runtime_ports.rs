@@ -7,6 +7,7 @@ use storage_durable_postgres::MainDurableStore;
 
 #[async_trait::async_trait]
 pub trait RuntimeToolInvokerFactoryHandle: Send + Sync {
+    async fn create_for_assistant(&self, headers: HeaderMap, actor: ActorContext, instance_ids: Vec<String>, client: Option<Arc<crate::routes::assistant::AssistantClientToolBridge>>) -> Result<Arc<dyn RuntimeInternalToolInvoker>, ApiError>;
     async fn create_server_delegated(
         &self,
         headers: HeaderMap,

@@ -550,7 +550,7 @@ impl AssistantWebSocketCommandAdapter {
             )
             .into());
         }
-        let from_sequence = crate::routes::application_public_api::native_websocket::schema::sequence_from_event_id(
+        let from_sequence = api_host_kernel::native_websocket_cursor::sequence_from_event_id(
             run_id,
             after_event_id.as_deref(),
         )
@@ -744,7 +744,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[ConsoleInterfaceDeclarati
     mutating: true,
 }];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: AssistantRunDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -769,11 +769,9 @@ fn compile_registry_with_port(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableAssistantWebSocketCommandPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<AssistantWebSocketCommandInput, AssistantWebSocketCommandOutput>
     for UnavailableAssistantWebSocketCommandPort
@@ -791,7 +789,6 @@ impl ConsoleInterfacePort<AssistantWebSocketCommandInput, AssistantWebSocketComm
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;

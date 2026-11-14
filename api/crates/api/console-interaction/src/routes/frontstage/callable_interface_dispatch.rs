@@ -39,7 +39,7 @@ use crate::{
 const CSRF_HEADER: HeaderName = HeaderName::from_static("x-csrf-token");
 const CALLABLE_DEPTH_HEADER: HeaderName = HeaderName::from_static("x-1flowbase-callable-depth");
 
-pub(crate) struct FrontstageCallableDispatchInput {
+pub struct FrontstageCallableDispatchInput {
     pub(crate) page_id: String,
     pub(crate) tab_id: String,
     pub(crate) body: DispatchFrontstageCallableBody,
@@ -125,7 +125,7 @@ impl InterfaceContract for FrontstageCallableDispatchInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) enum FrontstageCallableDispatchOutput {
+pub enum FrontstageCallableDispatchOutput {
     Json(Value),
     NoContent,
     Media(CallableDispatchHttpResponse),
@@ -219,13 +219,13 @@ impl InterfaceContract for FrontstageCallableDispatchOutput {
 }
 
 #[derive(Clone)]
-pub(crate) struct FrontstageCallableDispatchDependencies {
-    pub(crate) store: storage_durable_postgres::MainDurableStore,
-    pub(crate) openapi: OpenApiCapabilityCatalogDependencies,
+pub struct FrontstageCallableDispatchDependencies {
+    pub store: storage_durable_postgres::MainDurableStore,
+    pub openapi: OpenApiCapabilityCatalogDependencies,
     // Contributions are assembled before their generation's complete registry is published.
     // A weak handle reads that published snapshot without a registry -> handler -> registry cycle.
-    pub(crate) interface_registry: Weak<interface_runtime::DynamicInterfaceRegistry>,
-    pub(crate) dispatcher: Arc<dyn CallableDispatchPort>,
+    pub interface_registry: Weak<interface_runtime::DynamicInterfaceRegistry>,
+    pub dispatcher: Arc<dyn CallableDispatchPort>,
 }
 
 struct FrontstageCallableDispatchAdapter(FrontstageCallableDispatchDependencies);
@@ -322,7 +322,7 @@ impl ConsoleInterfacePort<FrontstageCallableDispatchInput, FrontstageCallableDis
     }
 }
 
-pub(crate) fn port(
+pub fn port(
     dependencies: FrontstageCallableDispatchDependencies,
 ) -> Arc<dyn ConsoleInterfacePort<FrontstageCallableDispatchInput, FrontstageCallableDispatchOutput>>
 {
@@ -337,7 +337,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[ConsoleInterfa
     mutating: true,
 }];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<
         dyn ConsoleInterfacePort<FrontstageCallableDispatchInput, FrontstageCallableDispatchOutput>,
     >,
@@ -406,7 +406,7 @@ fn is_runtime_data_callable(
     registry: Option<&interface_runtime::CompiledInterfaceRegistry>,
 ) -> bool {
     use crate::openapi_interface::OpenApiCapabilitySource;
-    use crate::routes::runtime_models::metadata_interface;
+    use api_host_kernel::runtime_model_metadata_contract as metadata_interface;
     let interface = &callable.interface;
     if interface.method == "GET"
         && interface.path == metadata_interface::OPENAPI_PATH
@@ -535,11 +535,9 @@ fn injected_path_parameters(
         .collect()
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableFrontstageCallableDispatchPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<FrontstageCallableDispatchInput, FrontstageCallableDispatchOutput>
     for UnavailableFrontstageCallableDispatchPort
@@ -557,7 +555,6 @@ impl ConsoleInterfacePort<FrontstageCallableDispatchInput, FrontstageCallableDis
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

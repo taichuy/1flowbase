@@ -155,7 +155,7 @@ pub(super) fn enter(state: &Arc<ApiState>, key: Key, target: NotificationSendTar
     }
 }
 
-pub(crate) async fn scope_event_activity<F: Future>(
+pub async fn scope_event_activity<F: Future>(
     state: &Arc<ApiState>,
     signal: &EventCenterSignal,
     execution: F,

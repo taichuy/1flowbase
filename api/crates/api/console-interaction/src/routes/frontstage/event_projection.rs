@@ -54,7 +54,6 @@ pub(super) fn empty() -> Value {
     json!({})
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/document_event_projection.rs"]
 mod tests;

@@ -20,10 +20,12 @@ use crate::error_response::ApiError;
 pub(crate) const PROVIDERS_BINDING_ID: &str = "http.public.auth.providers.v1";
 pub(crate) const SIGN_UP_BINDING_ID: &str = "http.public.auth.sign-up.v1";
 
-#[derive(serde::Serialize)]
-pub(crate) struct PublicProvidersInput {
+test_support_item! { pub(crate), [#[derive(serde::Serialize)]
+]
+struct PublicProvidersInput {
     #[serde(skip)]
     pub(crate) locale: domain::CatalogLocale,
+}
 }
 impl crate::openapi_interface::json_contract::JsonApiInput for PublicProvidersInput {}
 
@@ -44,9 +46,11 @@ impl InterfaceContract for PublicProvidersInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-#[derive(serde::Serialize)]
+test_support_item! { pub(crate), [#[derive(serde::Serialize)]
 #[serde(transparent)]
-pub(crate) struct PublicProvidersOutput(pub(crate) Vec<AuthProviderResponse>);
+]
+struct PublicProvidersOutput(pub(crate) Vec<AuthProviderResponse>);
+}
 impl crate::openapi_interface::json_contract::JsonApiOutput for PublicProvidersOutput {}
 
 impl InterfaceContract for PublicProvidersOutput {
@@ -89,7 +93,9 @@ impl InterfaceContract for PublicProvidersOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct PublicSignUpInput(pub(crate) SignUpCommand);
+test_support_item! { pub(crate), []
+struct PublicSignUpInput(pub(crate) SignUpCommand);
+}
 
 impl InterfaceContract for PublicSignUpInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -114,7 +120,9 @@ impl InterfaceContract for PublicSignUpInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct PublicSignUpOutput(pub(crate) LoginResult);
+test_support_item! { pub(crate), []
+struct PublicSignUpOutput(pub(crate) LoginResult);
+}
 
 impl InterfaceContract for PublicSignUpOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -183,7 +191,9 @@ impl InterfaceContract for PublicSignUpOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct PublicResidualTargetError(pub(crate) ApiError);
+test_support_item! { pub(crate), []
+struct PublicResidualTargetError(pub(crate) ApiError);
+}
 
 impl InterfaceContract for PublicResidualTargetError {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -205,18 +215,22 @@ impl InterfaceContract for PublicResidualTargetError {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) type PublicProvidersFuture<'a> = Pin<
+test_support_item! { pub(crate), []
+type PublicProvidersFuture<'a> = Pin<
     Box<dyn Future<Output = Result<PublicProvidersOutput, PublicResidualTargetError>> + Send + 'a>,
 >;
-pub(crate) type PublicSignUpFuture<'a> = Pin<
+}
+test_support_item! { pub(crate), []
+type PublicSignUpFuture<'a> = Pin<
     Box<dyn Future<Output = Result<PublicSignUpOutput, PublicResidualTargetError>> + Send + 'a>,
 >;
+}
 
-pub(crate) trait PublicProvidersPort: Send + Sync + 'static {
+pub trait PublicProvidersPort: Send + Sync + 'static {
     fn list(&self, input: PublicProvidersInput) -> PublicProvidersFuture<'_>;
 }
 
-pub(crate) trait PublicSignUpPort: Send + Sync + 'static {
+pub trait PublicSignUpPort: Send + Sync + 'static {
     fn sign_up(&self, input: PublicSignUpInput) -> PublicSignUpFuture<'_>;
 }
 
@@ -267,7 +281,9 @@ impl
     }
 }
 
-pub(crate) struct PublicResidualAuthorization;
+test_support_item! { pub(crate), []
+struct PublicResidualAuthorization;
+}
 
 impl InterfaceAuthorizationPort<PublicPrincipal> for PublicResidualAuthorization {
     fn adapter_reference(&self) -> AuthorizationAdapterReference {

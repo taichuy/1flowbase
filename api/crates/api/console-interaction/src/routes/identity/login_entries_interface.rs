@@ -20,10 +20,12 @@ use crate::error_response::ApiError;
 pub(crate) const INTERFACE_ID: &str = "public.auth.login-entries.list";
 const HANDLER_REFERENCE: &str = "api-server.public-auth.login-entries";
 
-#[derive(serde::Serialize)]
-pub(crate) struct PublicLoginEntriesInput {
+test_support_item! { pub(crate), [#[derive(serde::Serialize)]
+]
+struct PublicLoginEntriesInput {
     #[serde(skip_serializing)]
     pub(crate) locale: domain::CatalogLocale,
+}
 }
 
 impl JsonApiInput for PublicLoginEntriesInput {}
@@ -45,9 +47,11 @@ impl InterfaceContract for PublicLoginEntriesInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-#[derive(serde::Serialize)]
+test_support_item! { pub(crate), [#[derive(serde::Serialize)]
 #[serde(transparent)]
-pub(crate) struct PublicLoginEntriesOutput(pub(crate) PublicLoginEntriesResponse);
+]
+struct PublicLoginEntriesOutput(pub(crate) PublicLoginEntriesResponse);
+}
 
 impl JsonApiOutput for PublicLoginEntriesOutput {}
 
@@ -134,7 +138,9 @@ impl InterfaceContract for PublicLoginEntriesOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct PublicLoginEntriesTargetError(pub(crate) ApiError);
+test_support_item! { pub(crate), []
+struct PublicLoginEntriesTargetError(pub(crate) ApiError);
+}
 
 impl From<ApiError> for PublicLoginEntriesTargetError {
     fn from(error: ApiError) -> Self {
@@ -162,15 +168,17 @@ impl InterfaceContract for PublicLoginEntriesTargetError {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) type PublicLoginEntriesFuture<'a> = Pin<
+test_support_item! { pub(crate), []
+type PublicLoginEntriesFuture<'a> = Pin<
     Box<
         dyn Future<Output = Result<PublicLoginEntriesOutput, PublicLoginEntriesTargetError>>
             + Send
             + 'a,
     >,
 >;
+}
 
-pub(crate) trait PublicLoginEntriesPort: Send + Sync + 'static {
+pub trait PublicLoginEntriesPort: Send + Sync + 'static {
     fn list(&self, input: PublicLoginEntriesInput) -> PublicLoginEntriesFuture<'_>;
 }
 
@@ -328,3 +336,8 @@ fn contract<T: InterfaceContract>() -> ContractIdentity {
     ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
         .expect("static interface contract is valid")
 }
+
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "login_entries_interface/_tests/support/accessors.rs"]
+mod test_accessors;

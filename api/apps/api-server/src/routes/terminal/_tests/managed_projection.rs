@@ -401,7 +401,7 @@ fn terminal_managed_registry_accepts_complete_contracts_and_rejects_missing_proj
         "api-server.console-terminal",
         "graph:terminal-projection-test",
         DECLARATIONS,
-        Arc::new(TerminalAdapter { state: Weak::new() }),
+        Arc::new(TerminalAdapter::test_from_weak(Weak::new())),
     )
     .unwrap();
     let registry = with_managed(&snapshot)

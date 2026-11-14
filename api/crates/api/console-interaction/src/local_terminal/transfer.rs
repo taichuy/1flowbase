@@ -5,7 +5,7 @@ use crate::local_terminal::{
 fn invalid(message: &'static str) -> ApiError {
     super::file_error(crate::local_terminal::invalid(message))
 }
-use crate::{app_state::ApiState, error_response::ApiError};
+use crate::error_response::ApiError;
 use sha2::{Digest, Sha256};
 use std::{path::PathBuf, sync::Arc};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
@@ -18,7 +18,7 @@ impl Drop for Temporary {
 }
 
 pub(crate) async fn download(
-    state: &Arc<ApiState>,
+    host: &Arc<dyn api_host_kernel::terminal_host::TerminalHostOperations>,
     actor: domain::ActorContext,
     input: DownloadInput,
 ) -> Result<DownloadOutput, ApiError> {
@@ -26,13 +26,7 @@ pub(crate) async fn download(
     path(&input.target_path).map_err(super::file_error)?;
     let duration = std::time::Duration::from_millis(input.timeout_ms);
     tokio::time::timeout(duration, async {
-        let source = control_plane::file_management::FileAccessService::new(
-            state.store.clone(),
-            state.file_storage_registry.clone(),
-            state.runtime_engine.clone(),
-            state.infrastructure.ephemeral_kv_store(),
-        )
-        .read(actor, input.file_table_id, input.record_id)
+        let source = host.read_file(actor, input.file_table_id, input.record_id)
         .await
         .map_err(|error| {
             if let Some(runtime_core::runtime_acl::RuntimeAclError::PermissionDenied(reason)) =
@@ -54,9 +48,10 @@ pub(crate) async fn download(
     .await
     .map_err(|_| invalid("terminal_timeout"))?
 }
-/// Hash the complete authorized stream, then independently read the staged bytes before commit.
+test_support_item! { pub(super), [/// Hash the complete authorized stream, then independently read the staged bytes before commit.
 /// This proves transfer integrity, not authenticity of an absent stored source digest.
-pub(super) async fn transfer<R: AsyncRead + Unpin>(
+]
+async fn transfer<R: AsyncRead + Unpin>(
     mut reader: R,
     content_length: u64,
     input: DownloadInput,
@@ -153,4 +148,5 @@ pub(super) async fn transfer<R: AsyncRead + Unpin>(
         byte_count: bytes,
         sha256,
     })
+}
 }

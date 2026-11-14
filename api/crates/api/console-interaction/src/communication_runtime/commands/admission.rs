@@ -20,9 +20,10 @@ pub(super) async fn run(state: Arc<ApiState>, key: (Uuid, Uuid), mut stop: watch
     }
 }
 
-/// Only classify the earliest unresolved receipt in a chat. A command remains the admission
+test_support_item! { pub(super), [/// Only classify the earliest unresolved receipt in a chat. A command remains the admission
 /// barrier until its effect and reply receipt commit, independent of ordinary run progress.
-pub(super) async fn admit_available(state: &ApiState, key: (Uuid, Uuid)) -> Result<()> {
+]
+async fn admit_available(state: &ApiState, key: (Uuid, Uuid)) -> Result<()> {
     let _permit = match state
         .system_maintenance
         .try_enter_write(control_plane::system_recovery::SystemWriteOwner::CommunicationExecution)
@@ -95,4 +96,5 @@ pub(super) async fn admit_available(state: &ApiState, key: (Uuid, Uuid)) -> Resu
         blocked.insert(scope.conversation_id);
     }
     Ok(())
+}
 }

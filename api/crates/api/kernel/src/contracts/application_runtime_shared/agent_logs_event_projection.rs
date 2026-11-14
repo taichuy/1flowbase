@@ -116,3 +116,44 @@ pub fn receipt_schema() -> Value {
 pub fn receipt_value(receipt: &AgentLogsReceipt) -> Value {
     json!({"accepted_events":receipt.accepted_events,"duplicate_events":receipt.duplicate_events,"record_ids":receipt.record_ids})
 }
+
+use interface_runtime::{InterfaceEventContext, InterfaceEventPrincipal, InvocationId};
+use uuid::Uuid;
+pub const PUBLIC_INGEST_ID: &str = "application.logs.events.ingest";
+pub const OTLP_INGEST_ID: &str = "application.logs.otlp.traces.ingest";
+pub const OPERATIONS: &[&str] = &[PUBLIC_INGEST_ID, OTLP_INGEST_ID, CONSOLE_IMPORT_OPERATION];
+
+/// An operation subject, never a native run or an external task terminal.
+pub struct ApplicationLogOperationContext {
+    pub application_id: Uuid,
+    pub workspace_id: Uuid,
+    pub invocation_id: InvocationId,
+    pub operation: &'static str,
+}
+
+/// Only the sealed Application principal can supply public-ingress ownership.
+/// Console import retains the route application_id in its admitted typed input.
+pub fn application_operation_context(
+    context: &InterfaceEventContext,
+    input: Option<&Value>,
+) -> Option<ApplicationLogOperationContext> {
+    let operation = *OPERATIONS
+        .iter()
+        .find(|operation| **operation == context.definition().interface_id().as_str())?;
+    let (application_id, workspace_id) = match (operation, context.principal()?) {
+        (CONSOLE_IMPORT_OPERATION, InterfaceEventPrincipal::User(principal)) => (
+            input?.get("application_id")?.as_str()?.parse().ok()?,
+            principal.actor().current_workspace_id,
+        ),
+        (PUBLIC_INGEST_ID | OTLP_INGEST_ID, InterfaceEventPrincipal::Application(principal)) => {
+            (principal.application_id(), principal.workspace_id())
+        }
+        _ => return None,
+    };
+    Some(ApplicationLogOperationContext {
+        application_id,
+        workspace_id,
+        invocation_id: context.invocation_id(),
+        operation,
+    })
+}

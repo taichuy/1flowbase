@@ -11,22 +11,27 @@ use crate::error_response::ApiError;
 
 pub(super) const TTL_SECONDS: i64 = 600;
 
-#[derive(Clone, Serialize, Deserialize)]
-pub(crate) struct BindingIntent {
+test_support_item! { pub(crate), [#[derive(Clone, Serialize, Deserialize)]
+]
+struct BindingIntent {
     pub actor_id: Uuid,
     pub session_hash: String,
 }
+}
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+test_support_item! { pub(crate), [#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Purpose {
+]
+enum Purpose {
     #[default]
     Bind,
     PasswordSetup,
 }
+}
 
-#[derive(Serialize, Deserialize)]
-pub(super) struct Transaction {
+test_support_item! { pub(super), [#[derive(Serialize, Deserialize)]
+]
+struct Transaction {
     pub login_entry_id: Uuid,
     pub connection_id: Uuid,
     pub auth_type: String,
@@ -43,15 +48,20 @@ pub(super) struct Transaction {
     #[serde(default)]
     pub purpose: Purpose,
 }
+}
 
-pub(crate) fn random_token() -> String {
+test_support_item! { pub(crate), []
+fn random_token() -> String {
     let mut bytes = [0; 32];
     UnwrapErr(SysRng).fill_bytes(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
 }
+}
 
-pub(crate) fn digest(value: &str) -> String {
+test_support_item! { pub(crate), []
+fn digest(value: &str) -> String {
     control_plane::auth::hash_api_key_token(value)
+}
 }
 
 pub(super) fn challenge(verifier: &str) -> String {
@@ -73,8 +83,10 @@ pub(super) fn browser_cookie_name(state: &str) -> String {
     format!("flowbase_oauth_{}", digest(state))
 }
 
-pub(super) fn denied() -> ApiError {
+test_support_item! { pub(super), []
+fn denied() -> ApiError {
     control_plane::errors::ControlPlaneError::PermissionDenied("external_auth_invalid_state").into()
+}
 }
 
 pub(super) async fn store(
@@ -137,7 +149,6 @@ pub(super) fn binding_matches(
         && session.expires_at_unix > now_unix
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/transaction_tests.rs"]
 mod tests;

@@ -713,7 +713,7 @@ impl
     }
 }
 
-pub(crate) fn compile_catalog_registry(
+pub fn compile_catalog_registry(
     registry: runtime_core::runtime_model_registry::RuntimeModelRegistry,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

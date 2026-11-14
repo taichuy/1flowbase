@@ -16,31 +16,43 @@ use uuid::Uuid;
 
 use crate::{app_state::ApiState, notification_runtime::ManagedNotificationProvider};
 
+test_support_item! { , []
 mod activity;
+}
 mod provider_activity;
-pub(crate) use commands::event_replies::sender_for_event as event_notification_sender;
-pub(crate) use provider_activity::scope_event_activity;
+pub use commands::event_replies::sender_for_event as event_notification_sender;
+pub use provider_activity::scope_event_activity;
 mod attachments;
 pub use activity::CommunicationActivity;
 pub(crate) mod command_capabilities;
+test_support_item! { , []
 mod commands;
+}
 mod execution;
 mod turn_inputs;
+test_support_item! { , []
 mod turns;
-pub(crate) use execution::validate_binding;
+}
+pub use execution::validate_binding;
+test_support_item! { , []
 mod receive;
+}
+test_support_item! { , []
 mod request;
+}
 pub(crate) mod scoped_tools;
 
+test_support_item! { , []
 const LEASE_SECONDS: u32 = 120;
+}
 const RETRY_DELAY: Duration = Duration::from_secs(2);
 
-pub(crate) struct CommunicationWorker {
+pub struct CommunicationWorker {
     stop: watch::Sender<bool>,
     task: tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 impl CommunicationWorker {
-    pub(crate) fn spawn(
+    pub fn spawn(
         state: Arc<ApiState>,
         owner: Arc<crate::generation_dispatch::GenerationDispatch>,
     ) -> Self {
@@ -51,17 +63,9 @@ impl CommunicationWorker {
         }
     }
 
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    #[cfg(test)]
-    pub(crate) fn inactive() -> Self {
-        let (stop, _) = watch::channel(false);
-        Self {
-            stop,
-            task: tokio::sync::Mutex::new(None),
-        }
-    }
 
-    pub(crate) async fn stop(&self) {
+
+    pub async fn stop(&self) {
         let _ = self.stop.send(true);
         if let Some(task) = self.task.lock().await.take() {
             let _ = task.await;
@@ -121,6 +125,7 @@ async fn supervise(
     while tasks.join_next().await.is_some() {}
 }
 
+test_support_item! { , []
 async fn active_binding(state: &ApiState, key: (Uuid, Uuid)) -> Result<CommunicationBindingRecord> {
     state
         .notification_service
@@ -130,12 +135,14 @@ async fn active_binding(state: &ApiState, key: (Uuid, Uuid)) -> Result<Communica
         .find(|b| (b.workspace_id, b.instance_id) == key)
         .context("channel_disabled")
 }
+}
 
 async fn actor(state: &ApiState, binding: &CommunicationBindingRecord) -> Result<ActorContext> {
     actor_for_binding(&state.store, binding).await
 }
 
-pub(crate) async fn actor_for_binding(
+test_support_item! { pub(crate), []
+async fn actor_for_binding(
     store: &storage_durable_postgres::MainDurableStore,
     binding: &CommunicationBindingRecord,
 ) -> Result<ActorContext> {
@@ -153,6 +160,7 @@ pub(crate) async fn actor_for_binding(
     store
         .load_actor_context(user.id, workspace.tenant_id, workspace.id, None)
         .await
+}
 }
 
 struct ProviderContext {
@@ -274,12 +282,12 @@ impl ProviderContext {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/request.rs"]
 mod request_tests;
 
-#[cfg_attr(test, api_test_selection::group(core))]
-#[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
-#[path = "_tests/acceptance.rs"]
-mod acceptance_tests;
+
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "_tests/support/worker.rs"]
+mod test_support_worker;

@@ -17,8 +17,10 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
-pub(crate) mod interface;
-pub(crate) mod provisioning;
+pub mod interface;
+test_support_item! { pub(crate), []
+mod provisioning;
+}
 pub(crate) mod scope;
 use interface::{Input, Output};
 
@@ -48,7 +50,7 @@ pub(crate) struct FileQuery {
     pub max_bytes: Option<u32>,
 }
 
-pub(crate) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation as Op;
     ConsoleRouteAssembly::new()
         .route(

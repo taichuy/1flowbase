@@ -2,9 +2,12 @@
 use super::*;
 use crate::routes::external_auth::transaction;
 use serde::{Deserialize, Serialize};
+test_support_item! { , []
 const TTL: i64 = 300;
-#[derive(Serialize, Deserialize)]
-pub(crate) struct PasswordSetupProof {
+}
+test_support_item! { pub(crate), [#[derive(Serialize, Deserialize)]
+]
+struct PasswordSetupProof {
     pub actor_id: Uuid,
     pub session_hash: String,
     pub identity_id: Uuid,
@@ -16,10 +19,14 @@ pub(crate) struct PasswordSetupProof {
     pub nonce: String,
     pub expires_at: i64,
 }
+}
+test_support_item! { , []
 fn key(session_hash: &str) -> String {
     format!("authentication:password-setup:{session_hash}")
 }
-pub(crate) async fn issue(
+}
+test_support_item! { pub(crate), []
+async fn issue(
     cache: &dyn control_plane::ports::CacheStore,
     proof: PasswordSetupProof,
 ) -> Result<(), ApiError> {
@@ -32,10 +39,14 @@ pub(crate) async fn issue(
         .await?;
     Ok(())
 }
-pub(crate) fn expires_at() -> i64 {
+}
+test_support_item! { pub(crate), []
+fn expires_at() -> i64 {
     time::OffsetDateTime::now_utc().unix_timestamp() + TTL
 }
-pub(super) async fn read(
+}
+test_support_item! { pub(super), []
+async fn read(
     cache: &dyn control_plane::ports::CacheStore,
     actor_id: Uuid,
     session_id: &str,
@@ -63,7 +74,9 @@ pub(super) async fn read(
     }
     Ok(Some(proof))
 }
-pub(super) async fn claim(
+}
+test_support_item! { pub(super), []
+async fn claim(
     cache: &dyn control_plane::ports::CacheStore,
     actor_id: Uuid,
     session_id: &str,
@@ -86,8 +99,4 @@ pub(super) async fn claim(
     // Keep the consumed record until TTL: a concurrent new verification must not be deleted.
     Ok(proof)
 }
-
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-#[path = "_tests/proof.rs"]
-mod tests;
+}

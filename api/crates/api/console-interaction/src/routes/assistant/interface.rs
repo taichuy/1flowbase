@@ -565,7 +565,7 @@ impl ConsoleServerStreamPort<AssistantRunInput, AssistantRunStreamEvent, Assista
                 })?;
             let (publisher, stream) = interface_runtime::interface_stream_channel(32);
             let (sender, mut receiver) = tokio::sync::mpsc::channel(32);
-            tokio::spawn(crate::routes::debug_run_stream::send_runtime_event_stream(
+            tokio::spawn(dependencies.debug_sse.clone().send(
                 dependencies.runtime_event_stream.clone(),
                 Arc::new(dependencies.store.clone()),
                 run_id,
@@ -666,7 +666,7 @@ pub(crate) const RUN_STREAM_DECLARATIONS: &[ConsoleInterfaceDeclaration] =
         mutating: true,
     }];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: MainDurableStore,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -689,7 +689,7 @@ fn compile_registry_with_port(
     )
 }
 
-pub(crate) fn compile_conversations_registry(
+pub fn compile_conversations_registry(
     store: MainDurableStore,
     conversation_events: Arc<AssistantConversationEventHub>,
 ) -> Result<
@@ -715,7 +715,7 @@ fn compile_conversations_registry_with_port(
 
 /// Compiles the unary embedded Assistant run binding for contribution assembly.
 /// Shared boot wiring deliberately lives outside this Assistant-local packet.
-pub(crate) fn compile_runs_registry(
+pub fn compile_runs_registry(
     dependencies: AssistantRunDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -731,7 +731,7 @@ pub(crate) fn compile_runs_registry(
 
 /// Compiles the typed server-stream embedded Assistant run binding for contribution assembly.
 /// Shared boot wiring deliberately lives outside this Assistant-local packet.
-pub(crate) fn compile_run_stream_registry(
+pub fn compile_run_stream_registry(
     dependencies: AssistantRunDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -745,15 +745,12 @@ pub(crate) fn compile_run_stream_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableAssistantSettingsPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableAssistantConversationsPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<AssistantSettingsInput, AssistantSettingsOutput>
     for UnavailableAssistantSettingsPort
@@ -771,7 +768,6 @@ impl ConsoleInterfacePort<AssistantSettingsInput, AssistantSettingsOutput>
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<AssistantConversationsInput, AssistantConversationsOutput>
     for UnavailableAssistantConversationsPort
@@ -789,7 +785,6 @@ impl ConsoleInterfacePort<AssistantConversationsInput, AssistantConversationsOut
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;

@@ -21,11 +21,14 @@ pub enum FileError {
 pub(crate) fn invalid(message: &'static str) -> FileError {
     FileError::InvalidInput(message)
 }
-pub(crate) struct Budget {
+test_support_item! { pub(crate), []
+struct Budget {
     deadline: Instant,
 }
+}
 impl Budget {
-    pub(crate) fn new(timeout_ms: u64) -> Result<Self, FileError> {
+test_support_item! { pub(crate), []
+    fn new(timeout_ms: u64) -> Result<Self, FileError> {
         if timeout_ms == 0 {
             return Err(invalid("terminal_timeout_invalid"));
         }
@@ -34,6 +37,7 @@ impl Budget {
             .ok_or_else(|| invalid("terminal_timeout_invalid"))?;
         Ok(Self { deadline })
     }
+}
     pub(crate) fn check(&self) -> Result<(), FileError> {
         if Instant::now() >= self.deadline {
             return Err(invalid("terminal_timeout"));
@@ -48,7 +52,8 @@ pub(crate) fn path(value: &str) -> Result<PathBuf, FileError> {
     }
     Ok(path.to_owned())
 }
-pub(crate) fn info() -> dto::InfoOutput {
+test_support_item! { pub(crate), []
+fn info() -> dto::InfoOutput {
     dto::InfoOutput {
         os: std::env::consts::OS.into(),
         shell: if cfg!(windows) {
@@ -61,7 +66,8 @@ pub(crate) fn info() -> dto::InfoOutput {
         pty: false,
     }
 }
-#[cfg_attr(test, api_test_selection::group(core))]
+}
+
 #[cfg(test)]
 #[path = "_tests/files.rs"]
 mod tests;

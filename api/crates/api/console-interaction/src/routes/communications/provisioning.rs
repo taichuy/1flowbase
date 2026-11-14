@@ -13,7 +13,8 @@ use uuid::Uuid;
 pub(crate) fn instance_id(channel: Uuid) -> String {
     format!("communication_{channel}")
 }
-pub(crate) async fn ensure_channel_mcp(
+test_support_item! { pub(crate), []
+async fn ensure_channel_mcp(
     deps: &Dependencies,
     actor: &ActorContext,
     channel: Uuid,
@@ -72,7 +73,7 @@ pub(crate) async fn ensure_channel_mcp(
         catalog = service.read_catalog_for_actor(actor).await?;
     }
     let interfaces =
-        crate::routes::mcp_management::interface_catalog::mcp_interface_catalog_entries_with(
+        deps.catalog_provider.entries(
             &deps.catalog,
             actor,
         )
@@ -156,6 +157,7 @@ pub(crate) async fn ensure_channel_mcp(
     }
     Ok(Some(id))
 }
+}
 
 fn channel_input_mapping(
     parameters: &[domain::mcp_management::McpParameterDescriptor],
@@ -210,7 +212,6 @@ fn channel_input_mapping(
     json!({"interface_parameters":interface_parameters,"mappings":mappings})
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/provisioning.rs"]
 mod tests;

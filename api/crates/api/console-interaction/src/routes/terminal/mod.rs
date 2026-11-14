@@ -20,8 +20,10 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 mod handlers;
 mod managed_projection;
-#[path = "../../local_terminal/transfer.rs"]
+test_support_item! { , [#[path = "../../local_terminal/transfer.rs"]
+]
 mod transfer;
+}
 pub use handlers::*;
 #[derive(Deserialize, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -45,9 +47,10 @@ pub struct ImportOutput {
     pub storage_id: String,
     pub record: serde_json::Value,
 }
-#[derive(Serialize)]
+test_support_item! { pub(crate), [#[derive(Serialize)]
 #[serde(untagged)]
-pub(crate) enum TerminalInput {
+]
+enum TerminalInput {
     Info(InfoInput),
     List(ListInput),
     Stat(PathInput),
@@ -64,9 +67,11 @@ pub(crate) enum TerminalInput {
     Read(JobReadInput),
     Cancel(JobInput),
 }
-#[derive(Serialize)]
+}
+test_support_item! { pub(crate), [#[derive(Serialize)]
 #[serde(untagged)]
-pub(crate) enum TerminalOutput {
+]
+enum TerminalOutput {
     Info(InfoOutput),
     List(ListOutput),
     Stat(FileMetadata),
@@ -79,6 +84,7 @@ pub(crate) enum TerminalOutput {
     Download(DownloadOutput),
     Job(JobSnapshot),
     Read(ReadOutput),
+}
 }
 impl JsonApiInput for TerminalInput {
     const LOCATION: JsonInputLocation = JsonInputLocation::Body;
@@ -105,8 +111,10 @@ impl InterfaceContract for TerminalOutput {
         Some(managed_projection::output(self))
     }
 }
+test_support_item! { , []
 struct TerminalAdapter {
-    state: Weak<ApiState>,
+    host: Weak<dyn api_host_kernel::terminal_host::TerminalHostOperations>,
+}
 }
 impl ConsoleInterfacePort<TerminalInput, TerminalOutput> for TerminalAdapter {
     fn execute<'a>(
@@ -122,20 +130,20 @@ impl ConsoleInterfacePort<TerminalInput, TerminalOutput> for TerminalAdapter {
     }
 }
 impl TerminalAdapter {
+    fn from_weak(state: Weak<ApiState>) -> Self { Self { host: state } }
     async fn run(
         &self,
         principal: &interface_runtime::UserPrincipal,
         input: TerminalInput,
     ) -> Result<TerminalOutput, ApiError> {
-        let state = self
-            .state
+        let host = self
+            .host
             .upgrade()
             .ok_or_else(|| invalid("terminal_host_unavailable"))?;
         // Resource replay captures the selected MCP scope inside this canonical handler.
         let input = match input {
             TerminalInput::Import(body) => {
-                let result = crate::resource_import::import_for_principal(
-                    state,
+                let result = host.import_resource(
                     principal,
                     &body.resource_uri,
                     body.file_table_id,
@@ -156,7 +164,7 @@ impl TerminalAdapter {
                 }));
             }
             TerminalInput::Download(body) => {
-                return transfer::download(&state, principal.actor().clone(), body)
+                return transfer::download(&host, principal.actor().clone(), body)
                     .await
                     .map(TerminalOutput::Download)
             }
@@ -168,7 +176,7 @@ impl TerminalAdapter {
             tenant_id: actor.tenant_id,
             current_workspace_id: actor.current_workspace_id,
         };
-        let jobs = state.terminal_jobs.clone();
+        let jobs = host.jobs();
         tokio::task::spawn_blocking(move || match input {
             TerminalInput::Info(_) => Ok(TerminalOutput::Info(local_terminal::info())),
             TerminalInput::List(body) => local_terminal::list(body)
@@ -236,7 +244,7 @@ fn job_error(error: JobError) -> ApiError {
         JobError::Io(error) => error.into(),
     }
 }
-pub(crate) const INTERFACE_IDS: &[&str] = &[
+pub const INTERFACE_IDS: &[&str] = &[
     "terminal.info",
     "terminal.files.list",
     "terminal.files.stat",
@@ -253,6 +261,7 @@ pub(crate) const INTERFACE_IDS: &[&str] = &[
     "terminal.jobs.read",
     "terminal.jobs.cancel",
 ];
+test_support_item! { , []
 const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     ConsoleInterfaceDeclaration {
         interface_id: "terminal.info",
@@ -360,7 +369,9 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: true,
     },
 ];
-pub(crate) fn compile_registry(
+}
+
+pub fn compile_registry(
     state: &Arc<ApiState>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -370,9 +381,7 @@ pub(crate) fn compile_registry(
         "api-server.console-terminal",
         "graph:console-terminal-v1",
         DECLARATIONS,
-        Arc::new(TerminalAdapter {
-            state: Arc::downgrade(state),
-        }),
+        Arc::new(TerminalAdapter::from_weak(Arc::downgrade(state))),
     )
 }
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
@@ -509,10 +518,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
 }
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-#[path = "_tests/mod.rs"]
-mod tests;
+
 
 fn invalid(message: &'static str) -> ApiError {
     file_error(local_terminal::invalid(message))
@@ -541,7 +547,8 @@ use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutpu
 #[cfg(test)]
 use serde_json::json;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-#[path = "_tests/api_event_projection.rs"]
-mod api_event_tests;
+
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "_tests/support/adapter.rs"]
+mod test_support_adapter;

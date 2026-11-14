@@ -667,7 +667,7 @@ async fn project_run_stream(
     run: AssistantWebSocketRun,
 ) -> Result<(), ApiError> {
     let (event_sender, mut events) = mpsc::channel::<Value>(32);
-    tokio::spawn(debug_run_stream::send_runtime_event_websocket_stream(
+    tokio::spawn(state.runtime_event_stream_projection.clone().websocket_send(
         state.runtime_event_stream.clone(),
         Arc::new(state.store.clone()),
         run.run_id,
@@ -773,7 +773,6 @@ fn command_error(request_id: Option<&str>, code: &str, message: impl Into<String
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::super::websocket_ticket_interface::store_ticket;

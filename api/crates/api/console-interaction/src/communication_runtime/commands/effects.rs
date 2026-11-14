@@ -34,7 +34,8 @@ pub(super) async fn run(state: Arc<ApiState>, key: (Uuid, Uuid), mut stop: watch
     }
 }
 
-pub(super) async fn process_next(
+test_support_item! { pub(super), []
+async fn process_next(
     state: &ApiState,
     key: (Uuid, Uuid),
     mut stop: watch::Receiver<bool>,
@@ -69,6 +70,7 @@ pub(super) async fn process_next(
             }
         }
     }
+}
 }
 
 async fn execute(state: &ApiState, claim: &ClaimedBuiltinCommunicationCommand) -> Result<()> {
@@ -278,7 +280,8 @@ fn unavailable(
     Some((reason.into(), text.into()))
 }
 
-pub(super) async fn apply_model(
+test_support_item! { pub(super), []
+async fn apply_model(
     state: &ApiState,
     claim: &ClaimedBuiltinCommunicationCommand,
     capabilities: &AssistantRunCapabilities,
@@ -351,6 +354,7 @@ pub(super) async fn apply_model(
             .collect(),
     )?;
     complete(state, claim, session, reply.into(), None).await
+}
 }
 
 async fn complete(
@@ -448,7 +452,8 @@ async fn execute_event(
     }
 }
 
-pub(super) fn event_publication_reply(
+test_support_item! { pub(super), []
+fn event_publication_reply(
     receipt: &control_plane::event_center::EventPublishReceipt,
 ) -> (Option<String>, Option<String>) {
     use control_plane::event_center::EventTargetAdmissionStatus;
@@ -464,4 +469,5 @@ pub(super) fn event_publication_reply(
         Some("No workflow is available for this command. Please contact the administrator.".into()),
         Some("event_publication_rejected".into()),
     )
+}
 }

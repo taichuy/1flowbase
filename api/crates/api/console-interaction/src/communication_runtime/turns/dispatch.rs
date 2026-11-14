@@ -81,7 +81,7 @@ pub(super) async fn execute(
         control_plane::system_recovery::SystemWriteOwner::CommunicationExecution,
     )?;
     let actor = validated_actor(state, input).await?;
-    let inner = crate::runtime_internal_tool_invoker_factory(state, &actor)
+    let inner = crate::generation_dispatch::GenerationDispatch::acquire(state).map_err(|_| anyhow::anyhow!("mcp_access_denied"))?.runtime_debug_mcp_factory(state, &actor)
         .await
         .map_err(|_| anyhow::anyhow!("mcp_access_denied"))?
         .create_server_delegated(
@@ -92,7 +92,7 @@ pub(super) async fn execute(
         .await
         .map_err(|_| anyhow::anyhow!("mcp_access_denied"))?;
     let invoker = Arc::new(scoped_tools::ScopedTools {
-        inner: Arc::new(inner),
+        inner,
         scope: domain::CommunicationHistoryScope {
             workspace_id: input.claim.scope.workspace_id,
             instance_id: input.claim.scope.instance_id,

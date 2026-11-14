@@ -17,7 +17,8 @@ use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
 
-pub(crate) enum NotificationInput {
+test_support_item! { pub(crate), []
+enum NotificationInput {
     Types,
     List(NotificationInstanceListInput),
     Get(Uuid),
@@ -38,6 +39,7 @@ pub(crate) enum NotificationInput {
     Channels(control_plane::ports::NotificationChannelListInput),
     ReadChannel(Uuid),
     MarkUnread(Uuid),
+}
 }
 impl InterfaceContract for NotificationInput {
     fn event_projection_schema() -> Option<Value> {
@@ -60,7 +62,9 @@ impl InterfaceContract for NotificationInput {
         )
     }
 }
-pub(crate) struct NotificationOutput(pub Value);
+test_support_item! { pub(crate), []
+struct NotificationOutput(pub Value);
+}
 impl InterfaceContract for NotificationOutput {
     fn event_projection_schema() -> Option<Value> {
         Some(event_projection::output_schema())
@@ -167,7 +171,7 @@ impl ConsoleInterfacePort<NotificationInput, NotificationOutput> for Adapter {
         })
     }
 }
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     service: Arc<ApiNotificationService>,
     communication: crate::routes::communications::interface::Dependencies,
 ) -> Result<

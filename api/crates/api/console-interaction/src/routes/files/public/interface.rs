@@ -17,7 +17,9 @@ use crate::error_response::ApiError;
 pub(crate) const INTERFACE_ID: &str = "public.files.temporary.read";
 const HANDLER_REFERENCE: &str = "api-server.temporary-files.read";
 pub(crate) const BINDING_ID: &str = "http.public.files.temporary.read.v1";
-pub(crate) struct TemporaryFileInput(pub control_plane::file_management::FileAccessKey, pub bool);
+test_support_item! { pub(crate), []
+struct TemporaryFileInput(pub control_plane::file_management::FileAccessKey, pub bool);
+}
 impl InterfaceContract for TemporaryFileInput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         Some(crate::extension_bus::managed_projection::object_schema([(
@@ -31,7 +33,9 @@ impl InterfaceContract for TemporaryFileInput {
     const CONTRACT_ID: &'static str = "temporary-file-access-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
-pub(crate) struct TemporaryFileOutput(pub control_plane::file_management::FileContent);
+test_support_item! { pub(crate), []
+struct TemporaryFileOutput(pub control_plane::file_management::FileContent);
+}
 impl InterfaceContract for TemporaryFileOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         Some(
@@ -44,7 +48,9 @@ impl InterfaceContract for TemporaryFileOutput {
     const CONTRACT_ID: &'static str = "temporary-file-access-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
-pub(crate) struct TemporaryFileTargetError(pub(crate) ApiError);
+test_support_item! { pub(crate), []
+struct TemporaryFileTargetError(pub(crate) ApiError);
+}
 
 impl From<ApiError> for TemporaryFileTargetError {
     fn from(error: ApiError) -> Self {

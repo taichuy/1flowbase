@@ -95,11 +95,11 @@ pub(crate) enum NetworkPoolsOutput {
     Deleted,
 }
 
-pub(crate) struct NetworkPoolsDependencies {
-    pub(crate) store: MainDurableStore,
-    pub(crate) provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
-    pub(crate) secret_key: String,
-    pub(crate) api_node_id: String,
+pub struct NetworkPoolsDependencies {
+    pub store: MainDurableStore,
+    pub provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
+    pub secret_key: String,
+    pub api_node_id: String,
 }
 
 struct NetworkPoolsAdapter(NetworkPoolsDependencies);
@@ -463,7 +463,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: NetworkPoolsDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

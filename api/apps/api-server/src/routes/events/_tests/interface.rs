@@ -8,7 +8,7 @@ async fn event_catalog_reads_durable_definitions_without_retaining_boot() {
     let boot = state.extension_boot_snapshot.as_ref().unwrap();
     let probe = Arc::downgrade(boot);
     let initial_owners = Arc::strong_count(boot);
-    let dependencies = Dependencies::new(&state);
+    let dependencies = Dependencies::new(&state, Arc::new(crate::interaction_assembly::ApiEventDescriptors));
     assert_eq!(
         Arc::strong_count(boot),
         initial_owners,
@@ -33,7 +33,7 @@ async fn event_catalog_reads_durable_definitions_without_retaining_boot() {
 
     let mut unbound_state = (*state).clone();
     unbound_state.extension_boot_snapshot = None;
-    let unbound = Dependencies::new(&unbound_state);
+    let unbound = Dependencies::new(&unbound_state, Arc::new(crate::interaction_assembly::ApiEventDescriptors));
     let expected = EventCenterConfigurationService::with_registered_events(
         state.store.clone(),
         actor.current_workspace_id,

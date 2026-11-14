@@ -25,14 +25,20 @@ use std::sync::Arc;
 use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
-pub(crate) const OWNER: &str = "api-server.external-auth";
-pub(crate) const START_BINDING: &str = "http.public.auth.external.start.v1";
-pub(crate) const CALLBACK_BINDING: &str = "http.public.auth.external.callback.v1";
-pub(crate) const CALLBACK_AUTH_PLUGIN: &str = "api-server.external-callback-authentication";
-pub(crate) const CALLBACK_AUTH_ADAPTER: &str = "api-server.external-callback";
-pub(crate) const CALLBACK_AUTH_ACTIVATION: &str = "api-server.external-callback.activation.v1";
-pub(crate) const AUTHORIZE_BINDING: &str = "http.console.identity.external-authorize.v1";
-pub(crate) const OPERATIONS: &[&str] = &[
+pub const OWNER: &str = "api-server.external-auth";
+test_support_item! { pub(crate), []
+const START_BINDING: &str = "http.public.auth.external.start.v1";
+}
+test_support_item! { pub(crate), []
+const CALLBACK_BINDING: &str = "http.public.auth.external.callback.v1";
+}
+pub const CALLBACK_AUTH_PLUGIN: &str = "api-server.external-callback-authentication";
+pub const CALLBACK_AUTH_ADAPTER: &str = "api-server.external-callback";
+pub const CALLBACK_AUTH_ACTIVATION: &str = "api-server.external-callback.activation.v1";
+test_support_item! { pub(crate), []
+const AUTHORIZE_BINDING: &str = "http.console.identity.external-authorize.v1";
+}
+pub const OPERATIONS: &[&str] = &[
     "public.auth.external.start",
     "public.auth.external.callback",
     "console.identity.external-authorize",
@@ -40,7 +46,7 @@ pub(crate) const OPERATIONS: &[&str] = &[
 
 /// Same declarations drive registry bindings and API-owner static documentation.
 #[derive(Clone, Copy)]
-pub(crate) struct BindingMetadata {
+pub struct BindingMetadata {
     pub operation: &'static str,
     pub binding_id: &'static str,
     pub method: &'static str,
@@ -78,21 +84,27 @@ const BINDINGS: &[BindingMetadata] = &[
         console: true,
     },
 ];
-pub(crate) fn bindings_metadata() -> &'static [BindingMetadata] {
+pub fn bindings_metadata() -> &'static [BindingMetadata] {
     BINDINGS
 }
 
-pub(super) enum PublicInput {
+test_support_item! { pub(super), []
+enum PublicInput {
     Start { login_entry_id: Uuid },
     Complete(Box<super::VerifiedCallback>),
 }
-pub(super) enum PublicOutput {
+}
+test_support_item! { pub(super), []
+enum PublicOutput {
     Authorization(AuthorizeOutput),
     Login(LoginResult),
     Bound,
     PasswordVerified,
 }
-pub(super) struct AuthorizeInput(pub Uuid);
+}
+test_support_item! { pub(super), []
+struct AuthorizeInput(pub Uuid);
+}
 impl serde::Serialize for AuthorizeInput {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         // The internal scalar is the complete public body DTO's single field.
@@ -108,11 +120,15 @@ impl crate::openapi_interface::json_contract::JsonApiInput for AuthorizeInput {
     const LOCATION: crate::openapi_interface::json_contract::JsonInputLocation =
         crate::openapi_interface::json_contract::JsonInputLocation::Body;
 }
-pub(super) struct AuthorizeOutput {
+test_support_item! { pub(super), []
+struct AuthorizeOutput {
     pub cookies: axum_extra::extract::cookie::CookieJar,
     pub authorization_url: String,
 }
-pub(super) struct TargetError(pub ApiError);
+}
+test_support_item! { pub(super), []
+struct TargetError(pub ApiError);
+}
 
 // Public contracts publish only an empty closed summary. Their sealed identity,
 // profile, authority lease, session and authorization carrier remain Host-only.
@@ -360,7 +376,7 @@ impl InterfaceHandler<AuthorizeInput, AuthorizeOutput, TargetError, UserPrincipa
     }
 }
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     state: &Arc<ApiState>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError> {
     let owner = InterfaceOwner::new(OWNER).expect("static owner");
@@ -651,7 +667,7 @@ pub(super) async fn invoke_authorize(
             },
         )
         .await?;
-    let kernel = crate::routes::host_infrastructure::interface_operation::invocation_kernel(
+    let kernel = api_host_kernel::console_invocation::invocation_kernel(
         Arc::clone(&state.console_policy_reader),
         Arc::clone(&state.console_operation_registry),
     );

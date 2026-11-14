@@ -41,7 +41,6 @@ impl ApiOutput for AssistantWebSocketCommandOutput {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/api_event_projection.rs"]
 mod api_event_tests;

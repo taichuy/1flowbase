@@ -270,7 +270,6 @@ projection!(
     type_catalog_entry_schema
 );
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/openapi.rs"]
 mod tests;

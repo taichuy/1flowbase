@@ -1,7 +1,9 @@
 //! Authenticated self-service methods. Business state comes from the Control Plane.
 mod dto;
-pub(crate) mod interface;
+pub mod interface;
+test_support_item! { , []
 mod proof;
+}
 use crate::routes::external_auth::transaction::{self, BindingIntent, Purpose};
 use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
 use axum::{
@@ -20,7 +22,7 @@ pub use dto::*;
 use std::{collections::BTreeMap, sync::Arc};
 use uuid::Uuid;
 
-pub(crate) fn route_assembly(
+pub fn route_assembly(
 ) -> crate::routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>> {
     use crate::routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly};
     use access_control::ConsoleRouteOwnership::Authenticated;
@@ -151,12 +153,15 @@ pub async fn initialize_password(
     ))
 }
 
+test_support_item! { , []
 struct AvailableMethods {
     providers: Vec<crate::authentication_runtime::AuthenticationProvider>,
     entries: Vec<domain::LoginEntryRecord>,
     authorities: Vec<String>,
     leases: Vec<Box<dyn control_plane::ports::ContributionAuthorityLease>>,
 }
+}
+test_support_item! { , []
 async fn available(
     state: &super::external_auth::ExternalAuthentication,
 ) -> Result<AvailableMethods, ApiError> {
@@ -176,6 +181,8 @@ async fn available(
         leases,
     })
 }
+}
+test_support_item! { , []
 async fn release(
     leases: Vec<Box<dyn control_plane::ports::ContributionAuthorityLease>>,
 ) -> Result<(), ApiError> {
@@ -183,6 +190,7 @@ async fn release(
         lease.release().await?;
     }
     Ok(())
+}
 }
 fn profile_text(profile: &serde_json::Value, key: &str, max: usize) -> Option<String> {
     profile
@@ -309,7 +317,8 @@ async fn read_methods(
     })
 }
 
-pub(crate) async fn issue_password_proof(
+test_support_item! { pub(crate), []
+async fn issue_password_proof(
     state: &super::external_auth::ExternalAuthentication,
     actor: &domain::ActorContext,
     session_hash: String,
@@ -356,8 +365,12 @@ pub(crate) async fn issue_password_proof(
     )
     .await
 }
+}
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-#[path = "_tests/api.rs"]
-mod tests;
+
+
+
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "_tests/support/accessors.rs"]
+mod test_accessors;

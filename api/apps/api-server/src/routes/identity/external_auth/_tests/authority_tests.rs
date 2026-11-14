@@ -296,13 +296,11 @@ async fn external_callback_revocation_after_worker_response_prevents_bound_login
             registry.clone(),
             &BindingId::new(interface::CALLBACK_BINDING).unwrap(),
             InterfaceProtocol::Http,
-            ExternalCallbackCredential {
-                state: state.clone(),
-                headers: HeaderMap::new(),
-                jar,
-                raw_query: Some(callback_query(&url, "accepted")),
-                admission: admission.clone(),
-            },
+            ExternalCallbackCredential::test_new(state.clone(),
+HeaderMap::new(),
+jar,
+Some(callback_query(&url, "accepted")),
+admission.clone()),
         )
         .await
         .unwrap();

@@ -5,19 +5,27 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::watch;
 use uuid::Uuid;
 
+test_support_item! { , []
 mod admission;
+}
+test_support_item! { , []
 mod delivery;
+}
+test_support_item! { , []
 mod effects;
+}
 pub(super) mod event_replies;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
 
-pub(super) async fn run(state: Arc<ApiState>, key: (Uuid, Uuid), stop: watch::Receiver<bool>) {
+test_support_item! { pub(super), []
+async fn run(state: Arc<ApiState>, key: (Uuid, Uuid), stop: watch::Receiver<bool>) {
     tokio::join!(
         admission::run(state.clone(), key, stop.clone()),
         effects::run(state.clone(), key, stop.clone()),
         delivery::run(state, key, stop),
     );
+}
 }
 
 async fn wait(stop: &mut watch::Receiver<bool>) -> bool {
@@ -29,8 +37,3 @@ async fn wait(stop: &mut watch::Receiver<bool>) -> bool {
         _ = tokio::time::sleep(POLL_INTERVAL) => true,
     }
 }
-
-#[cfg_attr(test, api_test_selection::group(core))]
-#[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
-#[path = "_tests/mod.rs"]
-mod tests;

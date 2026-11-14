@@ -217,7 +217,8 @@ impl InterfaceContract for BlockContextContractResponse {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) fn decode_block_context_contract(
+test_support_item! { pub(crate), []
+fn decode_block_context_contract(
     bytes: &[u8],
 ) -> anyhow::Result<BlockContextContractResponse> {
     let contract: BlockContextContractResponse =
@@ -257,6 +258,7 @@ pub(crate) fn decode_block_context_contract(
         }
     }
     Ok(contract)
+}
 }
 
 fn validate_named_items<'a>(
@@ -324,7 +326,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[ConsoleInterfa
     mutating: false,
 }];
 
-pub(crate) fn compile_registry() -> Result<
+pub fn compile_registry() -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {

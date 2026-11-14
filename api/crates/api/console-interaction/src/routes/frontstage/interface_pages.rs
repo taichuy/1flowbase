@@ -585,12 +585,12 @@ impl InterfaceContract for FrontstagePagesOutput {
 }
 
 #[derive(Clone)]
-pub(crate) struct FrontstagePagesDependencies {
-    pub(crate) navigation_cache: control_plane::navigation_cache::NavigationCache,
-    pub(crate) store: storage_durable_postgres::MainDurableStore,
-    pub(crate) bootstrap_workspace_id: Uuid,
-    pub(crate) api_node_id: String,
-    pub(crate) runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
+pub struct FrontstagePagesDependencies {
+    pub navigation_cache: control_plane::navigation_cache::NavigationCache,
+    pub store: storage_durable_postgres::MainDurableStore,
+    pub bootstrap_workspace_id: Uuid,
+    pub api_node_id: String,
+    pub runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
 }
 struct FrontstagePagesAdapter(FrontstagePagesDependencies);
 
@@ -1015,7 +1015,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: FrontstagePagesDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

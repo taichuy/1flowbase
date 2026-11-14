@@ -168,7 +168,7 @@ fn assert_safe_frame(input: ManagedInterfaceInput) -> Value {
 #[test]
 fn root_2014_ac_004_schema_identity_and_secret_negatives() {
     let id = Uuid::new_v4();
-    let input = PublicSignInInput(LoginCommand {
+    let input = PublicSignInInput::test_new(LoginCommand {
         login_entry_id: id,
         identifier: SECRET.into(),
         password: SECRET.into(),
@@ -179,7 +179,7 @@ fn root_2014_ac_004_schema_identity_and_secret_negatives() {
         input: input_view.clone(),
     });
     assert_eq!(
-        input.0.password, SECRET,
+        input.test_inner().password, SECRET,
         "projection must not alter handler input"
     );
     let mut injected = input_view.clone();
@@ -201,7 +201,7 @@ fn root_2014_ac_004_schema_identity_and_secret_negatives() {
         changed_version.compile().unwrap().fingerprint()
     );
 
-    let output = PublicSignInOutput(LoginResult {
+    let output = PublicSignInOutput::test_new(LoginResult {
         actor: domain::ActorContext {
             user_id: id,
             tenant_id: id,
@@ -228,14 +228,14 @@ fn root_2014_ac_004_schema_identity_and_secret_negatives() {
     assert!(output_frame["input"]["output"]["value"]["0"]
         .get("session")
         .is_none());
-    assert_eq!(output.0.session.session_id, SECRET);
-    assert_eq!(output.0.session.csrf_token, SECRET);
+    assert_eq!(output.test_inner().session.session_id, SECRET);
+    assert_eq!(output.test_inner().session.csrf_token, SECRET);
 
-    let error = PublicSignInTargetError(crate::error_response::ApiError(anyhow::anyhow!(SECRET)));
+    let error = PublicSignInTargetError::test_new(crate::error_response::ApiError(anyhow::anyhow!(SECRET)));
     let error_view = view(&error);
     assert!(!serde_json::to_string(&error_view).unwrap().contains(SECRET));
     assert!(
-        error.0 .0.to_string().contains(SECRET),
+        error.test_inner().0.to_string().contains(SECRET),
         "host error chain remains intact"
     );
 
@@ -348,7 +348,7 @@ fn root_2014_r3_probe_reference_binding_and_projection() {
     use crate::extension_bus::{validate_interface_protocol, FrozenManagedProjection};
     use extension_contracts::{ManagedInterfaceProtocol, ManagedInterfaceReferenceInput};
     use runtime_core::runtime_backend::RuntimeManagedHookInput;
-    let input = PublicSignInInput(LoginCommand {
+    let input = PublicSignInInput::test_new(LoginCommand {
         login_entry_id: Uuid::new_v4(),
         identifier: SECRET.into(),
         password: SECRET.into(),

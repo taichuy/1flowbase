@@ -12,9 +12,9 @@ use serde_json::{json, Value};
 
 use crate::app_state::ApiState;
 
-pub(crate) struct InterfaceRuleObserver(Weak<ApiState>);
+pub struct InterfaceRuleObserver(Weak<ApiState>);
 impl InterfaceRuleObserver {
-    pub(crate) fn new(state: &Arc<ApiState>) -> Arc<Self> {
+    pub fn new(state: &Arc<ApiState>) -> Arc<Self> {
         Arc::new(Self(Arc::downgrade(state)))
     }
 }
@@ -149,7 +149,7 @@ fn application_operation_entry(
     workspace_id: uuid::Uuid,
     phase: InterfaceEventPhase,
 ) -> Option<EventCatalogEntry> {
-    use crate::routes::application_public_api::agent_logs::event_projection::OPERATIONS;
+    use api_host_kernel::agent_logs_event_projection::OPERATIONS;
     let operation = capability.definition().interface_id().as_str();
     if !OPERATIONS.contains(&operation) {
         return None;
@@ -186,7 +186,7 @@ fn observe_application_operation(
     phase: InterfaceEventPhase,
     payload: &Value,
 ) {
-    use crate::routes::application_public_api::agent_logs::event_projection::application_operation_context;
+    use api_host_kernel::agent_logs_event_projection::application_operation_context;
     let input = match event {
         InterfaceEvent::Before { input, .. } => Some(input),
         InterfaceEvent::Completion { input, .. } => input.as_ref(),

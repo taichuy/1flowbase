@@ -121,6 +121,8 @@ async fn openai_chat_live_answer_delta_is_not_duplicated_before_waiting_projects
         file_storage_registry: base_state.file_storage_registry.clone(),
         runtime_engine: base_state.runtime_engine.clone(),
         provider_runtime: base_state.provider_runtime.clone(),
+        native_resource_import: base_state.native_resource_import.clone(),
+        runtime_event_stream_projection: base_state.runtime_event_stream_projection.clone(),
         terminal_jobs: Default::default(),
         process_started_at: base_state.process_started_at,
         runtime_activity: base_state.runtime_activity.clone(),

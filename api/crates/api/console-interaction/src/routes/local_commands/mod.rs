@@ -11,7 +11,9 @@ use crate::{
     local_command::{process::CompletedCommand, HostCommandExecutor},
 };
 use axum::{extract::State, http::HeaderMap, response::Response, Json};
+test_support_item! { , []
 mod response;
+}
 use control_plane::local_command::LocalCommandService;
 use interface_runtime::InterfaceContract;
 use serde::{Deserialize, Serialize};
@@ -100,7 +102,7 @@ impl<R: control_plane::ports::AuthRepository + 'static>
     }
 }
 
-pub(crate) fn compile_registry<R: control_plane::ports::AuthRepository + 'static>(
+pub fn compile_registry<R: control_plane::ports::AuthRepository + 'static>(
     service: LocalCommandService<R, HostCommandExecutor>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -175,10 +177,7 @@ pub async fn execute_local_command(
     Ok(response::response(output.0)?)
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-#[path = "_tests/mod.rs"]
-mod tests;
+
 
 #[path = "api_event_projection.rs"]
 mod api_event_projection;

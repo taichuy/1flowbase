@@ -140,7 +140,8 @@ async fn record_outcome(
     Ok(())
 }
 
-pub(super) fn send_failure(error: &anyhow::Error) -> CommunicationCommandSendOutcome {
+test_support_item! { pub(super), []
+fn send_failure(error: &anyhow::Error) -> CommunicationCommandSendOutcome {
     match error.downcast_ref::<ControlPlaneError>() {
         Some(
             ControlPlaneError::Conflict(_)
@@ -153,4 +154,5 @@ pub(super) fn send_failure(error: &anyhow::Error) -> CommunicationCommandSendOut
         ) => CommunicationCommandSendOutcome::Failed,
         _ => CommunicationCommandSendOutcome::Unknown,
     }
+}
 }

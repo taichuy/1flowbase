@@ -18,7 +18,7 @@ use crate::{
 
 const INTERFACE_CAPABILITY_PAGE_SIZE: usize = 20;
 
-pub(crate) enum FrontstageCallableCatalogInput {
+pub enum FrontstageCallableCatalogInput {
     List(FrontstageInterfaceCapabilityQuery),
     Get { interface_id: String },
 }
@@ -139,7 +139,7 @@ impl InterfaceContract for FrontstageCallableCatalogInput {
     clippy::large_enum_variant,
     reason = "the typed catalog output is projected immediately into the frontstage response"
 )]
-pub(crate) enum FrontstageCallableCatalogOutput {
+pub enum FrontstageCallableCatalogOutput {
     Page(OpenApiCapabilityCatalogPage),
     Entry(OpenApiCapabilityCatalogEntry),
 }
@@ -265,8 +265,8 @@ impl InterfaceContract for FrontstageCallableCatalogOutput {
 }
 
 #[derive(Clone)]
-pub(crate) struct FrontstageCallableCatalogDependencies {
-    pub(crate) openapi: OpenApiCapabilityCatalogDependencies,
+pub struct FrontstageCallableCatalogDependencies {
+    pub openapi: OpenApiCapabilityCatalogDependencies,
 }
 
 struct FrontstageCallableCatalogAdapter(FrontstageCallableCatalogDependencies);
@@ -337,7 +337,7 @@ impl ConsoleInterfacePort<FrontstageCallableCatalogInput, FrontstageCallableCata
     }
 }
 
-pub(crate) fn port(
+pub fn port(
     dependencies: FrontstageCallableCatalogDependencies,
 ) -> Arc<dyn ConsoleInterfacePort<FrontstageCallableCatalogInput, FrontstageCallableCatalogOutput>>
 {
@@ -361,7 +361,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<
         dyn ConsoleInterfacePort<FrontstageCallableCatalogInput, FrontstageCallableCatalogOutput>,
     >,
@@ -377,11 +377,9 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableFrontstageCallableCatalogPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<FrontstageCallableCatalogInput, FrontstageCallableCatalogOutput>
     for UnavailableFrontstageCallableCatalogPort
@@ -399,7 +397,6 @@ impl ConsoleInterfacePort<FrontstageCallableCatalogInput, FrontstageCallableCata
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

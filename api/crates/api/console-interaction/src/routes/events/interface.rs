@@ -17,7 +17,7 @@ use std::sync::{Arc, Weak};
 use uuid::Uuid;
 
 #[derive(Clone)]
-pub(crate) struct Dependencies {
+pub struct Dependencies {
     store: storage_durable_postgres::MainDurableStore,
     runtime: EventCenterRuntime,
     // The compiled registry owns this handler; retaining Boot here would close a cycle.
@@ -25,11 +25,13 @@ pub(crate) struct Dependencies {
     changes: Arc<tokio::sync::Notify>,
     statuses: crate::workers::event_workflow::EventWorkflowStatuses,
     sources: Arc<crate::event_center::catalog::EventSourceCatalog>,
+    descriptors: Arc<dyn api_host_kernel::event_descriptor_ports::ApiEventDescriptorPort>,
     api_catalog: crate::openapi_interface::OpenApiCapabilityCatalogDependencies,
 }
 impl Dependencies {
-    pub(crate) fn new(state: &ApiState) -> Self {
+    pub fn new(state: &ApiState, descriptors: Arc<dyn api_host_kernel::event_descriptor_ports::ApiEventDescriptorPort>) -> Self {
         Self {
+            descriptors,
             store: state.store.clone(),
             runtime: state.event_center.clone(),
             boot: state.extension_boot_snapshot.as_ref().map(Arc::downgrade),
@@ -46,7 +48,8 @@ impl Dependencies {
         }
     }
 }
-pub(crate) enum Input {
+test_support_item! { pub(crate), []
+enum Input {
     Catalog(EventCatalogQuery),
     ApiOperations,
     ApiOperation(String),
@@ -54,7 +57,10 @@ pub(crate) enum Input {
     Update(Uuid, UpdateEventDefinitionInput),
     Runtime,
 }
-pub(crate) struct Output(pub Value);
+}
+test_support_item! { pub(crate), []
+struct Output(pub Value);
+}
 impl InterfaceContract for Input {
     const CONTRACT_ID: &'static str = "console-events-input";
     const CONTRACT_VERSION: &'static str = "1";
@@ -146,6 +152,7 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
                 if let Some(operation_id) = selected_operation {
                     let selected = crate::event_center::api_catalog::get_with(
                         &api_catalog,
+                            self.descriptors.as_ref(),
                         actor,
                         operation_id,
                         external_catalog,
@@ -159,6 +166,7 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
                     Input::ApiOperations => Ok(serde_json::to_value(
                         crate::event_center::api_catalog::summaries_with(
                             &api_catalog,
+                            self.descriptors.as_ref(),
                             actor,
                             external_catalog,
                         )
@@ -167,6 +175,7 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
                     Input::ApiOperation(operation_id) => {
                         let details = crate::event_center::api_catalog::get_with(
                             &api_catalog,
+                            self.descriptors.as_ref(),
                             actor,
                             &operation_id,
                             external_catalog,
@@ -273,7 +282,7 @@ fn definition_value(record: EventDefinitionRecord) -> Result<Value, ApiError> {
     value["updated_at"] = Value::String(updated);
     Ok(value)
 }
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: Dependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -331,10 +340,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-#[path = "_tests/interface.rs"]
-mod tests;
+
 
 impl crate::openapi_interface::contract::ApiInput for Input {
     fn project_document_input(

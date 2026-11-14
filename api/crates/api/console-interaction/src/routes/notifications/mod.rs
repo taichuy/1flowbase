@@ -18,7 +18,7 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 pub mod events;
-pub(crate) mod interface;
+pub mod interface;
 pub mod openapi;
 use interface::{NotificationInput as Input, NotificationOutput};
 

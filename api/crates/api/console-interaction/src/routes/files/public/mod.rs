@@ -11,7 +11,9 @@ use serde::Deserialize;
 
 use crate::{app_state::ApiState, error_response::ApiError};
 
-pub(crate) mod interface;
+test_support_item! { pub(crate), []
+mod interface;
+}
 use interface::*;
 
 #[derive(Deserialize)]
@@ -21,7 +23,7 @@ pub struct TemporaryFileQuery {
     preview: bool,
 }
 
-pub(crate) fn route_assembly(
+pub fn route_assembly(
 ) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
     crate::external_route_assembly::ExternalRouteAssembly::new().route(
         "/api/public/files/content",
@@ -47,7 +49,7 @@ impl TemporaryFilePort for TemporaryFileAdapter {
     }
 }
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     state: &ApiState,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

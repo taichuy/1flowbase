@@ -170,7 +170,7 @@ fn ac_004_backend_contract_keys_match_the_frontend_protocol_source() {
         .collect::<Vec<_>>();
 
     let contract: Value = serde_json::from_slice(include_bytes!(
-        "../../../../resources/ctx/block-context.v1.json"
+        "../../../../../../crates/api/console-interaction/resources/ctx/block-context.v1.json"
     ))
     .unwrap();
     let backend_keys = contract["entries"]

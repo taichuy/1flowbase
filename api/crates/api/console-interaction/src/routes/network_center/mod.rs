@@ -20,11 +20,11 @@ use crate::{
     },
 };
 
-pub(crate) mod core_interface;
+pub mod core_interface;
 mod managed_provider_projection;
 pub mod plugins;
 pub mod pools;
-pub(crate) mod pools_interface;
+pub mod pools_interface;
 pub mod routes;
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -105,7 +105,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     route_assembly_with_plugin_upload_max_bytes(crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES)
 }
 
-pub(crate) fn route_assembly_with_plugin_upload_max_bytes(
+pub fn route_assembly_with_plugin_upload_max_bytes(
     plugin_upload_max_bytes: usize,
 ) -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
@@ -473,7 +473,6 @@ pub async fn delete_network_egress_route(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -553,7 +552,6 @@ mod tests {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/provider_projection.rs"]
 mod provider_projection_tests;
