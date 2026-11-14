@@ -189,4 +189,22 @@ test('ordinary API coverage selects existing owners and weights the original 60 
   ]);
   files[2].summary.lines.covered = 10;
   assert.deepEqual(collectBackendCoverageFailures(summaries, ['api-server']), []);
+  for (const [owner, packages] of [
+    ['console-settings', ['api-server', 'api-host-kernel', 'api-public-gateway', 'api-applications', 'api-console-settings']],
+    ['mcp', ['api-server', 'api-host-kernel', 'api-public-gateway', 'api-applications', 'api-console-settings', 'api-mcp']],
+  ]) {
+    const ownerManifest = path.join(root, 'api/crates/api', owner, 'Cargo.toml');
+    fs.mkdirSync(path.dirname(ownerManifest), { recursive: true });
+    fs.writeFileSync(ownerManifest, '[package]\n');
+    const [withOwner] = buildBackendCommands({ repoRoot: root, cargoParallelism: 2, cargoTestThreads: 2, backendKeys: ['api-server'] });
+    assert.deepEqual(withOwner.args.flatMap((arg, i, args) => arg === '--package' ? [args[i + 1]] : []), packages);
+    if (owner === 'console-settings') assert.equal(withOwner.args.includes('api-mcp'), false);
+    files[2].filename = `/repo/api/crates/api/${owner}/src/lib.rs`;
+    files[2].summary.lines.covered = 0;
+    assert.deepEqual(collectBackendCoverageFailures(summaries, ['api-server']), [
+      { key: 'api-server', metric: 'lines', expectedPct: 60, actualPct: 50 },
+    ]);
+    files[2].summary.lines.covered = 10;
+    assert.deepEqual(collectBackendCoverageFailures(summaries, ['api-server']), []);
+  }
 });

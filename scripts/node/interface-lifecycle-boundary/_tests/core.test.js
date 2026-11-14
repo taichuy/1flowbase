@@ -17,7 +17,7 @@ const sources = [
   'api/apps/api-server/src/routes/identity/sign_in_interface.rs',
   'api/crates/api/public-gateway/src/routes/application_public_api/native.rs',
   'api/crates/api/public-gateway/src/routes/application_public_api/compatibility_interface.rs',
-  'api/apps/api-server/src/routes/mcp_protocol.rs',
+  'api/crates/api/mcp/src/routes/mcp_protocol.rs',
   'api/apps/api-server/src/lib.rs',
   'api/crates/api/kernel/src/slices/console_contracts/external_endpoint_catalog.rs',
   'api/crates/api/public-gateway/src/routes/application_public_api/openai/response_dispatch.rs',
@@ -275,10 +275,10 @@ test('private invocation and startup splits retain the same positive and negativ
   assert.ok(inspectInterfaceLifecycleBoundary(root).some((value) => value.includes('bare external mount')));
 });
 
-test('route ownership enforcement follows current Kernel and Gateway manifests', (t) => {
+test('route ownership enforcement follows current API owner manifests', (t) => {
   const root = fixture();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  for (const owner of ['kernel', 'public-gateway']) {
+  for (const owner of ['kernel', 'public-gateway', 'console-settings', 'mcp']) {
     const manifest = path.join(root, 'api/crates/api', owner, 'Cargo.toml');
     fs.mkdirSync(path.dirname(manifest), { recursive: true });
     fs.writeFileSync(manifest, '[package]\n');
@@ -290,4 +290,28 @@ test('route ownership enforcement follows current Kernel and Gateway manifests',
     assert.ok(violations.some((value) => value.includes(`${route} Interface adapter retains the global ApiState`)));
     assert.ok(violations.some((value) => value.includes(`${route} retains a direct route authentication owner`)));
   }
+});
+
+
+test('MCP retention follows the implementation and backup authentication keeps one exact owner', (t) => {
+  const root = fixture();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const owner of ['console-settings', 'mcp']) {
+    const manifest = path.join(root, 'api/crates/api', owner, 'Cargo.toml');
+    fs.mkdirSync(path.dirname(manifest), { recursive: true });
+    fs.writeFileSync(manifest, '[package]\n');
+  }
+  // A clean Root facade cannot conceal retention in the current MCP owner.
+  const facade = path.join(root, 'api/apps/api-server/src/routes/mcp_protocol.rs');
+  fs.writeFileSync(facade, 'pub use api_mcp::routes::mcp_protocol::*;');
+  fs.writeFileSync(path.join(root, sources[9]), 'struct McpAdapter { state: Arc<ApiState> }');
+  assert.ok(inspectInterfaceLifecycleBoundary(root).some(value => value.includes('MCP Interface adapter retains')));
+  fs.writeFileSync(path.join(root, sources[9]), 'struct McpAdapter { dispatch: Arc<dyn McpDispatchService> }');
+  const current = 'api/crates/api/console-settings/src/routes/settings/system_backups/mod.rs';
+  const former = 'api/apps/api-server/src/routes/settings/system_backups/mod.rs';
+  for (const route of [current, former]) {
+    fs.mkdirSync(path.dirname(path.join(root, route)), { recursive: true });
+    fs.writeFileSync(path.join(root, route), 'require_session(&state); require_csrf(&headers);');
+  }
+  assert.deepEqual(inspectInterfaceLifecycleBoundary(root), [`${former} retains a direct route authentication owner`]);
 });

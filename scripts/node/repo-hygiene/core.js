@@ -82,7 +82,7 @@ const OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST = new Map([
     "GitHub official-source implementation already resolves Network Center routes",
   ],
   [
-    "api/apps/api-server/src/routes/settings/mcp_management/upstream_client.rs",
+    "api/crates/api/mcp/src/routes/settings/mcp_management/upstream_client.rs",
     "Third-party MCP endpoints require DNS pinning and SSRF enforcement before connection",
   ],
 ]);

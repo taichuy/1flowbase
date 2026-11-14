@@ -72,7 +72,7 @@ test('routeChangedFiles recommends state protocol gates for Anthropic ACP projec
 
 test('AC-001 gate router exposes foundation-specific evidence instead of generic green', () => {
   const routes = routeChangedFiles([
-    'api/apps/api-server/src/routes/mcp_protocol.rs',
+    'api/crates/api/mcp/src/routes/mcp_protocol.rs',
     'web/packages/page-runtime/src/native-react-compiler/source-contract.ts',
   ]);
 
@@ -114,7 +114,7 @@ test('real Git deletions route staged and branch foundation changes while ignori
   git('init', '--quiet');
   git('config', 'user.name', 'Gate fixture');
   git('config', 'user.email', 'fixture@example.invalid');
-  const source = 'api/apps/api-server/src/routes/mcp_protocol.rs';
+  const source = 'api/crates/api/mcp/src/routes/mcp_protocol.rs';
   const artifact = 'tmp/deleted-fixture.log';
   for (const file of [source, artifact]) {
     fs.mkdirSync(path.dirname(path.join(repoRoot, file)), { recursive: true });

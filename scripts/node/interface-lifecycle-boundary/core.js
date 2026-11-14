@@ -108,7 +108,7 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
   const publicSignIn = read(repoRoot, 'api/apps/api-server/src/routes/identity/sign_in_interface.rs');
   const native = read(repoRoot, 'api/crates/api/public-gateway/src/routes/application_public_api/native.rs');
   const compatibility = read(repoRoot, 'api/crates/api/public-gateway/src/routes/application_public_api/compatibility_interface.rs');
-  const mcp = read(repoRoot, 'api/apps/api-server/src/routes/mcp_protocol.rs');
+  const mcp = read(repoRoot, 'api/crates/api/mcp/src/routes/mcp_protocol.rs');
   const apiServer = bootRustSources(repoRoot);
   const endpointCatalog = read(repoRoot, 'api/crates/api/kernel/src/slices/console_contracts/external_endpoint_catalog.rs');
   const endpointCompiler = read(repoRoot, 'api/apps/api-server/src/console_contracts/external_endpoint_catalog.rs');
@@ -209,7 +209,7 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
       && /Self::NotificationEvents\s*=>\s*ExternalEndpointContribution::protocol_control_http\(\s*"notification-refresh-signal",\s*"GET",\s*"\/api\/console\/notifications\/events",\s*\)/u.test(endpointCatalog);
     if ((source.includes('require_session(&state') || source.includes('require_csrf(&headers'))
       && relativePath !== 'api/apps/api-server/src/routes/assistant/websocket.rs'
-      && relativePath !== 'api/apps/api-server/src/routes/settings/system_backups/mod.rs'
+      && relativePath !== 'api/crates/api/console-settings/src/routes/settings/system_backups/mod.rs'
       && !notificationProtocolControl) {
       violations.push(`${relativePath} retains a direct route authentication owner`);
     }

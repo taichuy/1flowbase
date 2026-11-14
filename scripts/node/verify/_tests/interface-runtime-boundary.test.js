@@ -122,8 +122,8 @@ test('Delivery 1944 routes cannot inject decision or hook plans and plugin decis
   const routes = [
     'api/apps/api-server/src/routes/identity/auth.rs',
     'api/crates/api/public-gateway/src/routes/application_public_api/native.rs',
-    'api/apps/api-server/src/routes/mcp_protocol.rs',
-    'api/crates/api/kernel/src/slices/routes/settings/host_infrastructure/interface_operation.rs',
+    'api/crates/api/mcp/src/routes/mcp_protocol.rs',
+    'api/crates/api/console-settings/src/routes/settings/host_infrastructure/interface_operation.rs',
   ].map(read).join('\n');
 
   assert.doesNotMatch(
@@ -150,8 +150,8 @@ test('Delivery 1944 protocol adapters authenticate through the frozen factory be
   const routes = [
     'api/apps/api-server/src/routes/identity/auth.rs',
     'api/crates/api/public-gateway/src/routes/application_public_api/native.rs',
-    'api/apps/api-server/src/routes/mcp_protocol.rs',
-    'api/crates/api/kernel/src/slices/routes/settings/host_infrastructure/interface_operation.rs',
+    'api/crates/api/mcp/src/routes/mcp_protocol.rs',
+    'api/crates/api/console-settings/src/routes/settings/host_infrastructure/interface_operation.rs',
   ].map(read).join('\n');
   const runtime = productionRustSources(path.join(runtimeRoot, 'src'));
 
@@ -181,7 +181,7 @@ test('Delivery 1944 typed production handlers do not import request or host capa
       'ApplicationNativeRunAuthorization',
     ],
     [
-      'api/apps/api-server/src/routes/mcp_protocol/interface_operation.rs',
+      'api/crates/api/mcp/src/routes/mcp_protocol/interface_operation.rs',
       'McpInvocationHandler',
       'McpInvocationAuthorization',
     ],
@@ -203,7 +203,7 @@ test('Delivery 1917 binds one graph-frozen hook plan and commits facts through d
   const boot = read('api/apps/api-server/src/extension_bus/boot_snapshot.rs') + '\n'
     + read('api/crates/api/kernel/src/contracts/extension_bus/boot_snapshot.rs');
   const operation = read(
-    'api/crates/api/kernel/src/slices/routes/settings/host_infrastructure/interface_operation.rs',
+    'api/crates/api/console-settings/src/routes/settings/host_infrastructure/interface_operation.rs',
   );
   const transaction = read(
     'api/crates/storage/durable/postgres/src/model_definition_repository/create.rs',
@@ -232,7 +232,7 @@ test('Delivery 1917 binds one graph-frozen hook plan and commits facts through d
 test('retired provider configuration is absent while observation uses the compiled Console kernel', () => {
   const boot = read('api/apps/api-server/src/extension_bus/boot_snapshot.rs') + '\n'
     + read('api/crates/api/kernel/src/contracts/extension_bus/boot_snapshot.rs');
-  const http = read('api/apps/api-server/src/routes/settings/host_infrastructure.rs');
+  const http = read('api/crates/api/console-settings/src/routes/settings/host_infrastructure.rs');
   const consoleInterface = read('api/crates/api/kernel/src/contracts/routes/console_interface.rs');
   const contributions = [
     'api/apps/api-server/src/extension_bus/interface_contributions.rs',

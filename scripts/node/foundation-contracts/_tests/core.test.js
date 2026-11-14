@@ -15,7 +15,7 @@ const {
 test('AC-001/006 routes four foundations and ignores legal non-contract changes', () => {
   const matrix = [
     ['ai-gateway', 'scripts/node/ai-gateway-concurrency/contracts/index.js'],
-    ['mcp-gateway', 'api/apps/api-server/src/routes/mcp_protocol.rs'],
+    ['mcp-gateway', 'api/crates/api/mcp/src/routes/mcp_protocol.rs'],
     ['application-backend', 'api/apps/api-server/src/_tests/application/model_definition_routes/model_crud.rs'],
     ['native-react', 'web/packages/page-runtime/src/native-react-compiler/source-contract.ts'],
   ];
@@ -141,12 +141,12 @@ test('AC-002 keeps mcp_result outside the core operations and only adds continua
   );
 
   const corePlan = buildFoundationPlan({
-    changedFiles: ['api/apps/api-server/src/routes/mcp_protocol.rs'],
+    changedFiles: ['api/crates/api/mcp/src/routes/mcp_protocol.rs'],
   });
   assert.equal(corePlan.packs['mcp-gateway'].fast.some((item) => item.id === 'mcp-result-continuation'), false);
 
   const continuationPlan = buildFoundationPlan({
-    changedFiles: ['api/apps/api-server/src/routes/mcp_protocol/result_delivery.rs'],
+    changedFiles: ['api/crates/api/mcp/src/routes/mcp_protocol/result_delivery.rs'],
   });
   assert.equal(
     continuationPlan.packs['mcp-gateway'].fast.some((item) => item.id === 'mcp-result-continuation'),
@@ -156,7 +156,7 @@ test('AC-002 keeps mcp_result outside the core operations and only adds continua
 
 test('mcp gateway fast pack uses Cargo default test parallelism', () => {
   const plan = buildFoundationPlan({
-    changedFiles: ['api/apps/api-server/src/routes/mcp_protocol.rs'],
+    changedFiles: ['api/crates/api/mcp/src/routes/mcp_protocol.rs'],
   });
   const command = plan.packs['mcp-gateway'].fast.find(
     (item) => item.id === 'mcp-core-list-get-call'
@@ -313,4 +313,35 @@ test('the moved binary schema marker keeps its application backend foundation wi
   }
   assert.deepEqual(buildFoundationPlan({ changedFiles: ['api/crates/api/kernel/src/contracts/application_runtime_shared/plugin_risk.rs'] }).selectedFoundations, []);
   assert.deepEqual(buildFoundationPlan({ changedFiles: ['api/apps/api-server/src/routes/applications/debug_run_stream.rs'] }).selectedFoundations, ['ai-gateway']);
+});
+
+
+test('current MCP implementation and shared catalog owners retain the MCP fast pack', () => {
+  const repoRoot = path.resolve(__dirname, '../../../..');
+  const baseline = buildFoundationPlan({ foundation: 'mcp-gateway' }).packs['mcp-gateway'];
+  for (const changedFile of [
+    'api/crates/api/mcp/src/routes/mcp_protocol.rs',
+    'api/crates/api/mcp/src/routes/mcp_protocol/result_delivery.rs',
+    'api/crates/api/mcp/src/routes/settings/mcp_management/upstream_client.rs',
+    'api/crates/api/kernel/src/contracts/mcp_catalog.rs',
+    'api/crates/api/kernel/src/contracts/builtin_mcp.rs',
+  ]) {
+    assert.equal(fs.existsSync(path.join(repoRoot, changedFile)), true, changedFile);
+    const plan = buildFoundationPlan({ changedFiles: [changedFile] });
+    assert.deepEqual(plan.selectedFoundations, ['mcp-gateway'], changedFile);
+    assert.deepEqual(plan.packs['mcp-gateway'].triggerReasons, [`changed: ${changedFile}`]);
+    assert.deepEqual(plan.packs['mcp-gateway'].full, baseline.full);
+    assert.deepEqual(plan.packs['mcp-gateway'].fast.find(item => item.id === 'mcp-core-list-get-call').args,
+      ['test', '-p', 'api-server', 'mcp_protocol_routes']);
+  }
+  // Former paths remain useful for changed-file advice, including deletions.
+  assert.deepEqual(buildFoundationPlan({ changedFiles: ['api/apps/api-server/src/routes/mcp_protocol.rs'] }).selectedFoundations, ['mcp-gateway']);
+  for (const changedFile of [
+    'api/crates/api/console-settings/src/routes/settings/billing.rs',
+    'api/crates/api/console-settings/src/routes/settings/host_infrastructure.rs',
+    'api/crates/api/console-settings/src/routes/settings/system_backups/mod.rs',
+  ]) {
+    assert.equal(fs.existsSync(path.join(repoRoot, changedFile)), true, changedFile);
+    assert.deepEqual(buildFoundationPlan({ changedFiles: [changedFile] }).selectedFoundations, [], changedFile);
+  }
 });
