@@ -18,7 +18,7 @@ use crate::{
     },
 };
 
-pub(crate) enum AuthCenterInput {
+pub enum AuthCenterInput {
     Overview {
         locale: ConsoleLocaleHints,
     },
@@ -351,7 +351,7 @@ impl InterfaceContract for AuthCenterInput {
     clippy::large_enum_variant,
     reason = "the typed authentication output is projected immediately into the console response"
 )]
-pub(crate) enum AuthCenterOutput {
+pub enum AuthCenterOutput {
     Overview(auth_center::AuthCenterOverviewResponse),
     Authenticator(auth_center::AuthCenterLoginEntryResponse),
     NoContent,
@@ -701,7 +701,7 @@ struct AuthCenterAdapter {
     secret_master_key: String,
 }
 
-pub(crate) fn auth_center_port(
+pub fn auth_center_port(
     store: MainDurableStore,
     registry: Arc<control_plane::auth::AuthenticatorRegistry>,
     bootstrap_workspace_id: Uuid,
@@ -974,7 +974,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<AuthCenterInput, AuthCenterOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -988,11 +988,9 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableAuthCenterPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<AuthCenterInput, AuthCenterOutput> for UnavailableAuthCenterPort {
     fn execute<'a>(
@@ -1008,7 +1006,6 @@ impl ConsoleInterfacePort<AuthCenterInput, AuthCenterOutput> for UnavailableAuth
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;

@@ -5,6 +5,7 @@ members = [
   "crates/api/public-gateway",
   "crates/api/applications",
   "crates/api/mcp",
+  "crates/api/console-settings",
   "crates/api-test-selection",
   "crates/domain",
   "crates/control-plane-contracts",
@@ -156,6 +157,14 @@ codegen-units=256
 debug = "line-tables-only"
 
 [profile.test.package.api-mcp]
+incremental = false
+debug = 0
+codegen-units = 256
+
+[profile.dev.package.api-console-settings]
+debug = "line-tables-only"
+
+[profile.test.package.api-console-settings]
 incremental = false
 debug = 0
 codegen-units = 256

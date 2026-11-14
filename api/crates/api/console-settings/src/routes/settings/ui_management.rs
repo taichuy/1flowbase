@@ -1,5 +1,5 @@
 pub mod custom_blocks;
-pub(crate) mod custom_blocks_interface;
+pub mod custom_blocks_interface;
 use std::sync::Arc;
 
 use axum::{
@@ -35,7 +35,13 @@ async fn invoke_ui_management(
     } else {
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
     };
-    crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
+    crate::routes::console_interface::invoke_non_create(
+        snapshot_state,
+        binding_id,
+        credential,
+        input,
+    )
+    .await
 }
 
 #[derive(Debug, Deserialize)]

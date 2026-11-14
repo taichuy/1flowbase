@@ -105,6 +105,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "api-console-settings"
+version = "0.6.3"
+dependencies = [
+ "access-control",
+ "anyhow",
+ "api-host-kernel",
+ "argon2",
+ "async-trait",
+ "axum",
+ "base16ct",
+ "base64 0.23.1",
+ "control-plane",
+ "control-plane-contracts",
+ "domain",
+ "ed25519-dalek",
+ "futures-util",
+ "interface-runtime",
+ "jsonschema",
+ "orchestration-runtime",
+ "plugin-framework",
+ "postgres-test-support",
+ "reqwest",
+ "runtime-core",
+ "runtime-profile",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "storage-durable-postgres",
+ "storage-ephemeral",
+ "storage-object",
+ "sysinfo",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tracing",
+ "utoipa",
+ "uuid",
+ "zip 9.0.3",
+]
+
+[[package]]
 name = "api-host-kernel"
 version = "0.6.3"
 dependencies = [
@@ -270,6 +312,7 @@ dependencies = [
  "access-control",
  "anyhow",
  "api-applications",
+ "api-console-settings",
  "api-host-kernel",
  "api-mcp",
  "api-public-gateway",

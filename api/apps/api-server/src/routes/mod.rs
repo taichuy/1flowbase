@@ -1,0 +1,73 @@
+pub mod application_public_api;
+#[path = "applications/mod.rs"]
+mod applications_group;
+pub mod assistant;
+pub(crate) mod console_interface;
+pub mod console_route_assembly;
+pub(crate) mod core_console_i18n;
+pub(crate) mod core_console_operation_specs;
+#[path = "files.rs"]
+pub mod files;
+#[path = "frontstage/mod.rs"]
+pub mod frontstage;
+pub(crate) mod helpers;
+#[path = "identity/mod.rs"]
+mod identity_group;
+pub mod local_commands;
+pub mod mcp_protocol;
+pub mod network_center;
+#[path = "plugins_and_models/mod.rs"]
+mod plugins_and_models_group;
+pub mod runtime_i18n_catalog;
+#[path = "settings/mod.rs"]
+mod settings_group;
+pub mod terminal;
+pub mod webmcp;
+
+pub use applications_group::{
+    application_api, application_orchestration, application_runtime, applications, debug_run_stream,
+};
+pub use identity_group::{auth, me, session, user_api_keys};
+pub(crate) use identity_group::{console_identity_interface, sign_in_interface};
+pub(crate) use identity_group::{external_auth, me_authentication_methods};
+pub use plugins_and_models_group::{
+    data_sources, frontend_block_catalog, js_dependencies, model_definitions, model_providers,
+    node_contributions, plugins, runtime_models,
+};
+pub use settings_group::{
+    application_management, auth_center, billing, branding, data_models, docs, file_storages,
+    file_tables, host_infrastructure, i18n_catalog, mcp_management, members, navigation,
+    permissions, roles, system, system_backups, system_templates, ui_management, workspace,
+    workspaces,
+};
+pub(crate) use settings_group::{
+    auth_center_interface, billing_interface, membership_interface, navigation_interface,
+    role_access_interface, ui_management_interface,
+};
+
+pub use api_console_settings::routes::PUBLIC_API_PATH_PREFIX;
+
+// Only these shared assertions are exposed to the thin integration target.
+#[cfg(all(feature = "test-support", not(test)))]
+#[path = "_tests/console_route_assembly_tests.rs"]
+pub(crate) mod console_route_assembly_assertions;
+#[cfg(all(feature = "test-support", not(test)))]
+#[path = "_tests/file_console_route_assembly_tests.rs"]
+pub(crate) mod file_console_route_assembly_assertions;
+#[cfg(all(feature = "test-support", not(test)))]
+#[path = "_tests/settings_owner_console_route_assembly_tests.rs"]
+pub(crate) mod settings_owner_console_route_assembly_assertions;
+
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+mod _tests;
+
+pub mod mcp_oauth;
+
+pub use settings_group::organization;
+
+pub(crate) mod client_collectors;
+
+pub(crate) mod communications;
+pub(crate) mod events;
+pub mod notifications;

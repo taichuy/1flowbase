@@ -64,7 +64,7 @@ pub async fn list_workspaces(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<WorkspaceSummaryResponse>>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.workspaces.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol {

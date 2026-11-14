@@ -21,7 +21,7 @@ use crate::{
     },
 };
 
-pub(crate) enum MembershipInput {
+pub enum MembershipInput {
     ListMemberRoleOptions,
     ListMembers {
         department_id: Option<String>,
@@ -330,7 +330,7 @@ impl InterfaceContract for MembershipInput {
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum MembershipOutput {
+pub enum MembershipOutput {
     MemberRoleOptions(Vec<members::MemberRoleOptionResponse>),
     Members(Vec<members::MemberResponse>),
     Member(members::MemberResponse),
@@ -642,7 +642,7 @@ struct MembershipAdapter {
     store: MainDurableStore,
 }
 
-pub(crate) fn membership_port(
+pub fn membership_port(
     store: MainDurableStore,
     changes: Arc<tokio::sync::Notify>,
 ) -> Arc<dyn ConsoleInterfacePort<MembershipInput, MembershipOutput>> {
@@ -941,7 +941,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<MembershipInput, MembershipOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -955,11 +955,9 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableMembershipPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<MembershipInput, MembershipOutput> for UnavailableMembershipPort {
     fn execute<'a>(
@@ -975,7 +973,6 @@ impl ConsoleInterfacePort<MembershipInput, MembershipOutput> for UnavailableMemb
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;

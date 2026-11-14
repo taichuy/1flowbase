@@ -27,7 +27,7 @@ use crate::{
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum RoleAccessInput {
+pub enum RoleAccessInput {
     ListDataModelOptions,
     GetConsolePolicyCatalog {
         #[serde(skip_serializing)]
@@ -91,7 +91,7 @@ pub(crate) enum RoleAccessInput {
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum RoleAccessOutput {
+pub enum RoleAccessOutput {
     DataModelOptions(Vec<roles::RoleDataModelOptionResponse>),
     ConsolePolicyCatalog(roles::ConsolePolicyCatalogResponse),
     RoleConsolePolicy(roles::RoleConsolePolicyResponse),
@@ -134,7 +134,7 @@ struct RoleAccessAdapter {
     bootstrap_workspace_id: uuid::Uuid,
 }
 
-pub(crate) fn role_access_port(
+pub fn role_access_port(
     navigation_cache: control_plane::navigation_cache::NavigationCache,
     store: MainDurableStore,
     console_inventory: access_control::ConsoleOperationCompiledInventory,
@@ -543,7 +543,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<RoleAccessInput, RoleAccessOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -557,11 +557,9 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableRoleAccessPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<RoleAccessInput, RoleAccessOutput> for UnavailableRoleAccessPort {
     fn execute<'a>(
@@ -577,7 +575,6 @@ impl ConsoleInterfacePort<RoleAccessInput, RoleAccessOutput> for UnavailableRole
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use interface_runtime::BindingId;
@@ -604,7 +601,6 @@ use serde_json::json;
 
 #[cfg(test)]
 use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "role_access_interface/_tests/security.rs"]
 mod event_tests;

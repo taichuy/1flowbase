@@ -311,7 +311,7 @@ impl ConsoleInterfacePort<ApplicationManagementQueryParams, ApplicationManagemen
     }
 }
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: storage_durable_postgres::MainDurableStore,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -365,7 +365,7 @@ pub async fn list_application_management(
     Query(query): Query<ApplicationManagementQueryParams>,
 ) -> Result<Json<ApiSuccess<ApplicationManagementPageResponse>>, ApiError> {
     let snapshot_state = Arc::clone(&state);
-    let value = console_interface::invoke(
+    let value = console_interface::invoke_non_create(
         snapshot_state,
         "http.console.settings.applications.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },

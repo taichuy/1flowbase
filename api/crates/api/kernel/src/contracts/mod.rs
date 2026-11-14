@@ -28,3 +28,6 @@ pub mod builtin_mcp;
 pub mod mcp_catalog;
 pub mod resource_import_context;
 pub mod resource_import_ports;
+
+pub mod console_settings_ports;
+pub mod frontend_block_dependencies;

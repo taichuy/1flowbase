@@ -31,7 +31,6 @@ pub(super) fn export_archive<S: serde::Serializer>(
 #[cfg(test)]
 use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/document_event.rs"]
 mod tests;

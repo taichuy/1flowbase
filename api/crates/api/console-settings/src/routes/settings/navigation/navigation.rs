@@ -73,7 +73,7 @@ pub async fn get_console_navigation(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ConsoleNavigationResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.navigation.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol {

@@ -77,7 +77,7 @@ impl InterfaceAuthorizationPort for ConsoleInterfaceAuthorizationPort {
     }
 }
 
-pub(crate) fn invocation_kernel(
+pub fn invocation_kernel(
     policy_reader: Arc<dyn RoleConsolePolicyReader>,
     console_registry: Arc<ConsoleOperationRegistry>,
 ) -> Arc<InterfaceInvocationKernel> {

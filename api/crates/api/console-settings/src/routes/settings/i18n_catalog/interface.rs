@@ -39,7 +39,7 @@ use crate::{
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum I18nCatalogInput {
+pub enum I18nCatalogInput {
     GetState,
     CheckUpdate,
     #[serde(serialize_with = "json_contract::body")]
@@ -69,7 +69,7 @@ pub(crate) enum I18nCatalogInput {
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum I18nCatalogOutput {
+pub enum I18nCatalogOutput {
     State(I18nCatalogStateResponse),
     UpdateStatus(I18nCatalogUpdateStatusResponse),
     Activation(ActivateI18nCatalogResponse),
@@ -80,17 +80,17 @@ pub(crate) enum I18nCatalogOutput {
     Revision(CatalogRevisionResponse),
 }
 
-pub(crate) struct I18nCatalogDependencies {
-    pub(crate) store: MainDurableStore,
-    pub(crate) bootstrap_workspace_id: uuid::Uuid,
-    pub(crate) update_service: Arc<OfficialI18nCatalogUpdateService<MainDurableStore>>,
-    pub(crate) api_node_id: String,
-    pub(crate) provider_install_root: String,
+pub struct I18nCatalogDependencies {
+    pub store: MainDurableStore,
+    pub bootstrap_workspace_id: uuid::Uuid,
+    pub update_service: Arc<OfficialI18nCatalogUpdateService<MainDurableStore>>,
+    pub api_node_id: String,
+    pub provider_install_root: String,
 }
 
 struct I18nCatalogAdapter(I18nCatalogDependencies);
 
-pub(crate) fn port(
+pub fn port(
     dependencies: I18nCatalogDependencies,
 ) -> Arc<dyn ConsoleInterfacePort<I18nCatalogInput, I18nCatalogOutput>> {
     Arc::new(I18nCatalogAdapter(dependencies))
@@ -597,7 +597,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<I18nCatalogInput, I18nCatalogOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -611,11 +611,9 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableI18nCatalogPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<I18nCatalogInput, I18nCatalogOutput> for UnavailableI18nCatalogPort {
     fn execute<'a>(
@@ -631,7 +629,6 @@ impl ConsoleInterfacePort<I18nCatalogInput, I18nCatalogOutput> for UnavailableI1
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

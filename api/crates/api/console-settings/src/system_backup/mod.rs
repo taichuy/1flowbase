@@ -18,6 +18,5 @@ pub use toolchain::{
     PG_RESTORE_PATH_ENV,
 };
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod _tests;

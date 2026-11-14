@@ -17,7 +17,7 @@ use std::sync::Arc;
 use storage_durable_postgres::MainDurableStore;
 #[derive(Serialize)]
 #[serde(untagged)]
-pub(crate) enum OrganizationInput {
+pub enum OrganizationInput {
     Access,
     #[serde(serialize_with = "super::serialize_list_input")]
     List(control_plane::ports::DepartmentListInput),
@@ -39,7 +39,7 @@ impl JsonApiInput for OrganizationInput {}
 
 #[derive(Serialize)]
 #[serde(untagged)]
-pub(crate) enum OrganizationOutput {
+pub enum OrganizationOutput {
     Access(OrganizationAccessResponse),
     Departments(DepartmentPageResponse),
     Department(DepartmentResponse),
@@ -87,7 +87,7 @@ struct Adapter {
     store: MainDurableStore,
     cache: NavigationCache,
 }
-pub(crate) fn port(
+pub fn port(
     store: MainDurableStore,
     cache: NavigationCache,
 ) -> Arc<dyn ConsoleInterfacePort<OrganizationInput, OrganizationOutput>> {
@@ -228,7 +228,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: true,
     },
 ];
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<OrganizationInput, OrganizationOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -242,7 +242,6 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/registry.rs"]
 mod tests;

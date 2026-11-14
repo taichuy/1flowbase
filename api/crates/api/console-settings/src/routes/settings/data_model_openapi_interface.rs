@@ -13,7 +13,7 @@ use crate::{
 };
 
 #[derive(serde::Serialize)]
-pub(crate) struct DataModelOpenApiInput {
+pub struct DataModelOpenApiInput {
     pub(crate) model_id: String,
 }
 
@@ -38,7 +38,7 @@ impl InterfaceContract for DataModelOpenApiInput {
 
 #[derive(serde::Serialize)]
 #[serde(transparent)]
-pub(crate) struct DataModelOpenApiOutput(pub(crate) serde_json::Value);
+pub struct DataModelOpenApiOutput(pub(crate) serde_json::Value);
 
 impl JsonApiOutput for DataModelOpenApiOutput {}
 
@@ -112,7 +112,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[ConsoleInterfaceDeclarati
     mutating: false,
 }];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: MainDurableStore,
     runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
 ) -> Result<

@@ -15,7 +15,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
-pub(crate) mod interface;
+pub mod interface;
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SaveDepartmentBody {
@@ -197,7 +197,7 @@ async fn invoke(
             headers,
         }
     };
-    crate::routes::console_interface::invoke(state, binding, credential, input).await
+    crate::routes::console_interface::invoke_non_create(state, binding, credential, input).await
 }
 #[utoipa::path(get,operation_id="console.departments.access",path="/api/console/settings/departments/access",responses((status=200,body=OrganizationAccessResponse)))]
 pub async fn access(

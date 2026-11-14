@@ -15,6 +15,8 @@ mod managed_services;
 #[path = "boot_composition/mcp_assembly.rs"]
 mod mcp_assembly;
 mod resource_import;
+#[path = "boot_composition/settings_assembly/mod.rs"]
+mod settings_assembly;
 
 pub mod agent_logs_protocol;
 pub mod app_state;

@@ -60,7 +60,7 @@ pub async fn get_workspace(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<WorkspaceResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.workspace.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
@@ -87,7 +87,7 @@ pub async fn patch_workspace(
     headers: HeaderMap,
     Json(body): Json<PatchWorkspaceBody>,
 ) -> Result<Json<ApiSuccess<WorkspaceResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.workspace.update.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {

@@ -15,8 +15,8 @@ use crate::{
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
-pub(crate) mod interface;
-pub(crate) mod management;
+pub mod interface;
+pub mod management;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct I18nCatalogStateResponse {
@@ -62,7 +62,7 @@ pub struct InstalledI18nCatalogPreviewResponse {
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ActivateInstalledI18nCatalogBody {
     pub expected_revision: i64,
-    pub integrity_override: Option<crate::routes::plugins::PluginRiskOverrideBody>,
+    pub integrity_override: Option<api_host_kernel::plugin_risk::PluginRiskOverrideBody>,
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
@@ -115,7 +115,7 @@ async fn invoke(
     binding_id: &'static str,
     input: interface::I18nCatalogInput,
 ) -> Result<interface::I18nCatalogOutput, ApiError> {
-    crate::routes::console_interface::invoke(
+    crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         binding_id,
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -130,7 +130,7 @@ async fn invoke_mutating(
     binding_id: &'static str,
     input: interface::I18nCatalogInput,
 ) -> Result<interface::I18nCatalogOutput, ApiError> {
-    crate::routes::console_interface::invoke(
+    crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         binding_id,
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },

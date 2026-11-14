@@ -215,7 +215,7 @@ pub async fn list_member_role_options(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<MemberRoleOptionResponse>>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.members.role-options.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
@@ -243,7 +243,7 @@ pub async fn list_members(
     headers: HeaderMap,
     Query(query): Query<ListMembersQuery>,
 ) -> Result<Json<ApiSuccess<Vec<MemberResponse>>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.members.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
@@ -272,7 +272,7 @@ pub async fn create_member(
     headers: HeaderMap,
     Json(body): Json<CreateMemberBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<MemberResponse>>), ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.members.create.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -301,7 +301,7 @@ pub async fn update_member(
     Path(member_id): Path<String>,
     Json(body): Json<UpdateMemberBody>,
 ) -> Result<Json<ApiSuccess<MemberResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.members.update.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -328,7 +328,7 @@ pub async fn disable_member(
     headers: HeaderMap,
     Path(member_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    crate::routes::console_interface::invoke::<
+    crate::routes::console_interface::invoke_non_create::<
         _,
         crate::routes::membership_interface::MembershipOutput,
     >(
@@ -356,7 +356,7 @@ pub async fn enable_member(
     headers: HeaderMap,
     Path(member_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    crate::routes::console_interface::invoke::<
+    crate::routes::console_interface::invoke_non_create::<
         _,
         crate::routes::membership_interface::MembershipOutput,
     >(
@@ -384,7 +384,7 @@ pub async fn delete_member(
     headers: HeaderMap,
     Path(member_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    crate::routes::console_interface::invoke::<
+    crate::routes::console_interface::invoke_non_create::<
         _,
         crate::routes::membership_interface::MembershipOutput,
     >(
@@ -414,7 +414,7 @@ pub async fn reset_member(
     Path(member_id): Path<String>,
     Json(body): Json<ResetMemberPasswordBody>,
 ) -> Result<StatusCode, ApiError> {
-    crate::routes::console_interface::invoke::<
+    crate::routes::console_interface::invoke_non_create::<
         _,
         crate::routes::membership_interface::MembershipOutput,
     >(
@@ -444,7 +444,7 @@ pub async fn replace_member_roles(
     Path(member_id): Path<String>,
     Json(body): Json<ReplaceMemberRolesBody>,
 ) -> Result<StatusCode, ApiError> {
-    crate::routes::console_interface::invoke::<
+    crate::routes::console_interface::invoke_non_create::<
         _,
         crate::routes::membership_interface::MembershipOutput,
     >(

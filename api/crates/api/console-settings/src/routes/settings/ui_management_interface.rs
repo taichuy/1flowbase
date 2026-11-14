@@ -36,7 +36,7 @@ use crate::{
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum UiManagementInput {
+pub enum UiManagementInput {
     #[serde(serialize_with = "serialize_module_asset_query")]
     PluginSettingsModuleAsset {
         route_id: String,
@@ -130,7 +130,7 @@ fn serialize_settings_page_query<S: serde::Serializer>(
     crate::openapi_interface::json_contract::query_with_nulls(&Query { route_id }, serializer)
 }
 
-pub(crate) enum UiManagementOutput {
+pub enum UiManagementOutput {
     PluginSettingsModuleAsset(control_plane_contracts::ports::RetainedFrontendModuleAsset),
     PluginSettingsPage(super::ui_management::PluginSettingsPageResponse),
     Templates(TemplateListResponse),
@@ -147,14 +147,18 @@ pub(crate) enum UiManagementOutput {
 }
 
 #[derive(Clone)]
-pub(crate) struct UiManagementDependencies {
-    pub(crate) store: MainDurableStore,
-    pub(crate) api_node_id: String,
-    pub(crate) surfaces: Arc<crate::console_surface_registry::ConsoleSurfaceRegistry>,
-    pub(crate) network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
+pub struct UiManagementDependencies {
+    pub store: MainDurableStore,
+    pub api_node_id: String,
+    pub surfaces: Arc<crate::console_surface_registry::ConsoleSurfaceRegistry>,
+    pub network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
 }
 
+test_support_item! { , [
+
+]
 struct UiManagementAdapter(UiManagementDependencies);
+}
 
 impl UiManagementAdapter {
     fn management_service(&self) -> UiManagementService<MainDurableStore> {
@@ -175,252 +179,232 @@ impl UiManagementAdapter {
         )
     }
 
+    test_support_item! { , [
+
+    ]
     async fn execute_inner(
-        &self,
-        principal: &UserPrincipal,
-        input: UiManagementInput,
-    ) -> Result<UiManagementOutput, ApiError> {
-        let actor_user_id = principal.actor().user_id;
-        let workspace_id = principal.actor().current_workspace_id;
-        match input {
-            UiManagementInput::PluginSettingsModuleAsset {
-                route_id,
-                applied_plugin_version,
-                sha256,
-            } => {
-                let UiManagementOutput::PluginSettingsPage(page) = Box::pin(self.execute_inner(
-                    principal,
-                    UiManagementInput::PluginSettingsPage { route_id },
-                ))
-                .await?
-                else {
-                    unreachable!()
-                };
-                if page.applied_plugin_version != applied_plugin_version {
-                    return Err(control_plane::errors::ControlPlaneError::Conflict(
-                        "native_plugin_version_mismatch",
-                    )
-                    .into());
-                }
-                let declared = page
-                    .code_modules
-                    .iter()
-                    .flat_map(|module| &module.assets)
-                    .find(|asset| asset.sha256 == sha256)
-                    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                        "settings_module_asset",
-                    ))?;
-                use control_plane_contracts::ports::UiManagementRepository;
-                let asset = self
-                    .0
-                    .store
-                    .get_settings_frontend_module_asset(
-                        parse_template_id(&page.template_id)?,
-                        &page.provider_code,
-                        &applied_plugin_version,
-                        &sha256,
-                    )
+            &self,
+            principal: &UserPrincipal,
+            input: UiManagementInput,
+        ) -> Result<UiManagementOutput, ApiError> {
+            let actor_user_id = principal.actor().user_id;
+            let workspace_id = principal.actor().current_workspace_id;
+            match input {
+                UiManagementInput::PluginSettingsModuleAsset {
+                    route_id,
+                    applied_plugin_version,
+                    sha256,
+                } => {
+                    let UiManagementOutput::PluginSettingsPage(page) = Box::pin(self.execute_inner(
+                        principal,
+                        UiManagementInput::PluginSettingsPage { route_id },
+                    ))
                     .await?
-                    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                        "settings_module_asset",
-                    ))?;
-                use sha2::{Digest, Sha256};
-                if asset.media_type != declared.media_type
-                    || format!("{:x}", base16ct::HexDisplay(&Sha256::digest(&asset.bytes)))
-                        != declared.sha256
-                {
-                    return Err(control_plane::errors::ControlPlaneError::Conflict(
-                        "settings_module_asset_integrity",
-                    )
-                    .into());
-                }
-                Ok(UiManagementOutput::PluginSettingsModuleAsset(asset))
-            }
-            UiManagementInput::PluginSettingsPage { route_id } => {
-                let page = self.0.surfaces.page(&route_id).ok_or(
-                    control_plane::errors::ControlPlaneError::NotFound("plugin_settings_page"),
-                )?;
-                if !self
-                    .0
-                    .surfaces
-                    .accessible_navigation(principal.actor())
-                    .route_definitions
-                    .iter()
-                    .any(|r| r.route_id == route_id)
-                {
-                    return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
-                        "plugin_settings_page_access_denied",
-                    )
-                    .into());
-                }
-                if let Some(service) = self
-                    .0
-                    .surfaces
-                    .managed_services()
-                    .iter()
-                    .find(|service| service.plugin_code == page.plugin_code)
-                {
-                    use control_plane_contracts::ports::PluginRepository;
-                    let current = self
-                        .0
-                        .store
-                        .get_installation(service.installation_id)
-                        .await?
-                        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                            "managed_service",
-                        ))?;
-                    if current.desired_state != domain::PluginDesiredState::ActiveRequested
-                        || current.plugin_version != page.plugin_version
-                    {
-                        return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
-                            "managed_service_inactive",
+                    else {
+                        unreachable!()
+                    };
+                    if page.applied_plugin_version != applied_plugin_version {
+                        return Err(control_plane::errors::ControlPlaneError::Conflict(
+                            "native_plugin_version_mismatch",
                         )
                         .into());
                     }
+                    let declared = page
+                        .code_modules
+                        .iter()
+                        .flat_map(|module| &module.assets)
+                        .find(|asset| asset.sha256 == sha256)
+                        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                            "settings_module_asset",
+                        ))?;
+                    use control_plane_contracts::ports::UiManagementRepository;
+                    let asset = self
+                        .0
+                        .store
+                        .get_settings_frontend_module_asset(
+                            parse_template_id(&page.template_id)?,
+                            &page.provider_code,
+                            &applied_plugin_version,
+                            &sha256,
+                        )
+                        .await?
+                        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                            "settings_module_asset",
+                        ))?;
+                    use sha2::{Digest, Sha256};
+                    if asset.media_type != declared.media_type
+                        || format!("{:x}", base16ct::HexDisplay(&Sha256::digest(&asset.bytes)))
+                            != declared.sha256
+                    {
+                        return Err(control_plane::errors::ControlPlaneError::Conflict(
+                            "settings_module_asset_integrity",
+                        )
+                        .into());
+                    }
+                    Ok(UiManagementOutput::PluginSettingsModuleAsset(asset))
                 }
-                let template = self
-                    .management_service()
-                    .plugin_settings_template(&page.plugin_code, &page.contribution_code)
-                    .await?;
-                if template.owner_feature_id.as_deref() != Some(page.feature_id.as_str())
-                    || template.applied_plugin_version.as_deref()
-                        != Some(page.plugin_version.as_str())
-                {
-                    return Err(control_plane::errors::ControlPlaneError::Conflict(
-                        "native_plugin_version_mismatch",
-                    )
-                    .into());
+                UiManagementInput::PluginSettingsPage { route_id } => {
+                    let page = self.0.surfaces.page(&route_id).ok_or(
+                        control_plane::errors::ControlPlaneError::NotFound("plugin_settings_page"),
+                    )?;
+                    if !self
+                        .0
+                        .surfaces
+                        .accessible_navigation(principal.actor())
+                        .route_definitions
+                        .iter()
+                        .any(|r| r.route_id == route_id)
+                    {
+                        return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+                            "plugin_settings_page_access_denied",
+                        )
+                        .into());
+                    }
+                    if let Some(service) = self
+                        .0
+                        .surfaces
+                        .managed_services()
+                        .iter()
+                        .find(|service| service.plugin_code == page.plugin_code)
+                    {
+                        use control_plane_contracts::ports::PluginRepository;
+                        let current = self
+                            .0
+                            .store
+                            .get_installation(service.installation_id)
+                            .await?
+                            .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                                "managed_service",
+                            ))?;
+                        if current.desired_state != domain::PluginDesiredState::ActiveRequested
+                            || current.plugin_version != page.plugin_version
+                        {
+                            return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+                                "managed_service_inactive",
+                            )
+                            .into());
+                        }
+                    }
+                    let template = self
+                        .management_service()
+                        .plugin_settings_template(&page.plugin_code, &page.contribution_code)
+                        .await?;
+                    if template.owner_feature_id.as_deref() != Some(page.feature_id.as_str())
+                        || template.applied_plugin_version.as_deref()
+                            != Some(page.plugin_version.as_str())
+                    {
+                        return Err(control_plane::errors::ControlPlaneError::Conflict(
+                            "native_plugin_version_mismatch",
+                        )
+                        .into());
+                    }
+                    let revision = template
+                        .published_revision
+                        .expect("published plugin settings template");
+                    Ok(UiManagementOutput::PluginSettingsPage(
+                        super::ui_management::PluginSettingsPageResponse {
+                            route_id,
+                            feature_id: page.feature_id.clone(),
+                            template_id: template.id.to_string(),
+                            provider_code: template.provider_code,
+                            contribution_code: template.contribution_code,
+                            source: revision.source,
+                            language: revision.language,
+                            revision: revision.revision,
+                            applied_plugin_version: page.plugin_version.clone(),
+                            overwrite_on_plugin_upgrade: true,
+                            code_modules: page.code_modules.clone(),
+                        },
+                    ))
                 }
-                let revision = template
-                    .published_revision
-                    .expect("published plugin settings template");
-                Ok(UiManagementOutput::PluginSettingsPage(
-                    super::ui_management::PluginSettingsPageResponse {
-                        route_id,
-                        feature_id: page.feature_id.clone(),
-                        template_id: template.id.to_string(),
-                        provider_code: template.provider_code,
-                        contribution_code: template.contribution_code,
-                        source: revision.source,
-                        language: revision.language,
-                        revision: revision.revision,
-                        applied_plugin_version: page.plugin_version.clone(),
-                        overwrite_on_plugin_upgrade: true,
-                        code_modules: page.code_modules.clone(),
-                    },
-                ))
-            }
-            UiManagementInput::ListTemplates => {
-                let templates = self.management_service().list_templates().await?;
-                Ok(UiManagementOutput::Templates(TemplateListResponse {
-                    official: templates
-                        .official
+                UiManagementInput::ListTemplates => {
+                    let templates = self.management_service().list_templates().await?;
+                    Ok(UiManagementOutput::Templates(TemplateListResponse {
+                        official: templates
+                            .official
+                            .into_iter()
+                            .map(official_response)
+                            .collect(),
+                        default_template: templates.default_template.map(official_response),
+                        managed: templates
+                            .managed
+                            .into_iter()
+                            .map(template_response)
+                            .collect(),
+                    }))
+                }
+                UiManagementInput::CreateTemplate(body) => {
+                    Ok(UiManagementOutput::Template(template_response(
+                        self.management_service()
+                            .create_template(CreateUiCodeTemplateInput {
+                                provider_code: body.provider_code,
+                                contribution_code: body.contribution_code,
+                                name: body.name,
+                                source: body.source,
+                                language: body.language,
+                                actor_user_id,
+                            })
+                            .await?,
+                    )))
+                }
+                UiManagementInput::UpdateTemplate { id, body } => {
+                    Ok(UiManagementOutput::Template(template_response(
+                        self.management_service()
+                            .revise_template(ReviseUiCodeTemplateInput {
+                                template_id: parse_template_id(&id)?,
+                                name: body.name,
+                                source: body.source,
+                                language: body.language,
+                                actor_user_id,
+                            })
+                            .await?,
+                    )))
+                }
+                UiManagementInput::PublishTemplate { id, body } => {
+                    Ok(UiManagementOutput::Template(template_response(
+                        self.management_service()
+                            .publish_template(parse_template_id(&id)?, body.revision, actor_user_id)
+                            .await?,
+                    )))
+                }
+                UiManagementInput::SetDefaultTemplate { id } => {
+                    self.management_service()
+                        .set_template_default(parse_template_id(&id)?, actor_user_id)
+                        .await?;
+                    Ok(UiManagementOutput::NoContent)
+                }
+                UiManagementInput::ResetDefaultTemplate(body) => {
+                    self.management_service()
+                        .reset_template_default(&body.provider_code, &body.contribution_code)
+                        .await?;
+                    Ok(UiManagementOutput::NoContent)
+                }
+                UiManagementInput::DeleteTemplate { id } => {
+                    self.management_service()
+                        .delete_template(parse_template_id(&id)?)
+                        .await?;
+                    Ok(UiManagementOutput::NoContent)
+                }
+                UiManagementInput::ListComponents => Ok(UiManagementOutput::Components(
+                    self.management_service()
+                        .list_component_records()
+                        .await?
                         .into_iter()
-                        .map(official_response)
-                        .collect(),
-                    default_template: templates.default_template.map(official_response),
-                    managed: templates
-                        .managed
-                        .into_iter()
-                        .map(template_response)
-                        .collect(),
-                }))
-            }
-            UiManagementInput::CreateTemplate(body) => {
-                Ok(UiManagementOutput::Template(template_response(
-                    self.management_service()
-                        .create_template(CreateUiCodeTemplateInput {
-                            provider_code: body.provider_code,
-                            contribution_code: body.contribution_code,
-                            name: body.name,
-                            source: body.source,
-                            language: body.language,
-                            actor_user_id,
-                        })
-                        .await?,
-                )))
-            }
-            UiManagementInput::UpdateTemplate { id, body } => {
-                Ok(UiManagementOutput::Template(template_response(
-                    self.management_service()
-                        .revise_template(ReviseUiCodeTemplateInput {
-                            template_id: parse_template_id(&id)?,
-                            name: body.name,
-                            source: body.source,
-                            language: body.language,
-                            actor_user_id,
-                        })
-                        .await?,
-                )))
-            }
-            UiManagementInput::PublishTemplate { id, body } => {
-                Ok(UiManagementOutput::Template(template_response(
-                    self.management_service()
-                        .publish_template(parse_template_id(&id)?, body.revision, actor_user_id)
-                        .await?,
-                )))
-            }
-            UiManagementInput::SetDefaultTemplate { id } => {
-                self.management_service()
-                    .set_template_default(parse_template_id(&id)?, actor_user_id)
-                    .await?;
-                Ok(UiManagementOutput::NoContent)
-            }
-            UiManagementInput::ResetDefaultTemplate(body) => {
-                self.management_service()
-                    .reset_template_default(&body.provider_code, &body.contribution_code)
-                    .await?;
-                Ok(UiManagementOutput::NoContent)
-            }
-            UiManagementInput::DeleteTemplate { id } => {
-                self.management_service()
-                    .delete_template(parse_template_id(&id)?)
-                    .await?;
-                Ok(UiManagementOutput::NoContent)
-            }
-            UiManagementInput::ListComponents => Ok(UiManagementOutput::Components(
-                self.management_service()
-                    .list_component_records()
-                    .await?
-                    .into_iter()
-                    .map(component_response)
-                    .collect::<Result<Vec<_>, _>>()?,
-            )),
-            UiManagementInput::GetComponent { id } => {
-                Ok(UiManagementOutput::Component(component_response(
-                    self.management_service()
-                        .get_component_record(parse_component_id(&id)?)
-                        .await?,
-                )?))
-            }
-            UiManagementInput::CreateComponent(body) => {
-                Ok(UiManagementOutput::Component(component_response(
-                    self.management_service()
-                        .create_component_record(CreateUiComponentRecordInput {
-                            component_code: body.component_code,
-                            name: body.name,
-                            description: body.description,
-                            import_code: body.import_code,
-                            source_code: body.source_code,
-                            source: body.source,
-                            group: body.group,
-                            upstream: UiComponentRecordUpstream {
-                                identity: body.upstream.identity,
-                                version: body.upstream.version,
-                            },
-                            version: body.version,
-                            keywords: body.keywords,
-                            actor_user_id,
-                        })
-                        .await?,
-                )?))
-            }
-            UiManagementInput::UpdateComponent { id, body } => {
-                Ok(UiManagementOutput::Component(component_response(
-                    self.management_service()
-                        .update_component_record(
-                            parse_component_id(&id)?,
-                            UiComponentRecordPatch {
+                        .map(component_response)
+                        .collect::<Result<Vec<_>, _>>()?,
+                )),
+                UiManagementInput::GetComponent { id } => {
+                    Ok(UiManagementOutput::Component(component_response(
+                        self.management_service()
+                            .get_component_record(parse_component_id(&id)?)
+                            .await?,
+                    )?))
+                }
+                UiManagementInput::CreateComponent(body) => {
+                    Ok(UiManagementOutput::Component(component_response(
+                        self.management_service()
+                            .create_component_record(CreateUiComponentRecordInput {
+                                component_code: body.component_code,
                                 name: body.name,
                                 description: body.description,
                                 import_code: body.import_code,
@@ -434,103 +418,127 @@ impl UiManagementAdapter {
                                 version: body.version,
                                 keywords: body.keywords,
                                 actor_user_id,
-                            },
-                        )
-                        .await?,
-                )?))
-            }
-            UiManagementInput::DeleteComponent { id } => {
-                self.management_service()
-                    .delete_component_record(parse_component_id(&id)?)
-                    .await?;
-                Ok(UiManagementOutput::NoContent)
-            }
-            UiManagementInput::CatalogIndex => {
-                let value = self.catalog_service(workspace_id).index().await?;
-                use time::format_description::well_known::Rfc3339;
-                Ok(UiManagementOutput::CatalogIndex(CatalogIndexResponse {
-                    catalog_version: value.catalog_version,
-                    generated_at: value.generated_at.format(&Rfc3339)?,
-                    page_size: value.page_size,
-                    total_components: value.total_components,
-                    source_fingerprint: value.source_fingerprint,
-                }))
-            }
-            UiManagementInput::CatalogPage { page } => {
-                let value = self.catalog_service(workspace_id).page(page).await?;
-                Ok(UiManagementOutput::CatalogPage(CatalogPageResponse {
-                    catalog_version: value.catalog_version,
-                    total_components: value.total_components,
-                    page_size: value.page_size,
-                    page: value.page,
-                    cursor: value.cursor,
-                    next_cursor: value.next_cursor,
-                    records: value
-                        .records
-                        .into_iter()
-                        .map(|record| {
-                            catalog_component_response(record.catalog, record.local_version)
-                        })
-                        .collect::<Result<Vec<_>, _>>()?,
-                }))
-            }
-            UiManagementInput::CatalogSearch(query) => {
-                let value = self
-                    .catalog_service(workspace_id)
-                    .search(&query.q, query.page, query.page_size)
-                    .await?;
-                Ok(UiManagementOutput::CatalogSearch(CatalogSearchResponse {
-                    catalog_version: value.catalog_version,
-                    page: value.page,
-                    page_size: value.page_size,
-                    total_entries: value.total_entries,
-                    entries: value
-                        .entries
-                        .into_iter()
-                        .map(|projection| {
-                            let entry = projection.catalog;
-                            CatalogSearchEntryResponse {
-                                component_code: entry.component_code,
-                                name: entry.name,
-                                description: entry.description,
-                                source: entry.source,
-                                group: entry.group,
-                                upstream: ComponentUpstreamBody {
-                                    identity: entry.upstream.identity,
-                                    version: entry.upstream.version,
+                            })
+                            .await?,
+                    )?))
+                }
+                UiManagementInput::UpdateComponent { id, body } => {
+                    Ok(UiManagementOutput::Component(component_response(
+                        self.management_service()
+                            .update_component_record(
+                                parse_component_id(&id)?,
+                                UiComponentRecordPatch {
+                                    name: body.name,
+                                    description: body.description,
+                                    import_code: body.import_code,
+                                    source_code: body.source_code,
+                                    source: body.source,
+                                    group: body.group,
+                                    upstream: UiComponentRecordUpstream {
+                                        identity: body.upstream.identity,
+                                        version: body.upstream.version,
+                                    },
+                                    version: body.version,
+                                    keywords: body.keywords,
+                                    actor_user_id,
                                 },
-                                version: entry.version,
-                                keywords: entry.keywords,
-                                catalog_page: entry.catalog_page,
-                                local_version: projection.local_version,
-                            }
-                        })
-                        .collect(),
-                }))
-            }
-            UiManagementInput::CatalogUpdateStatus => Ok(UiManagementOutput::CatalogUpdateStatus(
-                catalog_update_status_response(
-                    self.catalog_service(workspace_id).update_status().await?,
-                ),
-            )),
-            UiManagementInput::CatalogDownload { component_code } => {
-                let value = self
-                    .catalog_service(workspace_id)
-                    .download_component(&component_code, actor_user_id)
-                    .await?;
-                let local_version = Some(value.version.clone());
-                Ok(UiManagementOutput::CatalogComponent(
-                    catalog_component_response(value, local_version)?,
-                ))
-            }
-            UiManagementInput::CatalogSyncGroup { source, group } => {
-                let synchronized_records = self
-                    .catalog_service(workspace_id)
-                    .sync_source_group(&source, &group, actor_user_id)
-                    .await?;
-                Ok(UiManagementOutput::CatalogSync(CatalogSyncResponse {
-                    synchronized_records,
-                }))
+                            )
+                            .await?,
+                    )?))
+                }
+                UiManagementInput::DeleteComponent { id } => {
+                    self.management_service()
+                        .delete_component_record(parse_component_id(&id)?)
+                        .await?;
+                    Ok(UiManagementOutput::NoContent)
+                }
+                UiManagementInput::CatalogIndex => {
+                    let value = self.catalog_service(workspace_id).index().await?;
+                    use time::format_description::well_known::Rfc3339;
+                    Ok(UiManagementOutput::CatalogIndex(CatalogIndexResponse {
+                        catalog_version: value.catalog_version,
+                        generated_at: value.generated_at.format(&Rfc3339)?,
+                        page_size: value.page_size,
+                        total_components: value.total_components,
+                        source_fingerprint: value.source_fingerprint,
+                    }))
+                }
+                UiManagementInput::CatalogPage { page } => {
+                    let value = self.catalog_service(workspace_id).page(page).await?;
+                    Ok(UiManagementOutput::CatalogPage(CatalogPageResponse {
+                        catalog_version: value.catalog_version,
+                        total_components: value.total_components,
+                        page_size: value.page_size,
+                        page: value.page,
+                        cursor: value.cursor,
+                        next_cursor: value.next_cursor,
+                        records: value
+                            .records
+                            .into_iter()
+                            .map(|record| {
+                                catalog_component_response(record.catalog, record.local_version)
+                            })
+                            .collect::<Result<Vec<_>, _>>()?,
+                    }))
+                }
+                UiManagementInput::CatalogSearch(query) => {
+                    let value = self
+                        .catalog_service(workspace_id)
+                        .search(&query.q, query.page, query.page_size)
+                        .await?;
+                    Ok(UiManagementOutput::CatalogSearch(CatalogSearchResponse {
+                        catalog_version: value.catalog_version,
+                        page: value.page,
+                        page_size: value.page_size,
+                        total_entries: value.total_entries,
+                        entries: value
+                            .entries
+                            .into_iter()
+                            .map(|projection| {
+                                let entry = projection.catalog;
+                                CatalogSearchEntryResponse {
+                                    component_code: entry.component_code,
+                                    name: entry.name,
+                                    description: entry.description,
+                                    source: entry.source,
+                                    group: entry.group,
+                                    upstream: ComponentUpstreamBody {
+                                        identity: entry.upstream.identity,
+                                        version: entry.upstream.version,
+                                    },
+                                    version: entry.version,
+                                    keywords: entry.keywords,
+                                    catalog_page: entry.catalog_page,
+                                    local_version: projection.local_version,
+                                }
+                            })
+                            .collect(),
+                    }))
+                }
+                UiManagementInput::CatalogUpdateStatus => Ok(UiManagementOutput::CatalogUpdateStatus(
+                    catalog_update_status_response(
+                        self.catalog_service(workspace_id).update_status().await?,
+                    ),
+                )),
+                UiManagementInput::CatalogDownload { component_code } => {
+                    let value = self
+                        .catalog_service(workspace_id)
+                        .download_component(&component_code, actor_user_id)
+                        .await?;
+                    let local_version = Some(value.version.clone());
+                    Ok(UiManagementOutput::CatalogComponent(
+                        catalog_component_response(value, local_version)?,
+                    ))
+                }
+                UiManagementInput::CatalogSyncGroup { source, group } => {
+                    let synchronized_records = self
+                        .catalog_service(workspace_id)
+                        .sync_source_group(&source, &group, actor_user_id)
+                        .await?;
+                    Ok(UiManagementOutput::CatalogSync(CatalogSyncResponse {
+                        synchronized_records,
+                    }))
+                }
             }
         }
     }
@@ -830,13 +838,13 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn ui_management_port(
+pub fn ui_management_port(
     dependencies: UiManagementDependencies,
 ) -> Arc<dyn ConsoleInterfacePort<UiManagementInput, UiManagementOutput>> {
     Arc::new(UiManagementAdapter(dependencies))
 }
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<UiManagementInput, UiManagementOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -850,11 +858,9 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableUiManagementPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<UiManagementInput, UiManagementOutput> for UnavailableUiManagementPort {
     fn execute<'a>(
@@ -870,7 +876,6 @@ impl ConsoleInterfacePort<UiManagementInput, UiManagementOutput> for Unavailable
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -891,7 +896,10 @@ mod tests {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
-#[path = "ui_management_interface/_tests/settings_module_assets.rs"]
-mod settings_module_asset_tests;
+#[cfg(any(test, feature = "test-support"))]
+impl UiManagementAdapter {
+    #[doc(hidden)]
+    pub fn for_test(dependencies: UiManagementDependencies) -> Self {
+        Self(dependencies)
+    }
+}

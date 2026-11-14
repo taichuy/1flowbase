@@ -14,11 +14,11 @@ use catalog::{CatalogQuery, CatalogRequest, ExportQuery, TemplateRequest};
 use control_plane::portable_template::PortableTemplateSelection;
 use serde_json::Value;
 use std::sync::Arc;
-pub(crate) mod archive;
-pub(crate) mod catalog;
-pub(crate) mod interface;
-pub(crate) mod plugins;
-pub(crate) mod releases;
+pub mod archive;
+pub mod catalog;
+pub mod interface;
+pub mod plugins;
+pub mod releases;
 mod translations;
 fn owned(operation: &str) -> access_control::ConsoleRouteOwnership {
     access_control::ConsoleRouteOwnership::ConsoleOperation(operation.to_owned())
@@ -62,7 +62,7 @@ pub async fn catalog(
     let snapshot = Arc::clone(&state);
     let credential =
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers };
-    let output: interface::TemplateOutput = crate::routes::console_interface::invoke(
+    let output: interface::TemplateOutput = crate::routes::console_interface::invoke_non_create(
         snapshot,
         "http.console.settings.system-templates.catalog.v1",
         credential,
@@ -82,7 +82,7 @@ pub async fn export(
     let snapshot = Arc::clone(&state);
     let credential =
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers };
-    let output: interface::TemplateOutput = crate::routes::console_interface::invoke(
+    let output: interface::TemplateOutput = crate::routes::console_interface::invoke_non_create(
         snapshot,
         "http.console.settings.system-templates.export.v1",
         credential,
@@ -114,7 +114,7 @@ pub async fn download(
     let snapshot = Arc::clone(&state);
     let credential =
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers };
-    let output: interface::TemplateOutput = crate::routes::console_interface::invoke(
+    let output: interface::TemplateOutput = crate::routes::console_interface::invoke_non_create(
         snapshot,
         "http.console.settings.system-templates.download.v1",
         credential,
@@ -133,7 +133,7 @@ pub async fn preview(
     let snapshot = Arc::clone(&state);
     let credential =
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers };
-    let output: interface::TemplateOutput = crate::routes::console_interface::invoke(
+    let output: interface::TemplateOutput = crate::routes::console_interface::invoke_non_create(
         snapshot,
         "http.console.settings.system-templates.preview.v1",
         credential,
@@ -152,7 +152,7 @@ pub async fn install(
     let snapshot = Arc::clone(&state);
     let credential =
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers };
-    let output: interface::TemplateOutput = crate::routes::console_interface::invoke(
+    let output: interface::TemplateOutput = crate::routes::console_interface::invoke_non_create(
         snapshot,
         "http.console.settings.system-templates.install.v1",
         credential,
@@ -162,12 +162,10 @@ pub async fn install(
     Ok(Json(ApiSuccess::new(output.0)))
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/releases.rs"]
 mod release_tests;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/archive.rs"]
 mod archive_tests;

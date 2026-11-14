@@ -1,17 +1,16 @@
 use super::*;
 
 #[derive(Clone)]
-pub(crate) struct MemoryInspectionDependencies {
-    pub(crate) session_store: Option<Arc<dyn SessionStore>>,
-    pub(crate) cache_store: Option<Arc<dyn CacheStore>>,
-    pub(crate) rate_limit_store: Option<Arc<dyn RateLimitStore>>,
-    pub(crate) distributed_lock: Option<Arc<dyn DistributedLock>>,
-    pub(crate) task_queue: Option<Arc<dyn TaskQueue>>,
-    pub(crate) event_bus: Option<Arc<dyn EventBus>>,
-    pub(crate) runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
-    pub(crate) provider_transport_sessions:
-        Option<Arc<crate::provider_runtime::ApiRuntimeServices>>,
-    pub(crate) provider_codes: std::collections::BTreeMap<String, String>,
+pub struct MemoryInspectionDependencies {
+    pub session_store: Option<Arc<dyn SessionStore>>,
+    pub cache_store: Option<Arc<dyn CacheStore>>,
+    pub rate_limit_store: Option<Arc<dyn RateLimitStore>>,
+    pub distributed_lock: Option<Arc<dyn DistributedLock>>,
+    pub task_queue: Option<Arc<dyn TaskQueue>>,
+    pub event_bus: Option<Arc<dyn EventBus>>,
+    pub runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
+    pub provider_transport_sessions: Option<Arc<crate::provider_runtime::ApiRuntimeServices>>,
+    pub provider_codes: std::collections::BTreeMap<String, String>,
 }
 
 pub(super) enum MemoryInspectionTarget {

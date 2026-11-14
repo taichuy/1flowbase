@@ -576,7 +576,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: MainDurableStore,
     bootstrap_workspace_id: Uuid,
     runtime_registry_sync: Arc<dyn RuntimeRegistrySync>,
@@ -606,7 +606,7 @@ pub async fn list_file_tables(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<serde_json::Value>>, ApiError> {
     let locale = ConsoleLocaleHints::from_headers(&headers);
-    let output = console_interface::invoke(
+    let output = console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.settings.file-tables.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -630,7 +630,7 @@ pub async fn create_file_table(
     headers: HeaderMap,
     Json(body): Json<CreateFileTableBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<serde_json::Value>>), ApiError> {
-    let output = console_interface::invoke(
+    let output = console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.settings.file-tables.create.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -656,7 +656,7 @@ pub async fn bind_file_table_storage(
     Path(file_table_id): Path<String>,
     Json(body): Json<BindFileTableStorageBody>,
 ) -> Result<Json<ApiSuccess<serde_json::Value>>, ApiError> {
-    let output = console_interface::invoke(
+    let output = console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.settings.file-tables.storage.bind.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -684,7 +684,7 @@ pub async fn delete_file_table(
     headers: HeaderMap,
     Path(file_table_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let output = console_interface::invoke(
+    let output = console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.settings.file-tables.delete.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },

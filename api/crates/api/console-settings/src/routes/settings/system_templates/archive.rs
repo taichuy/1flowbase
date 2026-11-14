@@ -377,7 +377,10 @@ pub(crate) fn source_files(package: &PortableTemplatePackage) -> Result<BTreeMap
     );
     Ok(files)
 }
-pub(crate) fn encode(package: &PortableTemplatePackage) -> Result<Vec<u8>> {
+test_support_item! { pub(crate), [
+
+]
+fn encode(package: &PortableTemplatePackage) -> Result<Vec<u8>> {
     let files = source_files(package)?;
     let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
     let options = zip::write::SimpleFileOptions::default()
@@ -389,4 +392,5 @@ pub(crate) fn encode(package: &PortableTemplatePackage) -> Result<Vec<u8>> {
         writer.write_all(&bytes)?;
     }
     Ok(writer.finish()?.into_inner())
+}
 }

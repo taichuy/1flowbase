@@ -951,6 +951,9 @@ pub(crate) fn production_interface_contributions(
             crate::routes::docs::interface::compile_registry(
                 crate::routes::docs::interface::port(
                     crate::routes::docs::interface::DocsDependencies {
+                        workflow_extension_document: Arc::new(
+                            crate::settings_assembly::WorkflowExtensionDocument,
+                        ),
                         store: state.store.clone(),
                         api_docs: Arc::clone(&state.api_docs),
                         template_catalog: state.runtime_engine.template_catalog().clone(),

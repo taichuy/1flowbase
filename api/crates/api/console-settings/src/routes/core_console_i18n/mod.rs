@@ -30,7 +30,7 @@ impl CoreConsoleDisplayText {
 
 mod catalog;
 
-pub(crate) fn core_console_locale_catalog_contribution() -> ConsoleLocaleCatalogContribution {
+pub fn core_console_locale_catalog_contribution() -> ConsoleLocaleCatalogContribution {
     let texts = [catalog::TEXTS]
         .into_iter()
         .flat_map(|texts| texts.iter())
@@ -137,20 +137,24 @@ fn other_policy_group_keys(group_id: &str) -> (&'static str, &'static str) {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-pub(crate) fn core_console_display_inventory() -> Vec<&'static str> {
+test_support_item! { pub(crate), [
+#[cfg(any(test, feature = "test-support"))]
+]
+fn core_console_display_inventory() -> Vec<&'static str> {
     catalog::TEXTS.iter().map(|text| text.key).collect()
 }
+}
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
-#[cfg(test)]
-pub(crate) fn core_console_static_reference_inventory() -> Vec<&'static str> {
+test_support_item! { pub(crate), [
+#[cfg(any(test, feature = "test-support"))]
+]
+fn core_console_static_reference_inventory() -> Vec<&'static str> {
     catalog::TEXTS
         .iter()
         .filter(|text| text.locale_catalog_ref != text.key)
         .map(|text| text.locale_catalog_ref)
         .collect()
+}
 }
 
 fn dynamic_display_key(key: &str) -> Option<&'static str> {
@@ -173,7 +177,6 @@ pub(crate) async fn resolve_core_console_display_with(
         .await
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::dynamic_display_key;

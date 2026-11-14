@@ -24,7 +24,7 @@ use crate::{
     },
 };
 
-pub(crate) enum CacheInspectionInput {
+pub enum CacheInspectionInput {
     Overview,
     Entries {
         domain_code: String,
@@ -148,7 +148,7 @@ impl InterfaceContract for CacheInspectionInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) enum CacheInspectionOutput {
+pub enum CacheInspectionOutput {
     Overview(CacheOverviewResponse),
     Entries(CacheEntriesResponse),
     Revealed(CacheEntryValueResponse),
@@ -482,16 +482,16 @@ impl InterfaceContract for CacheInspectionOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct CacheInspectionDependencies {
-    pub(crate) cache: Arc<dyn CacheStore>,
-    pub(crate) provider_code: Option<String>,
-    pub(crate) audit_policy: Arc<dyn CacheAuditPolicyPort>,
+pub struct CacheInspectionDependencies {
+    pub cache: Arc<dyn CacheStore>,
+    pub provider_code: Option<String>,
+    pub audit_policy: Arc<dyn CacheAuditPolicyPort>,
 }
 
 pub(crate) type CacheAuditPolicyFuture<'a, T> =
     Pin<Box<dyn Future<Output = Result<T, ApiError>> + Send + 'a>>;
 
-pub(crate) trait CacheAuditPolicyPort: Send + Sync {
+pub trait CacheAuditPolicyPort: Send + Sync {
     fn can_manage<'a>(
         &'a self,
         actor: &'a domain::ActorContext,
@@ -505,16 +505,13 @@ pub(crate) trait CacheAuditPolicyPort: Send + Sync {
     ) -> CacheAuditPolicyFuture<'a, ()>;
 }
 
-pub(crate) struct CacheAuditPolicyAdapter {
+pub struct CacheAuditPolicyAdapter {
     store: MainDurableStore,
     console_registry: Arc<ConsoleOperationRegistry>,
 }
 
 impl CacheAuditPolicyAdapter {
-    pub(crate) fn new(
-        store: MainDurableStore,
-        console_registry: Arc<ConsoleOperationRegistry>,
-    ) -> Self {
+    pub fn new(store: MainDurableStore, console_registry: Arc<ConsoleOperationRegistry>) -> Self {
         Self {
             store,
             console_registry,
@@ -753,7 +750,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: CacheInspectionDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -767,7 +764,6 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

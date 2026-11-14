@@ -28,8 +28,8 @@ use crate::{
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
-pub(crate) mod interface_cache_inspection;
-pub(crate) mod interface_memory_inspection;
+pub mod interface_cache_inspection;
+pub mod interface_memory_inspection;
 pub mod interface_operation;
 mod memory_support;
 mod provider_transport_session_observation;
@@ -266,7 +266,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     route_assembly_with_interface_operations(None)
 }
 
-pub(crate) fn route_assembly_with_interface_operations(
+pub fn route_assembly_with_interface_operations(
     _interface_registry: Option<&interface_runtime::CompiledInterfaceRegistry>,
 ) -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
@@ -367,7 +367,7 @@ pub async fn get_host_infrastructure_memory_overview(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<MemoryOverviewResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.host-infrastructure.memory.overview.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -389,7 +389,7 @@ pub async fn get_host_infrastructure_memory_stats_overview(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<MemoryStatsOverviewResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.host-infrastructure.memory.stats-overview.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -414,7 +414,7 @@ pub async fn list_host_infrastructure_memory_entries(
     Path(contract_code): Path<String>,
     Query(query): Query<MemoryPageQuery>,
 ) -> Result<Json<ApiSuccess<MemoryEntriesResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.host-infrastructure.memory.entries.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -442,7 +442,7 @@ pub async fn get_host_infrastructure_memory_stats(
     Path(contract_code): Path<String>,
     Query(query): Query<MemoryPathQuery>,
 ) -> Result<Json<ApiSuccess<MemoryStatsResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.host-infrastructure.memory.stats.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -470,7 +470,7 @@ pub async fn list_host_infrastructure_memory_tree(
     Path(contract_code): Path<String>,
     Query(query): Query<MemoryPageQuery>,
 ) -> Result<Json<ApiSuccess<MemoryTreeResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.host-infrastructure.memory.tree.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -498,7 +498,7 @@ pub async fn search_host_infrastructure_memory_entries(
     Path(contract_code): Path<String>,
     Query(query): Query<MemorySearchQuery>,
 ) -> Result<Json<ApiSuccess<MemoryEntriesResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.host-infrastructure.memory.entries.search.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -527,7 +527,7 @@ pub async fn reveal_host_infrastructure_memory_entry(
     Path(contract_code): Path<String>,
     Json(body): Json<MemoryEntryRevealBody>,
 ) -> Result<Json<ApiSuccess<MemoryEntryValueResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.host-infrastructure.memory.entry.reveal.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -552,7 +552,7 @@ pub async fn get_host_infrastructure_cache_overview(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<CacheOverviewResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.host-infrastructure.cache.overview.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -576,7 +576,7 @@ pub async fn list_host_infrastructure_cache_entries(
     headers: HeaderMap,
     Path(domain_code): Path<String>,
 ) -> Result<Json<ApiSuccess<CacheEntriesResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.host-infrastructure.cache.entries.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -602,7 +602,7 @@ pub async fn reveal_host_infrastructure_cache_entry(
     Path(domain_code): Path<String>,
     Json(body): Json<CacheEntryKeyBody>,
 ) -> Result<Json<ApiSuccess<CacheEntryValueResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.host-infrastructure.cache.entry.reveal.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -628,7 +628,7 @@ pub async fn clear_host_infrastructure_cache_entry(
     Path(domain_code): Path<String>,
     Json(body): Json<CacheEntryKeyBody>,
 ) -> Result<Json<ApiSuccess<ClearCacheEntryResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.host-infrastructure.cache.entry.clear.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -652,7 +652,7 @@ pub async fn clear_host_infrastructure_cache_domain(
     headers: HeaderMap,
     Path(domain_code): Path<String>,
 ) -> Result<Json<ApiSuccess<ClearCacheDomainResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.host-infrastructure.cache.domain.clear.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -665,7 +665,7 @@ pub async fn clear_host_infrastructure_cache_domain(
     Ok(Json(ApiSuccess::new(response)))
 }
 
-pub(crate) fn memory_inspection_dependencies(state: &ApiState) -> MemoryInspectionDependencies {
+pub fn memory_inspection_dependencies(state: &ApiState) -> MemoryInspectionDependencies {
     let provider_codes = memory_contract_definitions()
         .iter()
         .filter_map(|(contract_code, _)| {
@@ -688,7 +688,10 @@ pub(crate) fn memory_inspection_dependencies(state: &ApiState) -> MemoryInspecti
     }
 }
 
-pub(super) fn has_registered_simple_operations(
+test_support_item! { pub(super), [
+
+]
+fn has_registered_simple_operations(
     registry: &ConsoleOperationRegistry,
     actor: &domain::ActorContext,
     policies: &[domain::RoleConsolePolicy],
@@ -724,6 +727,7 @@ pub(super) fn has_registered_simple_operations(
         };
         domain::effective_console_simple_operation(policies, &group, &operation_id)
     })
+}
 }
 
 impl From<EphemeralInspectionCapabilities> for MemoryInspectionCapabilitiesResponse {
@@ -810,93 +814,5 @@ pub(super) fn to_cache_entry_metadata_response(
         ttl_seconds: entry.ttl_seconds,
         created_at_unix: entry.created_at_unix,
         expires_at_unix: entry.expires_at_unix,
-    }
-}
-
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
-mod tests {
-    use domain::{
-        ActorContext, ConsoleOperationId, ConsoleOperationPolicy, ConsolePolicyGroup,
-        RoleConsoleGroupPolicy, RoleConsolePolicy,
-    };
-    use uuid::Uuid;
-
-    use super::has_registered_simple_operations;
-
-    fn policy(feature_id: &str, operation_ids: &[&str]) -> RoleConsolePolicy {
-        let group = ConsolePolicyGroup::settings_feature(feature_id)
-            .expect("compiled settings feature id must be valid");
-        RoleConsolePolicy::new(
-            Uuid::now_v7(),
-            vec![RoleConsoleGroupPolicy::custom(
-                group,
-                operation_ids
-                    .iter()
-                    .map(|operation_id| {
-                        ConsoleOperationPolicy::simple(
-                            ConsoleOperationId::try_from(*operation_id)
-                                .expect("compiled operation id must be valid"),
-                            true,
-                        )
-                    })
-                    .collect(),
-            )],
-        )
-    }
-
-    #[test]
-    fn ac_007_ac_011_host_and_mcp_capabilities_ignore_legacy_grants() {
-        let settings = crate::app_state::compile_core_settings_feature_registry()
-            .expect("core settings feature registry must compile");
-        let registry = crate::app_state::compile_core_console_operation_registry(&settings)
-            .expect("core console operation registry must compile");
-        let policy_only = ActorContext::scoped(
-            Uuid::now_v7(),
-            Uuid::now_v7(),
-            "member",
-            Vec::<String>::new(),
-        );
-        let legacy_only = ActorContext::scoped(
-            Uuid::now_v7(),
-            Uuid::now_v7(),
-            "member",
-            [
-                access_control::SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_PERMISSION.to_string(),
-                access_control::SYSTEM_MCP_MANAGEMENT_SETTINGS_FEATURE_PERMISSION.to_string(),
-            ],
-        );
-        let policies = vec![
-            policy(
-                "system.memory-observation",
-                &["host_infrastructure.cache.reveal"],
-            ),
-            policy("system.mcp-management", &["mcp.instances.create"]),
-        ];
-
-        assert!(has_registered_simple_operations(
-            &registry,
-            &policy_only,
-            &policies,
-            &["host_infrastructure.cache.reveal"]
-        ));
-        assert!(has_registered_simple_operations(
-            &registry,
-            &policy_only,
-            &policies,
-            &["mcp.instances.create"]
-        ));
-        assert!(!has_registered_simple_operations(
-            &registry,
-            &legacy_only,
-            &[],
-            &["host_infrastructure.cache.reveal"]
-        ));
-        assert!(!has_registered_simple_operations(
-            &registry,
-            &legacy_only,
-            &[],
-            &["mcp.instances.create"]
-        ));
     }
 }

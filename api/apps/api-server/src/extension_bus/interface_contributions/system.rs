@@ -57,6 +57,7 @@ pub(super) fn contributions(
             &["api-server.console-system-templates"],
             crate::routes::system_templates::interface::compile_registry(
                 crate::routes::system_templates::plugins::TemplateDependencies {
+                    mcp_catalog_provider: Arc::new(crate::mcp_assembly::InterfaceCatalog),
                     bootstrap_workspace_id: state.bootstrap_workspace_id,
                     application_template_root: state.application_template_root.clone(),
                     store: state.store.clone(),

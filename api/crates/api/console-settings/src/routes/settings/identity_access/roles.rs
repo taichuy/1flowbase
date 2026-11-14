@@ -340,7 +340,6 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
     ConsoleRouteAssembly::new()
-        .merge(crate::managed_services::record_permissions::route_assembly())
         .route(
             "/settings/roles",
             console_get(list_roles, ConsoleOperation("roles.list".to_string()))
@@ -427,7 +426,7 @@ pub async fn list_data_model_options(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<RoleDataModelOptionResponse>>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.roles.data-model-options.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
@@ -459,7 +458,7 @@ pub async fn get_console_policy_catalog(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ConsolePolicyCatalogResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.roles.console-policy-catalog.view.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
@@ -495,7 +494,7 @@ pub async fn replace_console_settings_order(
     Json(body): Json<ReplaceConsoleSettingsOrderBody>,
 ) -> Result<Json<ApiSuccess<ConsolePolicyCatalogResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.roles.console-settings-order.replace.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -534,7 +533,7 @@ pub async fn get_role_console_policy(
     headers: HeaderMap,
     Path(role_code): Path<String>,
 ) -> Result<Json<ApiSuccess<RoleConsolePolicyResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.roles.console-policy.view.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
@@ -572,7 +571,7 @@ pub async fn replace_role_console_policy(
     Path(role_code): Path<String>,
     Json(body): Json<ReplaceRoleConsolePolicyBody>,
 ) -> Result<StatusCode, ApiError> {
-    crate::routes::console_interface::invoke::<
+    crate::routes::console_interface::invoke_non_create::<
         _,
         crate::routes::role_access_interface::RoleAccessOutput,
     >(
@@ -684,7 +683,7 @@ pub async fn list_roles(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<RoleResponse>>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.roles.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
@@ -711,7 +710,7 @@ pub async fn create_role(
     headers: HeaderMap,
     Json(body): Json<CreateRoleBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<RoleResponse>>), ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.roles.create.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -740,7 +739,7 @@ pub async fn update_role(
     Path(role_code): Path<String>,
     Json(body): Json<UpdateRoleBody>,
 ) -> Result<StatusCode, ApiError> {
-    crate::routes::console_interface::invoke::<
+    crate::routes::console_interface::invoke_non_create::<
         _,
         crate::routes::role_access_interface::RoleAccessOutput,
     >(
@@ -768,7 +767,7 @@ pub async fn delete_role(
     headers: HeaderMap,
     Path(role_code): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    crate::routes::console_interface::invoke::<
+    crate::routes::console_interface::invoke_non_create::<
         _,
         crate::routes::role_access_interface::RoleAccessOutput,
     >(
@@ -796,7 +795,7 @@ pub async fn get_role_permissions(
     headers: HeaderMap,
     Path(role_code): Path<String>,
 ) -> Result<Json<ApiSuccess<RolePermissionsResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.roles.permissions.view.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
@@ -827,7 +826,7 @@ pub async fn replace_role_permissions(
     Path(role_code): Path<String>,
     Json(body): Json<ReplaceRolePermissionsBody>,
 ) -> Result<StatusCode, ApiError> {
-    crate::routes::console_interface::invoke::<
+    crate::routes::console_interface::invoke_non_create::<
         _,
         crate::routes::role_access_interface::RoleAccessOutput,
     >(
@@ -923,7 +922,7 @@ pub async fn get_role_frontstage_routes(
     headers: HeaderMap,
     Path(role_code): Path<String>,
 ) -> Result<Json<ApiSuccess<RoleFrontstageRoutesResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.roles.frontstage-routes.view.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
@@ -964,7 +963,7 @@ pub async fn replace_role_frontstage_routes(
     Path(role_code): Path<String>,
     Json(body): Json<ReplaceRoleFrontstageRoutesBody>,
 ) -> Result<StatusCode, ApiError> {
-    crate::routes::console_interface::invoke::<
+    crate::routes::console_interface::invoke_non_create::<
         _,
         crate::routes::role_access_interface::RoleAccessOutput,
     >(
@@ -994,7 +993,7 @@ pub async fn get_role_data_policy(
     headers: HeaderMap,
     Path(role_code): Path<String>,
 ) -> Result<Json<ApiSuccess<RoleDataPolicyResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.roles.data-policy.view.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
@@ -1024,7 +1023,7 @@ pub async fn replace_role_data_policy(
     Path(role_code): Path<String>,
     Json(body): Json<ReplaceRoleDataPolicyBody>,
 ) -> Result<Json<ApiSuccess<RoleDataPolicyResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.roles.data-policy.replace.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {

@@ -7,12 +7,11 @@ use access_control::{
     DATA_SOURCES_PREVIEW_OPERATION_ID, DATA_SOURCES_VALIDATE_OPERATION_ID,
     DATA_SOURCES_VIEW_OPERATION_ID, MODEL_DEFINITIONS_ADVISOR_VIEW_OPERATION_ID,
     MODEL_DEFINITIONS_CREATE_OPERATION_ID, MODEL_DEFINITIONS_DELETE_OPERATION_ID,
-    MODEL_DEFINITIONS_LIST_OPERATION_ID, MODEL_DEFINITIONS_OPENAPI_VIEW_OPERATION_ID,
-    MODEL_DEFINITIONS_UPDATE_OPERATION_ID, MODEL_FIELDS_CREATE_OPERATION_ID,
-    MODEL_FIELDS_DELETE_OPERATION_ID, MODEL_FIELDS_UPDATE_OPERATION_ID,
-    MODEL_SCOPE_GRANTS_CREATE_OPERATION_ID, MODEL_SCOPE_GRANTS_LIST_OPERATION_ID,
-    MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID, MODEL_TEMPLATES_LIST_OPERATION_ID,
-    SYSTEM_DATA_MODELS_SETTINGS_FEATURE_PERMISSION,
+    MODEL_DEFINITIONS_LIST_OPERATION_ID, MODEL_DEFINITIONS_UPDATE_OPERATION_ID,
+    MODEL_FIELDS_CREATE_OPERATION_ID, MODEL_FIELDS_DELETE_OPERATION_ID,
+    MODEL_FIELDS_UPDATE_OPERATION_ID, MODEL_SCOPE_GRANTS_CREATE_OPERATION_ID,
+    MODEL_SCOPE_GRANTS_LIST_OPERATION_ID, MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID,
+    MODEL_TEMPLATES_LIST_OPERATION_ID, SYSTEM_DATA_MODELS_SETTINGS_FEATURE_PERMISSION,
 };
 use axum::Router;
 
@@ -20,7 +19,7 @@ use crate::{
     app_state::ApiState,
     routes::{
         console_route_assembly::{console_get, console_patch, console_post, ConsoleRouteAssembly},
-        data_sources, docs, model_definitions,
+        data_sources, model_definitions,
     },
 };
 
@@ -167,13 +166,6 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_patch(
                 model_definitions::update_scope_grant,
                 ConsoleOperation(MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID.to_string()),
-            ),
-        )
-        .route(
-            "/settings/data-models/model-definitions/:model_id/openapi.json",
-            console_get(
-                docs::get_data_model_openapi,
-                ConsoleOperation(MODEL_DEFINITIONS_OPENAPI_VIEW_OPERATION_ID.to_string()),
             ),
         )
 }

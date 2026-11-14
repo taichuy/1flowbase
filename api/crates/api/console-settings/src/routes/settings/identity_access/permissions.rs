@@ -81,7 +81,7 @@ pub async fn list_permissions(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<PermissionResponse>>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.roles.permission-options.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol {

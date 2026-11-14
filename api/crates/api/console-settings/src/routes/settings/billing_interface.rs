@@ -32,7 +32,7 @@ use crate::{
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum BillingInput {
+pub enum BillingInput {
     #[serde(serialize_with = "json_contract::query")]
     ListPricingRules(PricingRuleQuery),
     #[serde(serialize_with = "json_contract::body")]
@@ -84,7 +84,7 @@ pub(crate) enum BillingInput {
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum BillingOutput {
+pub enum BillingOutput {
     PricingRules(PricingRulesPageResponse),
     PricingRule(PricingRuleResponse),
     Deleted(Value),
@@ -96,16 +96,16 @@ pub(crate) enum BillingOutput {
     CreditTransaction(CreditTransactionRecord),
 }
 
-pub(crate) struct BillingDependencies {
-    pub(crate) store: MainDurableStore,
-    pub(crate) cache_store: Arc<dyn CacheStore>,
-    pub(crate) catalog_index_url: String,
-    pub(crate) network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
+pub struct BillingDependencies {
+    pub store: MainDurableStore,
+    pub cache_store: Arc<dyn CacheStore>,
+    pub catalog_index_url: String,
+    pub network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
 }
 
 struct BillingAdapter(BillingDependencies);
 
-pub(crate) fn port(
+pub fn port(
     dependencies: BillingDependencies,
 ) -> Arc<dyn ConsoleInterfacePort<BillingInput, BillingOutput>> {
     Arc::new(BillingAdapter(dependencies))
@@ -505,7 +505,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<BillingInput, BillingOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -519,11 +519,9 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableBillingPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<BillingInput, BillingOutput> for UnavailableBillingPort {
     fn execute<'a>(
@@ -539,7 +537,6 @@ impl ConsoleInterfacePort<BillingInput, BillingOutput> for UnavailableBillingPor
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

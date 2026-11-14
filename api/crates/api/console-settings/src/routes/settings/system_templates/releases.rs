@@ -124,10 +124,11 @@ pub(crate) async fn load_packages(root: &str) -> Result<Vec<PortableTemplatePack
     Ok(packages)
 }
 
-pub(crate) async fn synchronize_at_startup(
+pub async fn synchronize_at_startup(
     state: &Arc<ApiState>,
     actor_user_id: Uuid,
     workspace_id: Uuid,
+    mcp_catalog_provider: Arc<dyn api_host_kernel::mcp_catalog::McpInterfaceCatalogProvider>,
 ) -> Result<()> {
     let actor = FrontstagePageRepository::load_actor_context_for_workspace(
         &state.store,
@@ -136,6 +137,7 @@ pub(crate) async fn synchronize_at_startup(
     )
     .await?;
     let dependencies = TemplateDependencies {
+        mcp_catalog_provider,
         bootstrap_workspace_id: state.bootstrap_workspace_id,
         store: state.store.clone(),
         application_template_root: state.application_template_root.clone(),
@@ -149,17 +151,16 @@ pub(crate) async fn synchronize_at_startup(
         cache_store: state.infrastructure.cache_store(),
         provider_install_root: state.provider_install_root.clone(),
         api_node_id: state.api_node_id.clone(),
-        mcp_interface_catalog:
-            crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies {
+        mcp_interface_catalog: api_host_kernel::mcp_catalog::McpInterfaceCatalogDependencies {
+            store: state.store.clone(),
+            openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
                 store: state.store.clone(),
-                openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
-                    store: state.store.clone(),
-                    console_operations: state.console_operation_registry.inventory().clone(),
-                    interface_registry: None,
-                    api_docs: Arc::clone(&state.api_docs),
-                    template_catalog: state.runtime_engine.template_catalog().clone(),
-                },
+                console_operations: state.console_operation_registry.inventory().clone(),
+                interface_registry: None,
+                api_docs: Arc::clone(&state.api_docs),
+                template_catalog: state.runtime_engine.template_catalog().clone(),
             },
+        },
     };
     let adapter = TemplateAdapter(dependencies);
     for package in load_packages(&state.application_template_root).await? {

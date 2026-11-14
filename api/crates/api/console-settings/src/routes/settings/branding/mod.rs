@@ -13,18 +13,18 @@ use control_plane_contracts::ports::SystemBranding;
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use std::sync::Arc;
 
-pub(crate) mod public_interface;
+pub mod public_interface;
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum BrandingInput {
+pub enum BrandingInput {
     Read,
     #[serde(serialize_with = "json_contract::body")]
     Save(SystemBranding),
 }
 #[derive(serde::Serialize)]
 #[serde(transparent)]
-pub(crate) struct BrandingOutput(pub SystemBranding);
+pub struct BrandingOutput(pub SystemBranding);
 impl JsonApiInput for BrandingInput {}
 
 impl InterfaceContract for BrandingInput {
@@ -78,7 +78,7 @@ impl ConsoleInterfacePort<BrandingInput, BrandingOutput> for BrandingAdapter {
         })
     }
 }
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: storage_durable_postgres::MainDurableStore,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -128,7 +128,7 @@ pub async fn get_system_settings(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<SystemBranding>>, ApiError> {
-    let output: BrandingOutput = console_interface::invoke(
+    let output: BrandingOutput = console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.system-branding.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -146,7 +146,7 @@ pub async fn save_system_settings(
     headers: HeaderMap,
     Json(value): Json<SystemBranding>,
 ) -> Result<Json<ApiSuccess<SystemBranding>>, ApiError> {
-    let output: BrandingOutput = console_interface::invoke(
+    let output: BrandingOutput = console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.system-branding.put.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },

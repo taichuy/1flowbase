@@ -40,7 +40,7 @@ pub struct SystemRuntimeProfileQuery {
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum SystemInterfaceInput {
+pub enum SystemInterfaceInput {
     ReleaseStatus,
     RuntimeProfile {
         #[serde(rename = "query", serialize_with = "serialize_locale_query")]
@@ -157,21 +157,21 @@ impl InterfaceContract for SystemInterfaceInput {
     const CONTRACT_ID: &'static str = "console-system-input";
     const CONTRACT_VERSION: &'static str = "1";
 }
-pub(crate) enum SystemInterfaceOutput {
+pub enum SystemInterfaceOutput {
     ReleaseStatus(ConsoleReleaseStatusResponse),
     RuntimeProfile(SystemRuntimeProfileResponse),
     ProcessList(SystemRuntimeProcessListResponse),
     ProcessTermination(SystemProcessTerminationResponse),
 }
 
-pub(crate) struct SystemInterfaceDependencies {
-    pub(crate) store: storage_durable_postgres::MainDurableStore,
-    pub(crate) profiles: RuntimeProfileSnapshotCache,
-    pub(crate) api_node_id: String,
-    pub(crate) provider_install_root: String,
-    pub(crate) host_extension_dropin_root: String,
-    pub(crate) process_sampler: Arc<runtime_profile::RuntimeProcessSampler>,
-    pub(crate) network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
+pub struct SystemInterfaceDependencies {
+    pub store: storage_durable_postgres::MainDurableStore,
+    pub profiles: RuntimeProfileSnapshotCache,
+    pub api_node_id: String,
+    pub provider_install_root: String,
+    pub host_extension_dropin_root: String,
+    pub process_sampler: Arc<runtime_profile::RuntimeProcessSampler>,
+    pub network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
 }
 struct SystemInterfaceAdapter(SystemInterfaceDependencies);
 impl ConsoleInterfacePort<SystemInterfaceInput, SystemInterfaceOutput> for SystemInterfaceAdapter {
@@ -267,7 +267,7 @@ impl ConsoleInterfacePort<SystemInterfaceInput, SystemInterfaceOutput> for Syste
     }
 }
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: SystemInterfaceDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -362,7 +362,7 @@ pub async fn get_release_status(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ConsoleReleaseStatusResponse>>, ApiError> {
     let snapshot_state = Arc::clone(&state);
-    let SystemInterfaceOutput::ReleaseStatus(value) = console_interface::invoke(
+    let SystemInterfaceOutput::ReleaseStatus(value) = console_interface::invoke_non_create(
         snapshot_state,
         "http.console.system.release-status.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -396,7 +396,7 @@ pub async fn get_runtime_profile(
         accept_language: header_accept_language(&headers),
     };
     let snapshot_state = Arc::clone(&state);
-    let SystemInterfaceOutput::RuntimeProfile(value) = console_interface::invoke(
+    let SystemInterfaceOutput::RuntimeProfile(value) = console_interface::invoke_non_create(
         snapshot_state,
         "http.console.system.runtime-profile.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -424,7 +424,7 @@ pub async fn get_runtime_processes(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<SystemRuntimeProcessListResponse>>, ApiError> {
     let snapshot_state = Arc::clone(&state);
-    let SystemInterfaceOutput::ProcessList(value) = console_interface::invoke(
+    let SystemInterfaceOutput::ProcessList(value) = console_interface::invoke_non_create(
         snapshot_state,
         "http.console.system.runtime-processes.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -454,7 +454,7 @@ pub async fn terminate_runtime_process(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<SystemProcessTerminationResponse>>, ApiError> {
     let snapshot_state = Arc::clone(&state);
-    let SystemInterfaceOutput::ProcessTermination(value) = console_interface::invoke(
+    let SystemInterfaceOutput::ProcessTermination(value) = console_interface::invoke_non_create(
         snapshot_state,
         "http.console.system.runtime-profile.process-terminate.post.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },

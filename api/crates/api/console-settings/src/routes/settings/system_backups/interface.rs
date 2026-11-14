@@ -35,7 +35,7 @@ use crate::{
     system_backup::SystemBackupRuntime,
 };
 
-pub(crate) enum SystemBackupsInput {
+pub enum SystemBackupsInput {
     Catalog,
     List,
     Create {
@@ -80,14 +80,14 @@ pub(crate) enum SystemBackupsInput {
     },
 }
 
-pub(crate) struct BackupDownload {
+pub struct BackupDownload {
     pub(crate) status: u16,
     pub(crate) content_type: &'static str,
     pub(crate) content_disposition: String,
     pub(crate) reader: DuplexStream,
 }
 
-pub(crate) enum SystemBackupsOutput {
+pub enum SystemBackupsOutput {
     Catalog(BackupCatalogResponse),
     Listed(BackupSetListResponse),
     Created(QueuedBackupResponse),
@@ -344,23 +344,23 @@ impl InterfaceContract for SystemBackupsOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct SystemBackupsDependencies {
-    pub(crate) runtime: Option<Arc<SystemBackupRuntime>>,
-    pub(crate) store: MainDurableStore,
-    pub(crate) backup_status_access: BackupStatusAccess,
+pub struct SystemBackupsDependencies {
+    pub runtime: Option<Arc<SystemBackupRuntime>>,
+    pub store: MainDurableStore,
+    pub backup_status_access: BackupStatusAccess,
 }
 
 #[derive(Clone)]
-pub(crate) struct BackupStatusAccess {
-    pub(crate) operation_id: String,
-    pub(crate) policy_group: access_control::ConsolePolicyGroup,
-    pub(crate) authorization: access_control::ConsoleAuthorization,
-    pub(crate) resource_access: Option<access_control::ResourceAccessRegistration>,
+pub struct BackupStatusAccess {
+    pub operation_id: String,
+    pub policy_group: access_control::ConsolePolicyGroup,
+    pub authorization: access_control::ConsoleAuthorization,
+    pub resource_access: Option<access_control::ResourceAccessRegistration>,
 }
 
 struct SystemBackupsAdapter(SystemBackupsDependencies);
 
-pub(crate) fn port(
+pub fn port(
     dependencies: SystemBackupsDependencies,
 ) -> Arc<dyn ConsoleInterfacePort<SystemBackupsInput, SystemBackupsOutput>> {
     Arc::new(SystemBackupsAdapter(dependencies))
@@ -897,7 +897,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<SystemBackupsInput, SystemBackupsOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -911,11 +911,9 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableSystemBackupsPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<SystemBackupsInput, SystemBackupsOutput>
     for UnavailableSystemBackupsPort
@@ -933,7 +931,6 @@ impl ConsoleInterfacePort<SystemBackupsInput, SystemBackupsOutput>
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

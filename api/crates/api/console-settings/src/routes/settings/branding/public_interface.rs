@@ -51,8 +51,7 @@ impl InterfaceHandler<BrandingInput, BrandingOutput, ConsoleInterfaceTargetError
     }
 }
 
-pub(crate) fn route_assembly(
-) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
+pub fn route_assembly() -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
     crate::external_route_assembly::ExternalRouteAssembly::new().route(
         "/api/public/system-metadata",
         crate::external_route_assembly::get(get_system_metadata),
@@ -118,7 +117,7 @@ impl InterfaceAuthorizationPort<PublicPrincipal> for BrandingAuthorization {
     }
 }
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: storage_durable_postgres::MainDurableStore,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
     let interface_id = InterfaceId::new(INTERFACE_ID).expect("static interface id is valid");

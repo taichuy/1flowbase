@@ -64,7 +64,6 @@ impl ApiOutput for FileStoragesOutput {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/document_event.rs"]
 mod tests;

@@ -34,7 +34,7 @@ use crate::{
     },
 };
 
-pub(crate) enum MemoryInspectionInput {
+pub enum MemoryInspectionInput {
     Overview,
     StatsOverview,
     Entries {
@@ -63,7 +63,7 @@ pub(crate) enum MemoryInspectionInput {
     clippy::large_enum_variant,
     reason = "the typed inspection output is projected immediately into the console response"
 )]
-pub(crate) enum MemoryInspectionOutput {
+pub enum MemoryInspectionOutput {
     Overview(MemoryOverviewResponse),
     StatsOverview(MemoryStatsOverviewResponse),
     Entries(MemoryEntriesResponse),
@@ -72,15 +72,15 @@ pub(crate) enum MemoryInspectionOutput {
     Revealed(MemoryEntryValueResponse),
 }
 
-pub(crate) struct MemoryInspectionInterfaceDependencies {
-    pub(crate) memory: MemoryInspectionDependencies,
-    pub(crate) audit_policy: Arc<dyn MemoryAuditPolicyPort>,
+pub struct MemoryInspectionInterfaceDependencies {
+    pub memory: MemoryInspectionDependencies,
+    pub audit_policy: Arc<dyn MemoryAuditPolicyPort>,
 }
 
 pub(crate) type MemoryAuditPolicyFuture<'a, T> =
     Pin<Box<dyn Future<Output = Result<T, ApiError>> + Send + 'a>>;
 
-pub(crate) trait MemoryAuditPolicyPort: Send + Sync {
+pub trait MemoryAuditPolicyPort: Send + Sync {
     fn can_manage<'a>(
         &'a self,
         actor: &'a domain::ActorContext,
@@ -93,16 +93,13 @@ pub(crate) trait MemoryAuditPolicyPort: Send + Sync {
     ) -> MemoryAuditPolicyFuture<'a, ()>;
 }
 
-pub(crate) struct MemoryAuditPolicyAdapter {
+pub struct MemoryAuditPolicyAdapter {
     store: MainDurableStore,
     console_registry: Arc<ConsoleOperationRegistry>,
 }
 
 impl MemoryAuditPolicyAdapter {
-    pub(crate) fn new(
-        store: MainDurableStore,
-        console_registry: Arc<ConsoleOperationRegistry>,
-    ) -> Self {
+    pub fn new(store: MainDurableStore, console_registry: Arc<ConsoleOperationRegistry>) -> Self {
         Self {
             store,
             console_registry,
@@ -437,7 +434,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: MemoryInspectionInterfaceDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -489,7 +486,6 @@ fn has_registered_simple_operations(
     })
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

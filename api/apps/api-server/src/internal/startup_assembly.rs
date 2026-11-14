@@ -526,6 +526,7 @@ pub(super) async fn app_and_runtime_host_from_config(
     if config.application_template_auto_update {
         if let Err(error) = routes::system_templates::releases::synchronize_at_startup(
             &state, bootstrap_result.root_user_id, bootstrap_result.workspace_id,
+            Arc::new(crate::mcp_assembly::InterfaceCatalog),
         ).await {
             tracing::error!(error = ?error, "application template discovery failed; retry on next startup");
         }

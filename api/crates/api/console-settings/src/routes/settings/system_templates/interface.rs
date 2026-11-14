@@ -7,7 +7,6 @@ use crate::routes::console_interface::{
     self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
     ConsoleInterfaceTargetError,
 };
-use crate::routes::mcp_management::interface_catalog::mcp_interface_catalog_entries_with;
 use anyhow::Context;
 use control_plane::portable_template::PortableTemplateIdentityRepository;
 use control_plane::portable_template::{
@@ -20,7 +19,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 #[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum TemplateInput {
+pub enum TemplateInput {
     Catalog,
     #[serde(serialize_with = "json_contract::query")]
     CatalogQuery(super::catalog::CatalogQuery),
@@ -48,7 +47,7 @@ pub(crate) enum TemplateInput {
 }
 #[derive(serde::Serialize)]
 #[serde(transparent)]
-pub(crate) struct TemplateOutput(pub Value);
+pub struct TemplateOutput(pub Value);
 
 impl JsonApiInput for TemplateInput {}
 impl JsonApiOutput for TemplateOutput {}
@@ -215,7 +214,10 @@ impl TemplateAdapter {
                         ),
                         actor.user_id,
                         &bundle,
-                        &mcp_interface_catalog_entries_with(&self.0.mcp_interface_catalog, actor)
+                        &self
+                            .0
+                            .mcp_catalog_provider
+                            .entries(&self.0.mcp_interface_catalog, actor)
                             .await?,
                         env!("CARGO_PKG_VERSION"),
                     )
@@ -288,7 +290,10 @@ impl TemplateAdapter {
                         ),
                         actor.user_id,
                         &bundle,
-                        &mcp_interface_catalog_entries_with(&self.0.mcp_interface_catalog, actor)
+                        &self
+                            .0
+                            .mcp_catalog_provider
+                            .entries(&self.0.mcp_interface_catalog, actor)
                             .await?,
                         env!("CARGO_PKG_VERSION"),
                     )
@@ -328,12 +333,12 @@ impl TemplateAdapter {
                             &installed.id_map,
                         );
                         let report = async {
-                            let catalog = mcp_interface_catalog_entries_with(
-                                &self.0.mcp_interface_catalog,
-                                actor,
-                            )
-                            .await
-                            .map_err(|error| error.0)?;
+                            let catalog = self
+                                .0
+                                .mcp_catalog_provider
+                                .entries(&self.0.mcp_interface_catalog, actor)
+                                .await
+                                .map_err(|error| error.0)?;
                             control_plane::portable_template::mcp_merge::install(
                                 &repository,
                                 &translation_scope,
@@ -449,7 +454,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: true,
     },
 ];
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: TemplateDependencies,
     changes: Arc<tokio::sync::Notify>,
 ) -> Result<

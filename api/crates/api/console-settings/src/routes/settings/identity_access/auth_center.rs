@@ -482,7 +482,7 @@ pub async fn get_auth_center_overview(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<AuthCenterOverviewResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.auth-center.overview.view.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
@@ -516,7 +516,7 @@ pub async fn create_auth_center_authenticator(
     Json(body): Json<CreateAuthCenterLoginEntryBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<AuthCenterLoginEntryResponse>>), ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.auth-center.login_entries.create.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -553,7 +553,7 @@ pub async fn copy_auth_center_authenticator(
     Json(body): Json<CopyAuthCenterLoginEntryBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<AuthCenterLoginEntryResponse>>), ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.auth-center.login_entries.copy.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -587,7 +587,7 @@ pub async fn delete_auth_center_authenticator(
     Path(id): Path<Uuid>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
-    crate::routes::console_interface::invoke::<
+    crate::routes::console_interface::invoke_non_create::<
         _,
         crate::routes::auth_center_interface::AuthCenterOutput,
     >(
@@ -620,7 +620,7 @@ pub async fn reorder_auth_center_authenticators(
     Json(body): Json<ReorderAuthCenterLoginEntriesBody>,
 ) -> Result<Json<ApiSuccess<AuthCenterOverviewResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.auth-center.login_entries.order.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -654,7 +654,7 @@ pub async fn update_auth_center_authenticator_enabled(
     Json(body): Json<UpdateAuthCenterLoginEntryEnabledBody>,
 ) -> Result<Json<ApiSuccess<AuthCenterLoginEntryResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.auth-center.login_entries.enabled.update.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -690,7 +690,7 @@ pub async fn update_auth_center_authenticator_config(
     Json(body): Json<UpdateAuthCenterLoginEntryConfigBody>,
 ) -> Result<Json<ApiSuccess<AuthCenterLoginEntryResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.auth-center.login_entries.update.config.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
@@ -726,7 +726,7 @@ pub async fn update_auth_center_authenticator_public_ui_block(
     Json(body): Json<UpdateAuthCenterLoginEntryPublicUiBlockBody>,
 ) -> Result<Json<ApiSuccess<AuthCenterLoginEntryResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
-    let output = crate::routes::console_interface::invoke(
+    let output = crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.auth-center.login_entries.update.public-ui-block.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {

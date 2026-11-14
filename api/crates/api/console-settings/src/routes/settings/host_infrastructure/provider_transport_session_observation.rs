@@ -227,7 +227,6 @@ fn eviction_priority(state: TransportSessionState) -> Option<u8> {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

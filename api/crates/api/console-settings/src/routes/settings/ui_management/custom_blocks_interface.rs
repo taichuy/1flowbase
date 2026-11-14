@@ -2,13 +2,11 @@ use super::custom_blocks::{CreateBlockBody, CustomBlockResponse, UpdateBlockBody
 use crate::{
     error_response::ApiError,
     openapi_interface::json_contract::{JsonApiInput, JsonApiOutput},
-    routes::{
-        console_interface::{
-            self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
-        },
-        frontend_block_catalog::FrontendBlockDependencies,
+    routes::console_interface::{
+        self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
     },
 };
+use api_host_kernel::frontend_block_dependencies::FrontendBlockDependencies;
 use control_plane::frontend_block_catalog::{
     custom_blocks::CustomFrontendBlockService, FrontendBlockCatalogService,
     ListFrontendBlockCatalogQuery,
@@ -20,7 +18,7 @@ use std::sync::Arc;
 
 #[derive(Serialize)]
 #[serde(untagged)]
-pub(crate) enum Input {
+pub enum Input {
     List,
     #[serde(serialize_with = "crate::openapi_interface::json_contract::body")]
     Create(CreateBlockBody),
@@ -88,7 +86,7 @@ impl InterfaceContract for Input {
 }
 #[derive(Serialize)]
 #[serde(untagged)]
-pub(crate) enum Output {
+pub enum Output {
     List(Vec<CustomBlockResponse>),
     Record(CustomBlockResponse),
     Empty,
@@ -224,7 +222,7 @@ impl ConsoleInterfacePort<Input, Output> for Adapter {
         })
     }
 }
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     dependencies: FrontendBlockDependencies,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,

@@ -70,7 +70,7 @@ async fn invoke(
     } else {
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
     };
-    crate::routes::console_interface::invoke(snapshot, binding, credential, input).await
+    crate::routes::console_interface::invoke_non_create(snapshot, binding, credential, input).await
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {

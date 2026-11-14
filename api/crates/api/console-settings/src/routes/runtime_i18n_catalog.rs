@@ -156,7 +156,7 @@ impl ConsoleInterfacePort<RuntimeI18nInput, RuntimeI18nOutput> for RuntimeI18nAd
     }
 }
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: storage_durable_postgres::MainDurableStore,
     bootstrap_workspace_id: uuid::Uuid,
 ) -> Result<
@@ -203,7 +203,7 @@ pub async fn get_runtime_i18n_catalog(
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
     let snapshot_state = Arc::clone(&state);
-    let output: RuntimeI18nOutput = crate::routes::console_interface::invoke(
+    let output: RuntimeI18nOutput = crate::routes::console_interface::invoke_non_create(
         snapshot_state,
         "http.console.i18n.catalog.get.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },

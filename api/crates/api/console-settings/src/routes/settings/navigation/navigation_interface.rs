@@ -17,7 +17,7 @@ use crate::{
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum ConsoleNavigationInput {
+pub enum ConsoleNavigationInput {
     Get,
 }
 
@@ -46,7 +46,7 @@ impl InterfaceContract for ConsoleNavigationInput {
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum ConsoleNavigationOutput {
+pub enum ConsoleNavigationOutput {
     Navigation(ConsoleNavigationResponse),
 }
 
@@ -206,16 +206,16 @@ impl InterfaceContract for ConsoleNavigationOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct ConsoleNavigationDependencies {
-    pub(crate) navigation_cache: control_plane::navigation_cache::NavigationCache,
-    pub(crate) store: MainDurableStore,
-    pub(crate) surfaces: Arc<ConsoleSurfaceRegistry>,
-    pub(crate) settings_features: Vec<access_control::SettingsFeatureInventoryEntry>,
+pub struct ConsoleNavigationDependencies {
+    pub navigation_cache: control_plane::navigation_cache::NavigationCache,
+    pub store: MainDurableStore,
+    pub surfaces: Arc<ConsoleSurfaceRegistry>,
+    pub settings_features: Vec<access_control::SettingsFeatureInventoryEntry>,
 }
 
 struct ConsoleNavigationAdapter(ConsoleNavigationDependencies, uuid::Uuid);
 
-pub(crate) fn port(
+pub fn port(
     dependencies: ConsoleNavigationDependencies,
 ) -> Arc<dyn ConsoleInterfacePort<ConsoleNavigationInput, ConsoleNavigationOutput>> {
     Arc::new(ConsoleNavigationAdapter(dependencies, uuid::Uuid::now_v7()))
@@ -401,7 +401,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[ConsoleInterfa
     mutating: false,
 }];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<ConsoleNavigationInput, ConsoleNavigationOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -415,11 +415,9 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableConsoleNavigationPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<ConsoleNavigationInput, ConsoleNavigationOutput>
     for UnavailableConsoleNavigationPort
@@ -437,7 +435,6 @@ impl ConsoleInterfacePort<ConsoleNavigationInput, ConsoleNavigationOutput>
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

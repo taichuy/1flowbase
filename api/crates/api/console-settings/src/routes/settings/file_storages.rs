@@ -537,7 +537,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     store: MainDurableStore,
     bootstrap_workspace_id: Uuid,
 ) -> Result<
@@ -565,7 +565,7 @@ pub async fn list_file_storages(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<FileStorageResponse>>>, ApiError> {
     let locale = ConsoleLocaleHints::from_headers(&headers);
-    let output = console_interface::invoke(
+    let output = console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.settings.file-storages.list.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -589,7 +589,7 @@ pub async fn create_file_storage(
     headers: HeaderMap,
     Json(body): Json<CreateFileStorageBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<FileStorageResponse>>), ApiError> {
-    let output = console_interface::invoke(
+    let output = console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.settings.file-storages.create.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -616,7 +616,7 @@ pub async fn update_file_storage(
     Path(file_storage_id): Path<String>,
     Json(body): Json<UpdateFileStorageBody>,
 ) -> Result<Json<ApiSuccess<FileStorageResponse>>, ApiError> {
-    let output = console_interface::invoke(
+    let output = console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.settings.file-storages.update.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -644,7 +644,7 @@ pub async fn delete_file_storage(
     headers: HeaderMap,
     Path(file_storage_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let output = console_interface::invoke(
+    let output = console_interface::invoke_non_create(
         Arc::clone(&state),
         "http.console.settings.file-storages.delete.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
@@ -657,10 +657,11 @@ pub async fn delete_file_storage(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[cfg_attr(test, api_test_selection::group(contracts))]
+test_support_item! { pub(crate), [
 /// Constructs private owner values without widening their production visibility.
-#[cfg(test)]
-pub(crate) fn root_2014_projection_fixture(
+#[cfg(any(test, feature = "test-support"))]
+]
+fn root_2014_projection_fixture(
     sentinel: &str,
 ) -> (
     interface_runtime::ManagedInterfaceProjection,
@@ -702,4 +703,5 @@ pub(crate) fn root_2014_projection_fixture(
         _ => unreachable!(),
     }
     (input_view, output_view)
+}
 }

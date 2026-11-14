@@ -40,7 +40,7 @@ const RECOVERY_STATUS: &str = "system_backups.recovery.status";
 const VERIFY: &str = "system_backups.verify";
 const BACKUP_PASSWORD_HEADER: &str = "x-system-backup-password";
 
-pub(crate) mod interface;
+pub mod interface;
 
 fn owned(operation: &str) -> access_control::ConsoleRouteOwnership {
     access_control::ConsoleRouteOwnership::ConsoleOperation(operation.to_owned())
@@ -659,7 +659,13 @@ async fn invoke(
     } else {
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
     };
-    crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
+    crate::routes::console_interface::invoke_non_create(
+        snapshot_state,
+        binding_id,
+        credential,
+        input,
+    )
+    .await
 }
 
 fn canonical_backup_name(id: BackupSetId) -> String {
@@ -836,7 +842,6 @@ fn mutation_response(id: BackupSetId) -> BackupMutationResponse {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

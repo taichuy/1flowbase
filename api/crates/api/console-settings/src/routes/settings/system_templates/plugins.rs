@@ -15,7 +15,7 @@ use control_plane::{
 use std::{collections::BTreeSet, sync::Arc};
 use storage_durable_postgres::MainDurableStore;
 
-pub(crate) struct TemplateDependencies {
+pub struct TemplateDependencies {
     pub store: MainDurableStore,
     pub bootstrap_workspace_id: uuid::Uuid,
     pub application_template_root: String,
@@ -26,8 +26,8 @@ pub(crate) struct TemplateDependencies {
     pub cache_store: Arc<dyn CacheStore>,
     pub provider_install_root: String,
     pub api_node_id: String,
-    pub mcp_interface_catalog:
-        crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies,
+    pub mcp_catalog_provider: Arc<dyn api_host_kernel::mcp_catalog::McpInterfaceCatalogProvider>,
+    pub mcp_interface_catalog: api_host_kernel::mcp_catalog::McpInterfaceCatalogDependencies,
 }
 impl TemplateDependencies {
     pub async fn resolve_plugins(

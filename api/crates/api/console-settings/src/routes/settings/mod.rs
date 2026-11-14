@@ -2,9 +2,9 @@ pub mod application_management;
 #[path = "identity_access/auth_center.rs"]
 pub mod auth_center;
 #[path = "identity_access/auth_center_interface.rs"]
-pub(crate) mod auth_center_interface;
+pub mod auth_center_interface;
 pub mod billing;
-pub(crate) mod billing_interface;
+pub mod billing_interface;
 pub mod branding;
 pub mod data_models;
 pub mod docs;
@@ -12,21 +12,20 @@ pub mod file_storages;
 pub mod file_tables;
 pub mod host_infrastructure;
 pub mod i18n_catalog;
-pub mod mcp_management;
 #[path = "identity_access/members.rs"]
 pub mod members;
 #[path = "identity_access/membership_interface.rs"]
-pub(crate) mod membership_interface;
+pub mod membership_interface;
 #[path = "navigation/navigation.rs"]
 pub mod navigation;
 #[path = "navigation/navigation_interface.rs"]
-pub(crate) mod navigation_interface;
+pub mod navigation_interface;
 #[path = "identity_access/permissions.rs"]
 pub mod permissions;
 #[path = "runtime_status/release_status.rs"]
-mod release_status;
+pub mod release_status;
 #[path = "identity_access/role_access_interface.rs"]
-pub(crate) mod role_access_interface;
+pub mod role_access_interface;
 #[path = "identity_access/roles.rs"]
 pub mod roles;
 #[path = "runtime_status/system.rs"]
@@ -34,7 +33,7 @@ pub mod system;
 pub mod system_backups;
 pub mod system_templates;
 pub mod ui_management;
-pub(crate) mod ui_management_interface;
+pub mod ui_management_interface;
 #[path = "workspace_management/workspace.rs"]
 pub mod workspace;
 #[path = "workspace_management/workspaces.rs"]

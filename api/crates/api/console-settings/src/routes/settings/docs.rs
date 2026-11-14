@@ -24,9 +24,9 @@ use crate::{
 };
 
 #[path = "data_model_openapi_interface.rs"]
-pub(crate) mod data_model_openapi_interface;
+pub mod data_model_openapi_interface;
 #[path = "docs_interface.rs"]
-pub(crate) mod interface;
+pub mod interface;
 #[path = "docs_interface/openapi.rs"]
 pub mod openapi;
 
@@ -61,7 +61,7 @@ async fn invoke(
     binding_id: &'static str,
     input: interface::DocsInput,
 ) -> Result<interface::DocsOutput, ApiError> {
-    crate::routes::console_interface::invoke(
+    crate::routes::console_interface::invoke_non_create(
         Arc::clone(&state),
         binding_id,
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
@@ -243,7 +243,7 @@ pub async fn get_data_model_openapi(
     Path(model_id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     let output: data_model_openapi_interface::DataModelOpenApiOutput =
-        crate::routes::console_interface::invoke(
+        crate::routes::console_interface::invoke_non_create(
             Arc::clone(&state),
             "http.console.model-definitions.openapi.view.v1",
             crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },

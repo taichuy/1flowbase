@@ -24,7 +24,7 @@ use crate::{
 
 #[derive(serde::Serialize)]
 #[serde(untagged)]
-pub(crate) enum DocsInput {
+pub enum DocsInput {
     Catalog,
     #[serde(serialize_with = "crate::openapi_interface::json_contract::path_query_omit_nulls")]
     CategoryOperations {
@@ -149,7 +149,7 @@ impl InterfaceContract for DocsInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) enum DocsOutput {
+pub enum DocsOutput {
     Catalog(DocsCatalog),
     CategoryOperations(DocsCatalogCategoryOperationsPage),
     OpenApi(SharedApiDocument),
@@ -174,17 +174,18 @@ impl InterfaceContract for DocsOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct DocsDependencies {
-    pub(crate) store: MainDurableStore,
-    pub(crate) api_docs: Arc<ApiDocsRegistry>,
-    pub(crate) template_catalog:
-        runtime_core::data_model_template_registry::DataModelTemplateCatalog,
-    pub(crate) cookie_name: String,
+pub struct DocsDependencies {
+    pub store: MainDurableStore,
+    pub api_docs: Arc<ApiDocsRegistry>,
+    pub template_catalog: runtime_core::data_model_template_registry::DataModelTemplateCatalog,
+    pub cookie_name: String,
+    pub workflow_extension_document:
+        Arc<dyn api_host_kernel::console_settings_ports::WorkflowExtensionDocumentProvider>,
 }
 
 struct DocsAdapter(DocsDependencies);
 
-pub(crate) fn port(
+pub fn port(
     dependencies: DocsDependencies,
 ) -> Arc<dyn ConsoleInterfacePort<DocsInput, DocsOutput>> {
     Arc::new(DocsAdapter(dependencies))
@@ -192,12 +193,15 @@ pub(crate) fn port(
 
 impl DocsAdapter {
     async fn extension_docs(&self) -> Result<ApiDocsRegistry, ApiError> {
-        let document = crate::openapi::workflow_extension_openapi_document_with(
-            self.0.store.clone(),
-            &self.0.cookie_name,
-            &self.0.template_catalog,
-        )
-        .await?;
+        let document = self
+            .0
+            .workflow_extension_document
+            .document(
+                self.0.store.clone(),
+                &self.0.cookie_name,
+                &self.0.template_catalog,
+            )
+            .await?;
         Ok(build_api_docs_registry_with_cookie_name(
             document,
             &self.0.cookie_name,
@@ -364,7 +368,7 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
-pub(crate) fn compile_registry(
+pub fn compile_registry(
     port: Arc<dyn ConsoleInterfacePort<DocsInput, DocsOutput>>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
@@ -378,11 +382,9 @@ pub(crate) fn compile_registry(
     )
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 struct UnavailableDocsPort;
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 impl ConsoleInterfacePort<DocsInput, DocsOutput> for UnavailableDocsPort {
     fn execute<'a>(
@@ -398,7 +400,6 @@ impl ConsoleInterfacePort<DocsInput, DocsOutput> for UnavailableDocsPort {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod tests {
     use super::*;

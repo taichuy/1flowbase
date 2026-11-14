@@ -55,7 +55,6 @@ impl ApiInput for MembershipInput {
     }
 }
 
-#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/security.rs"]
 mod tests;
