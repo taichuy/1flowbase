@@ -50,6 +50,32 @@ fn cargo_metadata(api: &Path) -> serde_json::Value {
 }
 
 fn cargo_metadata_with_javascript(api: &Path, javascript: bool) -> serde_json::Value {
+    if let Some(directory) = std::env::var_os("ONEFLOWBASE_DEPENDENCY_METADATA_DIR") {
+        let output = Command::new("node")
+            .arg(api.join("../scripts/node/compile-memory-audit/metadata-capture.js"))
+            .arg("--read")
+            .arg("--api-dir")
+            .arg(api)
+            .arg("--directory")
+            .arg(directory)
+            .args([
+                "--feature",
+                if javascript {
+                    "runtime-extension-sdk/javascript"
+                } else {
+                    "default"
+                },
+            ])
+            .output()
+            .expect("captured metadata reader should start");
+        assert!(
+            output.status.success(),
+            "captured cargo metadata rejected: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return serde_json::from_slice(&output.stdout)
+            .expect("captured cargo metadata should emit JSON");
+    }
     let mut command = Command::new("cargo");
     command.arg("metadata");
     if javascript {
