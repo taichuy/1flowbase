@@ -1,11 +1,11 @@
 use std::convert::Infallible;
 
-use crate::external_route_assembly::HttpRouteState;
+use crate::external_route_assembly::{ErasedRouteHandler, HttpRouteState};
 
 use access_control::{ConsoleRouteAssemblyBinding, ConsoleRouteBinding, ConsoleRouteOwnership};
 use axum::{
     handler::Handler,
-    routing::{get, patch, post, MethodRouter},
+    routing::{MethodFilter, MethodRouter},
     Router,
 };
 
@@ -22,10 +22,10 @@ pub fn console_get<H, T, S>(handler: H, ownership: ConsoleRouteOwnership) -> Con
 where
     H: Handler<T, S>,
     T: 'static,
-    S: Clone + Send + Sync + 'static,
+    S: HttpRouteState,
 {
     ConsoleMethodRouter {
-        router: get(handler),
+        router: S::method_router(MethodFilter::GET, ErasedRouteHandler::new(handler)),
         methods: vec![("GET", ownership, None)],
     }
 }
@@ -37,10 +37,10 @@ pub fn console_delete<H, T, S>(
 where
     H: Handler<T, S>,
     T: 'static,
-    S: Clone + Send + Sync + 'static,
+    S: HttpRouteState,
 {
     ConsoleMethodRouter {
-        router: axum::routing::delete(handler),
+        router: S::method_router(MethodFilter::DELETE, ErasedRouteHandler::new(handler)),
         methods: vec![("DELETE", ownership, None)],
     }
 }
@@ -52,10 +52,10 @@ pub fn console_patch<H, T, S>(
 where
     H: Handler<T, S>,
     T: 'static,
-    S: Clone + Send + Sync + 'static,
+    S: HttpRouteState,
 {
     ConsoleMethodRouter {
-        router: patch(handler),
+        router: S::method_router(MethodFilter::PATCH, ErasedRouteHandler::new(handler)),
         methods: vec![("PATCH", ownership, None)],
     }
 }
@@ -64,10 +64,10 @@ pub fn console_post<H, T, S>(handler: H, ownership: ConsoleRouteOwnership) -> Co
 where
     H: Handler<T, S>,
     T: 'static,
-    S: Clone + Send + Sync + 'static,
+    S: HttpRouteState,
 {
     ConsoleMethodRouter {
-        router: post(handler),
+        router: S::method_router(MethodFilter::POST, ErasedRouteHandler::new(handler)),
         methods: vec![("POST", ownership, None)],
     }
 }
@@ -76,10 +76,10 @@ pub fn console_put<H, T, S>(handler: H, ownership: ConsoleRouteOwnership) -> Con
 where
     H: Handler<T, S>,
     T: 'static,
-    S: Clone + Send + Sync + 'static,
+    S: HttpRouteState,
 {
     ConsoleMethodRouter {
-        router: axum::routing::put(handler),
+        router: S::method_router(MethodFilter::PUT, ErasedRouteHandler::new(handler)),
         methods: vec![("PUT", ownership, None)],
     }
 }
@@ -92,8 +92,13 @@ where
     where
         H: Handler<T, S>,
         T: 'static,
+        S: HttpRouteState,
     {
-        self.router = self.router.delete(handler);
+        self.router = S::method_router_on(
+            self.router,
+            MethodFilter::DELETE,
+            ErasedRouteHandler::new(handler),
+        );
         self.methods.push(("DELETE", ownership, None));
         self
     }
@@ -102,8 +107,13 @@ where
     where
         H: Handler<T, S>,
         T: 'static,
+        S: HttpRouteState,
     {
-        self.router = self.router.patch(handler);
+        self.router = S::method_router_on(
+            self.router,
+            MethodFilter::PATCH,
+            ErasedRouteHandler::new(handler),
+        );
         self.methods.push(("PATCH", ownership, None));
         self
     }
@@ -112,8 +122,13 @@ where
     where
         H: Handler<T, S>,
         T: 'static,
+        S: HttpRouteState,
     {
-        self.router = self.router.post(handler);
+        self.router = S::method_router_on(
+            self.router,
+            MethodFilter::POST,
+            ErasedRouteHandler::new(handler),
+        );
         self.methods.push(("POST", ownership, None));
         self
     }
@@ -122,8 +137,13 @@ where
     where
         H: Handler<T, S>,
         T: 'static,
+        S: HttpRouteState,
     {
-        self.router = self.router.put(handler);
+        self.router = S::method_router_on(
+            self.router,
+            MethodFilter::PUT,
+            ErasedRouteHandler::new(handler),
+        );
         self.methods.push(("PUT", ownership, None));
         self
     }

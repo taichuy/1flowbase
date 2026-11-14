@@ -1,10 +1,27 @@
 //! External HTTP construction boundary. A mount cannot discard its route inventory.
-use axum::{handler::Handler, routing::MethodRouter, Router};
+use axum::{
+    handler::Handler,
+    routing::{MethodFilter, MethodRouter},
+    Router,
+};
+
+#[path = "erased_route_handler.rs"]
+mod erased_route_handler;
+#[doc(hidden)]
+pub use erased_route_handler::ErasedRouteHandler;
 
 use crate::external_endpoint_catalog::ExternalEndpointContribution;
 
 /// Concrete HTTP states own shared router code generation at the Kernel boundary.
 pub trait HttpRouteState: Clone + Send + Sync + 'static {
+    fn method_router(filter: MethodFilter, handler: ErasedRouteHandler<Self>)
+        -> MethodRouter<Self>;
+    fn method_router_on(
+        router: MethodRouter<Self>,
+        filter: MethodFilter,
+        handler: ErasedRouteHandler<Self>,
+    ) -> MethodRouter<Self>;
+    fn any_method_router(handler: ErasedRouteHandler<Self>) -> MethodRouter<Self>;
     fn new_router() -> Router<Self>;
     fn route_router(router: Router<Self>, path: &str, methods: MethodRouter<Self>) -> Router<Self>;
     fn merge_routers(router: Router<Self>, other: Router<Self>) -> Router<Self>;
@@ -20,6 +37,25 @@ pub trait HttpRouteState: Clone + Send + Sync + 'static {
 macro_rules! http_route_state {
     ($state:ty) => {
         impl HttpRouteState for $state {
+            fn method_router(
+                filter: MethodFilter,
+                handler: ErasedRouteHandler<Self>,
+            ) -> MethodRouter<Self> {
+                MethodRouter::new().on(filter, handler)
+            }
+
+            fn method_router_on(
+                router: MethodRouter<Self>,
+                filter: MethodFilter,
+                handler: ErasedRouteHandler<Self>,
+            ) -> MethodRouter<Self> {
+                router.on(filter, handler)
+            }
+
+            fn any_method_router(handler: ErasedRouteHandler<Self>) -> MethodRouter<Self> {
+                axum::routing::any(handler)
+            }
+
             fn new_router() -> Router<Self> {
                 Router::new()
             }
@@ -86,33 +122,44 @@ pub struct ExternalMethodRouter<S> {
 }
 
 macro_rules! method {
-    ($name:ident, $verb:literal) => {
+    ($name:ident, $verb:literal, $filter:ident) => {
         pub fn $name<H, T, S>(handler: H) -> ExternalMethodRouter<S>
         where
             H: Handler<T, S>,
             T: 'static,
-            S: Clone + Send + Sync + 'static,
+            S: HttpRouteState,
         {
             ExternalMethodRouter {
-                router: axum::routing::$name(handler),
+                router: S::method_router(MethodFilter::$filter, ErasedRouteHandler::new(handler)),
                 methods: vec![($verb, None)],
             }
         }
     };
 }
-method!(get, "GET");
-method!(post, "POST");
-method!(any, "ANY");
+method!(get, "GET", GET);
+method!(post, "POST", POST);
+
+pub fn any<H, T, S>(handler: H) -> ExternalMethodRouter<S>
+where
+    H: Handler<T, S>,
+    T: 'static,
+    S: HttpRouteState,
+{
+    ExternalMethodRouter {
+        router: S::any_method_router(ErasedRouteHandler::new(handler)),
+        methods: vec![("ANY", None)],
+    }
+}
 
 /// A JSON-RPC POST carrier retains the canonical MCP invocation binding as it is nested.
 pub fn mcp_post<H, T, S>(handler: H, binding_id: &'static str) -> ExternalMethodRouter<S>
 where
     H: Handler<T, S>,
     T: 'static,
-    S: Clone + Send + Sync + 'static,
+    S: HttpRouteState,
 {
     ExternalMethodRouter {
-        router: axum::routing::post(handler),
+        router: S::method_router(MethodFilter::POST, ErasedRouteHandler::new(handler)),
         methods: vec![("POST", Some(binding_id))],
     }
 }
@@ -122,8 +169,13 @@ impl<S: Clone + Send + Sync + 'static> ExternalMethodRouter<S> {
     where
         H: Handler<T, S>,
         T: 'static,
+        S: HttpRouteState,
     {
-        self.router = self.router.post(handler);
+        self.router = S::method_router_on(
+            self.router,
+            MethodFilter::POST,
+            ErasedRouteHandler::new(handler),
+        );
         self.methods.push(("POST", None));
         self
     }
