@@ -307,8 +307,7 @@ async fn open_compatible_turn_with_invoker(
                 transport_connection_scope,
                 observation_context,
             } => {
-                if let Err(runtime_error) = runtime_service
-                    .start_published_flow_run(StartPublishedFlowRunCommand {
+                if let Err(runtime_error) = api_host_kernel::runtime_execution::start_published_flow_run(&runtime_service, StartPublishedFlowRunCommand {
                         application_id: background_run.application_id,
                         flow_run_id: background_run.id,
                         provider_transport_slot,

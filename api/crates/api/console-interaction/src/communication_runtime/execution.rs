@@ -349,7 +349,9 @@ async fn spawn_dispatch(
         "binding_application_changed"
     );
     let actor = validated_actor(state, input).await?;
-    let inner = crate::generation_dispatch::GenerationDispatch::acquire(state).map_err(|_| anyhow::anyhow!("mcp_access_denied"))?.runtime_debug_mcp_factory(state, &actor)
+    let inner = crate::generation_dispatch::GenerationDispatch::acquire(state)
+        .map_err(|_| anyhow::anyhow!("mcp_access_denied"))?
+        .runtime_debug_mcp_factory(state, &actor)
         .await
         .map_err(|_| anyhow::anyhow!("mcp_access_denied"))?
         .create_server_delegated(
@@ -378,16 +380,18 @@ async fn spawn_dispatch(
         let _permit = execution_permit;
         let _lease = lease;
         let work = async {
-            if runtime
-                .dispatch_communication_run(StartPublishedFlowRunCommand {
+            if api_host_kernel::runtime_execution::dispatch_communication_run(
+                &runtime,
+                StartPublishedFlowRunCommand {
                     transport_connection_scope: None,
                     observation_context: None,
                     application_id,
                     flow_run_id: run_id,
                     provider_transport_slot: None,
-                })
-                .await
-                .is_err()
+                },
+            )
+            .await
+            .is_err()
             {
                 tracing::warn!(%run_id,"communication_dispatch_failed");
             }

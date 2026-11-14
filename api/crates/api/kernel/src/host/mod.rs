@@ -14,6 +14,8 @@ pub mod notification_runtime;
 pub mod provider_runtime;
 #[path = "runtime_activity.rs"]
 pub mod runtime_activity;
+#[path = "runtime_execution.rs"]
+pub mod runtime_execution;
 #[path = "runtime_profile_client/mod.rs"]
 pub mod runtime_profile_client;
 #[path = "runtime_registry_sync/mod.rs"]

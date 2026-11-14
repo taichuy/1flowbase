@@ -294,14 +294,13 @@ filters : Default::default(),
             .map(|source| source.queues).unwrap_or_default();
         // Catch a producer panic too, so the existing required consumer is always retired.
         let execution = AssertUnwindSafe(tokio::time::timeout(Duration::from_secs(10), async {
-            OrchestrationRuntimeService::new(
+            api_host_kernel::runtime_execution::start_published_flow_run(&OrchestrationRuntimeService::new(
                 store, crate::routes::application_public_api::native::api_provider_runtime(&fixture.state),
                 fixture.state.runtime_engine.clone(), fixture.state.provider_secret_master_key.clone(),
                 fixture.state.infrastructure.provider_transport_store(), fixture.state.model_billing_require_provider_usage,
             ).with_published_plan_cache(fixture.state.infrastructure.published_plan_cache())
                 .with_runtime_event_stream(fixture.state.runtime_event_stream.clone())
-                .with_runtime_event_source_binding(binding)
-                .start_published_flow_run(StartPublishedFlowRunCommand {
+                .with_runtime_event_source_binding(binding), StartPublishedFlowRunCommand {
                     transport_connection_scope: None, observation_context: None,
                     application_id: original.application_id, flow_run_id: original.id, provider_transport_slot: None,
                 }).await

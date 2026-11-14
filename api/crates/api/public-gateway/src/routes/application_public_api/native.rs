@@ -654,14 +654,16 @@ pub(crate) async fn execute_blocking_native_run_for_actor_with_dependencies(
         runtime_internal_tool_invoker_for_run(&dependencies, &actor, &run).await?;
     let execution_result = scope_application_activity(
         run.application_id,
-        native_runtime_service(&dependencies, runtime_internal_tool_invoker)
-            .start_published_flow_run(StartPublishedFlowRunCommand {
+        api_host_kernel::runtime_execution::start_published_flow_run(
+            &native_runtime_service(&dependencies, runtime_internal_tool_invoker),
+            StartPublishedFlowRunCommand {
                 application_id: run.application_id,
                 flow_run_id: run.id,
                 provider_transport_slot,
                 transport_connection_scope,
                 observation_context,
-            }),
+            },
+        ),
     )
     .await;
     match execution_result {

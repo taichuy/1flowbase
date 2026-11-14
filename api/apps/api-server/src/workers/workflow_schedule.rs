@@ -134,13 +134,16 @@ pub async fn consume_one_workflow_schedule_run(
     .with_runtime_event_stream(state.runtime_event_stream.clone());
     let execution = scope_application_activity(
         task_payload.application_id,
-        runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
-            transport_connection_scope: None,
-            observation_context: None,
-            application_id: task_payload.application_id,
-            flow_run_id: task_payload.flow_run_id,
-            provider_transport_slot: None,
-        }),
+        api_host_kernel::runtime_execution::start_published_flow_run(
+            &runtime_service,
+            StartPublishedFlowRunCommand {
+                transport_connection_scope: None,
+                observation_context: None,
+                application_id: task_payload.application_id,
+                flow_run_id: task_payload.flow_run_id,
+                provider_transport_slot: None,
+            },
+        ),
     )
     .await;
     acknowledge_workflow_schedule_task(&task_queue, &task.task_id, worker_id).await?;

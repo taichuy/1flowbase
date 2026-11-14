@@ -142,13 +142,16 @@ pub(super) async fn start_native_run_event_channel_with_dependencies(
         let _execution_invoker = runtime_internal_tool_invoker;
         if let Err(runtime_error) = scope_application_activity(
             background_run.application_id,
-            runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
-                application_id: background_run.application_id,
-                flow_run_id: background_run.id,
-                provider_transport_slot: None,
-                transport_connection_scope: None,
-                observation_context: None,
-            }),
+            api_host_kernel::runtime_execution::start_published_flow_run(
+                &runtime_service,
+                StartPublishedFlowRunCommand {
+                    application_id: background_run.application_id,
+                    flow_run_id: background_run.id,
+                    provider_transport_slot: None,
+                    transport_connection_scope: None,
+                    observation_context: None,
+                },
+            ),
         )
         .await
         {

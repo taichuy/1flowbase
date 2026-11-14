@@ -99,15 +99,17 @@ pub(super) async fn execute(
             external_identity: input.claim.scope.external_identity.clone(),
         },
     });
-    super::super::execution::runtime(state, state.store.for_actor(actor))
-        .with_runtime_internal_tool_invoker(invoker)
-        .dispatch_communication_run(StartPublishedFlowRunCommand {
+    api_host_kernel::runtime_execution::dispatch_communication_run(
+        &super::super::execution::runtime(state, state.store.for_actor(actor))
+            .with_runtime_internal_tool_invoker(invoker),
+        StartPublishedFlowRunCommand {
             transport_connection_scope: None,
             observation_context: None,
             application_id: input.binding.config.application_id,
             flow_run_id: run_id,
             provider_transport_slot: None,
-        })
-        .await?;
+        },
+    )
+    .await?;
     Ok(())
 }

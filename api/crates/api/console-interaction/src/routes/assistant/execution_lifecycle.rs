@@ -94,15 +94,17 @@ pub(in super::super) async fn launch_assistant_execution(
         .with_provider_request_log_queue(background_dependencies.task_queue.clone())
         .with_runtime_event_stream(background_dependencies.runtime_event_stream.clone());
         let result = async {
-            let detail = runtime
-                .start_published_flow_run(StartPublishedFlowRunCommand {
+            let detail = api_host_kernel::runtime_execution::start_published_flow_run(
+                &runtime,
+                StartPublishedFlowRunCommand {
                     transport_connection_scope: None,
                     observation_context: None,
                     application_id: execution.application_id,
                     flow_run_id: execution.flow_run_id,
                     provider_transport_slot: None,
-                })
-                .await?;
+                },
+            )
+            .await?;
             Ok::<domain::ApplicationRunDetail, ApiError>(detail)
         }
         .await;
@@ -220,15 +222,17 @@ pub(crate) async fn execute_assistant_run(
     .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
     .with_llm_routing_counter_store(dependencies.cache_store.clone())
     .with_provider_request_log_queue(dependencies.task_queue.clone());
-    let detail = runtime
-        .start_published_flow_run(StartPublishedFlowRunCommand {
+    let detail = api_host_kernel::runtime_execution::start_published_flow_run(
+        &runtime,
+        StartPublishedFlowRunCommand {
             transport_connection_scope: None,
             observation_context: None,
             application_id: execution.application_id,
             flow_run_id: execution.flow_run_id,
             provider_transport_slot: None,
-        })
-        .await?;
+        },
+    )
+    .await?;
     publish_assistant_conversation_summary(
         &dependencies.store,
         &dependencies.conversation_events,

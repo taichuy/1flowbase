@@ -193,13 +193,16 @@ pub(super) async fn execute_delivery(
             );
             let result = scope_application_activity(
                 snapshot.trigger.application_id,
-                runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
-                    transport_connection_scope: None,
-                    observation_context: None,
-                    application_id: snapshot.trigger.application_id,
-                    flow_run_id: run_id,
-                    provider_transport_slot: None,
-                }),
+                api_host_kernel::runtime_execution::start_published_flow_run(
+                    &runtime_service,
+                    StartPublishedFlowRunCommand {
+                        transport_connection_scope: None,
+                        observation_context: None,
+                        application_id: snapshot.trigger.application_id,
+                        flow_run_id: run_id,
+                        provider_transport_slot: None,
+                    },
+                ),
             )
             .await;
             match &result {

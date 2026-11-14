@@ -419,17 +419,19 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .mcp_invoker(actor, headers, body.mcp_instance_ids.clone())
             .await?;
         body.freeze_mcp_selection()?;
-        let detail = self
-            .runtime()
-            .with_runtime_internal_tool_invoker(mcp.clone())
-            .start_flow_debug_run(StartFlowDebugRunCommand {
+        let detail = api_host_kernel::runtime_execution::start_flow_debug_run(
+            &self
+                .runtime()
+                .with_runtime_internal_tool_invoker(mcp.clone()),
+            StartFlowDebugRunCommand {
                 actor_user_id: actor.user_id,
                 application_id,
                 input_payload: body.input_payload,
                 document_snapshot: body.document,
                 debug_session_id: body.debug_session_id,
-            })
-            .await?;
+            },
+        )
+        .await?;
         let application = self.application(actor, application_id).await?;
         let dependencies = self.dependencies.clone();
         let workspace_id = actor.current_workspace_id;
@@ -462,11 +464,14 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .with_provider_request_log_queue(dependencies.task_queue.clone());
             match scope_application_activity(
                 application_id,
-                service.continue_flow_debug_run(ContinueFlowDebugRunCommand {
-                    application_id,
-                    flow_run_id,
-                    workspace_id,
-                }),
+                api_host_kernel::runtime_execution::continue_flow_debug_run(
+                    &service,
+                    ContinueFlowDebugRunCommand {
+                        application_id,
+                        flow_run_id,
+                        workspace_id,
+                    },
+                ),
             )
             .await
             {
@@ -518,13 +523,16 @@ impl ApplicationRuntimeDebugCommandsAdapter {
         }
         let detail = scope_application_activity(
             application_id,
-            runtime.resume_flow_run(ResumeFlowRunCommand {
-                actor_user_id: execution_actor.user_id,
-                application_id,
-                flow_run_id: run_id,
-                checkpoint_id,
-                input_payload: body.input_payload,
-            }),
+            api_host_kernel::runtime_execution::resume_flow_run(
+                &runtime,
+                ResumeFlowRunCommand {
+                    actor_user_id: execution_actor.user_id,
+                    application_id,
+                    flow_run_id: run_id,
+                    checkpoint_id,
+                    input_payload: body.input_payload,
+                },
+            ),
         )
         .await?;
         let application = self.application(actor, application_id).await?;
@@ -615,17 +623,20 @@ impl ApplicationRuntimeDebugCommandsAdapter {
         }
         let detail = scope_application_activity(
             application_id,
-            runtime.complete_callback_task(CompleteCallbackTaskCommand {
-                anthropic_continuation: None,
-                responses_continuation: None,
-                transport_connection_scope: None,
-                observation_context: None,
-                native_transport: None,
-                actor_user_id: execution_actor.user_id,
-                application_id,
-                callback_task_id,
-                response_payload: body.response_payload,
-            }),
+            api_host_kernel::runtime_execution::complete_callback_task(
+                &runtime,
+                CompleteCallbackTaskCommand {
+                    anthropic_continuation: None,
+                    responses_continuation: None,
+                    transport_connection_scope: None,
+                    observation_context: None,
+                    native_transport: None,
+                    actor_user_id: execution_actor.user_id,
+                    application_id,
+                    callback_task_id,
+                    response_payload: body.response_payload,
+                },
+            ),
         )
         .await?;
         let application = self.application(actor, application_id).await?;
@@ -651,18 +662,19 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             .start(application_id, ApplicationActivityKind::HttpRequest);
         let outcome = scope_application_activity(
             application_id,
-            self.runtime()
-                .with_runtime_internal_tool_invoker(
+            api_host_kernel::runtime_execution::start_node_debug_preview(
+                &self.runtime().with_runtime_internal_tool_invoker(
                     self.mcp_invoker(actor, headers, Vec::new()).await?,
-                )
-                .start_node_debug_preview(StartNodeDebugPreviewCommand {
+                ),
+                StartNodeDebugPreviewCommand {
                     actor_user_id: actor.user_id,
                     application_id,
                     node_id,
                     input_payload: body.input_payload,
                     document_snapshot: body.document,
                     debug_session_id: body.debug_session_id,
-                }),
+                },
+            ),
         )
         .await?;
         let detail = self
@@ -929,11 +941,14 @@ impl ApplicationRuntimeDebugCommandsAdapter {
                 Ok(_) => {
                     scope_application_activity(
                         application_id,
-                        service.continue_flow_debug_run(ContinueFlowDebugRunCommand {
-                            application_id,
-                            flow_run_id: run_id,
-                            workspace_id,
-                        }),
+                        api_host_kernel::runtime_execution::continue_flow_debug_run(
+                            &service,
+                            ContinueFlowDebugRunCommand {
+                                application_id,
+                                flow_run_id: run_id,
+                                workspace_id,
+                            },
+                        ),
                     )
                     .await
                 }
