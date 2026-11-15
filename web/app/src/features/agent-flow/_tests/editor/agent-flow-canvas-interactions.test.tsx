@@ -155,6 +155,7 @@ function createInitialState(
 }
 
 type ObservedEditorState = {
+  connectingPayload: { sourceNodeId: string | null };
   nodePickerState: {
     open: boolean;
     anchorNodeId: string | null;
@@ -181,15 +182,20 @@ function StoreObserver({
   const selectedNodeId = useAgentFlowEditorStore(
     (state) => state.selectedNodeId
   );
+  const connectingPayload = useAgentFlowEditorStore(
+    (state) => state.connectingPayload
+  );
 
   useEffect(() => {
     onChange({
+      connectingPayload,
       nodePickerState,
       selectedEdgeId,
       selectedNodeId,
       workingDocument
     });
   }, [
+    connectingPayload,
     nodePickerState,
     onChange,
     selectedEdgeId,
@@ -201,7 +207,8 @@ function StoreObserver({
 }
 
 function renderCanvas(
-  document = createDefaultAgentFlowDocument({ flowId: 'flow-1' })
+  document = createDefaultAgentFlowDocument({ flowId: 'flow-1' }),
+  interactionLocked = false
 ) {
   let latestState: ObservedEditorState | null = null;
 
@@ -214,6 +221,7 @@ function renderCanvas(
       />
       <AgentFlowCanvas
         issueCountByNodeId={emptyIssueCountByNodeId}
+        interactionLocked={interactionLocked}
         nodePickerOptions={nodePickerOptions}
       />
     </AgentFlowEditorStoreProvider>
@@ -371,6 +379,31 @@ describe('AgentFlowCanvas interactions', () => {
     canvasCommitCount = 0;
     latestViewportChangeOptions = null;
     mockViewport = { x: 0, y: 0, zoom: 1 };
+  });
+
+  test('keeps observation available during a run while blocking graph changes', () => {
+    const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
+    const { container, getState } = renderCanvas(document, true);
+
+    expect(container.querySelector('.agent-flow-canvas')).not.toHaveAttribute('inert');
+    for (const name of ['缩小画布', '放大画布', '适应画布']) {
+      expect(screen.getByRole('button', { name })).toBeEnabled();
+    }
+    expect(screen.getByRole('button', { name: '自动整理' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'trigger node drag' }));
+    act(() => {
+      latestReactFlowProps?.onConnect?.({
+        source: 'node-start',
+        target: 'node-answer'
+      });
+      latestViewportChangeOptions?.onEnd?.({ x: 100, y: 200, zoom: 0.5 });
+      latestReactFlowProps?.nodes?.find((node) => node.id === 'node-llm')
+        ?.data?.onSelectNode?.('node-llm');
+    });
+
+    expect(getState().selectedNodeId).toBe('node-llm');
+    expect(getState().workingDocument).toEqual(document);
   });
 
   test('preserves readable canvas selection without authoring authority', () => {

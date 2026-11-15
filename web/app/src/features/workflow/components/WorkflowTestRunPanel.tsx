@@ -49,13 +49,17 @@ export function WorkflowTestRunPanel({
     (field) => field.inputType === 'file' || field.inputType === 'file_list'
   );
   const canExecute = Boolean(canRun && triggerContext.triggerType);
+  const scheduleInputs = triggerContext.schedule?.input_payload;
   const initialValues = useMemo<WorkflowTestRunFormValues>(
     () => ({
       inputs: Object.fromEntries(
         inputFields.flatMap((field) => {
           const value =
-            (triggerContext.triggerType === 'schedule'
-              ? triggerContext.schedule?.input_payload[field.key]
+            (triggerContext.triggerType === 'schedule' &&
+            scheduleInputs !== null &&
+            typeof scheduleInputs === 'object' &&
+            !Array.isArray(scheduleInputs)
+              ? (scheduleInputs as Record<string, unknown>)[field.key]
               : undefined) ??
             field.defaultValue ??
             (field.inputType === 'checkbox' ? false : undefined);
@@ -66,7 +70,7 @@ export function WorkflowTestRunPanel({
     [
       inputFields,
       triggerContext.triggerType,
-      triggerContext.schedule?.input_payload
+      scheduleInputs
     ]
   );
 

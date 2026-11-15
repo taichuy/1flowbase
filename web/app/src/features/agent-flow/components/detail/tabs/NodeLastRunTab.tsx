@@ -106,6 +106,7 @@ function renderLastRunContent({
 
 export function NodeLastRunTab({
   activeRunId,
+  runActive = false,
   applicationId,
   nodeId,
   onResolveRunScope,
@@ -113,6 +114,7 @@ export function NodeLastRunTab({
   adapter
 }: {
   activeRunId?: string | null;
+  runActive?: boolean;
   applicationId?: string;
   nodeId?: string;
   onResolveRunScope?: ((runId: string | null) => void) | undefined;
@@ -142,9 +144,10 @@ export function NodeLastRunTab({
       }
       return lastRun;
     },
-    enabled: Boolean(applicationId && nodeId)
+    enabled: Boolean(applicationId && nodeId && (!runActive || activeRunId)),
+    refetchInterval: runActive && activeRunId ? 1500 : false
   });
-  if (lastRunQuery.isPending) {
+  if ((runActive && !activeRunId) || lastRunQuery.isPending) {
     return <LoadingState compact />;
   }
 

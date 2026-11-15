@@ -67,11 +67,9 @@ const EMPTY_NODE_PICKER_OPTIONS: NodePickerOption[] = [];
 
 function ZoomToolbar({
   onArrangeCanvas,
-  locked,
   readOnly
 }: {
   onArrangeCanvas: () => void;
-  locked: boolean;
   readOnly: boolean;
 }) {
   const reactFlow = useReactFlow();
@@ -88,7 +86,6 @@ function ZoomToolbar({
           <Button
             aria-label={i18nText('agentFlow', 'auto.reduce_canvas')}
             className="agent-flow-zoom-toolbar__button"
-            disabled={locked}
             icon={<MinusOutlined />}
             onClick={() => {
               void reactFlow.zoomOut({ duration: 160 });
@@ -99,7 +96,6 @@ function ZoomToolbar({
           <Button
             aria-label={i18nText('agentFlow', 'auto.enlarge_canvas')}
             className="agent-flow-zoom-toolbar__button"
-            disabled={locked}
             icon={<PlusOutlined />}
             onClick={() => {
               void reactFlow.zoomIn({ duration: 160 });
@@ -110,7 +106,6 @@ function ZoomToolbar({
           <Button
             aria-label={i18nText('agentFlow', 'auto.adapt_to_canvas')}
             className="agent-flow-zoom-toolbar__button"
-            disabled={locked}
             icon={<AimOutlined />}
             onClick={() => {
               void reactFlow.fitView({ duration: 160, padding: 0.16 });
@@ -368,7 +363,6 @@ function AgentFlowCanvasInner({
     <div
       className="agent-flow-canvas"
       data-interaction-locked={interactionLocked}
-      inert={interactionLocked || undefined}
       ref={canvasRef}
       onPointerDownCapture={() => {
         connectionGestureRef.current = false;
@@ -392,16 +386,16 @@ function AgentFlowCanvasInner({
           selectionInteractions.clearSelection();
         }}
         onNodeClick={(_, node) => nodeInteractions.selectNode(node.id)}
-        panOnDrag={!interactionLocked}
+        panOnDrag
         panOnScroll={false}
-        zoomOnScroll={!interactionLocked}
-        zoomOnPinch={!interactionLocked}
-        zoomOnDoubleClick={!interactionLocked}
+        zoomOnScroll
+        zoomOnPinch
+        zoomOnDoubleClick
         autoPanOnNodeDrag={!interactionLocked}
         autoPanOnConnect={!interactionLocked}
-        nodesFocusable={!interactionLocked}
-        edgesFocusable={!interactionLocked}
-        elementsSelectable={!interactionLocked}
+        nodesFocusable
+        edgesFocusable
+        elementsSelectable
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
         edgesReconnectable={!readOnly}
@@ -475,7 +469,7 @@ function AgentFlowCanvasInner({
         }}
       >
         <Background gap={20} size={1} />
-        {!interactionLocked ? <PendingLocateNodeEffect /> : null}
+        <PendingLocateNodeEffect />
         <ViewportObserver
           onViewportEnd={
             readOnly ? () => {} : canvasInteractions.commitViewportChange
@@ -484,7 +478,6 @@ function AgentFlowCanvasInner({
           onViewportGetterReady={onViewportGetterReady}
         />
         <ZoomToolbar
-          locked={interactionLocked}
           readOnly={readOnly}
           onArrangeCanvas={canvasInteractions.arrangeCanvas}
         />

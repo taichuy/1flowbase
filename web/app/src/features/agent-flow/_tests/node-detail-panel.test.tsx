@@ -219,6 +219,29 @@ describe('NodeDetailPanel', () => {
     });
   });
 
+  test('opens the current execution read-only while the workflow is active', async () => {
+    await renderWithProviders(
+      <AgentFlowEditorStoreProvider initialState={createInitialState()}>
+        <SelectionSeed nodeId="node-llm" />
+        <NodeDetailPanel
+          activeTab="config"
+          interactionLocked
+          onTabChange={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </AgentFlowEditorStoreProvider>
+    );
+
+    expect(screen.getByRole('tab', { name: '本次运行' })).toHaveAttribute(
+      'aria-selected', 'true'
+    );
+    expect(screen.getByRole('tab', { name: /设置|配置/ })).toHaveAttribute(
+      'aria-disabled', 'true'
+    );
+    expect(screen.getByLabelText('节点别名')).toBeDisabled();
+    expect(screen.getByRole('button', { name: '关闭节点详情' })).toBeEnabled();
+  });
+
   test(
     'builds node detail from the schema registry and node schema adapter',
     async () => {

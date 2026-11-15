@@ -340,6 +340,7 @@
     "description": "描述",
     "basic_information": "基础信息",
     "last_run": "上次运行",
+    "current_run": "本次运行",
     "filter_value": "过滤值 {{value1}}",
     "output_variable_name_configured": "输出变量名未配置",
     "turn_off_variable_caching": "关闭变量缓存",

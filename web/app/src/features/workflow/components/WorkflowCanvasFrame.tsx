@@ -13,7 +13,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent
 } from 'react';
-import { useNavigate } from '@tanstack/react-router';
 
 import type {
   ConsoleApplicationEnvironmentVariable,
@@ -72,8 +71,8 @@ import { buildNodePickerOptions } from '../../flow-editor/authoring/plugin-node-
 import type { WorkflowTriggerContext } from '../lib/trigger-context';
 import { WorkflowOverlay } from './WorkflowOverlay';
 import { WorkflowTestRunPanel } from './WorkflowTestRunPanel';
-import { WorkflowRunStatusBar } from './WorkflowRunStatusBar';
 import { useWorkflowTestRun } from '../hooks/use-workflow-test-run';
+import { applicationRunNodeLastRunQueryKey } from '../../agent-flow/api/runtime';
 
 const ENVIRONMENT_DOCK_WIDTH = 520;
 const HISTORY_DOCK_WIDTH = 460;
@@ -123,7 +122,6 @@ function useWorkflowCanvasController({
   restoreVersionOverride
 }: WorkflowCanvasFrameProps) {
   const { message, modal } = App.useApp();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken);
@@ -185,6 +183,26 @@ function useWorkflowCanvasController({
   const setInteractionState = useAgentFlowEditorStore(
     (state) => state.setInteractionState
   );
+  useEffect(() => {
+    if (!testRun.active && testRun.state.runId && selectedNodeId) {
+      void queryClient.invalidateQueries({
+        queryKey: applicationRunNodeLastRunQueryKey(
+          applicationId,
+          testRun.state.runId,
+          selectedNodeId
+        )
+      });
+    }
+  }, [
+    testRun.active,
+    testRun.state.runId,
+    selectedNodeId,
+    applicationId,
+    queryClient
+  ]);
+  useEffect(() => {
+    if (testRun.state.runId && selectedNodeId) setNodeDetailTab('lastRun');
+  }, [testRun.state.runId, selectedNodeId]);
   useEffect(() => {
     if (!testRun.active) return;
     setSelection({
@@ -433,7 +451,6 @@ function useWorkflowCanvasController({
     revertToDraftMutation,
     workingDocument,
     triggerContext,
-    navigate,
     setPanelState,
     historyOpen,
     setEnvironmentVariablesOpen,
@@ -483,7 +500,6 @@ export function WorkflowCanvasFrame(
     revertToDraftMutation,
     workingDocument,
     triggerContext,
-    navigate,
     setPanelState,
     historyOpen,
     setEnvironmentVariablesOpen,
@@ -583,19 +599,7 @@ export function WorkflowCanvasFrame(
             viewportGetterRef.current = getter;
           }}
         />
-        <WorkflowRunStatusBar
-          state={testRun.state}
-          active={testRun.active}
-          onClear={testRun.clear}
-          onOpenTrace={(runId) => {
-            void navigate({
-              to: '/applications/$applicationId/logs',
-              params: { applicationId },
-              search: runId ? { run_id: runId, view: 'trace' } : {}
-            });
-          }}
-        />
-        {selectedNodeId && !testRun.active ? (
+        {selectedNodeId ? (
           <div
             className="agent-flow-editor__detail-dock"
             data-layout={nodeDetailLayout}
@@ -623,6 +627,8 @@ export function WorkflowCanvasFrame(
               <NodeDetailPanel
                 documentAnalysis={documentAnalysis}
                 activeTab={nodeDetailTab}
+                activeRunId={testRun.state.runId}
+                interactionLocked={testRun.active}
                 applicationId={applicationId}
                 environmentVariables={environmentVariables}
                 issues={issues}

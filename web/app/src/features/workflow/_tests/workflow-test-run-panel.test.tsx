@@ -72,13 +72,41 @@ async function renderPanel(props: Partial<WorkflowTestRunPanelProps> = {}) {
     );
   });
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: '测试运行' }));
+    fireEvent.click(screen.getByRole('button', { name: /测试运行/ }));
   });
   return onRun;
 }
 afterEach(cleanup);
 
 describe('Workflow test-run parameters', () => {
+  test.each([
+    { input_payload: { customer_id: 'scheduled', limit: 5 }, customerId: 'scheduled', limit: 5 },
+    { input_payload: null, customerId: '', limit: 10 },
+    { input_payload: [], customerId: '', limit: 10 }
+  ])('reads scheduled input fields from an object payload ($customerId)', async ({ input_payload, customerId, limit }) => {
+    await renderPanel({
+      triggerContext: {
+        ...context(),
+        schedule: {
+          id: 'schedule-1',
+          workspace_id: 'workspace-1',
+          application_id: 'app-1',
+          enabled: false,
+          cron: '0 3 * * *',
+          timezone: 'Asia/Shanghai',
+          input_payload,
+          created_by: 'user-1',
+          updated_by: 'user-1',
+          created_at: '2026-11-15T00:00:00Z',
+          updated_at: '2026-11-15T00:00:00Z'
+        }
+      }
+    });
+
+    expect(screen.getByLabelText('Customer ID')).toHaveValue(customerId);
+    expect(screen.getByLabelText('Limit')).toHaveValue(String(limit));
+  });
+
   test.each(['schedule', 'extension', 'event'] as const)(
     '%s immediately runs empty inputs without a drawer',
     async (triggerType) => {

@@ -340,6 +340,7 @@
     "description": "Description",
     "basic_information": "Basic information",
     "last_run": "last run",
+    "current_run": "Current run",
     "filter_value": "Filter value {{value1}}",
     "output_variable_name_configured": "Output variable name is not configured",
     "turn_off_variable_caching": "Turn off variable caching",
