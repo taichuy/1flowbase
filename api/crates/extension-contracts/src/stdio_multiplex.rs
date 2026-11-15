@@ -67,6 +67,7 @@ pub enum MultiplexHostMessage {
 pub enum MultiplexHostService {
     PluginDataV1,
     PluginCredentialV1,
+    PluginEphemeralV1,
     FileImportV1,
     FileReadV1,
     ApplicationLogsV1,

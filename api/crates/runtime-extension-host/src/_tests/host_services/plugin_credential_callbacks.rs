@@ -59,6 +59,7 @@ pub(super) fn context(port: Arc<Credentials>) -> ProviderHostCallContext {
         http_egress: None,
         file_import: None,
         plugin_credentials: Some((binding, port)),
+        plugin_ephemeral: None,
     }
 }
 #[tokio::test]

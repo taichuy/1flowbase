@@ -120,3 +120,6 @@ fn managed_service_context_reexport_preserves_canonical_contract() {
 
 #[path = "_tests/communication_command_tests.rs"]
 mod communication_command_tests;
+
+#[path = "_tests/plugin_ephemeral_client_tests.rs"]
+mod plugin_ephemeral_client_tests;

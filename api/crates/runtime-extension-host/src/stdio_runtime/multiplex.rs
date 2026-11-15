@@ -1037,6 +1037,35 @@ async fn execute_callback(
                 Err(error) => serde_json::json!({"error":error}),
             }
         }
+        MultiplexHostService::PluginEphemeralV1 => {
+            use extension_contracts::{PluginEphemeralError, PluginEphemeralRequest};
+            let result = async {
+                let request: PluginEphemeralRequest = serde_json::from_value(request)
+                    .map_err(|_| PluginEphemeralError::new("plugin_ephemeral_request_invalid"))?;
+                request.validate()?;
+                let (binding, port) = context
+                    .and_then(|context| context.plugin_ephemeral)
+                    .ok_or_else(|| PluginEphemeralError::new("plugin_ephemeral_not_granted"))?;
+                let remaining = binding.deadline_unix_ms.saturating_sub(now_unix_ms());
+                if remaining <= 0 {
+                    return Err(PluginEphemeralError::new("plugin_ephemeral_deadline"));
+                }
+                if binding.deadline_unix_ms == i64::MAX {
+                    return port.execute(&binding, &request).await;
+                }
+                tokio::time::timeout(
+                    Duration::from_millis(remaining as u64),
+                    port.execute(&binding, &request),
+                )
+                .await
+                .unwrap_or_else(|_| Err(PluginEphemeralError::new("plugin_ephemeral_deadline")))
+            }
+            .await;
+            match result {
+                Ok(value) => serde_json::json!({"result":value}),
+                Err(error) => serde_json::json!({"error":error}),
+            }
+        }
     }
 }
 
@@ -1077,3 +1106,7 @@ async fn wait_explicit_cancel(cancel: &mut Option<tokio::sync::watch::Receiver<b
         None => std::future::pending().await,
     }
 }
+
+#[cfg(test)]
+#[path = "../_tests/host_services/plugin_ephemeral_callbacks.rs"]
+mod ephemeral_tests;

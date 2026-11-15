@@ -207,6 +207,10 @@ pub(super) async fn app_and_runtime_host_from_config(
                     store.pool().clone(), config.provider_secret_master_key.clone(),
                 )?),
             ),
+        )).with_plugin_ephemeral(Arc::new(
+            control_plane::plugin_management::ManagedPluginEphemeralService::new(
+                Arc::new(store.clone()), infrastructure.ephemeral_kv_store(),
+            ),
         )),
     );
     runtime_extension_host

@@ -168,5 +168,6 @@ fn distribution_host_calls(
         http_egress: None,
         file_import: None,
         plugin_credentials: None,
+        plugin_ephemeral: None,
     }))
 }

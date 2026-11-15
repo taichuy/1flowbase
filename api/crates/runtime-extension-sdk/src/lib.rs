@@ -102,6 +102,12 @@ pub use extension_contracts::{
 };
 pub use managed_event::{serve_communication_command, serve_managed_event};
 
+mod plugin_ephemeral;
+pub use extension_contracts::{
+    PluginEphemeralError, PluginEphemeralRequest, PluginEphemeralResponse,
+};
+pub use plugin_ephemeral::{PluginEphemeralClient, PluginEphemeralClientError};
+
 mod plugin_credential;
 pub use extension_contracts::{
     PluginCredentialError, PluginCredentialRequest, PluginCredentialResponse,
