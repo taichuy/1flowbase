@@ -10,36 +10,123 @@ async fn creates_flow_run_shell_and_attaches_compiled_plan() {
     let store = PgControlPlaneStore::new(pool);
     let seeded = seed_runtime_base(&store).await;
 
-    let shell = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run_shell(
-        &store,
-        &CreateFlowRunShellInput {
-            actor_user_id: seeded.actor_user_id,
-            application_id: seeded.application_id,
-            flow_id: seeded.flow_id,
-            flow_draft_id: seeded.draft_id,
-            debug_session_id: "test-debug-session".to_string(),
-            flow_schema_version: "1flowbase.flow/v2".to_string(),
-            document_hash: "test-document-hash".to_string(),
-            run_mode: FlowRunMode::DebugFlowRun,
-            target_node_id: None,
-            title: "hello".to_string(),
-            status: FlowRunStatus::Queued,
-            input_payload: json!({ "node-start": { "query": "hello" } }),
-            started_at: OffsetDateTime::now_utc(),
-            api_key_id: None,
-            publication_version_id: None,
-            external_user: None,
-            external_conversation_id: None,
-            external_trace_id: None,
-            compatibility_mode: None,
-            idempotency_key: None,
-        },
-    )
-    .await
-    .unwrap();
+    // Optional private sample: only the copied document/input are restored into
+    // this disposable database. Its HTTP and cleanup nodes are never executed.
+    let sample: Option<Value> = std::env::var("WORKFLOW_LOG_REPRO_FIXTURE")
+        .ok()
+        .map(|path| serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap());
+    let document = sample.as_ref().map_or_else(
+        || domain::default_flow_document_for_application(ApplicationType::Workflow, seeded.flow_id),
+        |sample| sample["draft"]["document"].clone(),
+    );
+    assert!(document["graph"]["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|node| node["type"] != "llm"));
+    sqlx::query("update applications set application_type='workflow',workflow_trigger_type='schedule' where id=$1")
+        .bind(seeded.application_id).execute(store.pool()).await.unwrap();
+    sqlx::query("update flow_drafts set document=$2 where id=$1")
+        .bind(seeded.draft_id)
+        .bind(document)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+    let shell_input = CreateFlowRunShellInput {
+        actor_user_id: seeded.actor_user_id,
+        application_id: seeded.application_id,
+        flow_id: seeded.flow_id,
+        flow_draft_id: seeded.draft_id,
+        debug_session_id: "test-debug-session".to_string(),
+        flow_schema_version: "1flowbase.flow/v2".to_string(),
+        document_hash: "test-document-hash".to_string(),
+        run_mode: FlowRunMode::DebugFlowRun,
+        target_node_id: None,
+        title: "hello".to_string(),
+        status: FlowRunStatus::Queued,
+        input_payload: sample.as_ref().map_or_else(
+            || json!({ "node-workflow-start": {} }),
+            |sample| sample["run"]["input_payload"].clone(),
+        ),
+        started_at: OffsetDateTime::now_utc(),
+        api_key_id: None,
+        publication_version_id: None,
+        external_user: None,
+        external_conversation_id: None,
+        external_trace_id: None,
+        compatibility_mode: None,
+        idempotency_key: None,
+    };
+    let shell = store.create_flow_run_shell(&shell_input).await.unwrap();
 
     assert_eq!(shell.compiled_plan_id, None);
     assert_eq!(shell.status, domain::FlowRunStatus::Queued);
+
+    async fn assert_listed(
+        store: &PgControlPlaneStore,
+        application_id: Uuid,
+        run_id: Uuid,
+        status: FlowRunStatus,
+    ) {
+        let page = store
+            .list_application_run_logs_page(
+                application_id,
+                ListApplicationRunsPageInput {
+                    page: 1,
+                    page_size: 20,
+                    created_after: None,
+                    sort_by: None,
+                    sort_order: None,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            page.total, 1,
+            "accepted workflow must be discoverable before any LLM or terminal event"
+        );
+        assert_eq!(page.items[0].run.id, run_id);
+        assert_eq!(page.items[0].run.status, status);
+        assert_eq!(page.items[0].member_run_ids, vec![run_id]);
+
+        // The current GUI reads this registered runtime model, not flow_runs.
+        let metadata = store.list_runtime_model_metadata().await.unwrap();
+        let model = metadata
+            .iter()
+            .find(|model| model.model_code == "application_run_log_tasks")
+            .unwrap();
+        let visible =
+            storage_durable::runtime_record_repository::RuntimeRecordRepository::list_records(
+                store,
+                model,
+                storage_durable::runtime_record_repository::RuntimeListQuery {
+                    scope_id: None,
+                    owner_user_id: None,
+                    filter: domain::ResourceFilterExpr::Field {
+                        field: "application_id".into(),
+                        operator: domain::ResourceFilterOperator::Eq,
+                        value: json!(application_id),
+                    },
+                    sorts: vec![],
+                    expand_relations: vec![],
+                    page: 1,
+                    page_size: 20,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(visible.total, 1);
+        assert_eq!(visible.items[0]["id"], json!(run_id));
+        assert_eq!(visible.items[0]["status"], json!(status.as_str()));
+    }
+    assert_listed(
+        &store,
+        seeded.application_id,
+        shell.id,
+        FlowRunStatus::Queued,
+    )
+    .await;
 
     let compiled = <PgControlPlaneStore as OrchestrationRuntimeRepository>::upsert_compiled_plan(
         &store,
@@ -56,22 +143,87 @@ async fn creates_flow_run_shell_and_attaches_compiled_plan() {
     .await
     .unwrap();
 
+    // A failed projection must neither accept an invisible run nor advance its
+    // canonical state. The fault is confined to this disposable fixture.
+    sqlx::raw_sql("create function reject_workflow_log_projection() returns trigger language plpgsql as $$ begin raise exception 'test workflow projection failure'; end $$; create trigger reject_workflow_log_projection before insert or update on application_run_log_tasks for each row execute function reject_workflow_log_projection();")
+        .execute(store.pool()).await.unwrap();
+    assert!(store.create_flow_run_shell(&shell_input).await.is_err());
+    let raw_count: i64 =
+        sqlx::query_scalar("select count(*) from flow_runs where application_id=$1")
+            .bind(seeded.application_id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(
+        raw_count, 1,
+        "failed acceptance must roll back the raw run too"
+    );
+
+    let attachment = AttachCompiledPlanToFlowRunInput {
+        flow_run_id: shell.id,
+        compiled_plan_id: compiled.id,
+        flow_schema_version: compiled.schema_version.clone(),
+        document_hash: "test-document-hash".to_string(),
+        status: FlowRunStatus::Running,
+    };
+    assert!(store
+        .attach_compiled_plan_to_flow_run(&attachment)
+        .await
+        .is_err());
+    let unchanged = store
+        .get_flow_run(seeded.application_id, shell.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(unchanged.status, FlowRunStatus::Queued);
+    assert_eq!(unchanged.compiled_plan_id, None);
+    assert_listed(
+        &store,
+        seeded.application_id,
+        shell.id,
+        FlowRunStatus::Queued,
+    )
+    .await;
+    sqlx::query("drop trigger reject_workflow_log_projection on application_run_log_tasks")
+        .execute(store.pool())
+        .await
+        .unwrap();
+
     let attached =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::attach_compiled_plan_to_flow_run(
             &store,
-            &AttachCompiledPlanToFlowRunInput {
-                flow_run_id: shell.id,
-                compiled_plan_id: compiled.id,
-                flow_schema_version: compiled.schema_version.clone(),
-                document_hash: "test-document-hash".to_string(),
-                status: FlowRunStatus::Running,
-            },
+            &attachment,
         )
         .await
         .unwrap();
 
     assert_eq!(attached.compiled_plan_id, Some(compiled.id));
     assert_eq!(attached.status, FlowRunStatus::Running);
+    assert_listed(
+        &store,
+        seeded.application_id,
+        shell.id,
+        FlowRunStatus::Running,
+    )
+    .await;
+
+    store
+        .update_flow_run(&UpdateFlowRunInput {
+            flow_run_id: shell.id,
+            status: FlowRunStatus::Succeeded,
+            output_payload: json!({ "done": true }),
+            error_payload: None,
+            finished_at: Some(OffsetDateTime::now_utc()),
+        })
+        .await
+        .unwrap();
+    assert_listed(
+        &store,
+        seeded.application_id,
+        shell.id,
+        FlowRunStatus::Succeeded,
+    )
+    .await;
 }
 
 #[tokio::test]

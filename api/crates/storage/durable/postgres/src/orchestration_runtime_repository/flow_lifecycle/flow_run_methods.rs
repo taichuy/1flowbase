@@ -399,6 +399,7 @@ impl PgControlPlaneStore {
         &self,
         input: &CreateFlowRunShellInput,
     ) -> Result<domain::FlowRunRecord> {
+        let mut tx = self.pool().begin().await?;
         let row = sqlx::query(
             r#"
             insert into flow_runs (
@@ -480,11 +481,16 @@ impl PgControlPlaneStore {
         .bind(input.actor_user_id)
         .bind(input.started_at)
         .bind(input.started_at)
-        .fetch_one(self.pool())
+        .fetch_one(&mut *tx)
         .await?;
 
         let workspace_id = row.try_get("scope_id")?;
         let flow_run = map_flow_run_record(row)?;
+        // Acceptance and list visibility share one commit, before any node runs.
+        Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, &flow_run)
+            .await?;
+        Self::refresh_application_run_log_task_for_flow_run(&mut tx, flow_run.id).await?;
+        tx.commit().await?;
         self.observe_application_lifecycle_fact(self.application_lifecycle_fact(
             workspace_id,
             &flow_run,
@@ -497,6 +503,8 @@ impl PgControlPlaneStore {
         &self,
         input: &AttachCompiledPlanToFlowRunInput,
     ) -> Result<domain::FlowRunRecord> {
+        let mut tx = self.pool().begin().await?;
+        lock_application_run_native_projection(&mut tx, input.flow_run_id).await?;
         let row = sqlx::query(
             r#"
             update flow_runs
@@ -551,12 +559,16 @@ impl PgControlPlaneStore {
         .bind(input.status.as_str())
         .bind(&input.flow_schema_version)
         .bind(&input.document_hash)
-        .fetch_optional(self.pool())
+        .fetch_optional(&mut *tx)
         .await?
         .ok_or_else(|| anyhow!("flow run compiled plan cannot be attached"))?;
 
         let workspace_id = row.try_get("scope_id")?;
         let flow_run = map_flow_run_record(row)?;
+        Self::upsert_application_run_log_summary_projection_for_flow_run(&mut tx, &flow_run)
+            .await?;
+        Self::refresh_application_run_log_task_for_flow_run(&mut tx, flow_run.id).await?;
+        tx.commit().await?;
         self.observe_application_lifecycle_fact(self.application_lifecycle_fact(
             workspace_id,
             &flow_run,
