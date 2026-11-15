@@ -38,6 +38,7 @@ impl HostContributionGrantPolicy {
                     "application.logs.read" | "application.logs.import" => Some("application-logs"),
                     "network.http.request" => Some("http-egress"),
                     "credential.manage" => Some("plugin-credential"),
+                    "ephemeral.manage" => Some("plugin-ephemeral"),
                     "event.subscribe" | "event.publish" => Some("managed-event"),
                     "plugin_data.owned.write" => Some("plugin-data"),
                     _ => plugin_framework::extension_bus::managed_interface_point_phase(

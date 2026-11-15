@@ -126,7 +126,7 @@ impl HostContributionGrantPolicy {
             base16ct::HexDisplay(&sha2::Sha256::digest(
                 [
                     bytes.as_slice(),
-                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2;application-logs/v1;http-egress/v1;authentication/v1;frontend-block-trusted-host/v1"
+                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2;application-logs/v1;http-egress/v1;plugin-ephemeral/v1;authentication/v1;frontend-block-trusted-host/v1"
                 ]
                 .concat()
             ))
@@ -241,8 +241,13 @@ impl HostContributionGrantPolicy {
                         request.permission_contract_id == "http-egress"
                             && request.resource_scope == ContributionResourceScope::System
                     }
-                    "credential.manage" => {
-                        request.permission_contract_id == "plugin-credential"
+                    "credential.manage" | "ephemeral.manage" => {
+                        request.permission_contract_id
+                            == if request.permission == "ephemeral.manage" {
+                                "plugin-ephemeral"
+                            } else {
+                                "plugin-credential"
+                            }
                             && request.resource_scope == ContributionResourceScope::System
                             && installation
                                 .metadata_json

@@ -13,7 +13,7 @@ fn fixture() -> (
     managed.module.contributions = vec![serde_json::from_value(json!({
         "contribution_id":"managed_fixture.list", "contributor_module_id":"managed_fixture",
         "point_id":"1flowbase.managed-service.operation", "contract_version":"1", "mode":"append",
-        "required_permissions":["service.execute", "credential.manage", "plugin_data.owned.write"]
+        "required_permissions":["service.execute", "credential.manage", "ephemeral.manage", "plugin_data.owned.write"]
     }))
     .unwrap()];
     manifest.data_models = vec![serde_json::from_value(json!({
@@ -59,7 +59,7 @@ fn root_activation_materializes_declared_host_permissions_and_owned_collections(
     let grants = policy
         .declared_activation_grants(&installation, &manifest)
         .unwrap();
-    assert_eq!(grants.len(), 3);
+    assert_eq!(grants.len(), 4);
     assert!(grants
         .iter()
         .any(|grant| grant.permission == "service.execute"
@@ -68,6 +68,10 @@ fn root_activation_materializes_declared_host_permissions_and_owned_collections(
         .iter()
         .any(|grant| grant.permission == "credential.manage"
             && grant.permission_contract_id == "plugin-credential"));
+    assert!(grants
+        .iter()
+        .any(|grant| grant.permission == "ephemeral.manage"
+            && grant.permission_contract_id == "plugin-ephemeral"));
     assert!(grants
         .iter()
         .any(|grant| grant.permission == "plugin_data.owned.write"

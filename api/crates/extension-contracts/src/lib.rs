@@ -75,6 +75,10 @@ pub use capability_contract::*;
 pub mod plugin_credential_contract;
 pub use plugin_credential_contract::*;
 
+#[path = "host_services/plugin_ephemeral_contract.rs"]
+pub mod plugin_ephemeral_contract;
+pub use plugin_ephemeral_contract::*;
+
 pub mod file_import_contract;
 pub use file_import_contract::*;
 
