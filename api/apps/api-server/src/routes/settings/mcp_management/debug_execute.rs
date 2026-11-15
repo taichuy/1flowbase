@@ -92,6 +92,7 @@ struct TargetArguments {
     path: Map<String, Value>,
     query: Map<String, Value>,
     body: Map<String, Value>,
+    whole_body: Option<Value>,
 }
 
 #[derive(Clone, Copy)]
@@ -99,6 +100,7 @@ enum InterfaceParameterTarget {
     Path,
     Query,
     Body,
+    WholeBody,
 }
 
 #[allow(clippy::result_large_err)]
@@ -365,7 +367,22 @@ fn build_interface_arguments(
                     .insert(mapping.interface_param.clone(), mcp_value);
             }
             InterfaceParameterTarget::Body => {
+                if arguments.whole_body.is_some() {
+                    return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "input_mapping",
+                    )
+                    .into());
+                }
                 set_path_value(&mut arguments.body, &mapping.interface_param, mcp_value);
+            }
+            InterfaceParameterTarget::WholeBody => {
+                if arguments.whole_body.is_some() || !arguments.body.is_empty() {
+                    return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "input_mapping",
+                    )
+                    .into());
+                }
+                arguments.whole_body = Some(mcp_value);
             }
         }
     }
@@ -380,10 +397,12 @@ fn build_interface_arguments(
             .pointer("/properties/query"),
         &mut arguments.query,
     );
-    materialize_required_object_containers(
-        interface_entry.parameter_schema.pointer("/properties/body"),
-        &mut arguments.body,
-    );
+    let body_schema = interface_entry.parameter_schema.pointer("/properties/body");
+    if let Some(Value::Object(body)) = arguments.whole_body.as_mut() {
+        materialize_required_object_containers(body_schema, body);
+    } else if arguments.whole_body.is_none() {
+        materialize_required_object_containers(body_schema, &mut arguments.body);
+    }
 
     Ok(arguments)
 }
@@ -476,6 +495,8 @@ fn parameter_targets(
         parameter_name,
     ) {
         targets.push(InterfaceParameterTarget::Body);
+    } else if is_whole_body_parameter(interface_entry, parameter_name) {
+        targets.push(InterfaceParameterTarget::WholeBody);
     }
     if !targets.is_empty() {
         return Ok(targets);
@@ -488,6 +509,40 @@ fn parameter_targets(
         .map(|descriptor| vec![parameter_target(interface_entry, descriptor)])
         .ok_or_else(|| {
             control_plane::errors::ControlPlaneError::InvalidInput("input_mapping").into()
+        })
+}
+
+// OpenAPI emits the fallback descriptor `body` when the body schema itself is
+// the parameter (arrays, unions, records, scalars or empty objects). A real field
+// named `body`, including one declared by composition, remains a flattened field.
+fn is_whole_body_parameter(interface_entry: &domain::McpInterfaceCatalogEntry, name: &str) -> bool {
+    name == "body"
+        && interface_entry
+            .parameter_descriptors
+            .iter()
+            .any(|descriptor| {
+                descriptor.name == name && descriptor.parameter_type == McpParameterType::JsonBody
+            })
+        && interface_entry
+            .parameter_schema
+            .pointer("/properties/body")
+            .is_some_and(|schema| !schema_has_property(schema, "body"))
+}
+
+fn schema_has_property(schema: &Value, name: &str) -> bool {
+    schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .is_some_and(|properties| properties.contains_key(name))
+        || ["allOf", "oneOf", "anyOf"].into_iter().any(|composition| {
+            schema
+                .get(composition)
+                .and_then(Value::as_array)
+                .is_some_and(|branches| {
+                    branches
+                        .iter()
+                        .any(|branch| schema_has_property(branch, name))
+                })
         })
 }
 
@@ -568,6 +623,9 @@ fn filter_schema_value(schema: &Value, source: &Value) -> Value {
 
 impl TargetArguments {
     fn body_value(&self, parameter_schema: &Value) -> Value {
+        if let Some(body) = &self.whole_body {
+            return body.clone();
+        }
         let required_object = parameter_schema
             .get("required")
             .and_then(Value::as_array)
@@ -591,7 +649,7 @@ impl TargetArguments {
             value.insert("query".into(), Value::Object(self.query.clone()));
         }
         let body = self.body_value(parameter_schema);
-        if !body.is_null() {
+        if self.whole_body.is_some() || !body.is_null() {
             value.insert("body".into(), body);
         }
         Value::Object(value)
@@ -774,3 +832,8 @@ mod server_binding_tests {
 #[cfg(test)]
 #[path = "_tests/input_defaults.rs"]
 mod input_defaults_tests;
+
+#[cfg_attr(test, api_test_selection::group(routes))]
+#[cfg(test)]
+#[path = "debug_execute/_tests/whole_body.rs"]
+mod whole_body_tests;
