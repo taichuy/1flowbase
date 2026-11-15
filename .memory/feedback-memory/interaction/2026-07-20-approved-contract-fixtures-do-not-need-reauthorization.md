@@ -14,8 +14,8 @@ match_when:
   - QA 重复失败但修复只涉及测试前置数据
   - 判断是否需要用户再次批准修复方向
 created_at: 2026-07-20 23
-updated_at: 2026-07-20 23
-last_verified_at: 2026-07-20 23
+updated_at: 2026-11-14 09
+last_verified_at: 2026-11-14 09
 decision_policy: direct_reference
 scope:
   - test-driven-development
@@ -31,6 +31,8 @@ scope:
 - 与当前目标冲突的旧断言、旧测试或无效 fixture 应直接更新或删除，不能要求生产代码增加兼容层来迎合。
 - 只补齐当前 contract 已要求的测试前置状态、字段或 fixture 数据，且不改变产品代码、权限、数据影响、source of truth 或验收语义时，属于机械证据修复，不需要再次向用户索取产品授权。
 - 长计划的停止规则用于语义、范围和风险变化；不能机械套到已经批准边界内的 fixture 修正。
+- 用户已批准 Root 时，既定目标和硬约束内的 Work Packet 重切、规范类型 / 私有 helper 及 fixture caller 闭包补齐由 Root 自主完成；内部 needs-split / STOP_REFRAME 应先由 Root 调整账本并继续，不重复索取原任务授权。
+- 当前任务明确要求保留测试与断言时，优先遵守该硬约束；本记忆不授权删除、忽略或弱化保护。
 
 ## 原因
 
@@ -39,3 +41,7 @@ scope:
 ## 适用场景
 
 重构后的 route integration、contract fixture、浏览器 seed、测试数据构造，以及旧测试期望清理。
+
+## 2026-11-14补充反馈
+
+用户在已批准Root #2824因r2写集合缺口停止后纠正：“确定，我已经授权了，不要再让我重复授权”。原因是执行层的重切/补齐没有改变七crate目标与AC，Root不应把内部流程成本转成新产品审批。适用于已确认目标内的计划重切、依赖和测试装配闭包完善；新增产品语义/外部权限仍按当前授权边界判断。
