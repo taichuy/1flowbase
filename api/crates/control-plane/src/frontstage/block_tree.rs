@@ -176,11 +176,11 @@ where
         &self,
         command: ListFrontstageBlocksCommand,
     ) -> Result<Vec<domain::FrontstageBlockNodeRecord>> {
-        self.ensure_block_designer(
+        self.ensure_block_tab_reader(
             command.actor_user_id,
             command.workspace_id,
             command.page_id,
-            Some(command.tab_id),
+            command.tab_id,
         )
         .await?;
         self.repository
@@ -198,11 +198,11 @@ where
         &self,
         command: SearchFrontstageBlocksCommand,
     ) -> Result<Vec<domain::FrontstageBlockSearchResult>> {
-        self.ensure_block_designer(
+        self.ensure_block_tab_reader(
             command.actor_user_id,
             command.workspace_id,
             command.page_id,
-            Some(command.tab_id),
+            command.tab_id,
         )
         .await?;
         self.repository
@@ -318,13 +318,7 @@ where
         &self,
         command: ListFrontstageBlockChildrenCommand,
     ) -> Result<Vec<domain::FrontstageBlockNodeSummary>> {
-        self.ensure_block_designer(
-            command.scope.actor_user_id,
-            command.scope.workspace_id,
-            command.scope.page_id,
-            None,
-        )
-        .await?;
+        self.load_visible_block(&command.scope).await?;
         self.repository
             .list_frontstage_block_children(
                 command.scope.workspace_id,
@@ -355,13 +349,7 @@ where
         &self,
         command: ListFrontstageBlockDescendantsCommand,
     ) -> Result<Vec<domain::FrontstageBlockDescendantProjection>> {
-        self.ensure_block_designer(
-            command.scope.actor_user_id,
-            command.scope.workspace_id,
-            command.scope.page_id,
-            None,
-        )
-        .await?;
+        self.load_visible_block(&command.scope).await?;
         self.repository
             .list_frontstage_block_descendants(
                 command.scope.workspace_id,
@@ -378,13 +366,7 @@ where
         &self,
         command: FrontstageBlockScopeCommand,
     ) -> Result<domain::FrontstageBlockSubtreeImpact> {
-        self.ensure_block_designer(
-            command.actor_user_id,
-            command.workspace_id,
-            command.page_id,
-            None,
-        )
-        .await?;
+        self.load_visible_block(&command).await?;
         self.repository
             .get_frontstage_block_subtree_impact(
                 command.workspace_id,
@@ -536,6 +518,29 @@ where
             ))?;
         apply_catalog_identity(&mut runtime_descriptor, &entry)?;
         Ok(runtime_descriptor)
+    }
+
+    async fn ensure_block_tab_reader(
+        &self,
+        actor_user_id: Uuid,
+        workspace_id: Uuid,
+        page_id: Uuid,
+        tab_id: Uuid,
+    ) -> Result<()> {
+        let actor = self.load_actor_context(actor_user_id, workspace_id).await?;
+        self.ensure_existing_page(workspace_id, page_id).await?;
+        self.ensure_page_tab_visible(&actor, actor_user_id, workspace_id, page_id, tab_id)
+            .await?;
+        if !self
+            .repository
+            .list_frontstage_page_tabs(workspace_id, page_id)
+            .await?
+            .iter()
+            .any(|tab| tab.id == tab_id)
+        {
+            return Err(ControlPlaneError::NotFound("frontstage_page_tab").into());
+        }
+        Ok(())
     }
 
     async fn ensure_block_designer(

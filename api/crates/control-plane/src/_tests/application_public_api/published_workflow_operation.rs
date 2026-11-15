@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 fn extension(route: &str) -> WorkflowExtensionApiConfig {
     WorkflowExtensionApiConfig {
+        invoke_role_codes: Vec::new(),
         slug: route.into(),
         method: WorkflowExtensionHttpMethod::Post,
         response_mode: WorkflowExtensionResponseMode::Sync,

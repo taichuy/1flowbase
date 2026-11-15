@@ -223,7 +223,16 @@ pub(crate) async fn apply_console_policy_permissions_to_actor(
         actor.permissions.remove(&operation.operation_id);
     }
     let permissions = console_operation_permissions(inventory, &policies);
-    if permissions.iter().any(|id| id.starts_with("frontstage.")) {
+    if inventory.operations.iter().any(|operation| {
+        permissions.contains(&operation.operation_id)
+            && operation
+                .authorization_profile_id
+                .starts_with("frontstage.")
+            && operation
+                .routes
+                .iter()
+                .any(|route| matches!(route.method.as_str(), "POST" | "PUT" | "PATCH" | "DELETE"))
+    }) {
         actor
             .permissions
             .insert("frontstage.page.design".to_string());

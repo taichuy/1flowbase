@@ -1,7 +1,7 @@
 ---
 title: UI 管理统一控制页面设计入口与菜单配置
 status: active
-date: 2026-10-20 16
+date: 2026-11-14 22
 feedback_category: boundary_clarification
 decision_policy: direct_reference
 ---
@@ -14,3 +14,6 @@ decision_policy: direct_reference
 
 ## 适用场景
 本轮 UI 管理授权收敛及后续相关入口、菜单配置、鉴权回归；接口仍应维持单操作授权，正常页面浏览不因缺少管理权限而整体关闭。
+
+## 使用与设计边界（2026-11-14 22）
+用户再次明确：体验账号可读取已授权页面及区块源码，不代表可进入页面设计模式、修改或保存源码。相关读取与写入开关仍放在「UI 管理 → 自定义」中分别配置；不要因读取接口的错误设计 guard 而给用户补设计权限。适用于低权限业务页面与 ctx.api 工作流调用，目标 API 继续按当前账号独立鉴权。

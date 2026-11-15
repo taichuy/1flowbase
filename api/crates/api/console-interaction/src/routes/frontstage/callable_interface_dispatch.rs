@@ -1,7 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, Weak},
-};
+use std::{collections::BTreeMap, sync::Arc};
 
 use axum::{
     body::Body,
@@ -222,9 +219,6 @@ impl InterfaceContract for FrontstageCallableDispatchOutput {
 pub struct FrontstageCallableDispatchDependencies {
     pub store: storage_durable_postgres::MainDurableStore,
     pub openapi: OpenApiCapabilityCatalogDependencies,
-    // Contributions are assembled before their generation's complete registry is published.
-    // A weak handle reads that published snapshot without a registry -> handler -> registry cycle.
-    pub interface_registry: Weak<interface_runtime::DynamicInterfaceRegistry>,
     pub dispatcher: Arc<dyn CallableDispatchPort>,
 }
 
@@ -261,16 +255,8 @@ impl FrontstageCallableDispatchAdapter {
         )
         .await?
         .ok_or(ControlPlaneError::NotFound("frontstage_callable"))?;
-        let interface_registry = self
-            .0
-            .interface_registry
-            .upgrade()
-            .map(|registry| registry.snapshot());
-        if !is_runtime_data_callable(&callable, interface_registry.as_deref())
-            && !actor.has_permission("frontstage.page.design")
-        {
-            return Err(ControlPlaneError::PermissionDenied("frontstage.page.design").into());
-        }
+        // Running an authorized stored block is distinct from designing it. Dispatch keeps
+        // the caller's identity, CSRF and scope; the resolved target enforces its own grants.
         let injected_path = injected_path_parameters(
             &host_injected_parameters(&callable.interface),
             workspace_id,
@@ -397,48 +383,6 @@ pub async fn dispatch_frontstage_callable_interface(
         FrontstageCallableDispatchOutput::Media(response)
         | FrontstageCallableDispatchOutput::Target(response) => response_from_dispatch(response),
     }
-}
-
-// This exception is based on the resolved catalog source and canonical route, never on
-// a caller-supplied prefix. The downstream runtime handler still owns every model grant.
-fn is_runtime_data_callable(
-    callable: &crate::openapi_interface::OpenApiCapabilityCatalogEntry,
-    registry: Option<&interface_runtime::CompiledInterfaceRegistry>,
-) -> bool {
-    use crate::openapi_interface::OpenApiCapabilitySource;
-    use api_host_kernel::runtime_model_metadata_contract as metadata_interface;
-    let interface = &callable.interface;
-    if interface.method == "GET"
-        && interface.path == metadata_interface::OPENAPI_PATH
-        && interface.operation_id == metadata_interface::INTERFACE_ID
-        && callable.source == OpenApiCapabilitySource::StaticApiDocs
-    {
-        return registry
-            .and_then(|registry| {
-                registry.binding(
-                    &interface_runtime::BindingId::new(metadata_interface::BINDING_ID)
-                        .expect("static runtime metadata binding is valid"),
-                )
-            })
-            .is_some_and(|binding| {
-                binding.interface_identity().interface_id().as_str()
-                    == metadata_interface::INTERFACE_ID
-                    && binding.projection().http_route().is_some_and(|route| {
-                        route.method() == "GET"
-                            && route.path() == "/api/runtime/models/:model_code/metadata"
-                    })
-            });
-    }
-    if !matches!(
-        callable.source,
-        OpenApiCapabilitySource::BuiltinDataModelCrud
-            | OpenApiCapabilitySource::WorkspaceDataModelCrud
-    ) {
-        return false;
-    }
-    let segments = interface.path.split('/').collect::<Vec<_>>();
-    matches!(segments.as_slice(), ["", "api", "runtime", "models", model_code, operation, ..]
-        if !model_code.is_empty() && !model_code.contains(['{', '}']) && !operation.is_empty())
 }
 
 fn forwarding_from_headers(headers: &HeaderMap) -> Result<CallableDispatchForwarding, ApiError> {

@@ -752,3 +752,6 @@ mod log_reception;
 mod otlp_logs;
 #[path = "application_api_routes/publication.rs"]
 mod publication;
+
+#[path = "application_api_routes/invoke_roles.rs"]
+mod invoke_roles;

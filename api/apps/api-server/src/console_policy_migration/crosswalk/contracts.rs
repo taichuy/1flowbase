@@ -82,16 +82,6 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         "other.frontstage",
         &[
             "frontstage.actions.dispatch",
-            "frontstage.blocks.code.update",
-            "frontstage.blocks.code.view",
-            "frontstage.blocks.create",
-            "frontstage.blocks.delete",
-            "frontstage.blocks.move",
-            "frontstage.blocks.open",
-            "frontstage.blocks.runtime.view",
-            "frontstage.blocks.search",
-            "frontstage.blocks.update",
-            "frontstage.blocks.view",
             "frontstage.components.view",
             "frontstage.data_capabilities.view",
             "frontstage.pages.view",
@@ -507,6 +497,16 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     core_simple_settings(
         "system.ui-management",
         &[
+            "frontstage.blocks.code.update",
+            "frontstage.blocks.code.view",
+            "frontstage.blocks.create",
+            "frontstage.blocks.delete",
+            "frontstage.blocks.move",
+            "frontstage.blocks.open",
+            "frontstage.blocks.runtime.view",
+            "frontstage.blocks.search",
+            "frontstage.blocks.update",
+            "frontstage.blocks.view",
             "frontstage.groups.create",
             "frontstage.pages.create",
             "frontstage.pages.delete",
@@ -543,6 +543,17 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    // Block reading and authoring are independently configurable UI operations.
+    "frontstage.blocks.code.update",
+    "frontstage.blocks.code.view",
+    "frontstage.blocks.create",
+    "frontstage.blocks.delete",
+    "frontstage.blocks.move",
+    "frontstage.blocks.open",
+    "frontstage.blocks.runtime.view",
+    "frontstage.blocks.search",
+    "frontstage.blocks.update",
+    "frontstage.blocks.view",
     "mcp.directory.view",
     "mcp.directory.replace",
     // Event Center introduces independent authority; no historical feature grant covers it.

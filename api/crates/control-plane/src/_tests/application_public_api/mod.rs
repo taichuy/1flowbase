@@ -118,6 +118,7 @@ fn workflow_extension_mapping(slug: &str) -> ApplicationApiMappingConfig {
         },
         output: ApplicationApiMappingOutput::default(),
         extension: Some(WorkflowExtensionApiConfig {
+            invoke_role_codes: Vec::new(),
             slug: slug.into(),
             method: WorkflowExtensionHttpMethod::Post,
             response_mode: WorkflowExtensionResponseMode::Async,

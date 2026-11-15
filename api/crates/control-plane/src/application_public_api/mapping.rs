@@ -197,6 +197,22 @@ pub fn validate_application_api_mapping(mapping: &ApplicationApiMappingConfig) -
 
 fn validate_extension_api_config(extension: &WorkflowExtensionApiConfig) -> Result<()> {
     validate_extension_slug(&extension.slug)?;
+    let roles = &extension.invoke_role_codes;
+    if roles.len() > 64
+        || roles.iter().any(|role| {
+            role.is_empty()
+                || role.len() > 128
+                || role.trim() != role
+                || role.chars().any(char::is_control)
+        })
+        || roles
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            != roles.len()
+    {
+        return Err(ControlPlaneError::InvalidInput("extension.invoke_role_codes").into());
+    }
     Ok(())
 }
 

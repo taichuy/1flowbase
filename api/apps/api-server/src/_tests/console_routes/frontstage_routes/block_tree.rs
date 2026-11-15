@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "block_tree/read_permissions.rs"]
+mod read_permissions;
+
 #[allow(clippy::too_many_arguments)]
 async fn create_block(
     app: &axum::Router,
@@ -488,7 +491,7 @@ async fn block_source_create_and_save_do_not_resolve_frontend_modules_or_exports
 }
 
 #[tokio::test]
-async fn block_tree_writes_require_csrf_and_bulk_routes_require_design_permission() {
+async fn block_tree_writes_require_csrf_and_ungranted_operations_are_denied() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let workspace_id = current_workspace_id(&app, &root_cookie).await;
@@ -583,7 +586,7 @@ async fn block_tree_writes_require_csrf_and_bulk_routes_require_design_permissio
 
     let denied_cached =
         conditional_code_get(&app, &code_path, &viewer_cookie, Some(&cached_etag)).await;
-    assert_eq!(denied_cached.status(), StatusCode::NOT_FOUND);
+    assert_eq!(denied_cached.status(), StatusCode::FORBIDDEN);
     assert!(denied_cached.headers().get("etag").is_none());
 
     for runtime_path in [
@@ -595,8 +598,8 @@ async fn block_tree_writes_require_csrf_and_bulk_routes_require_design_permissio
         format!("{blocks_path}/{block_id}/open"),
     ] {
         let (status, payload) = get_json(&app, &runtime_path, &viewer_cookie).await;
-        assert_eq!(status, StatusCode::NOT_FOUND, "{runtime_path}: {payload}");
-        assert_error(&payload, "block_node_not_found");
+        assert_eq!(status, StatusCode::FORBIDDEN, "{runtime_path}: {payload}");
+        assert_error(&payload, "console_operation_permission_denied");
     }
 }
 

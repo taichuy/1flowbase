@@ -13,7 +13,7 @@ use uuid::Uuid;
 fn sample_operation(mode: WorkflowExtensionResponseMode) -> PublishedWorkflowOperation {
     PublishedWorkflowOperation::from_publication(ApplicationPublicationVersionRecord {
         id:Uuid::now_v7(),application_id:Uuid::now_v7(),workspace_id:Uuid::now_v7(),flow_id:Uuid::now_v7(),flow_version_id:Uuid::now_v7(),
-        mapping_snapshot:ApplicationApiMappingConfig {input:ApplicationApiMappingInput {query_target:"start".into(),model_target:None,inputs_target:None,history_target:None,attachments_target:None},output:ApplicationApiMappingOutput::default(),extension:Some(WorkflowExtensionApiConfig {slug:"orders/{order_id}".into(),method:WorkflowExtensionHttpMethod::Post,response_mode:mode})},
+        mapping_snapshot:ApplicationApiMappingConfig {input:ApplicationApiMappingInput {query_target:"start".into(),model_target:None,inputs_target:None,history_target:None,attachments_target:None},output:ApplicationApiMappingOutput::default(),extension:Some(WorkflowExtensionApiConfig {invoke_role_codes:Vec::new(),slug:"orders/{order_id}".into(),method:WorkflowExtensionHttpMethod::Post,response_mode:mode})},
         extension_slug:Some("orders/{order_id}".into()),compiled_plan_id:Uuid::now_v7(),version_sequence:1,active:true,api_enabled:true,flow_schema_version:"1flowbase.flow/v2".into(),document_hash:"fixture-hash".into(),
         document_snapshot:json!({"graph":{"nodes":[{"id":"start","type":"workflow_start","config":{"input_fields":[
             {"key":"order_id","source":"path","valueType":"string","required":true},
