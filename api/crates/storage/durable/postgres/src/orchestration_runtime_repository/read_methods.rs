@@ -1113,6 +1113,34 @@ impl PgControlPlaneStore {
         }))
     }
 
+    async fn get_run_node_last_run(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_id: &str,
+    ) -> Result<Option<domain::NodeLastRun>> {
+        let Some(flow_run) =
+            fetch_flow_run_for_application(self, application_id, flow_run_id).await?
+        else {
+            return Ok(None);
+        };
+        let id: Option<Uuid> = sqlx::query_scalar(
+            "select id from node_runs where flow_run_id=$1 and node_id=$2 order by started_at desc,id desc limit 1"
+        ).bind(flow_run_id).bind(node_id).fetch_optional(self.pool()).await?;
+        let Some(id) = id else {
+            return Ok(None);
+        };
+        let Some(node_run) = fetch_node_run(self, id).await? else {
+            return Ok(None);
+        };
+        Ok(Some(domain::NodeLastRun {
+            checkpoints: list_checkpoints_for_node_run(self, id).await?,
+            events: list_events_for_node_context(self, flow_run_id, id).await?,
+            flow_run,
+            node_run,
+        }))
+    }
+
     async fn get_latest_node_run(
         &self,
         application_id: Uuid,

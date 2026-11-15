@@ -242,7 +242,7 @@ export function useApplicationLogsController({
     [runSortFieldOptions, t]
   );
   const runsTableColumns = useMemo(() => {
-    const columns = getApplicationRunsTableColumns(t, Boolean(applicationIds));
+    const columns = getApplicationRunsTableColumns(t, Boolean(applicationIds), applicationType);
     if (applicationIds) {
       columns.splice(1, 0, {
         key: 'application_id',

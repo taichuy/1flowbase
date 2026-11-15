@@ -1,0 +1,35 @@
+.workflow-node-trace .agent-flow-editor__debug-workflow-node-item {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.workflow-node-trace .agent-flow-editor__conversation-log-node-list {
+  gap: 4px;
+}
+.workflow-node-trace .agent-flow-editor__conversation-log-node-group {
+  gap: 4px;
+  padding: 0 0 4px 8px;
+}
+.workflow-node-trace .agent-flow-editor__conversation-log-node-detail {
+  gap: 8px;
+  padding: 4px 0 8px 8px;
+  border: 0;
+  border-inline-start: 1px solid var(--border-subtle);
+  border-radius: 0;
+}
+.workflow-node-trace
+  .agent-flow-editor__conversation-log-node-detail
+  > .agent-flow-editor__conversation-log-node-list {
+  margin-inline-start: 0;
+  padding-inline-start: 4px;
+}
+.workflow-node-trace .agent-flow-editor__debug-workflow-node-main {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.workflow-node-trace .agent-flow-editor__debug-workflow-node-label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

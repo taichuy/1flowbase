@@ -940,5 +940,9 @@
     "invalid_variable": "变量名须非空、唯一且不能以 __ 开头；请选择有效类型。",
     "invalid_variable_value": "变量赋值须对应唯一的已声明变量，且值类型与声明一致。",
     "initial_value_required": "每个循环变量都必须设置初始值。"
+  },
+  "execution": {
+    "flow_status": "整轮状态",
+    "round": "第 {{round}} 轮"
   }
 }

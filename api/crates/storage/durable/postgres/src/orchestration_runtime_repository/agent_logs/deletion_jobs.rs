@@ -54,25 +54,17 @@ pub(in crate::orchestration_runtime_repository) async fn preview(
     })
 }
 
-pub(in crate::orchestration_runtime_repository) async fn create(
-    store: &PgControlPlaneStore,
+async fn existing_job(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
     app: Uuid,
-    scope_id: Uuid,
     input: &AgentLogsDeleteJobCreate,
-) -> Result<AgentLogsDeleteJob> {
-    let mut tx = store.pool().begin().await?;
-    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1,0))")
-        .bind(format!("agent-logs-application:{app}"))
-        .execute(&mut *tx)
-        .await?;
-    let supported: bool=sqlx::query_scalar("select exists(select 1 from applications where id=$1 and scope_id=$2 and application_type in ('agent_logs','agent_flow','workflow'))").bind(app).bind(scope_id).fetch_one(&mut *tx).await?;
-    anyhow::ensure!(supported, "agent_logs.application_type");
+) -> Result<Option<AgentLogsDeleteJob>> {
     // SQL safety: JOB_COLUMNS is static SQL; deletion job selectors remain bound.
     if let Some(row) = sqlx::query(sqlx::AssertSqlSafe(format!(
         "select {JOB_COLUMNS} from application_log_deletion_jobs j where j.id=$1"
     )))
     .bind(input.job_id)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut **tx)
     .await?
     {
         let job = map_job(row)?;
@@ -81,10 +73,39 @@ pub(in crate::orchestration_runtime_repository) async fn create(
                 && serde_json::to_value(&job.scope)? == serde_json::to_value(&input.scope)?,
             "agent_logs.delete_job_conflict"
         );
+        return Ok(Some(job));
+    }
+    Ok(None)
+}
+
+pub(in crate::orchestration_runtime_repository) async fn create(
+    store: &PgControlPlaneStore,
+    app: Uuid,
+    scope_id: Uuid,
+    input: &AgentLogsDeleteJobCreate,
+) -> Result<AgentLogsDeleteJob> {
+    let mut tx = store.pool().begin().await?;
+    let supported: bool=sqlx::query_scalar("select exists(select 1 from applications where id=$1 and scope_id=$2 and application_type in ('agent_logs','agent_flow','workflow'))").bind(app).bind(scope_id).fetch_one(&mut *tx).await?;
+    anyhow::ensure!(supported, "agent_logs.application_type");
+    if let Some(job) = existing_job(&mut tx, app, input).await? {
         tx.commit().await?;
         return Ok(job);
     }
     let active: bool=sqlx::query_scalar("select exists(select 1 from application_log_deletion_jobs where application_id=$1 and status in ('queued','running'))").bind(app).fetch_one(&mut *tx).await?;
+    anyhow::ensure!(!active, "agent_logs.delete_job_active");
+    let locked: bool =
+        sqlx::query_scalar("select pg_try_advisory_xact_lock(hashtextextended($1,0))")
+            .bind(format!("agent-logs-application:{app}"))
+            .fetch_one(&mut *tx)
+            .await?;
+    anyhow::ensure!(locked, "agent_logs.delete_job_busy");
+    // Recheck after admission: another creator may have committed since the first read.
+    if let Some(job) = existing_job(&mut tx, app, input).await? {
+        tx.commit().await?;
+        return Ok(job);
+    }
+    let active: bool = sqlx::query_scalar("select exists(select 1 from application_log_deletion_jobs where application_id=$1 and status in ('queued','running'))")
+        .bind(app).fetch_one(&mut *tx).await?;
     anyhow::ensure!(!active, "agent_logs.delete_job_active");
     let boundary: OffsetDateTime = sqlx::query_scalar("select clock_timestamp()")
         .fetch_one(&mut *tx)

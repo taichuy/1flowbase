@@ -108,3 +108,23 @@ fn root_2325_managed_delivery_cursor_scope_contract() {
         .is_err());
     }
 }
+
+#[test]
+fn node_finish_invalidates_trace_without_a_new_node_or_flow_terminal() {
+    use crate::persistence_projection::trace_projection_node_state_watermark;
+    let id = uuid::Uuid::now_v7();
+    let running =
+        trace_projection_node_state_watermark("same".into(), &[(id, "running".into(), None)]);
+    let failed = trace_projection_node_state_watermark(
+        "same".into(),
+        &[(id, "failed".into(), Some(time::OffsetDateTime::UNIX_EPOCH))],
+    );
+    assert_ne!(running, failed);
+    let other = uuid::Uuid::now_v7();
+    let a = (id, "running".into(), None);
+    let b = (other, "succeeded".into(), None);
+    assert_eq!(
+        trace_projection_node_state_watermark("same".into(), &[a.clone(), b.clone()]),
+        trace_projection_node_state_watermark("same".into(), &[b, a])
+    );
+}

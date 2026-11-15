@@ -102,7 +102,19 @@ pub(super) async fn execute<I: ProviderInvoker + ?Sized>(
         invoker.invoke_workflow_internal_http(reference, request),
     )
     .await
-    .context("workflow credential HTTP request timed out")??;
+    .with_context(|| {
+        format!(
+            "workflow credential HTTP request timed out after {}ms: {method} {}",
+            timeout.as_millis(),
+            url.path()
+        )
+    })?
+    .map_err(|error| {
+        anyhow!(
+            "workflow credential HTTP request failed: {method} {}: {error:#}",
+            url.path()
+        )
+    })?;
     if response.body.len() > max_response_bytes {
         bail!("workflow HTTP response exceeds byte limit");
     }

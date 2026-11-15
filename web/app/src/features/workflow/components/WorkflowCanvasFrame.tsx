@@ -566,6 +566,7 @@ export function WorkflowCanvasFrame(
             document={workingDocument}
             triggerContext={triggerContext}
             running={testRun.active}
+            runState={testRun.state}
             canRun={testRun.canRun}
             onRun={testRun.start}
           />

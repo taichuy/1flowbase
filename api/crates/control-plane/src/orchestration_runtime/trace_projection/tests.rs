@@ -865,3 +865,6 @@ fn status_record(
 mod linked_agents;
 #[path = "tests/stitched_traces.rs"]
 mod stitched_traces;
+
+#[path = "_tests/container_projection.rs"]
+mod container_projection;

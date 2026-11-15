@@ -119,7 +119,10 @@ export function workflowRunSnapshot(
       ])
     ),
     output: detail.flow_run.output_payload,
-    failure: null,
+    failure:
+      typeof detail.flow_run.error_payload?.message === 'string'
+        ? detail.flow_run.error_payload.message
+        : null,
     connectionLost: false
   };
 }

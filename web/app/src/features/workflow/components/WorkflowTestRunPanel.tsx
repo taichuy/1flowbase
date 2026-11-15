@@ -17,6 +17,9 @@ import { i18nText } from '../../../shared/i18n/text';
 import { getStartInputFields } from '../../flow-editor/authoring/start-input-fields';
 import type { WorkflowTriggerContext } from '../lib/trigger-context';
 
+import type { WorkflowRunState } from '../lib/run-state';
+import { WorkflowRunFeedback } from './WorkflowRunFeedback';
+
 type WorkflowTestRunFormValues = {
   inputs: Record<string, unknown>;
 };
@@ -25,6 +28,7 @@ export interface WorkflowTestRunPanelProps {
   document: FlowAuthoringDocument;
   triggerContext: WorkflowTriggerContext;
   running: boolean;
+  runState?: WorkflowRunState;
   canRun: boolean;
   onRun: (inputs: Record<string, unknown>) => Promise<void>;
 }
@@ -33,6 +37,7 @@ export function WorkflowTestRunPanel({
   document,
   triggerContext,
   running,
+  runState,
   canRun,
   onRun
 }: WorkflowTestRunPanelProps) {
@@ -67,11 +72,7 @@ export function WorkflowTestRunPanel({
         })
       )
     }),
-    [
-      inputFields,
-      triggerContext.triggerType,
-      scheduleInputs
-    ]
+    [inputFields, triggerContext.triggerType, scheduleInputs]
   );
 
   function runWorkflow(values: WorkflowTestRunFormValues) {
@@ -95,6 +96,7 @@ export function WorkflowTestRunPanel({
       >
         {i18nText('workflow', 'auto.workflow_test_run')}
       </Button>
+      {runState ? <WorkflowRunFeedback state={runState} /> : null}
       <Drawer
         open={open}
         size={520}

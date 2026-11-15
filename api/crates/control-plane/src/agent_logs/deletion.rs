@@ -23,6 +23,9 @@ fn map_error(error: anyhow::Error) -> anyhow::Error {
         "agent_logs.delete_job_active" => {
             ControlPlaneError::Conflict("agent_logs_delete_job_active").into()
         }
+        "agent_logs.delete_job_busy" => {
+            ControlPlaneError::Conflict("agent_logs_delete_job_busy").into()
+        }
         "agent_logs.delete_job_conflict" => {
             ControlPlaneError::Conflict("agent_logs_delete_job_conflict").into()
         }

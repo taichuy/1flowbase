@@ -940,5 +940,9 @@
     "invalid_variable": "Variable names must be nonempty, unique, and not start with __. Select a supported type.",
     "invalid_variable_value": "Assignments must name unique declared variables and match their declared types.",
     "initial_value_required": "Every loop variable requires an initial value."
+  },
+  "execution": {
+    "flow_status": "Workflow status",
+    "round": "Round {{round}}"
   }
 }

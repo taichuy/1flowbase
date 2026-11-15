@@ -832,6 +832,32 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         self.memory_get_application_run_detail(application_id, flow_run_id)
     }
 
+    async fn get_run_node_last_run(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_id: &str,
+    ) -> Result<Option<domain::NodeLastRun>> {
+        let Some(detail) = self.memory_get_application_run_detail(application_id, flow_run_id)?
+        else {
+            return Ok(None);
+        };
+        let Some(node_run) = detail
+            .node_runs
+            .into_iter()
+            .rev()
+            .find(|n| n.node_id == node_id)
+        else {
+            return Ok(None);
+        };
+        Ok(Some(domain::NodeLastRun {
+            flow_run: detail.flow_run,
+            node_run,
+            checkpoints: detail.checkpoints,
+            events: detail.events,
+        }))
+    }
+
     async fn get_latest_node_run(
         &self,
         application_id: Uuid,

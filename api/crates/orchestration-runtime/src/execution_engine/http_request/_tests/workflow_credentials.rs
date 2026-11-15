@@ -7,7 +7,7 @@ use extension_contracts::provider_contract::ProviderInvocationInput;
 use std::sync::Mutex;
 
 #[derive(Default)]
-struct Host(Mutex<Vec<WorkflowInternalHttpRequest>>);
+struct Host(Mutex<Vec<WorkflowInternalHttpRequest>>, bool);
 
 #[async_trait]
 impl ProviderInvoker for Host {
@@ -25,6 +25,9 @@ impl ProviderInvoker for Host {
     ) -> Result<WorkflowInternalHttpResponse> {
         assert!(reference.starts_with("wfcred:"));
         self.0.lock().unwrap().push(request);
+        if self.1 {
+            return std::future::pending().await;
+        }
         Ok(WorkflowInternalHttpResponse {
             status: 200,
             headers: vec![("Content-Type".into(), "application/json".into())],
@@ -98,4 +101,25 @@ async fn credential_cannot_fall_back_to_external_http_or_unconfigured_host() {
         .await
         .unwrap();
     assert!(missing.error_payload.is_some());
+}
+
+#[tokio::test]
+async fn credential_timeout_identifies_request_without_exposing_credentials() {
+    let host = Host(Mutex::new(Vec::new()), true);
+    let mut request_node = node("/api/console/applications/codex/logs/deletion-jobs");
+    request_node.config["timeout_ms"] = json!(1);
+    let result = execute_http_request_node_with_provider_invoker(
+        &request_node,
+        &inputs(),
+        &Map::new(),
+        None,
+        Some(&host),
+    )
+    .await
+    .unwrap();
+    let error = result.error_payload.unwrap().to_string();
+    assert!(error.contains("timed out after 1ms"));
+    assert!(error.contains("POST /api/console/applications/codex/logs/deletion-jobs"));
+    assert!(!error.contains("wfcred:"));
+    assert!(!error.contains("Authorization"));
 }

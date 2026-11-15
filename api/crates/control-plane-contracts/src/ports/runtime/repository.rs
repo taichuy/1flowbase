@@ -1272,6 +1272,12 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         let _ = (flow_run_id, node_run_ids);
         anyhow::bail!("list_application_run_trace_node_run_details not implemented")
     }
+    async fn get_run_node_last_run(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_id: &str,
+    ) -> anyhow::Result<Option<domain::NodeLastRun>>;
     async fn get_latest_node_run(
         &self,
         application_id: Uuid,

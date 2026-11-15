@@ -25,5 +25,18 @@
     "published": "Published",
     "consumed": "Consumed",
     "debug_hint": "Test scalar Start inputs directly. This debug run does not publish an event or exercise delivery."
+  },
+  "run": {
+    "starting": "Submitting",
+    "queued": "Queued",
+    "running": "Running",
+    "succeeded": "Succeeded",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "incomplete": "Incomplete",
+    "waiting_human": "Waiting for input",
+    "waiting_callback": "Waiting for callback",
+    "unconfirmed": "Result unconfirmed",
+    "observation_interrupted": "Observation interrupted; the background task may still be running"
   }
 }

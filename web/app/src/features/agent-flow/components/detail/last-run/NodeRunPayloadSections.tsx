@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Spin } from 'antd';
 import { CollapseShell } from '../../../../../shared/ui/collapse-shell/CollapseShell';
 import {
@@ -115,8 +115,10 @@ export function NodeRunPayloadSections({
   onLoadArtifact,
   onLoadArtifacts,
   onLoadSection,
-  processAction
+  processAction,
+  refreshInterval
 }: {
+  refreshInterval?: number;
   onLoadSection?: (section: NodeRunPayloadSection) => Promise<unknown>;
   processAction?: ReactNode;
   inputPayload: unknown;
@@ -129,20 +131,41 @@ export function NodeRunPayloadSections({
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
   onLoadArtifacts?: RuntimeDebugArtifactBatchLoader;
 }) {
+  const errorMessage =
+    isRecord(errorPayload) && typeof errorPayload.message === 'string'
+      ? errorPayload.message
+      : null;
+  const errorSummary = errorMessage ? (
+    <Alert
+      type="error"
+      showIcon
+      title={i18nText('agentFlow', 'auto.execution_failed')}
+      description={errorMessage}
+    />
+  ) : null;
   if (onLoadSection) {
     return (
       <>
-        {(['input_payload', 'debug_payload', 'output_payload'] as const)
-          .flatMap((section) => includeDebugPayload || section !== 'debug_payload' ? [
-            <LazyNodeRunPayloadSection
-              key={section}
-              section={section}
-              load={onLoadSection}
-              action={section === 'debug_payload' ? processAction : undefined}
-              onLoadArtifact={onLoadArtifact}
-              onLoadArtifacts={onLoadArtifacts}
-            />
-          ] : [])}
+        {errorSummary}
+        {(
+          ['input_payload', 'debug_payload', 'output_payload'] as const
+        ).flatMap((section) =>
+          includeDebugPayload || section !== 'debug_payload'
+            ? [
+                <LazyNodeRunPayloadSection
+                  key={section}
+                  section={section}
+                  refreshInterval={refreshInterval}
+                  load={onLoadSection}
+                  action={
+                    section === 'debug_payload' ? processAction : undefined
+                  }
+                  onLoadArtifact={onLoadArtifact}
+                  onLoadArtifacts={onLoadArtifacts}
+                />
+              ]
+            : []
+        )}
       </>
     );
   }
@@ -158,6 +181,7 @@ export function NodeRunPayloadSections({
 
   return (
     <>
+      {errorSummary}
       {showInputPayload ? (
         <RuntimeDebugPayloadBlock
           defaultCollapsed={defaultCollapsed}
@@ -208,10 +232,12 @@ function LazyNodeRunPayloadSection({
   section,
   load,
   action,
+  refreshInterval,
   onLoadArtifact,
   onLoadArtifacts
 }: {
   section: NodeRunPayloadSection;
+  refreshInterval?: number;
   load: (section: NodeRunPayloadSection) => Promise<unknown>;
   action?: ReactNode;
   onLoadArtifact?: (artifactRef: string) => Promise<unknown>;
@@ -224,6 +250,44 @@ function LazyNodeRunPayloadSection({
     status: 'idle' | 'loading' | 'ready' | 'error';
     value?: unknown;
   }>({ status: 'idle' });
+  const cached = useRef(false);
+  const previousInterval = useRef(refreshInterval);
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    let inFlight = false;
+    const refresh = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      setState((previous) =>
+        previous.status === 'ready' ? previous : { status: 'loading' }
+      );
+      try {
+        const value = await loadRef.current(section);
+        if (active) {
+          cached.current = true;
+          setState({ status: 'ready', value });
+        }
+      } catch {
+        if (active) setState({ status: 'error' });
+      } finally {
+        inFlight = false;
+      }
+    };
+    const finishing =
+      previousInterval.current !== undefined && refreshInterval === undefined;
+    previousInterval.current = refreshInterval;
+    if (!cached.current || refreshInterval || finishing) void refresh();
+    const timer = refreshInterval
+      ? setInterval(() => void refresh(), refreshInterval)
+      : null;
+    return () => {
+      active = false;
+      if (timer) clearInterval(timer);
+    };
+  }, [open, refreshInterval, section]);
   const title =
     section === 'input_payload'
       ? i18nText('agentFlow', 'auto.input')
@@ -246,7 +310,6 @@ function LazyNodeRunPayloadSection({
       onChange={(keys) => {
         const next = keys.includes(section);
         setOpen(next);
-        if (next) void fetchSection();
       }}
       items={[
         {

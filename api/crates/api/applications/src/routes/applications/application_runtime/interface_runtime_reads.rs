@@ -354,45 +354,34 @@ impl ApplicationRuntimeReadsAdapter {
         node_id: String,
     ) -> Result<Option<NodeLastRunResponse>, ApiError> {
         self.visible_application(actor, application_id).await?;
-        let detail = <_ as OrchestrationRuntimeRepository>::get_application_run_detail(
+        let Some(last_run) = <_ as OrchestrationRuntimeRepository>::get_run_node_last_run(
             &self.store,
             application_id,
             run_id,
+            &node_id,
         )
         .await?
-        .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-        let runtime_events =
-            <_ as OrchestrationRuntimeRepository>::list_runtime_events(&self.store, run_id, 0)
-                .await?;
-        let detail = enrich_application_run_detail_visible_internal_llm_route_traces(
-            detail,
-            &runtime_events,
-        );
-        let Some(node_run) = detail
-            .node_runs
-            .into_iter()
-            .rev()
-            .find(|candidate| candidate.node_id == node_id)
         else {
+            if <_ as OrchestrationRuntimeRepository>::get_flow_run_metadata(
+                &self.store,
+                application_id,
+                run_id,
+            )
+            .await?
+            .is_none()
+            {
+                return Err(ControlPlaneError::NotFound("flow_run").into());
+            }
             return Ok(None);
         };
-        let node_run_id = node_run.id;
-        let checkpoints = detail
-            .checkpoints
-            .into_iter()
-            .filter(|checkpoint| checkpoint.node_run_id == Some(node_run_id))
-            .collect();
-        let events = detail
-            .events
-            .into_iter()
-            .filter(|event| event.node_run_id == Some(node_run_id))
-            .collect();
-        Ok(Some(to_node_last_run_response(domain::NodeLastRun {
-            flow_run: detail.flow_run,
-            node_run,
-            checkpoints,
-            events,
-        })))
+        let runtime_events = <_ as OrchestrationRuntimeRepository>::list_trace_enrichment_events(
+            &self.store,
+            run_id,
+        )
+        .await?;
+        Ok(Some(to_node_last_run_response(
+            enrich_node_last_run_visible_internal_llm_route_traces(last_run, &runtime_events),
+        )))
     }
 
     async fn monitoring_report(
@@ -500,10 +489,9 @@ impl ApplicationRuntimeReadsAdapter {
         else {
             return Ok(None);
         };
-        let runtime_events = <_ as OrchestrationRuntimeRepository>::list_runtime_events(
+        let runtime_events = <_ as OrchestrationRuntimeRepository>::list_trace_enrichment_events(
             &self.store,
             last_run.flow_run.id,
-            0,
         )
         .await?;
         Ok(Some(to_node_last_run_response(

@@ -347,3 +347,85 @@ async fn agent_logs_delete_job_stop_does_not_wait_for_inflight_batch_commit() {
     assert_eq!(stopped.status, AgentLogsDeleteJobStatus::Stopped);
     assert_eq!(stopped.deleted_records, 1);
 }
+
+#[tokio::test]
+async fn workflow_observation_cleanup_submission_does_not_wait_for_active_batch_lock() {
+    let (store, scope, app) = setup().await;
+    ingest_turn(&store, scope, app, "expired", "2026-10-07T00:00:00Z").await;
+    let (service, actor) = delete_service(&store, scope, app).await;
+    let request = input(AgentLogsDeleteScope::all_time());
+    let job = service
+        .start_deletion(&actor, app, request.clone())
+        .await
+        .unwrap();
+    let mut batch = store.pool().begin().await.unwrap();
+    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1,0))")
+        .bind(format!("agent-logs-application:{app}"))
+        .execute(&mut *batch)
+        .await
+        .unwrap();
+    // Idempotent receipt reads and conflicts must finish while the worker still owns the lock.
+    let repeat = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        service.start_deletion(&actor, app, request),
+    )
+    .await;
+    let conflict = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        service.start_deletion(&actor, app, input(AgentLogsDeleteScope::all_time())),
+    )
+    .await;
+    batch.rollback().await.unwrap();
+    assert_eq!(
+        repeat
+            .expect("receipt blocked behind batch")
+            .unwrap()
+            .job_id,
+        job.job_id
+    );
+    assert_eq!(
+        conflict
+            .expect("conflict blocked behind batch")
+            .unwrap_err()
+            .to_string(),
+        "conflict: agent_logs_delete_job_active"
+    );
+    let retained = service
+        .deletion_job(&actor, app, Some(job.job_id))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(retained.deleted_records, 0);
+    assert_eq!(retained.status, AgentLogsDeleteJobStatus::Queued);
+}
+
+#[tokio::test]
+async fn workflow_observation_cleanup_busy_admission_does_not_create_a_hidden_job() {
+    let (store, scope, app) = setup().await;
+    let (service, actor) = delete_service(&store, scope, app).await;
+    let mut batch = store.pool().begin().await.unwrap();
+    sqlx::query("select pg_advisory_xact_lock(hashtextextended($1,0))")
+        .bind(format!("agent-logs-application:{app}"))
+        .execute(&mut *batch)
+        .await
+        .unwrap();
+    let request = input(AgentLogsDeleteScope::all_time());
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        service.start_deletion(&actor, app, request.clone()),
+    )
+    .await;
+    batch.rollback().await.unwrap();
+    assert_eq!(
+        result
+            .expect("busy admission waited for lock")
+            .unwrap_err()
+            .to_string(),
+        "conflict: agent_logs_delete_job_busy"
+    );
+    assert!(store
+        .get_agent_logs_delete_job(app, scope, Some(request.job_id))
+        .await
+        .unwrap()
+        .is_none());
+}
