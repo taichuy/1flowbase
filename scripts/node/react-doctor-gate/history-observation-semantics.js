@@ -721,6 +721,7 @@ function supportedOrigin(unit, token, effects, context) {
       return false;
     if (parent?.type === "VariableDeclarator" && within(token, parent.init)) {
       if (importedCall(unit, parent.init, "react", "useReducer")) return false;
+      evidence(context, parent.init);
       return true;
     }
     if (
