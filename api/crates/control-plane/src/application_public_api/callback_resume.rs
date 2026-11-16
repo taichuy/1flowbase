@@ -1,3 +1,4 @@
+mod anthropic_successor;
 mod inference_recovery;
 mod prepared;
 mod reservation;
@@ -257,6 +258,9 @@ where
                 .await?;
         }
         if let Some(existing) = existing {
+            if anthropic_successor::is_new_user_turn(&context, &existing, command)? {
+                return Ok(PreparedPublishedCallbackResume::StartNewTurnFromHistory);
+            }
             if self
                 .is_reclaimable_responses_predecessor(&context, &existing, command)
                 .await?

@@ -202,6 +202,8 @@ mod tests {
     use time::OffsetDateTime;
 
     use super::*;
+    #[path = "anthropic_successors.rs"]
+    mod anthropic_successors;
     use crate::application_public_api::{
         api_keys::{ApplicationApiKeyService, CreateApplicationApiKeyCommand},
         mapping::{
