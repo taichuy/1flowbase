@@ -143,6 +143,8 @@ function callable(context, unit, node, seen = new Set(), depth = 0) {
   if (definition.type === 'FunctionName') return callable(context, unit, definition.node, seen, depth + 1);
   if (definition.type === 'Variable' && definition.node.id.type === 'Identifier') {
     proof(context, unit, definition.node);
+    const declaration = unit.parents.get(definition.node);
+    if (declaration?.type === 'VariableDeclaration') proof(context, unit, declaration);
     return callable(context, unit, definition.node.init, seen, depth + 1);
   }
   if (definition.type !== 'ImportBinding' || definition.node.type !== 'ImportSpecifier') return null;
