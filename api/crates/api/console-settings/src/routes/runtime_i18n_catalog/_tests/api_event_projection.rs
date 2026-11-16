@@ -1,4 +1,5 @@
 use super::*;
+use crate::openapi_interface::contract::ApiInput;
 #[test]
 fn runtime_catalog_keeps_actual_messages_without_payload_wrapper_or_headers() {
     let op = ApiOperationContext {

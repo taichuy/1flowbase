@@ -1,4 +1,6 @@
 use super::*;
+use crate::openapi_interface::contract::ApiInput;
+use serde_json::json;
 fn context(id: &str) -> ApiOperationContext {
     let declaration = DECLARATIONS
         .iter()

@@ -1,4 +1,6 @@
 use super::*;
+use crate::openapi_interface::contract::ApiInput;
+use serde_json::json;
 #[test]
 fn icon_has_real_path_input_and_explicit_binary_output_phase() {
     let op = ApiOperationContext {
