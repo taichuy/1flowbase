@@ -119,6 +119,14 @@ pub struct NotificationService<R> {
     events: Option<Arc<dyn NotificationEventPublisher>>,
     communication_lifecycle_observer: Option<Arc<dyn CommunicationLifecycleObserver>>,
 }
+
+/// Durable send identity and routing/causal correlation shared by dispatch and observation.
+struct SendAttemptContext {
+    log_id: Uuid,
+    target: Option<extension_contracts::NotificationSendTarget>,
+    context: Option<control_plane_contracts::ports::CommunicationSendContext>,
+}
+
 impl<R> NotificationService<R> {
     pub fn new(repository: R, master_key: String) -> Self {
         Self {
@@ -680,10 +688,12 @@ where
                 instance_id,
                 instance,
                 input,
-                log_id,
-                target,
                 &mut attempt,
-                context.clone(),
+                SendAttemptContext {
+                    log_id,
+                    target,
+                    context: context.clone(),
+                },
             )
             .await;
         if let Err(error) = &outcome {
@@ -771,11 +781,13 @@ where
             self.observe_send_result(
                 actor,
                 instance_id,
-                log_id,
                 source,
-                observed_target,
                 attempt,
-                context,
+                SendAttemptContext {
+                    log_id,
+                    target: observed_target,
+                    context,
+                },
             )
             .await;
         }
@@ -792,11 +804,14 @@ where
         instance_id: Uuid,
         instance: Option<NotificationInstanceRecord>,
         input: Value,
-        log_id: Uuid,
-        target: Option<extension_contracts::NotificationSendTarget>,
         attempt: &mut Option<lifecycle::SendAttemptObservation>,
-        context: Option<control_plane_contracts::ports::CommunicationSendContext>,
+        send: SendAttemptContext,
     ) -> Result<NotificationSendResult> {
+        let SendAttemptContext {
+            log_id,
+            target,
+            context,
+        } = send;
         let instance = instance.ok_or(Error::NotFound("notification_instance"))?;
         if instance.status != NotificationInstanceStatus::Enabled {
             return Err(Error::Conflict("instance_disabled").into());
@@ -821,10 +836,12 @@ where
                     &instance,
                     &entry.descriptor,
                     input,
-                    log_id,
-                    target,
                     attempt,
-                    context,
+                    SendAttemptContext {
+                        log_id,
+                        target,
+                        context,
+                    },
                 )
                 .await;
         }

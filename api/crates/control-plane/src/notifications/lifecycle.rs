@@ -28,12 +28,15 @@ impl<R: NotificationRepository> NotificationService<R> {
         &self,
         actor: &ActorContext,
         instance_id: Uuid,
-        log_id: Uuid,
         source: NotificationSource,
-        target: Option<extension_contracts::NotificationSendTarget>,
         attempt: SendAttemptObservation,
-        context: Option<control_plane_contracts::ports::CommunicationSendContext>,
+        send: SendAttemptContext,
     ) {
+        let SendAttemptContext {
+            log_id,
+            target,
+            context,
+        } = send;
         let Some(observer) = &self.communication_lifecycle_observer else {
             return;
         };

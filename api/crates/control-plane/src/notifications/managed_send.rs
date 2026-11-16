@@ -17,11 +17,14 @@ where
         instance: &NotificationInstanceRecord,
         descriptor: &NotificationTypeDescriptor,
         input_payload: Value,
-        log_id: Uuid,
-        target: Option<extension_contracts::NotificationSendTarget>,
         attempt: &mut Option<super::lifecycle::SendAttemptObservation>,
-        context: Option<control_plane_contracts::ports::CommunicationSendContext>,
+        send: SendAttemptContext,
     ) -> Result<NotificationSendResult> {
+        let SendAttemptContext {
+            log_id,
+            target,
+            context,
+        } = send;
         let state = self
             .repository
             .resolve_notification_authorization(
