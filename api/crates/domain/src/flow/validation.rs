@@ -1,4 +1,4 @@
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 /// Structural constraints apply to drafts even when their execution configuration is incomplete.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,7 +58,78 @@ pub fn validate_flow_node_structure(node: &Value) -> Result<(), FlowDocumentVali
     Ok(())
 }
 
+/// Borrowed structural facts produced in the same order as draft validation.
+/// Private fields keep consumers from constructing an unvalidated view.
+#[derive(Debug)]
+pub struct ValidatedFlowDraft<'a> {
+    nodes: Vec<ValidatedFlowNode<'a>>,
+    edges: Vec<ValidatedFlowEdge<'a>>,
+}
+
+#[derive(Debug)]
+pub struct ValidatedFlowNode<'a> {
+    value: &'a Value,
+    id: &'a str,
+    node_type: &'a str,
+    outputs: &'a [Value],
+    bindings: &'a Map<String, Value>,
+}
+
+#[derive(Debug)]
+pub struct ValidatedFlowEdge<'a> {
+    source: &'a str,
+    target: &'a str,
+}
+
+impl<'a> ValidatedFlowDraft<'a> {
+    pub fn nodes(&self) -> &[ValidatedFlowNode<'a>] {
+        &self.nodes
+    }
+
+    pub fn edges(&self) -> &[ValidatedFlowEdge<'a>] {
+        &self.edges
+    }
+}
+
+impl<'a> ValidatedFlowNode<'a> {
+    pub fn value(&self) -> &'a Value {
+        self.value
+    }
+
+    pub fn id(&self) -> &'a str {
+        self.id
+    }
+
+    pub fn node_type(&self) -> &'a str {
+        self.node_type
+    }
+
+    pub fn outputs(&self) -> &'a [Value] {
+        self.outputs
+    }
+
+    pub fn bindings(&self) -> &'a Map<String, Value> {
+        self.bindings
+    }
+}
+
+impl<'a> ValidatedFlowEdge<'a> {
+    pub fn source(&self) -> &'a str {
+        self.source
+    }
+
+    pub fn target(&self) -> &'a str {
+        self.target
+    }
+}
+
 pub fn validate_flow_draft_structure(document: &Value) -> Result<(), FlowDocumentValidationError> {
+    validated_flow_draft_structure(document).map(|_| ())
+}
+
+pub fn validated_flow_draft_structure(
+    document: &Value,
+) -> Result<ValidatedFlowDraft<'_>, FlowDocumentValidationError> {
     let nodes = document
         .pointer("/graph/nodes")
         .and_then(Value::as_array)
@@ -74,34 +145,36 @@ pub fn validate_flow_draft_structure(document: &Value) -> Result<(), FlowDocumen
             "unsupported or missing flow schemaVersion",
         ));
     }
+    let mut validated_nodes = Vec::with_capacity(nodes.len());
+    let mut validated_edges = Vec::with_capacity(edges.len());
     let mut node_ids = std::collections::BTreeSet::new();
     for node in nodes {
         validate_flow_node_structure(node)?;
-        for key in ["id", "type"] {
-            if !node
-                .get(key)
-                .and_then(Value::as_str)
-                .is_some_and(|s| !s.trim().is_empty())
-            {
-                return Err(invalid(
+        let node_string = |key| {
+            nonempty_string(node, key).ok_or_else(|| {
+                invalid(
                     Some(node),
                     &format!("/{key}"),
                     "node id and type must be nonempty strings",
-                ));
-            }
-        }
-        if !node_ids.insert(node["id"].as_str().unwrap()) {
+                )
+            })
+        };
+        let id = node_string("id")?;
+        let node_type = node_string("type")?;
+        if !node_ids.insert(id) {
             return Err(invalid(Some(node), "/id", "node ids must be unique"));
         }
-        for key in ["config", "bindings"] {
-            if !node.get(key).is_some_and(Value::is_object) {
-                return Err(invalid(
+        let node_object = |key| {
+            node.get(key).and_then(Value::as_object).ok_or_else(|| {
+                invalid(
                     Some(node),
                     &format!("/{key}"),
                     "node config and bindings must be objects",
-                ));
-            }
-        }
+                )
+            })
+        };
+        node_object("config")?;
+        let bindings = node_object("bindings")?;
         let outputs = node
             .get("outputs")
             .and_then(Value::as_array)
@@ -109,20 +182,18 @@ pub fn validate_flow_draft_structure(document: &Value) -> Result<(), FlowDocumen
         let mut keys = std::collections::BTreeSet::new();
         for (index, output) in outputs.iter().enumerate() {
             let path = format!("/outputs/{index}");
-            for field in ["key", "title", "valueType"] {
-                if !output
-                    .get(field)
-                    .and_then(Value::as_str)
-                    .is_some_and(|s| !s.trim().is_empty())
-                {
-                    return Err(invalid(
+            let output_string = |field| {
+                nonempty_string(output, field).ok_or_else(|| {
+                    invalid(
                         Some(node),
                         &format!("{path}/{field}"),
                         "output key, title and valueType must be nonempty strings",
-                    ));
-                }
-            }
-            let key = output["key"].as_str().unwrap();
+                    )
+                })
+            };
+            let key = output_string("key")?;
+            output_string("title")?;
+            output_string("valueType")?;
             if key.starts_with("__") || !keys.insert(key) {
                 return Err(invalid(
                     Some(node),
@@ -155,27 +226,44 @@ pub fn validate_flow_draft_structure(document: &Value) -> Result<(), FlowDocumen
                 ));
             }
         }
+        validated_nodes.push(ValidatedFlowNode {
+            value: node,
+            id,
+            node_type,
+            outputs,
+            bindings,
+        });
     }
     let mut edge_ids = std::collections::BTreeSet::new();
     for edge in edges {
-        for key in ["id", "source", "target"] {
-            if !edge
-                .get(key)
-                .and_then(Value::as_str)
-                .is_some_and(|s| !s.trim().is_empty())
-            {
-                return Err(invalid(
+        let edge_string = |key| {
+            nonempty_string(edge, key).ok_or_else(|| {
+                invalid(
                     None,
                     "/graph/edges",
                     "edge id, source and target must be nonempty strings",
-                ));
-            }
-        }
-        if !edge_ids.insert(edge["id"].as_str().unwrap()) {
+                )
+            })
+        };
+        let id = edge_string("id")?;
+        let source = edge_string("source")?;
+        let target = edge_string("target")?;
+        if !edge_ids.insert(id) {
             return Err(invalid(None, "/graph/edges", "edge ids must be unique"));
         }
+        validated_edges.push(ValidatedFlowEdge { source, target });
     }
-    Ok(())
+    Ok(ValidatedFlowDraft {
+        nodes: validated_nodes,
+        edges: validated_edges,
+    })
+}
+
+fn nonempty_string<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
 }
 
 fn invalid(node: Option<&Value>, path: &str, message: &str) -> FlowDocumentValidationError {

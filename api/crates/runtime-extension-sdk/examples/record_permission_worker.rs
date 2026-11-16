@@ -58,7 +58,7 @@ async fn data(
                 idempotency_key: None,
                 operations,
             })
-            .unwrap(),
+            .map_err(|_| "fixture_callback_contract".to_owned())?,
         )
         .await
         .map_err(|_| {

@@ -21,7 +21,10 @@ impl TraceProjectionBuilder {
                     .map(|&index| (identity.execution_id, index))
             })
             .collect();
-        let mut rounds: BTreeMap<(Uuid, u64), Vec<&domain::NodeRunRecord>> = BTreeMap::new();
+        let mut rounds: BTreeMap<
+            (Uuid, u64),
+            (&domain::NodeRunRecord, Vec<&domain::NodeRunRecord>),
+        > = BTreeMap::new();
         for record in records {
             let Some(identity) = record.execution_identity.as_ref() else {
                 continue;
@@ -32,11 +35,12 @@ impl TraceProjectionBuilder {
             if by_execution.contains_key(&round.container_execution_id) {
                 rounds
                     .entry((round.container_execution_id, round.round_index))
-                    .or_default()
-                    .push(record);
+                    .and_modify(|(_, rest)| rest.push(record))
+                    .or_insert((record, Vec::new()));
             }
         }
-        for ((container_id, round_index), children) in rounds {
+        for ((container_id, round_index), (first, rest)) in rounds {
+            let children = || std::iter::once(first).chain(rest.iter().copied());
             let parent_index = by_execution[&container_id];
             let parent = &self.nodes[parent_index];
             let locator = format!("{}/round:{round_index}", parent.stable_locator);
@@ -53,33 +57,28 @@ impl TraceProjectionBuilder {
             group.node_type = Some("rounds".into());
             group.node_id = None;
             group.has_children = true;
-            group.child_count = children.len() as i64;
+            group.child_count = (rest.len() + 1) as i64;
             group.has_content = false;
             group.metrics_payload = serde_json::json!({});
-            group.started_at = children.iter().map(|node| node.started_at).min().unwrap();
-            group.finished_at = children
-                .iter()
+            group.started_at = children().fold(first.started_at, |started_at, node| {
+                started_at.min(node.started_at)
+            });
+            group.finished_at = children()
                 .all(|node| node.finished_at.is_some())
-                .then(|| children.iter().filter_map(|node| node.finished_at).max())
+                .then(|| children().filter_map(|node| node.finished_at).max())
                 .flatten();
             group.duration_ms = trace_node_duration_ms(group.started_at, group.finished_at);
-            group.status = if children
-                .iter()
-                .any(|node| node.status == domain::NodeRunStatus::Failed)
-            {
+            group.status = if children().any(|node| node.status == domain::NodeRunStatus::Failed) {
                 "failed"
-            } else if children.iter().any(|node| node.finished_at.is_none()) {
+            } else if children().any(|node| node.finished_at.is_none()) {
                 "running"
-            } else if children
-                .iter()
-                .all(|node| node.status == domain::NodeRunStatus::Succeeded)
-            {
+            } else if children().all(|node| node.status == domain::NodeRunStatus::Succeeded) {
                 "succeeded"
             } else {
-                children.last().unwrap().status.as_str()
+                rest.last().copied().unwrap_or(first).status.as_str()
             }
             .to_owned();
-            for child in children {
+            for child in children() {
                 if let Some(index) = child
                     .execution_identity
                     .as_ref()

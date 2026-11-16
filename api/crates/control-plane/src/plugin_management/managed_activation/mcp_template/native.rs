@@ -53,11 +53,16 @@ pub fn prepare_managed_mcp_bundle_template(
     manifest: &plugin_framework::PluginManifestV1,
     package: domain::McpBundlePackage,
 ) -> Result<SeedMcpBundleGraphInput> {
-    let instance = manifest
+    let (service, instance) = manifest
         .managed_service
         .as_ref()
-        .and_then(|service| service.mcp_instance.as_ref())
-        .filter(|instance| instance.template.is_some())
+        .and_then(|service| {
+            service
+                .mcp_instance
+                .as_ref()
+                .filter(|instance| instance.template.is_some())
+                .map(|instance| (service, instance))
+        })
         .ok_or(ControlPlaneError::InvalidInput(
             "managed_mcp_template_declaration",
         ))?;
@@ -73,10 +78,7 @@ pub fn prepare_managed_mcp_bundle_template(
     {
         return Err(ControlPlaneError::InvalidInput("managed_mcp_template_owner").into());
     }
-    let allowed_interfaces = manifest
-        .managed_service
-        .as_ref()
-        .unwrap()
+    let allowed_interfaces = service
         .operations
         .iter()
         .map(|operation| operation.interface_id.as_str())

@@ -66,18 +66,19 @@ fn analyze_document(
     target_node_id: Option<&str>,
 ) -> FlowDocumentAnalysis {
     let mut report = FlowDocumentAnalysis::default();
-    if let Err(error) = domain::flow::validate_flow_draft_structure(document) {
-        append_error(&mut report, FlowValidationError::from(error).into());
-        return report;
-    }
+    let draft = match domain::flow::validated_flow_draft_structure(document) {
+        Ok(draft) => draft,
+        Err(error) => {
+            append_error(&mut report, FlowValidationError::from(error).into());
+            return report;
+        }
+    };
     let mut nodes = BTreeMap::new();
-    for value in document["graph"]["nodes"].as_array().unwrap() {
-        let id = value["id"].as_str().unwrap();
-        let node_type = value["type"].as_str().unwrap();
-        let outputs = match super::output_contract::resolve_outputs(
-            node_type,
-            value["outputs"].as_array().unwrap(),
-        ) {
+    for node in draft.nodes() {
+        let value = node.value();
+        let id = node.id();
+        let node_type = node.node_type();
+        let outputs = match super::output_contract::resolve_outputs(node_type, node.outputs()) {
             Ok(outputs) => outputs,
             Err(error) => {
                 append_error(
@@ -87,10 +88,7 @@ fn analyze_document(
                 Vec::new()
             }
         };
-        let values = super::node_compilation::active_binding_values(
-            node_type,
-            value["bindings"].as_object().unwrap(),
-        );
+        let values = super::node_compilation::active_binding_values(node_type, node.bindings());
         let mut bindings = BTreeMap::new();
         for (key, binding) in values {
             match super::node_compilation::compile_bindings(id, &BTreeMap::from([(key, binding)])) {
@@ -116,20 +114,16 @@ fn analyze_document(
             },
         );
     }
-    for edge in document["graph"]["edges"].as_array().unwrap() {
-        let source = edge["source"].as_str().unwrap();
-        let target = edge["target"].as_str().unwrap();
+    for edge in draft.edges() {
+        let source = edge.source();
+        let target = edge.target();
         if nodes.contains_key(source) && nodes.contains_key(target) {
-            nodes
-                .get_mut(target)
-                .unwrap()
-                .dependency_node_ids
-                .push(source.into());
-            nodes
-                .get_mut(source)
-                .unwrap()
-                .downstream_node_ids
-                .push(target.into());
+            if let Some(node) = nodes.get_mut(target) {
+                node.dependency_node_ids.push(source.into());
+            }
+            if let Some(node) = nodes.get_mut(source) {
+                node.downstream_node_ids.push(target.into());
+            }
         }
     }
     for node in nodes.values() {
@@ -149,14 +143,12 @@ fn analyze_document(
         });
         if target_node_id == Some(node.node_id.as_str()) {
             let mut fields = BTreeSet::from([String::new()]);
-            for key in document["graph"]["nodes"]
-                .as_array()
-                .unwrap()
+            for key in draft
+                .nodes()
                 .iter()
-                .find(|value| value["id"].as_str() == Some(&node.node_id))
-                .and_then(|value| value["bindings"].as_object())
+                .find(|value| value.id() == node.node_id)
                 .into_iter()
-                .flat_map(|bindings| bindings.keys())
+                .flat_map(|value| value.bindings().keys())
             {
                 fields.insert(format!("/bindings/{}", diagnostics::pointer_segment(key)));
             }

@@ -341,8 +341,8 @@ pub(super) fn schema_value_type(schema: &Value) -> String {
             .filter_map(Value::as_str)
             .filter(|kind| *kind != "null")
             .collect::<BTreeSet<_>>();
-        if kinds.len() == 1 {
-            let kind = *kinds.first().unwrap();
+        let mut kinds = kinds.into_iter();
+        if let (Some(kind), None) = (kinds.next(), kinds.next()) {
             return if kind == "integer" {
                 "number".into()
             } else {
@@ -360,8 +360,9 @@ pub(super) fn schema_value_type(schema: &Value) -> String {
                 return "json".into();
             }
             kinds.remove("json");
-            if kinds.len() == 1 {
-                return kinds.into_iter().next().unwrap();
+            let mut kinds = kinds.into_iter();
+            if let (Some(kind), None) = (kinds.next(), kinds.next()) {
+                return kind;
             }
         }
     }

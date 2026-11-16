@@ -153,3 +153,144 @@ fn simple_system_default_constants_are_stable() {
 
     assert_eq!(defaults, (30, true, 100));
 }
+
+#[test]
+fn validated_draft_view_preserves_borrowed_values_and_document_order() {
+    let document = json!({"schemaVersion":FLOW_SCHEMA_VERSION,"graph":{
+        "nodes":[
+            {"id":"second","type":"code","config":{},"bindings":{"input":{"value":7}},"outputs":[{"key":"result","title":"Result","valueType":"json"}]},
+            {"id":"first","type":"http_request","config":{},"bindings":{},"outputs":[]}
+        ],
+        "edges":[{"id":"edge","source":"second","target":"missing"}]
+    }});
+    let draft = crate::flow::validated_flow_draft_structure(&document).unwrap();
+    assert_eq!(
+        draft
+            .nodes()
+            .iter()
+            .map(|node| node.id())
+            .collect::<Vec<_>>(),
+        ["second", "first"]
+    );
+    let node = &draft.nodes()[0];
+    assert_eq!(node.node_type(), "code");
+    assert!(std::ptr::eq(node.value(), &document["graph"]["nodes"][0]));
+    assert!(std::ptr::eq(
+        node.outputs(),
+        document["graph"]["nodes"][0]["outputs"]
+            .as_array()
+            .unwrap()
+            .as_slice()
+    ));
+    assert!(std::ptr::eq(
+        node.bindings(),
+        document["graph"]["nodes"][0]["bindings"]
+            .as_object()
+            .unwrap()
+    ));
+    assert_eq!(draft.edges()[0].source(), "second");
+    // Structural validation deliberately leaves graph endpoint resolution to the compiler.
+    assert_eq!(draft.edges()[0].target(), "missing");
+}
+
+#[test]
+fn validated_draft_preserves_first_structural_error() {
+    let base = json!({"schemaVersion":FLOW_SCHEMA_VERSION,"graph":{
+        "nodes":[
+            {"id":"one","type":"code","config":{},"bindings":{},"outputs":[]},
+            {"id":"two","type":"code","config":{},"bindings":{},"outputs":[]}
+        ],
+        "edges":[{"id":"edge","source":"one","target":"two"}]
+    }});
+    let cases = [
+        (
+            vec![("/graph/nodes", json!(null)), ("/graph/edges", json!(null))],
+            "/graph/nodes",
+            "graph.nodes must be an array",
+        ),
+        (
+            vec![
+                ("/graph/edges", json!(null)),
+                ("/schemaVersion", json!(null)),
+            ],
+            "/graph/edges",
+            "graph.edges must be an array",
+        ),
+        (
+            vec![
+                ("/schemaVersion", json!(null)),
+                ("/graph/nodes/0/id", json!(null)),
+            ],
+            "/schemaVersion",
+            "unsupported or missing flow schemaVersion",
+        ),
+        (
+            vec![
+                ("/graph/nodes/0/type", json!("start")),
+                ("/graph/nodes/0/id", json!(null)),
+                ("/graph/nodes/0/outputs", json!(null)),
+            ],
+            "/outputs",
+            "start node (unnamed) outputs must be empty",
+        ),
+        (
+            vec![
+                ("/graph/nodes/0/id", json!(" ")),
+                ("/graph/nodes/0/type", json!(null)),
+            ],
+            "/id",
+            "node id and type must be nonempty strings",
+        ),
+        (
+            vec![
+                ("/graph/nodes/1/id", json!("one")),
+                ("/graph/nodes/1/config", json!(null)),
+            ],
+            "/id",
+            "node ids must be unique",
+        ),
+        (
+            vec![
+                ("/graph/nodes/0/config", json!(null)),
+                ("/graph/nodes/0/bindings", json!(null)),
+            ],
+            "/config",
+            "node config and bindings must be objects",
+        ),
+        (
+            vec![
+                ("/graph/nodes/0/bindings", json!(null)),
+                ("/graph/nodes/0/outputs", json!(null)),
+            ],
+            "/bindings",
+            "node config and bindings must be objects",
+        ),
+        (
+            vec![(
+                "/graph/nodes/0/outputs",
+                json!([{"key":"__internal","title":" ","valueType":null}]),
+            )],
+            "/outputs/0/title",
+            "output key, title and valueType must be nonempty strings",
+        ),
+        (
+            vec![
+                ("/graph/edges/0/source", json!(null)),
+                ("/graph/edges/0/target", json!(null)),
+            ],
+            "/graph/edges",
+            "edge id, source and target must be nonempty strings",
+        ),
+    ];
+    for (changes, path, message) in cases {
+        let mut document = base.clone();
+        for (pointer, value) in changes {
+            *document.pointer_mut(pointer).unwrap() = value;
+        }
+        let original_entry = crate::flow::validate_flow_draft_structure(&document).unwrap_err();
+        let typed_entry = crate::flow::validated_flow_draft_structure(&document).unwrap_err();
+        assert_eq!(original_entry, typed_entry);
+        assert_eq!(typed_entry.field_path, path);
+        assert_eq!(typed_entry.message, message);
+    }
+}

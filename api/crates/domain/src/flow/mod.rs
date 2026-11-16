@@ -12,7 +12,8 @@ pub use node_capabilities::{
 };
 pub use validation::{
     flow_node_document_schema, validate_flow_draft_structure, validate_flow_node_structure,
-    FlowDocumentValidationError,
+    validated_flow_draft_structure, FlowDocumentValidationError, ValidatedFlowDraft,
+    ValidatedFlowEdge, ValidatedFlowNode,
 };
 
 pub use crate::system_defaults::flow_document::{FLOW_SCHEMA_VERSION, WORKFLOW_SYNC_TIMEOUT_MS};
