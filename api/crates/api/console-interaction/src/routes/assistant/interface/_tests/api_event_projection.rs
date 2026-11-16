@@ -1,4 +1,5 @@
 use super::*;
+use crate::openapi_interface::contract::ApiInput;
 fn operation(id: &str) -> ApiOperationContext {
     let declaration = DECLARATIONS
         .iter()

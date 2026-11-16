@@ -1,4 +1,5 @@
 use super::*;
+use crate::openapi_interface::contract::ApiInput;
 #[test]
 fn websocket_ticket_is_not_an_event_field_and_http_serialization_is_unchanged() {
     let op = ApiOperationContext {

@@ -541,11 +541,6 @@ fn file_error(error: local_terminal::FileError) -> ApiError {
     }
 }
 
-#[cfg(test)]
-use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
-#[cfg(test)]
-use serde_json::json;
-
 #[cfg(any(test, feature = "test-support"))]
 #[path = "_tests/support/adapter.rs"]
 mod test_support_adapter;
