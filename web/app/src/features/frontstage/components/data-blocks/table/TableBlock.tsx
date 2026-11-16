@@ -6,9 +6,6 @@ import { FRONTSTAGE_DESIGN_BLUE } from '../../../lib/design-mode-theme';
 import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import { DataBlockModal as Modal } from '../shared/DataBlockModal';
 import {
-  useEffect,
-  useEffectEvent,
-  useMemo,
   useState,
   type CSSProperties,
   type Key,
@@ -39,11 +36,7 @@ import {
 } from '@dnd-kit/sortable';
 import type { ConsoleRuntimeModelRecord } from '@1flowbase/api-client';
 import { i18nText } from '../../../../../shared/i18n/text';
-import {
-  useDataBlockMetadata,
-  useDataBlockRecords,
-  useDataBlockWrites
-} from '../../../api/data-blocks';
+import { useDataBlockMetadata } from '../../../api/data-blocks';
 import { useDataBlockHost } from '../../../lib/data-blocks/host-context';
 import { dataFieldText } from '../../../lib/data-blocks/fields';
 import {
@@ -51,23 +44,16 @@ import {
   readDataBlockConfig,
   type DataBlockAction,
   type DataBlockComponentProps,
-  type DataBlockField,
-  type DataFilterGroup,
   type TableBlockConfig
 } from '../../../lib/data-blocks/types';
 import { DataBlockFilterEditor } from '../shared/DataBlockFilterEditor';
 import { DataFieldCreateModal } from '../shared/DataFieldCreateModal';
 import {
-  deleteTableRecords,
   tableActionAllowed,
-  tableActionInputs,
-  tableActionParentContext,
-  tableQueryScope,
   tableRecordId
 } from './table-model';
 import { BlockDesignToolbar } from '../../../lib/native-modules/block-design/runtime';
 import {
-  dataFilterVariables,
   restrictDataFilter,
   validDataFilter
 } from '../../../lib/data-blocks/filter-variables';
@@ -80,6 +66,8 @@ import {
 } from './TableDesignControls';
 import { useTableDragSensors } from './use-table-drag-sensors';
 import { useTableConfigController } from './use-table-config-controller';
+import { useTableSession } from './runtime/use-table-session';
+import { useTableActions } from './runtime/use-table-actions';
 import {
   TableActionSettings,
   TableBlockSettings,
@@ -129,201 +117,33 @@ function ConfiguredTableBlock({
         text: i18nText('frontstage', 'data_blocks.table.save_failed')
       })
     );
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(config.page_size);
-  const [sort, setSort] = useState(config.sort);
-  const defaultFilter = config.actions.find(
-    (action) => action.kind === 'filter' && action.enabled
-  )?.default_filter;
-  const [filter, setFilter] = useState(
-    () => defaultFilter ?? emptyDataFilter()
-  );
   const [filterDraft, setFilterDraft] = useState(emptyDataFilter);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filterSaved, setFilterSaved] = useState(false);
-  const [selected, setSelected] = useState<string[]>([]);
-  const [deleteIds, setDeleteIds] = useState<string[] | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [createField, setCreateField] = useState(false);
   const design = Boolean(host?.design_mode);
   const sensors = useTableDragSensors();
-  const fieldsByCode = new Map<string, DataBlockField>();
-  for (const field of fields) {
-    if (!fieldsByCode.has(field.code)) fieldsByCode.set(field.code, field);
-  }
+  const session = useTableSession(ctx, config, metadata);
+  const {
+    page, pageSize, sort, filter, selected, fieldsByCode, variables, scope,
+    capabilities, invalidFields, invalidQuery, records, data, idField,
+    canAddressRecords, missingRecordId, displayKeys
+  } = session;
+  const actions = useTableActions(ctx, host, config, session);
+  const { actionParent, deleteIds, deleting, confirmDelete } = actions;
+  const visibleFeedback = actions.feedback ?? feedback;
   const disabled = saving || Boolean(host?.saving) || !metadata.data;
-  const actionParent = tableActionParentContext(config, fields, ctx.inputs);
-  const capabilities = metadata.data?.record_capabilities;
-  const writes = useDataBlockWrites(ctx, config.binding);
-  const variables = dataFilterVariables(ctx);
-  const scope = tableQueryScope(
-    config,
-    filter,
-    ctx.inputs,
-    Object.fromEntries(
-      variables.map((variable) => [variable.value, variable.resolved])
-    )
+  const canCreateField = design && Boolean(
+    ctx.currentUser?.isRoot || ctx.currentUser?.permissions?.includes('model_fields.create')
   );
-  const defaultFilterKey = JSON.stringify(defaultFilter);
-  const resetDefaultFilter = useEffectEvent(() => {
-    setFilter(defaultFilter ?? emptyDataFilter());
-  });
-  useEffect(() => {
-    resetDefaultFilter();
-  }, [defaultFilterKey]);
-  const scopeKey = JSON.stringify(scope.filter);
-  const invalidFields = metadata.data
-    ? config.columns.filter((column) => !fieldsByCode.has(column.field_code))
-    : [];
-  const filterFields = (group: DataFilterGroup): string[] =>
-    group.conditions.flatMap((condition) =>
-      'conditions' in condition
-        ? filterFields(condition)
-        : [condition.field_code]
-    );
-  const invalidQuery = Boolean(
-    metadata.data &&
-    (!validDataFilter(config.filter, fields, variables) ||
-      !validDataFilter(filter, fields, variables) ||
-      [
-        ...filterFields(config.filter),
-        ...filterFields(filter),
-        ...(sort ? [sort.field] : []),
-        ...(config.relation ? [config.relation.field_code] : []),
-        ...(config.linkage ? [config.linkage.field_code] : [])
-      ].some((code) => !fieldsByCode.has(code)))
-  );
-  const records = useDataBlockRecords(
-    ctx,
-    config.binding,
-    {
-      page,
-      page_size: pageSize,
-      filter: scope.filter,
-      ...(sort ? { sort } : {})
-    },
-    Boolean(capabilities?.can_list && scope.enabled && !invalidQuery)
-  );
-  const idField = metadata.data?.record_id_field ?? '';
-  const data = useMemo(() => records.data?.items ?? [], [records.data?.items]);
-  const canAddressRecords = Boolean(idField);
-  const missingRecordId =
-    canAddressRecords &&
-    data.some((record) => tableRecordId(record, idField) === null);
-  // Rendering keys for unaddressable rows never enter actions or published outputs.
-  const displayKeys = useMemo(
-    () =>
-      new Map(data.map((record, index) => [record, `display-only-${index}`])),
-    [data]
-  );
-  const canCreateField =
-    design &&
-    Boolean(
-      ctx.currentUser?.isRoot ||
-      ctx.currentUser?.permissions?.includes('model_fields.create')
-    );
-
-  useEffect(() => {
-    setPageSize(config.page_size);
-    setPage(1);
-  }, [config.page_size]);
-  useEffect(() => {
-    setSort(config.sort);
-    setPage(1);
-  }, [config.sort]);
-  useEffect(() => {
-    setPage(1);
-    setSelected([]);
-  }, [scopeKey, idField]);
-  useEffect(() => {
-    void ctx.outputs.publish({
-      record_id: selected[0] ?? '',
-      selected_record_ids: selected
-    });
-  }, [ctx.outputs, selected]);
-
-
-  const runAction = async (
-    action: DataBlockAction,
-    record?: ConsoleRuntimeModelRecord
-  ) => {
+  const runAction = async (action: DataBlockAction, record?: ConsoleRuntimeModelRecord) => {
     if (!tableActionAllowed(action, capabilities)) return;
-    const recordId = record ? tableRecordId(record, idField) : undefined;
-    if (record && !recordId) return;
-    if ((record || action.kind === 'delete') && !canAddressRecords) return;
-    if (action.kind === 'delete') {
-      const ids = recordId ? [recordId] : selected;
-      if (ids.length) setDeleteIds(ids);
-      return;
-    }
-    if (action.kind === 'refresh') {
-      if (scope.enabled && !invalidQuery && capabilities?.can_list)
-        await records.refetch();
-      return;
-    }
     if (action.kind === 'filter') {
       setFilterDraft(filter);
       setFilterOpen(true);
       return;
     }
-    if (action.kind === 'create' && !actionParent.canCreate) return;
-    if (!host || !action.target_block_id) {
-      setFeedback({
-        type: 'error',
-        text: i18nText('frontstage', 'data_blocks.table.action_unavailable')
-      });
-      return;
-    }
-    try {
-      await host.openAction(
-        action,
-        tableActionInputs(
-          { ...config, relation: actionParent.relation },
-          host.block_id,
-          actionParent.inputs,
-          recordId ?? undefined
-        )
-      );
-    } catch {
-      setFeedback({
-        type: 'error',
-        text: i18nText('frontstage', 'data_blocks.table.action_failed')
-      });
-    }
-  };
-  const confirmDelete = async () => {
-    if (!deleteIds?.length || !capabilities?.can_delete || deleting) return;
-    setDeleting(true);
-    const result = await deleteTableRecords(deleteIds, (id) =>
-      writes.remove.mutateAsync(id)
-    );
-    setSelected((current) =>
-      Array.from(
-        new Set([
-          ...current.filter((id) => !result.deleted.includes(id)),
-          ...result.failed
-        ])
-      )
-    );
-    setDeleteIds(null);
-    setDeleting(false);
-    setFeedback({
-      type: result.failed.length ? 'warning' : 'success',
-      text: result.failed.length
-        ? i18nText('frontstage', 'data_blocks.table.delete_partial', {
-            deleted: result.deleted.length,
-            failed: result.failed.length
-          })
-        : i18nText('frontstage', 'data_blocks.table.delete_success', {
-            count: result.deleted.length
-          })
-    });
-    if (
-      result.deleted.length &&
-      data.length <= result.deleted.length &&
-      page > 1
-    )
-      setPage(page - 1);
+    await actions.runAction(action, record);
   };
 
   const visibleColumns = config.columns.filter(
@@ -522,15 +342,6 @@ function ConfiguredTableBlock({
       filterAction.filter_fields.includes(field.code)
   );
   const filterValid = validDataFilter(filterDraft, filterableFields, variables);
-  const filterFieldsKey = JSON.stringify(filterAction?.filter_fields);
-  const restrictFilterToFields = useEffectEvent(() => {
-    const filterFields = filterAction?.filter_fields;
-    if (filterFields)
-      setFilter((current) => restrictDataFilter(current, filterFields));
-  });
-  useEffect(() => {
-    restrictFilterToFields();
-  }, [filterFieldsKey]);
   const filterContent = (
     <div className="data-table-filter-panel">
       <DataBlockFilterEditor
@@ -565,9 +376,8 @@ function ConfiguredTableBlock({
                   false
                 )
               ) {
-                setFilter(filterDraft);
+                session.applyFilter(filterDraft);
                 setFilterSaved(true);
-                setPage(1);
               }
             }}
           >
@@ -579,8 +389,7 @@ function ConfiguredTableBlock({
           onClick={() => {
             const empty = filterAction?.default_filter ?? emptyDataFilter();
             setFilterDraft(empty);
-            setFilter(empty);
-            setPage(1);
+            session.applyFilter(empty);
           }}
         >
           {i18nText('frontstage', 'data_blocks.table.reset')}
@@ -590,8 +399,7 @@ function ConfiguredTableBlock({
           type="primary"
           disabled={!filterValid}
           onClick={() => {
-            setFilter(filterDraft);
-            setPage(1);
+            session.applyFilter(filterDraft);
             setFilterOpen(false);
           }}
         >
@@ -708,13 +516,13 @@ function ConfiguredTableBlock({
             onSave={saveConfig}
           />
         )}
-        {feedback && (
+        {visibleFeedback && (
           <Alert
             showIcon
             closable
-            type={feedback.type}
-            title={feedback.text}
-            onClose={() => setFeedback(null)}
+            type={visibleFeedback.type}
+            title={visibleFeedback.text}
+            onClose={() => { setFeedback(null); actions.dismissFeedback(); }}
           />
         )}
         {metadata.data && !canAddressRecords && (
@@ -830,7 +638,7 @@ function ConfiguredTableBlock({
                     ? {
                         selectedRowKeys: selected,
                         preserveSelectedRowKeys: true,
-                        onChange: (keys: Key[]) => setSelected(keys.map(String))
+                        onChange: (keys: Key[]) => session.select(keys.map(String))
                       }
                     : undefined
                 }
@@ -846,12 +654,11 @@ function ConfiguredTableBlock({
                 }}
                 onChange={(pagination, _, sorter, extra) => {
                   if (extra.action === 'paginate') {
-                    setPage(pagination.current ?? 1);
-                    setPageSize(pagination.pageSize ?? config.page_size);
+                    session.paginate(pagination.current ?? 1, pagination.pageSize ?? config.page_size);
                   }
                   if (extra.action === 'sort') {
                     const current = Array.isArray(sorter) ? sorter[0] : sorter;
-                    setSort(
+                    session.sortBy(
                       current?.order
                         ? {
                             field: String(current.columnKey),
@@ -860,7 +667,6 @@ function ConfiguredTableBlock({
                           }
                         : null
                     );
-                    setPage(1);
                   }
                 }}
                 locale={{
@@ -894,9 +700,7 @@ function ConfiguredTableBlock({
           getContainer={false}
           open={deleteIds !== null}
           title={i18nText('frontstage', 'data_blocks.table.confirm_delete')}
-          onCancel={() => {
-            if (!deleting) setDeleteIds(null);
-          }}
+          onCancel={actions.cancelDelete}
           confirmLoading={deleting}
           closable={!deleting}
           maskClosable={!deleting}
