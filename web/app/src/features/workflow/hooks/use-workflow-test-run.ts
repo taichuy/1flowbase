@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type SetStateAction
+} from 'react';
 import {
   ApiClientError,
   type ConsoleFlowDebugStreamEvent
@@ -17,7 +24,8 @@ import {
   emptyWorkflowRunState,
   isWorkflowRunActive,
   workflowNodeRunStatuses,
-  workflowRunSnapshot
+  workflowRunSnapshot,
+  type WorkflowRunState
 } from '../lib/run-state';
 
 function createRunObservation() {
@@ -51,7 +59,26 @@ export function useWorkflowTestRun(
   applicationId: string,
   document: FlowAuthoringDocument
 ) {
-  const [state, setState] = useState(emptyWorkflowRunState);
+  const [ownedState, setOwnedState] = useState(() => ({
+    applicationId,
+    state: emptyWorkflowRunState()
+  }));
+  const state =
+    ownedState.applicationId === applicationId
+      ? ownedState.state
+      : emptyWorkflowRunState();
+  const setState = useCallback(
+    (next: SetStateAction<WorkflowRunState>) => {
+      setOwnedState((current) => {
+        if (current.applicationId !== applicationId) return current;
+        return {
+          ...current,
+          state: typeof next === 'function' ? next(current.state) : next
+        };
+      });
+    },
+    [applicationId]
+  );
   const observationRef = useRef<ReturnType<typeof createRunObservation> | null>(
     null
   );
@@ -62,7 +89,7 @@ export function useWorkflowTestRun(
   const nodeStatuses = useMemo(() => workflowNodeRunStatuses(state), [state]);
 
   useEffect(() => {
-    setState(emptyWorkflowRunState());
+    setOwnedState({ applicationId, state: emptyWorkflowRunState() });
     return () => {
       observationRef.current?.dispose();
       observationRef.current = null;
@@ -212,7 +239,7 @@ export function useWorkflowTestRun(
         await observation.pause(1500);
       }
     },
-    [applicationId, document, canRun, csrfToken]
+    [applicationId, document, canRun, csrfToken, setState]
   );
 
   return {
