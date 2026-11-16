@@ -2,36 +2,20 @@ import { BlockDesignButton } from '../../../lib/native-modules/block-design/runt
 import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import { DataBlockModal as Modal } from '../shared/DataBlockModal';
 import { useState, type ReactNode } from 'react';
-import {
-  Button,
-  Checkbox,
-  Divider,
-  Dropdown,
-  Form,
-  Input,
-  InputNumber,
-  Radio,
-  Select,
-  Space,
-  Switch,
-  Typography
-} from 'antd';
-import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
-import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import { Checkbox, Dropdown, Form, Input, Switch } from 'antd';
 import type { BlockContext } from '@1flowbase/page-protocol';
 import { i18nText } from '../../../../../shared/i18n/text';
 import {
-  emptyDataFilter,
   type DataBlockField,
   type DataFormItem,
-  type DataFormRule,
   type FormBlockConfig
 } from '../../../lib/data-blocks/types';
-import { DataBlockFilterEditor } from '../shared/DataBlockFilterEditor';
 import { DataRelationEditor } from '../shared/DataRelationEditor';
 import { DataFieldCreateModal } from '../shared/DataFieldCreateModal';
-import { FormFieldControl } from './FormFieldControl';
 import { newFormItem } from './form-state';
+import { FormItemSettingsFields } from './design-settings/FormItemSettingsFields';
+import { FormLayoutSettingsFields } from './design-settings/FormLayoutSettingsFields';
+import { FormRuleSettingsFields } from './design-settings/FormRuleSettingsFields';
 
 export type DesignDialog =
   | 'title'
@@ -58,36 +42,40 @@ export function FormDesignControls(props: Props) {
   const { ctx, config, fields, saving, onSave, dialog, setDialog } = props;
   const [creatingField, setCreatingField] = useState(false);
   const [search, setSearch] = useState('');
-  const fieldMenu = fields
-    .filter((field) =>
-      `${field.title} ${field.code}`
+  const fieldMenu = fields.flatMap((field) => {
+    if (
+      !`${field.title} ${field.code}`
         .toLowerCase()
         .includes(search.toLowerCase())
     )
-    .map((field) => ({
-      key: field.code,
-      label: (
-        <span className="data-form-menu-option">
-          <span>{field.title}</span>
-          <Switch
-            size="small"
-            checked={config.items.some(
-              (item) => item.field_code === field.code
-            )}
-            disabled={saving}
-          />
-        </span>
-      ),
-      onClick: () => {
-        if (!saving)
-          void onSave({
-            ...config,
-            items: config.items.some((item) => item.field_code === field.code)
-              ? config.items.filter((item) => item.field_code !== field.code)
-              : [...config.items, newFormItem('field', field.code)]
-          });
+      return [];
+    return [
+      {
+        key: field.code,
+        label: (
+          <span className="data-form-menu-option">
+            <span>{field.title}</span>
+            <Switch
+              size="small"
+              checked={config.items.some(
+                (item) => item.field_code === field.code
+              )}
+              disabled={saving}
+            />
+          </span>
+        ),
+        onClick: () => {
+          if (!saving)
+            void onSave({
+              ...config,
+              items: config.items.some((item) => item.field_code === field.code)
+                ? config.items.filter((item) => item.field_code !== field.code)
+                : [...config.items, newFormItem('field', field.code)]
+            });
+        }
       }
-    }));
+    ];
+  });
   return (
     <>
       <div className="data-form-block-tools">
@@ -259,7 +247,6 @@ function FormSettingsModal({
   saving,
   onSave
 }: Props & { dialog: Exclude<DesignDialog, null> }) {
-  const popupContainer = useDataBlockPopupContainer();
   const [draft, setDraft] = useState(config);
   const [item, setItem] = useState<DataFormItem | null>(
     typeof dialog === 'object' ? dialog : null
@@ -307,189 +294,17 @@ function FormSettingsModal({
       cancelText={i18nText('frontstage', 'auto.cancel')}
     >
       <Form layout="vertical">
-        {(dialog === 'title' || item) && (
-          <>
-            <Form.Item label={i18nText('frontstage', 'auto.title')}>
-              <Input
-                value={item ? (item.title ?? '') : draft.title}
-                onChange={(event) =>
-                  item
-                    ? patchItem({ title: event.target.value })
-                    : patch({ title: event.target.value })
-                }
-              />
-            </Form.Item>
-            <Form.Item label={i18nText('frontstage', 'auto.description')}>
-              <Input.TextArea
-                value={item ? (item.description ?? '') : draft.description}
-                onChange={(event) =>
-                  item
-                    ? patchItem({ description: event.target.value })
-                    : patch({ description: event.target.value })
-                }
-              />
-            </Form.Item>
-          </>
-        )}
-        {item && (
-          <>
-            {item.kind === 'markdown' && (
-              <Form.Item
-                label={i18nText('frontstage', 'data_blocks.form.markdown')}
-              >
-                <Input.TextArea
-                  rows={6}
-                  value={item.text ?? ''}
-                  onChange={(event) => patchItem({ text: event.target.value })}
-                />
-              </Form.Item>
-            )}
-            {item.kind === 'field' && field && (
-              <>
-                <Form.Item
-                  label={i18nText('frontstage', 'data_blocks.form.tooltip')}
-                >
-                  <Input
-                    value={item.tooltip ?? ''}
-                    onChange={(event) =>
-                      patchItem({ tooltip: event.target.value })
-                    }
-                  />
-                </Form.Item>
-                <Form.Item>
-                  <Checkbox
-                    disabled={field.is_required || field.api_required}
-                    checked={
-                      item.required || field.is_required || field.api_required
-                    }
-                    onChange={(event) =>
-                      patchItem({ required: event.target.checked })
-                    }
-                  >
-                    {i18nText('frontstage', 'data_blocks.fields.required')}
-                  </Checkbox>
-                </Form.Item>
-                <Form.Item>
-                  <Checkbox
-                    disabled={
-                      !field.is_writable || field.field_kind === 'one_to_many'
-                    }
-                    checked={
-                      item.read_only ||
-                      !field.is_writable ||
-                      field.field_kind === 'one_to_many'
-                    }
-                    onChange={(event) =>
-                      patchItem({ read_only: event.target.checked })
-                    }
-                  >
-                    {i18nText('frontstage', 'data_blocks.form.readonly')}
-                  </Checkbox>
-                </Form.Item>
-                <Form.Item
-                  label={i18nText(
-                    'frontstage',
-                    'data_blocks.form.default_value'
-                  )}
-                >
-                  <FormFieldControl
-                    ctx={ctx}
-                    field={field}
-                    value={item.default_value}
-                    onChange={(default_value) => patchItem({ default_value })}
-                    readOnly={
-                      !field.is_writable || field.field_kind === 'one_to_many'
-                    }
-                  />
-                </Form.Item>
-              </>
-            )}
-            <Form.Item
-              label={i18nText('frontstage', 'data_blocks.form.column_width')}
-            >
-              <Select
-                value={item.span}
-                getPopupContainer={popupContainer}
-                options={[24, 18, 16, 12, 8, 6].map((span) => ({
-                  value: span,
-                  label: `${Math.round((span / 24) * 100)}%`
-                }))}
-                onChange={(span) => patchItem({ span })}
-              />
-            </Form.Item>
-          </>
-        )}
+        <FormItemSettingsFields
+          ctx={ctx}
+          dialog={dialog}
+          draft={draft}
+          item={item}
+          field={field}
+          patch={patch}
+          patchItem={patchItem}
+        />
         {dialog === 'layout' && (
-          <>
-            <Form.Item>
-              <Radio.Group
-                value={draft.label_layout}
-                onChange={(event) =>
-                  patch({ label_layout: event.target.value })
-                }
-                options={[
-                  {
-                    value: 'vertical',
-                    label: i18nText('frontstage', 'data_blocks.form.vertical')
-                  },
-                  {
-                    value: 'horizontal',
-                    label: i18nText('frontstage', 'data_blocks.form.horizontal')
-                  }
-                ]}
-              />
-            </Form.Item>
-            {draft.label_layout === 'horizontal' && (
-              <>
-                <Form.Item
-                  label={i18nText('frontstage', 'data_blocks.form.label_align')}
-                >
-                  <Select
-                    getPopupContainer={popupContainer}
-                    value={draft.label_align}
-                    options={[
-                      {
-                        value: 'left',
-                        label: i18nText('frontstage', 'data_blocks.form.left')
-                      },
-                      {
-                        value: 'right',
-                        label: i18nText('frontstage', 'data_blocks.form.right')
-                      }
-                    ]}
-                    onChange={(label_align) => patch({ label_align })}
-                  />
-                </Form.Item>
-                <Form.Item
-                  label={i18nText('frontstage', 'data_blocks.form.label_width')}
-                >
-                  <InputNumber
-                    min={40}
-                    max={600}
-                    suffix="px"
-                    value={draft.label_width}
-                    onChange={(value) => patch({ label_width: value ?? 120 })}
-                  />
-                </Form.Item>
-                <Form.Item>
-                  <Checkbox
-                    checked={draft.label_wrap}
-                    onChange={(event) =>
-                      patch({ label_wrap: event.target.checked })
-                    }
-                  >
-                    {i18nText('frontstage', 'data_blocks.form.label_wrap')}
-                  </Checkbox>
-                </Form.Item>
-              </>
-            )}
-            <Checkbox
-              checked={draft.colon}
-              onChange={(event) => patch({ colon: event.target.checked })}
-            >
-              {i18nText('frontstage', 'data_blocks.form.colon')}
-            </Checkbox>
-          </>
+          <FormLayoutSettingsFields draft={draft} patch={patch} />
         )}
         {dialog === 'actions' && (
           <>
@@ -531,129 +346,9 @@ function FormSettingsModal({
           />
         )}
         {dialog === 'rules' && (
-          <>
-            <Typography.Paragraph type="secondary">
-              {i18nText('frontstage', 'data_blocks.form.rules_hint')}
-            </Typography.Paragraph>
-            {draft.rules.map((rule) => (
-              <RuleEditor
-                key={rule.id}
-                rule={rule}
-                fields={fields}
-                onChange={(next) =>
-                  patch({
-                    rules: draft.rules.map((candidate) =>
-                      candidate.id === rule.id ? next : candidate
-                    )
-                  })
-                }
-                onRemove={() =>
-                  patch({
-                    rules: draft.rules.filter(
-                      (candidate) => candidate.id !== rule.id
-                    )
-                  })
-                }
-              />
-            ))}
-            <Button
-              icon={<PlusOutlined />}
-              onClick={() =>
-                patch({
-                  rules: [
-                    ...draft.rules,
-                    {
-                      id: crypto.randomUUID(),
-                      target_field: fields[0]?.code ?? '',
-                      effect: 'show',
-                      condition: emptyDataFilter()
-                    }
-                  ]
-                })
-              }
-              disabled={!fields.length}
-            >
-              {i18nText('frontstage', 'data_blocks.form.add_rule')}
-            </Button>
-          </>
+          <FormRuleSettingsFields draft={draft} fields={fields} patch={patch} />
         )}
       </Form>
     </Modal>
-  );
-}
-
-function RuleEditor({
-  rule,
-  fields,
-  onChange,
-  onRemove
-}: {
-  rule: DataFormRule;
-  fields: DataBlockField[];
-  onChange(rule: DataFormRule): void;
-  onRemove(): void;
-}) {
-  const popupContainer = useDataBlockPopupContainer();
-  return (
-    <section className="data-form-rule">
-      <DataBlockFilterEditor
-        value={rule.condition}
-        onChange={(condition) => onChange({ ...rule, condition })}
-        fields={fields}
-      />
-      <Space wrap>
-        <Select
-          aria-label={i18nText('frontstage', 'data_blocks.form.target_field')}
-          style={{ minWidth: 160 }}
-          getPopupContainer={popupContainer}
-          value={rule.target_field}
-          options={fields.map((field) => ({
-            value: field.code,
-            label: field.title
-          }))}
-          onChange={(target_field) => onChange({ ...rule, target_field })}
-        />
-        <Select
-          aria-label={i18nText('frontstage', 'data_blocks.form.rule_effect')}
-          style={{ minWidth: 140 }}
-          getPopupContainer={popupContainer}
-          value={rule.effect}
-          options={[
-            {
-              value: 'show',
-              label: i18nText('frontstage', 'data_blocks.form.show')
-            },
-            {
-              value: 'hide',
-              label: i18nText('frontstage', 'data_blocks.form.hide')
-            },
-            {
-              value: 'required',
-              label: i18nText('frontstage', 'data_blocks.fields.required')
-            },
-            {
-              value: 'optional',
-              label: i18nText('frontstage', 'data_blocks.form.optional')
-            },
-            {
-              value: 'readonly',
-              label: i18nText('frontstage', 'data_blocks.form.readonly')
-            },
-            {
-              value: 'editable',
-              label: i18nText('frontstage', 'data_blocks.form.editable')
-            }
-          ]}
-          onChange={(effect) => onChange({ ...rule, effect })}
-        />
-        <Button
-          icon={<DeleteOutlined />}
-          danger
-          onClick={onRemove}
-          aria-label={i18nText('frontstage', 'data_blocks.form.remove_rule')}
-        />
-      </Space>
-      <Divider />
-    </section>
   );
 }
