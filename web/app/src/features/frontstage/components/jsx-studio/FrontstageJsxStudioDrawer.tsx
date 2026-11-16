@@ -32,6 +32,9 @@ import {
 } from './JsxStudioResourcePanel';
 import { JsxStudioTemplatesPanel } from './JsxStudioTemplatesPanel';
 
+const EMPTY_CATALOG_ENTRIES: readonly NormalizedFrontstageBlockCatalogEntry[] =
+  [];
+
 export interface FrontstageJsxStudioDrawerProps {
   open: boolean;
   initialSection: FrontstageJsxStudioSection;
@@ -71,7 +74,7 @@ function blockIdFromEditorModelPath(
 export function FrontstageJsxStudioDrawer({
   block,
   catalogEntry,
-  catalogEntries = [],
+  catalogEntries = EMPTY_CATALOG_ENTRIES,
   initialSection,
   onClose,
   onSaveBlock,
