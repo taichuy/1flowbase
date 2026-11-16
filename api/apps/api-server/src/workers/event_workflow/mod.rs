@@ -1,6 +1,5 @@
 //! Generation-owned, ephemeral subscription receivers. One serial execution owner per queue.
 mod execution;
-pub(crate) mod refresh;
 mod status;
 use crate::{app_state::ApiState, generation_dispatch::GenerationDispatch};
 use control_plane::{

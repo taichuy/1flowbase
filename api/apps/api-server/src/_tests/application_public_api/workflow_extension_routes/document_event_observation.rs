@@ -9,7 +9,7 @@ use control_plane::event_center::{
 };
 use control_plane_contracts::ports::{
     ApplicationLifecycleFact, ApplicationLifecycleObserver, ApplicationLifecyclePhase,
-    AuthRepository, EventBusLimits, EventCenterRepository,
+    EventBusLimits, EventCenterRepository,
 };
 use domain::event_center::{EventDefinitionRecord, EventTriggerPhase};
 use std::sync::Mutex;

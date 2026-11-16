@@ -1,6 +1,5 @@
 use super::super::protocol_mappers::{
-    anthropic_tool_use_blocks_from_waiting_payload, AnthropicStreamMapper, OpenAiChatStreamMapper,
-    OpenAiResponseStreamMapper,
+    AnthropicStreamMapper, OpenAiChatStreamMapper, OpenAiResponseStreamMapper,
 };
 use super::super::*;
 use super::support::*;
@@ -12,8 +11,6 @@ use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use uuid::Uuid;
-
-use super::super::test_support::PROVIDER_UPSTREAM_ERROR_BODY;
 
 mod anthropic_resume;
 mod openai_resume;

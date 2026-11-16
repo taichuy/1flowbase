@@ -251,5 +251,3 @@ pub(super) async fn set_user_preferred_locale(
         .await
         .unwrap();
 }
-
-pub(super) use api_host_kernel::test_support::profiles::sample_runtime_profile;

@@ -1,14 +1,14 @@
 pub use api_host_kernel::openapi::*;
+#[cfg_attr(test, api_test_selection::group(core))]
+#[cfg(test)]
+use control_plane::application_public_api::mapping::WorkflowExtensionResponseMode;
 use std::sync::Arc;
 
 use anyhow::anyhow;
 use axum::{extract::State, Json};
 use control_plane::{
-    application_public_api::{
-        mapping::WorkflowExtensionResponseMode,
-        published_workflow_operation::{
-            build_published_workflow_operations, PublishedWorkflowOperation,
-        },
+    application_public_api::published_workflow_operation::{
+        build_published_workflow_operations, PublishedWorkflowOperation,
     },
     ports::ApplicationPublicationRepository,
 };

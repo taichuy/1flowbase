@@ -1,27 +1,27 @@
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
-use crate::routes::external_auth::transaction::{self, BindingIntent, Purpose};
+use crate::app_state::ApiState;
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
-use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
+use crate::routes::external_auth::transaction::{self, Purpose};
+pub use api_console_interaction::routes::identity_group::me_authentication_methods::*;
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use axum::{
-    extract::{Path, State},
-    http::{header, HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
-    Json,
+    http::{header, StatusCode},
+    response::Response,
 };
-#[cfg(test)]
-use axum_extra::extract::cookie::CookieJar;
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use control_plane::{
-    auth::AuthenticationMethodsService,
-    errors::ControlPlaneError as Error,
-    ports::{AuthRepository, ExternalIdentityLifecycleRepository, PluginRepository},
+    auth::AuthenticationMethodsService, ports::ExternalIdentityLifecycleRepository,
 };
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 use uuid::Uuid;
-pub(crate) use api_console_interaction::routes::identity_group::me_authentication_methods::*;
 #[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/api.rs"]

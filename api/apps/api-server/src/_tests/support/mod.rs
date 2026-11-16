@@ -21,11 +21,7 @@ use control_plane::ports::{
 use ed25519_dalek::pkcs8::spki::der::pem::LineEnding;
 use ed25519_dalek::{pkcs8::EncodePublicKey, SigningKey};
 use flate2::{write::GzEncoder, Compression};
-use runtime_profile::{
-    RuntimeCpu, RuntimeCpuMetrics, RuntimeDiskIoMetrics, RuntimeMemory, RuntimeMemoryMetrics,
-    RuntimeMetricAvailability, RuntimeMetricScopeKind, RuntimeMetricsSnapshot,
-    RuntimeNetworkMetrics, RuntimePlatform, RuntimeProfile, RuntimeStorageMetrics,
-};
+use runtime_profile::RuntimeProfile;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use tar::Builder;
