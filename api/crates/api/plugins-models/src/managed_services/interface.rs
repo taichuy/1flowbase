@@ -337,7 +337,6 @@ pub fn registry_contribution(
     ))
 }
 
-
 #[cfg(any(test, feature = "test-support"))]
 #[path = "_tests/support/interface.rs"]
 mod test_accessors;

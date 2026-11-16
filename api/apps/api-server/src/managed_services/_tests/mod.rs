@@ -1,6 +1,6 @@
 use super::*;
-use serde_json::json;
 use api_plugins_models::managed_services::support::fixture;
+use serde_json::json;
 
 #[test]
 fn service_boot_registry_registers_one_operation_per_route_and_managed_page() {
@@ -122,8 +122,6 @@ fn business_failures_expose_only_classification_codes() {
 }
 
 mod hot_generation;
-
-
 
 #[test]
 fn duplex_upgrade_is_protocol_metadata_and_keeps_exact_original_post_permission() {

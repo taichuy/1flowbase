@@ -1,10 +1,9 @@
 use std::{convert::Infallible, sync::Arc};
 
 use axum::response::sse::Event;
-use control_plane::ports::{
-    OrchestrationRuntimeRepository, RuntimeEventCloseReason, RuntimeEventEnvelope,
-    RuntimeEventReplayWindow, RuntimeEventStream,
-};
+#[cfg(test)]
+use control_plane::ports::RuntimeEventReplayWindow;
+use control_plane::ports::{RuntimeEventCloseReason, RuntimeEventEnvelope, RuntimeEventStream};
 use serde::Serialize;
 use time::format_description::well_known::Rfc3339;
 use tokio::sync::mpsc;

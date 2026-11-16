@@ -1,7 +1,5 @@
 use super::*;
-use crate::openapi_interface::contract::{
-    schema, to_value, ApiOperationContext, ApiOutput,
-};
+use crate::openapi_interface::contract::{schema, to_value, ApiOperationContext, ApiOutput};
 use crate::openapi_interface::schema_projection as de;
 use serde_json::Value;
 use std::sync::Arc;

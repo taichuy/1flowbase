@@ -6,13 +6,12 @@ use axum::{
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     handler::Handler,
     http::{HeaderMap, StatusCode},
-    middleware,
-    Json, Router,
+    middleware, Json, Router,
 };
 use control_plane::plugin_management::{
-    OfficialPluginCatalogEntry, OfficialPluginCatalogFilter,
-    PluginCatalogEntry, PluginCatalogFilter, PluginCompatibilityOverride, PluginFamilyView,
-    PluginInstalledVersionView, PluginRiskOverride,
+    OfficialPluginCatalogEntry, OfficialPluginCatalogFilter, PluginCatalogEntry,
+    PluginCatalogFilter, PluginCompatibilityOverride, PluginFamilyView, PluginInstalledVersionView,
+    PluginRiskOverride,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};

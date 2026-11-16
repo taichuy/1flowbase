@@ -7,6 +7,7 @@ use crate::{
         ConsoleInterfaceTargetError,
     },
 };
+pub(crate) use api_console_interaction::routes::events::interface::*;
 #[cfg(test)]
 use control_plane::event_center::{EventCenterConfigurationService, EventCenterRuntime};
 #[cfg(test)]
@@ -22,7 +23,6 @@ use serde_json::{json, Value};
 use std::sync::{Arc, Weak};
 #[cfg(test)]
 use uuid::Uuid;
-pub(crate) use api_console_interaction::routes::events::interface::*;
 #[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "_tests/interface.rs"]

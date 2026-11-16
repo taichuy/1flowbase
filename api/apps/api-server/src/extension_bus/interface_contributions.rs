@@ -683,7 +683,10 @@ pub(crate) fn production_interface_contributions(
             ],
             &["api-server.console-events"],
             crate::routes::events::interface::compile_registry(
-                crate::routes::events::interface::Dependencies::new(state, Arc::new(crate::interaction_assembly::ApiEventDescriptors)),
+                crate::routes::events::interface::Dependencies::new(
+                    state,
+                    Arc::new(crate::interaction_assembly::ApiEventDescriptors),
+                ),
             )?,
         ),
         InterfaceRegistryContribution::new(

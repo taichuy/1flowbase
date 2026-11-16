@@ -67,11 +67,13 @@ fn root_1545_ac_4_catalog_projection_joins_real_local_version_by_stable_plugin_i
     let entry = runtime_entry();
     let installed = HashMap::from([(
         "runtime-extensions:taichuy/openai".to_string(),
-        InstalledCatalogJoin::test_new(Uuid::now_v7(),
-"0.1.32-dev".to_string(),
-"upload".to_string(),
-"unknown".to_string(),
-InstalledCatalogJoinStatus::Installed),
+        InstalledCatalogJoin::test_new(
+            Uuid::now_v7(),
+            "0.1.32-dev".to_string(),
+            "upload".to_string(),
+            "unknown".to_string(),
+            InstalledCatalogJoinStatus::Installed,
+        ),
     )]);
 
     let response = project_catalog_entry(
@@ -94,11 +96,13 @@ fn ac_1785_catalog_projects_missing_runtime_artifact_as_uninstalled() {
     let entry = runtime_entry();
     let installed = HashMap::from([(
         entry.id.clone(),
-        InstalledCatalogJoin::test_new(Uuid::now_v7(),
-"0.2.0".to_string(),
-"official".to_string(),
-"official".to_string(),
-InstalledCatalogJoinStatus::Uninstalled),
+        InstalledCatalogJoin::test_new(
+            Uuid::now_v7(),
+            "0.2.0".to_string(),
+            "official".to_string(),
+            "official".to_string(),
+            InstalledCatalogJoinStatus::Uninstalled,
+        ),
     )]);
 
     let response = project_catalog_entry(entry, "official", &installed, &[]);
@@ -1077,17 +1081,19 @@ fn root_1545_ac_5_preflight_requires_exact_integrity_and_compatibility_acknowled
 
 #[test]
 fn root_1545_ac_5_uploaded_invalid_signature_remains_overridable() {
-    let challenge = upload_challenge(&UploadedExtensionArtifact::test_new(super::ExtensionCatalogCategory::I18n,
-"taichuy".to_string(),
-"platform".to_string(),
-"2.0.1".to_string(),
-None,
-false,
-domain::ExtensionSignatureStatus::Invalid,
-Some("ed25519".to_string()),
-Some("unknown".to_string()),
-domain::ExtensionApplicationAction::ActivateI18n,
-None));
+    let challenge = upload_challenge(&UploadedExtensionArtifact::test_new(
+        super::ExtensionCatalogCategory::I18n,
+        "taichuy".to_string(),
+        "platform".to_string(),
+        "2.0.1".to_string(),
+        None,
+        false,
+        domain::ExtensionSignatureStatus::Invalid,
+        Some("ed25519".to_string()),
+        Some("unknown".to_string()),
+        domain::ExtensionApplicationAction::ActivateI18n,
+        None,
+    ));
     assert_eq!(
         challenge
             .warnings

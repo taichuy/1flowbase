@@ -20,23 +20,23 @@ struct OperationPolicy {
 }
 
 impl OperationPolicy {
-test_support_item! { pub(super), []
-    fn new(operation: &plugin_framework::ManagedServiceOperation) -> Self {
-        let input = request_schema_without_headers(
-            super::registration::operation_document_input_schema(operation),
-        );
-        Self {
-            interface_id: operation.interface_id.clone(),
-            method: operation.method.clone(),
-            path: operation.path.clone(),
-            request_schema: safe_schema(&operation.input_schema).and_then(|_| safe_schema(&input)),
-            input,
-            output: operation.output_schema.clone(),
-            result_schema: safe_schema(&operation.output_schema),
-            streaming: operation.stream.is_some(),
+    test_support_item! { pub(super), []
+        fn new(operation: &plugin_framework::ManagedServiceOperation) -> Self {
+            let input = request_schema_without_headers(
+                super::registration::operation_document_input_schema(operation),
+            );
+            Self {
+                interface_id: operation.interface_id.clone(),
+                method: operation.method.clone(),
+                path: operation.path.clone(),
+                request_schema: safe_schema(&operation.input_schema).and_then(|_| safe_schema(&input)),
+                input,
+                output: operation.output_schema.clone(),
+                result_schema: safe_schema(&operation.output_schema),
+                streaming: operation.stream.is_some(),
+            }
         }
     }
-}
 
     fn check(&self, operation: &ApiOperationContext) -> Result<(), Arc<str>> {
         if operation.interface_id != self.interface_id

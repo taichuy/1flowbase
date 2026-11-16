@@ -27,9 +27,7 @@ use super::{
     AssistantClientToolId, AssistantConversationPageResponse, RequestContext,
     StartAssistantRunBody,
 };
-use crate::{
-    middleware::require_session::require_session, response::ApiSuccess,
-};
+use crate::{middleware::require_session::require_session, response::ApiSuccess};
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct CreateAssistantWebSocketTicketBody {

@@ -81,7 +81,9 @@ pub(super) async fn execute(
         control_plane::system_recovery::SystemWriteOwner::CommunicationExecution,
     )?;
     let actor = validated_actor(state, input).await?;
-    let inner = crate::generation_dispatch::GenerationDispatch::acquire(state).map_err(|_| anyhow::anyhow!("mcp_access_denied"))?.runtime_debug_mcp_factory(state, &actor)
+    let inner = crate::generation_dispatch::GenerationDispatch::acquire(state)
+        .map_err(|_| anyhow::anyhow!("mcp_access_denied"))?
+        .runtime_debug_mcp_factory(state, &actor)
         .await
         .map_err(|_| anyhow::anyhow!("mcp_access_denied"))?
         .create_server_delegated(

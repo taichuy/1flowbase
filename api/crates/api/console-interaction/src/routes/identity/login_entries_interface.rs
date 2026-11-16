@@ -337,7 +337,6 @@ fn contract<T: InterfaceContract>() -> ContractIdentity {
         .expect("static interface contract is valid")
 }
 
-
 #[cfg(any(test, feature = "test-support"))]
 #[path = "login_entries_interface/_tests/support/accessors.rs"]
 mod test_accessors;

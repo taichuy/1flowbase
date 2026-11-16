@@ -2,7 +2,9 @@ use serde_json::{json, Value};
 
 #[test]
 fn ac_001_embedded_contract_rejects_invalid_versions_and_duplicate_names() {
-    let source = include_bytes!("../../../../../../crates/api/console-interaction/resources/ctx/block-context.v1.json");
+    let source = include_bytes!(
+        "../../../../../../crates/api/console-interaction/resources/ctx/block-context.v1.json"
+    );
     let mut invalid_version: Value = serde_json::from_slice(source).unwrap();
     invalid_version["contract_version"] = json!("2.0.0");
     assert!(

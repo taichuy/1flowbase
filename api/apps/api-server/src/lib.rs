@@ -4,16 +4,15 @@ mod applications_assembly;
 mod managed_runtime_assembly;
 #[path = "boot_composition/public_gateway_assembly/mod.rs"]
 mod public_gateway_assembly;
-use event_center::catalog::EventSourceCatalogAssembly;
 use extension_bus::SnapshotAssembly;
 #[path = "boot_composition/generation_dispatch.rs"]
 mod generation_dispatch;
+#[path = "boot_composition/interaction_assembly.rs"]
+mod interaction_assembly;
 #[path = "boot_composition/managed_publication.rs"]
 mod managed_publication;
 mod managed_service_mcp;
 mod managed_services;
-#[path = "boot_composition/interaction_assembly.rs"]
-mod interaction_assembly;
 #[path = "boot_composition/mcp_assembly.rs"]
 mod mcp_assembly;
 mod resource_import;

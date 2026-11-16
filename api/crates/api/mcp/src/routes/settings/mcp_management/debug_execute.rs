@@ -8,6 +8,7 @@ use utoipa::ToSchema;
 
 use domain::mcp_management::{McpInputValueSource, McpServerBinding};
 use domain::mcp_management::{McpParameterDescriptor, McpParameterType};
+#[cfg(test)]
 use uuid::Uuid;
 
 pub enum McpDebugDispatchError {
