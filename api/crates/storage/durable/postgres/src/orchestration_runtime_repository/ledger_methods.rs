@@ -542,28 +542,38 @@ impl PgControlPlaneStore {
         payload: serde_json::Value,
     ) -> Result<domain::AuditHashRecord> {
         let mut tx = self.pool().begin().await?;
-        sqlx::query("lock table runtime_audit_hashes in share row exclusive mode")
-            .execute(&mut *tx)
-            .await?;
+        // The chain belongs to one run. Serialize its appenders with that run's
+        // deletion, without blocking on cascading cleanup of unrelated runs.
+        // NO KEY UPDATE remains compatible with foreign-key KEY SHARE checks.
+        let scope_id = sqlx::query_scalar::<_, Uuid>(
+            "select scope_id from flow_runs where id = $1 for no key update",
+        )
+        .bind(flow_run_id)
+        .fetch_one(&mut *tx)
+        .await?;
 
-        let prev_hash = sqlx::query_scalar::<_, String>(
+        let previous = sqlx::query_as::<_, (String, OffsetDateTime)>(
             r#"
-            select row_hash
+            select row_hash, created_at
             from runtime_audit_hashes
-            where flow_run_id = $1
+            where flow_run_id = $1 and scope_id = $2
             order by created_at desc, id desc
             limit 1
             "#,
         )
         .bind(flow_run_id)
+        .bind(scope_id)
         .fetch_optional(&mut *tx)
         .await?;
+        let prev_hash = previous.as_ref().map(|(hash, _)| hash.as_str());
         let row_hash = control_plane_contracts::persistence_projection::audit_row_hash(
-            prev_hash.as_deref(),
+            prev_hash,
             fact_table,
             fact_id,
             &payload,
         );
+        // now() is the transaction start time, which can precede the writer we
+        // waited for. Keep the persisted ordering strictly after the chain head.
         let row = sqlx::query(
             r#"
             insert into runtime_audit_hashes (
@@ -572,8 +582,10 @@ impl PgControlPlaneStore {
                 fact_table,
                 fact_id,
                 prev_hash,
-                row_hash
-            ) values ($1, $2, $3, $4, $5, $6)
+                row_hash,
+                created_at
+            ) values ($1, $2, $3, $4, $5, $6,
+                greatest(clock_timestamp(), $7::timestamptz + interval '1 microsecond'))
             returning
                 id,
                 flow_run_id,
@@ -588,8 +600,9 @@ impl PgControlPlaneStore {
         .bind(flow_run_id)
         .bind(fact_table)
         .bind(fact_id)
-        .bind(prev_hash.as_deref())
+        .bind(prev_hash)
         .bind(&row_hash)
+        .bind(previous.as_ref().map(|(_, created_at)| *created_at))
         .fetch_one(&mut *tx)
         .await?;
 

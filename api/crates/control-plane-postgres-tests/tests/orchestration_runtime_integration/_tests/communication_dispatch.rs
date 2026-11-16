@@ -9,6 +9,8 @@ use plugin_framework::provider_contract::{ProviderInvocationInput, ProviderModel
 
 #[path = "communication_dispatch/retained.rs"]
 mod retained;
+#[path = "communication_dispatch/_tests/startup_audit.rs"]
+mod startup_audit;
 
 // The real service and PostgreSQL adapter execute a start->answer graph.
 // Provider calls are forbidden in this focused initial-ownership fixture.
