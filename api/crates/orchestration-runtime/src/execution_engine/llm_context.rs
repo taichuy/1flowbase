@@ -3,6 +3,49 @@ use std::collections::HashSet;
 
 use super::*;
 
+/// Host-authored public tool eligibility, sealed after the input pipeline and
+/// consumed by the host before dispatch. It is not a supplier capability.
+pub const CLIENT_TOOL_PROGRESS_NAMES_KEY: &str = "client_tool_progress_names";
+
+pub(super) fn client_tool_progress_names(
+    node: &CompiledNode,
+    resolved_inputs: &Map<String, Value>,
+    rendered_templates: &Map<String, Value>,
+    variable_pool: &Map<String, Value>,
+    runtime_context: &ExecutionRuntimeContext,
+) -> Vec<String> {
+    if claude_code_control_run_blocks_tools(resolved_inputs, variable_pool)
+        || variable_pool.contains_key("visible_internal_llm_tool")
+    {
+        // Nested visible agents have their own callback owner. Inherited
+        // external tools there are not a direct client llm_tool_calls handoff.
+        return Vec::new();
+    }
+    // An internal registration with the same name wins conservatively: only
+    // the eventual callback owner may expose ambiguous calls.
+    let internal_names = runtime_context
+        .runtime_internal_tool_registrations(node)
+        .into_iter()
+        .map(|registration| registration.provider_name)
+        .chain(
+            visible_internal_llm_provider_tools(node)
+                .iter()
+                .filter_map(provider_tool_name),
+        )
+        .collect::<HashSet<_>>();
+    external_provider_tools(
+        node,
+        resolved_inputs,
+        rendered_templates,
+        variable_pool,
+        runtime_context,
+    )
+    .iter()
+    .filter_map(provider_tool_name)
+    .filter(|name| !internal_names.contains(name))
+    .collect()
+}
+
 mod external_context;
 
 pub(super) fn build_response_format(config: &Value) -> Option<Value> {
@@ -1031,7 +1074,7 @@ fn set_provider_tool_name(tool: &mut Value, name: &str) {
     }
 }
 
-fn provider_tool_name(tool: &Value) -> Option<String> {
+pub(super) fn provider_tool_name(tool: &Value) -> Option<String> {
     tool.get("function")
         .and_then(|value| value.get("name"))
         .or_else(|| tool.get("name"))
@@ -1374,3 +1417,7 @@ mod tests {
 #[cfg(test)]
 #[path = "llm_context/_tests/callback_system_order.rs"]
 mod callback_system_order_tests;
+
+#[cfg(test)]
+#[path = "llm_context/_tests/client_tool_progress.rs"]
+mod client_tool_progress_tests;

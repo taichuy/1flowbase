@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "_tests/anthropic_live_blocks.rs"]
+mod live_blocks;
+
 #[derive(Debug)]
 struct DecodedAnthropicEvent {
     name: String,

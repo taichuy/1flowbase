@@ -211,6 +211,32 @@ fn retain_client_tool_deliveries(
     events.reverse();
 }
 
+/// Progress reserves an identity before the supplier finishes. It grants no
+/// execution rights: only this transaction's filtered client delivery set may
+/// consume it. The input response round identifies the preceding request and
+/// is deliberately independent from this output callback identity.
+fn reserved_client_callback_id(
+    events: &[crate::ports::RuntimeEventPayload],
+) -> Result<Option<Uuid>> {
+    let mut reserved = None;
+    for event in events {
+        let Some(value) = event.payload.get("reserved_callback_task_id") else {
+            continue;
+        };
+        let id = value
+            .as_str()
+            .and_then(|value| Uuid::parse_str(value).ok())
+            .ok_or_else(|| anyhow!("client tool progress reservation is invalid"))?;
+        if reserved.is_some_and(|previous| previous != id) {
+            return Err(anyhow!(
+                "client tool deliveries span different callback reservations"
+            ));
+        }
+        reserved = Some(id);
+    }
+    Ok(reserved)
+}
+
 pub(super) async fn persist_flow_debug_outcome<R>(
     repository: &R,
     input: PersistFlowDebugOutcomeInput<'_>,
@@ -528,7 +554,8 @@ where
                 prepare_recovery_checkpoint(repository, &wait.node_id, &snapshot).await?;
             let external_ref_payload =
                 (wait.callback_kind != "llm_tool_calls").then(|| wait.request_payload.clone());
-            let callback_task_id = Uuid::now_v7();
+            let callback_task_id =
+                reserved_client_callback_id(&tool_delivery_events)?.unwrap_or_else(Uuid::now_v7);
             let callback_task_for_event = domain::CallbackTaskRecord {
                 id: callback_task_id,
                 flow_run_id: flow_run.id,

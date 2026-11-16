@@ -879,3 +879,5 @@ fn provider_request_log_task_accepts_legacy_queue_payload_without_node_run_id_ac
 mod callback_evidence;
 #[path = "_tests/checkpoint_ownership.rs"]
 mod checkpoint_ownership;
+#[path = "_tests/client_progress_reservation.rs"]
+mod client_progress_reservation;

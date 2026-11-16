@@ -557,6 +557,9 @@ fn requires_delivery(event_type: &str, durability: RuntimeEventDurability) -> bo
                 | "provider_responses_output_delta"
                 | "provider_output_item_added"
                 | "provider_output_item_done"
+                | "provider_content_block_start"
+                | "provider_content_block_done"
+                | "provider_tool_call_delta"
                 | "usage_delta"
                 | "usage_snapshot"
                 | "usage_recorded"
@@ -1012,3 +1015,7 @@ impl RuntimeEventStream for LocalRuntimeEventStream {
 
 #[path = "local_runtime_event_stream/run_event_retention.rs"]
 mod run_event_retention;
+
+#[cfg(test)]
+#[path = "_tests/live_progress_delivery.rs"]
+mod live_progress_delivery_tests;

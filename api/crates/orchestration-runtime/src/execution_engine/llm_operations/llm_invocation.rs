@@ -287,6 +287,28 @@ where
             })
         })?;
     let mut input = pipelined.input;
+    // Derive eligibility from the external-tool owner, never from transformed
+    // run_context or supplier output. A transform may remove tools, not grant
+    // progress visibility to a host/visible internal tool.
+    let progress_names = client_tool_progress_names(
+        node,
+        resolved_inputs,
+        rendered_templates,
+        variable_pool,
+        runtime_context,
+    );
+    let effective_names = input
+        .tools
+        .iter()
+        .filter_map(provider_tool_name)
+        .collect::<std::collections::HashSet<_>>();
+    input.run_context.insert(
+        CLIENT_TOOL_PROGRESS_NAMES_KEY.to_string(),
+        json!(progress_names
+            .into_iter()
+            .filter(|name| effective_names.contains(name))
+            .collect::<Vec<_>>()),
+    );
     // Seal after the general input pipeline. Only summary_request may create the
     // internal summary marker; neither clients nor input transforms can mint it.
     input

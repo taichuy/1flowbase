@@ -335,8 +335,8 @@ async fn dispatch_message(
                 return Ok(Json(response).into_response());
             }
             Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory { .. }) => {
-                // The callback payload was already consumed, but its model continuation failed
-                // before the first token. Translate the complete history as a new inference turn.
+                // The callback receipt is already consumed. Admission proved
+                // that the complete history belongs to a fresh inference turn.
             }
             Err(error)
                 if error.status == StatusCode::NOT_FOUND && error.code == "callback_task" =>
