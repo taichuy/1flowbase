@@ -40,6 +40,17 @@ export interface BlockSourceEditorDiagnostic {
 const EMPTY_DIAGNOSTICS: readonly BlockSourceEditorDiagnostic[] = [];
 const EMPTY_EXTRA_LIBS: readonly BlockSourceExtraLib[] = [];
 
+const configureMonaco: BeforeMount = (monaco) => {
+  monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+    allowNonTsExtensions: true,
+    allowSyntheticDefaultImports: true,
+    esModuleInterop: true,
+    jsx: monaco.languages.typescript.JsxEmit.Preserve,
+    moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+    target: monaco.languages.typescript.ScriptTarget.ES2022
+  });
+};
+
 export function BlockSourceEditor({
   ariaLabel,
   diagnostics = EMPTY_DIAGNOSTICS,
@@ -63,17 +74,6 @@ export function BlockSourceEditor({
     source: readonly BlockSourceExtraLib[];
     disposables: Array<{ dispose: () => void }>;
   } | null>(null);
-  const configureMonaco: BeforeMount = (monaco) => {
-    monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-      allowNonTsExtensions: true,
-      allowSyntheticDefaultImports: true,
-      esModuleInterop: true,
-      jsx: monaco.languages.typescript.JsxEmit.Preserve,
-      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-      target: monaco.languages.typescript.ScriptTarget.ES2022
-    });
-  };
-
   const registerExtraLibs = useCallback(
     (monaco: Monaco) => {
       if (registeredExtraLibsRef.current?.source === extraLibs) return;
