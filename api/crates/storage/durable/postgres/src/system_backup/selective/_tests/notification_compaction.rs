@@ -398,7 +398,69 @@ async fn selective_notification_compaction_digest_does_not_override_identity_gra
 #[tokio::test]
 async fn selective_notification_compaction_supports_exact_intermediate_header_without_digest() {
     let (repo, store, _, id) = notification().await;
-    let full = without_digest(&capture(&repo, select("extension-center", true, true)).await);
+    let current = capture(&repo, select("extension-center", true, true)).await;
+    let full = without_digest(&current);
+    let current_scratch = archive::unpack(reader(current)).await.unwrap();
+    let current_header = archive::header(&mut current_scratch.reader().await.unwrap())
+        .await
+        .unwrap();
+    let historical_scratch = archive::unpack(reader(full.clone())).await.unwrap();
+    let historical_header = archive::header(&mut historical_scratch.reader().await.unwrap())
+        .await
+        .unwrap();
+    let current_columns = &current_header
+        .tables
+        .iter()
+        .find(|table| table.name == "lifecycle_outbox")
+        .unwrap()
+        .columns;
+    let upgraded_columns = &historical_header
+        .tables
+        .iter()
+        .find(|table| table.name == "lifecycle_outbox")
+        .unwrap()
+        .columns;
+    assert_eq!(
+        upgraded_columns, current_columns,
+        "historical upgrade must retain every column's exact metadata and position"
+    );
+    let original = snapshot(&store, id).await;
+    let mut expected = original.clone();
+    expected.0["notification_payload_digest"] = Value::Null;
+    for malformed in ["nullable", "unknown_field"] {
+        denied(
+            &repo,
+            rewrite(&full, |index, row| {
+                if index == 0 {
+                    let table = row["tables"]
+                        .as_array_mut()
+                        .unwrap()
+                        .iter_mut()
+                        .find(|table| table["name"] == "lifecycle_outbox")
+                        .unwrap();
+                    let columns = table["columns"].as_array_mut().unwrap();
+                    let observation = columns
+                        .iter_mut()
+                        .find(|column| column["name"] == "observation_context")
+                        .unwrap();
+                    if malformed == "nullable" {
+                        observation["nullable"] = json!(false);
+                    } else {
+                        let mut unknown = observation.clone();
+                        unknown["name"] = json!("unknown_lifecycle_metadata");
+                        columns.push(unknown);
+                    }
+                }
+                true
+            }),
+        )
+        .await;
+        assert_eq!(
+            snapshot(&store, id).await,
+            original,
+            "malformed metadata must not mutate publication or receipts"
+        );
+    }
     sqlx::query("delete from lifecycle_outbox")
         .execute(store.pool())
         .await
@@ -409,6 +471,11 @@ async fn selective_notification_compaction_supports_exact_intermediate_header_wi
     let row = snapshot(&store, id).await.0;
     assert!(row["notification_payload_digest"].is_null());
     assert_ne!(row["canonical_payload"], "\\x");
+    assert_eq!(
+        snapshot(&store, id).await,
+        expected,
+        "all retained publication fields and receipts must roundtrip exactly"
+    );
     // Current headers cannot silently omit digest values from rows.
     let current = capture(&repo, select("extension-center", true, true)).await;
     denied(
