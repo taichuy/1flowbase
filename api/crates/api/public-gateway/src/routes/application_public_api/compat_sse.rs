@@ -99,8 +99,6 @@ use event_forwarding::{
     send_subscribed_compatible_typed_event_stream, SubscribedCompatibleTypedEventStream,
 };
 
-#[cfg(any(test, feature = "test-support"))]
-#[cfg(any(test, feature = "test-support"))]
 use protocol_mappers::{AnthropicStreamMapper, OpenAiChatStreamMapper, OpenAiResponseStreamMapper};
 
 test_support_item! { pub(crate), [
