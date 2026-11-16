@@ -37,10 +37,13 @@ export interface BlockSourceEditorDiagnostic {
   };
 }
 
+const EMPTY_DIAGNOSTICS: readonly BlockSourceEditorDiagnostic[] = [];
+const EMPTY_EXTRA_LIBS: readonly BlockSourceExtraLib[] = [];
+
 export function BlockSourceEditor({
   ariaLabel,
-  diagnostics = [],
-  extraLibs = [],
+  diagnostics = EMPTY_DIAGNOSTICS,
+  extraLibs = EMPTY_EXTRA_LIBS,
   height = '100%',
   onChange,
   onMount,
