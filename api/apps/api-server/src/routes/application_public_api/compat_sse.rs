@@ -15,12 +15,6 @@ pub(crate) use api_public_gateway::routes::application_public_api::compat_sse::t
 pub use api_public_gateway::routes::application_public_api::compat_sse::*;
 #[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
-use axum::response::{
-    sse::{Event, Sse},
-    IntoResponse,
-};
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
 use control_plane::application_public_api::{
     callback_resume::{
         ApplicationPublishedCallbackResumeService, PreparedPublishedCallbackResume,
@@ -45,9 +39,6 @@ use serde_json::Value;
 #[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 use std::time::Duration;
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
-use tokio::sync::mpsc;
 #[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod tests;

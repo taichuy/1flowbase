@@ -6,24 +6,9 @@
 //! Connection ownership and run lifecycle are assembled here. Canonical
 //! server-event projection is supplied by the following delivery packet.
 
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
-use std::sync::Arc;
-
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
-use crate::{
-    app_state::ApiState,
-    routes::application_public_api::{compatibility_interface, openai, openai::OpenAiRouteError},
-};
-#[cfg_attr(test, api_test_selection::group(public_api))]
-#[cfg(test)]
-use axum::{extract::State, http::HeaderMap, response::Response};
-
 pub use api_public_gateway::routes::application_public_api::responses_websocket::*;
 #[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
 mod tests {
-    use api_public_gateway::routes::application_public_api::responses_websocket::test_support::*;
     mod turn_finalization;
 }
