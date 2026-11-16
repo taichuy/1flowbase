@@ -114,7 +114,7 @@ function FormBlockSession({
   const [submitting, setSubmitting] = useState(false);
   const [dialog, setDialog] = useState<DesignDialog>(null);
   const initialized = useRef(false);
-  const knownFields = useRef(new Set<string>());
+  const knownFields = useRef<Set<string> | null>(null);
   const active = useRef(true);
   const writing = useRef(false);
   const saving = useRef(false);
@@ -169,6 +169,7 @@ function FormBlockSession({
   useEffect(() => {
     if (config.mode === 'create') {
       if (!metadata.data) return;
+      const known = (knownFields.current ??= new Set<string>());
       const defaultFieldsByCode = new Map<string, DataBlockField>();
       for (const field of metadata.data.fields) {
         if (!defaultFieldsByCode.has(field.code))
@@ -176,9 +177,9 @@ function FormBlockSession({
       }
       const defaults: Record<string, unknown> = {};
       for (const item of config.items) {
-        if (!item.field_code || knownFields.current.has(item.field_code))
+        if (!item.field_code || known.has(item.field_code))
           continue;
-        knownFields.current.add(item.field_code);
+        known.add(item.field_code);
         const field = defaultFieldsByCode.get(item.field_code);
         const value =
           item.default_value !== undefined

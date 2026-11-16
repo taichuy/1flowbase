@@ -38,16 +38,17 @@ export function ApplicationTemplateCatalogPanel({
   }>();
   const [file, setFile] = useState<File>();
   const fileInput = useRef<HTMLInputElement>(null);
-  const loadingMore = useRef(new Set<string>());
+  const loadingMore = useRef<Set<string> | null>(null);
   useEffect(() => setSearchText(q ?? ''), [q]);
   const loadMore = useCallback(async () => {
     const key = JSON.stringify([q, cursor]);
-    if (loadingMore.current.has(key) || isFetching || !hasNextPage) return;
-    loadingMore.current.add(key);
+    const inFlight = (loadingMore.current ??= new Set<string>());
+    if (inFlight.has(key) || isFetching || !hasNextPage) return;
+    inFlight.add(key);
     try {
       await fetchNextPage({ cancelRefetch: false });
     } finally {
-      loadingMore.current.delete(key);
+      inFlight.delete(key);
     }
   }, [q, cursor, isFetching, hasNextPage, fetchNextPage]);
   const goTo = (nextCursor?: string, query = q) =>
