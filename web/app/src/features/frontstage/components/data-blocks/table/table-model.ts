@@ -115,15 +115,20 @@ export async function deleteTableRecords(
   ids: readonly string[],
   remove: (id: string) => Promise<unknown>
 ) {
+  const results = await Promise.all(
+    [...new Set(ids)].map(async (id) => {
+      try {
+        await remove(id);
+        return { id, deleted: true };
+      } catch {
+        return { id, deleted: false };
+      }
+    })
+  );
   const deleted: string[] = [];
   const failed: string[] = [];
-  for (const id of new Set(ids)) {
-    try {
-      await remove(id);
-      deleted.push(id);
-    } catch {
-      failed.push(id);
-    }
+  for (const result of results) {
+    (result.deleted ? deleted : failed).push(result.id);
   }
   return { deleted, failed };
 }

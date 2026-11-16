@@ -65,8 +65,8 @@ export function DataFieldCreateModal({
       ctx.currentUser?.permissions?.includes('model_fields.create'))
   );
   const save = async () => {
-    const values = await form.validateFields();
     if (!allowed || !csrfToken || saving) return;
+    const values = await form.validateFields();
     setError(null);
     setSaving(true);
     try {
@@ -97,10 +97,12 @@ export function DataFieldCreateModal({
         );
         setCreatedFieldCode(values.code);
       }
-      await queryClient.invalidateQueries({
-        queryKey: dataBlockMetadataKey(ctx, binding.model_code)
-      });
-      await models.refetch();
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: dataBlockMetadataKey(ctx, binding.model_code)
+        }),
+        models.refetch()
+      ]);
       await onCreated(createdFieldCode ?? values.code);
       setCreatedFieldCode(null);
       form.resetFields();

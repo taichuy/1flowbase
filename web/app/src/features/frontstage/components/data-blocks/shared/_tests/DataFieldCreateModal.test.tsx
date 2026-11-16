@@ -7,7 +7,6 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ConfigProvider } from 'antd';
 import enUS from 'antd/locale/en_US';
@@ -222,17 +221,19 @@ async function ready() {
   );
   return { dialog, ok: within(dialog).getByRole('button', { name: 'OK' }) };
 }
-async function fill(
-  user: ReturnType<typeof userEvent.setup>,
-  dialog: HTMLElement
-) {
-  await user.type(
+async function click(button: HTMLElement) {
+  await act(async () => {
+    button.click();
+  });
+}
+function fill(dialog: HTMLElement) {
+  fireEvent.change(
     within(dialog).getByRole('textbox', { name: 'data_blocks.fields.title' }),
-    field.title
+    { target: { value: field.title } }
   );
-  await user.type(
+  fireEvent.change(
     within(dialog).getByRole('textbox', { name: 'data_blocks.fields.code' }),
-    field.code
+    { target: { value: field.code } }
   );
 }
 beforeEach(() => {
@@ -259,10 +260,9 @@ describe('DataFieldCreateModal submission boundaries', () => {
   it('does not validate or write when CSRF preflight is denied', async () => {
     useAuthStore.setState({ csrfToken: null });
     const owner = mount();
-    const user = userEvent.setup();
     const { dialog, ok } = await ready();
     await waitFor(() => expect(ok).toBeEnabled());
-    await user.click(ok);
+    await click(ok);
     expect(
       within(dialog).getByRole('textbox', { name: 'data_blocks.fields.title' })
     ).not.toHaveAttribute('aria-invalid', 'true');
@@ -310,12 +310,11 @@ describe('DataFieldCreateModal submission boundaries', () => {
       .mockResolvedValueOnce([model()])
       .mockReturnValueOnce(modelsRefresh.promise);
     const owner = mount();
-    const user = userEvent.setup();
     const { dialog, ok } = await ready();
     await waitFor(() => expect(ok).toBeEnabled());
-    await fill(user, dialog);
+    fill(dialog);
     try {
-      await user.click(ok);
+      await click(ok);
       await waitFor(() =>
         expect(api.fetchRuntimeDataModelMetadata).toHaveBeenCalledTimes(2)
       );
@@ -381,18 +380,17 @@ describe('DataFieldCreateModal submission boundaries', () => {
 
   it('retains real validation and can submit corrected values after validation fails', async () => {
     const owner = mount();
-    const user = userEvent.setup();
     const { dialog, ok } = await ready();
     await waitFor(() => expect(ok).toBeEnabled());
-    await user.click(ok);
+    await click(ok);
     await waitFor(() =>
       expect(
         within(dialog).getByRole('textbox', { name: 'data_blocks.fields.code' })
       ).toHaveAttribute('aria-invalid', 'true')
     );
     expect(api.createConsoleDataModelField).not.toHaveBeenCalled();
-    await fill(user, dialog);
-    await user.click(ok);
+    fill(dialog);
+    await click(ok);
     await waitFor(() =>
       expect(owner.onCreated).toHaveBeenCalledWith(field.code)
     );
@@ -406,11 +404,10 @@ describe('DataFieldCreateModal submission boundaries', () => {
       .mockRejectedValueOnce(new Error('attachment failed'))
       .mockResolvedValueOnce(undefined);
     const owner = mount({ onCreated: attach });
-    const user = userEvent.setup();
     const { dialog, ok } = await ready();
     await waitFor(() => expect(ok).toBeEnabled());
-    await fill(user, dialog);
-    await user.click(ok);
+    fill(dialog);
+    await click(ok);
     await screen.findByText('data_blocks.fields.created_attach_failed');
     expect(owner.onClose).not.toHaveBeenCalled();
     expect(
@@ -419,7 +416,7 @@ describe('DataFieldCreateModal submission boundaries', () => {
     expect(
       within(dialog).getByRole('textbox', { name: 'data_blocks.fields.code' })
     ).toBeDisabled();
-    await user.click(ok);
+    await click(ok);
     await waitFor(() => expect(owner.onClose).toHaveBeenCalledTimes(1));
     expect(api.createConsoleDataModelField).toHaveBeenCalledTimes(1);
     expect(attach.mock.calls).toEqual([[field.code], [field.code]]);
