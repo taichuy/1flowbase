@@ -1128,9 +1128,6 @@ mod runtime_invoker;
 #[path = "native/native_streams.rs"]
 mod native_streams;
 
-#[cfg(test)]
-use runtime_invoker::compiled_plan_has_mcp_bindings;
-
 pub(crate) use runtime_invoker::public_mcp_runtime_invoker_for_actor;
 pub(crate) use runtime_invoker::runtime_internal_tool_invoker_for_run;
 
