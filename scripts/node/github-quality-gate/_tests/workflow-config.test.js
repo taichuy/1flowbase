@@ -673,6 +673,17 @@ test("quality gate workflow runs ci scope as parallel component gates before one
     workflow,
     /container-images-gate:\n\s+if: \$\{\{ github\.event_name == 'schedule' \|\| \(github\.event_name == 'workflow_dispatch' && \(inputs\.scope == 'ci' \|\| inputs\.scope == 'container-images'\)\) \}\}/u,
   );
+  const imageJob = workflow.slice(workflow.indexOf('  container-images-gate:'), workflow.indexOf('  ai-gateway-protocol-conformance:'));
+  assert.doesNotMatch(imageJob, /image-ref: .*:latest/u, 'published images do not establish candidate evidence');
+  for (const component of ['web', 'api-server']) {
+    const build = `docker build --pull --target runtime -f docker/${component}.Dockerfile`;
+    assert.ok(imageJob.includes(build), `${component}: build current checkout before scanning`);
+    const imageRef = `image-ref: 1flowbase-${component}:\${{ env.QUALITY_GATE_TARGET_SHA }}`;
+    assert.equal(imageJob.split(imageRef).length - 1, 2, `${component}: both severities scan this candidate`);
+    assert.ok(imageJob.indexOf(build) < imageJob.indexOf(imageRef));
+  }
+  assert.match(imageJob, /org\.opencontainers\.image\.revision=\$QUALITY_GATE_TARGET_SHA/u);
+  assert.doesNotMatch(imageJob, /docker (?:push|buildx imagetools create)/u);
   assert.match(
     workflow,
     /ai-gateway-protocol-conformance:\n\s+if: \$\{\{ github\.event_name == 'schedule' \|\| \(github\.event_name == 'workflow_dispatch' && inputs\.scope == 'ci'\) \}\}[\s\S]*?uses: \.\/\.github\/workflows\/ai-gateway-concurrency\.yml[\s\S]*?target_ref:/u,
