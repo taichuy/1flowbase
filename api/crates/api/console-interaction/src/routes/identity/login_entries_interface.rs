@@ -20,7 +20,7 @@ use crate::error_response::ApiError;
 pub(crate) const INTERFACE_ID: &str = "public.auth.login-entries.list";
 const HANDLER_REFERENCE: &str = "api-server.public-auth.login-entries";
 
-test_support_item! { pub(crate), [#[derive(serde::Serialize)]
+test_support_item! { pub, [#[derive(serde::Serialize)]
 ]
 struct PublicLoginEntriesInput {
     #[serde(skip_serializing)]
@@ -47,7 +47,7 @@ impl InterfaceContract for PublicLoginEntriesInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-test_support_item! { pub(crate), [#[derive(serde::Serialize)]
+test_support_item! { pub, [#[derive(serde::Serialize)]
 #[serde(transparent)]
 ]
 struct PublicLoginEntriesOutput(pub(crate) PublicLoginEntriesResponse);
@@ -138,7 +138,7 @@ impl InterfaceContract for PublicLoginEntriesOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-test_support_item! { pub(crate), []
+test_support_item! { pub, []
 struct PublicLoginEntriesTargetError(pub(crate) ApiError);
 }
 

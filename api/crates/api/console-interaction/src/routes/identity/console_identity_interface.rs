@@ -34,7 +34,7 @@ const AUTHENTICATION_ADAPTER: &str = "api-server.console.require-session";
 const AUTHENTICATION_ACTIVATION: &str = "api-server.console.require-session.activation.v1";
 const AUTHORIZATION_ADAPTER: &str = "api-server.console.compiled-operation";
 
-test_support_item! { pub(crate), []
+test_support_item! { pub, []
 enum ConsoleIdentityInput {
     GetSession,
     DeleteSession,
