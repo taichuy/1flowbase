@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use crate::_tests::support::{login_and_capture_cookie, test_app, test_app_with_state};
+use crate::_tests::support::{
+    default_test_config, login_and_capture_cookie, test_api_state_with_database_url, test_app,
+};
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -35,7 +37,8 @@ async fn ac_001_ac_005_ac_010_interface_catalog_covers_compiled_routes_and_media
     let inventory = crate::app_state::compile_core_console_operation_inventory_snapshot()
         .unwrap()
         .compiled_inventory;
-    let (app, state) = test_app_with_state().await;
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state_and_config(state.clone(), &default_test_config());
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
     let response = app
         .oneshot(
@@ -119,7 +122,7 @@ async fn ac_001_ac_005_ac_010_interface_catalog_covers_compiled_routes_and_media
     .find(|entry| entry.interface.operation_id == "mcp.client_credential.delete")
     .expect("compiled route without OpenAPI must remain visible");
     let missing_openapi =
-        crate::routes::settings::mcp_management::mcp_interface_entry_from_capability(undocumented);
+        crate::routes::mcp_management::mcp_interface_entry_from_capability(undocumented);
     assert!(!missing_openapi.bindable);
     assert_eq!(
         missing_openapi.disabled_reason.as_deref(),

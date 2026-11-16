@@ -6,7 +6,7 @@ mod tests;
 #[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 #[path = "virtual_ui/workflow_credentials.rs"]
-mod workflow_credentials;
+pub mod workflow_credentials;
 
 #[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]

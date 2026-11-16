@@ -1,7 +1,5 @@
 use super::*;
-use control_plane_contracts::ports::{
-    ApplicationRepository, CreateApplicationInput, EventCenterRepository,
-};
+use control_plane_contracts::ports::{CreateApplicationInput, EventCenterRepository};
 use domain::event_center::*;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;

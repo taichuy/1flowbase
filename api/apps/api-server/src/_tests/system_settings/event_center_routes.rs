@@ -194,7 +194,7 @@ async fn event_center_mcp_rules_use_declared_dto_fields() {
 
 #[tokio::test]
 async fn event_center_routes_keep_definition_configuration_separate_from_publication() {
-    let (state, app) = event_app().await;
+    let (_, app) = event_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     assert_eq!(
         request(&app, "GET", "/api/console/events", "", "", None)

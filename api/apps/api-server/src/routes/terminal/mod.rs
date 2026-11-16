@@ -25,9 +25,6 @@ use serde_json::json;
 use std::sync::{Arc, Weak};
 #[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
-use utoipa::ToSchema;
-#[cfg_attr(test, api_test_selection::group(routes))]
-#[cfg(test)]
 use uuid::Uuid;
 #[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
