@@ -1,5 +1,6 @@
 use super::*;
 use crate::openapi_interface::contract::ApiInput;
+use serde_json::json;
 #[test]
 fn collector_asset_has_real_path_metadata_and_binary_result_classification() {
     let op = ApiOperationContext {

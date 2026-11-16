@@ -121,7 +121,7 @@ function setup(
     close: vi.fn(),
     ...ownerOverrides
   };
-  const rendered = render(
+  const view = render(
     <BlockSettingsProvider>
       <DataBlockHostContext.Provider value={owner}>
         <TableBlock ctx={ctx} />
@@ -135,7 +135,7 @@ function setup(
     config,
     ctx,
     rerender(nextContext: BlockContext) {
-      rendered.rerender(
+      view.rerender(
         <BlockSettingsProvider>
           <DataBlockHostContext.Provider value={owner}>
             <TableBlock ctx={nextContext} />
