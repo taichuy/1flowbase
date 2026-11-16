@@ -37,9 +37,10 @@ async function main() {
       const installation = page.getByRole('region', { name: /^(复制安装命令|Copy the installation command)$/ });
       const removal = page.getByRole('region', { name: /^(移除|Remove)$/ });
       const shellOption = installation.getByRole('radio', { name: 'macOS / Linux (Shell)', exact: true });
-      const shellLabel = installation.locator('label').filter({ has: shellOption });
+      // `has` is evaluated from each label, so its locator must not include the outer region.
+      const shellLabel = installation.locator('label').filter({ has: page.getByRole('radio', { name: 'macOS / Linux (Shell)', exact: true }) });
       const powershellOption = installation.getByRole('radio', { name: 'Windows (PowerShell)', exact: true });
-      const powershellLabel = installation.locator('label').filter({ has: powershellOption });
+      const powershellLabel = installation.locator('label').filter({ has: page.getByRole('radio', { name: 'Windows (PowerShell)', exact: true }) });
       const installationCommand = installation.locator('.application-collector__command pre');
       await page.getByRole('tab', { name: 'Codex', exact: true }).waitFor({ state: 'visible', timeout: 30000 });
       let catalogResponse = await context.request.get(`${apiBaseUrl}/api/console/applications/catalog`);
