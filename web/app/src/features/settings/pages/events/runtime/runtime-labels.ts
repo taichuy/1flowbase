@@ -1,8 +1,6 @@
 import type { EventSourceScope, EventWorkflowStatus } from '@1flowbase/api-client';
 import { useTranslation } from 'react-i18next';
 
-export const scopeKey = (scope: EventSourceScope) =>
-  scope.kind === 'workspace' ? `workspace:${scope.workspace_id}` : scope.kind;
 export const activityKey = (row: {
   event_id: string;
   phase: string;

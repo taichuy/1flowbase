@@ -501,7 +501,7 @@ export function TableColumnSettings({
   );
 }
 
-export function ActionPresentation({
+function ActionPresentation({
   action,
   onChange
 }: {
