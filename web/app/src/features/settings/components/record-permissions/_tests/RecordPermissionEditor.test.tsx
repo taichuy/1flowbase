@@ -214,6 +214,66 @@ describe('RecordPermissionEditor', () => {
     );
   });
 
+  test('late save completion cannot publish success into a different workspace draft', async () => {
+    let finishPrevious!: (
+      value: Awaited<ReturnType<typeof replaceRecordPermissions>>
+    ) => void;
+    vi.mocked(replaceRecordPermissions).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishPrevious = resolve;
+        })
+    );
+    vi.mocked(fetchRecordPermissions)
+      .mockResolvedValueOnce(policy({ revision: 3 }))
+      .mockResolvedValueOnce(
+        policy({
+          mode: 'restricted',
+          revision: 8,
+          grants: [{ role_id: role.role_id, actions: ['view'] }]
+        })
+      );
+    const callbacks = editor();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(replaceRecordPermissions).toHaveBeenCalledWith(
+        key,
+        { mode: 'inherit', grants: [], expected_revision: 3 },
+        'session-csrf'
+      )
+    );
+    act(() =>
+      useAuthStore.setState({
+        actor: {
+          id: 'user-1',
+          account: 'operator',
+          current_workspace_id: 'workspace-b',
+          effective_display_role: 'operator'
+        }
+      })
+    );
+    expect(
+      await screen.findByRole('checkbox', { name: 'Operator View' })
+    ).toBeChecked();
+    await act(async () =>
+      finishPrevious({
+        mode: 'inherit',
+        grants: [],
+        revision: 4
+      })
+    );
+    expect(callbacks.onSaved).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('checkbox', { name: 'Operator View' })
+    ).toBeChecked();
+    expect(
+      screen.getByRole('checkbox', { name: 'Operator Open' })
+    ).not.toBeChecked();
+  });
+
   test('switching workspace discards a late response from the previous caller scope', async () => {
     let finishPrevious!: (value: ReturnType<typeof policy>) => void;
     vi.mocked(fetchRecordPermissions)

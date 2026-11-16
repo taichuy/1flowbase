@@ -14,10 +14,11 @@ import {
   within
 } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
-import { App as AntApp } from 'antd';
+import { App as AntApp, ConfigProvider } from 'antd';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { appI18n } from '../../../../../shared/i18n/app-i18n';
 import { EventsPage } from '../EventsPage';
+import { ObservationStatistics } from '../runtime/statistics/ObservationStatistics';
 
 const api = vi.hoisted(() => ({
   listEventCatalog: vi.fn(),
@@ -28,8 +29,21 @@ const api = vi.hoisted(() => ({
   getApiEventOperation: vi.fn()
 }));
 vi.mock('@1flowbase/charts', () => ({
-  EChart: ({ ariaLabel }: { ariaLabel?: string }) => (
-    <div role="img" aria-label={ariaLabel} />
+  EChart: ({
+    ariaLabel,
+    className,
+    option
+  }: {
+    ariaLabel?: string;
+    className?: string;
+    option: unknown;
+  }) => (
+    <div
+      role="img"
+      aria-label={ariaLabel}
+      className={className}
+      data-chart-option={JSON.stringify(option)}
+    />
   )
 }));
 const clipboard = vi.hoisted(() => ({ copy: vi.fn() }));
@@ -205,10 +219,11 @@ function withWorkspaceView(value: EventRuntimeSnapshot): EventRuntimeSnapshot {
     ]
   };
 }
-function renderPage() {
-  const client = new QueryClient({
+function renderPage(
+  client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
-  });
+  })
+) {
   return render(
     <I18nextProvider i18n={appI18n}>
       <QueryClientProvider client={client}>
@@ -558,7 +573,9 @@ describe('event center configuration and observations', () => {
     const fields = await screen.findByRole('dialog', {
       name: 'Customize visible fields'
     });
-    fireEvent.click(within(fields).getByRole('checkbox', { name: 'Event type' }));
+    fireEvent.click(
+      within(fields).getByRole('checkbox', { name: 'Event type' })
+    );
     await waitFor(() =>
       expect(
         screen.queryByRole('columnheader', { name: 'Event type' })
@@ -735,6 +752,52 @@ describe('event center configuration and observations', () => {
       )
     );
   });
+  test('late save completion cannot close a newer event draft', async () => {
+    let finishPrevious!: (value: { id: string }) => void;
+    api.updateEventDefinition.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishPrevious = resolve;
+        })
+    );
+    renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+    const previousDrawer = screen.getByRole('dialog');
+    fireEvent.change(within(previousDrawer).getByLabelText('Name'), {
+      target: { value: 'Saved previous order' }
+    });
+    fireEvent.click(
+      within(previousDrawer).getByRole('button', { name: 'Save' })
+    );
+    await waitFor(() =>
+      expect(api.updateEventDefinition).toHaveBeenCalledWith(
+        'definition',
+        expect.objectContaining({ name: 'Saved previous order' }),
+        'csrf'
+      )
+    );
+    // The drawer close control remains available while its form is saving.
+    fireEvent.click(
+      within(previousDrawer).getByLabelText('Close', { selector: 'button' })
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create event' }));
+    fireEvent.change(
+      within(screen.getByRole('dialog')).getByLabelText('Name'),
+      {
+        target: { value: 'New unsaved event' }
+      }
+    );
+    await act(async () => finishPrevious({ id: 'definition' }));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeVisible());
+    expect(
+      within(screen.getByRole('dialog')).getByLabelText('Name')
+    ).toHaveValue('New unsaved event');
+    expect(api.createEventDefinition).not.toHaveBeenCalled();
+  });
+
   test('complete API discovery supports method path and name search and shows genuine phase restrictions', async () => {
     const restricted: ApiEventOperationDetails = {
       ...documented,
@@ -1320,3 +1383,99 @@ test.each([
     expect(screen.queryByText(/Source metadata bytes/)).not.toBeInTheDocument();
   }
 );
+
+function observationTrend() {
+  const chart = document.querySelector('.event-observation-trend-chart');
+  expect(chart).not.toBeNull();
+  return JSON.parse(chart!.getAttribute('data-chart-option')!) as {
+    color: string[];
+    series: Array<{ name: string; data: number[] }>;
+  };
+}
+
+test('observation visit history survives locale and theme changes without extra samples', async () => {
+  const views = withWorkspaceView({
+    ...snapshot,
+    observation_bytes: 2048,
+    source_metadata_bytes: 512
+  }).source_views;
+  const nextViews = withWorkspaceView({
+    ...snapshot,
+    observation_bytes: 4096,
+    source_metadata_bytes: 1024
+  }).source_views;
+  const content = (
+    currentViews: typeof views,
+    capturedAt: number,
+    color: string
+  ) => (
+    <I18nextProvider i18n={appI18n}>
+      <ConfigProvider theme={{ token: { colorPrimary: color } }}>
+        <ObservationStatistics
+          views={currentViews}
+          capturedAt={capturedAt}
+          admissionRejected={3}
+        />
+      </ConfigProvider>
+    </I18nextProvider>
+  );
+  const view = render(content(views, 1000, '#112233'));
+  view.rerender(content(nextViews, 6000, '#112233'));
+  await waitFor(() =>
+    expect(observationTrend().series.map((series) => series.data)).toEqual([
+      [1.5, 3],
+      [0.5, 1]
+    ])
+  );
+  const previousName = observationTrend().series[0].name;
+  await act(async () => {
+    await appI18n.changeLanguage('zh_Hans');
+  });
+  view.rerender(content(nextViews, 6000, '#445566'));
+  await waitFor(() => expect(observationTrend().color[0]).toBe('#445566'));
+  expect(observationTrend().series[0].name).not.toBe(previousName);
+  expect(observationTrend().series.map((series) => series.data)).toEqual([
+    [1.5, 3],
+    [0.5, 1]
+  ]);
+});
+
+test('runtime host changes start a new observation visit series', async () => {
+  window.history.replaceState({}, '', '/settings/events?tab=activity');
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } }
+  });
+  const view = renderPage(client);
+  try {
+    await screen.findByRole('img', { name: 'Record storage over time' });
+    const runtimeKey = ['settings', 'events', 'runtime', 'csrf'];
+    const capturedAt = client.getQueryState(runtimeKey)!.dataUpdatedAt;
+    const next = withWorkspaceView({
+      ...snapshot,
+      observation_bytes: 2048,
+      source_metadata_bytes: 512
+    });
+    act(() => {
+      client.setQueryData(runtimeKey, next, { updatedAt: capturedAt + 5000 });
+    });
+    await waitFor(() =>
+      expect(observationTrend().series[0].data).toHaveLength(2)
+    );
+    act(() => {
+      client.setQueryData(
+        runtimeKey,
+        withWorkspaceView({ ...next, instance_id: 'replacement-host' }),
+        { updatedAt: capturedAt + 10000 }
+      );
+    });
+    await waitFor(() =>
+      expect(observationTrend().series.map((series) => series.data)).toEqual([
+        [1.5],
+        [0.5]
+      ])
+    );
+  } finally {
+    view.unmount();
+    client.clear();
+  }
+});

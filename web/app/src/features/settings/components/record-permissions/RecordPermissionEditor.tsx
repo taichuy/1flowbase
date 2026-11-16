@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { i18nText } from '../../../../shared/i18n/text';
 import {
@@ -11,15 +10,8 @@ import {
   Space,
   Typography
 } from 'antd';
-import {
-  fetchRecordPermissions,
-  replaceRecordPermissions,
-  type RecordPermissionEditorData,
-  type RecordPermissionGrant,
-  type RecordPermissionMode,
-  type RecordPermissionRole
-} from '../../api/identity-access/record-permissions';
-import { ApiClientError } from '@1flowbase/api-client';
+import type { RecordPermissionRole } from '../../api/identity-access/record-permissions';
+import { useRecordPermissionSession } from './use-record-permission-session';
 import {
   DataTable,
   type DataTableColumn
@@ -39,6 +31,19 @@ export interface RecordPermissionEditorProps {
 
 /** The host owns role identity and authorization; this component only edits a draft. */
 export function RecordPermissionEditor(props: RecordPermissionEditorProps) {
+  const actor = useAuthStore((state) => state.actor);
+  const scope = JSON.stringify([
+    props.pluginCode,
+    props.resourceCode,
+    props.recordId,
+    actor?.id,
+    actor?.current_workspace_id,
+    actor?.effective_display_role
+  ]);
+  return props.open ? <RecordPermissionSession key={scope} {...props} /> : null;
+}
+
+function RecordPermissionSession(props: RecordPermissionEditorProps) {
   const {
     pluginCode,
     resourceCode,
@@ -71,86 +76,24 @@ export function RecordPermissionEditor(props: RecordPermissionEditorProps) {
       delete: i18nText('settingsRecordPermissions', 'actions.delete', options)
     }
   };
-  const actor = useAuthStore((state) => state.actor);
-  const editorScope = JSON.stringify([
+  const {
+    data,
+    mode,
+    grants,
+    loading,
+    saving,
+    error,
+    reload,
+    setMode,
+    selectRoles,
+    toggleAction,
+    save
+  } = useRecordPermissionSession({
     pluginCode,
     resourceCode,
     recordId,
-    actor?.id,
-    actor?.current_workspace_id,
-    actor?.effective_display_role
-  ]);
-  const [loadedScope, setLoadedScope] = useState<string | null>(null);
-  const [data, setData] = useState<RecordPermissionEditorData | null>(null);
-  const [mode, setMode] = useState<RecordPermissionMode>('inherit');
-  const [grants, setGrants] = useState<RecordPermissionGrant[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<'failed' | 'conflict' | null>(null);
-  const [reload, setReload] = useState(0);
-
-  useEffect(() => {
-    if (!open) return;
-    const controller = new AbortController();
-    setData(null);
-    setLoadedScope(null);
-    setError(null);
-    setLoading(true);
-    fetchRecordPermissions(
-      {
-        plugin_code: pluginCode,
-        resource_code: resourceCode,
-        record_id: recordId
-      },
-      undefined,
-      controller.signal
-    )
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        setData(result);
-        setLoadedScope(editorScope);
-        setMode(result.mode);
-        setGrants(result.grants);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setError('failed');
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [pluginCode, resourceCode, recordId, open, reload, editorScope]);
-
-  function selectRoles(roleIds: string[]) {
-    setGrants(
-      roleIds.map(
-        (role_id) =>
-          grants.find((grant) => grant.role_id === role_id) ?? {
-            role_id,
-            actions: []
-          }
-      )
-    );
-  }
-
-  function toggleAction(
-    role_id: string,
-    action_code: string,
-    checked: boolean
-  ) {
-    setGrants((current) =>
-      current.map((grant) =>
-        grant.role_id === role_id
-          ? {
-              ...grant,
-              actions: checked
-                ? [...grant.actions, action_code]
-                : grant.actions.filter((action) => action !== action_code)
-            }
-          : grant
-      )
-    );
-  }
+    onSaved
+  });
 
   const columns: DataTableColumn<RecordPermissionRole>[] = [
     {
@@ -189,43 +132,6 @@ export function RecordPermissionEditor(props: RecordPermissionEditorProps) {
       grants.some((grant) => grant.role_id === role.role_id)
     ) ?? [];
 
-  async function save() {
-    if (
-      !data ||
-      loadedScope !== editorScope ||
-      loading ||
-      saving ||
-      error === 'conflict'
-    )
-      return;
-    setSaving(true);
-    setError(null);
-    try {
-      await replaceRecordPermissions(
-        {
-          plugin_code: pluginCode,
-          resource_code: resourceCode,
-          record_id: recordId
-        },
-        {
-          mode,
-          grants: mode === 'inherit' ? [] : grants,
-          expected_revision: data.revision
-        },
-        useAuthStore.getState().csrfToken
-      );
-      onSaved();
-    } catch (cause) {
-      setError(
-        cause instanceof ApiClientError && cause.status === 409
-          ? 'conflict'
-          : 'failed'
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
     <Modal
       title={t.title}
@@ -243,12 +149,7 @@ export function RecordPermissionEditor(props: RecordPermissionEditorProps) {
           <Button
             type="primary"
             loading={saving}
-            disabled={
-              !data ||
-              loadedScope !== editorScope ||
-              loading ||
-              error === 'conflict'
-            }
+            disabled={!data || loading || error === 'conflict'}
             onClick={() => void save()}
           >
             {t.save}
@@ -261,11 +162,7 @@ export function RecordPermissionEditor(props: RecordPermissionEditorProps) {
           type="error"
           title={t[error]}
           action={
-            <Button
-              size="small"
-              disabled={saving}
-              onClick={() => setReload((value) => value + 1)}
-            >
+            <Button size="small" disabled={saving} onClick={reload}>
               {t.reload}
             </Button>
           }
