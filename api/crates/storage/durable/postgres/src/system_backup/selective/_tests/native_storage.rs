@@ -23,12 +23,23 @@ async fn selective_application_backup_restores_exact_native_snapshot_and_owners(
         durability: domain::RuntimeEventDurability::Durable,
     }).await.unwrap();
     let repo = PgSelectiveBackupRepository::new(db.clone());
+    let identity = json!({"user_id":Uuid::now_v7(),"name":"Historical creator"});
+    sqlx::query("insert into workflow_run_identity_snapshots(flow_run_id,creator_identity,executor_identity) values($1,$2,'null'::jsonb)")
+        .bind(run).bind(&identity).execute(&db).await.unwrap();
     sqlx::query("insert into application_run_native_projection_progress(flow_run_id,projection_version,output_sequence,result_count,source_revision,conflicting_source_keys) values($1,1,0,0,0,array['retained-conflict']) on conflict(flow_run_id) do update set conflicting_source_keys=excluded.conflicting_source_keys")
         .bind(run)
         .execute(&db)
         .await
         .unwrap();
     let bytes = capture(&repo, select("applications", true, true)).await;
+    let configuration = capture(&repo, select("applications", true, false)).await;
+    let configuration_preview = repo
+        .preflight(reader(configuration), "key", "key")
+        .await
+        .unwrap();
+    assert!(!configuration_preview
+        .selected_tables
+        .contains(&"workflow_run_identity_snapshots".into()));
     // Identical immutable rows must permit restoration, including repeated restore.
     let preview = repo
         .preflight(reader(bytes.clone()), "key", "key")
@@ -50,6 +61,11 @@ async fn selective_application_backup_restores_exact_native_snapshot_and_owners(
         .execute(&db)
         .await
         .unwrap();
+    sqlx::query("delete from workflow_run_identity_snapshots where flow_run_id=$1")
+        .bind(run)
+        .execute(&db)
+        .await
+        .unwrap();
     repo.restore(reader(bytes), "key", "key", true)
         .await
         .unwrap();
@@ -66,4 +82,7 @@ async fn selective_application_backup_restores_exact_native_snapshot_and_owners(
     .await
     .unwrap();
     assert_eq!(conflicts, vec!["retained-conflict"]);
+    let restored_identity: (serde_json::Value, serde_json::Value) = sqlx::query_as("select creator_identity,executor_identity from workflow_run_identity_snapshots where flow_run_id=$1")
+        .bind(run).fetch_one(&db).await.unwrap();
+    assert_eq!(restored_identity, (identity, serde_json::Value::Null));
 }

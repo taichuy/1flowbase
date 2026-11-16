@@ -79,6 +79,12 @@ async fn communication_backup_rekeys_cursor_and_attachment_after_fk_deferred_res
     sqlx::query("INSERT INTO communication_command_events(event_id,input_id,scope_id,instance_id,external_identity,conversation_id,session_id,request_json,reply_json,response_session_id,send_status) VALUES($1,$1,$2,$3,'alice',$4,$5,$6,'{\"text\":\"restored command reply\"}',$5,'unknown')")
         .bind(command).bind(workspace.id).bind(instance).bind(conversation).bind(session).bind(&command_request).execute(&db).await.unwrap();
     let repository = PgSelectiveBackupRepository::new(db.clone());
+    let send = Uuid::now_v7();
+    let send_receipt = json!({"provider_message_id":"preserved-send"});
+    sqlx::query("insert into notification_send_logs(id,workspace_id,actor_user_id,instance_id,source,status) values($1,$2,$3,$4,'api','success')")
+        .bind(send).bind(workspace.id).bind(actor).bind(instance).execute(&db).await.unwrap();
+    sqlx::query("insert into communication_message_sends(send_log_id,scope_id,instance_id,message_id,conversation_id,input_id,run_id,receipt_json,send_status) values($1,$2,$3,$4,$5,$4,$6,$7,'succeeded')")
+        .bind(send).bind(workspace.id).bind(instance).bind(message).bind(conversation).bind(run).bind(&send_receipt).execute(&db).await.unwrap();
     let config = capture(&repository, select("notifications", true, false)).await;
     let full = capture(&repository, select("notifications", true, true)).await;
     let preview = repository
@@ -97,6 +103,7 @@ async fn communication_backup_rekeys_cursor_and_attachment_after_fk_deferred_res
         "communication_reply_turns",
         "communication_session_rotations",
         "communication_command_events",
+        "communication_message_sends",
     ] {
         assert!(!preview.selected_tables.contains(&table.into()));
     }
@@ -114,6 +121,7 @@ async fn communication_backup_rekeys_cursor_and_attachment_after_fk_deferred_res
         "communication_reply_turns",
         "communication_session_rotations",
         "communication_command_events",
+        "communication_message_sends",
     ] {
         assert!(
             data_preview.selected_tables.contains(&table.into()),
@@ -174,6 +182,16 @@ async fn communication_backup_rekeys_cursor_and_attachment_after_fk_deferred_res
         .unwrap();
     sqlx::query("DELETE FROM communication_conversations WHERE id=$1")
         .bind(conversation)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("delete from communication_message_sends where send_log_id=$1")
+        .bind(send)
+        .execute(&db)
+        .await
+        .unwrap();
+    sqlx::query("delete from notification_send_logs where id=$1")
+        .bind(send)
         .execute(&db)
         .await
         .unwrap();
@@ -249,6 +267,12 @@ async fn communication_backup_rekeys_cursor_and_attachment_after_fk_deferred_res
     assert_eq!(model, "chat-model");
     let restored_receipt: Value = sqlx::query_scalar("SELECT result_json FROM communication_session_rotations WHERE scope_id=$1 AND instance_id=$2 AND external_identity='alice' AND conversation_id=$3 AND receipt_key='restored-command'").bind(workspace.id).bind(instance).bind(conversation).fetch_one(&db).await.unwrap();
     assert_eq!(restored_receipt, receipt);
+    let restored_send: (Uuid, Uuid, Uuid, Value, String) = sqlx::query_as("select scope_id,message_id,run_id,receipt_json,send_status from communication_message_sends where send_log_id=$1")
+        .bind(send).fetch_one(&db).await.unwrap();
+    assert_eq!(
+        restored_send,
+        (workspace.id, message, run, send_receipt, "succeeded".into())
+    );
     let restored_command: (Value,Value,String) = sqlx::query_as("SELECT request_json,reply_json,send_status FROM communication_command_events WHERE event_id=$1").bind(command).fetch_one(&db).await.unwrap();
     assert_eq!(
         restored_command,

@@ -122,7 +122,7 @@ impl PgSelectiveBackupRepository {
             legacy_notification_digest: false,
             format: archive::FORMAT.into(),
             selection: selection.to_vec(),
-            tables,
+            tables: schema::order_for_export(tables),
             plugins: plugins.into_iter().collect(),
             schema_dependencies,
         };

@@ -35,6 +35,11 @@ pub(super) fn upsert_sql(table: &Table) -> Result<String> {
     if table.name == "extension_installations" {
         return super::plugin_identity::insert_sql();
     }
+    if table.name == "plugin_record_permission_scope_revisions" {
+        // This counter is part of PluginData receipt fingerprints, not a replayable
+        // business value. Restoring must invalidate old receipts, never revive one.
+        return Ok("insert into plugin_record_permission_scope_revisions as target (workspace_id,publisher_namespace,plugin_code,revision) select workspace_id,publisher_namespace,plugin_code,revision+1 from jsonb_populate_record(null::plugin_record_permission_scope_revisions,$1) where true on conflict (workspace_id,publisher_namespace,plugin_code) do update set revision=greatest(target.revision+1,excluded.revision)".into());
+    }
     let names = table
         .columns
         .iter()
@@ -113,6 +118,39 @@ pub(super) fn upsert_sql(table: &Table) -> Result<String> {
         names.join(","),
         pk.join(",")
     ))
+}
+
+pub(super) fn order_for_export(mut tables: Vec<Table>) -> Vec<Table> {
+    let mut ordered = Vec::with_capacity(tables.len());
+    while !tables.is_empty() {
+        let ready = tables.iter().position(|table| {
+            let freshness_dependencies: &[&str] =
+                if table.name == "plugin_record_permission_scope_revisions" {
+                    &[
+                        "plugin_record_permission_policies",
+                        "plugin_record_permission_grants",
+                    ]
+                } else {
+                    &[]
+                };
+            table
+                .prerequisites
+                .iter()
+                .map(String::as_str)
+                .chain(freshness_dependencies.iter().copied())
+                .all(|parent| {
+                    parent == table.name || !tables.iter().any(|pending| pending.name == parent)
+                })
+        });
+        let Some(index) = ready else {
+            // Cycles retain the original deterministic order and the existing
+            // restore savepoint/spool handling; no constraint is disabled.
+            ordered.extend(tables);
+            break;
+        };
+        ordered.push(tables.remove(index));
+    }
+    ordered
 }
 
 /// Definitions are rows, but their referenced physical schema must already exist on the target.

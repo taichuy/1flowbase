@@ -3,7 +3,7 @@ use control_plane_contracts::ports::{
     ApplicationRepository, CreateApplicationInput, EventCenterRepository,
 };
 use domain::event_center::*;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use time::OffsetDateTime;
 
@@ -11,6 +11,10 @@ use time::OffsetDateTime;
 fn event_configuration_has_distinct_explicit_settings_owners() {
     assert_eq!(
         inventory::static_owner("event_definitions"),
+        Some(("system.events".into(), false))
+    );
+    assert_eq!(
+        inventory::static_owner("event_catalog"),
         Some(("system.events".into(), false))
     );
     assert_eq!(
@@ -84,7 +88,7 @@ async fn selective_event_and_application_configuration_roundtrip_without_cross_o
         .unwrap();
     assert_eq!(
         events.structure_tables,
-        vec!["event_definitions".to_string()]
+        vec!["event_catalog".to_string(), "event_definitions".to_string()]
     );
     assert!(events.data_tables.is_empty());
     let applications = catalog
@@ -110,7 +114,7 @@ async fn selective_event_and_application_configuration_roundtrip_without_cross_o
     );
     assert_eq!(
         event_preview.selected_tables,
-        vec!["event_definitions".to_string()]
+        vec!["event_catalog".to_string(), "event_definitions".to_string()]
     );
     let application_preview = repository
         .preflight(reader(application_backup.clone()), "source", "target")
@@ -150,6 +154,15 @@ async fn selective_event_and_application_configuration_roundtrip_without_cross_o
             .name,
         "Original event"
     );
+    let (metadata, available): (Value, bool) = sqlx::query_as(
+        "select metadata,available from event_catalog where origin='custom' and metadata->>'id'=$1",
+    )
+    .bind(definition.id.to_string())
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(metadata["name"], "Original event");
+    assert!(available);
     assert_eq!(
         store
             .get_workflow_event_trigger(workspace.id, application.id)
