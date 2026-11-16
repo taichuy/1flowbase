@@ -1283,6 +1283,15 @@ test('organization gate validates the exact selected batch without treating comp
   ].sort());
   assert.match(testStep, /for suite in \$suites; do/u);
   assert.match(testStep, /node scripts\/node\/verify\/cargo-test-results\.js "tmp\/test-governance\/organization\/\$suite\.log" \|\| verification_status=1/u);
+  // The cache invalidation HTTP consumer moved out of the private-routes root.
+  // Both cache and application lifecycle consumers must still execute.
+  assert.match(testStep, /-p api-server --test frontstage_data_capability_routes ordered_tree[^\n]+organization\/runtime-http\.log/u);
+  assert.match(testStep, /-p api-server --test api_application ordered_tree[^\n]+organization\/runtime-http-application\.log/u);
+  assert.doesNotMatch(testStep, /--lib --test api_private_routes ordered_tree/u);
+  const cacheConsumer = fs.readFileSync(path.join(repoRoot, 'api/apps/api-server/tests/frontstage_data_capability_routes.rs'), 'utf8');
+  assert.match(cacheConsumer, /mod runtime_ordered_tree_cache;/u);
+  const cacheTests = fs.readFileSync(path.join(repoRoot, 'api/apps/api-server/tests/_tests/runtime_ordered_tree_cache.rs'), 'utf8');
+  assert.match(cacheTests, /async fn runtime_ordered_tree_writes_invalidate_warmed_record_and_list_caches\(/u);
   const compileStep = workflow.slice(workflow.indexOf('- name: Compile API consumers'));
   assert.match(compileStep, /cargo check --locked/u);
   assert.doesNotMatch(compileStep, /cargo-test-results\.js/u);
