@@ -60,4 +60,3 @@ export function navigateEventTab(tab: EventTab, replace = false) {
   else window.history.pushState(window.history.state, '', href);
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
-
