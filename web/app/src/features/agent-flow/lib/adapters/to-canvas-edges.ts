@@ -25,19 +25,21 @@ export function toCanvasEdges(
     visibleNodeIds.add(node.id);
   }
 
-  return document.graph.edges
-    .filter(
-      (edge) =>
+  return document.graph.edges.flatMap((edge) => {
+    if (
+      !(
         nodesById.get(edge.source)?.containerId === edge.containerId &&
         nodesById.get(edge.target)?.containerId === edge.containerId &&
         visibleNodeIds.has(edge.source) &&
         visibleNodeIds.has(edge.target)
+      )
     )
-    .map((edge) => {
-      const sourceNode = nodesById.get(edge.source);
-      const canInsertNode = sourceNode?.type !== 'answer';
+      return [];
+    const sourceNode = nodesById.get(edge.source);
+    const canInsertNode = sourceNode?.type !== 'answer';
 
-      return {
+    return [
+      {
         id: edge.id,
         type: 'agentFlowEdge' as const,
         selected: edge.id === selectedEdgeId,
@@ -55,6 +57,7 @@ export function toCanvasEdges(
           ),
           onInsertNode: canInsertNode ? actions.onInsertNode : undefined
         }
-      };
-    });
+      }
+    ];
+  });
 }

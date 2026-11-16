@@ -69,10 +69,11 @@ function normalizeMaxLength(value: unknown) {
 
 function normalizeOptions(value: unknown) {
   return Array.isArray(value)
-    ? value
-        .filter((option): option is string => typeof option === 'string')
-        .map((option) => option.trim())
-        .filter(Boolean)
+    ? value.flatMap((option) => {
+        if (typeof option !== 'string') return [];
+        const trimmed = option.trim();
+        return trimmed ? [trimmed] : [];
+      })
     : undefined;
 }
 
