@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 import { AppProviders } from '../../../app/AppProviders';
 import { WorkflowRunTrace } from '../../agent-flow/components/debug-console/trajectory/workflow/WorkflowRunTrace';
@@ -56,8 +56,8 @@ test('AC-004 successful node keeps its own status and duration when the flow fai
   expect(screen.getByText('failed')).toBeVisible();
 });
 
-test('AC-003 lazy node payloads expose the failure without opening output JSON', () => {
-  const load = vi.fn();
+test('AC-003 lazy node payloads expose the failure without opening output JSON', async () => {
+  const load = vi.fn().mockResolvedValue(undefined);
   render(
     <AppProviders>
       <NodeRunPayloadSections
@@ -77,8 +77,13 @@ test('AC-003 lazy node payloads expose the failure without opening output JSON',
     'codex/logs/deletion-jobs timed out after 30000ms'
   );
   expect(load).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByText('输入', { exact: true }));
-  expect(load).toHaveBeenCalledWith('input_payload');
+  await act(async () => {
+    fireEvent.click(screen.getByText('输入', { exact: true }));
+  });
+  expect(load.mock.calls).toEqual([['input_payload']]);
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'codex/logs/deletion-jobs timed out after 30000ms'
+  );
 });
 
 test('AC-004 inline trial feedback retains terminal status and failure reason', () => {

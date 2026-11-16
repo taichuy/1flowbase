@@ -300,8 +300,13 @@ describe('event center configuration and observations', () => {
     expect(
       within(row).queryByRole('button', { name: 'Edit' })
     ).not.toBeInTheDocument();
-    fireEvent.click(within(row).getByRole('button', { name: 'Details' }));
-    const drawer = screen.getByRole('dialog');
+    await act(async () => {
+      fireEvent.click(within(row).getByRole('button', { name: 'Details' }));
+    });
+    const drawer = await screen.findByRole('dialog');
+    const schemaEditor = await within(drawer).findByTestId('schema-json-editor');
+    expect(schemaEditor).toHaveAttribute('data-readonly', 'true');
+    expect(JSON.parse(schemaEditor.textContent ?? 'null')).toEqual(schema);
     const scopeRow = within(drawer)
       .getByText('Scope', {
         selector: '.ant-descriptions-item-label'
