@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
 
-use crate::_tests::support::{login_and_capture_cookie, test_app};
+use crate::_tests::support::{login_and_capture_cookie, test_app, test_app_with_state};
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
 use serde_json::{json, Value};
 use tower::ServiceExt;
+use utoipa::OpenApi;
 
 async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
@@ -34,7 +35,7 @@ async fn ac_001_ac_005_ac_010_interface_catalog_covers_compiled_routes_and_media
     let inventory = crate::app_state::compile_core_console_operation_inventory_snapshot()
         .unwrap()
         .compiled_inventory;
-    let app = test_app().await;
+    let (app, state) = test_app_with_state().await;
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
     let response = app
         .oneshot(
@@ -71,18 +72,60 @@ async fn ac_001_ac_005_ac_010_interface_catalog_covers_compiled_routes_and_media
         );
     }
 
-    let missing_openapi = catalog_by_route
+    let credential = catalog_by_route
         .get(&route_identity(
             "DELETE",
             "/api/console/mcp/instances/{instance_id}/client-credential",
         ))
-        .expect("compiled route without OpenAPI must remain visible");
-    assert_eq!(missing_openapi["bindable"], json!(false));
+        .expect("documented credential operation remains visible");
+    assert_eq!(credential["interface_id"], "mcp.client_credential.delete");
+    assert_eq!(credential["bindable"], json!(true));
+    assert!(credential["disabled_reason"].is_null());
+    // A documented 204 has no response body and projects the unconstrained result schema.
+    assert_eq!(credential["result_schema"], Value::Bool(true));
+    let mut document = serde_json::to_value(crate::openapi::ApiDoc::openapi()).unwrap();
+    let path = "/api/console/mcp/instances/{instance_id}/client-credential";
+    let operation = &document["paths"][path]["delete"];
+    assert!(operation["responses"]["204"].is_object());
+    assert!(operation["responses"]["204"].get("content").is_none());
+
+    // Remove only this documentation contract, keeping its real compiled route in the fixture.
+    // This controlled negative continues to prove missing documentation is never bindable.
+    document["paths"][path]
+        .as_object_mut()
+        .unwrap()
+        .remove("delete")
+        .expect("the current owner documents credential deletion");
+    let dependencies = crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
+        store: state.store.clone(),
+        console_operations: state.console_operation_registry.inventory().clone(),
+        interface_registry: state
+            .extension_boot_snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.interface_registry())
+            .map(|registry| registry.snapshot()),
+        api_docs: std::sync::Arc::new(
+            crate::openapi_docs::build_api_docs_registry(document).unwrap(),
+        ),
+        template_catalog: state.runtime_engine.template_catalog().clone(),
+    };
+    let undocumented = crate::openapi_interface::build_openapi_capability_catalog_with(
+        &dependencies,
+        state.bootstrap_workspace_id,
+    )
+    .await
+    .unwrap()
+    .into_iter()
+    .find(|entry| entry.interface.operation_id == "mcp.client_credential.delete")
+    .expect("compiled route without OpenAPI must remain visible");
+    let missing_openapi =
+        crate::routes::settings::mcp_management::mcp_interface_entry_from_capability(undocumented);
+    assert!(!missing_openapi.bindable);
     assert_eq!(
-        missing_openapi["disabled_reason"],
-        json!("missing_openapi_contract")
+        missing_openapi.disabled_reason.as_deref(),
+        Some("missing_openapi_contract")
     );
-    assert_eq!(missing_openapi["result_schema"], Value::Bool(false));
+    assert_eq!(missing_openapi.result_schema, Value::Bool(false));
 
     let event_stream = catalog_by_route
         .get(&route_identity(

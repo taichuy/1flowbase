@@ -1,4 +1,5 @@
 use super::*;
+use control_plane::ports::{AppendRunEventInput, CreateNodeRunInput};
 
 #[tokio::test]
 async fn application_runtime_routes_start_node_preview_and_query_logs() {
@@ -325,6 +326,43 @@ async fn application_runtime_routes_start_node_preview_and_query_logs() {
         }),
         "application log run-detail must not be cached: {cache_entries:?}"
     );
+    // Seed both allowed flow context and an unrelated node event in the same run.
+    // The node projection must retain the former and exclude the latter.
+    let flow_run_uuid = Uuid::parse_str(&flow_run_id).unwrap();
+    let other_node = state
+        .store
+        .create_node_run(&CreateNodeRunInput {
+            flow_run_id: flow_run_uuid,
+            node_id: "node-other".into(),
+            node_type: "code".into(),
+            node_alias: "Other node".into(),
+            status: domain::NodeRunStatus::Succeeded,
+            input_payload: json!({}),
+            debug_payload: json!({}),
+            started_at: time::OffsetDateTime::now_utc(),
+        })
+        .await
+        .unwrap();
+    let unrelated_event = state
+        .store
+        .append_run_event(&AppendRunEventInput {
+            flow_run_id: flow_run_uuid,
+            node_run_id: Some(other_node.id),
+            event_type: "unrelated_node_fixture".into(),
+            payload: json!({}),
+        })
+        .await
+        .unwrap();
+    let flow_context = state
+        .store
+        .append_run_event(&AppendRunEventInput {
+            flow_run_id: flow_run_uuid,
+            node_run_id: None,
+            event_type: "flow_context_fixture".into(),
+            payload: json!({}),
+        })
+        .await
+        .unwrap();
     let scoped_node_run = app
         .clone()
         .oneshot(
@@ -348,16 +386,28 @@ async fn application_runtime_routes_start_node_preview_and_query_logs() {
         scoped_node_run_payload["data"]["node_run"]["node_id"].as_str(),
         Some("node-llm")
     );
-    assert!(scoped_node_run_payload["data"]["events"]
+    let selected_node_run_id = scoped_node_run_payload["data"]["node_run"]["id"]
+        .as_str()
+        .unwrap();
+    let scoped_events = scoped_node_run_payload["data"]["events"]
         .as_array()
-        .unwrap()
+        .unwrap();
+    for event in scoped_events {
+        assert_eq!(event["flow_run_id"].as_str(), Some(flow_run_id.as_str()));
+        if !event["node_run_id"].is_null() {
+            assert_eq!(event["node_run_id"].as_str(), Some(selected_node_run_id));
+        }
+        assert_ne!(event["id"], json!(unrelated_event.id));
+    }
+    for event_type in ["node_preview_started", "node_preview_completed"] {
+        assert!(scoped_events.iter().any(|event| {
+            event["event_type"] == event_type
+                && event["node_run_id"].as_str() == Some(selected_node_run_id)
+        }));
+    }
+    assert!(scoped_events
         .iter()
-        .all(|event| event["node_run_id"].as_str()
-            == Some(
-                scoped_node_run_payload["data"]["node_run"]["id"]
-                    .as_str()
-                    .unwrap()
-            )));
+        .any(|event| { event["id"] == json!(flow_context.id) && event["node_run_id"].is_null() }));
 
     let last_run = app
         .clone()
