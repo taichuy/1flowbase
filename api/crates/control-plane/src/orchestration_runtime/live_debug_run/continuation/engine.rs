@@ -4,7 +4,6 @@ use serde_json::{json, Value};
 
 use super::helpers::{
     compiled_plan_start_node_id, inject_application_environment_variables, inject_system_variables,
-    inject_workflow_credentials,
 };
 use super::*;
 use crate::orchestration_runtime::live_debug_run::PersistedNodeLifecycle;
