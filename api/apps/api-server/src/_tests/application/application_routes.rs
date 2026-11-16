@@ -390,7 +390,7 @@ async fn application_routes_support_catalog_tags_and_patching_metadata() {
             .iter()
             .map(|trigger| trigger["value"].as_str().unwrap())
             .collect::<Vec<_>>(),
-        vec!["extension", "schedule"]
+        vec!["event", "extension", "schedule"]
     );
     assert!(catalog_payload["data"]["workflow_triggers"]
         .as_array()
