@@ -9,7 +9,6 @@ import {
   useEffect,
   useEffectEvent,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
   type Key,
@@ -51,7 +50,6 @@ import {
   emptyDataFilter,
   readDataBlockConfig,
   type DataBlockAction,
-  type DataBlockColumn,
   type DataBlockComponentProps,
   type DataBlockField,
   type DataFilterGroup,
@@ -61,8 +59,6 @@ import { DataBlockFilterEditor } from '../shared/DataBlockFilterEditor';
 import { DataFieldCreateModal } from '../shared/DataFieldCreateModal';
 import {
   deleteTableRecords,
-  persistTableConfig,
-  prepareTableAction,
   tableActionAllowed,
   tableActionInputs,
   tableActionParentContext,
@@ -83,6 +79,7 @@ import {
   TableFieldMenu
 } from './TableDesignControls';
 import { useTableDragSensors } from './use-table-drag-sensors';
+import { useTableConfigController } from './use-table-config-controller';
 import {
   TableActionSettings,
   TableBlockSettings,
@@ -115,16 +112,23 @@ function ConfiguredTableBlock({
   const host = useDataBlockHost();
   const popupContainer = useDataBlockPopupContainer();
   const { token } = theme.useToken();
-  const [config, setConfig] = useState(initialConfig);
-  useEffect(() => {
-    setConfig(initialConfig);
-  }, [initialConfig]);
-  const [saving, setSaving] = useState(false);
-  const savingRef = useRef(false);
   const [feedback, setFeedback] = useState<{
     type: 'error' | 'success' | 'warning';
     text: string;
   } | null>(null);
+  const metadata = useDataBlockMetadata(ctx, initialConfig.binding);
+  const fields = metadata.data?.fields ?? [];
+  const { config, saving, saveConfig, saveAction, saveColumn } =
+    useTableConfigController(
+      initialConfig,
+      host,
+      fields,
+      () => setFeedback(null),
+      () => setFeedback({
+        type: 'error',
+        text: i18nText('frontstage', 'data_blocks.table.save_failed')
+      })
+    );
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(config.page_size);
   const [sort, setSort] = useState(config.sort);
@@ -143,8 +147,6 @@ function ConfiguredTableBlock({
   const [createField, setCreateField] = useState(false);
   const design = Boolean(host?.design_mode);
   const sensors = useTableDragSensors();
-  const metadata = useDataBlockMetadata(ctx, config.binding);
-  const fields = metadata.data?.fields ?? [];
   const fieldsByCode = new Map<string, DataBlockField>();
   for (const field of fields) {
     if (!fieldsByCode.has(field.code)) fieldsByCode.set(field.code, field);
@@ -240,94 +242,6 @@ function ConfiguredTableBlock({
     });
   }, [ctx.outputs, selected]);
 
-  const commit = async (
-    next: () => Promise<TableBlockConfig> | TableBlockConfig
-  ) => {
-    if (!host?.design_mode || savingRef.current || host.saving) return false;
-    savingRef.current = true;
-    setSaving(true);
-    try {
-      const candidate = await next();
-      await persistTableConfig(host, candidate, setConfig);
-      setFeedback(null);
-      return true;
-    } catch {
-      setFeedback({
-        type: 'error',
-        text: i18nText('frontstage', 'data_blocks.table.save_failed')
-      });
-      return false;
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-    }
-  };
-  const saveConfig = (next: TableBlockConfig) =>
-    commit(async () => {
-      if (
-        JSON.stringify([config.relation, config.linkage]) ===
-        JSON.stringify([next.relation, next.linkage])
-      )
-        return next;
-      const actions: DataBlockAction[] = [];
-      const row_actions: DataBlockAction[] = [];
-      const columns: DataBlockColumn[] = [];
-      // Child targets share the host tree; prepare them sequentially.
-      for (const action of next.actions)
-        actions.push(await prepareTableAction(host!, next, action, fields));
-      for (const action of next.row_actions)
-        row_actions.push(await prepareTableAction(host!, next, action, fields));
-      for (const column of next.columns)
-        columns.push(
-          column.action
-            ? {
-                ...column,
-                action: await prepareTableAction(
-                  host!,
-                  next,
-                  column.action,
-                  fields
-                )
-              }
-            : column
-        );
-      return { ...next, actions, row_actions, columns };
-    });
-  const saveAction = (action: DataBlockAction, row: boolean) =>
-    commit(async () => {
-      const prepared = await prepareTableAction(host!, config, action, fields);
-      const key = row ? 'row_actions' : 'actions';
-      const exists = config[key].some((item) => item.id === action.id);
-      return {
-        ...config,
-        [key]: exists
-          ? config[key].map((item) => (item.id === action.id ? prepared : item))
-          : [...config[key], prepared]
-      };
-    });
-  const saveColumn = (column: DataBlockColumn) =>
-    commit(async () => ({
-      ...config,
-      columns: await Promise.all(
-        config.columns.map(async (item) =>
-          item.field_code === column.field_code
-            ? {
-                ...column,
-                ...(column.action
-                  ? {
-                      action: await prepareTableAction(
-                        host!,
-                        config,
-                        column.action,
-                        fields
-                      )
-                    }
-                  : {})
-              }
-            : item
-        )
-      )
-    }));
 
   const runAction = async (
     action: DataBlockAction,
