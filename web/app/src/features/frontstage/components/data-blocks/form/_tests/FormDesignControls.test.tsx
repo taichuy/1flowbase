@@ -321,7 +321,9 @@ describe('FormDesignControls draft consumers', () => {
     const dialog = await screen.findByRole('dialog');
     expect(randomUUID).not.toHaveBeenCalled();
     fireEvent.click(
-      within(dialog).getByRole('button', { name: 'data_blocks.form.add_rule' })
+      within(dialog).getByRole('button', {
+        name: /^(?:plus )?data_blocks\.form\.add_rule$/
+      })
     );
     expect(randomUUID).toHaveBeenCalledTimes(1);
     const ruleId = randomUUID.mock.results[0].value;
@@ -331,7 +333,9 @@ describe('FormDesignControls draft consumers', () => {
       })
     ).toBeInTheDocument();
     fireEvent.click(
-      within(dialog).getByRole('button', { name: 'data_blocks.form.add_rule' })
+      within(dialog).getByRole('button', {
+        name: /^(?:plus )?data_blocks\.form\.add_rule$/
+      })
     );
     const remove = within(dialog).getAllByRole('button', {
       name: 'data_blocks.form.remove_rule'
