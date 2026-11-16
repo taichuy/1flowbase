@@ -31,6 +31,10 @@ pub(super) async fn prerequisites(
 ) -> Result<Vec<String>> {
     Ok(sqlx::query_scalar("select distinct parent.relname::text from pg_constraint f join pg_class child on child.oid=f.conrelid join pg_class parent on parent.oid=f.confrelid join pg_namespace n on n.oid=child.relnamespace where n.nspname=current_schema() and child.relname=$1 and f.contype='f' order by 1").bind(table).fetch_all(connection).await?)
 }
+pub(super) fn required_json_value(column: &Column) -> bool {
+    !column.nullable && !column.generated && matches!(column.sql_type.as_str(), "json" | "jsonb")
+}
+
 pub(super) fn upsert_sql(table: &Table) -> Result<String> {
     if table.name == "extension_installations" {
         return super::plugin_identity::insert_sql();
@@ -112,10 +116,26 @@ pub(super) fn upsert_sql(table: &Table) -> Result<String> {
         action
     };
     let name = quote(&table.name)?;
+    let values = table
+        .columns
+        .iter()
+        .filter(|column| !column.generated)
+        .map(|column| {
+            let quoted = quote(&column.name)?;
+            Ok(if required_json_value(column) {
+                // jsonb_populate_record turns JSON null into SQL NULL. For a
+                // required JSON field the source value can only be JSON null;
+                // preflight separately rejects a missing archive key.
+                format!("coalesce({quoted},'null'::{})", column.sql_type)
+            } else {
+                quoted
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
     Ok(format!(
         "insert into {name} as target ({}) overriding system value select {} from jsonb_populate_record(null::{name},$1) where true on conflict ({}) {action}",
         names.join(","),
-        names.join(","),
+        values.join(","),
         pk.join(",")
     ))
 }

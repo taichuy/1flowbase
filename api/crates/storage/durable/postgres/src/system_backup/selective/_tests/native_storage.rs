@@ -1,6 +1,30 @@
 use super::*;
 use control_plane_contracts::ports::{AppendRuntimeEventInput, OrchestrationRuntimeRepository};
 use serde_json::json;
+use std::io::{Read, Write};
+
+fn invalid_identity_archive(bytes: &[u8], remove_executor: bool) -> Vec<u8> {
+    let mut text = String::new();
+    flate2::read::GzDecoder::new(bytes)
+        .read_to_string(&mut text)
+        .unwrap();
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    for line in text.lines() {
+        let mut record: serde_json::Value = serde_json::from_str(line).unwrap();
+        if record["table"] == "workflow_run_identity_snapshots" {
+            if remove_executor {
+                record["row"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("executor_identity");
+            } else {
+                record["row"]["created_at"] = serde_json::Value::Null;
+            }
+        }
+        writeln!(encoder, "{record}").unwrap();
+    }
+    encoder.finish().unwrap()
+}
 
 #[tokio::test]
 async fn selective_application_backup_restores_exact_native_snapshot_and_owners() {
@@ -40,6 +64,24 @@ async fn selective_application_backup_restores_exact_native_snapshot_and_owners(
     assert!(!configuration_preview
         .selected_tables
         .contains(&"workflow_run_identity_snapshots".into()));
+    for remove_executor in [true, false] {
+        let invalid = invalid_identity_archive(&bytes, remove_executor);
+        let preview = repo
+            .preflight(reader(invalid.clone()), "key", "key")
+            .await
+            .unwrap();
+        assert!(
+            !preview.failures.is_empty(),
+            "missing JSON keys and non-JSON required nulls must fail"
+        );
+        assert!(repo
+            .restore(reader(invalid), "key", "key", true)
+            .await
+            .is_err());
+        let unchanged: (serde_json::Value, serde_json::Value) = sqlx::query_as("select creator_identity,executor_identity from workflow_run_identity_snapshots where flow_run_id=$1")
+            .bind(run).fetch_one(&db).await.unwrap();
+        assert_eq!(unchanged, (identity.clone(), serde_json::Value::Null));
+    }
     // Identical immutable rows must permit restoration, including repeated restore.
     let preview = repo
         .preflight(reader(bytes.clone()), "key", "key")
@@ -85,4 +127,7 @@ async fn selective_application_backup_restores_exact_native_snapshot_and_owners(
     let restored_identity: (serde_json::Value, serde_json::Value) = sqlx::query_as("select creator_identity,executor_identity from workflow_run_identity_snapshots where flow_run_id=$1")
         .bind(run).fetch_one(&db).await.unwrap();
     assert_eq!(restored_identity, (identity, serde_json::Value::Null));
+    let executor_is_json_null: bool = sqlx::query_scalar("select executor_identity is not null and jsonb_typeof(executor_identity)='null' from workflow_run_identity_snapshots where flow_run_id=$1")
+        .bind(run).fetch_one(&db).await.unwrap();
+    assert!(executor_is_json_null, "JSON null must not become SQL NULL");
 }
