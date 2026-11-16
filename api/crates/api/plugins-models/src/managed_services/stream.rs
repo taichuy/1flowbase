@@ -781,7 +781,7 @@ async fn run_socket(socket: WebSocket, session: SocketSession) {
                             let Some(consumed) = acknowledgements.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) else { break; };
                             let _ = consumed.send(());
                         }
-                        Err(()) => break,
+                        Err(InvalidClientFrame) => break,
                     }
                 }
                 Some(Ok(Message::Ping(bytes))) => { if outgoing.try_send((Message::Pong(bytes),None)).is_err() { break; } }
@@ -807,14 +807,18 @@ enum ClientFrame {
     Ack(u64),
 }
 }
+test_support_item! { , [#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+]
+struct InvalidClientFrame;
+}
 test_support_item! { , []
-fn parse_client_frame(text: &str, input: &jsonschema::Validator) -> Result<ClientFrame, ()> {
+fn parse_client_frame(text: &str, input: &jsonschema::Validator) -> Result<ClientFrame, InvalidClientFrame> {
     if text.len() > FRAME_BYTES {
-        return Err(());
+        return Err(InvalidClientFrame);
     }
-    let frame: Value = serde_json::from_str(text).map_err(|_| ())?;
+    let frame: Value = serde_json::from_str(text).map_err(|_| InvalidClientFrame)?;
     if !frame.as_object().is_some_and(|o| o.len() == 2) {
-        return Err(());
+        return Err(InvalidClientFrame);
     }
     match frame.get("type").and_then(Value::as_str) {
         Some("input") => frame
@@ -822,13 +826,13 @@ fn parse_client_frame(text: &str, input: &jsonschema::Validator) -> Result<Clien
             .filter(|v| input.is_valid(v))
             .cloned()
             .map(ClientFrame::Input)
-            .ok_or(()),
+            .ok_or(InvalidClientFrame),
         Some("ack") => frame
             .get("id")
             .and_then(Value::as_u64)
             .map(ClientFrame::Ack)
-            .ok_or(()),
-        _ => Err(()),
+            .ok_or(InvalidClientFrame),
+        _ => Err(InvalidClientFrame),
     }
 }
 }
@@ -853,4 +857,7 @@ impl crate::openapi_interface::contract::ApiOutput for StreamEvent {
 mod test_accessors;
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
-pub use test_accessors::{register_test_stream, revalidate_test_stream};
+pub use test_accessors::{
+    register_test_stream, revalidate_test_stream, SocketSessionTestContext,
+    SocketSessionTestTransport,
+};

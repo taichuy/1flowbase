@@ -85,18 +85,22 @@ async fn generation_managed_socket_session_retains_old_owner_until_session_drop(
     let (_, terminal) = oneshot::channel();
     let (cancel_sender, cancel) = watch::channel(false);
     let session = SocketSession::test_new(
-        state.clone(),
-        owner.clone(),
-        Arc::new(operation),
-        HeaderMap::new(),
-        String::new(),
-        uuid::Uuid::now_v7(),
-        json!({}),
-        input,
-        events,
-        terminal,
-        cancel,
-        SocketLease::test_new(uuid::Uuid::now_v7(), uuid::Uuid::now_v7(), cancel_sender),
+        SocketSessionTestContext {
+            state: state.clone(),
+            generation: owner.clone(),
+            operation: Arc::new(operation),
+            headers: HeaderMap::new(),
+            session: String::new(),
+            installation: uuid::Uuid::now_v7(),
+        },
+        SocketSessionTestTransport {
+            payload: json!({}),
+            input,
+            events,
+            terminal,
+            cancel,
+            lease: SocketLease::test_new(uuid::Uuid::now_v7(), uuid::Uuid::now_v7(), cancel_sender),
+        },
     );
     drop(owner);
     drop(state);

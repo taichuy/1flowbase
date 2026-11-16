@@ -1096,3 +1096,8 @@ use application::workspace_application_status;
 #[cfg(any(test, feature = "test-support"))]
 #[path = "extension_center/_tests/support/accessors.rs"]
 mod test_accessors;
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use test_accessors::{
+    UploadedExtensionArtifactTestIdentity, UploadedExtensionArtifactTestSignature,
+};

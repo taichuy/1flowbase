@@ -2,42 +2,54 @@ use super::*;
 
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
+pub struct SocketSessionTestContext {
+    pub state: Arc<ApiState>,
+    pub generation: Arc<crate::generation_dispatch::GenerationDispatch>,
+    pub operation: Arc<plugin_framework::ManagedServiceOperation>,
+    pub headers: HeaderMap,
+    pub session: String,
+    pub installation: uuid::Uuid,
+}
+
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub struct SocketSessionTestTransport {
+    pub payload: Value,
+    pub input: mpsc::Sender<Value>,
+    pub events: mpsc::Receiver<StreamEvent>,
+    pub terminal: oneshot::Receiver<
+        Result<
+            interface_runtime::InterfaceStreamTerminalOutcome<
+                ManagedServiceOutput,
+                ConsoleInterfaceTargetError,
+            >,
+            interface_runtime::InterfaceInvocationFailure,
+        >,
+    >,
+    pub cancel: watch::Receiver<bool>,
+    pub lease: SocketLease,
+}
+
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
 impl SocketSession {
     pub fn test_new(
-        state: Arc<ApiState>,
-        generation: Arc<crate::generation_dispatch::GenerationDispatch>,
-        operation: Arc<plugin_framework::ManagedServiceOperation>,
-        headers: HeaderMap,
-        session: String,
-        installation: uuid::Uuid,
-        payload: Value,
-        input: mpsc::Sender<Value>,
-        events: mpsc::Receiver<StreamEvent>,
-        terminal: oneshot::Receiver<
-            Result<
-                interface_runtime::InterfaceStreamTerminalOutcome<
-                    ManagedServiceOutput,
-                    ConsoleInterfaceTargetError,
-                >,
-                interface_runtime::InterfaceInvocationFailure,
-            >,
-        >,
-        cancel: watch::Receiver<bool>,
-        lease: SocketLease,
+        context: SocketSessionTestContext,
+        transport: SocketSessionTestTransport,
     ) -> Self {
         Self {
-            state,
-            generation,
-            operation,
-            headers,
-            session,
-            installation,
-            payload,
-            input,
-            events,
-            terminal,
-            cancel,
-            lease,
+            state: context.state,
+            generation: context.generation,
+            operation: context.operation,
+            headers: context.headers,
+            session: context.session,
+            installation: context.installation,
+            payload: transport.payload,
+            input: transport.input,
+            events: transport.events,
+            terminal: transport.terminal,
+            cancel: transport.cancel,
+            lease: transport.lease,
         }
     }
 }

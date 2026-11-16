@@ -349,9 +349,11 @@ async fn assert_open_empty_terminal_only(count: usize) {
             RuntimeEventDeliveryScope::Resume {
                 callback_task_id: callback,
             },
-            Some(50000),
-            Vec::new(),
-            Some(callback),
+            CompatibleReplayTestSupport {
+                from_sequence: Some(50000),
+                durable_round_replay: Vec::new(),
+                ignored_waiting_callback_task_id: Some(callback),
+            },
             control_plane::ports::RuntimeEventSubscription {
                 terminal_writer: Arc::new(UnusedTerminalWriter),
                 replay: Vec::new(),

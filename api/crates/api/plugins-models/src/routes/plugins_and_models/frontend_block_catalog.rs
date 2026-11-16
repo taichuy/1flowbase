@@ -550,7 +550,7 @@ impl
                 .entries
                 .into_iter()
                 .filter(|binding| {
-                    input.registration_target.as_ref().map_or(true, |target| {
+                    input.registration_target.as_ref().is_none_or(|target| {
                         binding
                             .catalog_entry
                             .registration_targets()

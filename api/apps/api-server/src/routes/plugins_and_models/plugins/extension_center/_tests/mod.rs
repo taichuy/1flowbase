@@ -1082,15 +1082,19 @@ fn root_1545_ac_5_preflight_requires_exact_integrity_and_compatibility_acknowled
 #[test]
 fn root_1545_ac_5_uploaded_invalid_signature_remains_overridable() {
     let challenge = upload_challenge(&UploadedExtensionArtifact::test_new(
-        super::ExtensionCatalogCategory::I18n,
-        "taichuy".to_string(),
-        "platform".to_string(),
-        "2.0.1".to_string(),
+        UploadedExtensionArtifactTestIdentity {
+            category: super::ExtensionCatalogCategory::I18n,
+            organization: "taichuy".to_string(),
+            artifact_id: "platform".to_string(),
+            version: "2.0.1".to_string(),
+        },
         None,
         false,
-        domain::ExtensionSignatureStatus::Invalid,
-        Some("ed25519".to_string()),
-        Some("unknown".to_string()),
+        UploadedExtensionArtifactTestSignature {
+            signature_status: domain::ExtensionSignatureStatus::Invalid,
+            signature_algorithm: Some("ed25519".to_string()),
+            signing_key_id: Some("unknown".to_string()),
+        },
         domain::ExtensionApplicationAction::ActivateI18n,
         None,
     ));
