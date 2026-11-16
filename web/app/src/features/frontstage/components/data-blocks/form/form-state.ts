@@ -38,14 +38,13 @@ export function defaultFormValues(
   items: DataFormItem[]
 ): Record<string, unknown> {
   return Object.fromEntries(
-    items
-      .filter(
-        (item) =>
-          item.kind === 'field' &&
-          item.field_code &&
-          item.default_value !== undefined
-      )
-      .map((item) => [item.field_code!, item.default_value])
+    items.flatMap((item) =>
+      item.kind === 'field' &&
+      item.field_code &&
+      item.default_value !== undefined
+        ? [[item.field_code, item.default_value] as const]
+        : []
+    )
   );
 }
 
@@ -144,9 +143,9 @@ export function moveFormItem(
   const active = items.find((item) => item.id === activeId);
   const target = items.find((item) => item.id === targetId);
   if (!active || !target) return items;
-  const next = items
-    .filter((item) => item.id !== activeId)
-    .map((item) => ({ ...item }));
+  const next = items.flatMap((item) =>
+    item.id !== activeId ? [{ ...item }] : []
+  );
   const targetIndex = next.findIndex((item) => item.id === targetId);
   const rowIndices = next.flatMap((item, index) =>
     item.row === target.row ? [index] : []

@@ -35,6 +35,33 @@ import { presentationOptions, sizeOptions } from './table-labels';
 
 export type SaveTableConfig = (config: TableBlockConfig) => Promise<boolean>;
 
+const TABLE_SETTINGS_SECTIONS = [
+  {
+    key: 'title',
+    label: () => i18nText('frontstage', 'data_blocks.form.title_description')
+  },
+  {
+    key: 'layout',
+    label: () => i18nText('frontstage', 'data_blocks.table.layout')
+  },
+  {
+    key: 'filter',
+    label: () => i18nText('frontstage', 'data_blocks.table.fixed_filter')
+  },
+  {
+    key: 'sort',
+    label: () => i18nText('frontstage', 'data_blocks.table.default_sort')
+  },
+  {
+    key: 'relation',
+    label: () => i18nText('frontstage', 'data_blocks.table.relation')
+  },
+  {
+    key: 'linkage',
+    label: () => i18nText('frontstage', 'data_blocks.table.linkage')
+  }
+] as const;
+
 export function TableBlockSettings({
   config,
   fields,
@@ -54,36 +81,13 @@ export function TableBlockSettings({
 }) {
   const [section, setSection] = useState<string | null>(null);
   const [draft, setDraft] = useState(config);
-  const items = [
-    {
-      key: 'title',
-      label: i18nText('frontstage', 'data_blocks.form.title_description')
-    },
-    {
-      key: 'layout',
-      label: i18nText('frontstage', 'data_blocks.table.layout')
-    },
-    {
-      key: 'filter',
-      label: i18nText('frontstage', 'data_blocks.table.fixed_filter')
-    },
-    {
-      key: 'sort',
-      label: i18nText('frontstage', 'data_blocks.table.default_sort')
-    },
-    {
-      key: 'relation',
-      label: i18nText('frontstage', 'data_blocks.table.relation')
-    },
-    {
-      key: 'linkage',
-      label: i18nText('frontstage', 'data_blocks.table.linkage')
-    }
-  ];
+  const sectionLabel = TABLE_SETTINGS_SECTIONS.find(
+    (item) => item.key === section
+  )?.label;
   useRegisterBlockSettings(
-    items.map((item) => ({
+    TABLE_SETTINGS_SECTIONS.map((item) => ({
       id: `table:${item.key}`,
-      label: item.label,
+      label: item.label(),
       disabled,
       onSelect: () => {
         setDraft(config);
@@ -102,7 +106,9 @@ export function TableBlockSettings({
           focusTriggerAfterClose={false}
           getContainer={false}
           open={section !== null}
-          title={items.find((item) => item.key === section)?.label}
+          title={
+            sectionLabel ? i18nText('frontstage', sectionLabel) : undefined
+          }
           onCancel={() => setSection(null)}
           confirmLoading={disabled}
           okButtonProps={{
@@ -264,12 +270,16 @@ export function TableBlockSettings({
                   <Select
                     allowClear
                     value={draft.linkage?.source_block_id}
-                    options={targets
-                      .filter((target) => target.block_id !== blockId)
-                      .map((target) => ({
-                        label: target.title,
-                        value: target.block_id
-                      }))}
+                    options={targets.flatMap((target) =>
+                      target.block_id !== blockId
+                        ? [
+                            {
+                              label: target.title,
+                              value: target.block_id
+                            }
+                          ]
+                        : []
+                    )}
                     onChange={(source_block_id) =>
                       setDraft({
                         ...draft,

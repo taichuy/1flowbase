@@ -36,6 +36,19 @@ import { countMcpInstanceDirectoryItems } from './catalog-view';
 import { useDirectoryDraft } from './use-directory-draft';
 import type { GroupFormValues, BindingFormValues } from './editor-types';
 
+function validateSnapshot(snapshot: ConsoleMcpInstanceDirectory) {
+  if (
+    new Set(snapshot.groups.map((row) => row.path)).size !==
+      snapshot.groups.length ||
+    new Set(snapshot.bindings.map((row) => `${row.group_path}/${row.tool_id}`))
+      .size !== snapshot.bindings.length
+  ) {
+    throw new Error(
+      i18nText('settingsMcpManagement', 'auto.directory_duplicate_path')
+    );
+  }
+}
+
 /** Node editing buffers are independent of the confirmed directory draft and its persistence. */
 export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
   const can = useConsoleOperationAccess();
@@ -436,19 +449,6 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     bindingForm.resetFields();
     bindingForm.setFieldsValue(values);
     bindingSavedValuesRef.current = values;
-  }
-  function validateSnapshot(snapshot: ConsoleMcpInstanceDirectory) {
-    if (
-      new Set(snapshot.groups.map((row) => row.path)).size !==
-        snapshot.groups.length ||
-      new Set(
-        snapshot.bindings.map((row) => `${row.group_path}/${row.tool_id}`)
-      ).size !== snapshot.bindings.length
-    ) {
-      throw new Error(
-        i18nText('settingsMcpManagement', 'auto.directory_duplicate_path')
-      );
-    }
   }
   function stage(
     transform: (

@@ -11,6 +11,9 @@ import { RuntimeDetails } from './RuntimeDetails';
 import { RuntimeIdentity } from './RuntimeIdentity';
 import { activityKey, timeLabel, useRuntimeLabels } from './runtime-labels';
 
+const set = (values: Record<string, string | null>) =>
+  navigateEventState({ ...values, activity_page: null, record: null });
+
 export function EventActivity({
   activity,
   sources,
@@ -166,8 +169,6 @@ export function EventActivity({
       )
     }))
   ];
-  const set = (values: Record<string, string | null>) =>
-    navigateEventState({ ...values, activity_page: null, record: null });
   return (
     <div className="event-runtime-activity">
       <Typography.Text type="secondary">

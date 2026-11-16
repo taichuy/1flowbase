@@ -18,6 +18,11 @@ type CommandRow = {
   declaration: CommunicationCommandView | undefined;
 };
 
+const name = ({ configuration, declaration }: CommandRow) =>
+  configuration.kind === 'event'
+    ? configuration.name
+    : (declaration?.name ?? configuration.command_id);
+
 export function CommunicationCommandsTable({
   value,
   commands,
@@ -46,12 +51,11 @@ export function CommunicationCommandsTable({
     if (!declarations.has(command.command_id))
       declarations.set(command.command_id, command);
   }
-  const rows: CommandRow[] = commands
-    .filter((command) => command.source_kind !== 'user')
-    .flatMap((declaration) => {
-      const configuration = configurations.get(declaration.command_id);
-      return configuration ? [{ configuration, declaration }] : [];
-    });
+  const rows: CommandRow[] = commands.flatMap((declaration) => {
+    if (declaration.source_kind === 'user') return [];
+    const configuration = configurations.get(declaration.command_id);
+    return configuration ? [{ configuration, declaration }] : [];
+  });
   for (const configuration of value) {
     if (
       configuration.kind === 'event' ||
@@ -78,10 +82,6 @@ export function CommunicationCommandsTable({
     ['duplicate_command_identity', t('command_duplicate_identity')],
     ['event_command_target_unavailable', t('event_commands.target_unavailable')]
   ]);
-  const name = ({ configuration, declaration }: CommandRow) =>
-    configuration.kind === 'event'
-      ? configuration.name
-      : (declaration?.name ?? configuration.command_id);
   const columns: DataTableColumn<CommandRow>[] = [
     {
       key: 'name',
