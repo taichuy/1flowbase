@@ -142,7 +142,11 @@ fn missing_cache_factory_fails_before_registry_is_returned() {
 
 #[test]
 fn host_infrastructure_consumer_does_not_branch_on_local_or_moka_types() {
-    let source = include_str!("../../host_infrastructure/mod.rs");
+    // The composition-root module re-exports the canonical Kernel owner.
+    let source = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../crates/api/kernel/src/host/host_infrastructure/mod.rs"
+    ));
     let consumer = source
         .split_once("impl HostInfrastructureRegistry")
         .unwrap()

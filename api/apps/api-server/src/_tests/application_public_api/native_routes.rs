@@ -1038,6 +1038,7 @@ async fn generation_native_and_responses_ws_connection_and_first_turn_keep_froze
     let app = crate::app_with_state(state.clone());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let application_id = create_application(&app, &cookie, &csrf, "Generation WS").await;
+    configure_runnable_agent_flow(&app, &cookie, &csrf, &application_id).await;
     publish_native_application(
         &app,
         &cookie,
