@@ -5,8 +5,8 @@
       "file": "web/app/src/app-shell/assistant-client-tools/context.ts",
       "rule": "react-doctor/no-react19-deprecated-apis",
       "sourceSha256": "50d49a1c475df65420b80c25148b046248504a9061dbff03c1625f145f0e00e4",
-      "reason": "这里的 useContext 读取 AssistantClientToolContext，当前 React 19 仍支持该 API；AssistantClientTools 提供 clientTools 和 refresh 注册 owner，useAssistantRefreshTarget 返回注册的清理函数。该诊断不证明 API 已移除；替换为 use 不修复现有行为。",
-      "evidence": [{"file":"web/app/src/app-shell/AssistantClientTools.tsx","sha256":"33e767b083d72a71bddabc78f651b636469dd365cf06a2c77f5473ee6fd760d6"}, {"file":"web/app/src/features/applications/_tests/workflow-application-page.test.tsx","sha256":"8d976bf5210ab2af706fcf99419a8e3e7b16897ec9fdd97b4ae14f03b3fc4dde"}]
+      "reason": "这里的 useContext 读取 AssistantClientToolContext，当前 React 19 仍支持该 API；AssistantClientTools 提供 clientTools 和 refresh 注册 owner，useAssistantRefreshTarget 返回注册的清理函数。该诊断不证明 API 已移除；替换为 use 不修复现有行为。 P17b reassessed 2026-11-17: The changed workflow application fixture only adds the backend analysis envelope. AssistantClientToolProvider still supplies the context and unregisters the matching refresh callback; the context hook itself is unchanged.",
+      "evidence": [{"file":"web/app/src/app-shell/AssistantClientTools.tsx","sha256":"33e767b083d72a71bddabc78f651b636469dd365cf06a2c77f5473ee6fd760d6"}, {"file":"web/app/src/features/applications/_tests/workflow-application-page.test.tsx","sha256":"2e318626b87124d2f537a8adfc2c8d80694f74fea33bc29d897ea1786b981028"}]
     }
   ]
 }

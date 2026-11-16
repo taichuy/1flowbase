@@ -5,7 +5,7 @@
       "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerValueField.tsx",
       "rule": "react-doctor/no-adjust-state-on-prop-change",
       "sourceSha256": "e619e22c6d0a5c7d6c5cbb8b0c35dc5c53f748811b4e1ced34a787c5bce4cd9c",
-      "reason": "StructuredConstant owns editable JSON text including incomplete/invalid JSON and a local validation status. Input.onChange always preserves the raw draft but calls its parent only after parsing and matching object/array type. Its value-dependent effect loads a replaced committed value and clears an error after an external document/type replacement; an input event alone cannot observe undo or another document update. Deriving text directly from value would erase unfinished JSON. The real panel regression asserts invalid text is not persisted, survives sibling deletion and rename with the same DOM input, then commits valid JSON and accepts a type-change array default. The two state fields belong to this one editor and must reset together when its committed value changes; they are not an unedited prop mirror. These assertions are authored for centralized QA; no packet-level test result is claimed. R46 reassessed 2026-10-30 against assembly 0dbfeafe8 and current frozen source: Container panel fixtures now assert minute display with millisecond persistence, unchanged legacy milliseconds on blur, and clearing to null; structured draft identity assertions remain. Timeout editor converts minutes to round_timeout_ms and supports null without rounding untouched legacy milliseconds; existing field-path and structured draft ownership remain. Assertions are source evidence; centralized QA owns execution results.",
+      "reason": "StructuredConstant owns editable JSON text including incomplete/invalid JSON and a local validation status. Input.onChange always preserves the raw draft but calls its parent only after parsing and matching object/array type. Its value-dependent effect loads a replaced committed value and clears an error after an external document/type replacement; an input event alone cannot observe undo or another document update. Deriving text directly from value would erase unfinished JSON. The real panel regression asserts invalid text is not persisted, survives sibling deletion and rename with the same DOM input, then commits valid JSON and accepts a type-change array default. The two state fields belong to this one editor and must reset together when its committed value changes; they are not an unedited prop mirror. These assertions are authored for centralized QA; no packet-level test result is claimed. P17b reassessed 2026-11-17: node-schema-adapter now reads backend analysis for selector catalogs and projects declared HTTP outputs without synthesis. Container variable binding write paths remain unchanged. The unchanged real-panel fixture retains invalid JSON through sibling deletion/rename, commits valid JSON and resets to the new array type default.",
       "evidence": [
         {
           "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerValueField.tsx",
@@ -17,7 +17,7 @@
         },
         {
           "file": "web/app/src/features/agent-flow/schema/node-schema-adapter.ts",
-          "sha256": "2e26fe61936cb9890d129cdcb4b22fb9e884e58e6d6fc2f004fad98a73a8e5fa"
+          "sha256": "3390a9cd9cada2db7ca0fa83ea7d465348aea40a71149e33dd4623d2bc24b622"
         },
         {
           "file": "web/app/src/features/agent-flow/hooks/interactions/use-stable-list-item-keys.ts",
@@ -33,7 +33,7 @@
       "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerValueField.tsx",
       "rule": "react-doctor/no-derived-state",
       "sourceSha256": "e619e22c6d0a5c7d6c5cbb8b0c35dc5c53f748811b4e1ced34a787c5bce4cd9c",
-      "reason": "StructuredConstant owns editable JSON text including incomplete/invalid JSON and a local validation status. Input.onChange always preserves the raw draft but calls its parent only after parsing and matching object/array type. Its value-dependent effect loads a replaced committed value and clears an error after an external document/type replacement; an input event alone cannot observe undo or another document update. Deriving text directly from value would erase unfinished JSON. The real panel regression asserts invalid text is not persisted, survives sibling deletion and rename with the same DOM input, then commits valid JSON and accepts a type-change array default. The two state fields belong to this one editor and must reset together when its committed value changes; they are not an unedited prop mirror. These assertions are authored for centralized QA; no packet-level test result is claimed. R46 reassessed 2026-10-30 against assembly 0dbfeafe8 and current frozen source: Container panel fixtures now assert minute display with millisecond persistence, unchanged legacy milliseconds on blur, and clearing to null; structured draft identity assertions remain. Timeout editor converts minutes to round_timeout_ms and supports null without rounding untouched legacy milliseconds; existing field-path and structured draft ownership remain. Assertions are source evidence; centralized QA owns execution results.",
+      "reason": "StructuredConstant owns editable JSON text including incomplete/invalid JSON and a local validation status. Input.onChange always preserves the raw draft but calls its parent only after parsing and matching object/array type. Its value-dependent effect loads a replaced committed value and clears an error after an external document/type replacement; an input event alone cannot observe undo or another document update. Deriving text directly from value would erase unfinished JSON. The real panel regression asserts invalid text is not persisted, survives sibling deletion and rename with the same DOM input, then commits valid JSON and accepts a type-change array default. The two state fields belong to this one editor and must reset together when its committed value changes; they are not an unedited prop mirror. These assertions are authored for centralized QA; no packet-level test result is claimed. P17b reassessed 2026-11-17: node-schema-adapter now reads backend analysis for selector catalogs and projects declared HTTP outputs without synthesis. Container variable binding write paths remain unchanged. The unchanged real-panel fixture retains invalid JSON through sibling deletion/rename, commits valid JSON and resets to the new array type default.",
       "evidence": [
         {
           "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerValueField.tsx",
@@ -45,7 +45,7 @@
         },
         {
           "file": "web/app/src/features/agent-flow/schema/node-schema-adapter.ts",
-          "sha256": "2e26fe61936cb9890d129cdcb4b22fb9e884e58e6d6fc2f004fad98a73a8e5fa"
+          "sha256": "3390a9cd9cada2db7ca0fa83ea7d465348aea40a71149e33dd4623d2bc24b622"
         },
         {
           "file": "web/app/src/features/agent-flow/hooks/interactions/use-stable-list-item-keys.ts",
@@ -61,7 +61,7 @@
       "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerValueField.tsx",
       "rule": "react-doctor/no-derived-state-effect",
       "sourceSha256": "e619e22c6d0a5c7d6c5cbb8b0c35dc5c53f748811b4e1ced34a787c5bce4cd9c",
-      "reason": "StructuredConstant owns editable JSON text including incomplete/invalid JSON and a local validation status. Input.onChange always preserves the raw draft but calls its parent only after parsing and matching object/array type. Its value-dependent effect loads a replaced committed value and clears an error after an external document/type replacement; an input event alone cannot observe undo or another document update. Deriving text directly from value would erase unfinished JSON. The real panel regression asserts invalid text is not persisted, survives sibling deletion and rename with the same DOM input, then commits valid JSON and accepts a type-change array default. The two state fields belong to this one editor and must reset together when its committed value changes; they are not an unedited prop mirror. These assertions are authored for centralized QA; no packet-level test result is claimed. R46 reassessed 2026-10-30 against assembly 0dbfeafe8 and current frozen source: Container panel fixtures now assert minute display with millisecond persistence, unchanged legacy milliseconds on blur, and clearing to null; structured draft identity assertions remain. Timeout editor converts minutes to round_timeout_ms and supports null without rounding untouched legacy milliseconds; existing field-path and structured draft ownership remain. Assertions are source evidence; centralized QA owns execution results.",
+      "reason": "StructuredConstant owns editable JSON text including incomplete/invalid JSON and a local validation status. Input.onChange always preserves the raw draft but calls its parent only after parsing and matching object/array type. Its value-dependent effect loads a replaced committed value and clears an error after an external document/type replacement; an input event alone cannot observe undo or another document update. Deriving text directly from value would erase unfinished JSON. The real panel regression asserts invalid text is not persisted, survives sibling deletion and rename with the same DOM input, then commits valid JSON and accepts a type-change array default. The two state fields belong to this one editor and must reset together when its committed value changes; they are not an unedited prop mirror. These assertions are authored for centralized QA; no packet-level test result is claimed. P17b reassessed 2026-11-17: node-schema-adapter now reads backend analysis for selector catalogs and projects declared HTTP outputs without synthesis. Container variable binding write paths remain unchanged. The unchanged real-panel fixture retains invalid JSON through sibling deletion/rename, commits valid JSON and resets to the new array type default.",
       "evidence": [
         {
           "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerValueField.tsx",
@@ -73,7 +73,7 @@
         },
         {
           "file": "web/app/src/features/agent-flow/schema/node-schema-adapter.ts",
-          "sha256": "2e26fe61936cb9890d129cdcb4b22fb9e884e58e6d6fc2f004fad98a73a8e5fa"
+          "sha256": "3390a9cd9cada2db7ca0fa83ea7d465348aea40a71149e33dd4623d2bc24b622"
         },
         {
           "file": "web/app/src/features/agent-flow/hooks/interactions/use-stable-list-item-keys.ts",
@@ -89,7 +89,7 @@
       "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerValueField.tsx",
       "rule": "react-doctor/no-reset-all-state-on-prop-change",
       "sourceSha256": "e619e22c6d0a5c7d6c5cbb8b0c35dc5c53f748811b4e1ced34a787c5bce4cd9c",
-      "reason": "StructuredConstant owns editable JSON text including incomplete/invalid JSON and a local validation status. Input.onChange always preserves the raw draft but calls its parent only after parsing and matching object/array type. Its value-dependent effect loads a replaced committed value and clears an error after an external document/type replacement; an input event alone cannot observe undo or another document update. Deriving text directly from value would erase unfinished JSON. The real panel regression asserts invalid text is not persisted, survives sibling deletion and rename with the same DOM input, then commits valid JSON and accepts a type-change array default. The two state fields belong to this one editor and must reset together when its committed value changes; they are not an unedited prop mirror. These assertions are authored for centralized QA; no packet-level test result is claimed. R46 reassessed 2026-10-30 against assembly 0dbfeafe8 and current frozen source: Container panel fixtures now assert minute display with millisecond persistence, unchanged legacy milliseconds on blur, and clearing to null; structured draft identity assertions remain. Timeout editor converts minutes to round_timeout_ms and supports null without rounding untouched legacy milliseconds; existing field-path and structured draft ownership remain. Assertions are source evidence; centralized QA owns execution results.",
+      "reason": "StructuredConstant owns editable JSON text including incomplete/invalid JSON and a local validation status. Input.onChange always preserves the raw draft but calls its parent only after parsing and matching object/array type. Its value-dependent effect loads a replaced committed value and clears an error after an external document/type replacement; an input event alone cannot observe undo or another document update. Deriving text directly from value would erase unfinished JSON. The real panel regression asserts invalid text is not persisted, survives sibling deletion and rename with the same DOM input, then commits valid JSON and accepts a type-change array default. The two state fields belong to this one editor and must reset together when its committed value changes; they are not an unedited prop mirror. These assertions are authored for centralized QA; no packet-level test result is claimed. P17b reassessed 2026-11-17: node-schema-adapter now reads backend analysis for selector catalogs and projects declared HTTP outputs without synthesis. Container variable binding write paths remain unchanged. The unchanged real-panel fixture retains invalid JSON through sibling deletion/rename, commits valid JSON and resets to the new array type default.",
       "evidence": [
         {
           "file": "web/app/src/features/agent-flow/components/detail/fields/containers/ContainerValueField.tsx",
@@ -101,7 +101,7 @@
         },
         {
           "file": "web/app/src/features/agent-flow/schema/node-schema-adapter.ts",
-          "sha256": "2e26fe61936cb9890d129cdcb4b22fb9e884e58e6d6fc2f004fad98a73a8e5fa"
+          "sha256": "3390a9cd9cada2db7ca0fa83ea7d465348aea40a71149e33dd4623d2bc24b622"
         },
         {
           "file": "web/app/src/features/agent-flow/hooks/interactions/use-stable-list-item-keys.ts",
