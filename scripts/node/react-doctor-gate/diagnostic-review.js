@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { createEffectSemanticCorrections } = require('./effect-semantics.js');
+const { createAsyncSemanticCorrections } = require('./async-semantics.js');
 
 const REVIEW_FILE = 'scripts/node/react-doctor-gate/reviews.json';
 
@@ -9,7 +10,7 @@ function sourceDigest(content) {
   return createHash('sha256').update(content).digest('hex');
 }
 
-function upstreamSemanticCorrection(diagnostic, toolPackage, inspectEffect) {
+function upstreamSemanticCorrection(diagnostic, toolPackage, inspectEffect, inspectAsync) {
   if (toolPackage !== 'react-doctor@0.2.16') return null;
   if (diagnostic.plugin !== 'react-doctor') return null;
   // React documents useContext as a current supported Hook, not a deprecated API.
@@ -25,7 +26,7 @@ function upstreamSemanticCorrection(diagnostic, toolPackage, inspectEffect) {
       && diagnostic.message === 'Screen reader users get more reliable semantics from `<address>` than `role="group"`, so use `<address>` instead.') {
     return 'A generic ARIA group does not imply contact information; address is not a semantically equivalent replacement.';
   }
-  return inspectEffect(diagnostic, toolPackage);
+  return inspectEffect(diagnostic, toolPackage) ?? inspectAsync(diagnostic, toolPackage);
 }
 
 // Review data is grouped by source owner; missing/ambiguous groups fail closed.
@@ -83,6 +84,7 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
   const findings = [];
   const upstreamCorrections = [];
   const inspectEffect = createEffectSemanticCorrections(repoRoot);
+  const inspectAsync = createAsyncSemanticCorrections(repoRoot);
   const digests = new Map();
   const digestFile = (file) => {
     if (!digests.has(file)) {
@@ -102,7 +104,7 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
     const review = byKey.get(`${file}\0${rule}`);
     const validSource = file.startsWith('web/app/') && !diagnostic.filePath.startsWith('/')
       && !diagnostic.filePath.includes('\\');
-    const correction = validSource ? upstreamSemanticCorrection(diagnostic, toolPackage, inspectEffect) : null;
+    const correction = validSource ? upstreamSemanticCorrection(diagnostic, toolPackage, inspectEffect, inspectAsync) : null;
     let reason;
     if (!validSource) {
       reason = 'diagnostic path is outside the reviewed application source boundary';
