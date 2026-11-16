@@ -30,13 +30,11 @@ import { useDataBlockHost } from '../../../lib/data-blocks/host-context';
 import {
   readDataBlockConfig,
   type DataBlockComponentProps,
+  type DataBlockField,
   type DataFormItem,
   type FormBlockConfig
 } from '../../../lib/data-blocks/types';
-import {
-  FormDesignControls,
-  type DesignDialog
-} from './FormDesignControls';
+import { FormDesignControls, type DesignDialog } from './FormDesignControls';
 import { FormFieldControl } from './FormFieldControl';
 import { FormLayout } from './FormLayout';
 import {
@@ -139,6 +137,10 @@ function FormBlockSession({
     config.source_model_code
   );
   const fields = metadata.data?.fields ?? [];
+  const fieldsByCode = new Map<string | undefined, DataBlockField>();
+  for (const field of fields) {
+    if (!fieldsByCode.has(field.code)) fieldsByCode.set(field.code, field);
+  }
   const design = host?.design_mode ?? false;
   const parentId = relationRecordId(config.relation, ctx.inputs);
   const missingParent =
@@ -167,14 +169,17 @@ function FormBlockSession({
   useEffect(() => {
     if (config.mode === 'create') {
       if (!metadata.data) return;
+      const defaultFieldsByCode = new Map<string, DataBlockField>();
+      for (const field of metadata.data.fields) {
+        if (!defaultFieldsByCode.has(field.code))
+          defaultFieldsByCode.set(field.code, field);
+      }
       const defaults: Record<string, unknown> = {};
       for (const item of config.items) {
         if (!item.field_code || knownFields.current.has(item.field_code))
           continue;
         knownFields.current.add(item.field_code);
-        const field = metadata.data.fields.find(
-          (candidate) => candidate.code === item.field_code
-        );
+        const field = defaultFieldsByCode.get(item.field_code);
         const value =
           item.default_value !== undefined
             ? item.default_value
@@ -243,9 +248,7 @@ function FormBlockSession({
     setSubmitError('');
     const nextErrors: Record<string, string> = {};
     for (const item of config.items) {
-      const field = fields.find(
-        (candidate) => candidate.code === item.field_code
-      );
+      const field = fieldsByCode.get(item.field_code);
       if (!field || item.kind !== 'field') continue;
       const state = fieldState(field, item, config, values);
       if (
@@ -354,9 +357,7 @@ function FormBlockSession({
       return (
         <XMarkdown content={item.text ?? ''} escapeRawHtml openLinksInNewTab />
       );
-    const field = fields.find(
-      (candidate) => candidate.code === item.field_code
-    );
+    const field = fieldsByCode.get(item.field_code);
     if (!field)
       return design ? (
         <Typography.Text type="secondary">
@@ -402,9 +403,7 @@ function FormBlockSession({
   };
   const visibleItems = config.items.filter((item) => {
     if (design || item.kind !== 'field') return true;
-    const field = fields.find(
-      (candidate) => candidate.code === item.field_code
-    );
+    const field = fieldsByCode.get(item.field_code);
     return Boolean(field && fieldState(field, item, config, values).visible);
   });
   const busy = savingDesign || Boolean(host?.saving);

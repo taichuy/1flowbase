@@ -53,6 +53,7 @@ import {
   type DataBlockAction,
   type DataBlockColumn,
   type DataBlockComponentProps,
+  type DataBlockField,
   type DataFilterGroup,
   type TableBlockConfig
 } from '../../../lib/data-blocks/types';
@@ -144,6 +145,10 @@ function ConfiguredTableBlock({
   const sensors = useTableDragSensors();
   const metadata = useDataBlockMetadata(ctx, config.binding);
   const fields = metadata.data?.fields ?? [];
+  const fieldsByCode = new Map<string, DataBlockField>();
+  for (const field of fields) {
+    if (!fieldsByCode.has(field.code)) fieldsByCode.set(field.code, field);
+  }
   const disabled = saving || Boolean(host?.saving) || !metadata.data;
   const actionParent = tableActionParentContext(config, fields, ctx.inputs);
   const capabilities = metadata.data?.record_capabilities;
@@ -166,9 +171,7 @@ function ConfiguredTableBlock({
   }, [defaultFilterKey]);
   const scopeKey = JSON.stringify(scope.filter);
   const invalidFields = metadata.data
-    ? config.columns.filter(
-        (column) => !fields.some((field) => field.code === column.field_code)
-      )
+    ? config.columns.filter((column) => !fieldsByCode.has(column.field_code))
     : [];
   const filterFields = (group: DataFilterGroup): string[] =>
     group.conditions.flatMap((condition) =>
@@ -186,7 +189,7 @@ function ConfiguredTableBlock({
         ...(sort ? [sort.field] : []),
         ...(config.relation ? [config.relation.field_code] : []),
         ...(config.linkage ? [config.linkage.field_code] : [])
-      ].some((code) => !fields.some((field) => field.code === code)))
+      ].some((code) => !fieldsByCode.has(code)))
   );
   const records = useDataBlockRecords(
     ctx,
@@ -200,10 +203,7 @@ function ConfiguredTableBlock({
     Boolean(capabilities?.can_list && scope.enabled && !invalidQuery)
   );
   const idField = metadata.data?.record_id_field ?? '';
-  const data = useMemo(
-    () => records.data?.items ?? [],
-    [records.data?.items]
-  );
+  const data = useMemo(() => records.data?.items ?? [], [records.data?.items]);
   const canAddressRecords = Boolean(idField);
   const missingRecordId =
     canAddressRecords &&
@@ -413,8 +413,7 @@ function ConfiguredTableBlock({
   };
 
   const visibleColumns = config.columns.filter(
-    (column) =>
-      !column.hidden && fields.some((field) => field.code === column.field_code)
+    (column) => !column.hidden && fieldsByCode.has(column.field_code)
   );
   const fieldMenu = design && (
     <TableFieldMenu
@@ -531,7 +530,7 @@ function ConfiguredTableBlock({
       )
     });
   for (const column of visibleColumns) {
-    const field = fields.find((item) => item.code === column.field_code)!;
+    const field = fieldsByCode.get(column.field_code)!;
     const title = column.title || field.title;
     columns.push({
       key: column.field_code,

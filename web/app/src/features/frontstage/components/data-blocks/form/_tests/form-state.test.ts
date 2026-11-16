@@ -142,3 +142,42 @@ describe('form record and design boundaries', () => {
     ]);
   });
 });
+
+describe('first-match field lookup', () => {
+  it('keeps the first duplicate field and never maps a missing code to an empty code', () => {
+    const config = createFormBlockConfig(binding);
+    config.items = [
+      item('name'),
+      item('unset', { field_code: undefined }),
+      item('missing')
+    ];
+    const fields = [
+      field('name', { is_writable: false }),
+      field('name'),
+      field('')
+    ];
+    const draft = { name: 'must stay readonly', '': 'exact empty code only' };
+    expect(formWriteValues(config, fields, draft, {})).toEqual({});
+    config.items.push(item('empty', { field_code: '' }));
+    expect(formWriteValues(config, fields, draft, {})).toEqual({
+      '': 'exact empty code only'
+    });
+  });
+
+  it('checks the first relation field before injecting a parent identifier', () => {
+    const config = createFormBlockConfig(binding);
+    config.relation = {
+      field_code: 'customer',
+      parent_model_code: 'customers',
+      parent_record_input: 'parent_record_id'
+    };
+    expect(() =>
+      formWriteValues(
+        config,
+        [field('customer', { is_writable: false }), field('customer')],
+        {},
+        { parent_record_id: 'parent-1' }
+      )
+    ).toThrow('readonly_parent');
+  });
+});

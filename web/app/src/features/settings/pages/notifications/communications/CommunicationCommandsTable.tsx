@@ -41,6 +41,11 @@ export function CommunicationCommandsTable({
   const configurations = new Map(
     value.map((command) => [command.command_id, command])
   );
+  const declarations = new Map<string, CommunicationCommandView>();
+  for (const command of commands) {
+    if (!declarations.has(command.command_id))
+      declarations.set(command.command_id, command);
+  }
   const rows: CommandRow[] = commands
     .filter((command) => command.source_kind !== 'user')
     .flatMap((declaration) => {
@@ -50,15 +55,11 @@ export function CommunicationCommandsTable({
   for (const configuration of value) {
     if (
       configuration.kind === 'event' ||
-      !commands.some(
-        (command) => command.command_id === configuration.command_id
-      )
+      !declarations.has(configuration.command_id)
     ) {
       rows.push({
         configuration,
-        declaration: commands.find(
-          (command) => command.command_id === configuration.command_id
-        )
+        declaration: declarations.get(configuration.command_id)
       });
     }
   }

@@ -94,11 +94,13 @@ export function formWriteValues(
   draft: Readonly<Record<string, unknown>>,
   inputs: Readonly<Record<string, unknown>>
 ) {
+  const fieldsByCode = new Map<string | undefined, DataBlockField>();
+  for (const field of fields) {
+    if (!fieldsByCode.has(field.code)) fieldsByCode.set(field.code, field);
+  }
   const values: Record<string, unknown> = {};
   for (const item of config.items) {
-    const field = fields.find(
-      (candidate) => candidate.code === item.field_code
-    );
+    const field = fieldsByCode.get(item.field_code);
     if (!field || item.kind !== 'field') continue;
     const state = fieldState(field, item, config, draft);
     if (!state.visible || state.readOnly || draft[field.code] === undefined)
@@ -121,9 +123,7 @@ export function formWriteValues(
   if (config.mode === 'create' && config.relation) {
     const parent = relationRecordId(config.relation, inputs);
     if (!parent) throw new Error('missing_parent');
-    const relationField = fields.find(
-      (field) => field.code === config.relation!.field_code
-    );
+    const relationField = fieldsByCode.get(config.relation.field_code);
     if (
       !relationField?.is_writable ||
       relationField.field_kind === 'one_to_many'
