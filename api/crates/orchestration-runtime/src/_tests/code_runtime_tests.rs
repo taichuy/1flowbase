@@ -29,6 +29,77 @@ struct RealCodeFixtureInvoker {
     code: QuickJsCodeInvoker,
 }
 
+struct DiagnosticProtectionInvoker {
+    fail: bool,
+}
+
+#[async_trait]
+impl CodeInvoker for DiagnosticProtectionInvoker {
+    async fn invoke_code_node(
+        &self,
+        runtime: &CompiledCodeRuntime,
+        config: Value,
+        input: Value,
+    ) -> Result<CodeInvocationOutput> {
+        QuickJsCodeInvoker::default()
+            .invoke_code_node(runtime, config, input)
+            .await
+    }
+
+    async fn protect_protocol_context_logs(
+        &self,
+        logs: &mut Vec<crate::code_runtime::ConsoleLogEntry>,
+    ) -> Result<()> {
+        if self.fail {
+            return Err(anyhow!("protocol_context_protection_unavailable"));
+        }
+        for log in logs {
+            log.message = log.message.replace("raw-context-secret", "[protected]");
+            for arg in &mut log.args {
+                if let Some(text) = arg.as_str() {
+                    *arg = json!(text.replace("raw-context-secret", "[protected]"));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn code_runtime_exception_diagnostic_is_protected_before_persistence() {
+    let node = code_node_with_runtime(quickjs_runtime(
+        "function main(){console.warn('raw-context-secret');throw Error('HTTP 409 raw-context-secret')}",
+    ));
+    for fail in [false, true] {
+        let execution = execute_code_node(
+            &code_runtime_plan(),
+            &node,
+            &Map::new(),
+            &DiagnosticProtectionInvoker { fail },
+        )
+        .await
+        .unwrap();
+        let error = execution.error_payload.unwrap();
+        assert!(!error.to_string().contains("raw-context-secret"));
+        assert!(!execution
+            .debug_payload
+            .to_string()
+            .contains("raw-context-secret"));
+        assert!(!execution
+            .output_payload
+            .to_string()
+            .contains("raw-context-secret"));
+        assert_eq!(
+            error["message"],
+            json!(if fail {
+                "code execution failed"
+            } else {
+                "HTTP 409 [protected]"
+            })
+        );
+    }
+}
+
 #[async_trait]
 impl ProviderInvoker for CodeFixtureInvoker {
     async fn invoke_llm(
@@ -668,12 +739,12 @@ function main(inputs) {
 }
 
 #[tokio::test]
-async fn code_runtime_quickjs_console_logs_survive_sanitized_runtime_error() {
+async fn code_runtime_quickjs_console_logs_survive_descriptive_runtime_error() {
     let runtime = quickjs_runtime(
         r#"
 function main() {
   console.error("before throw", { detail: "visible debug fact" });
-  throw new Error("secret host stack should not leak");
+  throw new Error("Create deletion job HTTP 409: agent_logs_delete_job_active");
 }
 "#,
     );
@@ -689,15 +760,18 @@ function main() {
         .expect("runtime throw should produce an error payload");
     assert_eq!(error_payload["error_code"], json!("code_runtime_error"));
     assert!(error_payload.get("error_kind").is_none());
-    assert_eq!(error_payload["message"], json!("code execution failed"));
+    assert_eq!(
+        error_payload["message"],
+        json!("Create deletion job HTTP 409: agent_logs_delete_job_active")
+    );
     assert_eq!(
         error_payload["runtime_message"],
-        json!("runtime_error: code execution failed")
+        json!("runtime_error: Create deletion job HTTP 409: agent_logs_delete_job_active")
     );
     assert!(!error_payload["runtime_message"]
         .as_str()
         .unwrap()
-        .contains("secret host stack"));
+        .contains(" at main"));
     assert_eq!(
         execution.debug_payload["console_logs"],
         json!([

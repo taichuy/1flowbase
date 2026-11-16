@@ -206,7 +206,13 @@ fn execute(
                 let literal = String::from_utf8(input_json).map_err(|_| ErrorKind::RuntimeError)?;
                 ctx.eval::<JsValue, _>(format!("({literal})")).map_err(|_| ErrorKind::RuntimeError)?
             } else { ctx.json_parse(input_json).map_err(|_| ErrorKind::RuntimeError)? };
-            let output: JsValue = invoke.call((main, js_input, started)).map_err(|_| ErrorKind::RuntimeError)?;
+            let output: JsValue = invoke.call((main, js_input, started)).map_err(|error: rquickjs::Error| {
+                let mut failure = ExecutionError::from(ErrorKind::RuntimeError);
+                if legacy && error.is_exception() && check_stop(&cancel, deadline).is_ok() {
+                    failure.exception_message = codec.exception_message(ctx.catch(), limits.max_output_bytes);
+                }
+                failure
+            })?;
             let output_payload = if legacy {
                 // Keep the original Code root check and guest-observable stringify/error behavior.
                 let encode: Function = ctx.eval(r#"(function(output) {
@@ -244,3 +250,7 @@ fn execute(
 #[cfg(test)]
 #[path = "_tests/execution.rs"]
 mod execution_tests;
+
+#[cfg(test)]
+#[path = "_tests/diagnostics.rs"]
+mod diagnostic_tests;

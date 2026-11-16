@@ -2,6 +2,10 @@ use super::*;
 
 mod callback_progress;
 mod workflow;
+#[path = "_tests/performance.rs"]
+mod performance;
+#[path = "_tests/compaction_retention.rs"]
+mod compaction_retention;
 use control_plane::agent_logs::AgentLogsService;
 use control_plane_contracts::ports::{
     AgentLogsDeleteJobCreate, AgentLogsDeleteJobStatus, AgentLogsDeleteScope,
