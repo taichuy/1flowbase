@@ -171,7 +171,7 @@ export function CommunicationCommandEditor({
             }
           ]}
         >
-          <Input addonBefore="/" />
+          <Input prefix="/" />
         </Form.Item>
         <Form.Item
           name="description"

@@ -256,7 +256,10 @@ describe('action child form initialization', () => {
     expect(
       screen.queryByRole('button', { name: '创建区块' })
     ).not.toBeInTheDocument();
-    expect(mocks.catalog).toHaveBeenCalledWith({ workspaceId: null });
+    expect(mocks.catalog).toHaveBeenCalledWith({
+      workspaceId: null,
+      registrationTarget: 'block'
+    });
     expect(mocks.metadata).not.toHaveBeenCalled();
     expect(mocks.record).not.toHaveBeenCalled();
   });

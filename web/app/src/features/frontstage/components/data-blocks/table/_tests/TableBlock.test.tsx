@@ -16,6 +16,21 @@ import {
   type TableBlockConfig
 } from '../../../../lib/data-blocks/types';
 import { TableBlock } from '../TableBlock';
+import { BlockSettingsProvider } from '../../../../lib/block-settings/registry';
+import { useBlockSettings } from '../../../../lib/block-settings/registry-store';
+
+function BlockSettingsMenu() {
+  const items = useBlockSettings();
+  return (
+    <div role="toolbar" aria-label="Block settings">
+      {items.map((item) => (
+        <button key={item.id} disabled={item.disabled} onClick={item.onSelect}>
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const mocks = vi.hoisted(() => ({
   metadata: vi.fn(),
@@ -78,6 +93,7 @@ function setup(
     { id: 'delete', kind: 'delete', enabled: true },
     { id: 'refresh', kind: 'refresh', enabled: true }
   ];
+  config.action_column = { hidden: false, position: 0 };
   config.row_actions = [
     { id: 'view', kind: 'view', enabled: true, target_block_id: 'detail-form' }
   ];
@@ -101,9 +117,12 @@ function setup(
     ...ownerOverrides
   };
   render(
-    <DataBlockHostContext.Provider value={owner}>
-      <TableBlock ctx={ctx} />
-    </DataBlockHostContext.Provider>
+    <BlockSettingsProvider>
+      <DataBlockHostContext.Provider value={owner}>
+        <TableBlock ctx={ctx} />
+        <BlockSettingsMenu />
+      </DataBlockHostContext.Provider>
+    </BlockSettingsProvider>
   );
   return { owner, publish };
 }
@@ -263,10 +282,7 @@ describe('TableBlock design persistence', () => {
       }
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'auto.configuration' })
-    );
-    fireEvent.click(
-      await screen.findByText('data_blocks.form.title_description')
+      screen.getByRole('button', { name: 'data_blocks.form.title_description' })
     );
     const dialog = await screen.findByRole('dialog');
     fireEvent.change(within(dialog).getAllByRole('textbox')[0], {

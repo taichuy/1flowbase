@@ -4,6 +4,7 @@ import {
   type ApiEventUnavailableReason,
   type CreateEventDefinitionInput,
   type EventCatalogEntry,
+  type InterfaceEventBinding,
   type InterfaceEventPhase,
   type InterfaceEventTerminal
 } from '@1flowbase/api-client';
@@ -44,13 +45,15 @@ export function EventDefinitionDrawer({
   const event_kind =
     Form.useWatch('event_kind', form) ?? entry?.event_kind ?? 'interface';
   const commandEvent = event_kind === 'communication_command';
-  const operation_id = Form.useWatch(
-    ['interface_event', 'operation_id'],
-    form
-  ) as string | undefined;
-  const phase = Form.useWatch(['interface_event', 'phase'], form) as
-    | InterfaceEventPhase
-    | undefined;
+  // The binding spans conditional fields. Observe the canonical form value even
+  // while a phase/results field is not mounted, so catalogue requests follow selection.
+  const binding = Form.useWatch('interface_event', {
+    form,
+    preserve: true
+  }) as InterfaceEventBinding | undefined;
+  const operation_id =
+    binding && 'operation_id' in binding ? binding.operation_id : undefined;
+  const phase: InterfaceEventPhase | undefined = binding?.phase;
   const enabled = Form.useWatch('enabled', form) as boolean | undefined;
   const legacy =
     entry?.interface_event && 'interface_id' in entry.interface_event
@@ -85,7 +88,6 @@ export function EventDefinitionDrawer({
           ? selected?.completion_schema
           : undefined;
   const hasSchema = selectedSchema !== undefined && selectedSchema !== null;
-  const binding = Form.useWatch('interface_event', form);
   const unchangedDisabled =
     enabled === false &&
     entry?.interface_event !== undefined &&

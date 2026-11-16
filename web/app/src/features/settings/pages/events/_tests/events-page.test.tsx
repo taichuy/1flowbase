@@ -86,6 +86,7 @@ const schema = {
 };
 const custom: EventCatalogEntry = {
   id: 'definition',
+  event_kind: 'interface',
   group_path: ['interface_events'],
   interface_event: { interface_id: 'orders.create', phase: 'before' },
   enabled: false,
@@ -269,12 +270,13 @@ describe('event center configuration and observations', () => {
       'Business group',
       'Event ID',
       'Source category',
-      'Scope',
+      'Event type',
       'Enabled',
       'Supported trigger phases',
+      'Updated at',
       'Actions'
     ]);
-    expect(screen.getByText('Workspace · workspace')).toBeInTheDocument();
+    expect(screen.queryByText('Workspace · workspace')).not.toBeInTheDocument();
     expect(screen.queryByText('core.owner')).not.toBeInTheDocument();
     expect(screen.queryByText('core.point')).not.toBeInTheDocument();
     const row = screen.getByRole('row', { name: /Core ready/ });
@@ -285,6 +287,7 @@ describe('event center configuration and observations', () => {
     ).not.toBeInTheDocument();
     fireEvent.click(within(row).getByRole('button', { name: 'Details' }));
     const drawer = screen.getByRole('dialog');
+    expect(within(drawer).getByText('Workspace · workspace')).toBeInTheDocument();
     expect(within(drawer).getByText('core.owner')).toBeInTheDocument();
     expect(within(drawer).getByText('core.point')).toBeInTheDocument();
     expect(
@@ -545,17 +548,17 @@ describe('event center configuration and observations', () => {
     const fields = await screen.findByRole('dialog', {
       name: 'Customize visible fields'
     });
-    fireEvent.click(within(fields).getByRole('checkbox', { name: 'Scope' }));
+    fireEvent.click(within(fields).getByRole('checkbox', { name: 'Event type' }));
     await waitFor(() =>
       expect(
-        screen.queryByRole('columnheader', { name: 'Scope' })
+        screen.queryByRole('columnheader', { name: 'Event type' })
       ).not.toBeInTheDocument()
     );
     view.unmount();
     renderPage();
     await screen.findByRole('button', { name: 'Order' });
     expect(
-      screen.queryByRole('columnheader', { name: 'Scope' })
+      screen.queryByRole('columnheader', { name: 'Event type' })
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole('columnheader', { name: 'Event ID' })
@@ -596,6 +599,9 @@ describe('event center configuration and observations', () => {
       );
       fireEvent.click(
         await screen.findByText('POST /api/console/orders · Create order')
+      );
+      await waitFor(() =>
+        expect(api.getApiEventOperation).toHaveBeenCalledWith('create_order')
       );
       await waitFor(() =>
         expect(
@@ -643,6 +649,7 @@ describe('event center configuration and observations', () => {
             name: 'Request',
             description: '',
             enabled: false,
+            event_kind: 'interface',
             interface_event: {
               operation_id: 'create_order',
               phase,
@@ -711,6 +718,7 @@ describe('event center configuration and observations', () => {
           name: 'Changed order',
           description: 'New order',
           enabled: false,
+          event_kind: 'interface',
           interface_event: custom.interface_event
         },
         'csrf'
@@ -792,6 +800,7 @@ describe('event center configuration and observations', () => {
           name: 'Preserved legacy',
           description: custom.description,
           enabled: false,
+          event_kind: 'interface',
           interface_event: custom.interface_event
         },
         'csrf'

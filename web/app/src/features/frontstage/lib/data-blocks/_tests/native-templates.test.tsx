@@ -97,12 +97,14 @@ describe('shipped data block native templates', () => {
           asset.module_source === '@1flowbase/data-blocks' &&
           asset.role === 'shadow_style'
       );
-      expect(blockStyles).toHaveLength(2);
+      expect(blockStyles).toHaveLength(4);
       const loadedCss = blockStyles
         .map((asset) => new TextDecoder().decode(asset.bytes))
         .join('\n');
       expect(loadedCss).toContain('.data-table-block');
       expect(loadedCss).toContain('.data-form-block');
+      expect(loadedCss).toContain('.block-design-surface');
+      expect(loadedCss).toContain('.frontstage-node-action-button');
 
       const plan: NativeTrustedBlockPreparePlan = {
         runtime: 'native_trusted_block',

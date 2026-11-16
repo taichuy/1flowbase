@@ -267,7 +267,11 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     bindingForm.resetFields();
     const snapshot = await draft.load(instance.instance_id);
     if (snapshot) {
-      const path = '/';
+      // Tree selection can change while the snapshot is loading. Initialize the
+      // selected group instead of replacing its form with the instance root.
+      const path = normalizeMcpDirectoryPath(
+        groupForm.getFieldValue('path') ?? '/'
+      );
       const group = snapshot.groups.find((row) => row.path === path);
       editingGroupIdRef.current = group?.id ?? null;
       const values = {
