@@ -39,7 +39,8 @@ const mocks = vi.hoisted(() => ({
   remove: vi.fn(),
   refetch: vi.fn()
 }));
-vi.mock('../../../../api/data-blocks', () => ({
+vi.mock('../../../../api/data-blocks', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../../../api/data-blocks')>(),
   useDataBlockMetadata: mocks.metadata,
   useDataBlockRecords: mocks.records,
   useDataBlockWrites: () => ({ remove: { mutateAsync: mocks.remove } })
