@@ -402,7 +402,6 @@ where
                 }
             }
             if command.source != PublishedCallbackResumeSource::OpenAiResponses
-                && command.anthropic_continuation.is_none()
                 && callback_failure_allows_new_turn(&context.flow_run)
             {
                 return Ok(PreparedPublishedCallbackResume::StartNewTurnFromHistory);

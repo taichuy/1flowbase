@@ -46,6 +46,206 @@ fn source_request() -> Value {
 }
 
 #[tokio::test]
+async fn anthropic_verified_callback_retry_pre_token_429_starts_new_turn_without_reconsuming_receipt(
+) {
+    let (repository, mut consumer, token, run) = callback_fixture().await;
+    consumer.terminal_error = Some(json!({
+        "error_code":"provider_upstream_error", "status_code":429,
+        "failed_after_first_token":false
+    }));
+    let callback = repository.seed_pending_llm_tool_callback_task(
+        run.id,
+        json!({"tool_calls":[{"id":"a","name":"Read","arguments":{}}]}),
+    );
+    let actor = ApplicationApiKeyService::new(repository.clone())
+        .authenticate_bearer_token(&token)
+        .await
+        .unwrap();
+    let service =
+        ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
+    let original = verified_command(
+        &repository,
+        &actor,
+        &token,
+        &run,
+        callback.id,
+        source_request(),
+        "file",
+    )
+    .await;
+    let first = service.resume_callback(original).await.unwrap();
+    assert_eq!(
+        first.run.status,
+        crate::application_public_api::native::NativeRunStatus::Failed
+    );
+    assert_eq!(
+        first.attempt.status,
+        domain::FlowRunCallbackResumeAttemptStatus::Succeeded
+    );
+    let attempts = repository.callback_resume_attempts();
+    let stored = repository
+        .get_published_callback_task(callback.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.status, domain::CallbackTaskStatus::Completed);
+
+    // Real ingress verifies each transport request, including an identical retry.
+    let retry = verified_command(
+        &repository,
+        &actor,
+        &token,
+        &run,
+        callback.id,
+        source_request(),
+        "file",
+    )
+    .await;
+    assert!(retry.anthropic_continuation.is_some());
+    assert_eq!(
+        service.prepare_callback_resume(&retry).await.unwrap(),
+        PreparedPublishedCallbackResume::StartNewTurnFromHistory
+    );
+    assert_eq!(consumer.call_count(), 1);
+    assert_eq!(attempts.len(), 1);
+    assert_eq!(repository.callback_resume_attempts(), attempts);
+    assert_eq!(
+        repository
+            .get_published_callback_task(callback.id)
+            .await
+            .unwrap()
+            .unwrap(),
+        stored
+    );
+}
+
+#[tokio::test]
+async fn anthropic_verified_callback_retry_keeps_unsafe_failures_and_changed_context_fenced() {
+    for variant in [
+        "partial_output",
+        "unknown_token_boundary",
+        "auth_failed",
+        "model_not_found",
+        "provider_affinity_mismatch",
+        "provider_transport_unavailable",
+        "tool_output",
+        "prior_context",
+        "options",
+        "source",
+    ] {
+        let (repository, mut consumer, token, run) = callback_fixture().await;
+        let mut error = json!({
+            "error_code":"provider_upstream_error", "status_code":429,
+            "failed_after_first_token":false
+        });
+        match variant {
+            "partial_output" => error["failed_after_first_token"] = json!(true),
+            "unknown_token_boundary" => {
+                error
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("failed_after_first_token");
+            }
+            "auth_failed"
+            | "model_not_found"
+            | "provider_affinity_mismatch"
+            | "provider_transport_unavailable" => error["error_code"] = json!(variant),
+            _ => {}
+        }
+        consumer.terminal_error = Some(error);
+        let callback = repository.seed_pending_llm_tool_callback_task(
+            run.id,
+            json!({"tool_calls":[{"id":"a","name":"Read","arguments":{}}]}),
+        );
+        let actor = ApplicationApiKeyService::new(repository.clone())
+            .authenticate_bearer_token(&token)
+            .await
+            .unwrap();
+        let service =
+            ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
+        let original = verified_command(
+            &repository,
+            &actor,
+            &token,
+            &run,
+            callback.id,
+            source_request(),
+            "file",
+        )
+        .await;
+        service.resume_callback(original).await.unwrap();
+        let attempts = repository.callback_resume_attempts();
+        let stored = repository
+            .get_published_callback_task(callback.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut source = source_request();
+        let result = if variant == "tool_output" {
+            "tampered"
+        } else {
+            "file"
+        };
+        match variant {
+            "tool_output" => source["messages"][2]["content"][0]["content"] = json!(result),
+            "prior_context" => source["messages"][0]["content"] = json!("rewritten predecessor"),
+            "options" => source["max_tokens"] = json!(200),
+            _ => {}
+        }
+        let mut retry = verified_command(
+            &repository,
+            &actor,
+            &token,
+            &run,
+            callback.id,
+            source,
+            result,
+        )
+        .await;
+        if variant == "source" {
+            retry.source = PublishedCallbackResumeSource::OpenAiChat;
+        }
+        let admission = service.prepare_callback_resume(&retry).await;
+        if matches!(
+            variant,
+            "tool_output" | "prior_context" | "options" | "source"
+        ) {
+            let expected_conflict = if variant == "source" {
+                "anthropic_continuation_transport_mismatch"
+            } else {
+                "callback_resume_payload_conflict"
+            };
+            assert!(
+                admission
+                    .unwrap_err()
+                    .to_string()
+                    .contains(expected_conflict),
+                "{variant}: changed retry must retain its admission conflict"
+            );
+        } else {
+            assert!(
+                matches!(
+                    admission.unwrap(),
+                    PreparedPublishedCallbackResume::Resume { .. }
+                ),
+                "{variant}"
+            );
+        }
+        assert_eq!(consumer.call_count(), 1, "{variant}");
+        assert_eq!(repository.callback_resume_attempts(), attempts, "{variant}");
+        assert_eq!(
+            repository
+                .get_published_callback_task(callback.id)
+                .await
+                .unwrap()
+                .unwrap(),
+            stored,
+            "{variant}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn anthropic_followup_after_partial_inference_failure_starts_new_turn_without_replaying_tools(
 ) {
     for variant in [
