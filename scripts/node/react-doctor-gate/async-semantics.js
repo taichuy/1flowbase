@@ -247,7 +247,9 @@ function loopControl(unit, node, diagnostic, context) {
   if (node.type !== 'AwaitExpression') return null;
   const loop = containingLoop(unit, node);
   const labels = { ForStatement: 'for-loop', ForInStatement: 'for…in loop', ForOfStatement: 'for…of loop', WhileStatement: 'while-loop', DoWhileStatement: 'do-while loop' };
-  if (!loop || diagnostic.message !== `This makes the ${labels[loop.type]} slow because each await runs one after another, so collect the independent calls & run them together with `await Promise.all(items.map(...))``) return null;
+  if (!loop) return null;
+  const message = 'This makes the ' + labels[loop.type] + ' slow because each await runs one after another, so collect the independent calls & run them together with `await Promise.all(items.map(...))`';
+  if (diagnostic.message !== message) return null;
   const declaration = unit.parents.get(node);
   if (declaration?.type !== 'VariableDeclarator' || declaration.init !== node) return null;
   const dependencies = patternBindings(unit, declaration.id, context);
