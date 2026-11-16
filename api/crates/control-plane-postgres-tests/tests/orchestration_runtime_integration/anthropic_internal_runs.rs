@@ -531,8 +531,12 @@ external_user: Some("claude-code-user".to_string()),
         .await
         .unwrap()
         .expect("parent run projection watermark should be available");
-    assert!(
-        source_watermark.ends_with("/subagents:2"),
+    assert_eq!(
+        source_watermark
+            .split('/')
+            .filter(|part| part.starts_with("subagents:"))
+            .collect::<Vec<_>>(),
+        vec!["subagents:2"],
         "batched Agent tool calls must be counted individually in projection watermark: {source_watermark}"
     );
 }
