@@ -137,14 +137,6 @@ impl DebugSender {
     }
 }
 
-
-
-
-
-
-
-
-
 pub fn runtime_event_to_sse(envelope: RuntimeEventEnvelope) -> Result<Event, Infallible> {
     let event_id = envelope.event_id.clone();
     let event_type = envelope.event_type.clone();

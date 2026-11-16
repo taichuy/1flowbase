@@ -9,9 +9,11 @@ pub mod local_command;
 pub mod local_terminal;
 pub mod routes {
     pub use api_host_kernel::routes::*;
-    pub mod console_interface;
     pub mod assistant;
-    pub mod debug_run_stream { pub use api_host_kernel::debug_stream_contract::*; }
+    pub mod console_interface;
+    pub mod debug_run_stream {
+        pub use api_host_kernel::debug_stream_contract::*;
+    }
     pub mod client_collectors;
     pub mod communications;
     pub mod events;
@@ -24,7 +26,9 @@ pub mod routes {
     pub mod network_center;
     pub mod notifications;
     pub mod terminal;
-    pub mod plugins { pub use api_host_kernel::plugin_transport::*; }
+    pub mod plugins {
+        pub use api_host_kernel::plugin_transport::*;
+    }
 }
 
 #[doc(hidden)]

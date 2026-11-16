@@ -12,9 +12,7 @@ mod routes;
 pub mod stream;
 pub mod stream_ticket;
 pub use interface::registry_contribution;
-pub use registration::{
-    append_openapi, load, load_installations, ManagedServiceRegistration,
-};
+pub use registration::{append_openapi, load, load_installations, ManagedServiceRegistration};
 pub use routes::route_assembly;
 
 pub use api_host_kernel::managed_services::ManagedServiceFailure;

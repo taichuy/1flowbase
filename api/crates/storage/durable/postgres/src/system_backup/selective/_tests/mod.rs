@@ -1,7 +1,7 @@
-mod event_configuration;
 mod branding;
 mod communications;
 mod container_state;
+mod event_configuration;
 mod fixes;
 mod native_storage;
 mod notification_compaction;

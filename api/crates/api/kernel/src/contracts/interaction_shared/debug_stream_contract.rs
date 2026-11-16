@@ -1,7 +1,9 @@
-use std::{convert::Infallible,sync::Arc,pin::Pin,future::Future};
 use axum::response::sse::Event;
-use control_plane::ports::{OrchestrationRuntimeRepository,RuntimeEventReplayWindow,RuntimeEventStream};
+use control_plane::ports::{
+    OrchestrationRuntimeRepository, RuntimeEventReplayWindow, RuntimeEventStream,
+};
 use serde::Serialize;
+use std::{convert::Infallible, future::Future, pin::Pin, sync::Arc};
 use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 pub type DebugRunSseStream = tokio_stream::wrappers::ReceiverStream<Result<Event, Infallible>>;
@@ -107,7 +109,6 @@ pub enum RuntimeDebugSseEventResponse {
     ReplayGap(RuntimeEventReplayGapResponse),
 }
 
-
 pub fn payload_i64(payload: &serde_json::Value, key: &str) -> Option<i64> {
     payload.get(key).and_then(|value| {
         value
@@ -152,6 +153,20 @@ pub fn to_runtime_event_record_response(
     }
 }
 pub trait RuntimeEventSsePort: Send + Sync {
-    fn websocket_send(self: Arc<Self>, stream: Arc<dyn RuntimeEventStream>, backfill: Arc<dyn RuntimeEventBackfillSource>, run_id: Uuid, from_sequence: Option<i64>, sender: tokio::sync::mpsc::Sender<serde_json::Value>) -> Pin<Box<dyn Future<Output=()>+Send+'static>>;
-    fn send(self: Arc<Self>, stream: Arc<dyn RuntimeEventStream>, backfill: Arc<dyn RuntimeEventBackfillSource>, run_id: Uuid, from_sequence: Option<i64>, sender: tokio::sync::mpsc::Sender<Result<Event, Infallible>>) -> Pin<Box<dyn Future<Output=()>+Send+'static>>;
+    fn websocket_send(
+        self: Arc<Self>,
+        stream: Arc<dyn RuntimeEventStream>,
+        backfill: Arc<dyn RuntimeEventBackfillSource>,
+        run_id: Uuid,
+        from_sequence: Option<i64>,
+        sender: tokio::sync::mpsc::Sender<serde_json::Value>,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
+    fn send(
+        self: Arc<Self>,
+        stream: Arc<dyn RuntimeEventStream>,
+        backfill: Arc<dyn RuntimeEventBackfillSource>,
+        run_id: Uuid,
+        from_sequence: Option<i64>,
+        sender: tokio::sync::mpsc::Sender<Result<Event, Infallible>>,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
 }

@@ -833,7 +833,6 @@ fn parse_client_frame(text: &str, input: &jsonschema::Validator) -> Result<Clien
 }
 }
 
-
 // Runtime frames and their consumed ACK owner are not a business terminal DTO.
 impl crate::openapi_interface::contract::ApiOutput for StreamEvent {
     fn document_output_unavailable(
@@ -848,20 +847,6 @@ impl crate::openapi_interface::contract::ApiOutput for StreamEvent {
         Err(Arc::from("managed_service_frame_is_not_a_stream_terminal"))
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 #[cfg(any(test, feature = "test-support"))]
 #[path = "_tests/support/stream.rs"]

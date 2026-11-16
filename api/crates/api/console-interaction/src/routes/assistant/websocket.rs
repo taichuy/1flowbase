@@ -667,13 +667,18 @@ async fn project_run_stream(
     run: AssistantWebSocketRun,
 ) -> Result<(), ApiError> {
     let (event_sender, mut events) = mpsc::channel::<Value>(32);
-    tokio::spawn(state.runtime_event_stream_projection.clone().websocket_send(
-        state.runtime_event_stream.clone(),
-        Arc::new(state.store.clone()),
-        run.run_id,
-        run.from_sequence,
-        event_sender,
-    ));
+    tokio::spawn(
+        state
+            .runtime_event_stream_projection
+            .clone()
+            .websocket_send(
+                state.runtime_event_stream.clone(),
+                Arc::new(state.store.clone()),
+                run.run_id,
+                run.from_sequence,
+                event_sender,
+            ),
+    );
     while let Some(mut event) = events.recv().await {
         event["request_id"] = Value::String(request_id.clone());
         frames.send(event.to_string()).await.map_err(|_| {

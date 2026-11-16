@@ -393,7 +393,13 @@ mod file_read_identity_tests {
 pub struct NativeResourceImportAdapter;
 #[async_trait::async_trait]
 impl api_host_kernel::terminal_host::NativeResourceImportPort for NativeResourceImportAdapter {
-    async fn import_for_principal(&self, state: Arc<ApiState>, principal: &interface_runtime::UserPrincipal, resource_uri: &str, file_table_id: uuid::Uuid) -> Result<extension_contracts::FileImportResponse, FileImportError> {
+    async fn import_for_principal(
+        &self,
+        state: Arc<ApiState>,
+        principal: &interface_runtime::UserPrincipal,
+        resource_uri: &str,
+        file_table_id: uuid::Uuid,
+    ) -> Result<extension_contracts::FileImportResponse, FileImportError> {
         import_for_principal(state, principal, resource_uri, file_table_id).await
     }
 }

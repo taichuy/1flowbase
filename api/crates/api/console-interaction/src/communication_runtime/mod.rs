@@ -63,8 +63,6 @@ impl CommunicationWorker {
         }
     }
 
-
-
     pub async fn stop(&self) {
         let _ = self.stop.send(true);
         if let Some(task) = self.task.lock().await.take() {
@@ -285,8 +283,6 @@ impl ProviderContext {
 #[cfg(test)]
 #[path = "_tests/request.rs"]
 mod request_tests;
-
-
 
 #[cfg(any(test, feature = "test-support"))]
 #[path = "_tests/support/worker.rs"]

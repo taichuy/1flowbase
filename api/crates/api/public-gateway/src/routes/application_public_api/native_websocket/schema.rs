@@ -1,4 +1,6 @@
-pub use api_host_kernel::native_websocket_cursor::{NativeWebSocketCommandError, sequence_from_event_id};
+pub use api_host_kernel::native_websocket_cursor::{
+    sequence_from_event_id, NativeWebSocketCommandError,
+};
 use axum::extract::ws::Message;
 use control_plane::application_public_api::native::NativeStreamOptions;
 use serde::{Deserialize, Serialize};
@@ -47,10 +49,6 @@ impl NativeWebSocketClientCommand {
         }
     }
 }
-
-
-
-
 
 pub(crate) fn decode_client_message(
     message: Message,

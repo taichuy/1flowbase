@@ -177,7 +177,5 @@ pub async fn execute_local_command(
     Ok(response::response(output.0)?)
 }
 
-
-
 #[path = "api_event_projection.rs"]
 mod api_event_projection;

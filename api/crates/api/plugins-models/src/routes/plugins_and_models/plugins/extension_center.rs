@@ -15,9 +15,8 @@ use axum::{
 };
 use control_plane::plugin_management::{
     group_installed_extension_families, AssignPluginCommand, ExtensionArtifactInstallOutcome,
-    ExtensionInstallationService, ExtensionRiskOverride,
-    InstallExtensionArtifactCommand, InstallExtensionNodePluginCommand, InstalledExtensionFamily,
-    SwitchPluginVersionCommand,
+    ExtensionInstallationService, ExtensionRiskOverride, InstallExtensionArtifactCommand,
+    InstallExtensionNodePluginCommand, InstalledExtensionFamily, SwitchPluginVersionCommand,
 };
 use plugin_framework::{intake_package_bytes, PackageIntakePolicy, PluginConsumptionKind};
 use uuid::Uuid;
@@ -36,10 +35,7 @@ use crate::{
     },
 };
 
-use super::{
-    enforce_plugin_upload_limit, format_time, to_task_response,
-    PluginTaskResponse,
-};
+use super::{enforce_plugin_upload_limit, format_time, to_task_response, PluginTaskResponse};
 
 #[derive(Clone)]
 pub struct ExtensionCenterDependencies {
@@ -1061,11 +1057,7 @@ pub mod upload;
 pub use upload::install_uploaded_extension;
 mod application;
 #[cfg(not(any(test, feature = "test-support")))]
-use application::{
-    catalog_application_action, default_application_status,
-};
-
-
+use application::{catalog_application_action, default_application_status};
 
 #[cfg(any(test, feature = "test-support"))]
 #[path = "extension_center/_tests/support/mod.rs"]
@@ -1081,26 +1073,25 @@ use catalog_projection::*;
 
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
+pub use super::{PluginCompatibilityOverrideBody, PluginRiskOverrideBody};
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
 pub use application::{catalog_application_action, default_application_status};
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
-pub use catalog_projection::{extension_update_status, project_catalog_entry, project_installed_catalog_joins};
-#[cfg(any(test, feature = "test-support"))]
-#[doc(hidden)]
-pub use super::{PluginRiskOverrideBody, PluginCompatibilityOverrideBody};
+pub use catalog_projection::{
+    extension_update_status, project_catalog_entry, project_installed_catalog_joins,
+};
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
 pub use control_plane::plugin_management::ExtensionCatalogCategory;
 
 #[cfg(not(any(test, feature = "test-support")))]
-use super::{PluginRiskOverrideBody, PluginCompatibilityOverrideBody};
+use super::{PluginCompatibilityOverrideBody, PluginRiskOverrideBody};
 #[cfg(not(any(test, feature = "test-support")))]
 use control_plane::plugin_management::ExtensionCatalogCategory;
 
 use application::workspace_application_status;
-
-
-
 
 #[cfg(any(test, feature = "test-support"))]
 #[path = "extension_center/_tests/support/accessors.rs"]

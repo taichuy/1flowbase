@@ -29,7 +29,10 @@ pub struct Dependencies {
     api_catalog: crate::openapi_interface::OpenApiCapabilityCatalogDependencies,
 }
 impl Dependencies {
-    pub fn new(state: &ApiState, descriptors: Arc<dyn api_host_kernel::event_descriptor_ports::ApiEventDescriptorPort>) -> Self {
+    pub fn new(
+        state: &ApiState,
+        descriptors: Arc<dyn api_host_kernel::event_descriptor_ports::ApiEventDescriptorPort>,
+    ) -> Self {
         Self {
             descriptors,
             store: state.store.clone(),
@@ -152,7 +155,7 @@ impl ConsoleInterfacePort<Input, Output> for Dependencies {
                 if let Some(operation_id) = selected_operation {
                     let selected = crate::event_center::api_catalog::get_with(
                         &api_catalog,
-                            self.descriptors.as_ref(),
+                        self.descriptors.as_ref(),
                         actor,
                         operation_id,
                         external_catalog,
@@ -339,8 +342,6 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: false,
     },
 ];
-
-
 
 impl crate::openapi_interface::contract::ApiInput for Input {
     fn project_document_input(

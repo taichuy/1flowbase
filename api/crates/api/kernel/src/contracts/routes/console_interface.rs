@@ -866,6 +866,11 @@ impl<I: InterfaceContract> ConsoleInvocationPreparation<I> for NonCreatePreparat
 #[path = "_tests/non_create_preparation.rs"]
 mod non_create_preparation_tests;
 
-pub async fn invoke_with_principal_non_create<I: InterfaceContract, O: InterfaceContract>(state: Arc<ApiState>, binding_id: &str, principal: UserPrincipal, input: I) -> Result<O, ApiError> {
+pub async fn invoke_with_principal_non_create<I: InterfaceContract, O: InterfaceContract>(
+    state: Arc<ApiState>,
+    binding_id: &str,
+    principal: UserPrincipal,
+    input: I,
+) -> Result<O, ApiError> {
     invoke_with_principal_prepared(state, binding_id, principal, input, NonCreatePreparation).await
 }

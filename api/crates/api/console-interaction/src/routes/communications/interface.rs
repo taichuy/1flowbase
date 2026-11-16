@@ -1,17 +1,14 @@
-use api_host_kernel::mcp_catalog::McpInterfaceCatalogDependencies;
 use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
+use api_host_kernel::mcp_catalog::McpInterfaceCatalogDependencies;
 mod event_projection;
 
 use super::{provisioning, scope, FileQuery, HistoryQuery, ImageQuery, PageQuery};
 use crate::{
     app_state::{ApiNotificationService, ApiState},
     error_response::ApiError,
-    routes::{
-        console_interface::{
-            self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
-            ConsoleInterfaceTargetError,
-        },
-
+    routes::console_interface::{
+        self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
+        ConsoleInterfaceTargetError,
     },
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -35,7 +32,11 @@ pub struct Dependencies {
     >,
 }
 impl Dependencies {
-    pub fn new(state: &ApiState, catalog: McpInterfaceCatalogDependencies, catalog_provider: Arc<dyn api_host_kernel::mcp_catalog::McpInterfaceCatalogProvider>) -> Self {
+    pub fn new(
+        state: &ApiState,
+        catalog: McpInterfaceCatalogDependencies,
+        catalog_provider: Arc<dyn api_host_kernel::mcp_catalog::McpInterfaceCatalogProvider>,
+    ) -> Self {
         Self {
             store: state.store.clone(),
             service: state.notification_service.clone(),

@@ -3,8 +3,8 @@
     reason = "public API translation and provider errors intentionally retain complete typed diagnostics"
 )]
 
-pub mod api_keys;
 pub mod anthropic_continuation;
+pub mod api_keys;
 pub mod callback_resume;
 pub mod callback_tool_ids;
 pub mod client_protocol_envelope;

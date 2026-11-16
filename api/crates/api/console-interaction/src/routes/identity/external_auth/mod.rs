@@ -272,15 +272,15 @@ struct ExternalAuthentication {
 }
 
 impl ExternalAuthentication {
-test_support_item! { pub(crate), []
-    fn from_state(state: &ApiState) -> Self {
-        Self {
-            runtime: crate::authentication_runtime::AuthenticationRuntime::from_state(state),
-            cache: state.infrastructure.cache_store(),
-            cookie_secure: state.cookie_secure,
+    test_support_item! { pub(crate), []
+        fn from_state(state: &ApiState) -> Self {
+            Self {
+                runtime: crate::authentication_runtime::AuthenticationRuntime::from_state(state),
+                cache: state.infrastructure.cache_store(),
+                cookie_secure: state.cookie_secure,
+            }
         }
     }
-}
 }
 
 test_support_item! { , []
@@ -391,8 +391,6 @@ impl CompletionAuthority {
             .map_err(|_| transaction::denied())?
             .ok_or_else(transaction::denied)
     }
-
-
 }
 
 #[derive(Default)]
@@ -732,13 +730,6 @@ pub async fn callback(
     no_store(&mut response);
     response
 }
-
-
-
-
-
-
-
 
 #[cfg(any(test, feature = "test-support"))]
 #[path = "_tests/support/accessors.rs"]

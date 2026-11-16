@@ -87,10 +87,7 @@ pub async fn load_installations(
     Ok(registrations)
 }
 /// OpenAPI and MCP discovery consume the same frozen declarations as routes and handlers.
-pub fn append_openapi(
-    document: &mut serde_json::Value,
-    services: &[ManagedServiceRegistration],
-) {
+pub fn append_openapi(document: &mut serde_json::Value, services: &[ManagedServiceRegistration]) {
     use serde_json::json;
     for service in services {
         for op in &service.declaration.operations {

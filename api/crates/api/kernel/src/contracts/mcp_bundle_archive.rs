@@ -1,6 +1,9 @@
-use std::{collections::{BTreeMap, BTreeSet}, io::{Cursor, Read}};
 use control_plane::errors::ControlPlaneError;
 use sha2::{Digest, Sha256};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    io::{Cursor, Read},
+};
 use zip::ZipArchive;
 pub const MAX_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_BUNDLE_FILES: usize = 256;

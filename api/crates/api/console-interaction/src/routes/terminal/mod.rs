@@ -130,7 +130,9 @@ impl ConsoleInterfacePort<TerminalInput, TerminalOutput> for TerminalAdapter {
     }
 }
 impl TerminalAdapter {
-    fn from_weak(state: Weak<ApiState>) -> Self { Self { host: state } }
+    fn from_weak(state: Weak<ApiState>) -> Self {
+        Self { host: state }
+    }
     async fn run(
         &self,
         principal: &interface_runtime::UserPrincipal,
@@ -143,20 +145,18 @@ impl TerminalAdapter {
         // Resource replay captures the selected MCP scope inside this canonical handler.
         let input = match input {
             TerminalInput::Import(body) => {
-                let result = host.import_resource(
-                    principal,
-                    &body.resource_uri,
-                    body.file_table_id,
-                )
-                .await
-                .map_err(|error| match error.code.as_str() {
-                    "file_import_target_permission_denied" | "file_import_caller_invalid" => {
-                        ApiError::from(control_plane::errors::ControlPlaneError::PermissionDenied(
-                            "terminal_resource_import",
-                        ))
-                    }
-                    _ => invalid("terminal_resource_import_failed"),
-                })?;
+                let result =
+                    host.import_resource(principal, &body.resource_uri, body.file_table_id)
+                        .await
+                        .map_err(|error| match error.code.as_str() {
+                            "file_import_target_permission_denied"
+                            | "file_import_caller_invalid" => ApiError::from(
+                                control_plane::errors::ControlPlaneError::PermissionDenied(
+                                    "terminal_resource_import",
+                                ),
+                            ),
+                            _ => invalid("terminal_resource_import_failed"),
+                        })?;
                 return Ok(TerminalOutput::Import(ImportOutput {
                     file_table_id: result.file_table_id,
                     storage_id: result.storage_id,
@@ -519,7 +519,6 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
-
 fn invalid(message: &'static str) -> ApiError {
     file_error(local_terminal::invalid(message))
 }
@@ -546,8 +545,6 @@ fn file_error(error: local_terminal::FileError) -> ApiError {
 use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
 #[cfg(test)]
 use serde_json::json;
-
-
 
 #[cfg(any(test, feature = "test-support"))]
 #[path = "_tests/support/adapter.rs"]

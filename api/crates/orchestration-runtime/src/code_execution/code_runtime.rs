@@ -509,7 +509,9 @@ where
         .into_iter()
         .collect();
     let protected = async {
-        invoker.protect_protocol_context_logs(&mut console_logs).await?;
+        invoker
+            .protect_protocol_context_logs(&mut console_logs)
+            .await?;
         invoker.protect_protocol_context_logs(&mut diagnostic).await
     }
     .await;

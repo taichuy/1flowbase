@@ -396,7 +396,6 @@ pub(crate) async fn capabilities(
     invoke(state, headers, Input::Capabilities(body), 2).await
 }
 
-
 /// Role UI catalog and OpenAPI consume the API owner's same static English metadata.
 pub fn metadata(interface_id: &str) -> Option<(String, String)> {
     let operation = match interface_id {
@@ -410,7 +409,6 @@ pub fn metadata(interface_id: &str) -> Option<(String, String)> {
 
 impl JsonApiInput for Input {}
 impl JsonApiOutput for Output {}
-
 
 #[cfg(any(test, feature = "test-support"))]
 #[path = "_tests/support/record_permissions.rs"]

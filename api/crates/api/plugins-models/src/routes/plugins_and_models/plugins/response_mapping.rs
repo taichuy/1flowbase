@@ -1,13 +1,8 @@
-use api_host_kernel::plugin_transport::{to_installation_response_with_artifact, to_artifact_instance_response, to_task_response, runtime_slot_for_contract};
 use super::*;
-
-
-
-
-
-
-
-
+use api_host_kernel::plugin_transport::{
+    runtime_slot_for_contract, to_artifact_instance_response,
+    to_installation_response_with_artifact, to_task_response,
+};
 
 pub(super) fn to_catalog_response(
     entry: PluginCatalogEntry,

@@ -671,7 +671,10 @@ impl PluginInterfaceAdapter {
                     SwitchPluginVersionCommand {
                         actor_user_id: actor.user_id,
                         provider_code,
-                        target_installation_id: parse_uuid(&body.installation_id, "installation_id")?,
+                        target_installation_id: parse_uuid(
+                            &body.installation_id,
+                            "installation_id",
+                        )?,
                     },
                 )
                 .await?,

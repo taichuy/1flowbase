@@ -40,12 +40,6 @@ pub struct InstallPluginBody {
     pub package_root: String,
 }
 
-
-
-
-
-
-
 pub use api_host_kernel::plugin_risk::PluginRiskOverrideBody;
 
 #[derive(Debug, Deserialize, ToSchema, Serialize)]
@@ -67,12 +61,6 @@ pub struct PluginCatalogQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub locale: Option<String>,
 }
-
-
-
-
-
-
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(description = "Catalog entry returned by the plugin API.")]
@@ -111,12 +99,6 @@ pub struct PluginCatalogProjectionResponse {
     pub refreshed_at: Option<String>,
     pub updated_at: String,
 }
-
-
-
-
-
-
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct OfficialPluginCatalogResponse {
@@ -172,10 +154,6 @@ pub struct PluginFamilyCatalogResponse {
     pub i18n_catalog: serde_json::Value,
     pub entries: Vec<PluginFamilyResponse>,
 }
-
-
-
-
 
 pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
@@ -401,10 +379,6 @@ async fn invoke_plugin_interface(
     crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
 }
 
-
-
-
-
 fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(raw)
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
@@ -428,12 +402,6 @@ pub(crate) fn to_risk_override(
         acknowledged_warnings: value.acknowledged_warnings,
     })
 }
-
-
-
-
-
-
 
 fn filter_from_query(query: &PluginCatalogQuery) -> PluginCatalogFilter {
     PluginCatalogFilter {
@@ -896,8 +864,5 @@ mod time_response_tests;
 
 #[path = "plugins/response_mapping.rs"]
 mod response_mapping;
-
-
-
 
 use response_mapping::*;

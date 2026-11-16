@@ -27,9 +27,16 @@ pub(crate) async fn summaries_with(
     let mut summaries = Vec::with_capacity(entries.len());
     for entry in &entries {
         summaries.push(
-            project_current_entry(dependencies, descriptors, actor, entry, false, external_catalog)
-                .await?
-                .operation,
+            project_current_entry(
+                dependencies,
+                descriptors,
+                actor,
+                entry,
+                false,
+                external_catalog,
+            )
+            .await?
+            .operation,
         );
     }
     Ok(summaries)
@@ -52,9 +59,16 @@ pub(crate) async fn get_with(
     else {
         return Ok(None);
     };
-    project_current_entry(dependencies, descriptors, actor, entry, true, external_catalog)
-        .await
-        .map(Some)
+    project_current_entry(
+        dependencies,
+        descriptors,
+        actor,
+        entry,
+        true,
+        external_catalog,
+    )
+    .await
+    .map(Some)
 }
 async fn project_current_entry(
     dependencies: &OpenApiCapabilityCatalogDependencies,
@@ -65,9 +79,14 @@ async fn project_current_entry(
     external_catalog: Option<&ExternalEndpointCatalog>,
 ) -> Result<ApiEventOperationDetails, ApiError> {
     let selected = match entry.source {
-        OpenApiCapabilitySource::PublishedWorkflow => descriptors.workflow(dependencies,actor,entry).await,
-        OpenApiCapabilitySource::BuiltinDataModelCrud|OpenApiCapabilitySource::WorkspaceDataModelCrud => descriptors.runtime_model(dependencies,actor,entry).await,
-        _=>Ok(None),
+        OpenApiCapabilitySource::PublishedWorkflow => {
+            descriptors.workflow(dependencies, actor, entry).await
+        }
+        OpenApiCapabilitySource::BuiltinDataModelCrud
+        | OpenApiCapabilitySource::WorkspaceDataModelCrud => {
+            descriptors.runtime_model(dependencies, actor, entry).await
+        }
+        _ => Ok(None),
     };
     let descriptor = match selected {
         Ok(descriptor) => descriptor,

@@ -534,7 +534,8 @@ impl InterfaceContract for NetworkPluginOutput {
 
 pub struct NetworkPluginDependencies {
     pub store: MainDurableStore,
-    pub official_install_resolver: Arc<dyn api_host_kernel::plugin_transport::OfficialPluginInstallResolver>,
+    pub official_install_resolver:
+        Arc<dyn api_host_kernel::plugin_transport::OfficialPluginInstallResolver>,
     pub provider_runtime: Arc<ApiRuntimeServices>,
     pub official_plugin_source: Arc<dyn OfficialPluginSourcePort>,
     pub official_catalog_source: Arc<dyn OfficialExtensionCatalogSourcePort>,
@@ -812,13 +813,16 @@ impl NetworkPluginAdapter {
                 Ok(NetworkPluginOutput::Empty)
             }
             NetworkPluginInput::InstallOfficial(body) => {
-                let command = self.0.official_install_resolver.resolve(
-                    self.0.official_catalog_source.as_ref(),
-                    actor.user_id,
-                    actor.current_workspace_id,
-                    body,
-                )
-                .await?;
+                let command = self
+                    .0
+                    .official_install_resolver
+                    .resolve(
+                        self.0.official_catalog_source.as_ref(),
+                        actor.user_id,
+                        actor.current_workspace_id,
+                        body,
+                    )
+                    .await?;
                 let result = api_host_kernel::plugin_execution::install_resolved_official_plugin(
                     &self.service(actor, "network_egress_plugins.install.official"),
                     command,
@@ -830,15 +834,16 @@ impl NetworkPluginAdapter {
                 file_name,
                 package_bytes,
             } => {
-                let result = api_host_kernel::plugin_execution::install_uploaded_network_egress_provider(
-                    &self.service(actor, "network_egress_plugins.install.upload"),
-                    InstallUploadedPluginCommand {
-                        actor_user_id: actor.user_id,
-                        file_name,
-                        package_bytes,
-                    },
-                )
-                .await?;
+                let result =
+                    api_host_kernel::plugin_execution::install_uploaded_network_egress_provider(
+                        &self.service(actor, "network_egress_plugins.install.upload"),
+                        InstallUploadedPluginCommand {
+                            actor_user_id: actor.user_id,
+                            file_name,
+                            package_bytes,
+                        },
+                    )
+                    .await?;
                 Ok(NetworkPluginOutput::Installed(to_install_response(result)?))
             }
         }
