@@ -262,7 +262,7 @@ async fn rules_inherit_declared_schema_and_keep_workspace_identity() {
         .await
         .unwrap();
     assert_eq!(updated.contract_id, created.contract_id);
-    assert_eq!(updated.enabled, false);
+    assert!(!updated.enabled);
     assert_eq!(updated.payload_schema, created.payload_schema);
     let mut trigger = trigger_input();
     trigger.contract_id = created.contract_id;

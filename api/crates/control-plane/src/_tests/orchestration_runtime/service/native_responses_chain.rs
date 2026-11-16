@@ -1065,78 +1065,79 @@ async fn recover_native_source_chain(mode: &str, custom: bool) {
     } else {
         3
     };
-    let inputs = captured.lock().unwrap();
-    assert_eq!(
-        inputs.len(),
-        sends,
-        "mode={mode}; {:?}",
-        completed.flow_run.error_payload
-    );
-    assert_eq!(
-        completed.flow_run.status,
+    {
+        let inputs = captured.lock().unwrap();
+        assert_eq!(
+            inputs.len(),
+            sends,
+            "mode={mode}; {:?}",
+            completed.flow_run.error_payload
+        );
+        assert_eq!(
+            completed.flow_run.status,
+            if succeeds {
+                domain::FlowRunStatus::Succeeded
+            } else {
+                domain::FlowRunStatus::Failed
+            },
+            "mode={mode}; {:?}",
+            completed.flow_run.error_payload
+        );
+        assert_eq!(
+            inputs[2].native_transport.as_ref().unwrap().wire_body["input"],
+            wire["input"]
+        );
         if succeeds {
-            domain::FlowRunStatus::Succeeded
-        } else {
-            domain::FlowRunStatus::Failed
-        },
-        "mode={mode}; {:?}",
-        completed.flow_run.error_payload
-    );
-    assert_eq!(
-        inputs[2].native_transport.as_ref().unwrap().wire_body["input"],
-        wire["input"]
-    );
-    if succeeds {
-        let rebuilt = &inputs[3].native_transport.as_ref().unwrap().wire_body;
-        assert_eq!(
-            rebuilt["input"],
-            json!([
-                {"type":"message","role":"user","content":[{"type":"input_text","text":"question"}]},
-                reasoning,tool,output,
-            ])
-        );
-        assert!(rebuilt.get("previous_response_id").is_none());
-        assert!(inputs[3].previous_response_id.is_none());
-        for field in ["model", "tools", "future", "metadata"] {
-            assert_eq!(rebuilt[field], wire[field]);
-        }
-        assert_eq!(
-            inputs[2].provider_config, inputs[3].provider_config,
-            "same selected provider config"
-        );
-        assert_eq!(
-            inputs[2].run_context["provider_recovery"]["policy"]["budget"]
-                ["absolute_deadline_unix_ms"],
-            inputs[3].run_context["provider_recovery"]["policy"]["budget"]
-                ["absolute_deadline_unix_ms"]
-        );
-        assert!(service.native_recovery_page_reads_fixture() > 0);
-    } else {
-        assert!(
-            completed
-                .flow_run
-                .error_payload
-                .as_ref()
-                .unwrap()
-                .to_string()
-                .contains("scripted continuation owner unavailable"),
-            "preserve original provider failure"
-        );
-        if matches!(
-            mode,
-            "generic_native_retry" | "auth" | "peer_refusal" | "semantic"
-        ) {
-            assert_eq!(service.native_recovery_page_reads_fixture(), 0);
-        }
-        if mode == "repeated_owner_loss" {
+            let rebuilt = &inputs[3].native_transport.as_ref().unwrap().wire_body;
             assert_eq!(
-                service.native_recovery_page_reads_fixture(),
-                4,
-                "each of two flows is paged once; no second materialization"
+                rebuilt["input"],
+                json!([
+                    {"type":"message","role":"user","content":[{"type":"input_text","text":"question"}]},
+                    reasoning,tool,output,
+                ])
             );
+            assert!(rebuilt.get("previous_response_id").is_none());
+            assert!(inputs[3].previous_response_id.is_none());
+            for field in ["model", "tools", "future", "metadata"] {
+                assert_eq!(rebuilt[field], wire[field]);
+            }
+            assert_eq!(
+                inputs[2].provider_config, inputs[3].provider_config,
+                "same selected provider config"
+            );
+            assert_eq!(
+                inputs[2].run_context["provider_recovery"]["policy"]["budget"]
+                    ["absolute_deadline_unix_ms"],
+                inputs[3].run_context["provider_recovery"]["policy"]["budget"]
+                    ["absolute_deadline_unix_ms"]
+            );
+            assert!(service.native_recovery_page_reads_fixture() > 0);
+        } else {
+            assert!(
+                completed
+                    .flow_run
+                    .error_payload
+                    .as_ref()
+                    .unwrap()
+                    .to_string()
+                    .contains("scripted continuation owner unavailable"),
+                "preserve original provider failure"
+            );
+            if matches!(
+                mode,
+                "generic_native_retry" | "auth" | "peer_refusal" | "semantic"
+            ) {
+                assert_eq!(service.native_recovery_page_reads_fixture(), 0);
+            }
+            if mode == "repeated_owner_loss" {
+                assert_eq!(
+                    service.native_recovery_page_reads_fixture(),
+                    4,
+                    "each of two flows is paged once; no second materialization"
+                );
+            }
         }
     }
-    drop(inputs);
     assert_eq!(
         service
             .list_model_failover_attempt_ledger(followup.flow_run.id)

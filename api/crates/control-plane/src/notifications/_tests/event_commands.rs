@@ -64,7 +64,7 @@ fn command_events_keep_raw_business_arguments_and_host_owned_identity() {
 #[test]
 fn custom_command_identity_names_and_pointers_are_owned_and_unambiguous() {
     let good = binding();
-    assert!(validate_declarations(&[good.clone()], &[]).is_ok());
+    assert!(validate_declarations(std::slice::from_ref(&good), &[]).is_ok());
     for (id, name) in [
         ("host/notify", "notify"),
         ("plugin/bot/notify", "notify"),
@@ -91,7 +91,7 @@ fn custom_command_identity_names_and_pointers_are_owned_and_unambiguous() {
         unavailable_reason: None,
     };
     assert!(
-        validate_declarations(&[good.clone()], &[plugin]).is_err(),
+        validate_declarations(std::slice::from_ref(&good), &[plugin]).is_err(),
         "disabled plugins still own their names"
     );
     for pointer in [
