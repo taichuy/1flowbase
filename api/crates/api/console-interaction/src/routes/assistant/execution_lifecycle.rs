@@ -382,4 +382,5 @@ pub(super) async fn publish_assistant_conversation_summary(
 }
 
 pub(crate) use api_host_kernel::assistant_execution::abort_assistant_execution_in;
+#[cfg(test)]
 pub(super) use api_host_kernel::assistant_execution::abort_registered_assistant_execution;

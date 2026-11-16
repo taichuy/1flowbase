@@ -295,7 +295,7 @@ impl InterfaceContract for ConsoleIdentityInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) enum ConsoleIdentityOutput {
+pub enum ConsoleIdentityOutput {
     Session(session::SessionResponse),
     Me(me::MeResponse),
     UserApiKeys(user_api_keys::UserApiKeyListResponse),
@@ -305,7 +305,7 @@ pub(crate) enum ConsoleIdentityOutput {
     NoContent,
 }
 
-pub(crate) struct ConsoleIdentityTargetError(pub(crate) ApiError);
+pub struct ConsoleIdentityTargetError(pub(crate) ApiError);
 
 impl InterfaceContract for ConsoleIdentityTargetError {
     fn managed_projection_schema() -> Option<serde_json::Value> {

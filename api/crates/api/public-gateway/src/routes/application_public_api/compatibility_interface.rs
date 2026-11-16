@@ -168,9 +168,11 @@ enum CompatibilityInvocationCommand {
 }
 }
 
-pub(crate) struct CompatibilityProviderTransport {
+test_support_item! { pub(crate), []
+struct CompatibilityProviderTransport {
     pub(crate) operation: AiNativeOperation,
     pub(crate) payload: Option<ProviderTransportPayload>,
+}
 }
 
 test_support_item! { pub(crate), [

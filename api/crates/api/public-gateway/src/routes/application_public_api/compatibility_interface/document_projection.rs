@@ -33,9 +33,10 @@ impl Serialize for Field {
 }
 macro_rules! document {
     ($name:ident, [$($field:ident),* $(,)?]) => {
-        #[derive(Clone, Deserialize, Serialize)]
-        pub(crate) struct $name {
+        test_support_item! { pub(crate), [#[derive(Clone, Deserialize, Serialize)]]
+        struct $name {
             $(#[serde(default, skip_serializing_if="Field::absent")] $field: Field,)*
+        }
         }
         impl $name {
             const FIELDS: &'static [&'static str] = &[$(stringify!($field)),*];

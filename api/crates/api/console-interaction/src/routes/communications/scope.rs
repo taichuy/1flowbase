@@ -1,5 +1,7 @@
 use crate::error_response::ApiError;
-pub(crate) use api_host_kernel::communication_scope::{current_scope, has_scope, with_scope};
+pub(crate) use api_host_kernel::communication_scope::{current_scope, has_scope};
+#[cfg(test)]
+pub(crate) use api_host_kernel::communication_scope::with_scope;
 use domain::CommunicationHistoryScope;
 use uuid::Uuid;
 pub(crate) fn require_management_scope() -> Result<(), ApiError> {

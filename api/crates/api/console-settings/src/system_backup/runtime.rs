@@ -794,20 +794,20 @@ mod tests {
 }
 
 pub trait SystemBackupRuntimeAssembly {
-    async fn open(
+    fn open(
         store: MainDurableStore,
         file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
         maintenance: Arc<SystemMaintenance>,
         config: &ApiConfig,
-    ) -> Result<SystemBackupRuntime, SystemBackupRuntimeError>;
+    ) -> impl std::future::Future<Output = Result<SystemBackupRuntime, SystemBackupRuntimeError>> + Send;
     #[cfg(any(test, feature = "test-support"))]
-    async fn open_with_postgres_toolchain(
+    fn open_with_postgres_toolchain(
         store: MainDurableStore,
         file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
         maintenance: Arc<SystemMaintenance>,
         config: &ApiConfig,
         postgres_toolchain: PostgreSqlToolchain,
-    ) -> Result<SystemBackupRuntime, SystemBackupRuntimeError>;
+    ) -> impl std::future::Future<Output = Result<SystemBackupRuntime, SystemBackupRuntimeError>> + Send;
 }
 impl SystemBackupRuntimeAssembly for SystemBackupRuntime {
     async fn open(

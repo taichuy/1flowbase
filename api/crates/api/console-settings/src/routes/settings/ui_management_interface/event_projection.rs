@@ -1,6 +1,6 @@
 use super::*;
-use crate::openapi_interface::contract::{to_value, ApiInput, ApiOperationContext, ApiOutput};
-use serde_json::{json, Value};
+use crate::openapi_interface::contract::{to_value, ApiOperationContext, ApiOutput};
+use serde_json::Value;
 use std::sync::Arc;
 
 use domain::event_center::ApiEventUnavailableReason;

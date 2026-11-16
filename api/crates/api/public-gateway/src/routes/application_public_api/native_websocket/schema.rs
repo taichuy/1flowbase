@@ -5,7 +5,6 @@ use axum::extract::ws::Message;
 use control_plane::application_public_api::native::NativeStreamOptions;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use thiserror::Error;
 use utoipa::ToSchema;
 use uuid::Uuid;
 

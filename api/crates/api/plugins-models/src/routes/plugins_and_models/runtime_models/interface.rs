@@ -30,7 +30,7 @@ pub(super) const AUTHORIZATION_ADAPTER: &str = "api-server.runtime-model-authori
 pub(super) const ACTIVATION: &str = "api-server.runtime-user.activation.v1";
 const ROUTE: &str = "/api/runtime/models/:model_code/*operation_path";
 
-pub(crate) struct RuntimeModelOperationInput {
+pub struct RuntimeModelOperationInput {
     pub(crate) method: plugin_framework::DataModelOperationMethod,
     pub(crate) model_code: String,
     pub(crate) path: String,
@@ -82,7 +82,7 @@ pub(crate) enum RuntimeModelOperationStatus {
     Created,
 }
 
-pub(crate) struct RuntimeModelOperationOutput {
+pub struct RuntimeModelOperationOutput {
     pub(crate) status: RuntimeModelOperationStatus,
     pub(crate) data: Value,
 }
@@ -124,7 +124,7 @@ impl InterfaceContract for RuntimeModelOperationOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct RuntimeModelOperationTargetError(pub(crate) ApiError);
+pub struct RuntimeModelOperationTargetError(pub(crate) ApiError);
 
 impl InterfaceContract for RuntimeModelOperationTargetError {
     fn managed_projection_schema() -> Option<serde_json::Value> {

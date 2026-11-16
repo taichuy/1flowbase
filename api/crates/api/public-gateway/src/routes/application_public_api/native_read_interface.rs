@@ -63,7 +63,7 @@ const UPLOAD_FILE_BINDING_ID: &str = "http.application.native.files.upload.v1";
 }
 
 #[derive(serde::Serialize)]
-pub(crate) struct NativeModelsInput;
+pub struct NativeModelsInput;
 impl crate::openapi_interface::json_contract::JsonApiInput for NativeModelsInput {}
 
 impl InterfaceContract for NativeModelsInput {
@@ -88,7 +88,7 @@ impl InterfaceContract for NativeModelsInput {
 
 #[derive(serde::Serialize)]
 #[serde(transparent)]
-pub(crate) struct NativeModelsOutput(pub(crate) NativeModelListResponse);
+pub struct NativeModelsOutput(pub(crate) NativeModelListResponse);
 impl crate::openapi_interface::json_contract::JsonApiOutput for NativeModelsOutput {}
 
 impl InterfaceContract for NativeModelsOutput {
@@ -224,7 +224,7 @@ impl InterfaceContract for NativeModelsOutput {
 
 #[derive(serde::Serialize)]
 #[serde(transparent)]
-pub(crate) struct NativeGetRunInput(pub(crate) Uuid);
+pub struct NativeGetRunInput(pub(crate) Uuid);
 impl crate::openapi_interface::json_contract::JsonApiInput for NativeGetRunInput {
     const LOCATION: crate::openapi_interface::json_contract::JsonInputLocation =
         crate::openapi_interface::json_contract::JsonInputLocation::Path;
@@ -281,7 +281,7 @@ impl InterfaceContract for NativeUploadFileInput {
 
 #[derive(serde::Serialize)]
 #[serde(transparent)]
-pub(crate) struct NativeUploadFileOutput(pub(crate) UploadedFileResponse);
+pub struct NativeUploadFileOutput(pub(crate) UploadedFileResponse);
 impl crate::openapi_interface::json_contract::JsonApiOutput for NativeUploadFileOutput {}
 
 impl InterfaceContract for NativeUploadFileOutput {
@@ -312,7 +312,7 @@ impl InterfaceContract for NativeUploadFileOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct NativeReadTargetError(pub(crate) NativeApiError);
+pub struct NativeReadTargetError(pub(crate) NativeApiError);
 impl InterfaceContract for NativeReadTargetError {
     fn managed_projection_schema() -> Option<serde_json::Value> {
         use crate::extension_bus::managed_projection as mp;

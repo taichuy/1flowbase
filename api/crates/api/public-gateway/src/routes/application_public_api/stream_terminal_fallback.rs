@@ -235,16 +235,18 @@ impl NativeRunTerminalDependencies {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TerminalAnswerDeltaKind {
+test_support_item! { pub(crate), [#[derive(Debug, Clone, Copy, PartialEq, Eq)]]
+enum TerminalAnswerDeltaKind {
     Reasoning,
     Text,
 }
+}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TerminalAnswerDelta {
+test_support_item! { pub(crate), [#[derive(Debug, Clone, PartialEq, Eq)]]
+struct TerminalAnswerDelta {
     pub kind: TerminalAnswerDeltaKind,
     pub text: String,
+}
 }
 
 test_support_item! { pub(crate), [

@@ -180,6 +180,7 @@ fn reason(code: Option<&str>) -> Option<ApiEventUnavailableReason> {
 }
 /// Dynamic owners supply a descriptor for their actual current authorized snapshot. The descriptor
 /// is accepted only against the exact compiled dynamic binding; this never invokes its selector.
+#[cfg(test)]
 pub(crate) fn details_for_entry(
     entry: &OpenApiCapabilityCatalogEntry,
     registry: Option<&CompiledInterfaceRegistry>,

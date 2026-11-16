@@ -2,7 +2,7 @@ use control_plane::application_public_api::publications::ApplicationPublicationV
 use serde_json::{json, Value};
 
 use crate::openapi_docs::{
-    ApiDocsRegistry, DocsCatalog, DocsCatalogCategory, DocsCatalogCategoryOperations,
+    DocsCatalog, DocsCatalogCategory, DocsCatalogCategoryOperations,
     DocsCatalogOperation,
 };
 

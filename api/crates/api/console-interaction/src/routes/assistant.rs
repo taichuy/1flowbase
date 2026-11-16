@@ -47,7 +47,8 @@ use uuid::Uuid;
 #[cfg(test)]
 mod _tests;
 
-mod client_tools;
+#[path = "assistant/client_tools.rs"]
+mod client_tool_execution;
 pub mod conversation_events;
 pub mod interface;
 mod run_activity;
@@ -55,8 +56,8 @@ pub mod websocket;
 pub mod websocket_interface;
 pub mod websocket_ticket_interface;
 
-pub use self::client_tools::AssistantClientToolBridge;
-use self::client_tools::AssistantRuntimeToolInvoker;
+pub use self::client_tool_execution::AssistantClientToolBridge;
+use self::client_tool_execution::AssistantRuntimeToolInvoker;
 pub use self::conversation_events::AssistantConversationSummaryResponse;
 use self::conversation_events::{AssistantConversationEventKind, AssistantConversationEventScope};
 pub use run_activity::AssistantRunActivityPageResponse;

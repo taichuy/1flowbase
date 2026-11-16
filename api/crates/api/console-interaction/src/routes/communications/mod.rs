@@ -24,30 +24,37 @@ mod provisioning;
 pub(crate) mod scope;
 use interface::{Input, Output};
 
-#[derive(Default, Deserialize, serde::Serialize)]
-pub(crate) struct PageQuery {
+test_support_item! { pub(crate), [#[derive(Default, Deserialize, serde::Serialize)]]
+struct PageQuery {
     pub cursor: Option<Uuid>,
     pub limit: Option<u32>,
 }
-#[derive(Default, Deserialize, serde::Serialize)]
-pub(crate) struct HistoryQuery {
+}
+
+test_support_item! { pub(crate), [#[derive(Default, Deserialize, serde::Serialize)]]
+struct HistoryQuery {
     pub cursor: Option<Uuid>,
     pub limit: Option<u32>,
     pub keyword: Option<String>,
 }
-#[derive(Deserialize, serde::Serialize)]
-pub(crate) struct ImageQuery {
+}
+
+test_support_item! { pub(crate), [#[derive(Deserialize, serde::Serialize)]]
+struct ImageQuery {
     pub max_file_bytes: u64,
 }
+}
+
 #[derive(Default, Deserialize, serde::Serialize)]
 pub(crate) struct OptionsQuery {
     pub application_id: Option<Uuid>,
     pub instance_id: Option<Uuid>,
 }
-#[derive(Default, Deserialize, serde::Serialize)]
-pub(crate) struct FileQuery {
+test_support_item! { pub(crate), [#[derive(Default, Deserialize, serde::Serialize)]]
+struct FileQuery {
     pub offset: Option<u64>,
     pub max_bytes: Option<u32>,
+}
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {

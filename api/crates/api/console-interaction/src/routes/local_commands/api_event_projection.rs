@@ -1,5 +1,5 @@
 use super::*;
-use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
+use crate::openapi_interface::contract::{self as event, ApiOperationContext, ApiOutput};
 use serde_json::{json, Value};
 use std::sync::Arc;
 

@@ -28,7 +28,7 @@ use super::{
     StartAssistantRunBody,
 };
 use crate::{
-    middleware::require_session::require_session, response::ApiSuccess, routes::debug_run_stream,
+    middleware::require_session::require_session, response::ApiSuccess,
 };
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]

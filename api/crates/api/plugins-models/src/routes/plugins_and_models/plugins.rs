@@ -3,22 +3,18 @@ use std::sync::Arc;
 
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
-    body::{to_bytes, Body},
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     handler::Handler,
-    http::{HeaderMap, Request, StatusCode},
-    middleware::{self, Next},
-    response::{IntoResponse, Response},
+    http::{HeaderMap, StatusCode},
+    middleware,
     Json, Router,
 };
 use control_plane::plugin_management::{
-    InstallPluginResult, OfficialPluginCatalogEntry, OfficialPluginCatalogFilter,
+    OfficialPluginCatalogEntry, OfficialPluginCatalogFilter,
     PluginCatalogEntry, PluginCatalogFilter, PluginCompatibilityOverride, PluginFamilyView,
     PluginInstalledVersionView, PluginRiskOverride,
 };
-use plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
 use serde::{Deserialize, Serialize};
-use time::format_description::well_known::Rfc3339;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 

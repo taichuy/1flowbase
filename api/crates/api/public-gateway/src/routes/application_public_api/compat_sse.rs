@@ -100,10 +100,8 @@ use event_forwarding::{
 };
 
 #[cfg(any(test, feature = "test-support"))]
-use event_forwarding::{send_compatible_runtime_event_stream, take_ordered_compatible_event};
 
 #[cfg(any(test, feature = "test-support"))]
-use protocol_mappers::anthropic_completed_run_to_sse;
 
 use protocol_mappers::{AnthropicStreamMapper, OpenAiChatStreamMapper, OpenAiResponseStreamMapper};
 
@@ -266,8 +264,9 @@ impl CompatibleTypedTurnStream {
     }
 }
 
-#[derive(Clone, Copy)]
-pub(crate) struct NativeWaitingReceiptConsumer(());
+test_support_item! { pub(crate), [#[derive(Clone, Copy)]]
+struct NativeWaitingReceiptConsumer(());
+}
 test_support_item! { pub(crate), [
 #[derive(Clone, Copy)]
 ]

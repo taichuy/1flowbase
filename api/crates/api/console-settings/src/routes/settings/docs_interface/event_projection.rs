@@ -1,7 +1,6 @@
 use super::*;
-use crate::openapi_interface::contract::{to_value, ApiInput, ApiOperationContext, ApiOutput};
-use crate::openapi_interface::schema_projection::query_fields as q;
-use serde_json::{json, Value};
+use crate::openapi_interface::contract::{to_value, ApiOperationContext, ApiOutput};
+use serde_json::Value;
 use std::sync::Arc;
 impl ApiOutput for DocsOutput {
     fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {

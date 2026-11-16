@@ -58,7 +58,7 @@ use crate::{
                 self, NativeCancelRunInput, NativeCancelRunOutput, NativeGetRunInput,
                 NativeGetRunOutput, NativeModelsInput, NativeModelsOutput, NativeReadTargetError,
                 NativeResumeRunInput, NativeResumeRunOutput, NativeRuntimeInvokerFactory,
-                NativeUploadFileInput, NativeUploadFileOutput, RuntimeInvokerFuture,
+                NativeUploadFileInput, NativeUploadFileOutput,
             },
             sse,
             stream_terminal_fallback::{

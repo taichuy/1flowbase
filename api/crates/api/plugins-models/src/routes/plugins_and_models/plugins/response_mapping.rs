@@ -1,7 +1,6 @@
 use super::*;
 use api_host_kernel::plugin_transport::{
-    runtime_slot_for_contract, to_artifact_instance_response,
-    to_installation_response_with_artifact, to_task_response,
+    to_artifact_instance_response, to_installation_response_with_artifact,
 };
 
 pub(super) fn to_catalog_response(
