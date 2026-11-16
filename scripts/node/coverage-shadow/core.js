@@ -225,7 +225,7 @@ function compareCoverageSummaries(monolithic, merged) {
 }
 
 function run(command, {
-  env, spawnSyncImpl = spawnSync, capture = false, logPrefix,
+  env, spawnSyncImpl = spawnSync, capture = false, logPrefix, capturePrefix,
   writeStdout = (text) => process.stdout.write(text),
   writeStderr = (text) => process.stderr.write(text),
 } = {}) {
@@ -247,6 +247,12 @@ function run(command, {
   }
   let stdout = result.stdout || '';
   let stderr = result.stderr || '';
+  if (capturePrefix) {
+    // The bounded console tail may omit the first compiler error. Preserve the
+    // complete buffered listing streams in the current shard artifact as well.
+    fs.writeFileSync(`${capturePrefix}.stdout.log`, stdout);
+    fs.writeFileSync(`${capturePrefix}.stderr.log`, stderr);
+  }
   if (logPrefix) {
     // Keep raw output even on failure; no successful metadata is written then.
     stdout = fs.readFileSync(outputFiles[0], 'utf8');
@@ -286,7 +292,10 @@ function runApiServerShard({
     RUST_MIN_STACK: String(8 * 1024 * 1024),
   };
   run(cleanObjects, { env: instrumentedEnv, spawnSyncImpl });
-  const inventoryText = run(listTests, { env: instrumentedEnv, spawnSyncImpl, capture: true, writeStdout, writeStderr });
+  const inventoryText = run(listTests, {
+    env: instrumentedEnv, spawnSyncImpl, capture: true, writeStdout, writeStderr,
+    capturePrefix: path.join(shardDir, `nextest-list-${shardIndex}`),
+  });
   const inventory = JSON.parse(inventoryText);
   fs.writeFileSync(path.join(shardDir, `inventory-${shardIndex}.json`), `${JSON.stringify(inventory)}\n`, 'utf8');
   const testCount = collectNextestTestIds(inventory).length;

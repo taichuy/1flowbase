@@ -187,6 +187,8 @@ test('buffered nextest-list failures expose bounded child diagnostics before rej
     assert.ok(Buffer.byteLength(output) <= 64 * 1024 + 128, 'failure diagnostics must be bounded');
   }
   assert.equal(executionStarted, false);
+  assert.equal(fs.readFileSync(path.join(directory, 'nextest-list-1.stdout.log'), 'utf8'), '界'.repeat(30000) + stdoutTail);
+  assert.equal(fs.readFileSync(path.join(directory, 'nextest-list-1.stderr.log'), 'utf8'), '界'.repeat(30000) + stderrTail);
   assert.equal(fs.existsSync(path.join(directory, 'metadata-1.json')), false);
   assert.equal(fs.existsSync(path.join(directory, 'inventory-1.json')), false);
 });
