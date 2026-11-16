@@ -250,3 +250,103 @@ describe('FormBlock record lifecycle', () => {
     ).toBeDisabled();
   });
 });
+
+describe('FormBlock config and design save lifetimes', () => {
+  it('immediately accepts a same-record config source and preserves its draft after an old save resolves', async () => {
+    state.design = true;
+    state.records.A = { uuid: 'A', name: 'Server value' };
+    let finish!: () => void;
+    state.saveConfig.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        })
+    );
+    const original = { ...config('edit'), title: 'Original design' };
+    const view = render(
+      <FormBlock ctx={context(original, { record_id: 'A' })} />
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText('Name')).toHaveValue('Server value')
+    );
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Record draft' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'save-design' }));
+    expect(state.saveConfig).toHaveBeenCalledOnce();
+    expect(
+      screen.getByRole('heading', { name: 'New design' })
+    ).toBeInTheDocument();
+
+    const incoming = { ...original, title: 'Incoming design' };
+    view.rerender(<FormBlock ctx={context(incoming, { record_id: 'A' })} />);
+    expect
+      .soft(screen.queryByRole('heading', { name: 'Incoming design' }))
+      .toBeInTheDocument();
+    expect(screen.getByLabelText('Name')).toHaveValue('Record draft');
+    await act(async () => finish());
+
+    expect(
+      screen.getByRole('heading', { name: 'Incoming design' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'New design' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Name')).toHaveValue('Record draft');
+    expect(state.update).not.toHaveBeenCalled();
+    expect(state.publish).not.toHaveBeenCalled();
+    expect(state.close).not.toHaveBeenCalled();
+  });
+
+  it('keeps a newer same-record config and draft when an old design save rejects without showing its error', async () => {
+    state.design = true;
+    state.records.A = { uuid: 'A', name: 'Server value' };
+    let reject!: (error: Error) => void;
+    state.saveConfig.mockImplementation(
+      () =>
+        new Promise<void>((_resolve, fail) => {
+          reject = fail;
+        })
+    );
+    const original = { ...config('edit'), title: 'Original design' };
+    const view = render(
+      <FormBlock ctx={context(original, { record_id: 'A' })} />
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText('Name')).toHaveValue('Server value')
+    );
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Record draft' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'save-design' }));
+    expect(state.saveConfig).toHaveBeenCalledOnce();
+    expect(
+      screen.getByRole('heading', { name: 'New design' })
+    ).toBeInTheDocument();
+
+    const incoming = { ...original, title: 'Incoming design' };
+    view.rerender(<FormBlock ctx={context(incoming, { record_id: 'A' })} />);
+    expect
+      .soft(screen.queryByRole('heading', { name: 'Incoming design' }))
+      .toBeInTheDocument();
+    expect(screen.getByLabelText('Name')).toHaveValue('Record draft');
+    await act(async () => reject(new Error('Old design rejected')));
+
+    expect
+      .soft(screen.queryByText('Old design rejected'))
+      .not.toBeInTheDocument();
+    expect(
+      screen.queryByText('data_blocks.form.design_failed')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Incoming design' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Original design' })
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Name')).toHaveValue('Record draft');
+    expect(state.update).not.toHaveBeenCalled();
+    expect(state.publish).not.toHaveBeenCalled();
+    expect(state.close).not.toHaveBeenCalled();
+  });
+});
