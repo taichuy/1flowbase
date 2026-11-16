@@ -53,7 +53,7 @@ vi.mock('../../../../shared/code-block/BlockSourceStudio', () => ({
     onClose: () => void;
     renderResource: (section: 'configuration') => React.ReactNode;
   }) => (
-    <section role="dialog" aria-label="Block source studio">
+    <dialog open aria-label="Block source studio">
       {props.renderResource('configuration')}
       <label>
         Block source
@@ -66,7 +66,7 @@ vi.mock('../../../../shared/code-block/BlockSourceStudio', () => ({
         Save studio
       </button>
       <button onClick={props.onClose}>Close studio</button>
-    </section>
+    </dialog>
   )
 }));
 

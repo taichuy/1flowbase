@@ -38,9 +38,8 @@ vi.mock('@1flowbase/charts', () => ({
     className?: string;
     option: unknown;
   }) => (
-    <div
-      role="img"
-      aria-label={ariaLabel}
+    <img
+      alt={ariaLabel}
       className={className}
       data-chart-option={JSON.stringify(option)}
     />

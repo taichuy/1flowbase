@@ -59,10 +59,9 @@ export function WorkflowOverlay({
   }[autosaveStatus];
 
   return (
-    <div
+    <section
       aria-label={i18nText('workflow', 'auto.workflow_action_bar')}
       className="agent-flow-editor__overlay"
-      role="region"
     >
       <Space className="agent-flow-editor__overlay-status" size="small">
         <Typography.Text strong>{applicationName}</Typography.Text>
@@ -137,6 +136,6 @@ export function WorkflowOverlay({
           title={i18nText('agentFlow', 'auto.historical_version')}
         />
       </Space>
-    </div>
+    </section>
   );
 }
