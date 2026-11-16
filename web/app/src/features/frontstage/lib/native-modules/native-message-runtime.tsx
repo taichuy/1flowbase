@@ -15,7 +15,7 @@ type MessageResult = ReturnType<MessageInstance['open']>;
 function useNativeBlockMessage(config?: MessageHookConfig): MessageHookResult {
   const surface = useNativeBlockSurface();
   const [layer, setLayer] = useState<NativeOverlayLayer | null>(null);
-  const activeNotices = useRef(new Set<symbol>());
+  const activeNotices = useRef<Set<symbol> | null>(null);
   const targetRoot = surface?.targetRoot;
   const configuredContainer = config?.getContainer;
   const usesNativeLayer = !!targetRoot && !configuredContainer;
@@ -58,12 +58,13 @@ function useNativeBlockMessage(config?: MessageHookConfig): MessageHookResult {
     (openNotice: () => MessageResult): MessageResult => {
       if (!layer) return openNotice();
       const notice = Symbol('native-message-notice');
-      activeNotices.current.add(notice);
+      const notices = (activeNotices.current ??= new Set<symbol>());
+      notices.add(notice);
       layer.activate();
       const result = openNotice();
       const release = () => {
-        activeNotices.current.delete(notice);
-        if (activeNotices.current.size === 0) layer.deactivate();
+        notices.delete(notice);
+        if (notices.size === 0) layer.deactivate();
       };
       void Promise.resolve(result).then(release, release);
       return result;
@@ -91,7 +92,7 @@ function useNativeBlockMessage(config?: MessageHookConfig): MessageHookResult {
   );
 
   const reset = useCallback(() => {
-    activeNotices.current.clear();
+    activeNotices.current?.clear();
     messageApi.destroy();
     layer?.deactivate();
   }, [layer, messageApi]);

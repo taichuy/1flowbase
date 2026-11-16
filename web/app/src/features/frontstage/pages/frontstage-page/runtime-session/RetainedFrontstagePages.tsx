@@ -125,7 +125,7 @@ export function RetainedFrontstagePages({
   retentionBudgetBytes?: number;
   children: ReactElement<FrontStagePageProps>;
 }) {
-  const entries = useRef(new Map<string, Entry>());
+  const entries = useRef<Map<string, Entry> | null>(null);
   const fallback = useRef<{ key: string; entry: Entry } | null>(null);
   const activeKeyRef = useRef(activeKey);
   activeKeyRef.current = activeKey;
@@ -170,13 +170,13 @@ export function RetainedFrontstagePages({
       props.pageContent?.page.id === props.pageId &&
       props.pageContent?.tab.id === props.tabId
     );
-  for (const [key, entry] of entries.current) {
+  for (const [key, entry] of entries.current ?? []) {
     const entryPageId = entry.element.props.pageId;
     if (
       (allowedPages && entryPageId && !allowedPages.has(entryPageId)) ||
       (denied && entryPageId === props.pageId)
     ) {
-      entries.current.delete(key);
+      entries.current?.delete(key);
       cache.current.policy.remove(key);
       continue;
     }
@@ -187,23 +187,23 @@ export function RetainedFrontstagePages({
   }
   // Never replace a hot snapshot with a failure or content from another route.
   if (ready) {
-    let entry = entries.current.get(activeKey);
+    let entry = entries.current?.get(activeKey);
     if (!entry) {
       entry = createEntry(
         children,
         (candidate) =>
           mounted.current &&
           activeKeyRef.current === activeKey &&
-          entries.current.get(activeKey) === candidate
+          entries.current?.get(activeKey) === candidate
       );
-      entries.current.set(activeKey, entry);
+      (entries.current ??= new Map<string, Entry>()).set(activeKey, entry);
     }
     if (entry.element !== children) entry.cost = null;
     entry.element = children;
     entry.runtimeActive = true;
     entry.navigationAllowed = true;
   }
-  const activeEntry = entries.current.get(activeKey);
+  const activeEntry = entries.current?.get(activeKey);
   const needsFallback = !ready || !activeEntry;
   if (needsFallback) {
     if (fallback.current?.key !== activeKey) {
@@ -246,25 +246,30 @@ export function RetainedFrontstagePages({
     let cancelled = false;
     const sweep = () => {
       if (cancelled) return;
-      const candidates = [...entries.current].flatMap(([key, entry]) => {
-        // The current route is protected even during transient revalidation errors.
-        if (key === activeKeyRef.current) return [];
-        // Native effects are suspended while hidden. Account once after each
-        // activation/content/write transition, not by serializing every hidden
-        // DOM tree on every heap-pressure sample.
-        if (entry.cost === null) {
-          const { pageContent, blockRoots, blockRuntimeAssembly } =
-            entry.element.props;
-          entry.cost = Math.max(
-            1,
-            serializedCost({ pageContent, blockRoots, blockRuntimeAssembly }) +
-              retainedMarkupCost(entry.wrapper)
-          );
+      const candidates = [...(entries.current ?? [])].flatMap(
+        ([key, entry]) => {
+          // The current route is protected even during transient revalidation errors.
+          if (key === activeKeyRef.current) return [];
+          // Native effects are suspended while hidden. Account once after each
+          // activation/content/write transition, not by serializing every hidden
+          // DOM tree on every heap-pressure sample.
+          if (entry.cost === null) {
+            const { pageContent, blockRoots, blockRuntimeAssembly } =
+              entry.element.props;
+            entry.cost = Math.max(
+              1,
+              serializedCost({
+                pageContent,
+                blockRoots,
+                blockRuntimeAssembly
+              }) + retainedMarkupCost(entry.wrapper)
+            );
+          }
+          return [
+            { key, protected: entry.protectedFromEviction, cost: entry.cost }
+          ];
         }
-        return [
-          { key, protected: entry.protectedFromEviction, cost: entry.cost }
-        ];
-      });
+      );
       const heap = readHeapSample();
       const configured =
         typeof retentionBudgetBytes === 'number' &&
@@ -278,7 +283,7 @@ export function RetainedFrontstagePages({
         candidates.reduce((sum, item) => sum + item.cost, 0)
       );
       const victims = owner.policy.reconcile(candidates, budget);
-      for (const key of victims) entries.current.delete(key);
+      for (const key of victims) entries.current?.delete(key);
       owner.stats.flush();
       if (victims.length) renderAfterEviction();
       timer = setTimeout(schedule, RETENTION_SAMPLE_MS);
@@ -302,7 +307,7 @@ export function RetainedFrontstagePages({
 
   return (
     <>
-      {[...entries.current].map(([key, entry]) => {
+      {[...(entries.current ?? [])].map(([key, entry]) => {
         const visible = key === activeKey && ready;
         return (
           <div

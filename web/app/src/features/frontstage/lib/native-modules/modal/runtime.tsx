@@ -11,6 +11,7 @@ import { useNativeBlockSurface } from '../native-block-surface-context';
 import {
   createModalController,
   modalMethods,
+  type ModalConfig,
   type ModalHandle
 } from './controller';
 
@@ -19,20 +20,30 @@ export function createBlockModalRuntime() {
   function useModal(): ReturnType<typeof AntdModal.useModal> {
     const surface = useNativeBlockSurface();
     const [raw, holder] = AntdModal.useModal();
-    const owned = useRef(new Set<ModalHandle>());
-    const api = useMemo(
-      () =>
-        controller.wrap(raw, owned.current, () => {
-          if (!surface)
-            throw new Error('Modal requires a mounted Block surface.');
-          return surface.overlayHost.getPopupContainer();
-        }),
-      [raw, surface]
-    );
+    const owned = useRef<Set<ModalHandle> | null>(null);
+    const api = useMemo(() => {
+      let wrapped: typeof raw | undefined;
+      return Object.fromEntries(
+        modalMethods.map((method) => [
+          method,
+          (config: ModalConfig) => {
+            wrapped ??= controller.wrap(
+              raw,
+              (owned.current ??= new Set<ModalHandle>()),
+              () => {
+                if (!surface)
+                  throw new Error('Modal requires a mounted Block surface.');
+                return surface.overlayHost.getPopupContainer();
+              }
+            );
+            return wrapped[method](config);
+          }
+        ])
+      ) as typeof raw;
+    }, [raw, surface]);
     useEffect(() => {
-      const handles = owned.current;
       return () => {
-        for (const handle of [...handles]) handle.destroy();
+        for (const handle of [...(owned.current ?? [])]) handle.destroy();
       };
     }, []);
     // Lazy content must not suspend the Block and disconnect its resource owner.
