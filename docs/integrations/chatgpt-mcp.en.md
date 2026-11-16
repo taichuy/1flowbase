@@ -17,7 +17,7 @@ Your API key goes only to 1flowbase. Do not paste it into ChatGPT's client ID or
 
 ## Step 1: Copy your MCP server URL
 
-In 1flowbase, open **Settings → MCP → Connect client**, then select the **ChatGPT** tab. The tabs are ordered **General → ChatGPT → Codex → Claude Code → OpenCode**, with General selected by default.
+In 1flowbase, open **Settings → MCP → Connect client**, then select the **ChatGPT** tab. The tabs are ordered **General → ChatGPT → OAuth → Codex → Claude Code → OpenCode**, with General selected by default.
 
 The API key field and notices remain above the tabs. You do not need to enter or save a key there to connect ChatGPT; you will enter it on the authorization page later.
 

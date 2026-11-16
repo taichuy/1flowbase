@@ -57,11 +57,14 @@ async fn setup() -> (Arc<ApiState>, Router, String, String) {
     (state, app, key, client)
 }
 async fn begin(app: &Router, client: &str) -> (String, String) {
+    begin_callback(app, client, CALLBACK).await
+}
+async fn begin_callback(app: &Router, client: &str, callback: &str) -> (String, String) {
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(VERIFIER.as_bytes()));
     let mut url = url::Url::parse(&format!("{ISSUER}/api/public/mcp-oauth/authorize")).unwrap();
     url.query_pairs_mut().extend_pairs([
         ("client_id", client),
-        ("redirect_uri", CALLBACK),
+        ("redirect_uri", callback),
         ("response_type", "code"),
         ("code_challenge", challenge.as_str()),
         ("code_challenge_method", "S256"),
@@ -370,7 +373,7 @@ async fn oauth_grants_follow_key_revocation_expiry_and_permission_changes() {
     assert_eq!(token(&app, &fields).await.status(), StatusCode::BAD_REQUEST);
 }
 #[tokio::test]
-async fn oauth_discovery_is_enabled_without_configuration_and_registration_stays_restricted() {
+async fn oauth_discovery_is_enabled_without_configuration_and_registration_validates_callbacks() {
     let (state, _) = test_api_state_with_database_url().await;
     let app = crate::app_with_state(state);
     for host in ["oauth.example.test", "another.example.test"] {
@@ -391,28 +394,33 @@ async fn oauth_discovery_is_enabled_without_configuration_and_registration_stays
             json_response(response).await,
             json!({"enabled":true,"server_url":format!("{origin}/api/mcp/taichuy"),"registration_method":"dynamic_client_registration","scope":"mcp:invoke"})
         );
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/api/public/mcp-oauth/.well-known/openid-configuration")
-                    .header("host", host)
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let metadata = json_response(response).await;
-        assert_eq!(metadata["issuer"], format!("{origin}/api/public/mcp-oauth"));
-        assert_eq!(
-            metadata["registration_endpoint"],
-            format!("{origin}/api/public/mcp-oauth/register")
-        );
-        assert_eq!(
-            metadata["code_challenge_methods_supported"],
-            json!(["S256"])
-        );
+        for metadata_path in [
+            "/api/public/mcp-oauth/.well-known/oauth-authorization-server",
+            "/api/public/mcp-oauth/.well-known/openid-configuration",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(metadata_path)
+                        .header("host", host)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let metadata = json_response(response).await;
+            assert_eq!(metadata["issuer"], format!("{origin}/api/public/mcp-oauth"));
+            assert_eq!(
+                metadata["registration_endpoint"],
+                format!("{origin}/api/public/mcp-oauth/register")
+            );
+            assert_eq!(
+                metadata["code_challenge_methods_supported"],
+                json!(["S256"])
+            );
+        }
         let response = app
             .clone()
             .oneshot(
@@ -435,7 +443,7 @@ async fn oauth_discovery_is_enabled_without_configuration_and_registration_stays
     let rejected = post(
         &app,
         "/api/public/mcp-oauth/register",
-        json!({"redirect_uris":["https://chatgpt.com.evil.test/callback"]}),
+        json!({"redirect_uris":["http://insecure-client.example/callback"]}),
         None,
     )
     .await;
@@ -690,3 +698,157 @@ async fn oauth_discovery_probe_authentication_precedes_json_rejection() {
 
 #[path = "mcp_oauth_routes/explicit_origin.rs"]
 mod explicit_origin;
+
+#[tokio::test]
+async fn generic_oauth_client_authorizes_with_api_key_and_invokes_mcp() {
+    let (_state, app, key, legacy_client) = setup().await;
+    let callback = "https://oauth-redirect.googleusercontent.com/r/1flowbase";
+    let response = post(&app, "/api/public/mcp-oauth/register", json!({"redirect_uris":[callback],"client_name":"Gemini","token_endpoint_auth_method":"none"}), None).await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let client = json_response(response).await;
+    let client_id = client["client_id"].as_str().unwrap();
+    assert!(client_id.starts_with("mcp_"));
+    let (id, cookie) = begin_callback(&app, client_id, callback).await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/public/mcp-oauth/authorization?request_id={id}"
+                ))
+                .header("host", "oauth.example.test")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let view = json_response(response).await;
+    assert_eq!(
+        view["client_name"],
+        "Gemini (https://oauth-redirect.googleusercontent.com)"
+    );
+    let response = post(
+        &app,
+        "/api/public/mcp-oauth/verify",
+        json!({"request_id":id,"api_key":key}),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let verification = json_response(response).await;
+    let response = post(
+        &app,
+        "/api/public/mcp-oauth/decision",
+        json!({"request_id":id,"approval_token":verification["approval_token"],"approved":true}),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let decision = json_response(response).await;
+    let redirect = url::Url::parse(decision["redirect_uri"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        redirect.host_str(),
+        Some("oauth-redirect.googleusercontent.com")
+    );
+    assert_eq!(redirect.path(), "/r/1flowbase");
+    let code = redirect
+        .query_pairs()
+        .find(|(key, _)| key == "code")
+        .unwrap()
+        .1
+        .into_owned();
+    let response = token(
+        &app,
+        &[
+            ("grant_type", "authorization_code"),
+            ("client_id", client_id),
+            ("code", &code),
+            ("redirect_uri", callback),
+            ("code_verifier", VERIFIER),
+        ],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let tokens = json_response(response).await;
+    assert_eq!(
+        invoke(&app, tokens["access_token"].as_str().unwrap(), "taichuy")
+            .await
+            .status(),
+        StatusCode::OK
+    );
+    let tools = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .header("host", "oauth.example.test")
+                .method("POST")
+                .uri("/api/mcp/taichuy")
+                .header("content-type", "application/json")
+                .header("mcp-protocol-version", "2025-11-25")
+                .header(
+                    "authorization",
+                    format!("Bearer {}", tokens["access_token"].as_str().unwrap()),
+                )
+                .body(Body::from(
+                    json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(tools.status(), StatusCode::OK);
+    let tools = json_response(tools).await;
+    let tools = tools["result"]["tools"].as_array().unwrap();
+    assert!(tools.iter().any(|tool| tool["name"] == "mcp_call"));
+    assert!(tools
+        .iter()
+        .all(|tool| tool["inputSchema"]["type"] == "object"));
+    let response = token(
+        &app,
+        &[
+            ("grant_type", "refresh_token"),
+            ("client_id", client_id),
+            ("refresh_token", tokens["refresh_token"].as_str().unwrap()),
+        ],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let renewed = json_response(response).await;
+    assert_eq!(renewed["refresh_token"], tokens["refresh_token"]);
+    assert_eq!(
+        invoke(&app, renewed["access_token"].as_str().unwrap(), "taichuy")
+            .await
+            .status(),
+        StatusCode::OK
+    );
+    let revocation = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .header("host", "oauth.example.test")
+                .method("POST")
+                .uri("/api/public/mcp-oauth/revoke")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(format!(
+                    "token={}",
+                    tokens["refresh_token"].as_str().unwrap()
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(revocation.status(), StatusCode::OK);
+    assert_eq!(
+        invoke(&app, tokens["access_token"].as_str().unwrap(), "taichuy")
+            .await
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let legacy_code = approve(&app, &legacy_client, &key).await;
+    assert_eq!(
+        exchange(&app, &legacy_client, &legacy_code).await.status(),
+        StatusCode::OK
+    );
+}

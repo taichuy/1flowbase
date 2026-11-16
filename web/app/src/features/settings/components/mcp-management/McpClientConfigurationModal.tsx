@@ -5,6 +5,7 @@ import {
   quotePowerShell,
   quoteWindowsCommand
 } from './client-configuration/command-quoting';
+import { OAuthConfiguration } from './client-configuration/OAuthConfiguration';
 import { ChatGptConfiguration } from './client-configuration/ChatGptConfiguration';
 import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import KeyOutlined from '@ant-design/icons/es/icons/KeyOutlined';
@@ -305,28 +306,32 @@ export function McpClientConfigurationModal({
         <Button key="close" onClick={closeModal}>
           {i18nText('settings', 'auto.off')}
         </Button>,
-        <Button
-          key="delete"
-          danger
-          icon={<DeleteOutlined />}
-          disabled={!saved || !can('mcp.client_credential.delete')}
-          hidden={clientTab === 'chatgpt'}
-          loading={deleteMutation.isPending}
-          onClick={() => deleteMutation.mutate()}
-        >
-          {i18nText('settingsMcpManagement', 'auto.clear_credential')}
-        </Button>,
-        <Button
-          key="save"
-          type="primary"
-          icon={<SaveOutlined />}
-          disabled={!apiKey.trim() || !can('mcp.client_credential.save')}
-          hidden={clientTab === 'chatgpt'}
-          loading={saveMutation.isPending}
-          onClick={() => saveMutation.mutate()}
-        >
-          {i18nText('settingsMcpManagement', 'auto.save_api_key')}
-        </Button>
+        ...(clientTab === 'oauth'
+          ? []
+          : [
+              <Button
+                key="delete"
+                danger
+                icon={<DeleteOutlined />}
+                disabled={!saved || !can('mcp.client_credential.delete')}
+                hidden={clientTab === 'chatgpt'}
+                loading={deleteMutation.isPending}
+                onClick={() => deleteMutation.mutate()}
+              >
+                {i18nText('settingsMcpManagement', 'auto.clear_credential')}
+              </Button>,
+              <Button
+                key="save"
+                type="primary"
+                icon={<SaveOutlined />}
+                disabled={!apiKey.trim() || !can('mcp.client_credential.save')}
+                hidden={clientTab === 'chatgpt'}
+                loading={saveMutation.isPending}
+                onClick={() => saveMutation.mutate()}
+              >
+                {i18nText('settingsMcpManagement', 'auto.save_api_key')}
+              </Button>
+            ])
       ]}
       className="mcp-management__client-configuration-modal"
       scrollBodyClassName="mcp-management__client-configuration-scroll-body"
@@ -399,6 +404,13 @@ export function McpClientConfigurationModal({
               label: 'ChatGPT',
               children: instance ? (
                 <ChatGptConfiguration instanceId={instance.instance_id} />
+              ) : null
+            },
+            {
+              key: 'oauth',
+              label: 'OAuth',
+              children: instance ? (
+                <OAuthConfiguration instanceId={instance.instance_id} />
               ) : null
             },
             {

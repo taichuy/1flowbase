@@ -240,5 +240,17 @@
     "step_key": "创建并连接后，在打开的 1flowbase 授权页填写 API Key，无需登录后台。",
     "step_consent": "核对工作区和 MCP 实例，点击同意授权后返回 ChatGPT。",
     "lifecycle": "无需在本弹窗保存 API Key 即可连接 ChatGPT。访问令牌自动刷新，每次授权最长持续 30 天。授权到期、Key 到期或撤销后，需要使用有效 Key 重新授权。"
+  },
+  "oauth": {
+    "load_error": "无法读取 OAuth 连接配置。",
+    "not_enabled": "此部署尚未启用 MCP OAuth 授权",
+    "not_enabled_help": "请联系部署管理员检查服务版本、公开 HTTPS 地址和 OAuth 发现路由。",
+    "ready": "OAuth 配置已启用",
+    "step_create": "在 Gemini 的 Connected Apps 中添加自定义应用，粘贴上方完整服务器 URL。",
+    "step_auth": "Client ID 和 Client secret 留空，点击 Next，使用动态客户端注册。不要填写 1flowbase API Key。",
+    "step_key": "在打开的 1flowbase 授权页填写用户 API Key，无需登录后台，也无需在本弹窗保存 Key。",
+    "step_consent": "核对客户端回调域名、工作区和 MCP 实例，确认授权后返回 Gemini；输入 @ 选择应用并验证工具调用。",
+    "gemini_help": "Gemini 自定义应用连接说明",
+    "lifecycle": "其他支持 OAuth 授权码流程、PKCE S256 和动态客户端注册的 HTTPS MCP 客户端也可使用此地址，令牌端点认证方式为 none。访问令牌自动刷新，每次授权最长持续 30 天；授权到期、API Key 到期或撤销后需要重新授权。"
   }
 }

@@ -38,6 +38,24 @@ beforeEach(() => {
 });
 
 describe('API Key MCP authorization without a console session', () => {
+  test('renders the registered OAuth client and callback origin without ChatGPT-specific guidance', async () => {
+    api.fetchMcpOAuthAuthorization.mockResolvedValue({
+      ...request,
+      client_name: 'Gemini (https://oauth-redirect.googleusercontent.com)'
+    });
+    renderPage('generic-request');
+    expect(
+      await screen.findByText(
+        'Gemini (https://oauth-redirect.googleusercontent.com)'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Key 仅提交给 1flowbase 进行验证，不会发送给连接客户端。'
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/ChatGPT/)).not.toBeInTheDocument();
+  });
   test('carries explicit origin, clears Key, shows server-owned workspace, and requires separate consent', async () => {
     const origin = window.location.origin;
     window.history.replaceState(

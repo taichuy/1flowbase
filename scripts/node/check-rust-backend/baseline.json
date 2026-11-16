@@ -122,7 +122,7 @@
       "file": "api/crates/control-plane/src/mcp_oauth/mod.rs",
       "snippet": "token_hash: String,",
       "reason": "Private Approval persistence payload is serialized only into McpOAuthRepository state. token_hash is a one-way approval-token hash, checked with browser/request bindings and atomically consumed; AuthorizationView, VerificationView and TokenResponse do not expose this field.",
-      "source_sha256": "9ffc18d7f8d5120d40ac6c37f5bc16fad83f1bdc64c13c1e9e7c9caecad7e328",
+      "source_sha256": "3573dc04a21d1bfed9de857832b7b943975f1231ab8ba46cf1dbc72247e294c1",
       "evidence": [
         {
           "file": "api/crates/storage/durable/postgres/src/integration_repositories/mcp_oauth_repository.rs",

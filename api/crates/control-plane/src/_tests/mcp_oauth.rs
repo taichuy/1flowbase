@@ -18,7 +18,7 @@ fn public_origin_requires_https_or_development_loopback_and_has_no_path() {
     }
 }
 #[test]
-fn chatgpt_redirect_allowlist_is_exact_and_has_no_fetch_surface() {
+fn registered_redirects_support_https_clients_without_a_brand_allowlist() {
     assert!(allowed_redirect(
         "https://chatgpt.com/connector_platform_oauth_redirect"
     ));
@@ -26,14 +26,19 @@ fn chatgpt_redirect_allowlist_is_exact_and_has_no_fetch_surface() {
         "https://chatgpt.com/connector/oauth/abc-123"
     ));
     for url in [
-        "https://chatgpt.com.evil.test/connector/oauth/abc",
-        "https://evil.test",
+        "https://oauth-redirect.googleusercontent.com/r/my-app",
+        "https://oauth-redirect.googleusercontent.com/a/my-app",
+        "https://other-client.example/callback?tenant=demo",
+    ] {
+        assert!(allowed_redirect(url), "{url}");
+    }
+    for url in [
         "http://chatgpt.com/connector/oauth/abc",
-        "https://chatgpt.com/connector/oauth/abc/extra",
-        "https://chatgpt.com/connector/oauth/abc?next=evil",
-        "https://chatgpt.com/connector/oauth/%2e%2e",
         "https://user@chatgpt.com/connector/oauth/abc",
-        "https://chatgpt.com/connector/oauth/",
+        "https://client.example/callback#fragment",
+        "javascript:alert(1)",
+        "https://client.example/callback\n",
+        "https://client.example\\@other.example/callback",
     ] {
         assert!(!allowed_redirect(url), "{url}");
     }

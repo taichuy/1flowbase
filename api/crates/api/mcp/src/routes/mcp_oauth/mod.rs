@@ -109,7 +109,12 @@ pub fn route_assembly() -> ExternalRouteAssembly<Arc<ApiState>> {
             "/.well-known/openid-configuration/api/public/mcp-oauth",
             get(metadata),
         )
-        // MCP discovery also supports OIDC path appending after root discovery fails.
+        // Gemini probes this appended OAuth metadata path before OIDC and may
+        // stop on a non-200 response. Keep both forms under the /api proxy.
+        .route(
+            "/api/public/mcp-oauth/.well-known/oauth-authorization-server",
+            get(metadata),
+        )
         .route(
             "/api/public/mcp-oauth/.well-known/openid-configuration",
             get(metadata),
@@ -129,12 +134,17 @@ pub fn route_assembly() -> ExternalRouteAssembly<Arc<ApiState>> {
         .route("/api/public/mcp-oauth/verify", post(verify))
         .route("/api/public/mcp-oauth/decision", post(decision))
         .route("/api/public/mcp-oauth/token", post(token))
+        .route("/api/public/mcp-oauth/revoke", post(revoke))
         .route(
             "/.well-known/oauth-authorization-server/api/public/mcp-oauth/origins/:origin",
             get(metadata),
         )
         .route(
             "/.well-known/openid-configuration/api/public/mcp-oauth/origins/:origin",
+            get(metadata),
+        )
+        .route(
+            "/api/public/mcp-oauth/origins/:origin/.well-known/oauth-authorization-server",
             get(metadata),
         )
         .route(
@@ -154,13 +164,14 @@ pub fn route_assembly() -> ExternalRouteAssembly<Arc<ApiState>> {
             get(authorize),
         )
         .route("/api/public/mcp-oauth/origins/:origin/token", post(token))
+        .route("/api/public/mcp-oauth/origins/:origin/revoke", post(revoke))
 }
 async fn metadata(
     OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
 ) -> Result<Response, ProtocolError> {
     let context = request_public_origin(&headers, &uri)?;
-    Ok(no_store(Json(json!({"issuer":context.issuer(),"authorization_endpoint":format!("{}/authorize", context.issuer()),"token_endpoint":format!("{}/token", context.issuer()),"registration_endpoint":format!("{}/register", context.issuer()),"response_types_supported":["code"],"grant_types_supported":["authorization_code","refresh_token"],"token_endpoint_auth_methods_supported":["none"],"code_challenge_methods_supported":["S256"],"scopes_supported":[oauth::SCOPE],"authorization_response_iss_parameter_supported":true})).into_response()))
+    Ok(no_store(Json(json!({"issuer":context.issuer(),"authorization_endpoint":format!("{}/authorize", context.issuer()),"token_endpoint":format!("{}/token", context.issuer()),"revocation_endpoint":format!("{}/revoke", context.issuer()),"registration_endpoint":format!("{}/register", context.issuer()),"response_types_supported":["code"],"grant_types_supported":["authorization_code","refresh_token"],"token_endpoint_auth_methods_supported":["none"],"code_challenge_methods_supported":["S256"],"scopes_supported":[oauth::SCOPE],"authorization_response_iss_parameter_supported":true})).into_response()))
 }
 async fn protected_resource(
     OriginalUri(uri): OriginalUri,
@@ -325,4 +336,23 @@ async fn token(
     Ok(no_store(
         Json(service(&state, &headers, &uri)?.token(input).await?).into_response(),
     ))
+}
+
+#[derive(Deserialize)]
+struct RevocationRequest {
+    client_id: Option<String>,
+    token: String,
+}
+async fn revoke(
+    State(state): State<Arc<ApiState>>,
+    OriginalUri(uri): OriginalUri,
+    headers: HeaderMap,
+    form: Result<Form<RevocationRequest>, FormRejection>,
+) -> Result<Response, ProtocolError> {
+    let Form(input) = form.map_err(|_| invalid())?;
+    rate_limit(&state, "revocation", 120).await?;
+    service(&state, &headers, &uri)?
+        .revoke(input.client_id.as_deref(), &input.token)
+        .await?;
+    Ok(no_store(StatusCode::OK.into_response()))
 }

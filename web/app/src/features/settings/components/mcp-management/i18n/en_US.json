@@ -240,5 +240,17 @@
     "step_key": "After creating and connecting, enter an API key on the 1flowbase authorization page. Console sign-in is not required.",
     "step_consent": "Check the workspace and MCP instance, then authorize and return to ChatGPT.",
     "lifecycle": "You do not need to save an API key in this dialog to connect ChatGPT. Access tokens refresh automatically for up to 30 days per authorization. When authorization or the key expires, or the key is revoked, reconnect using a valid key."
+  },
+  "oauth": {
+    "load_error": "Unable to load the OAuth connection configuration.",
+    "not_enabled": "MCP OAuth authorization is not enabled on this deployment",
+    "not_enabled_help": "Ask your deployment administrator to check the service version, public HTTPS address, and OAuth discovery routes.",
+    "ready": "OAuth configuration is enabled",
+    "step_create": "In Gemini Connected Apps, add a custom app and paste the full server URL above.",
+    "step_auth": "Leave Client ID and Client secret blank, then click Next to use dynamic client registration. Do not enter your 1flowbase API key.",
+    "step_key": "Enter a user API key on the 1flowbase authorization page. Console sign-in and saving a key in this dialog are not required.",
+    "step_consent": "Check the client callback domain, workspace, and MCP instance, then authorize and return to Gemini. Type @ to select the app and verify a tool call.",
+    "gemini_help": "How to connect a custom app in Gemini",
+    "lifecycle": "Other HTTPS MCP clients supporting the OAuth authorization code flow, PKCE S256, and dynamic client registration can also use this URL, with token endpoint authentication set to none. Access tokens refresh automatically for up to 30 days per authorization. Reconnect when authorization or the API key expires, or the key is revoked."
   }
 }

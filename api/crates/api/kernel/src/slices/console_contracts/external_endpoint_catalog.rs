@@ -170,13 +170,16 @@ pub enum ApprovedExternalControl {
     OAuthOriginMetadata,
     OAuthOriginOidcMetadata,
     OAuthOriginApiMetadata,
+    OAuthOriginApiOAuthMetadata,
     OAuthOriginResource,
     OAuthOriginRegister,
     OAuthOriginAuthorize,
     OAuthOriginToken,
+    OAuthOriginRevoke,
     OAuthMetadata,
     OAuthOidcMetadata,
     OAuthApiMetadata,
+    OAuthApiOAuthMetadata,
     OAuthApiResource,
     OAuthResource,
     OAuthConfig,
@@ -186,6 +189,7 @@ pub enum ApprovedExternalControl {
     OAuthVerify,
     OAuthDecision,
     OAuthToken,
+    OAuthRevoke,
 
     Health,
     ConsoleHealth,
@@ -202,17 +206,20 @@ pub enum ApprovedExternalControl {
     NotificationEvents,
 }
 impl ApprovedExternalControl {
-    pub const ALL: [Self; 32] = [
+    pub const ALL: [Self; 36] = [
         Self::OAuthOriginMetadata,
         Self::OAuthOriginOidcMetadata,
         Self::OAuthOriginApiMetadata,
+        Self::OAuthOriginApiOAuthMetadata,
         Self::OAuthOriginResource,
         Self::OAuthOriginRegister,
         Self::OAuthOriginAuthorize,
         Self::OAuthOriginToken,
+        Self::OAuthOriginRevoke,
         Self::OAuthMetadata,
         Self::OAuthOidcMetadata,
         Self::OAuthApiMetadata,
+        Self::OAuthApiOAuthMetadata,
         Self::OAuthApiResource,
         Self::OAuthResource,
         Self::OAuthConfig,
@@ -222,6 +229,7 @@ impl ApprovedExternalControl {
         Self::OAuthVerify,
         Self::OAuthDecision,
         Self::OAuthToken,
+        Self::OAuthRevoke,
         Self::Health,
         Self::ConsoleHealth,
         Self::Docs,
@@ -249,6 +257,13 @@ impl ApprovedExternalControl {
                 "GET",
                 "/.well-known/openid-configuration/api/public/mcp-oauth/origins/:origin",
             ),
+            Self::OAuthOriginApiOAuthMetadata => {
+                ExternalEndpointContribution::protocol_control_http(
+                    "mcp-oauth-protocol-control",
+                    "GET",
+                    "/api/public/mcp-oauth/origins/:origin/.well-known/oauth-authorization-server",
+                )
+            }
             Self::OAuthOriginApiMetadata => ExternalEndpointContribution::protocol_control_http(
                 "mcp-oauth-protocol-control",
                 "GET",
@@ -269,6 +284,11 @@ impl ApprovedExternalControl {
                 "GET",
                 "/api/public/mcp-oauth/origins/:origin/authorize",
             ),
+            Self::OAuthOriginRevoke => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "POST",
+                "/api/public/mcp-oauth/origins/:origin/revoke",
+            ),
             Self::OAuthOriginToken => ExternalEndpointContribution::protocol_control_http(
                 "mcp-oauth-protocol-control",
                 "POST",
@@ -283,6 +303,11 @@ impl ApprovedExternalControl {
                 "mcp-oauth-protocol-control",
                 "GET",
                 "/.well-known/openid-configuration/api/public/mcp-oauth",
+            ),
+            Self::OAuthApiOAuthMetadata => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "GET",
+                "/api/public/mcp-oauth/.well-known/oauth-authorization-server",
             ),
             Self::OAuthApiMetadata => ExternalEndpointContribution::protocol_control_http(
                 "mcp-oauth-protocol-control",
@@ -328,6 +353,11 @@ impl ApprovedExternalControl {
                 "mcp-oauth-protocol-control",
                 "POST",
                 "/api/public/mcp-oauth/decision",
+            ),
+            Self::OAuthRevoke => ExternalEndpointContribution::protocol_control_http(
+                "mcp-oauth-protocol-control",
+                "POST",
+                "/api/public/mcp-oauth/revoke",
             ),
             Self::OAuthToken => ExternalEndpointContribution::protocol_control_http(
                 "mcp-oauth-protocol-control",

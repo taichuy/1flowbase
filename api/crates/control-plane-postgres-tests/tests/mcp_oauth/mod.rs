@@ -564,3 +564,222 @@ fn metadata_challenge_resource_encoding_handles_reserved_and_negative_uri_cases(
         assert!(oauth::resource_metadata_url(ISSUER, instance).is_err());
     }
 }
+
+#[tokio::test]
+async fn generic_dcr_keeps_legacy_chatgpt_and_exact_callback_pkce_binding() {
+    let f = Fixture::new().await;
+    let existing_tokens = f.tokens().await;
+    for invalid in [
+        "http://client.example/callback",
+        "https://user@client.example/callback",
+        "https://client.example/callback#fragment",
+        "javascript:alert(1)",
+        "https://client.example/callback\n",
+        "https://client.example\\@other.example/callback",
+    ] {
+        assert!(
+            f.service.register(registration(invalid)).await.is_err(),
+            "{invalid}"
+        );
+    }
+    let mut confidential = registration("https://client.example/callback");
+    confidential.token_endpoint_auth_method = Some("client_secret_post".into());
+    assert!(f.service.register(confidential).await.is_err());
+    let legacy = f.service.register(registration(CALLBACK)).await.unwrap();
+    assert_eq!(legacy.client_id, f.client.client_id);
+    assert_eq!(legacy.client_name, "ChatGPT");
+    assert!(legacy.client_id.starts_with("chatgpt_"));
+    let mut mixed = registration("https://first-client.example/callback");
+    mixed
+        .redirect_uris
+        .push("https://second-client.example/callback".into());
+    mixed.client_name = Some("ChatGPT".into());
+    let mixed = f.service.register(mixed).await.unwrap();
+    assert!(mixed.client_id.starts_with("mcp_"));
+    assert!(mixed.client_name.contains("https://first-client.example"));
+    assert!(mixed.client_name.contains("https://second-client.example"));
+    for callback in [
+        "https://oauth-redirect.googleusercontent.com/r/1flowbase",
+        "https://oauth-redirect.googleusercontent.com/a/1flowbase",
+        "https://independent-client.example/callback?tenant=one",
+    ] {
+        let mut registration = registration(callback);
+        registration.client_name = Some("My MCP client".into());
+        let client = f.service.register(registration).await.unwrap();
+        assert!(client.client_id.starts_with("mcp_"));
+        assert_ne!(client.client_name, "ChatGPT");
+        assert!(client.client_name.contains(url_host(callback)));
+        let mut request = f.request();
+        request.client_id = client.client_id.clone();
+        request.redirect_uri = format!("{callback}extra");
+        assert!(f.service.begin(request.clone(), BROWSER).await.is_err());
+        request.redirect_uri = callback.into();
+        let id = f.service.begin(request, BROWSER).await.unwrap();
+        let verified = f.service.verify(&id, BROWSER, &f.key).await.unwrap();
+        let redirect = f
+            .service
+            .decision(&id, BROWSER, Some(&verified.approval_token), true)
+            .await
+            .unwrap();
+        // Extract only the code; callback query parameters are preserved.
+        let code = redirect
+            .split('?')
+            .nth(1)
+            .unwrap()
+            .split('&')
+            .find_map(|p| p.strip_prefix("code="))
+            .unwrap();
+        let mut exchange = f.exchange(code);
+        exchange.client_id = client.client_id.clone();
+        exchange.redirect_uri = Some(callback.into());
+        exchange.code_verifier = Some("wrong-verifier".into());
+        assert!(f.service.token(exchange).await.is_err());
+        let mut exchange = f.exchange(code);
+        exchange.client_id = client.client_id.clone();
+        exchange.redirect_uri = Some(callback.into());
+        let tokens = f.service.token(exchange).await.unwrap();
+        f.service
+            .authenticate(&tokens.access_token, INSTANCE)
+            .await
+            .unwrap();
+        let mut refresh = f.refresh(&tokens.refresh_token);
+        refresh.client_id = client.client_id.clone();
+        let wrong_client = f.refresh(&tokens.refresh_token);
+        assert!(f.service.token(wrong_client).await.is_err());
+        let (one, two) = tokio::join!(
+            f.service.token(TokenRequest {
+                grant_type: "refresh_token".into(),
+                client_id: client.client_id,
+                code: None,
+                redirect_uri: None,
+                code_verifier: None,
+                refresh_token: Some(tokens.refresh_token.clone()),
+                resource: None,
+            }),
+            f.service.token(refresh)
+        );
+        for renewed in [one.unwrap(), two.unwrap()] {
+            assert_eq!(renewed.refresh_token, tokens.refresh_token);
+            f.service
+                .authenticate(&renewed.access_token, INSTANCE)
+                .await
+                .unwrap();
+            assert!(f
+                .service
+                .authenticate(&renewed.access_token, "other-instance")
+                .await
+                .is_err());
+        }
+    }
+    // Revocation is origin- and client-bound and stops persistent refresh tokens.
+    let mut registration = registration("https://independent-client.example/revoke-test");
+    registration.client_name = Some("Revoke test".into());
+    let client = f.service.register(registration).await.unwrap();
+    let mut request = f.request();
+    request.client_id = client.client_id.clone();
+    request.redirect_uri = client.redirect_uris[0].clone();
+    let id = f.service.begin(request, BROWSER).await.unwrap();
+    let approval = f.service.verify(&id, BROWSER, &f.key).await.unwrap();
+    let redirect = f
+        .service
+        .decision(&id, BROWSER, Some(&approval.approval_token), true)
+        .await
+        .unwrap();
+    let code = redirect
+        .split('?')
+        .nth(1)
+        .unwrap()
+        .split('&')
+        .find_map(|p| p.strip_prefix("code="))
+        .unwrap();
+    let mut exchange = f.exchange(code);
+    exchange.client_id = client.client_id.clone();
+    exchange.redirect_uri = Some(client.redirect_uris[0].clone());
+    let tokens = f.service.token(exchange).await.unwrap();
+    f.service
+        .revoke(Some(&f.client.client_id), &tokens.refresh_token)
+        .await
+        .unwrap();
+    f.service
+        .authenticate(&tokens.access_token, INSTANCE)
+        .await
+        .unwrap();
+    McpOAuthService::new(f.store.clone(), "https://another-origin.example".into())
+        .revoke(Some(&client.client_id), &tokens.refresh_token)
+        .await
+        .unwrap();
+    f.service
+        .authenticate(&tokens.access_token, INSTANCE)
+        .await
+        .unwrap();
+    f.service.revoke(None, &tokens.refresh_token).await.unwrap();
+    f.rejected(&tokens.access_token).await;
+    let mut refresh = f.refresh(&tokens.refresh_token);
+    refresh.client_id = client.client_id.clone();
+    assert!(f.service.token(refresh).await.is_err());
+    f.service
+        .revoke(Some(&client.client_id), &tokens.refresh_token)
+        .await
+        .unwrap();
+    f.service.revoke(None, "unknown-token").await.unwrap();
+    // Persistent refresh must still reject grants whose API key was revoked.
+    let mut request = f.request();
+    request.client_id = client.client_id.clone();
+    request.redirect_uri = client.redirect_uris[0].clone();
+    let id = f.service.begin(request, BROWSER).await.unwrap();
+    let approval = f.service.verify(&id, BROWSER, &f.key).await.unwrap();
+    let redirect = f
+        .service
+        .decision(&id, BROWSER, Some(&approval.approval_token), true)
+        .await
+        .unwrap();
+    let code = redirect
+        .split('?')
+        .nth(1)
+        .unwrap()
+        .split('&')
+        .find_map(|p| p.strip_prefix("code="))
+        .unwrap();
+    let mut exchange = f.exchange(code);
+    exchange.client_id = client.client_id.clone();
+    exchange.redirect_uri = Some(client.redirect_uris[0].clone());
+    let key_bound_tokens = f.service.token(exchange).await.unwrap();
+
+    // An already-issued ChatGPT grant remains usable after other clients register.
+    f.service
+        .authenticate(&existing_tokens.access_token, INSTANCE)
+        .await
+        .unwrap();
+    let refreshed = f
+        .service
+        .token(f.refresh(&existing_tokens.refresh_token))
+        .await
+        .unwrap();
+    assert_ne!(refreshed.refresh_token, existing_tokens.refresh_token);
+    f.service
+        .authenticate(&refreshed.access_token, INSTANCE)
+        .await
+        .unwrap();
+    ApiKeyService::new(f.store.clone())
+        .revoke_user_api_key(RevokeUserApiKeyCommand {
+            actor_user_id: f.user,
+            tenant_id: f.workspace.tenant_id,
+            current_workspace_id: f.workspace.id,
+            api_key_id: f.key_id,
+        })
+        .await
+        .unwrap();
+    let mut refresh = f.refresh(&key_bound_tokens.refresh_token);
+    refresh.client_id = client.client_id;
+    assert!(f.service.token(refresh).await.is_err());
+    f.rejected(&key_bound_tokens.access_token).await;
+}
+
+fn url_host(callback: &str) -> &str {
+    callback
+        .strip_prefix("https://")
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+}
