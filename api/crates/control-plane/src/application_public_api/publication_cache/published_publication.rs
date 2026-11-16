@@ -6,7 +6,7 @@ use super::publications::ApplicationPublicationVersionRecord;
 use crate::ports::{ApplicationPublicationRepository, PublishedPublicationCache};
 
 #[cfg(test)]
-#[path = "../_tests/application_public_api/published_publication_cache.rs"]
+#[path = "../../_tests/application_public_api/published_publication_cache.rs"]
 mod tests;
 
 pub(crate) struct ActivePublishedPublication {

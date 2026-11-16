@@ -16,7 +16,9 @@ pub mod native;
 pub mod native_tool_resume;
 pub mod protocol_translation;
 pub mod publications;
+#[path = "publication_cache/published_plan.rs"]
 mod published_plan;
+#[path = "publication_cache/published_publication.rs"]
 mod published_publication;
 #[path = "workflow/published_workflow_operation.rs"]
 pub mod published_workflow_operation;

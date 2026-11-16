@@ -54,7 +54,9 @@ pub mod local_terminal;
 pub mod middleware;
 #[path = "catalog_sources/model_pricing_catalog.rs"]
 pub(crate) mod model_pricing_catalog;
+#[path = "network/network_egress_client.rs"]
 pub mod network_egress_client;
+#[path = "network/network_egress_probe.rs"]
 pub mod network_egress_probe;
 mod notification_runtime;
 #[path = "catalog_sources/official_extension_catalog.rs"]
@@ -72,6 +74,7 @@ pub mod provider_runtime;
 pub mod recovery_authorization;
 pub mod response;
 pub mod routes;
+#[path = "internal/runtime_activity.rs"]
 pub mod runtime_activity;
 pub mod runtime_data_model_docs;
 pub mod runtime_profile_client;

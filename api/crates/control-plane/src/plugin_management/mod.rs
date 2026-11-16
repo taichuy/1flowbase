@@ -15,7 +15,9 @@ mod artifact_instance;
 mod backup_export;
 #[path = "backup/backup_restore.rs"]
 mod backup_restore;
+#[path = "catalog/catalog.rs"]
 mod catalog;
+#[path = "catalog/catalog_projection.rs"]
 mod catalog_projection;
 mod extension_installation;
 mod family;

@@ -84,7 +84,7 @@ mod multiplex_tests;
 
 mod multiplex_output_tests;
 
-#[path = "_tests/plugin_credential_client_tests.rs"]
+#[path = "_tests/host_services/plugin_credential_client_tests.rs"]
 mod plugin_credential_client_tests;
 
 mod multiplex_duplex_tests;
@@ -121,5 +121,5 @@ fn managed_service_context_reexport_preserves_canonical_contract() {
 #[path = "_tests/communication_command_tests.rs"]
 mod communication_command_tests;
 
-#[path = "_tests/plugin_ephemeral_client_tests.rs"]
+#[path = "_tests/host_services/plugin_ephemeral_client_tests.rs"]
 mod plugin_ephemeral_client_tests;
