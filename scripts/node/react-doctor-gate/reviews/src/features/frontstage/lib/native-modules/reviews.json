@@ -1,7 +1,7 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-dropdown-runtime.test.tsx","sha256":"fdc7d694813c6c0e46e366f4a4fc7e0087e8b83f2473919605ccd1278dfde1fa"},{"file":"web/app/src/features/frontstage/lib/native-modules/modal/_tests/runtime.test.tsx","sha256":"fde485261c8bf8fb039e01692c835c29dd79bac895f0a04e29293a00cdac4cda"},{"file":"web/app/src/features/frontstage/lib/native-modules/native-block-surface-context.ts","sha256":"16e5c2a29fa0b368686dda26e03be813c82b6d1aa60ae9bf3d4adc9ded0f599b"},{"file":"web/app/src/features/frontstage/lib/native-modules/native-dropdown-runtime.tsx","sha256":"b3c768a2463606661b88cad7437fcb494c93de2bfee620a71e35fcde21075977"},{"file":"web/app/src/features/frontstage/lib/native-modules/notification/_tests/runtime.test.tsx","sha256":"4915fa4a5f3e2e79f18602de78cf20d4b31f5121fb653200341e7b1b9bbb7e34"},{"file":"web/app/src/features/frontstage/lib/native-modules/registry.ts","sha256":"cf6125d3c7a3f3e6c8ecea09539e54cf0826771419e963b36e00dd9d2dc705d3"}]
+    [{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-dropdown-runtime.test.tsx","sha256":"fdc7d694813c6c0e46e366f4a4fc7e0087e8b83f2473919605ccd1278dfde1fa"},{"file":"web/app/src/features/frontstage/lib/native-modules/modal/_tests/runtime.test.tsx","sha256":"fde485261c8bf8fb039e01692c835c29dd79bac895f0a04e29293a00cdac4cda"},{"file":"web/app/src/features/frontstage/lib/native-modules/native-block-surface-context.ts","sha256":"16e5c2a29fa0b368686dda26e03be813c82b6d1aa60ae9bf3d4adc9ded0f599b"},{"file":"web/app/src/features/frontstage/lib/native-modules/native-dropdown-runtime.tsx","sha256":"b3c768a2463606661b88cad7437fcb494c93de2bfee620a71e35fcde21075977"},{"file":"web/app/src/features/frontstage/lib/native-modules/notification/_tests/runtime.test.tsx","sha256":"4915fa4a5f3e2e79f18602de78cf20d4b31f5121fb653200341e7b1b9bbb7e34"},{"file":"web/app/src/features/frontstage/lib/native-modules/registry.ts","sha256":"b188a99ed1ddecc3300ad291edb46b61a918bbfae191070395bc524dd8b459f5"}]
   ],
   "reviews": [
     {
@@ -15,14 +15,14 @@
       "file": "web/app/src/features/frontstage/lib/native-modules/native-dropdown-runtime.tsx",
       "rule": "react-doctor/jsx-key",
       "sourceSha256": "b3c768a2463606661b88cad7437fcb494c93de2bfee620a71e35fcde21075977",
-      "reason": "overlayGeneration is the explicit Dropdown resource generation key used to recreate the overlay after runtime changes. This is one element, not an unkeyed mapped list; removing the key would retain stale overlay internals. Reassessed 2026-10-29: The delta registers VditorPreview and the Vditor assets plugin; existing controlled module inventory, build sorting and runtime registration contracts remain.",
+      "reason": "overlayGeneration is the explicit Dropdown resource generation key used to recreate the overlay after runtime changes. This is one element, not an unkeyed mapped list; removing the key would retain stale overlay internals. Reassessed 2026-11-17: Registry changes add plugin-settings capabilities, block-design and data-blocks. Existing Dropdown composition remains unchanged; its fixture retains layout-epoch generation and committed-geometry correction assertions.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/lib/native-modules/native-dropdown-runtime.tsx",
       "rule": "react-doctor/no-cascading-set-state",
       "sourceSha256": "b3c768a2463606661b88cad7437fcb494c93de2bfee620a71e35fcde21075977",
-      "reason": "The layout effect measures the trigger relative to its owner window, computes viewport correction, and observes external geometry changes with cleanup. This depends on committed DOM and cannot be replaced by synchronous render derivation. Reassessed 2026-10-29: The delta registers VditorPreview and the Vditor assets plugin; existing controlled module inventory, build sorting and runtime registration contracts remain.",
+      "reason": "The layout effect measures the trigger relative to its owner window, computes viewport correction, and observes external geometry changes with cleanup. This depends on committed DOM and cannot be replaced by synchronous render derivation. Reassessed 2026-11-17: Registry changes add plugin-settings capabilities, block-design and data-blocks. Existing Dropdown composition remains unchanged; its fixture retains layout-epoch generation and committed-geometry correction assertions.",
       "evidenceSet": 0
     },
     {
