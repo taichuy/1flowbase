@@ -429,7 +429,9 @@ describe('AgentFlowEditorShell', () => {
       />
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: '发布' }));
+    const publishButton = await screen.findByRole('button', { name: '发布' });
+    await waitFor(() => expect(publishButton).toBeEnabled());
+    fireEvent.click(publishButton);
 
     await waitFor(() => {
       expect(publicApi.publishApplicationApiVersion).toHaveBeenCalledWith(
@@ -459,8 +461,10 @@ describe('AgentFlowEditorShell', () => {
       name: '发布'
     });
 
-    await waitFor(() => expect(publishButton).toBeDisabled());
-    expect(within(toolbar).getByText('1')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(toolbar).getByText('1')).toBeInTheDocument();
+      expect(publishButton).toBeDisabled();
+    });
 
     fireEvent.click(within(toolbar).getByRole('button', { name: 'Issues' }));
 
