@@ -13,6 +13,7 @@ fn start_output_structure_rejects_duplicates_and_malformed_arrays_for_both_flow_
             let document = json!({"schemaVersion":FLOW_SCHEMA_VERSION,"graph":{"edges":[],"nodes":[{"id":"entry","type":node_type,"config":{},"bindings":{},"outputs":outputs}]}});
             let error = crate::flow::validate_flow_draft_structure(&document).unwrap_err();
             assert_eq!(error.node_id.as_deref(), Some("entry"));
+            assert_eq!(error.expected.as_deref(), Some(&json!([])));
             assert!(error.to_string().contains("outputs must be empty"));
         }
         assert!(crate::flow::validate_flow_draft_structure(

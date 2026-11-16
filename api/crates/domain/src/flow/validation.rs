@@ -7,7 +7,7 @@ pub struct FlowDocumentValidationError {
     pub node_type: String,
     pub field_path: String,
     pub message: String,
-    pub expected: Option<Value>,
+    pub expected: Option<Box<Value>>,
 }
 
 impl std::fmt::Display for FlowDocumentValidationError {
@@ -52,7 +52,7 @@ pub fn validate_flow_node_structure(node: &Value) -> Result<(), FlowDocumentVali
                     .and_then(Value::as_str)
                     .unwrap_or("(unnamed)")
             ),
-            expected: Some(json!([])),
+            expected: Some(Box::new(json!([]))),
         });
     }
     Ok(())

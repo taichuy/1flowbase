@@ -168,11 +168,10 @@ fn event_schema(
     });
     let mut properties = base.as_object().cloned().expect("object literal");
     properties.insert(target_key.into(), json!({"type":"string"}));
-    let required;
-    match phase {
+    let required = match phase {
         InterfaceEventPhase::Before => {
             properties.insert("input".into(), input);
-            required = vec![target_key, "invocation_id", "phase", "input"];
+            vec![target_key, "invocation_id", "phase", "input"]
         }
         InterfaceEventPhase::Completion => {
             properties.insert(
@@ -181,9 +180,9 @@ fn event_schema(
             );
             properties.insert("output".into(), output);
             properties.insert("classification".into(), json!({"type":"string"}));
-            required = vec![target_key, "invocation_id", "phase", "terminal"];
+            vec![target_key, "invocation_id", "phase", "terminal"]
         }
-    }
+    };
     let mut schema = json!({"type":"object","additionalProperties":false,"properties":properties,"required":required});
     if phase == InterfaceEventPhase::Completion {
         schema["allOf"] = json!([
