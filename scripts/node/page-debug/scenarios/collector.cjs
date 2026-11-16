@@ -37,6 +37,9 @@ async function main() {
       const installation = page.getByRole('region', { name: /^(复制安装命令|Copy the installation command)$/ });
       const removal = page.getByRole('region', { name: /^(移除|Remove)$/ });
       const shellOption = installation.getByRole('radio', { name: 'macOS / Linux (Shell)', exact: true });
+      const shellLabel = installation.locator('label').filter({ has: shellOption });
+      const powershellOption = installation.getByRole('radio', { name: 'Windows (PowerShell)', exact: true });
+      const powershellLabel = installation.locator('label').filter({ has: powershellOption });
       const installationCommand = installation.locator('.application-collector__command pre');
       await page.getByRole('tab', { name: 'Codex', exact: true }).waitFor({ state: 'visible', timeout: 30000 });
       let catalogResponse = await context.request.get(`${apiBaseUrl}/api/console/applications/catalog`);
@@ -49,7 +52,7 @@ async function main() {
         assert.equal(await page.locator('.application-collector__command pre').count(), 0);
         await page.screenshot({ animations: 'disabled', path: path.join(out, `${name}-uninstalled.png`), fullPage: true });
         await install.click();
-        await shellOption.waitFor({ timeout: 60000 });
+        await shellLabel.waitFor({ state: 'visible', timeout: 60000 });
         catalogResponse = await context.request.get(`${apiBaseUrl}/api/console/applications/catalog`);
         assert.equal(catalogResponse.status(), 200);
         catalog = (await catalogResponse.json()).data;
@@ -59,7 +62,7 @@ async function main() {
       assert.ok(catalog.collectors[0].shell_installer_url.startsWith('/api/public/client-collectors/'));
       const collectorTab = page.getByRole('tab', { name: 'Codex', exact: true });
       const allTab = page.getByRole('tab', { name: /^(全部|All)$/ });
-      await shellOption.waitFor();
+      await shellLabel.waitFor({ state: 'visible' });
       assert.equal(await collectorTab.getAttribute('aria-selected'), 'true');
       assert.equal(await download.count(), 0, 'collector tab opens detail directly');
       await allTab.click();
@@ -68,7 +71,9 @@ async function main() {
       await page.screenshot({ animations: 'disabled', path: path.join(out, `${name}-catalog.png`), fullPage: true });
       await download.click();
       assert.equal(await collectorTab.getAttribute('aria-selected'), 'true');
-      await shellOption.waitFor();
+      await shellLabel.waitFor({ state: 'visible' });
+      await shellLabel.click();
+      assert.equal(await shellOption.isChecked(), true, 'installation selects Shell through its visible label');
       let text = await page.locator('body').innerText();
       assert.ok(text.includes('bash "$installer"')); assert.ok(text.includes(applicationId));
       assert.ok(text.includes('/api/logs/v1/events')); assert.ok(!text.includes('?api_key='));
@@ -98,7 +103,8 @@ async function main() {
         return Math.abs(target.left + target.width / 2 - actual.left - actual.width / 2) < 1;
       });
       await page.screenshot({ animations: 'disabled', path: path.join(out, `${name}-shell.png`), fullPage: true });
-      await installation.getByRole('radio', { name: 'Windows (PowerShell)', exact: true }).check();
+      await powershellLabel.click();
+      assert.equal(await powershellOption.isChecked(), true, 'installation selects PowerShell through its visible label');
       assert.equal(await removal.getByRole('radio', { name: 'Windows (PowerShell)', exact: true }).isChecked(), true, 'removal follows the selected operating system');
       text = await page.locator('body').innerText();
       assert.ok(text.includes('-Endpoint')); assert.ok(text.includes('-InstallationId'));
@@ -137,7 +143,7 @@ async function main() {
       await download.waitFor();
       assert.equal(await page.locator('.application-collector__command pre').count(), 0);
       await collectorTab.click();
-      await shellOption.waitFor();
+      await shellLabel.waitFor({ state: 'visible' });
       assert.equal(await download.count(), 0);
       assert.equal(await keyInput.inputValue(), '', 'leaving detail clears key');
       await page.reload({ waitUntil: 'domcontentloaded' });
