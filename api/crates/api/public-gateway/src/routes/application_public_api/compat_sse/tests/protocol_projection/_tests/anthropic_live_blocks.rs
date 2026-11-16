@@ -292,3 +292,181 @@ async fn anthropic_live_blocks_done_cannot_close_a_different_content_block() {
         .runtime_event_to_sse(&run, progress(&run, "provider_content_block_done", initial))
         .is_empty());
 }
+
+fn raw_done(callback: Uuid, arguments: &str, admitted: bool) -> Value {
+    json!({"node_id":"llm","node_run_id":Uuid::from_u128(10),"output_index":1,
+        "reserved_callback_task_id":callback,"committed_delivery":admitted,
+        "item":{"type":"function_call","id":"item-1","call_id":"call-1",
+            "name":"Read","arguments":arguments}})
+}
+
+#[tokio::test]
+async fn anthropic_live_blocks_complete_noncanonical_prefix_from_committed_raw_done() {
+    let run = native_run();
+    let callback = Uuid::from_u128(30);
+    for (prefix, complete, arguments) in [
+        ("{ \"path\" : ", "{ \"path\" : \"a\" }", json!({"path":"a"})),
+        (
+            "{\n\"z\":",
+            "{\n\"z\":\"\\u4e2d\",\"a\":1}",
+            json!({"a":1,"z":"中"}),
+        ),
+    ] {
+        let mut mapper = AnthropicStreamMapper::new("test".into());
+        mapper.runtime_event_to_sse(
+            &run,
+            progress(&run, "provider_content_block_start", tool_start(callback)),
+        );
+        mapper.runtime_event_to_sse(
+            &run,
+            progress(
+                &run,
+                "provider_tool_call_delta",
+                tool_delta(callback, prefix),
+            ),
+        );
+        assert!(
+            mapper
+                .runtime_event_to_sse(
+                    &run,
+                    progress(
+                        &run,
+                        "provider_output_item_done",
+                        raw_done(callback, complete, true)
+                    )
+                )
+                .is_empty(),
+            "retain authoritative bytes without closing a tool before the callback projection"
+        );
+        let events = decoded(
+            mapper
+                .anthropic_tool_use_events(&committed(callback, arguments), None)
+                .unwrap(),
+        )
+        .await;
+        assert!(!events.iter().any(|e| e.name == "error"));
+        let suffix = events
+            .iter()
+            .find(|e| e.data["delta"]["type"] == "input_json_delta")
+            .unwrap()
+            .data["delta"]["partial_json"]
+            .as_str()
+            .unwrap();
+        assert_eq!(format!("{prefix}{suffix}"), complete);
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| e.name == "content_block_stop")
+                .count(),
+            1
+        );
+    }
+}
+
+#[tokio::test]
+async fn anthropic_live_blocks_do_not_use_uncommitted_or_foreign_argument_evidence() {
+    let run = native_run();
+    let callback = Uuid::from_u128(30);
+    for mut evidence in [
+        raw_done(callback, "{ \"path\" : \"a\" }", false),
+        raw_done(callback, "{ \"path\" : \"a\" }", true),
+    ] {
+        if evidence["committed_delivery"] == true {
+            evidence["node_run_id"] = json!(Uuid::from_u128(11));
+        }
+        let mut mapper = AnthropicStreamMapper::new("test".into());
+        mapper.runtime_event_to_sse(
+            &run,
+            progress(&run, "provider_content_block_start", tool_start(callback)),
+        );
+        mapper.runtime_event_to_sse(
+            &run,
+            progress(
+                &run,
+                "provider_tool_call_delta",
+                tool_delta(callback, "{ \"path\" : "),
+            ),
+        );
+        mapper.runtime_event_to_sse(&run, progress(&run, "provider_output_item_done", evidence));
+        let events = decoded(
+            mapper
+                .anthropic_tool_use_events(&committed(callback, json!({"path":"a"})), None)
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].name, "error");
+        assert!(events[0].data["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("unavailable"));
+    }
+}
+
+#[tokio::test]
+async fn anthropic_live_blocks_validate_raw_done_against_committed_callback() {
+    let run = native_run();
+    let callback = Uuid::from_u128(30);
+    let mut mapper = AnthropicStreamMapper::new("test".into());
+    mapper.runtime_event_to_sse(
+        &run,
+        progress(&run, "provider_content_block_start", tool_start(callback)),
+    );
+    mapper.runtime_event_to_sse(
+        &run,
+        progress(
+            &run,
+            "provider_tool_call_delta",
+            tool_delta(callback, "{\"path\":\"a\"}"),
+        ),
+    );
+    mapper.runtime_event_to_sse(
+        &run,
+        progress(
+            &run,
+            "provider_output_item_done",
+            raw_done(callback, "{\"path\":\"changed\"}", true),
+        ),
+    );
+    let events = decoded(
+        mapper
+            .anthropic_tool_use_events(&committed(callback, json!({"path":"a"})), None)
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].name, "error");
+}
+
+#[tokio::test]
+async fn anthropic_live_blocks_keep_empty_supplier_arguments_as_an_empty_input_object() {
+    let run = native_run();
+    let callback = Uuid::from_u128(30);
+    let mut mapper = AnthropicStreamMapper::new("test".into());
+    mapper.runtime_event_to_sse(
+        &run,
+        progress(&run, "provider_content_block_start", tool_start(callback)),
+    );
+    mapper.runtime_event_to_sse(
+        &run,
+        progress(
+            &run,
+            "provider_output_item_done",
+            raw_done(callback, "", true),
+        ),
+    );
+    let events = decoded(
+        mapper
+            .anthropic_tool_use_events(&committed(callback, json!({})), None)
+            .unwrap(),
+    )
+    .await;
+    assert!(!events.iter().any(|e| e.name == "error"));
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e.name == "content_block_stop")
+            .count(),
+        1
+    );
+}

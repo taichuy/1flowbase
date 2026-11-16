@@ -300,7 +300,7 @@ impl AnthropicStreamMapper {
                     continue;
                 }
                 Ok(None) => {}
-                Err(()) => return Some(self.live_block_projection_error()),
+                Err(error) => return Some(self.live_block_completion_error(error)),
             }
             let index = self.next_content_index;
             self.next_content_index += 1;

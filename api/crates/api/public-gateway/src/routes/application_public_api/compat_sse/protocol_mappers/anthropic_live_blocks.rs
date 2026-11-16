@@ -31,7 +31,14 @@ struct LiveTool {
     name: String,
     index: u32,
     arguments: String,
+    committed_arguments: Option<String>,
     closed: bool,
+}
+
+#[derive(Debug)]
+pub(super) enum ToolCompletionError {
+    MissingArgumentEvidence,
+    InconsistentArguments,
 }
 
 #[derive(Default)]
@@ -64,6 +71,10 @@ impl AnthropicStreamMapper {
                 )
             }
             "provider_tool_call_delta" => Some(self.live_tool_delta(&envelope.payload)),
+            "provider_output_item_done" => {
+                self.retain_committed_arguments(&envelope.payload);
+                Some(Vec::new())
+            }
             _ => None,
         }
     }
@@ -125,6 +136,7 @@ impl AnthropicStreamMapper {
                 name: name.to_owned(),
                 index,
                 arguments: String::new(),
+                committed_arguments: None,
                 closed: false,
             },
         );
@@ -170,10 +182,50 @@ impl AnthropicStreamMapper {
         })
     }
 
+    fn retain_committed_arguments(&mut self, payload: &Value) {
+        if payload["committed_delivery"] != true || payload["item"]["type"] != "function_call" {
+            return;
+        }
+        let Some(callback_id) = payload["reserved_callback_task_id"]
+            .as_str()
+            .and_then(|id| Uuid::parse_str(id).ok())
+        else {
+            return;
+        };
+        let item = &payload["item"];
+        let Some(call_id) = item["call_id"].as_str() else {
+            return;
+        };
+        let id = encode_anthropic_callback_tool_use_id(callback_id, call_id);
+        let Some(tool) = self.live_blocks.tools.get_mut(&id) else {
+            return;
+        };
+        if tool.closed
+            || payload["node_run_id"]
+                .as_str()
+                .and_then(|id| id.parse().ok())
+                != Some(tool.identity.node_run_id)
+            || payload["output_index"].as_u64() != Some(tool.identity.output_index)
+            || item["id"].as_str() != Some(tool.identity.item_id.as_str())
+            || item["name"].as_str() != Some(tool.name.as_str())
+        {
+            return;
+        }
+        tool.committed_arguments = item["arguments"].as_str().map(|raw| {
+            // Existing supplier codecs represent a no-argument call as an
+            // empty string and commit the semantic empty object.
+            if raw.is_empty() {
+                "{}".to_owned()
+            } else {
+                raw.to_owned()
+            }
+        });
+    }
+
     pub(super) fn finish_live_tool(
         &mut self,
         block: &Value,
-    ) -> Result<Option<Vec<Result<Event, Infallible>>>, ()> {
+    ) -> Result<Option<Vec<Result<Event, Infallible>>>, ToolCompletionError> {
         let Some(tool) = block["id"]
             .as_str()
             .and_then(|id| self.live_blocks.tools.get_mut(id))
@@ -185,11 +237,30 @@ impl AnthropicStreamMapper {
         }
         let input = block.get("input").cloned().unwrap_or_else(|| json!({}));
         let mut events = Vec::new();
+        if let Some(raw) = &tool.committed_arguments {
+            if serde_json::from_str::<Value>(raw).ok().as_ref() != Some(&input) {
+                return Err(ToolCompletionError::InconsistentArguments);
+            }
+        }
         // Preserve the producer's whitespace/key order when a complete value
         // has already streamed. Otherwise only append the missing suffix.
         if serde_json::from_str::<Value>(&tool.arguments).ok().as_ref() != Some(&input) {
-            let complete = serde_json::to_string(&input).map_err(|_| ())?;
-            let suffix = complete.strip_prefix(&tool.arguments).ok_or(())?;
+            let complete = match &tool.committed_arguments {
+                Some(raw) => std::borrow::Cow::Borrowed(raw.as_str()),
+                None => std::borrow::Cow::Owned(
+                    serde_json::to_string(&input)
+                        .map_err(|_| ToolCompletionError::InconsistentArguments)?,
+                ),
+            };
+            let suffix = complete.strip_prefix(&tool.arguments).ok_or_else(|| {
+                if tool.committed_arguments.is_none()
+                    && serde_json::from_str::<Value>(&tool.arguments).is_err()
+                {
+                    ToolCompletionError::MissingArgumentEvidence
+                } else {
+                    ToolCompletionError::InconsistentArguments
+                }
+            })?;
             if !suffix.is_empty() {
                 events.push(argument_delta(tool.index, suffix));
             }
@@ -203,11 +274,29 @@ impl AnthropicStreamMapper {
     }
 
     pub(super) fn live_block_projection_error(&mut self) -> Vec<Result<Event, Infallible>> {
+        self.live_block_error("Streamed tool progress does not match the committed callback")
+    }
+
+    pub(super) fn live_block_completion_error(
+        &mut self,
+        error: ToolCompletionError,
+    ) -> Vec<Result<Event, Infallible>> {
+        self.live_block_error(match error {
+            ToolCompletionError::MissingArgumentEvidence => {
+                "Original argument bytes are unavailable to complete streamed tool progress"
+            }
+            ToolCompletionError::InconsistentArguments => {
+                "Streamed tool progress does not match the committed callback"
+            }
+        })
+    }
+
+    fn live_block_error(&mut self, message: &str) -> Vec<Result<Event, Infallible>> {
         self.stream_state = AnthropicStreamState::Terminal;
         vec![event_json_sse(
             "error",
             json!({"type":"error","error":{"type":"api_error",
-                "message":"Streamed tool progress does not match the committed callback"}}),
+                "message":message}}),
         )]
     }
 }
