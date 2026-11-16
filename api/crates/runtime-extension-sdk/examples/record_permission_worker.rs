@@ -79,11 +79,21 @@ async fn data(
         .map_err(|_| "fixture_callback_contract".to_owned())?;
     Ok(response.results)
 }
-fn rows(result: &PluginDataOperationResult) -> Vec<Value> {
+fn rows(result: &PluginDataOperationResult) -> Result<Vec<Value>, String> {
     let PluginDataOperationResult::Rows { rows } = result else {
-        return vec![];
+        return Ok(vec![]);
     };
-    rows.iter().map(|r|json!({"id":match &r.values["id"] {PluginDataValue::Uuid(s)=>s,_=>panic!("UUID row identity")},"name":match &r.values["name"] {PluginDataValue::String(s)=>s,_=>panic!("text field")}})).collect()
+    rows.iter()
+        .map(|row| {
+            let Some(PluginDataValue::Uuid(id)) = row.values.get("id") else {
+                return Err("fixture_row_id".into());
+            };
+            let Some(PluginDataValue::String(name)) = row.values.get("name") else {
+                return Err("fixture_row_name".into());
+            };
+            Ok(json!({"id": id, "name": name}))
+        })
+        .collect()
 }
 async fn execute(
     request: CapabilityStdioRequest,
@@ -132,7 +142,7 @@ async fn execute(
             let PluginDataOperationResult::Count { count } = result[1] else {
                 return Err("fixture_count".into());
             };
-            Ok(json!({"items":rows(&result[0]),"total":count}))
+            Ok(json!({"items":rows(&result[0])?,"total":count}))
         }
         "create" => {
             let result = data(
@@ -168,7 +178,7 @@ async fn execute(
                 }],
             )
             .await?;
-            let row = rows(&result[0])
+            let row = rows(&result[0])?
                 .into_iter()
                 .next()
                 .ok_or("fixture_record_absent")?;
@@ -247,3 +257,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .await?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "_tests/record_permission_worker.rs"]
+mod tests;
