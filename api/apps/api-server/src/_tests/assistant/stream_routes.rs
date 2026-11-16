@@ -1,4 +1,6 @@
-use crate::_tests::support::{login_and_capture_cookie, read_first_sse_frame, test_app};
+use crate::_tests::support::{
+    configure_runnable_agent_flow, login_and_capture_cookie, read_first_sse_frame, test_app,
+};
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -44,6 +46,8 @@ pub(super) async fn create_published_agent_flow(app: &Router, cookie: &str, csrf
         .unwrap()
         .to_string();
 
+    configure_runnable_agent_flow(app, cookie, csrf, &application_id).await;
+
     let publication = app
         .clone()
         .oneshot(
@@ -80,7 +84,9 @@ pub(super) async fn create_published_agent_flow(app: &Router, cookie: &str, csrf
         )
         .await
         .unwrap();
-    assert_eq!(publication.status(), StatusCode::CREATED);
+    let status = publication.status();
+    let payload = response_json(publication).await;
+    assert_eq!(status, StatusCode::CREATED, "{payload}");
 
     application_id
 }
