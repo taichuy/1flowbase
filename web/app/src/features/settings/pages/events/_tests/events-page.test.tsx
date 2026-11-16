@@ -287,7 +287,15 @@ describe('event center configuration and observations', () => {
     ).not.toBeInTheDocument();
     fireEvent.click(within(row).getByRole('button', { name: 'Details' }));
     const drawer = screen.getByRole('dialog');
-    expect(within(drawer).getByText('Workspace · workspace')).toBeInTheDocument();
+    const scopeRow = within(drawer)
+      .getByText('Scope', {
+        selector: '.ant-descriptions-item-label'
+      })
+      .closest('tr')!;
+    expect(within(scopeRow).getByText('System')).toBeInTheDocument();
+    expect(
+      within(drawer).queryByText('Workspace · workspace')
+    ).not.toBeInTheDocument();
     expect(within(drawer).getByText('core.owner')).toBeInTheDocument();
     expect(within(drawer).getByText('core.point')).toBeInTheDocument();
     expect(
@@ -375,6 +383,7 @@ describe('event center configuration and observations', () => {
           name: 'Order',
           description: 'New order',
           interface_event: custom.interface_event,
+          event_kind: 'interface',
           enabled: true
         },
         'csrf'
@@ -395,6 +404,7 @@ describe('event center configuration and observations', () => {
           name: 'Order',
           description: 'New order',
           interface_event: custom.interface_event,
+          event_kind: 'interface',
           enabled: false
         },
         'csrf'

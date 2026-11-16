@@ -370,7 +370,9 @@ export function EventDefinitionDrawer({
                   children:
                     entry.scope.kind === 'workspace'
                       ? `${t('workspace_id')} · ${entry.scope.workspace_id}`
-                      : t(entry.scope.kind)
+                      : entry.scope.kind === 'system'
+                        ? t('core')
+                        : t(entry.scope.kind)
                 },
                 {
                   key: 'enabled',

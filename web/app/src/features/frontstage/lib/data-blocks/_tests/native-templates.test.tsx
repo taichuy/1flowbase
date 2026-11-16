@@ -98,9 +98,19 @@ describe('shipped data block native templates', () => {
           asset.role === 'shadow_style'
       );
       expect(blockStyles).toHaveLength(4);
-      const loadedCss = blockStyles
-        .map((asset) => new TextDecoder().decode(asset.bytes))
-        .join('\n');
+      const selectors = [
+        '.data-table-block',
+        '.data-form-block',
+        '.block-design-surface',
+        '.frontstage-node-action-button'
+      ];
+      const styleBodies = blockStyles.map((asset) =>
+        new TextDecoder().decode(asset.bytes)
+      );
+      expect(styleBodies).toEqual(
+        selectors.map((selector) => expect.stringContaining(selector))
+      );
+      const loadedCss = styleBodies.join('\n');
       expect(loadedCss).toContain('.data-table-block');
       expect(loadedCss).toContain('.data-form-block');
       expect(loadedCss).toContain('.block-design-surface');
@@ -143,18 +153,16 @@ describe('shipped data block native templates', () => {
       expect(alert).toHaveTextContent(i18nText('frontstage', errorKey));
       expect(onRuntimeError).not.toHaveBeenCalled();
       expect(get).not.toHaveBeenCalled();
-      await waitFor(() =>
-        expect(surfaceCss(shadowRoot)).toContain('.data-table-block')
-      );
-      await waitFor(() =>
-        expect(surfaceCss(shadowRoot)).toContain('.data-form-block')
-      );
+      await waitFor(() => {
+        const css = surfaceCss(shadowRoot);
+        for (const selector of selectors) expect(css).toContain(selector);
+      });
       const globalCss = Array.from(
         document.head.querySelectorAll('style'),
         (style) => style.textContent ?? ''
       ).join('\n');
-      expect(globalCss).not.toContain('.data-table-block');
-      expect(globalCss).not.toContain('.data-form-block');
+      for (const selector of selectors)
+        expect(globalCss).not.toContain(selector);
     }
   );
 });
