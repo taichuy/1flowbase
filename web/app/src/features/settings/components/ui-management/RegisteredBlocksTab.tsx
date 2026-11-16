@@ -213,7 +213,7 @@ function RegisteredBlocksContent({ scope }: { scope: string }) {
       },
       {
         key: 'frontend_block_version',
-        title: t('block_version'),
+        title: t('resource_version'),
         width: 100,
         render: (_, row) =>
           row.kind === 'custom'
@@ -466,7 +466,7 @@ function RegisteredBlocksContent({ scope }: { scope: string }) {
               },
               {
                 key: 'version',
-                label: t('block_version'),
+                label: t('resource_version'),
                 children: detail.frontend_block_version
               },
               {

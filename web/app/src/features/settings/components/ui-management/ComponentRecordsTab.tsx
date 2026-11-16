@@ -498,7 +498,7 @@ export function ComponentRecordsTab(_props: { canManage?: boolean } = {}) {
             </Form.Item>
             <Form.Item
               name={['upstream', 'version']}
-              label={t('upstream_version')}
+              label={t('resource_version')}
               rules={[{ required: true }]}
             >
               <Input />

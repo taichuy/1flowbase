@@ -4,7 +4,7 @@ import type {
   ApplicationTemplateReference
 } from '@1flowbase/api-client';
 import { useNavigate } from '@tanstack/react-router';
-import { UploadOutlined } from '@ant-design/icons';
+import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import { Alert, Button, Flex, Input, Tabs } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';

@@ -1,7 +1,9 @@
 import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import { Fragment, useState, type ReactNode } from 'react';
 import { Button, Input, Popover, Switch, Typography } from 'antd';
-import { HolderOutlined, PlusOutlined, DragOutlined } from '@ant-design/icons';
+import HolderOutlined from '@ant-design/icons/es/icons/HolderOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import DragOutlined from '@ant-design/icons/es/icons/DragOutlined';
 import {
   DndContext,
   KeyboardSensor,

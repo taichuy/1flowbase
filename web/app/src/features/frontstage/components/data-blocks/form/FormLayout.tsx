@@ -21,7 +21,7 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { Dropdown } from 'antd';
-import { HolderOutlined } from '@ant-design/icons';
+import HolderOutlined from '@ant-design/icons/es/icons/HolderOutlined';
 import { i18nText } from '../../../../../shared/i18n/text';
 import type { DataFormItem } from '../../../lib/data-blocks/types';
 import { moveFormItem } from './form-state';

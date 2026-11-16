@@ -16,7 +16,8 @@ import {
   Switch,
   Typography
 } from 'antd';
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import type { BlockContext } from '@1flowbase/page-protocol';
 import { i18nText } from '../../../../../shared/i18n/text';
 import {

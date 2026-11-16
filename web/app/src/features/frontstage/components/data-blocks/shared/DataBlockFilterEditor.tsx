@@ -9,7 +9,8 @@ import {
   theme
 } from 'antd';
 import dayjs from 'dayjs';
-import { FunctionOutlined, CloseOutlined } from '@ant-design/icons';
+import FunctionOutlined from '@ant-design/icons/es/icons/FunctionOutlined';
+import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import type { DataFilterVariable } from '../../../lib/data-blocks/filter-variables';
 import { i18nText } from '../../../../../shared/i18n/text';
 import { dataFieldOptions } from '../../../lib/data-blocks/fields';

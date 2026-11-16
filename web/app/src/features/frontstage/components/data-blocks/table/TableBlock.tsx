@@ -28,12 +28,10 @@ import {
   theme,
   type TableColumnsType
 } from 'antd';
-import {
-  DeleteOutlined,
-  FilterOutlined,
-  PlusOutlined,
-  ReloadOutlined
-} from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import FilterOutlined from '@ant-design/icons/es/icons/FilterOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import {
   SortableContext,
