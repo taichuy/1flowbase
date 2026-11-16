@@ -37,8 +37,9 @@ function runRustFormat({ repoRoot, env = process.env, spawnSyncImpl = spawnSync 
   const { edition, files } = apiFormatInputs(repoRoot);
   const commands = [
     ['cargo', ['fmt', '--all', '--', '--check']],
-    // Explicit files cover include! roots and test modules inside item macros.
-    ['rustfmt', ['--check', '--edition', edition, ...files]],
+    // Every file is enumerated, including include! roots and macro-mounted leaves.
+    // Avoid recursively resolving optional/generated trees of standalone test hosts.
+    ['rustfmt', ['--check', '--config', 'skip_children=true', '--edition', edition, ...files]],
   ];
   for (const [command, args] of commands) {
     const result = spawnSyncImpl(command, args, {
