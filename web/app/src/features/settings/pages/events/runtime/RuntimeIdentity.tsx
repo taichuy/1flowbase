@@ -35,9 +35,9 @@ export function RuntimeIdentity({
           void copy(value).catch(() => message.error(t('runtime_copy_failed')));
         }}
       />
-      <span className="event-runtime-visually-hidden" role="status">
+      <output className="event-runtime-visually-hidden">
         {copied ? t('runtime_copied') : ''}
-      </span>
+      </output>
     </span>
   );
 }

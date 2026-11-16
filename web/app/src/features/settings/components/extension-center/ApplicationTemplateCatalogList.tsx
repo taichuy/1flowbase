@@ -167,7 +167,7 @@ export function ApplicationTemplateCatalogList({
           ) : null}
         </div>
       </div>
-      <div className="application-template-catalog__status" role="status">
+      <output className="application-template-catalog__status">
         {loading ? (
           <Spin size="small" />
         ) : !failed && items.length > 0 ? (
@@ -178,7 +178,7 @@ export function ApplicationTemplateCatalogList({
             )}
           </span>
         ) : null}
-      </div>
+      </output>
     </div>
   );
 }

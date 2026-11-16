@@ -153,11 +153,11 @@ export function NodeDetailPanel({
           schema={runtime.schema}
         />
         {analysisStatus !== 'ready' ? (
-          <div role="status" aria-live="polite">
+          <output aria-live="polite" style={{ display: 'block' }}>
             {analysisStatus === 'pending'
               ? i18nText('agentFlow', 'analysis.pending')
               : i18nText('agentFlow', 'analysis.unavailable')}
-          </div>
+          </output>
         ) : null}
         <Tabs
           activeKey={interactionLocked ? 'lastRun' : activeTab}
@@ -177,9 +177,10 @@ export function NodeDetailPanel({
             },
             {
               key: 'lastRun',
-              label: activeRunId || interactionLocked
-                ? i18nText('agentFlow', 'auto.current_run')
-                : i18nText('agentFlow', 'auto.last_run'),
+              label:
+                activeRunId || interactionLocked
+                  ? i18nText('agentFlow', 'auto.current_run')
+                  : i18nText('agentFlow', 'auto.last_run'),
               forceRender: true,
               children: (
                 <NodeLastRunTab
