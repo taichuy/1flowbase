@@ -151,12 +151,12 @@
         },
         {
           "file": "api/crates/runtime-extension-host/src/runtime_host.rs",
-          "sha256": "3d61f1843966634b5d7b45e1a277944a39f73103da125424be4e28284a1d4d5e",
+          "sha256": "6b9ae4a59dd6b6fec81f2d5564dcb4979ed0e8cfd4ccc0db2d6a5b890d23561f",
           "reason": "RuntimeExtensionHost constructs and stores a collector at host construction, rather than constructing per profile request."
         },
         {
           "file": "api/crates/runtime-extension-host/src/runtime_host/capability_port.rs",
-          "sha256": "1f5b7c6ceca7ab21645786d293988096e33514c48e41cfaab46c0d27d34b8778",
+          "sha256": "08a5418a0ddb0cbe7026cae43bc3743d857b52f43df0efd8b7946300355a5afd",
           "reason": "Private responsibility extraction from api/crates/runtime-extension-host/src/runtime_host.rs preserves the reviewed behavior: impl_item. RuntimeExtensionHost constructs and stores a collector at host construction, rather than constructing per profile request."
         }
       ]
@@ -171,12 +171,12 @@
       "evidence": [
         {
           "file": "api/crates/runtime-extension-host/src/runtime_host.rs",
-          "sha256": "3d61f1843966634b5d7b45e1a277944a39f73103da125424be4e28284a1d4d5e",
+          "sha256": "6b9ae4a59dd6b6fec81f2d5564dcb4979ed0e8cfd4ccc0db2d6a5b890d23561f",
           "reason": "verify_managed_executable obtains the hash permit, resolves the frozen binding, then calls binding.verify_executable only inside tokio::task::spawn_blocking; managed calls await it."
         },
         {
           "file": "api/crates/runtime-extension-host/src/runtime_host/capability_port.rs",
-          "sha256": "1f5b7c6ceca7ab21645786d293988096e33514c48e41cfaab46c0d27d34b8778",
+          "sha256": "08a5418a0ddb0cbe7026cae43bc3743d857b52f43df0efd8b7946300355a5afd",
           "reason": "Private responsibility extraction from api/crates/runtime-extension-host/src/runtime_host.rs preserves the reviewed behavior: impl_item. verify_managed_executable obtains the hash permit, resolves the frozen binding, then calls binding.verify_executable only inside tokio::task::spawn_blocking; managed calls await it."
         }
       ]

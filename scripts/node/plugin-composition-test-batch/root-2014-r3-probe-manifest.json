@@ -36,10 +36,10 @@
       "minimum": 1
     },
     {
-      "id": "api-server:lib",
+      "id": "api-server:api_private_contracts",
       "package": "api-server",
       "packageRoot": "api/apps/api-server",
-      "target": "lib",
+      "target": "api_private_contracts",
       "regressionFilters": [],
       "minimum": 1
     }
@@ -96,7 +96,7 @@
       ]
     },
     {
-      "target": "api-server:lib",
+      "target": "api-server:api_private_contracts",
       "source": "api/apps/api-server/src/_tests/interface_lifecycle_acceptance/managed_interfaces.rs",
       "name": "_tests::interface_lifecycle_acceptance::managed_interfaces::root_2014_r3_probe_complete_contract_compilation",
       "expected": 1,
@@ -109,7 +109,7 @@
       "env": []
     },
     {
-      "target": "api-server:lib",
+      "target": "api-server:api_private_contracts",
       "source": "api/apps/api-server/src/_tests/interface_lifecycle_acceptance/managed_projection.rs",
       "name": "_tests::interface_lifecycle_acceptance::managed_projection::root_2014_r3_probe_reference_binding_and_projection",
       "expected": 1,
