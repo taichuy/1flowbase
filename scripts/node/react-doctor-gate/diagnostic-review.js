@@ -8,6 +8,25 @@ function sourceDigest(content) {
   return createHash('sha256').update(content).digest('hex');
 }
 
+function upstreamSemanticCorrection(diagnostic, toolPackage) {
+  if (toolPackage !== 'react-doctor@0.2.16') return null;
+  if (diagnostic.plugin !== 'react-doctor') return null;
+  // React documents useContext as a current supported Hook, not a deprecated API.
+  // https://react.dev/reference/react/useContext
+  if (diagnostic.rule === 'no-react19-deprecated-apis'
+      && diagnostic.message?.startsWith('useContext is replaced by `use()` in React 19')) {
+    return 'React 19 still supports useContext; use() is an additional API, so this deprecation claim is false.';
+  }
+  // An address has implicit role=group, but the converse is not true: address
+  // adds contact-information meaning which a generic group does not carry.
+  // https://html.spec.whatwg.org/multipage/sections.html#the-address-element
+  if (diagnostic.rule === 'prefer-tag-over-role'
+      && diagnostic.message === 'Screen reader users get more reliable semantics from `<address>` than `role="group"`, so use `<address>` instead.') {
+    return 'A generic ARIA group does not imply contact information; address is not a semantically equivalent replacement.';
+  }
+  return null;
+}
+
 // Review data is grouped by source owner; missing/ambiguous groups fail closed.
 function loadReviews(repoRoot, toolPackage) {
   try {
@@ -61,6 +80,7 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
     byKey.set(key, byKey.has(key) ? null : review);
   }
   const findings = [];
+  const upstreamCorrections = [];
   const digests = new Map();
   const digestFile = (file) => {
     if (!digests.has(file)) {
@@ -81,6 +101,8 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
     let reason;
     if (!file.startsWith('web/app/') || diagnostic.filePath.startsWith('/') || diagnostic.filePath.includes('\\')) {
       reason = 'diagnostic path is outside the reviewed application source boundary';
+    } else if (upstreamSemanticCorrection(diagnostic, toolPackage)) {
+      upstreamCorrections.push({ diagnostic, reason: upstreamSemanticCorrection(diagnostic, toolPackage) });
     } else if (!review || typeof review.reason !== 'string' || !review.reason.trim() || !Array.isArray(review.evidence) || review.evidence.length === 0) {
       reason = 'diagnostic has no explicit source and contract review';
     } else {
@@ -101,6 +123,7 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
     status: findings.length ? 'requires-review' : 'reviewed',
     reviewed: diagnostics.length - findings.length,
     findings,
+    ...(upstreamCorrections.length ? { upstreamCorrections } : {}),
   };
 }
 
