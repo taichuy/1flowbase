@@ -7,8 +7,8 @@
     {
       "file": "web/app/src/features/frontstage/pages/frontstage-page/runtime-session/RetainedFrontstagePages.tsx",
       "rule": "react-doctor/no-render-in-render",
-      "sourceSha256": "36b1468d05ba4976668dc398eb4efae3d17c46b8ba6da6adb4758d61f13c043e",
-      "reason": "RetainedFrontstagePages 用 Map entries 管理保留页面；renderEntry 是模块级 JSX wrapper，cloneElement 保留真实子组件类型；ref 只初始化空 Map。 helper 仅返回 JSX，不声明新 React 组件类型、不直接调用含 Hooks 组件，真实子组件类型稳定，无因此 remount。",
+      "sourceSha256": "9d9046fa0904fd91f4da7696f99b0403784e1275cabdf2c970d74335d6dd3cf1",
+      "reason": "RetainedFrontstagePages 用 Map entries 管理保留页面；renderEntry 是模块级 JSX wrapper，cloneElement 保留真实子组件类型；ref 初始为 null，仅在首次 ready 页面 entry 插入时分配 Map。 helper 仅返回 JSX，不声明新 React 组件类型、不直接调用含 Hooks 组件，真实子组件类型稳定，无因此 remount。",
       "evidenceSet": 0
     },
     {
