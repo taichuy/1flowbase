@@ -349,7 +349,7 @@ function tableProof(unit, element, role, context, contracts) {
   // A row inside a renderer must actually belong to the inspected slot.
   let callbackOwner = null;
   for (
-    let parent = unit.parents.get(element);
+    let parent = element === owner ? null : unit.parents.get(element);
     parent && parent !== owner;
     parent = unit.parents.get(parent)
   ) {
