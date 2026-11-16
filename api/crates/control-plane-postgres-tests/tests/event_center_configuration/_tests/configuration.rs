@@ -1,6 +1,6 @@
 use control_plane::event_center::EventCenterConfigurationService;
 use control_plane_contracts::{
-    ports::{ApplicationRepository, CreateApplicationInput, EventCenterRepository},
+    ports::{CreateApplicationInput, EventCenterRepository},
     ControlPlaneContractError,
 };
 use domain::{event_center::*, ActorContext};

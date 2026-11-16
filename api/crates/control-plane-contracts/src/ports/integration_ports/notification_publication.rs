@@ -134,6 +134,24 @@ pub trait OptionalNotificationPublicationPort: Send + Sync {
     ) -> anyhow::Result<OptionalNotificationPublicationOutcome>;
 }
 
+impl ModelDefinitionIntegrationNotification {
+    pub fn event_source_schema() -> serde_json::Value {
+        super::ModelDefinitionCommittedFact::event_source_schema()
+    }
+}
+impl CreditNotificationFact {
+    pub fn event_source_schema() -> serde_json::Value {
+        serde_json::json!({"type":"object","required":["payload"],"properties":{"payload":{
+            "type":"object","required":["workspace_id","account_id","event_type","payload"],"properties":{
+                "workspace_id":{"type":"string","format":"uuid"},
+                "account_id":{"type":["string","null"]},
+                "event_type":{"type":"string","enum":["CreditReserved","CreditSettled","CreditReleased","CreditGranted","CreditCharged","CreditRefunded","CreditAdjusted","CreditChargeSettingChanged","CreditCommandRejected"]},
+                "payload":{}
+            },"additionalProperties":false
+        }}})
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,23 +199,5 @@ mod tests {
         }
         assert!(CreditNotificationEventType::from_event_type("CreditUnknown").is_err());
         assert!(CreditNotificationEventType::from_event_type("credit_settled").is_err());
-    }
-}
-
-impl ModelDefinitionIntegrationNotification {
-    pub fn event_source_schema() -> serde_json::Value {
-        super::ModelDefinitionCommittedFact::event_source_schema()
-    }
-}
-impl CreditNotificationFact {
-    pub fn event_source_schema() -> serde_json::Value {
-        serde_json::json!({"type":"object","required":["payload"],"properties":{"payload":{
-            "type":"object","required":["workspace_id","account_id","event_type","payload"],"properties":{
-                "workspace_id":{"type":"string","format":"uuid"},
-                "account_id":{"type":["string","null"]},
-                "event_type":{"type":"string","enum":["CreditReserved","CreditSettled","CreditReleased","CreditGranted","CreditCharged","CreditRefunded","CreditAdjusted","CreditChargeSettingChanged","CreditCommandRejected"]},
-                "payload":{}
-            },"additionalProperties":false
-        }}})
     }
 }

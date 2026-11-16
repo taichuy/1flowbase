@@ -53,10 +53,8 @@ pub fn request<T: JsonApiInput>(input: &T, route: &str) -> Result<Value, Arc<str
             path.insert((*name).to_owned(), value);
         }
     }
-    if !path.is_empty() {
-        if fields.insert("path".into(), Value::Object(path)).is_some() {
-            return Err(Arc::from("api-json-input-path-ambiguous"));
-        }
+    if !path.is_empty() && fields.insert("path".into(), Value::Object(path)).is_some() {
+        return Err(Arc::from("api-json-input-path-ambiguous"));
     }
     if let Some(value) = fields.remove("path") {
         let value = match value {

@@ -164,7 +164,7 @@ pub fn public_error_code(error: &anyhow::Error, fallback: &'static str) -> &'sta
             | Error::Conflict(code)
             | Error::InvalidInput(code)
             | Error::UpstreamUnavailable(code),
-        ) => return *code,
+        ) => return code,
         Some(Error::PluginUnavailable) => return "plugin_unavailable",
         Some(Error::InvalidComponentModuleExport { .. }) => return "invalid_component_export",
         Some(Error::InvalidStateTransition { .. }) => return "invalid_state_transition",
