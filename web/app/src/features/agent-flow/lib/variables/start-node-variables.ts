@@ -142,9 +142,9 @@ export function getNodeVariableOutputs(
   }
 
   if (node.type === 'code') {
-    return node.outputs
-      .filter((output) => isValidPublicOutputKey(output.key))
-      .map(normalizeCodeOutput);
+    return node.outputs.flatMap((output) =>
+      isValidPublicOutputKey(output.key) ? [normalizeCodeOutput(output)] : []
+    );
   }
 
   if (node.type === 'notification') {

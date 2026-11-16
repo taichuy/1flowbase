@@ -170,18 +170,19 @@ function DataBlockSlotHost({
     design_mode: isDesignMode,
     setDragActive,
     saving,
-    targets: (roots.data ?? [])
-      .filter((candidate) => candidate.block_id !== item.blockId)
-      .map((candidate) => {
-        const config = readDataBlockConfig(
-          (descriptor(candidate).props ?? {}) as Record<string, unknown>
-        );
-        return {
+    targets: (roots.data ?? []).flatMap((candidate) => {
+      if (candidate.block_id === item.blockId) return [];
+      const config = readDataBlockConfig(
+        (descriptor(candidate).props ?? {}) as Record<string, unknown>
+      );
+      return [
+        {
           block_id: candidate.block_id,
           title: candidate.title || config?.title || candidate.block_id,
           kind: config?.kind ?? 'code'
-        };
-      }),
+        }
+      ];
+    }),
     async saveConfig(config) {
       if (!isDesignMode || saving)
         throw new Error(
