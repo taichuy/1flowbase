@@ -1,6 +1,10 @@
 use super::*;
 use uuid::Uuid;
 
+#[path = "anthropic_live_blocks.rs"]
+mod live_blocks;
+use live_blocks::LiveBlocks;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AnthropicContentBlockKind {
     Text,
@@ -39,6 +43,7 @@ struct AnthropicStreamMapper {
     terminal_stop_reason: AnthropicMessageStopReason,
     stream_state: AnthropicStreamState,
     message_start_emitted: bool,
+    live_blocks: LiveBlocks,
 }
 }
 
@@ -55,6 +60,7 @@ impl AnthropicStreamMapper {
             terminal_stop_reason: AnthropicMessageStopReason::EndTurn,
             stream_state: AnthropicStreamState::Open,
             message_start_emitted: false,
+            live_blocks: LiveBlocks::default(),
         }
     }
     }
@@ -78,6 +84,9 @@ impl AnthropicStreamMapper {
         let envelope = event.envelope();
         if self.stream_state == AnthropicStreamState::Terminal {
             return Vec::new();
+        }
+        if let Some(events) = self.live_block_events(envelope) {
+            return events;
         }
         match event.answer_delta() {
             Some(CompatibleAnswerDeltaKind::Reasoning) => {
@@ -279,9 +288,20 @@ impl AnthropicStreamMapper {
             return Some(Vec::new());
         }
         let blocks = anthropic_tool_use_blocks_from_waiting_payload(payload)?;
+        if !self.live_tools_match_committed_blocks(&blocks) {
+            return Some(self.live_block_projection_error());
+        }
         let usage = self.usage_baseline.native_round(usage);
         let mut events = self.close_active_anthropic_content_block();
         for block in blocks {
+            match self.finish_live_tool(&block) {
+                Ok(Some(live_events)) => {
+                    events.extend(live_events);
+                    continue;
+                }
+                Ok(None) => {}
+                Err(()) => return Some(self.live_block_projection_error()),
+            }
             let index = self.next_content_index;
             self.next_content_index += 1;
             let input = block.get("input").cloned().unwrap_or_else(|| json!({}));
@@ -362,6 +382,7 @@ impl AnthropicStreamMapper {
     }
 
     fn close_active_anthropic_content_block(&mut self) -> Vec<Result<Event, Infallible>> {
+        self.live_blocks.clear_content();
         if self.active_content.is_none() {
             return Vec::new();
         }

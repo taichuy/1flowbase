@@ -423,6 +423,9 @@ pub fn canonicalize_provider_output_tool_call_names(
             ProviderStreamEvent::ToolCallDelta { delta, .. } => {
                 canonicalize_tool_call_delta_name(delta, tools);
             }
+            ProviderStreamEvent::OutputItem { item, .. } => {
+                canonicalize_output_item_tool_name(item, tools);
+            }
             _ => {}
         }
     }
@@ -444,6 +447,9 @@ pub fn canonicalize_provider_stream_event_tool_call_name(
         }
         ProviderStreamEvent::ToolCallDelta { delta, .. } => {
             canonicalize_tool_call_delta_name(delta, tools);
+        }
+        ProviderStreamEvent::OutputItem { item, .. } => {
+            canonicalize_output_item_tool_name(item, tools);
         }
         _ => {}
     }
@@ -471,6 +477,15 @@ fn canonicalize_tool_call_delta_name(delta: &mut Value, tools: &[Value]) {
         .and_then(|name| canonical_tool_name_for_provider_output(name, tools))
     {
         function.insert("name".to_string(), Value::String(name));
+    }
+}
+
+fn canonicalize_output_item_tool_name(item: &mut Value, tools: &[Value]) {
+    if matches!(
+        item.get("type").and_then(Value::as_str),
+        Some("function_call" | "custom_tool_call")
+    ) {
+        canonicalize_tool_call_delta_name(item, tools);
     }
 }
 

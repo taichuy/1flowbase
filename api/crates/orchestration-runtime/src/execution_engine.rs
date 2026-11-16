@@ -99,6 +99,7 @@ pub use http_request::{
 };
 pub use llm_callbacks::pending_llm_tool_callback_requires_ephemeral_provider_continuation;
 use llm_callbacks::*;
+pub use llm_context::CLIENT_TOOL_PROGRESS_NAMES_KEY;
 use llm_context::*;
 use llm_error_payloads::*;
 pub use llm_final_content::billable_provider_output;
