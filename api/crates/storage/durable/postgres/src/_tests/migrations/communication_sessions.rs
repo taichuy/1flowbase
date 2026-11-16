@@ -43,6 +43,16 @@ async fn communication_session_migration_preserves_legacy_runs_history_and_admit
             .fetch_all(&pool)
             .await
             .unwrap();
+    let mut expected_inputs = before_inputs.clone();
+    for input in &mut expected_inputs {
+        // The later reply-reference migration adds this nullable field without
+        // changing any original input, receipt, lease or run association.
+        assert!(input.get("reply_to_json").is_none());
+        input
+            .as_object_mut()
+            .unwrap()
+            .insert("reply_to_json".into(), Value::Null);
+    }
     let before_history: Vec<Value> =
         sqlx::query_scalar("SELECT to_jsonb(m) FROM communication_messages m ORDER BY id")
             .fetch_all(&pool)
@@ -63,7 +73,7 @@ async fn communication_session_migration_preserves_legacy_runs_history_and_admit
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
     let after_inputs: Vec<Value> = sqlx::query_scalar("SELECT to_jsonb(m)-'turn_id'-'turn_sequence'-'admission_status' FROM communication_inputs m ORDER BY id").fetch_all(&pool).await.unwrap();
     assert_eq!(
-        before_inputs, after_inputs,
+        expected_inputs, after_inputs,
         "run/lease/status and original timestamps remain unchanged"
     );
     let after_history: Vec<Value> =

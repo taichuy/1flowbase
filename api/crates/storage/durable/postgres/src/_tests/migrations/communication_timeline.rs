@@ -98,6 +98,14 @@ async fn communication_timeline_migration_preserves_inputs_files_ciphertext_and_
     .fetch_all(&pool)
     .await
     .unwrap();
+    let mut expected = before.clone();
+    for input in &mut expected {
+        assert!(input.get("reply_to_json").is_none());
+        input
+            .as_object_mut()
+            .unwrap()
+            .insert("reply_to_json".into(), Value::Null);
+    }
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
     for interface in tool_ids {
         let (schema, mapping): (Value, Value) =
@@ -162,7 +170,7 @@ async fn communication_timeline_migration_preserves_inputs_files_ciphertext_and_
             .await
             .unwrap();
     assert_eq!(
-        before, after,
+        expected, after,
         "receipt IDs, run associations, leases, dedup and state survive exactly"
     );
     let count: i64 = sqlx::query_scalar("SELECT count(*) FROM communication_messages")
