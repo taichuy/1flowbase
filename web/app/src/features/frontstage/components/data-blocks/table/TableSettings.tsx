@@ -106,9 +106,7 @@ export function TableBlockSettings({
           focusTriggerAfterClose={false}
           getContainer={false}
           open={section !== null}
-          title={
-            sectionLabel ? i18nText('frontstage', sectionLabel) : undefined
-          }
+          title={sectionLabel?.()}
           onCancel={() => setSection(null)}
           confirmLoading={disabled}
           okButtonProps={{
