@@ -852,11 +852,44 @@ mod tests {
                 vec![],
             );
         let mut document = llm_document(Uuid::now_v7(), "fixture_provider", "gpt-5.4-mini");
+        document["graph"]["nodes"][0]["config"]["input_fields"] = json!([{
+            "key": "context",
+            "label": "Context",
+            "inputType": "json",
+            "valueType": "array",
+            "required": false
+        }]);
+        document["graph"]["nodes"][1]["bindings"]["prompt_messages"]["value"][0]["content"]
+            ["value"] = json!("Context schema mapping fixture");
+        let context = build_compile_context(&repository, Uuid::nil())
+            .await
+            .expect("compile context should build");
+        let compile = |document: &Value| {
+            orchestration_runtime::compiler::FlowCompiler::compile(
+                Uuid::now_v7(),
+                "draft-1",
+                document,
+                &context,
+            )
+            .expect("context mapping fixture should compile")
+        };
+        let valid = compile(&document);
+        assert!(valid.compile_issues.is_empty());
+        ensure_compiled_plan_runnable(&valid)
+            .expect("fixture must be runnable before introducing the context schema error");
+        // A missing selector now also produces the generic bindings diagnostic.
+        // Use an existing output with an incompatible schema to isolate this owner.
         document["graph"]["nodes"][1]["config"]["context_policy"] = json!({
             "integration_context": "enabled",
-            "context_selector": ["node-start", "missing_history"]
+            "context_selector": ["node-start", "context"]
         });
-
+        let invalid = compile(&document);
+        assert_eq!(invalid.compile_issues.len(), 1);
+        assert_eq!(invalid.compile_issues[0].node_id, "node-llm");
+        assert_eq!(
+            invalid.compile_issues[0].code,
+            orchestration_runtime::compiled_plan::CompileIssueCode::IncompatibleLlmContextSchema
+        );
         let field = compile_error_field(&repository, &document).await;
 
         assert_eq!(field, "context_policy");

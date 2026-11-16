@@ -34,6 +34,7 @@ const TEST_ROOT_USER_ID: Uuid = Uuid::from_u128(0x333333333333333333333333333333
 struct ApplicationPublicApiTestRepositoryInner {
     applications: HashMap<Uuid, domain::ApplicationRecord>,
     event_definitions: HashMap<Uuid, domain::event_center::EventDefinitionRecord>,
+    registered_event_catalog: Vec<domain::event_center::EventCatalogEntry>,
     workflow_event_triggers: HashMap<Uuid, domain::event_center::WorkflowEventTriggerRecord>,
     api_keys: HashMap<Uuid, domain::ApiKeyRecord>,
     conversations:
