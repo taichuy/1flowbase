@@ -1099,10 +1099,10 @@ mod tests {
         let first = service.resume_callback(command.clone()).await.unwrap();
         assert_eq!(first.run.id, run.id);
         let replay = service.prepare_callback_resume(&command).await.unwrap();
-        assert!(matches!(
+        assert_eq!(
             replay,
-            PreparedPublishedCallbackResume::Resume { .. }
-        ));
+            PreparedPublishedCallbackResume::StartNewTurnFromHistory
+        );
         // SDK retries change the transport counter, while all source context
         // remains bound to the original attempt.
         let mut retry_envelope = capture_source_protocol_request_body(
@@ -1126,10 +1126,10 @@ mod tests {
         .unwrap();
         command.response_payload = retry_grant.payload().clone();
         command.anthropic_continuation = Some(retry_grant);
-        assert!(matches!(
+        assert_eq!(
             service.prepare_callback_resume(&command).await.unwrap(),
-            PreparedPublishedCallbackResume::Resume { .. }
-        ));
+            PreparedPublishedCallbackResume::StartNewTurnFromHistory
+        );
         let second = service.resume_callback(command.clone()).await.unwrap();
         assert_eq!(first.attempt.id, second.attempt.id);
         assert_eq!(
