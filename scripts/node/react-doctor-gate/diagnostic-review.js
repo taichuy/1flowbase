@@ -5,6 +5,9 @@ const { createEffectSemanticCorrections } = require('./effect-semantics.js');
 const { createAsyncSemanticCorrections } = require('./async-semantics.js');
 const { createRenderSemanticCorrections } = require('./render-semantics.js');
 const { createQueryInvalidationSemanticCorrections } = require('./query-invalidation-semantics.js');
+const { createCompositionSemanticCorrections } = require('./composition-semantics.js');
+const { createResourceSemanticCorrections } = require('./resource-semantics.js');
+const { createHistoryObservationSemanticCorrections } = require('./history-observation-semantics.js');
 
 const REVIEW_FILE = 'scripts/node/react-doctor-gate/reviews.json';
 
@@ -12,7 +15,7 @@ function sourceDigest(content) {
   return createHash('sha256').update(content).digest('hex');
 }
 
-function upstreamSemanticCorrection(diagnostic, toolPackage, inspectEffect, inspectAsync, inspectRender, inspectQuery) {
+function upstreamSemanticCorrection(diagnostic, toolPackage, inspectEffect, inspectAsync, inspectRender, inspectQuery, inspectComposition, inspectResource, inspectHistory) {
   if (toolPackage !== 'react-doctor@0.2.16') return null;
   if (diagnostic.plugin !== 'react-doctor') return null;
   // React documents useContext as a current supported Hook, not a deprecated API.
@@ -28,7 +31,10 @@ function upstreamSemanticCorrection(diagnostic, toolPackage, inspectEffect, insp
       && diagnostic.message === 'Screen reader users get more reliable semantics from `<address>` than `role="group"`, so use `<address>` instead.') {
     return 'A generic ARIA group does not imply contact information; address is not a semantically equivalent replacement.';
   }
-  return inspectEffect(diagnostic, toolPackage) ?? inspectAsync(diagnostic, toolPackage) ?? inspectRender(diagnostic, toolPackage) ?? inspectQuery(diagnostic, toolPackage);
+  return inspectEffect(diagnostic, toolPackage) ?? inspectAsync(diagnostic, toolPackage)
+    ?? inspectRender(diagnostic, toolPackage) ?? inspectQuery(diagnostic, toolPackage)
+    ?? inspectComposition(diagnostic, toolPackage) ?? inspectResource(diagnostic, toolPackage)
+    ?? inspectHistory(diagnostic, toolPackage);
 }
 
 // Review data is grouped by source owner; missing/ambiguous groups fail closed.
@@ -89,6 +95,9 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
   const inspectAsync = createAsyncSemanticCorrections(repoRoot);
   const inspectRender = createRenderSemanticCorrections(repoRoot);
   const inspectQuery = createQueryInvalidationSemanticCorrections(repoRoot);
+  const inspectComposition = createCompositionSemanticCorrections(repoRoot);
+  const inspectResource = createResourceSemanticCorrections(repoRoot);
+  const inspectHistory = createHistoryObservationSemanticCorrections(repoRoot);
   const digests = new Map();
   const digestFile = (file) => {
     if (!digests.has(file)) {
@@ -108,7 +117,9 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
     const review = byKey.get(`${file}\0${rule}`);
     const validSource = file.startsWith('web/app/') && !diagnostic.filePath.startsWith('/')
       && !diagnostic.filePath.includes('\\');
-    const correction = validSource ? upstreamSemanticCorrection(diagnostic, toolPackage, inspectEffect, inspectAsync, inspectRender, inspectQuery) : null;
+    const correction = validSource ? upstreamSemanticCorrection(diagnostic, toolPackage,
+      inspectEffect, inspectAsync, inspectRender, inspectQuery, inspectComposition,
+      inspectResource, inspectHistory) : null;
     let reason;
     if (!validSource) {
       reason = 'diagnostic path is outside the reviewed application source boundary';
