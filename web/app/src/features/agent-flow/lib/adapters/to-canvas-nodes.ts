@@ -77,7 +77,7 @@ export function toCanvasNodes(
   const nodesById = new Map(
     sizedDocument.graph.nodes.map((node) => [node.id, node])
   );
-  const populatedContainers = new Set(
+  const populatedContainers = new Set<string | null>(
     sizedDocument.graph.nodes.flatMap((node) =>
       node.containerId && node.type !== 'container_start'
         ? [node.containerId]
