@@ -1,12 +1,11 @@
 import {
   act,
-  cleanup,
   fireEvent,
   render,
   screen,
   waitFor
 } from '@testing-library/react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { createDefaultWorkflowDocument } from '@1flowbase/flow-schema';
 
 import {
@@ -74,9 +73,8 @@ async function renderPanel(props: Partial<WorkflowTestRunPanelProps> = {}) {
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: /测试运行/ }));
   });
-  return onRun;
+  return { onRun };
 }
-afterEach(cleanup);
 
 describe('Workflow test-run parameters', () => {
   test.each([
@@ -110,7 +108,7 @@ describe('Workflow test-run parameters', () => {
   test.each(['schedule', 'extension', 'event'] as const)(
     '%s immediately runs empty inputs without a drawer',
     async (triggerType) => {
-      const onRun = await renderPanel({
+      const { onRun } = await renderPanel({
         triggerContext: context(triggerType),
         document: createDefaultWorkflowDocument({ flowId: 'flow-1' })
       });
@@ -120,7 +118,7 @@ describe('Workflow test-run parameters', () => {
   );
 
   test('required input prevents starting and keeps the form open', async () => {
-    const onRun = await renderPanel();
+    const { onRun } = await renderPanel();
     await act(async () => {
       fireEvent.submit(screen.getByRole('form'));
     });
@@ -135,7 +133,7 @@ describe('Workflow test-run parameters', () => {
   });
 
   test('starts with typed values and closes the parameter drawer', async () => {
-    const onRun = await renderPanel();
+    const { onRun } = await renderPanel();
     expect(screen.getByLabelText('Limit')).toHaveValue('10');
     expect(screen.getByLabelText('Force')).not.toBeChecked();
     await act(async () => {
@@ -184,7 +182,7 @@ describe('Workflow test-run parameters', () => {
   });
 
   test('an unavailable trigger never starts an empty run', async () => {
-    const onRun = await renderPanel({
+    const { onRun } = await renderPanel({
       triggerContext: context(null),
       document: createDefaultWorkflowDocument({ flowId: 'flow-1' })
     });
@@ -195,7 +193,7 @@ describe('Workflow test-run parameters', () => {
   });
 
   test('the run entry is disabled while a run is being observed', async () => {
-    const onRun = await renderPanel({ running: true });
+    const { onRun } = await renderPanel({ running: true });
     expect(screen.getByRole('button', { name: /测试运行/ })).toBeDisabled();
     expect(onRun).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

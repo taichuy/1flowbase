@@ -16,8 +16,6 @@ import MenuOutlined from '@ant-design/icons/es/icons/MenuOutlined';
 import SettingOutlined from '@ant-design/icons/es/icons/SettingOutlined';
 import { FRONTSTAGE_DESIGN_BLUE } from '../../design-mode-theme';
 import { BLOCK_BUTTON_METRICS } from './theme';
-export { BLOCK_DESIGN_THEME } from './theme';
-export { useRegisterBlockSettings } from '../../block-settings/registry';
 
 /** Host-owned design controls, also available to compiled block code. */
 export const BlockDesignButton = forwardRef<

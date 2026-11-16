@@ -31,6 +31,7 @@ import { DataBlockFilterEditor } from '../shared/DataBlockFilterEditor';
 import { DataRelationEditor } from '../shared/DataRelationEditor';
 import { DataFieldCreateModal } from '../shared/DataFieldCreateModal';
 import { FormFieldControl } from './FormFieldControl';
+import { newFormItem } from './form-state';
 
 export type DesignDialog =
   | 'title'
@@ -51,13 +52,6 @@ type Props = {
   dialog: DesignDialog;
   setDialog(dialog: DesignDialog): void;
 };
-export function newFormItem(
-  kind: DataFormItem['kind'],
-  fieldCode?: string
-): DataFormItem {
-  const id = crypto.randomUUID();
-  return { id, kind, field_code: fieldCode, row: id, span: 24 };
-}
 
 export function FormDesignControls(props: Props) {
   const popupContainer = useDataBlockPopupContainer();

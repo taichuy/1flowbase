@@ -7,6 +7,7 @@ import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer
 import { DataBlockModal as Modal } from '../shared/DataBlockModal';
 import {
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -78,9 +79,9 @@ import { actionTitle } from './table-labels';
 import {
   SortableTableColumnTitle,
   TableActionMenu,
-  TableFieldMenu,
-  useTableDragSensors
+  TableFieldMenu
 } from './TableDesignControls';
+import { useTableDragSensors } from './use-table-drag-sensors';
 import {
   TableActionSettings,
   TableBlockSettings,
@@ -157,8 +158,11 @@ function ConfiguredTableBlock({
     )
   );
   const defaultFilterKey = JSON.stringify(defaultFilter);
-  useEffect(() => {
+  const resetDefaultFilter = useEffectEvent(() => {
     setFilter(defaultFilter ?? emptyDataFilter());
+  });
+  useEffect(() => {
+    resetDefaultFilter();
   }, [defaultFilterKey]);
   const scopeKey = JSON.stringify(scope.filter);
   const invalidFields = metadata.data
@@ -196,7 +200,10 @@ function ConfiguredTableBlock({
     Boolean(capabilities?.can_list && scope.enabled && !invalidQuery)
   );
   const idField = metadata.data?.record_id_field ?? '';
-  const data = records.data?.items ?? [];
+  const data = useMemo(
+    () => records.data?.items ?? [],
+    [records.data?.items]
+  );
   const canAddressRecords = Boolean(idField);
   const missingRecordId =
     canAddressRecords &&
@@ -603,11 +610,13 @@ function ConfiguredTableBlock({
   );
   const filterValid = validDataFilter(filterDraft, filterableFields, variables);
   const filterFieldsKey = JSON.stringify(filterAction?.filter_fields);
+  const restrictFilterToFields = useEffectEvent(() => {
+    const filterFields = filterAction?.filter_fields;
+    if (filterFields)
+      setFilter((current) => restrictDataFilter(current, filterFields));
+  });
   useEffect(() => {
-    if (filterAction?.filter_fields)
-      setFilter((current) =>
-        restrictDataFilter(current, filterAction.filter_fields!)
-      );
+    restrictFilterToFields();
   }, [filterFieldsKey]);
   const filterContent = (
     <div className="data-table-filter-panel">

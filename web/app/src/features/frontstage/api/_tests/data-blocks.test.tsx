@@ -25,7 +25,7 @@ const binding = {
   model_code: 'orders',
   data_source_id: null
 };
-const clients: QueryClient[] = [];
+const clients = new Set<QueryClient>();
 function createContext(
   permissions: readonly string[] = ['records.list', 'records.get'],
   isRoot = false,
@@ -51,7 +51,7 @@ function harness() {
       mutations: { retry: false }
     }
   });
-  clients.push(client);
+  clients.add(client);
   return {
     client,
     wrapper: ({ children }: { children: ReactNode }) => (
@@ -76,7 +76,8 @@ function seedRecordList(
 beforeEach(() => vi.resetAllMocks());
 afterEach(() => {
   cleanup();
-  for (const client of clients.splice(0)) client.clear();
+  for (const client of clients) client.clear();
+  clients.clear();
 });
 
 describe('data block query transport', () => {

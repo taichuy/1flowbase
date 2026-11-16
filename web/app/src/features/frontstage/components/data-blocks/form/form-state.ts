@@ -8,6 +8,14 @@ import type {
   FormBlockConfig
 } from '../../../lib/data-blocks/types';
 
+export function newFormItem(
+  kind: DataFormItem['kind'],
+  fieldCode?: string
+): DataFormItem {
+  const id = crypto.randomUUID();
+  return { id, kind, field_code: fieldCode, row: id, span: 24 };
+}
+
 export function formRecordId(
   inputs: Readonly<Record<string, unknown>>
 ): string | null {

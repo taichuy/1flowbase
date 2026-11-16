@@ -50,17 +50,15 @@ const PageContext = createContext<PageHost | null>(null);
 
 export function DataBlockPageProvider({
   children,
-  ...value
+  workspaceId,
+  pageId,
+  tabId,
+  navigate,
+  onDragActivityChange
 }: PageHost & { children: ReactNode }) {
   const context = useMemo(
-    () => value,
-    [
-      value.workspaceId,
-      value.pageId,
-      value.tabId,
-      value.navigate,
-      value.onDragActivityChange
-    ]
+    () => ({ workspaceId, pageId, tabId, navigate, onDragActivityChange }),
+    [workspaceId, pageId, tabId, navigate, onDragActivityChange]
   );
   return (
     <PageContext.Provider value={context}>{children}</PageContext.Provider>
@@ -135,10 +133,10 @@ function DataBlockSlotHost({
   children: ReactNode;
   pageContent?: FrontstagePageContent;
 }) {
-  const { workspaceId, pageId, tabId } = page;
+  const { workspaceId, pageId, tabId, onDragActivityChange } = page;
   const setDragActive = useCallback(
-    (active: boolean) => page.onDragActivityChange?.(item.blockId, active),
-    [page.onDragActivityChange, item.blockId]
+    (active: boolean) => onDragActivityChange?.(item.blockId, active),
+    [onDragActivityChange, item.blockId]
   );
   const mutations = useFrontstageBlockTreeMutations(workspaceId, pageId);
   const catalog = useFrontstageBlockCatalog({

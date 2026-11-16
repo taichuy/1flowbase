@@ -243,7 +243,7 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
       'BLOCK_DESIGN_THEME'
     ],
     async () => ({
-      module: await import('./block-design/runtime'),
+      module: await import('./block-design/module'),
       styles: [
         {
           css:

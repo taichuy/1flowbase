@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { cleanup, render, waitFor, within } from '@testing-library/react';
+import { render, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   compileNativeReactComponent,
@@ -16,8 +16,9 @@ import { createFrontstageNativeReactModuleRegistry } from '../../native-modules/
 import { createFrontstageUnavailableBlockContext } from '../../native-trusted-block/unavailable-context';
 
 const roots: HTMLElement[] = [];
+const views: Array<ReturnType<typeof render>> = [];
 afterEach(() => {
-  cleanup();
+  for (const view of views.splice(0)) view.unmount();
   for (const root of roots.splice(0)) root.remove();
 });
 
@@ -34,7 +35,7 @@ function contributionTemplate(code: string): string {
     .split(`  - contribution_code: ${code}\n`)[1]
     ?.split('\n  - contribution_code:')[0];
   const source = entry?.match(
-    /^    code_template: \|\r?\n([\s\S]*?)(?=^    [A-Za-z_])/m
+    /^ {4}code_template: \|\r?\n([\s\S]*?)(?=^ {4}[A-Za-z_])/m
   )?.[1];
   if (!source) throw new Error(`Missing native template: ${code}`);
   return source.replace(/^ {6}/gm, '').trim();
@@ -118,7 +119,7 @@ describe('shipped data block native templates', () => {
       const onRuntimeError = vi.fn();
       const ctx = createFrontstageUnavailableBlockContext(plan);
       const get = vi.spyOn(ctx.api, 'get');
-      render(
+      const view = render(
         <FrontstageNativeTrustedBlockPortalHost
           root={root}
           renderEpoch={contributionCode}
@@ -131,6 +132,7 @@ describe('shipped data block native templates', () => {
           onRuntimeError={onRuntimeError}
         />
       );
+      views.push(view);
       await waitFor(() => expect(root.shadowRoot).not.toBeNull());
       const shadowRoot = root.shadowRoot!;
       const alert = await within(
@@ -139,10 +141,12 @@ describe('shipped data block native templates', () => {
       expect(alert).toHaveTextContent(i18nText('frontstage', errorKey));
       expect(onRuntimeError).not.toHaveBeenCalled();
       expect(get).not.toHaveBeenCalled();
-      await waitFor(() => {
-        expect(surfaceCss(shadowRoot)).toContain('.data-table-block');
-        expect(surfaceCss(shadowRoot)).toContain('.data-form-block');
-      });
+      await waitFor(() =>
+        expect(surfaceCss(shadowRoot)).toContain('.data-table-block')
+      );
+      await waitFor(() =>
+        expect(surfaceCss(shadowRoot)).toContain('.data-form-block')
+      );
       const globalCss = Array.from(
         document.head.querySelectorAll('style'),
         (style) => style.textContent ?? ''

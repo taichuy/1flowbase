@@ -65,11 +65,15 @@ test('omits the process section when disabled for run payloads', () => {
 test('refreshes an expanded running section and reads the final result before stopping', async () => {
   vi.useFakeTimers();
   try {
+    let resolveFinal!: (payload: { progress: number }) => void;
+    const finalResult = new Promise<{ progress: number }>((resolve) => {
+      resolveFinal = resolve;
+    });
     const load = vi
       .fn()
       .mockResolvedValueOnce({ progress: 100 })
       .mockResolvedValueOnce({ progress: 200 })
-      .mockResolvedValue({ progress: 300 });
+      .mockReturnValue(finalResult);
     const props = {
       inputPayload: {},
       debugPayload: {},
@@ -89,12 +93,13 @@ test('refreshes an expanded running section and reads the final result before st
       await vi.advanceTimersByTimeAsync(1500);
     });
     expect(screen.getByText(/"progress":200/)).toBeVisible();
+    view.rerender(
+      <App>
+        <NodeRunPayloadSections {...props} />
+      </App>
+    );
     await act(async () => {
-      view.rerender(
-        <App>
-          <NodeRunPayloadSections {...props} />
-        </App>
-      );
+      resolveFinal({ progress: 300 });
     });
     expect(screen.getByText(/"progress":300/)).toBeVisible();
     const count = load.mock.calls.length;

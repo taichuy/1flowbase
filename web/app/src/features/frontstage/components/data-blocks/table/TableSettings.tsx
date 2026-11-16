@@ -13,9 +13,9 @@ import {
 } from 'antd';
 import {
   BlockDesignButton,
-  useRegisterBlockSettings,
   BlockDesignMenu as Dropdown
 } from '../../../lib/native-modules/block-design/runtime';
+import { useRegisterBlockSettings } from '../../../lib/block-settings/registry-store';
 import {
   restrictDataFilter,
   validDataFilter,

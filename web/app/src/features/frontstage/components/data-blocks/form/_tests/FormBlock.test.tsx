@@ -96,8 +96,7 @@ vi.mock('../FormDesignControls', () => ({
     >
       save-design
     </button>
-  ),
-  newFormItem: () => ({})
+  )
 }));
 vi.mock('@ant-design/x-markdown', () => ({ default: () => null }));
 const config = (mode: FormBlockConfig['mode'] = 'create'): FormBlockConfig => ({

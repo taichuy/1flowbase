@@ -433,28 +433,32 @@ export function LazyTraceNodeItem({
     refetchInterval: runActive || !node.finished_at ? 1500 : false,
     staleTime: CONVERSATION_LOG_QUERY_STALE_TIME_MS
   });
+  const { refetch: refetchChildren } = childrenQuery;
   const signature = `${node.status}:${node.finished_at}:${runActive}`;
   const previousSignature = useRef(signature);
   useEffect(() => {
     const changed = previousSignature.current !== signature;
     previousSignature.current = signature;
     if (changed && expanded && node.has_children && !detailOnly)
-      void childrenQuery.refetch();
+      void refetchChildren();
   }, [
     signature,
     expanded,
     node.has_children,
     detailOnly,
-    childrenQuery.refetch
+    refetchChildren
   ]);
-  const childPages = childrenQuery.data?.pages ?? [];
+  const childPages = useMemo(
+    () => childrenQuery.data?.pages ?? [],
+    [childrenQuery.data]
+  );
   const childNodes = useMemo(
     () =>
       childPages.reduce<ConversationLogTraceNodeSummary[]>(
         (nodes, page) => appendTraceChildrenPage(nodes, page.items),
         []
       ),
-    [childrenQuery.data]
+    [childPages]
   );
   const childPageInfo = childPages.at(-1)?.page_info;
   const childProjectionStatus = childPages[0]?.projection_status;

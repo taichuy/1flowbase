@@ -35,13 +35,13 @@ import {
 } from '../../../lib/data-blocks/types';
 import {
   FormDesignControls,
-  newFormItem,
   type DesignDialog
 } from './FormDesignControls';
 import { FormFieldControl } from './FormFieldControl';
 import { FormLayout } from './FormLayout';
 import {
   defaultFormValues,
+  newFormItem,
   fieldState,
   formRecordId,
   formWriteValues,

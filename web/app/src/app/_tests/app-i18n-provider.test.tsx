@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { DatePicker } from 'antd';
 import dayjs from 'dayjs';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -11,7 +11,6 @@ vi.mock('../../state/auth-store', () => ({
 }));
 
 afterEach(() => {
-  cleanup();
   localStorage.clear();
   dayjs.locale('en');
 });
