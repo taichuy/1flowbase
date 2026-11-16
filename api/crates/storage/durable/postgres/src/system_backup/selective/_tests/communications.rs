@@ -149,7 +149,12 @@ async fn communication_backup_rekeys_cursor_and_attachment_after_fk_deferred_res
         .execute(&db)
         .await
         .unwrap();
-    // Remove parent rows so attachments (alphabetically first in the archive) must be deferred.
+    // Remove FK children first, then require restore to rebuild their parent rows.
+    sqlx::query("delete from communication_message_sends where send_log_id=$1")
+        .bind(send)
+        .execute(&db)
+        .await
+        .unwrap();
     sqlx::query("DELETE FROM communication_messages WHERE id=$1")
         .bind(attachment)
         .execute(&db)
@@ -182,11 +187,6 @@ async fn communication_backup_rekeys_cursor_and_attachment_after_fk_deferred_res
         .unwrap();
     sqlx::query("DELETE FROM communication_conversations WHERE id=$1")
         .bind(conversation)
-        .execute(&db)
-        .await
-        .unwrap();
-    sqlx::query("delete from communication_message_sends where send_log_id=$1")
-        .bind(send)
         .execute(&db)
         .await
         .unwrap();

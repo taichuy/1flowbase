@@ -70,7 +70,21 @@ async fn communication_session_migration_preserves_legacy_runs_history_and_admit
             .fetch_one(&pool)
             .await
             .unwrap();
+    let binding_updated_before: time::OffsetDateTime =
+        sqlx::query_scalar("SELECT updated_at FROM communication_bindings WHERE instance_id=$1")
+            .bind(instance)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let migration_started: time::OffsetDateTime = sqlx::query_scalar("SELECT clock_timestamp()")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    let migration_finished: time::OffsetDateTime = sqlx::query_scalar("SELECT clock_timestamp()")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     let after_inputs: Vec<Value> = sqlx::query_scalar("SELECT to_jsonb(m)-'turn_id'-'turn_sequence'-'admission_status' FROM communication_inputs m ORDER BY id").fetch_all(&pool).await.unwrap();
     assert_eq!(
         expected_inputs, after_inputs,
@@ -90,7 +104,24 @@ async fn communication_session_migration_preserves_legacy_runs_history_and_admit
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!(before_binding, after_binding);
+    // The later unified-command migration adds an empty canonical collection,
+    // increments revision exactly once and invokes the existing timestamp trigger.
+    let binding_updated_after: time::OffsetDateTime =
+        sqlx::query_scalar("SELECT updated_at FROM communication_bindings WHERE instance_id=$1")
+            .bind(instance)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(binding_updated_after > binding_updated_before);
+    assert!(
+        binding_updated_after >= migration_started && binding_updated_after <= migration_finished
+    );
+    let mut expected_binding = before_binding.clone();
+    assert!(expected_binding["config_json"].get("commands").is_none());
+    expected_binding["config_json"]["commands"] = json!([]);
+    expected_binding["revision"] = json!(before_binding["revision"].as_i64().unwrap() + 1);
+    expected_binding["updated_at"] = after_binding["updated_at"].clone();
+    assert_eq!(expected_binding, after_binding);
     let store = crate::PgControlPlaneStore::new(pool.clone());
     let scope = CommunicationConversationScope {
         workspace_id: workspace,
