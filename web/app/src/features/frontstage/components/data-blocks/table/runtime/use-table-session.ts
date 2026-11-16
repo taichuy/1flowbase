@@ -50,42 +50,69 @@ export function useTableSession(
     ]),
     config,
     inputs: ctx.inputs,
-    variables: Object.fromEntries(variables.map((variable) => [variable.value, variable.resolved])),
+    variables: Object.fromEntries(
+      variables.map((variable) => [variable.value, variable.resolved])
+    ),
     idField
   };
-  const [stored, dispatch] = useReducer(tableSessionReducer, context, createTableSession);
+  const [stored, dispatch] = useReducer(
+    tableSessionReducer,
+    context,
+    createTableSession
+  );
   const state = reconcileTableSession(stored, context);
   // Persist the semantic transition in this render, before effects or query subscription.
   if (state !== stored) dispatch({ type: 'context', context });
-  const scope = tableQueryScope(config, state.filter, ctx.inputs, context.variables);
+  const scope = tableQueryScope(
+    config,
+    state.filter,
+    ctx.inputs,
+    context.variables
+  );
   const capabilities = metadata.data?.record_capabilities;
   const invalidFields = metadata.data
-    ? config.columns.filter((column) => !fieldsByCode.has(column.field_code)) : [];
-  const invalidQuery = Boolean(metadata.data && (
-    !validDataFilter(config.filter, fields, variables) ||
-    !validDataFilter(state.filter, fields, variables) ||
-    [
-      ...filterFields(config.filter),
-      ...filterFields(state.filter),
-      ...(state.sort ? [state.sort.field] : []),
-      ...(config.relation ? [config.relation.field_code] : []),
-      ...(config.linkage ? [config.linkage.field_code] : [])
-    ].some((code) => !fieldsByCode.has(code))
-  ));
-  const records = useDataBlockRecords(ctx, config.binding, {
-    page: state.page,
-    page_size: state.pageSize,
-    filter: scope.filter,
-    ...(state.sort ? { sort: state.sort } : {})
-  }, Boolean(capabilities?.can_list && scope.enabled && !invalidQuery));
+    ? config.columns.filter((column) => !fieldsByCode.has(column.field_code))
+    : [];
+  const invalidQuery = Boolean(
+    metadata.data &&
+    (!validDataFilter(config.filter, fields, variables) ||
+      !validDataFilter(state.filter, fields, variables) ||
+      [
+        ...filterFields(config.filter),
+        ...filterFields(state.filter),
+        ...(state.sort ? [state.sort.field] : []),
+        ...(config.relation ? [config.relation.field_code] : []),
+        ...(config.linkage ? [config.linkage.field_code] : [])
+      ].some((code) => !fieldsByCode.has(code)))
+  );
+  const records = useDataBlockRecords(
+    ctx,
+    config.binding,
+    {
+      page: state.page,
+      page_size: state.pageSize,
+      filter: scope.filter,
+      ...(state.sort ? { sort: state.sort } : {})
+    },
+    Boolean(capabilities?.can_list && scope.enabled && !invalidQuery)
+  );
   const data = useMemo(() => records.data?.items ?? [], [records.data?.items]);
   const canAddressRecords = Boolean(idField);
-  const missingRecordId = canAddressRecords && data.some((record) => tableRecordId(record, idField) === null);
-  const displayKeys = useMemo(() => new Map(data.map((record, index) => [record, `display-only-${index}`])), [data]);
+  const missingRecordId =
+    canAddressRecords &&
+    data.some((record) => tableRecordId(record, idField) === null);
+  const displayKeys = useMemo(
+    () =>
+      new Map(data.map((record, index) => [record, `display-only-${index}`])),
+    [data]
+  );
   const selected = state.selected;
   // This is external BlockContext synchronization, not a chain of internal state effects.
   useEffect(() => {
-    void ctx.outputs.publish({ record_id: selected[0] ?? '', selected_record_ids: selected });
+    void ctx.outputs.publish({
+      record_id: selected[0] ?? '',
+      selected_record_ids: selected
+    });
   }, [ctx.outputs, selected]);
 
   return {
@@ -104,11 +131,27 @@ export function useTableSession(
     canAddressRecords,
     missingRecordId,
     displayKeys,
-    paginate(page: number, pageSize: number) { dispatch({ type: 'paginate', page, pageSize }); },
-    sortBy(sort: TableBlockConfig['sort']) { dispatch({ type: 'sort', sort }); },
-    applyFilter(filter: DataFilterGroup) { dispatch({ type: 'filter', filter, context }); },
-    select(selected: string[]) { dispatch({ type: 'select', selected }); },
-    completeDelete(event: Omit<Extract<Parameters<typeof tableSessionReducer>[1], { type: 'delete-completed' }>, 'type'>) {
+    paginate(page: number, pageSize: number) {
+      dispatch({ type: 'paginate', page, pageSize });
+    },
+    sortBy(sort: TableBlockConfig['sort']) {
+      dispatch({ type: 'sort', sort });
+    },
+    applyFilter(filter: DataFilterGroup) {
+      dispatch({ type: 'filter', filter, context });
+    },
+    select(selected: string[]) {
+      dispatch({ type: 'select', selected });
+    },
+    completeDelete(
+      event: Omit<
+        Extract<
+          Parameters<typeof tableSessionReducer>[1],
+          { type: 'delete-completed' }
+        >,
+        'type'
+      >
+    ) {
       dispatch({ type: 'delete-completed', ...event });
     }
   };

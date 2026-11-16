@@ -16,6 +16,7 @@ export interface TableSessionContext {
 
 export interface TableSessionState {
   ownerKey: string;
+  generation: number;
   pageSizeDefault: number;
   sortDefaultKey: string;
   filterDefaultKey: string;
@@ -30,14 +31,19 @@ export interface TableSessionState {
 }
 
 function filterDefaults(config: TableBlockConfig) {
-  return config.actions.find((action) => action.enabled && action.kind === 'filter');
+  return config.actions.find(
+    (action) => action.enabled && action.kind === 'filter'
+  );
 }
 
-export function createTableSession(context: TableSessionContext): TableSessionState {
+export function createTableSession(
+  context: TableSessionContext
+): TableSessionState {
   const defaults = filterDefaults(context.config);
   const filter = defaults?.default_filter ?? emptyDataFilter();
   const state: TableSessionState = {
     ownerKey: context.ownerKey,
+    generation: 0,
     pageSizeDefault: context.config.page_size,
     sortDefaultKey: JSON.stringify(context.config.sort),
     filterDefaultKey: JSON.stringify(defaults?.default_filter ?? null),
@@ -47,32 +53,56 @@ export function createTableSession(context: TableSessionContext): TableSessionSt
     page: 1,
     pageSize: context.config.page_size,
     sort: context.config.sort,
-    filter: defaults?.filter_fields ? restrictDataFilter(filter, defaults.filter_fields) : filter,
+    filter: defaults?.filter_fields
+      ? restrictDataFilter(filter, defaults.filter_fields)
+      : filter,
     selected: []
   };
   return reconcileTableSession(state, context);
 }
 
 /** Reconcile semantic defaults before querying; equal host snapshots retain user interaction. */
-export function reconcileTableSession(state: TableSessionState, context: TableSessionContext): TableSessionState {
+export function reconcileTableSession(
+  state: TableSessionState,
+  context: TableSessionContext
+): TableSessionState {
   const { config } = context;
   const defaults = filterDefaults(config);
   const sortDefaultKey = JSON.stringify(config.sort);
   const filterDefaultKey = JSON.stringify(defaults?.default_filter ?? null);
   const filterFieldsKey = JSON.stringify(defaults?.filter_fields ?? null);
   const ownerChanged = state.ownerKey !== context.ownerKey;
-  const pageSizeChanged = ownerChanged || state.pageSizeDefault !== config.page_size;
+  const pageSizeChanged =
+    ownerChanged || state.pageSizeDefault !== config.page_size;
   const sortChanged = ownerChanged || state.sortDefaultKey !== sortDefaultKey;
-  const defaultChanged = ownerChanged || state.filterDefaultKey !== filterDefaultKey;
-  const fieldsChanged = ownerChanged || state.filterFieldsKey !== filterFieldsKey;
-  let filter = defaultChanged ? defaults?.default_filter ?? emptyDataFilter() : state.filter;
-  if (fieldsChanged && defaults?.filter_fields) filter = restrictDataFilter(filter, defaults.filter_fields);
-  const scopeKey = JSON.stringify(tableQueryScope(config, filter, context.inputs, context.variables).filter);
-  const scopeChanged = ownerChanged || state.scopeKey !== scopeKey || state.idField !== context.idField;
-  if (!pageSizeChanged && !sortChanged && !defaultChanged && !fieldsChanged && !scopeChanged) return state;
+  const defaultChanged =
+    ownerChanged || state.filterDefaultKey !== filterDefaultKey;
+  const fieldsChanged =
+    ownerChanged || state.filterFieldsKey !== filterFieldsKey;
+  let filter = defaultChanged
+    ? (defaults?.default_filter ?? emptyDataFilter())
+    : state.filter;
+  if (fieldsChanged && defaults?.filter_fields)
+    filter = restrictDataFilter(filter, defaults.filter_fields);
+  const scopeKey = JSON.stringify(
+    tableQueryScope(config, filter, context.inputs, context.variables).filter
+  );
+  const scopeChanged =
+    ownerChanged ||
+    state.scopeKey !== scopeKey ||
+    state.idField !== context.idField;
+  if (
+    !pageSizeChanged &&
+    !sortChanged &&
+    !defaultChanged &&
+    !fieldsChanged &&
+    !scopeChanged
+  )
+    return state;
   return {
     ...state,
     ownerKey: context.ownerKey,
+    generation: scopeChanged ? state.generation + 1 : state.generation,
     pageSizeDefault: config.page_size,
     sortDefaultKey,
     filterDefaultKey,
@@ -88,11 +118,21 @@ export function reconcileTableSession(state: TableSessionState, context: TableSe
 }
 
 export function tableSessionContextKey(state: TableSessionState) {
-  return JSON.stringify([state.ownerKey, state.scopeKey, state.idField]);
+  return JSON.stringify([
+    state.ownerKey,
+    state.scopeKey,
+    state.idField,
+    state.generation
+  ]);
 }
 
 export function tableSessionRequestKey(state: TableSessionState) {
-  return JSON.stringify([tableSessionContextKey(state), state.page, state.pageSize, state.sort]);
+  return JSON.stringify([
+    tableSessionContextKey(state),
+    state.page,
+    state.pageSize,
+    state.sort
+  ]);
 }
 
 type TableSessionEvent =
@@ -110,24 +150,42 @@ type TableSessionEvent =
       failed: string[];
     };
 
-export function tableSessionReducer(state: TableSessionState, event: TableSessionEvent): TableSessionState {
+export function tableSessionReducer(
+  state: TableSessionState,
+  event: TableSessionEvent
+): TableSessionState {
   switch (event.type) {
-    case 'context': return reconcileTableSession(state, event.context);
-    case 'paginate': return { ...state, page: event.page, pageSize: event.pageSize };
-    case 'sort': return { ...state, page: 1, sort: event.sort };
-    case 'filter': return reconcileTableSession({ ...state, page: 1, filter: event.filter }, event.context);
-    case 'select': return { ...state, selected: event.selected };
+    case 'context':
+      return reconcileTableSession(state, event.context);
+    case 'paginate':
+      return { ...state, page: event.page, pageSize: event.pageSize };
+    case 'sort':
+      return { ...state, page: 1, sort: event.sort };
+    case 'filter':
+      return reconcileTableSession(
+        { ...state, page: 1, filter: event.filter },
+        event.context
+      );
+    case 'select':
+      return { ...state, selected: event.selected };
     case 'delete-completed': {
       if (event.contextKey !== tableSessionContextKey(state)) return state;
       const sameRequest = event.requestKey === tableSessionRequestKey(state);
       return {
         ...state,
-        selected: Array.from(new Set([
-          ...state.selected.filter((id) => !event.deleted.includes(id)),
-          ...event.failed
-        ])),
-        page: sameRequest && event.deleted.length && event.visibleCount <= event.deleted.length && state.page > 1
-          ? state.page - 1 : state.page
+        selected: Array.from(
+          new Set([
+            ...state.selected.filter((id) => !event.deleted.includes(id)),
+            ...event.failed
+          ])
+        ),
+        page:
+          sameRequest &&
+          event.deleted.length &&
+          event.visibleCount <= event.deleted.length &&
+          state.page > 1
+            ? state.page - 1
+            : state.page
       };
     }
   }

@@ -307,9 +307,7 @@ describe('TableBlock design persistence', () => {
     fireEvent.change(within(dialog).getAllByRole('textbox')[0], {
       target: { value: 'Unsaved title' }
     });
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'files.save' })
-    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'files.save' }));
     await waitFor(() =>
       expect(owner.saveConfig).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'Unsaved title' })
@@ -343,9 +341,7 @@ async function submitTitle(title: string) {
   fireEvent.change(within(dialog).getAllByRole('textbox')[0], {
     target: { value: title }
   });
-  fireEvent.click(
-    within(dialog).getByRole('button', { name: 'files.save' })
-  );
+  fireEvent.click(within(dialog).getByRole('button', { name: 'files.save' }));
 }
 
 function confirmSelectedDeletion() {
@@ -377,23 +373,29 @@ describe('TableBlock config and operation lifetimes', () => {
     });
     expect(mocks.records).toHaveBeenCalled();
     for (const [, , input] of mocks.records.mock.calls) {
-      expect(input).toEqual(expect.objectContaining({
-        page: 1,
-        page_size: 50,
-        sort: { field: 'name', direction: 'desc' }
-      }));
+      expect(input).toEqual(
+        expect.objectContaining({
+          page: 1,
+          page_size: 50,
+          sort: { field: 'name', direction: 'desc' }
+        })
+      );
     }
   });
 
   it('displays an acknowledged save while the host has not delivered replacement props', async () => {
     const { owner } = setup(
-      (config) => { config.title = 'Original title'; },
+      (config) => {
+        config.title = 'Original title';
+      },
       { design_mode: true }
     );
     await submitTitle('Acknowledged title');
-    await waitFor(() => expect(owner.saveConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Acknowledged title' })
-    ));
+    await waitFor(() =>
+      expect(owner.saveConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Acknowledged title' })
+      )
+    );
     expect(await screen.findByText('Acknowledged title')).toBeInTheDocument();
     expect(screen.queryByText('Original title')).not.toBeInTheDocument();
   });
@@ -401,14 +403,19 @@ describe('TableBlock config and operation lifetimes', () => {
   it('does not let a late acknowledged save replace a newer config source', async () => {
     const saved = deferredResult();
     const { owner, config, ctx, rerender } = setup(
-      (config) => { config.title = 'Original title'; },
+      (config) => {
+        config.title = 'Original title';
+      },
       { design_mode: true, saveConfig: vi.fn(() => saved.promise) }
     );
     await submitTitle('Old source saved title');
     await waitFor(() => expect(owner.saveConfig).toHaveBeenCalled());
     rerender({
       ...ctx,
-      props: { ...ctx.props, data_block: { ...config, title: 'New source title' } }
+      props: {
+        ...ctx.props,
+        data_block: { ...config, title: 'New source title' }
+      }
     });
     expect(screen.getByText('New source title')).toBeInTheDocument();
     await act(async () => {
@@ -416,7 +423,9 @@ describe('TableBlock config and operation lifetimes', () => {
       await saved.promise;
     });
     expect(screen.getByText('New source title')).toBeInTheDocument();
-    expect(screen.queryByText('Old source saved title')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Old source saved title')
+    ).not.toBeInTheDocument();
   });
 
   it('never publishes failed deletion IDs into a different parent query context', async () => {
@@ -425,7 +434,12 @@ describe('TableBlock config and operation lifetimes', () => {
         ...baseMetadata,
         fields: [
           ...baseMetadata.fields,
-          { ...baseMetadata.fields[0], id: 'parent', code: 'parent_id', title: 'Parent' }
+          {
+            ...baseMetadata.fields[0],
+            id: 'parent',
+            code: 'parent_id',
+            title: 'Parent'
+          }
         ]
       },
       isPending: false,
@@ -455,9 +469,12 @@ describe('TableBlock config and operation lifetimes', () => {
       refetch: mocks.refetch
     });
     rerender({ ...ctx, inputs: { parent_record_id: 'parent-B' } });
-    await waitFor(() => expect(publish).toHaveBeenLastCalledWith({
-      record_id: '', selected_record_ids: []
-    }));
+    await waitFor(() =>
+      expect(publish).toHaveBeenLastCalledWith({
+        record_id: '',
+        selected_record_ids: []
+      })
+    );
     await act(async () => {
       deleted.reject(new Error('old parent deletion denied'));
       await deleted.promise.catch(() => undefined);
@@ -465,7 +482,8 @@ describe('TableBlock config and operation lifetimes', () => {
     await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith('B'));
     expect(screen.getByText('Gamma')).toBeInTheDocument();
     expect(publish).toHaveBeenLastCalledWith({
-      record_id: '', selected_record_ids: []
+      record_id: '',
+      selected_record_ids: []
     });
   });
 
@@ -488,25 +506,38 @@ describe('TableBlock config and operation lifetimes', () => {
     );
     const { config, ctx, rerender } = setup();
     fireEvent.click(screen.getByTitle('3'));
-    await waitFor(() => expect(mocks.records).toHaveBeenLastCalledWith(
-      expect.anything(), expect.anything(), expect.objectContaining({ page: 3 }), true
-    ));
+    await waitFor(() =>
+      expect(mocks.records).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ page: 3 }),
+        true
+      )
+    );
     confirmSelectedDeletion();
     await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith('A'));
     rerender({
       ...ctx,
       props: { ...ctx.props, data_block: { ...config, page_size: 10 } }
     });
-    await waitFor(() => expect(mocks.records).toHaveBeenLastCalledWith(
-      expect.anything(), expect.anything(), expect.objectContaining({ page: 1, page_size: 10 }), true
-    ));
+    await waitFor(() =>
+      expect(mocks.records).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ page: 1, page_size: 10 }),
+        true
+      )
+    );
     await act(async () => {
       deleted.resolve();
       await deleted.promise;
     });
     await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith('B'));
     expect(mocks.records).toHaveBeenLastCalledWith(
-      expect.anything(), expect.anything(), expect.objectContaining({ page: 1, page_size: 10 }), true
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ page: 1, page_size: 10 }),
+      true
     );
   });
 });

@@ -20,9 +20,10 @@ export function useTableConfigController(
     source: TableBlockConfig;
     config: TableBlockConfig;
   } | null>(null);
-  const config = acknowledged?.source === initialConfig
-    ? acknowledged.config
-    : initialConfig;
+  const config =
+    acknowledged?.source === initialConfig
+      ? acknowledged.config
+      : initialConfig;
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
 
@@ -113,7 +114,6 @@ export function useTableConfigController(
         )
       )
     }));
-
 
   return { config, saving, saveConfig, saveAction, saveColumn };
 }
