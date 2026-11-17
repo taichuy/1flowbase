@@ -72,6 +72,7 @@ export interface FlowEditorState
     workingDocument?: FlowAuthoringDocument
   ) => void;
   replaceFromServerState: (state: ConsoleApplicationOrchestrationState) => void;
+  clearRunEntryTransientState: () => void;
   resetTransientInteractionState: () => void;
 }
 
@@ -386,6 +387,28 @@ export function createFlowEditorStore(
         messages: nextState.messages
       }));
     },
+    clearRunEntryTransientState: () =>
+      set((current) => ({
+        selectedNodeId: null,
+        selectedNodeIds: [],
+        selectedEdgeId: null,
+        historyOpen: false,
+        issuesOpen: false,
+        nodePickerState: {
+          ...current.nodePickerState,
+          open: false,
+          anchorNodeId: null,
+          anchorEdgeId: null,
+          anchorCanvasPosition: null
+        },
+        pendingLocateNodeId: null,
+        connectingPayload: {
+          ...current.connectingPayload,
+          sourceNodeId: null,
+          sourceHandleId: null,
+          sourceNodeType: null
+        }
+      })),
     resetTransientInteractionState: () =>
       set((current) => ({
         selectedEdgeId: null,

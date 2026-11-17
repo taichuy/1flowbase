@@ -237,9 +237,8 @@ function useWorkflowCanvasController({
   const navigation = useContainerNavigation();
   const detailActions = useNodeDetailActions();
   useEditorShortcuts({ disabled: testRun.active });
-  const setSelection = useAgentFlowEditorStore((state) => state.setSelection);
-  const setInteractionState = useAgentFlowEditorStore(
-    (state) => state.setInteractionState
+  const clearRunEntryTransientState = useAgentFlowEditorStore(
+    (state) => state.clearRunEntryTransientState
   );
   useEffect(() => {
     if (!testRun.active && testRun.state.runId && selectedNodeId) {
@@ -260,30 +259,8 @@ function useWorkflowCanvasController({
   ]);
   useEffect(() => {
     if (!testRun.active) return;
-    setSelection({
-      selectedNodeId: null,
-      selectedNodeIds: [],
-      selectedEdgeId: null
-    });
-    setPanelState({
-      historyOpen: false,
-      issuesOpen: false,
-      nodePickerState: {
-        open: false,
-        anchorNodeId: null,
-        anchorEdgeId: null,
-        anchorCanvasPosition: null
-      }
-    });
-    setInteractionState({
-      pendingLocateNodeId: null,
-      connectingPayload: {
-        sourceNodeId: null,
-        sourceHandleId: null,
-        sourceNodeType: null
-      }
-    });
-  }, [testRun.active, setSelection, setPanelState, setInteractionState]);
+    clearRunEntryTransientState();
+  }, [testRun.active, clearRunEntryTransientState]);
   const draftSync = useDraftSync({
     applicationId,
     saveDraftOverride,
