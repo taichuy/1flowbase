@@ -829,11 +829,183 @@ function inspectCleanup(context, unit, effect, refName) {
   };
 }
 
-function nativeObservationGlobal(unit, constructor) {
+function observationProperty(expression, depth = 0) {
+  expression = unwrap(expression);
+  if (depth > 8 || !expression) return null;
+  if (expression.type === "Literal" && typeof expression.value === "string")
+    return expression.value;
+  if (expression.type === "BinaryExpression" && expression.operator === "+") {
+    const left = observationProperty(expression.left, depth + 1);
+    const right = observationProperty(expression.right, depth + 1);
+    return left !== null && right !== null ? left + right : null;
+  }
+  return null;
+}
+function observationMember(expression) {
+  expression = unwrap(expression);
+  return expression?.type === "MemberExpression"
+    ? expression.computed
+      ? observationProperty(expression.property)
+      : expression.property.name
+    : null;
+}
+function observationTimer(unit, expression, seen = new Set(), depth = 0) {
+  expression = unwrap(expression);
+  if (depth > 8 || !expression) return false;
+  if (expression.type === "MemberExpression")
+    return ["setTimeout", "setInterval"].includes(
+      observationMember(expression),
+    );
+  if (expression.type !== "Identifier") return false;
+  const variable = unit.binding(expression);
+  if (!variable?.defs.length)
+    return ["setTimeout", "setInterval"].includes(expression.name);
+  if (!immutable(variable) || seen.has(variable)) return false;
+  seen.add(variable);
+  const definition = variable.defs[0];
+  return (
+    definition.type === "Variable" &&
+    observationTimer(unit, definition.node.init, seen, depth + 1)
+  );
+}
+function observationFunction(unit, expression, seen = new Set(), depth = 0) {
+  expression = unwrap(expression);
+  if (depth > 8 || !expression) return false;
+  if (FUNCTIONS.has(expression.type)) return true;
+  if (expression.type !== "Identifier") return false;
+  const variable = unit.binding(expression);
+  if (!immutable(variable) || seen.has(variable)) return false;
+  seen.add(variable);
+  const definition = variable.defs[0];
+  return (
+    definition.type === "FunctionName" ||
+    (definition.type === "Variable" &&
+      observationFunction(unit, definition.node.init, seen, depth + 1))
+  );
+}
+function opaqueObservationCallable(
+  context,
+  unit,
+  expression,
+  seen = new Set(),
+  depth = 0,
+) {
+  step(context);
+  expression = unwrap(expression);
+  if (depth > 8 || !expression) return true;
+  if (expression.type === "MemberExpression")
+    return (
+      (expression.computed && observationMember(expression) === null) ||
+      opaqueObservationCallable(
+        context,
+        unit,
+        expression.object,
+        seen,
+        depth + 1,
+      )
+    );
+  if (expression.type === "Identifier") {
+    const variable = unit.binding(expression);
+    if (!immutable(variable)) return false;
+    if (seen.has(variable)) return true;
+    seen.add(variable);
+    const definition = variable.defs[0];
+    return (
+      definition.type === "Variable" &&
+      opaqueObservationCallable(
+        context,
+        unit,
+        definition.node.init,
+        seen,
+        depth + 1,
+      )
+    );
+  }
+  if (["CallExpression", "NewExpression"].includes(expression.type))
+    return opaqueObservationCallable(
+      context,
+      unit,
+      expression.callee,
+      seen,
+      depth + 1,
+    );
+  return false;
+}
+function nativeObservationCodeClosed(context, unit) {
+  const codeCapabilities = new Set([
+    "eval",
+    "Function",
+    "AsyncFunction",
+    "GeneratorFunction",
+    "AsyncGeneratorFunction",
+  ]);
+  const reflectiveMembers = new Set([
+    ...codeCapabilities,
+    "Reflect",
+    "constructor",
+    "getPrototypeOf",
+    "getOwnPropertyDescriptor",
+    "getOwnPropertyDescriptors",
+  ]);
+  // Do not interpret payload strings or assume indirect execution is harmless.
+  // A capability reference invalidates this local native-API proof, even in a
+  // nested callback. Ordinary strings/comments and non-call data indexing do not.
+  for (const node of unit.nodes) {
+    step(context);
+    if (node.type === "ImportExpression") return false;
+    if (
+      node.type === "Identifier" &&
+      unit.bindings.has(node) &&
+      !unit.binding(node)?.defs.length &&
+      (codeCapabilities.has(node.name) || node.name === "Reflect")
+    )
+      return false;
+    if (
+      (node.type === "MemberExpression" &&
+        reflectiveMembers.has(observationMember(node))) ||
+      (node.type === "Property" &&
+        reflectiveMembers.has(
+          node.computed
+            ? observationProperty(node.key)
+            : (node.key.name ?? node.key.value),
+        ))
+    )
+      return false;
+    if (
+      ["CallExpression", "NewExpression"].includes(node.type) &&
+      opaqueObservationCallable(context, unit, node.callee)
+    )
+      return false;
+    if (
+      !["Identifier", "MemberExpression"].includes(node.type) ||
+      !observationTimer(unit, node)
+    )
+      continue;
+    const parent = unit.parents.get(node);
+    if (parent?.type === "VariableDeclarator" && parent.id === node) continue;
+    if (parent?.type === "CallExpression" && parent.callee === node) {
+      if (!observationFunction(unit, parent.arguments[0])) return false;
+      continue;
+    }
+    if (
+      parent?.type === "VariableDeclarator" &&
+      parent.init === node &&
+      parent.id.type === "Identifier" &&
+      immutable(unit.binding(parent.id)) &&
+      unit.parents.get(parent)?.kind === "const"
+    )
+      continue;
+    return false;
+  }
+  return true;
+}
+
+function nativeObservationGlobal(context, unit, constructor) {
   if (
     constructor?.type !== "Identifier" ||
     constructor.name !== "IntersectionObserver" ||
-    unit.binding(constructor)?.defs.length
+    unit.binding(constructor)?.defs.length ||
+    !nativeObservationCodeClosed(context, unit)
   )
     return false;
   // Ambient globals can have a parser binding with no lexical definitions.
@@ -937,7 +1109,7 @@ function inspectObservation(context, unit, registration) {
     declaration.kind !== "const" ||
     declaration.declarations.length !== 1 ||
     acquisition?.type !== "NewExpression" ||
-    !nativeObservationGlobal(unit, unwrap(acquisition.callee)) ||
+    !nativeObservationGlobal(context, unit, unwrap(acquisition.callee)) ||
     ![1, 2].includes(acquisition.arguments.length)
   )
     return null;
