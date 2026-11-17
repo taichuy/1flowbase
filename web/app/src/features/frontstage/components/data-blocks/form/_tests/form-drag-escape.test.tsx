@@ -20,6 +20,86 @@ const originalItems: DataFormItem[] = [
   { id: 'status', kind: 'field', field_code: 'status', row: 'status', span: 24 }
 ];
 
+function StatefulItem({ item, label }: { item: DataFormItem; label: string }) {
+  const [draft, setDraft] = useState(`Initial ${item.id}`);
+  return (
+    <input
+      aria-label={`Local draft ${item.id}`}
+      data-label={label}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+    />
+  );
+}
+
+describe('form layout item identity', () => {
+  const showLayout = (items: DataFormItem[], label: string) => (
+    <ConfigProvider theme={{ token: { motion: false } }}>
+      <FormLayout
+        items={items}
+        design={false}
+        saving={false}
+        onSettings={() => {}}
+        onItemsChange={() => {}}
+        itemComponent={StatefulItem}
+        itemProps={{ label }}
+      />
+    </ConfigProvider>
+  );
+
+  it('keeps local state and DOM identity when parent props update and items reorder within a row', () => {
+    const items = originalItems.map((item) => ({ ...item, row: 'shared' }));
+    const view = render(showLayout(items, 'Original label'));
+    const input = screen.getByLabelText('Local draft name');
+    fireEvent.change(input, { target: { value: 'Unsaved local draft' } });
+
+    view.rerender(showLayout([...items].reverse(), 'Updated label'));
+
+    expect(screen.getByLabelText('Local draft name')).toBe(input);
+    expect(input).toHaveValue('Unsaved local draft');
+    expect(input).toHaveAttribute('data-label', 'Updated label');
+    expect(
+      screen
+        .getAllByRole('textbox')
+        .map((node) => node.getAttribute('aria-label'))
+    ).toEqual(['Local draft status', 'Local draft name']);
+  });
+
+  it('keeps first-seen row order and item order within each row', () => {
+    const items: DataFormItem[] = [
+      { ...originalItems[0], row: 'first' },
+      { ...originalItems[1], row: 'second' },
+      { ...originalItems[0], id: 'extra', row: 'first' }
+    ];
+    render(showLayout(items, 'Layout order'));
+    expect(
+      screen
+        .getAllByRole('textbox')
+        .map((node) => node.getAttribute('aria-label'))
+    ).toEqual(['Local draft name', 'Local draft extra', 'Local draft status']);
+  });
+});
+
+function DraftItem({
+  item,
+  draft,
+  onDraftChange
+}: {
+  item: DataFormItem;
+  draft: string;
+  onDraftChange(value: string): void;
+}) {
+  return item.id === 'name' ? (
+    <input
+      aria-label="Customer name"
+      value={draft}
+      onChange={(event) => onDraftChange(event.target.value)}
+    />
+  ) : (
+    <span>Draft status</span>
+  );
+}
+
 function setup(presentation: 'drawer' | 'modal') {
   const closed = vi.fn();
   const changed = vi.fn();
@@ -62,17 +142,8 @@ function setup(presentation: 'drawer' | 'modal') {
               changed(next);
               setItems(next);
             }}
-            renderItem={(item) =>
-              item.id === 'name' ? (
-                <input
-                  aria-label="Customer name"
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                />
-              ) : (
-                <span>Draft status</span>
-              )
-            }
+            itemComponent={DraftItem}
+            itemProps={{ draft, onDraftChange: setDraft }}
           />
         )}
         <output aria-label="Stored order">
@@ -152,6 +223,7 @@ describe('form drag Escape ownership', () => {
       );
       expect(fixture.closed).not.toHaveBeenCalled();
       expect(fixture.changed).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('Customer name')).toBe(input);
       expect(input).toHaveValue('Unsaved customer draft');
       expect(screen.getByLabelText('Stored order')).toHaveTextContent(
         'name,status'

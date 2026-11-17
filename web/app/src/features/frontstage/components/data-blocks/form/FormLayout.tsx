@@ -6,6 +6,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type ComponentType,
   type CSSProperties,
   type ReactNode
 } from 'react';
@@ -27,23 +28,25 @@ import type { DataFormItem } from '../../../lib/data-blocks/types';
 import { moveFormItem } from './form-state';
 
 type Placement = 'before' | 'after' | 'beside';
-type Props = {
+type Props<TItemProps extends object> = {
   items: DataFormItem[];
   design: boolean;
   saving: boolean;
-  renderItem(item: DataFormItem): ReactNode;
+  itemComponent: ComponentType<TItemProps & { item: DataFormItem }>;
+  itemProps: TItemProps;
   onItemsChange(items: DataFormItem[]): void;
   onSettings(item: DataFormItem): void;
 };
 
-export function FormLayout({
+export function FormLayout<TItemProps extends object>({
   items,
   design,
   saving,
-  renderItem,
+  itemComponent: ItemComponent,
+  itemProps,
   onItemsChange,
   onSettings
-}: Props) {
+}: Props<TItemProps>) {
   const [dragging, setDragging] = useState(false);
   const reportDragActive = useDataBlockHost()?.setDragActive;
   const releaseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -129,7 +132,7 @@ export function FormLayout({
                   )
                 }
               >
-                {renderItem(item)}
+                <ItemComponent {...itemProps} item={item} />
               </FormLayoutItem>
             ))}
           </div>

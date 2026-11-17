@@ -69,15 +69,6 @@ export function FormBlockView({
   const mobile = screens.md === false;
   const labelLayout = mobile ? 'vertical' : config.label_layout;
   const design = host?.design_mode ?? false;
-  const renderItem = (item: DataFormItem) => (
-    <FormItem
-      item={item}
-      ctx={ctx}
-      config={config}
-      host={host}
-      session={session}
-    />
-  );
   const visibleItems = config.items.filter((item) => {
     if (design || item.kind !== 'field') return true;
     const field = fieldsByCode.get(item.field_code);
@@ -214,7 +205,8 @@ export function FormBlockView({
             items={visibleItems}
             design={design}
             saving={busy}
-            renderItem={renderItem}
+            itemComponent={FormItem}
+            itemProps={{ ctx, config, host, session }}
             onSettings={setDialog}
             onItemsChange={(items) => {
               void saveConfig({ ...config, items });
