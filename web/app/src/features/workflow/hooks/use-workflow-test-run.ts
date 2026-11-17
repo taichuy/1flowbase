@@ -63,6 +63,9 @@ export function useWorkflowTestRun(
     applicationId,
     state: emptyWorkflowRunState()
   }));
+  if (ownedState.applicationId !== applicationId) {
+    setOwnedState({ applicationId, state: emptyWorkflowRunState() });
+  }
   const state =
     ownedState.applicationId === applicationId
       ? ownedState.state
@@ -89,7 +92,6 @@ export function useWorkflowTestRun(
   const nodeStatuses = useMemo(() => workflowNodeRunStatuses(state), [state]);
 
   useEffect(() => {
-    setOwnedState({ applicationId, state: emptyWorkflowRunState() });
     return () => {
       observationRef.current?.dispose();
       observationRef.current = null;

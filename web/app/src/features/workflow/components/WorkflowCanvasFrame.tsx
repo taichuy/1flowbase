@@ -198,9 +198,32 @@ function useWorkflowCanvasController({
       environmentVariablesOpen: open
     }));
   }
-  const [nodeDetailTab, setNodeDetailTab] = useState<'config' | 'lastRun'>(
-    'config'
-  );
+  const [nodeDetailTabState, setNodeDetailTabState] = useState<{
+    runId: string | null;
+    selectedNodeId: string | null;
+    tab: 'config' | 'lastRun';
+  }>(() => ({
+    runId: testRun.state.runId,
+    selectedNodeId,
+    tab: testRun.state.runId && selectedNodeId ? 'lastRun' : 'config'
+  }));
+  if (
+    nodeDetailTabState.runId !== testRun.state.runId ||
+    nodeDetailTabState.selectedNodeId !== selectedNodeId
+  ) {
+    setNodeDetailTabState({
+      runId: testRun.state.runId,
+      selectedNodeId,
+      tab:
+        testRun.state.runId && selectedNodeId
+          ? 'lastRun'
+          : nodeDetailTabState.tab
+    });
+  }
+  const nodeDetailTab = nodeDetailTabState.tab;
+  function setNodeDetailTab(tab: 'config' | 'lastRun') {
+    setNodeDetailTabState((current) => ({ ...current, tab }));
+  }
   const [isResizingNodeDetail, setIsResizingNodeDetail] = useState(false);
   const [environmentVariables, setEnvironmentVariables] = useState<
     AgentFlowEnvironmentVariable[]
@@ -235,9 +258,6 @@ function useWorkflowCanvasController({
     applicationId,
     queryClient
   ]);
-  useEffect(() => {
-    if (testRun.state.runId && selectedNodeId) setNodeDetailTab('lastRun');
-  }, [testRun.state.runId, selectedNodeId]);
   useEffect(() => {
     if (!testRun.active) return;
     setSelection({
