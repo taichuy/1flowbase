@@ -37,6 +37,7 @@ impl ApiEnvironment {
 
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
+    pub plugin_shared_resource_contracts: control_plane::plugin_management::SharedResourceRegistry,
     /// Explicit deployment budget; absent keeps event runtime unavailable without guessing capacity.
     pub event_center_policy: Option<control_plane::event_center::EventCenterRuntimePolicy>,
     pub env: ApiEnvironment,
@@ -322,7 +323,14 @@ impl ApiConfig {
                 "invalid env API_PROVIDER_SECRET_MASTER_KEY when API_ENV=production"
             ));
         }
+        let plugin_shared_resource_contracts: control_plane::plugin_management::SharedResourceRegistry = map
+            .get("PLUGIN_SHARED_RESOURCE_CONTRACTS_JSON")
+            .map(|raw| serde_json::from_str(raw)).transpose()
+            .map_err(|error| anyhow!("invalid env PLUGIN_SHARED_RESOURCE_CONTRACTS_JSON: {error}"))?
+            .unwrap_or_default();
+        plugin_shared_resource_contracts.validate()?;
         Ok(Self {
+            plugin_shared_resource_contracts,
             event_center_policy: map
                 .get("API_EVENT_CENTER_POLICY")
                 .map(|raw| serde_json::from_str(raw))

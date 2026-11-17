@@ -67,6 +67,23 @@ where
             .ok_or(crate::errors::ControlPlaneError::InvalidInput(
                 "managed_contribution_installation_required",
             ))?;
+        let shared = super::shared_resource_registry().resolve(
+            manifest.shared_resource_contract.as_deref(),
+            &manifest.publisher_namespace,
+            manifest.plugin_code()?,
+        )?;
+        if let Some(contract) = shared {
+            contract.validate_schema(&manifest.data_models)?;
+            let service = manifest
+                .managed_service
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("shared_resource_managed_service_required"))?;
+            contract.validate_record_resources(&service.record_resources)?;
+            contract.validate_existing_schema(
+                &manifest.data_models,
+                &self.repository.list_managed_schema_ownership().await?,
+            )?;
+        }
         // Read and validate the complete package before authority/schema/MCP writes.
         let notification_template = notification_mcp::prepare(actor, installation_id, &manifest)?;
         let template = if let Some(reference) = manifest
@@ -98,10 +115,14 @@ where
         // Approval is durable even if later schema application or activation fails. Retry reuses
         // exact approvals; failed activation must never erase a concurrent grant or revoke.
         if !manifest.data_models.is_empty() {
-            let owner = plugin_framework::PluginSchemaOwner {
-                publisher_namespace: manifest.publisher_namespace.clone(),
-                plugin_code: manifest.plugin_code()?.to_string(),
-                plugin_version: manifest.version.clone(),
+            let owner = if let Some(contract) = shared {
+                contract.schema_owner()
+            } else {
+                plugin_framework::PluginSchemaOwner {
+                    publisher_namespace: manifest.publisher_namespace.clone(),
+                    plugin_code: manifest.plugin_code()?.to_string(),
+                    plugin_version: manifest.version.clone(),
+                }
             };
             let (plan, _) = prepare_managed_schema_plan(
                 &self.repository,

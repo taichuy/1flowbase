@@ -165,3 +165,33 @@ fn sql_context_uses_real_caller_scope_and_unmapped_operations_fail_closed() {
     actor.is_root = true;
     assert!(data_context(&registration, &actor, &operation, None).is_root);
 }
+
+#[test]
+fn shared_service_policy_uses_original_owner_and_caller_workspace() {
+    let mut registration = crate::managed_services::support::fixture();
+    registration.publisher_namespace = "consumer".into();
+    registration.plugin_code = "monitor".into();
+    registration.shared_resource = Some(serde_json::from_value(json!({
+        "contract_id":"example/hosts/v1", "owner":{"publisher_namespace":"original","plugin_code":"ssh"},
+        "schema_version":"shared-v1", "participants":[{"publisher_namespace":"original","plugin_code":"ssh"},{"publisher_namespace":"consumer","plugin_code":"monitor"}],
+        "collections":["hosts"], "record_resources":["hosts"], "record_resource_bindings":{"hosts":{"collection_code":"hosts","id_field":"id"}}, "credentials":true
+    })).unwrap());
+    let actor = ActorContext::root(uuid::Uuid::now_v7(), uuid::Uuid::now_v7(), "root");
+    let resource = ManagedServiceRecordResource {
+        resource_code: "hosts".into(),
+        collection_code: "hosts".into(),
+        id_field: "id".into(),
+        label: "Hosts".into(),
+        description: "Hosts".into(),
+        actions: vec![],
+    };
+    let id = uuid::Uuid::now_v7().to_string();
+    let shared = key(&registration, &actor, &resource, &id).unwrap();
+    assert_eq!(shared.workspace_id, actor.current_workspace_id);
+    assert_eq!(shared.resource.publisher_namespace, "original");
+    assert_eq!(shared.resource.plugin_code, "ssh");
+    registration.shared_resource = None;
+    registration.publisher_namespace = "original".into();
+    registration.plugin_code = "ssh".into();
+    assert_eq!(shared, key(&registration, &actor, &resource, &id).unwrap());
+}

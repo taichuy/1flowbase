@@ -1,3 +1,5 @@
+mod shared_resources;
+pub use shared_resources::*;
 mod authentication_egress;
 mod managed_activation;
 pub use authentication_egress::authorize_authentication_egress;

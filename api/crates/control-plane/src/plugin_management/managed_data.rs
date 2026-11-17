@@ -13,6 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct ManagedPluginDataService {
+    registry: super::SharedResourceRegistry,
     authority: Arc<dyn PluginContributionAuthorityRepository>,
     inner: Arc<dyn PluginDataPort>,
 }
@@ -21,7 +22,11 @@ impl ManagedPluginDataService {
         authority: Arc<dyn PluginContributionAuthorityRepository>,
         inner: Arc<dyn PluginDataPort>,
     ) -> Self {
-        Self { authority, inner }
+        Self {
+            registry: super::shared_resource_registry().clone(),
+            authority,
+            inner,
+        }
     }
 }
 fn denied() -> PluginDataError {
@@ -66,7 +71,18 @@ impl PluginDataPort for ManagedPluginDataService {
                 let installation = lease.installation(installation_id).ok_or_else(denied)?;
                 validate_authority(binding, request, installation, lease.snapshot())?;
                 // Preserve the lease across asynchronous storage access; revoke/disable serialize here.
-                let result = self.inner.execute(binding, request).await;
+                let shared = self
+                    .registry
+                    .resolve_installation(installation)
+                    .map_err(|_| denied())?;
+                let resolved = shared
+                    .map(|contract| contract.data_binding(binding, request))
+                    .transpose()
+                    .map_err(|_| denied())?;
+                let result = self
+                    .inner
+                    .execute(resolved.as_ref().unwrap_or(binding), request)
+                    .await;
                 lease.release().await.map_err(|_| denied())?;
                 result
             })

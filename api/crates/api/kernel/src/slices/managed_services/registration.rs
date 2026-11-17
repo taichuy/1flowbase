@@ -3,6 +3,7 @@ use plugin_framework::{ManagedServiceManifest, PluginSettingsPageManifest};
 
 #[derive(Debug, Clone)]
 pub struct ManagedServiceRegistration {
+    pub shared_resource: Option<control_plane::plugin_management::SharedResourceContract>,
     pub installation_id: uuid::Uuid,
     pub publisher_namespace: String,
     pub data_models: Vec<extension_contracts::PluginDataModelContribution>,
@@ -14,6 +15,23 @@ pub struct ManagedServiceRegistration {
     pub pages: Vec<PluginSettingsPageManifest>,
 }
 impl ManagedServiceRegistration {
+    pub fn resource_owner(&self) -> (&str, &str, &str) {
+        self.shared_resource
+            .as_ref()
+            .map(|c| {
+                (
+                    c.owner.publisher_namespace.as_str(),
+                    c.owner.plugin_code.as_str(),
+                    c.schema_version.as_str(),
+                )
+            })
+            .unwrap_or((
+                &self.publisher_namespace,
+                &self.plugin_code,
+                &self.plugin_version,
+            ))
+    }
+
     pub fn owner(&self) -> SettingsFeatureOwner {
         SettingsFeatureOwner {
             kind: SettingsFeatureOwnerKind::ManagedService,

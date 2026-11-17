@@ -248,12 +248,21 @@ impl Adapter {
                                 .collect::<Vec<_>>(),
                         )
                         .await?;
-                    super::stream::revoke_record_permissions(
-                        &state,
-                        registration.installation_id,
-                        &key,
-                    )
-                    .await;
+                    // Policies belong to the shared resource identity. Withdraw streams in
+                    // every active participant that became denied by this policy revision.
+                    for participant in state.console_surface_registry.managed_services() {
+                        let (publisher, plugin, _) = participant.resource_owner();
+                        if publisher == key.resource.publisher_namespace
+                            && plugin == key.resource.plugin_code
+                        {
+                            super::stream::revoke_record_permissions(
+                                &state,
+                                participant.installation_id,
+                                &key,
+                            )
+                            .await;
+                        }
+                    }
                     return Ok(Output(serde_json::to_value(policy)?));
                 } else {
                     service.get(actor, &key).await?

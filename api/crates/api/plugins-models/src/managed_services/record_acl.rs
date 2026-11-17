@@ -63,10 +63,11 @@ pub(crate) fn key(
     resource: &ManagedServiceRecordResource,
     record: &str,
 ) -> Result<RecordPermissionKey, ApiError> {
+    let (publisher, plugin, _) = registration.resource_owner();
     Ok(RecordPermissionKey {
         resource: RecordPermissionResourceKey {
-            publisher_namespace: registration.publisher_namespace.clone(),
-            plugin_code: registration.plugin_code.clone(),
+            publisher_namespace: publisher.into(),
+            plugin_code: plugin.into(),
             resource_code: resource.resource_code.clone(),
         },
         record_id: canonical_record_id(registration, resource, record)?,
@@ -149,6 +150,10 @@ pub(crate) async fn ensure_active(
     {
         return Err(Error::Conflict("managed_service_inactive").into());
     }
+    let resolved = control_plane::plugin_management::installation_shared_resource(&current)?;
+    if resolved != registration.shared_resource.as_ref() {
+        return Err(Error::Conflict("shared_resource_generation_mismatch").into());
+    }
     let composition = state.provider_runtime.managed_composition()?;
     let snapshot = match state
         .extension_boot_snapshot
@@ -184,11 +189,12 @@ pub(crate) async fn ensure_record(
         return Err(Error::InvalidInput("record_id").into());
     }
     ensure_active(state, registration).await?;
+    let (publisher, plugin, version) = registration.resource_owner();
     let binding = PluginDataBinding {
         managed_subject: None,
-        publisher_namespace: registration.publisher_namespace.clone(),
-        plugin_code: registration.plugin_code.clone(),
-        plugin_version: registration.plugin_version.clone(),
+        publisher_namespace: publisher.into(),
+        plugin_code: plugin.into(),
+        plugin_version: version.into(),
         storage_binding: "main".into(),
         workspace_id: domain::SYSTEM_SCOPE_ID.to_string(),
         actor_id: Some(actor.user_id.to_string()),

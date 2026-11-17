@@ -6,6 +6,7 @@ use crate::system_backup::SystemBackupRuntimeAssembly;
 pub(super) async fn app_and_runtime_host_from_config(
     config: &ApiConfig,
 ) -> Result<(Router, ApiRuntimeShutdown)> {
+    control_plane::plugin_management::configure_shared_resources(config.plugin_shared_resource_contracts.clone())?;
     let durable = storage_durable_postgres::build_main_durable_postgres_with_max_connections(
         &config.database_url,
         config.database_pool_max_connections,

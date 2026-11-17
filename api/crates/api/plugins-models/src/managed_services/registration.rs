@@ -54,7 +54,14 @@ pub async fn load_installations(
         )?;
         let code = manifest.plugin_code()?.to_string();
         anyhow::ensure!(
-            code == installation.provider_code && manifest.version == installation.plugin_version,
+            code == installation.provider_code
+                && manifest.version == installation.plugin_version
+                && manifest.publisher_namespace == installation.organization
+                && manifest.shared_resource_contract.as_deref()
+                    == installation
+                        .metadata_json
+                        .get("shared_resource_contract")
+                        .and_then(serde_json::Value::as_str),
             "managed service installed identity mismatch"
         );
         // System scope also hosts other governed contributions, including authentication.
@@ -70,7 +77,23 @@ pub async fn load_installations(
         for page in &manifest.settings_pages {
             plugin_framework::read_plugin_settings_page_source(root, page)?;
         }
+        let shared_resource = control_plane::plugin_management::shared_resource_registry()
+            .resolve(
+                manifest.shared_resource_contract.as_deref(),
+                &manifest.publisher_namespace,
+                &code,
+            )?
+            .cloned();
+        if let Some(contract) = &shared_resource {
+            contract.validate_schema(&manifest.data_models)?;
+            let service = manifest
+                .managed_service
+                .as_ref()
+                .context("shared_resource_managed_service_required")?;
+            contract.validate_record_resources(&service.record_resources)?;
+        }
         registrations.push(ManagedServiceRegistration {
+            shared_resource,
             installation_id: installation.id,
             publisher_namespace: manifest.publisher_namespace,
             data_models: manifest.data_models,
