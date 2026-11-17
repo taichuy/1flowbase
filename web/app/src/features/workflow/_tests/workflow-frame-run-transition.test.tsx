@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppThemeProvider } from '@1flowbase/ui/app-theme-provider';
 import { createDefaultWorkflowDocument } from '@1flowbase/flow-schema';
@@ -166,9 +166,11 @@ async function click(button: HTMLElement) {
 async function selectNode(which: 'start' | 'end') {
   await click(screen.getByRole('button', { name: `Select workflow ${which}` }));
   await screen.findByTestId('node-detail-body');
-  await waitFor(() => expect(screen.getByTestId('node-detail-header')).toHaveTextContent(
-    which === 'start' ? 'Workflow Start' : 'Workflow End'
-  ));
+  await waitFor(() => expect(
+    within(screen.getByTestId('node-detail-header')).getByDisplayValue(
+      which === 'start' ? 'Workflow Start' : 'Workflow End'
+    )
+  ).toBeInTheDocument());
 }
 async function chooseConfig() {
   const tab = screen.getByRole('tab', { name: i18nText('agentFlow', 'auto.settings') });
