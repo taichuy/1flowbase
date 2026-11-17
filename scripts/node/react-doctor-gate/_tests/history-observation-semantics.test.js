@@ -192,6 +192,28 @@ semanticTest(
   },
 );
 
+semanticTest("holds an unknown payload spread in another action of the owned store", (t) => {
+  const f = completionFixture(t);
+  const file = "web/app/src/view-store.ts";
+  f.write(file, f.sources.get(file).replace(
+    "dirty: false,",
+    "dirty: false, merge: payload => set(current => ({ ...current, ...payload })),",
+  ));
+  f.add(EVENT, "observeExecution(scope)");
+  assertUnproved(f);
+});
+
+semanticTest("holds a business call hidden in a neutral reset condition", (t) => {
+  const f = completionFixture(t);
+  const file = "web/app/src/view-store.ts";
+  f.write(file, f.sources.get(file).replace(
+    "clearView: () => set(current => ({\n      focus: null,",
+    "clearView: () => set(current => ({\n      focus: notify() ? null : null,",
+  ));
+  f.add(EVENT, "observeExecution(scope)");
+  assertUnproved(f);
+});
+
 for (const [name, options] of [
   [
     "unconditional current-value copy",
@@ -653,32 +675,47 @@ for (const names of [
   { selected: "focus", collection: "marked", panel: "popover" },
   { selected: "cursor", collection: "highlighted", panel: "flyout" },
 ]) {
-  semanticTest(`proves all completion effects with renamed owned transient fields ${names.selected}`, (t) => {
+  semanticTest(`holds the unproved store-reset premise with renamed fields ${names.selected}`, (t) => {
     const f = completionFixture(t, names);
+    f.add(EVENT, "observeExecution(scope)");
+    assertUnproved(f);
+  });
+  semanticTest(`proves renamed query-only completion observation ${names.selected}`, (t) => {
+    const f = completionFixture(t, { ...names, resetEffect: false });
     const diagnostic = f.add(EVENT, "observeExecution(scope)");
-    const proof = assertProof(f, diagnostic, "query-observation-synchronization", [
-      "if (!run.active) return; reset();",
-      `export { useOwnedView as useView } from './view-provider';`,
-      "return useStore(store, selector);",
-      `${names.selected}: null`,
-    ]);
-    for (const suffix of ["view-bridge.ts", "view-provider.ts", "view-store.ts", "observation-key.ts"]) {
-      assert.ok(proof.evidence.some((entry) => entry.file.endsWith(suffix)), `missing resolved provenance ${suffix}`);
-    }
+    const proof = assertProof(f, diagnostic, "query-observation-synchronization", ["useQueryClient()"]);
+    assert.ok(proof.evidence.some((entry) => entry.file.endsWith("observation-key.ts")));
+  });
+}
+
+for (const [name, assignment] of [
+  ["business value supplied directly by an action parameter", "setDirty: value => set({ dirty: value }),"],
+  ["business value controlled by a guard on input-seeded data", "setDirty: () => set(current => ({ dirty: current.document.approved ? true : false })),"],
+]) {
+  semanticTest(`holds an indistinguishable business flag reset: ${name}`, (t) => {
+    const f = completionFixture(t);
+    const file = "web/app/src/view-store.ts";
+    const source = f.sources.get(file);
+    const derivedWrite = "replace: document => set(current => ({ document, dirty: changed(document, current.baseline) })),";
+    assert.ok(source.includes(derivedWrite));
+    f.write(file, source.replace(derivedWrite, `replace: document => set({ document }), ${assignment}`)
+      .replace("clearView: () => set(current => ({", "clearView: () => set(current => ({ dirty: false,"));
+    f.add(EVENT, "observeExecution(scope)");
+    assertUnproved(f);
   });
 }
 
 for (const [name, options, mutate] of [
-  ["genuine completion callback", { action: "onComplete(run.state.id);" }],
-  ["mixed callback beside invalidation", { action: "void client.invalidateQueries({ queryKey: observationKey(scope, run.state.id, selected) }); onComplete(run.state.id);" }],
-  ["fake query client", { client: "({ invalidateQueries: onComplete })" }],
-  ["patched native client", { declarations: "client.invalidateQueries = onComplete;" }],
-  ["missing observation dependency", { dependencies: "run.active, selected, scope, client" }],
-  ["extra same-root business effect", { extra: "useEffect(() => { if (run.state.id) onComplete(run.state.id); }, [run.state.id, onComplete]);" }],
+  ["genuine completion callback", { resetEffect: false, action: "onComplete(run.state.id);" }],
+  ["mixed callback beside invalidation", { resetEffect: false, action: "void client.invalidateQueries({ queryKey: observationKey(scope, run.state.id, selected) }); onComplete(run.state.id);" }],
+  ["fake query client", { resetEffect: false, client: "({ invalidateQueries: onComplete })" }],
+  ["patched native client", { resetEffect: false, declarations: "client.invalidateQueries = onComplete;" }],
+  ["missing observation dependency", { resetEffect: false, dependencies: "run.active, selected, scope, client" }],
+  ["extra same-root business effect", { resetEffect: false, extra: "useEffect(() => { if (run.state.id) onComplete(run.state.id); }, [run.state.id, onComplete]);" }],
   ["business document reset", {}, (f) => f.write("web/app/src/view-store.ts", f.sources.get("web/app/src/view-store.ts").replace("clearView: () => set(current => ({", "clearView: () => set(current => ({ document: null,"))],
   ["business-derived dirty reset", {}, (f) => f.write("web/app/src/view-store.ts", f.sources.get("web/app/src/view-store.ts").replace("clearView: () => set(current => ({", "clearView: () => set(current => ({ dirty: false,"))],
   ["mixed store callback", {}, (f) => f.write("web/app/src/view-store.ts", f.sources.get("web/app/src/view-store.ts").replace("clearView: () => set(current => ({", "clearView: () => { notify(); return set(current => ({").replace("    }))\n  }));", "    })); }\n  }));"))],
-  ["impure key helper", {}, (f) => f.write("web/app/src/observation-key.ts", "export const observationKey = (scope, execution, item) => submit(scope, execution, item);")],
+  ["impure key helper", { resetEffect: false }, (f) => f.write("web/app/src/observation-key.ts", "export const observationKey = (scope, execution, item) => submit(scope, execution, item);")],
   ["opaque provider import", {}, (f) => f.write("web/app/src/view-bridge.ts", "export { useOwnedView as useView } from 'opaque-provider';")],
   ["store without an observable business partition", {}, (f) => f.write("web/app/src/view-store.ts", `import { createStore } from 'zustand/vanilla';
 export function createOwnedStore() {
@@ -709,35 +746,31 @@ export function useForeignView(selector) {
   assertUnproved(f);
 });
 
-semanticTest("proves the actual Frame cache observation and all owned run-entry resets", (t) => {
+semanticTest("proves the actual Frame query-only completion observation", (t) => {
   const repoRoot = path.resolve(__dirname, "../../../..");
   const file = "web/app/src/features/workflow/components/WorkflowCanvasFrame.tsx";
   const f = fixture(t, fs.readFileSync(path.join(repoRoot, file), "utf8"), file);
   const dependencies = [
     "web/app/src/features/agent-flow/api/runtime.ts",
-    "web/app/src/features/agent-flow/store/editor/provider.ts",
-    "web/app/src/features/flow-editor/store/provider.tsx",
-    "web/app/src/features/flow-editor/store/index.ts",
   ];
   for (const dependency of dependencies) f.write(dependency, fs.readFileSync(path.join(repoRoot, dependency), "utf8"));
   const diagnostic = f.add(EVENT, "useWorkflowTestRun(applicationId, workingDocument)");
   const proof = assertProof(f, diagnostic, "query-observation-synchronization", [
     "useQueryClient()",
-    "if (!testRun.active) return;",
-    "clearRunEntryTransientState();",
   ]);
   for (const dependency of dependencies) assert.ok(proof.evidence.some((entry) => entry.file === dependency), `missing actual resolved source ${dependency}`);
 });
 
-semanticTest("resolved store and key source changes invalidate completion proof", (t) => {
-  const f = completionFixture(t);
+semanticTest("resolved key changes and a new same-root action invalidate query-only proof", (t) => {
+  const f = completionFixture(t, { resetEffect: false });
   const diagnostic = f.add(EVENT, "observeExecution(scope)");
   assertProof(f, diagnostic, "query-observation-synchronization", []);
   const original = f.sources.get("web/app/src/observation-key.ts");
   f.write("web/app/src/observation-key.ts", "export const observationKey = (...values) => notify(values);");
   assertUnproved(f);
   f.write("web/app/src/observation-key.ts", original);
-  f.write("web/app/src/view-store.ts", f.sources.get("web/app/src/view-store.ts").replace("clearView: () => set(current => ({", "clearView: () => set(current => ({ document: null,"));
+  assertProof(f, diagnostic, "query-observation-synchronization", []);
+  f.write(f.file, f.sources.get(f.file).replace("return <output>", "useEffect(() => { if (run.active) reset(); }, [run.active, reset]); return <output>"));
   assertUnproved(f);
 });
 
