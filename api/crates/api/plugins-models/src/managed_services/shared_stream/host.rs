@@ -214,11 +214,14 @@ impl ManagedSource {
         .await?;
         let (events, completion) = invocation.into_parts();
         drop(events);
-        completion
+        let outcome = completion
             .complete()
             .await
             .map_err(|_| Error::PermissionDenied("managed_service_source_admission"))?;
-        Ok(principal)
+        match outcome.into_parts().0 {
+            interface_runtime::InterfaceStreamTerminal::Completed(_) => Ok(principal),
+            _ => Err(Error::PermissionDenied("managed_service_source_admission").into()),
+        }
     }
     pub async fn resolve(
         &self,
