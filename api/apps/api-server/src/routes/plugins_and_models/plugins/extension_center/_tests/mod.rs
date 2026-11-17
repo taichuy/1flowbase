@@ -44,6 +44,7 @@ use super::{
     project_catalog_entry, project_installed_catalog_joins, requested_installation_identity,
     validate_preflight_overrides, verify_trusted_artifact_signature, ExtensionCenterDependencies,
     InstalledCatalogJoin, InstalledCatalogJoinStatus, PreflightDecision, UploadedExtensionArtifact,
+    UploadedExtensionArtifactTestIdentity, UploadedExtensionArtifactTestSignature,
 };
 
 #[test]
