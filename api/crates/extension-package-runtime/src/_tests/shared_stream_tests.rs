@@ -80,12 +80,12 @@ fn shared_stream_contract_round_trips_and_legacy_fields_stay_absent() {
         "managed_fixture.resolve"
     );
     assert!(operations[3].record_permission.is_none());
-    let serialized = serde_json::to_value(parsed).unwrap();
+    let serialized = json!({"managed_service":parsed.managed_service});
     assert_eq!(
         serialized["managed_service"]["operations"][2]["shared_snapshot"]["ready_value"],
         "sample"
     );
-    let legacy = serde_json::to_value(parse(&super::fixture()).unwrap()).unwrap();
+    let legacy = json!({"managed_service":parse(&super::fixture()).unwrap().managed_service});
     assert!(legacy["managed_service"]["operations"][0]
         .get("shared_snapshot")
         .is_none());
@@ -180,4 +180,30 @@ fn shared_source_rejects_unrequired_cadence_and_draft_record_identity() {
         value.pointer_mut(parent).unwrap()[key] = replacement;
         assert!(parse(&value).is_err(), "{pointer}");
     }
+}
+
+#[test]
+fn shared_source_and_snapshot_allow_optional_cadence_with_positive_schema_default() {
+    let mut value = shared_fixture();
+    for index in [0, 2] {
+        value["managed_service"]["operations"][index]["input_schema"]["properties"]["body"]
+            ["required"] = json!(["record_id"]);
+        value["managed_service"]["operations"][index]["input_schema"]["properties"]["body"]
+            ["properties"]["interval_ms"]["default"] = json!(5000);
+    }
+    assert!(parse(&value).is_ok());
+    value["managed_service"]["operations"][0]["input_schema"]["properties"]["body"]["properties"]
+        ["interval_ms"]["default"] = json!(0);
+    assert!(parse(&value).is_err());
+}
+
+#[test]
+fn shared_source_close_output_must_match_its_frozen_terminal_schema() {
+    let mut value = shared_fixture();
+    value["managed_service"]["operations"][0]["stream"]["shared_source"]["close_output"] =
+        json!({"value":1});
+    assert!(parse(&value).is_ok());
+    value["managed_service"]["operations"][0]["stream"]["shared_source"]["close_output"] =
+        json!({"value":"forged"});
+    assert!(parse(&value).is_err());
 }

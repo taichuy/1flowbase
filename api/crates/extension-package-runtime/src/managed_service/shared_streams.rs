@@ -13,6 +13,9 @@ pub struct ManagedServiceSharedSource {
     pub resolve_interface_id: String,
     /// Public request JSON pointer to the requested sampling interval in milliseconds.
     pub interval_pointer: String,
+    /// Optional per-subscriber completion; never closes the shared producer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub close_output: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -63,8 +66,16 @@ fn interval(operation: &ManagedServiceOperation, pointer: &str) -> bool {
     ["/path/", "/query/", "/body/"]
         .iter()
         .any(|prefix| pointer.starts_with(prefix))
-        && schema_pointer(&operation.input_schema, pointer, true)
-            .is_some_and(|schema| schema.get("type").and_then(Value::as_str) == Some("integer"))
+        && schema_pointer(&operation.input_schema, pointer, false).is_some_and(|schema| {
+            schema.get("type").and_then(Value::as_str) == Some("integer")
+                && (schema_pointer(&operation.input_schema, pointer, true).is_some()
+                    || (pointer.rsplit_once('/').is_some_and(|(parent, _)| {
+                        schema_pointer(&operation.input_schema, parent, true).is_some()
+                    }) && schema
+                        .get("default")
+                        .and_then(Value::as_u64)
+                        .is_some_and(|value| value > 0)))
+        })
 }
 
 fn record_open(operation: &ManagedServiceOperation) -> bool {
@@ -115,6 +126,10 @@ pub(super) fn validate_shared_streams(service: &ManagedServiceManifest) -> Frame
                     || !same_record(operation, resolver)
                     || resolver.stream.is_some()
                     || resolver.shared_snapshot.is_some()
+                    || shared.close_output.as_ref().is_some_and(|output| {
+                        !jsonschema::validator_for(&operation.output_schema)
+                            .is_ok_and(|validator| validator.is_valid(output))
+                    })
                     || !schema_pointer(&resolver.output_schema, "/revision", true).is_some_and(
                         |schema| schema.get("type").and_then(Value::as_str) == Some("string"),
                     )

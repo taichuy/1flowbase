@@ -105,6 +105,33 @@ impl Adapter {
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(30000)
             .saturating_add(10000);
+        let _snapshot_fallback = if op.declaration.shared_snapshot.is_some() {
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(timeout_ms),
+                super::shared_stream::snapshot(
+                    state.clone(),
+                    self.registration.clone(),
+                    principal.clone(),
+                    &op.declaration,
+                    &input.payload,
+                ),
+            )
+            .await
+            .map_err(|_| Error::UpstreamUnavailable("managed_service_deadline_exceeded"))??
+            {
+                super::shared_stream::SnapshotLookup::Ready(value) => {
+                    return Ok(ManagedServiceOutput(
+                        value,
+                        super::event_projection::OutputPolicy::BusinessResult(
+                            op.event_policy.clone(),
+                        ),
+                    ))
+                }
+                super::shared_stream::SnapshotLookup::Fallback(guard) => Some(guard),
+            }
+        } else {
+            None
+        };
         let deadline = ((time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000)
             as i64)
             .checked_add(i64::try_from(timeout_ms).map_err(|_| Error::InvalidInput("timeout_ms"))?)
@@ -194,6 +221,11 @@ impl Adapter {
                 .await?;
             if !op.output.is_valid(&output) {
                 return Err(Error::UpstreamUnavailable("managed_service_output_contract").into());
+            }
+            if let Some(cache) = &_snapshot_fallback {
+                // Cache infrastructure failure does not change the original successful
+                // business result; readers still enforce current authority and TTL.
+                let _ = cache.store(&output).await;
             }
             super::record_acl::bind_response(
                 &state,
@@ -336,7 +368,6 @@ pub fn registry_contribution(
         registry,
     ))
 }
-
 
 #[cfg(any(test, feature = "test-support"))]
 #[path = "_tests/support/interface.rs"]

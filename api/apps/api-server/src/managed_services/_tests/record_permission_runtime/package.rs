@@ -85,7 +85,7 @@ pub(super) fn manifest() -> Value {
     // Package runtime capabilities belong to providers; managed bindings advertise their own.
     manifest["runtime"]["capabilities"] = json!([]);
     let record = json!({"kind":"record","pointer":"/path/record_id"});
-    let operations = vec![
+    let mut operations = vec![
         operation(
             "list",
             "GET",
@@ -151,7 +151,8 @@ pub(super) fn manifest() -> Value {
         ),
         operation("unmapped", "POST", "/unmapped", None, Value::Null),
     ];
-    let actions=[("view",vec!["list","get"]),("update",vec!["update"]),("open",vec!["open","command","resource","stream"]),("delete",vec!["delete"])].into_iter().map(|(action,handlers)|json!({"action_code":action,"label":action,"description":format!("Fixture {action} capability"),"operation_ids":handlers.iter().map(|handler|format!("{CODE}.{handler}")).collect::<Vec<_>>()})).collect::<Vec<_>>();
+    operations.extend(shared_operations());
+    let actions=[("view",vec!["list","get"]),("update",vec!["update"]),("open",vec!["open","command","resource","stream","shared_source","shared_resolve","shared_snapshot"]),("delete",vec!["delete"])].into_iter().map(|(action,handlers)|json!({"action_code":action,"label":action,"description":format!("Fixture {action} capability"),"operation_ids":handlers.iter().map(|handler|format!("{CODE}.{handler}")).collect::<Vec<_>>()})).collect::<Vec<_>>();
     manifest["data_models"] = json!([{"contribution_version":"1flowbase.plugin-data-model/v1","storage_binding":"main","owned_collections":[{"collection_code":"records","fields":[{"field_code":"name","field_type":"text","nullable":false}]}]}]);
     manifest["managed_service"] = json!({"scope":"system","worker_lifetime":"actor_workspace_scope","worker_idle_timeout_ms":120000,"record_resources":[{"resource_code":"records","collection_code":"records","id_field":"id","label":"Records","description":"Synthetic records","actions":actions}],"operations":operations});
     let handlers = manifest["managed_service"]["operations"]
@@ -187,6 +188,35 @@ pub(super) fn manifest() -> Value {
     plugin_framework::parse_plugin_manifest(&serde_yaml::to_string(&manifest).unwrap())
         .expect("valid synthetic record resource declaration");
     manifest
+}
+fn shared_operations()->Vec<Value> {
+    let event=object(json!({"ready":{"type":"boolean","const":true},"record_id":{"type":"string"},"stream_id":{"type":"string"}}),vec!["ready","record_id","stream_id"]);
+    let mut operations=Vec::new();
+    for handler in ["shared_source","shared_resolve","shared_snapshot"] {
+        let mut op=operation(handler,"POST",&format!("/records/{{record_id}}/{handler}"),Some("open"),json!({"kind":"record","pointer":"/path/record_id"}));
+        op["input_schema"]["properties"]["body"]=object(json!({"interval_ms":{"type":"integer","minimum":1,"default":1000}}),vec![]);
+        match handler {
+            "shared_source"=>{
+                op.as_object_mut().unwrap().remove("mcp");
+                op["output_schema"]=object(json!({"closed":{"type":"boolean"}}),vec!["closed"]);
+                op["stream"]=json!({"input_schema":object(json!({"type":{"const":"close"}}),vec!["type"]),"event_schema":event,"shared_source":{"resolve_interface_id":format!("{CODE}.shared_resolve"),"interval_pointer":"/body/interval_ms","close_output":{"closed":true}}});
+            }
+            "shared_resolve"=>op["output_schema"]=object(json!({"revision":{"type":"string"}}),vec!["revision"]),
+            "shared_snapshot"=>{
+                op["output_schema"]=event.clone();
+                op["shared_snapshot"]=json!({"source_interface_id":format!("{CODE}.shared_source"),"value_pointer":"","ready_pointer":"/ready","ready_value":true,"interval_pointer":"/body/interval_ms"});
+            }
+            _=>unreachable!(),
+        }
+        operations.push(op);
+    }
+    let records=json!({"type":"array","items":object(json!({"record_id":{"type":"string"},"interval_ms":{"type":"integer","minimum":1}}),vec!["record_id","interval_ms"])});
+    let mut aggregate=operation("shared_aggregate","POST","/shared/stream",None,Value::Null);
+    aggregate.as_object_mut().unwrap().remove("mcp");
+    aggregate["input_schema"]["properties"]["body"]=object(json!({"records":records}),vec!["records"]);
+    aggregate["stream"]=json!({"aggregate_source_interface_id":format!("{CODE}.shared_source"),"input_schema":object(json!({"type":{"const":"set"},"records":records}),vec!["type","records"]),"event_schema":{"oneOf":[object(json!({"type":{"const":"source"},"record_id":{"type":"string"},"event":event}),vec!["type","record_id","event"]),object(json!({"type":{"const":"subscription_error"},"record_id":{"type":"string"},"error_code":{"type":"string"}}),vec!["type","record_id","error_code"])]}});
+    operations.push(aggregate);
+    operations
 }
 pub(super) fn package() -> Vec<u8> {
     let executable=std::env::var_os("RECORD_PERMISSION_WORKER_FIXTURE").expect("RECORD_PERMISSION_WORKER_FIXTURE must point to the CI-built SDK example; this test must not silently skip");

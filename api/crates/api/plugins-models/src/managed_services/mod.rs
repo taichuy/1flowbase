@@ -9,6 +9,7 @@ mod record_acl;
 pub mod record_permissions;
 mod registration;
 mod routes;
+mod shared_stream;
 pub mod stream;
 pub mod stream_ticket;
 pub use interface::registry_contribution;
