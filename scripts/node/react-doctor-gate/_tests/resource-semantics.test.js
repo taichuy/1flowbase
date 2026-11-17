@@ -9,6 +9,7 @@ const {
   sourceDigest,
   evaluateDiagnosticReviews,
 } = require("../diagnostic-review.js");
+const { parseUnit } = require("../source-unit.js");
 
 const TOOL = "react-doctor@0.2.16";
 const RULE = "exhaustive-deps";
@@ -142,7 +143,7 @@ function observationSource({
   parameters = "{ notify, ready }",
   hook = "useEffect",
   setup = "",
-  constructor = "IntersectionObserver",
+  constructorName = "IntersectionObserver",
   callback = "entries => { if (entries.some(entry => entry.isIntersecting)) void notify(); }",
   options = "{ root: viewport.current, rootMargin: '200px' }",
   registration = "if (target) receipt.observe(target);",
@@ -157,13 +158,22 @@ function UnrelatedVisibilityOwner(${parameters}) {
   ${hook}(() => {
     if (!ready) return;
     ${setup}
-    const receipt = new ${constructor}(${callback}, ${options});
+    const receipt = new ${constructorName}(${callback}, ${options});
     ${registration}
     ${cleanup}
   }, [target, ready, notify]);
   ${after}
   return <div ref={viewport}><div ref={setTarget} /></div>;
 }`;
+}
+
+function observationFixture(t, options) {
+  const f = fixture(t, observationSource(options));
+  assert.ok(
+    parseUnit(f.repoRoot, f.file),
+    "native observation fixture must parse before testing its contract",
+  );
+  return f;
 }
 
 function addObservation(f, anchor = "receipt.observe(target)") {
@@ -251,7 +261,7 @@ for (const [name, options] of [
   ],
 ]) {
   semanticTest(`native observation registration: ${name}`, (t) => {
-    const f = fixture(t, observationSource(options));
+    const f = observationFixture(t, options);
     const diagnostic = addObservation(f);
     assertObservationProof(f, diagnostic, [
       "receipt.observe(target)",
@@ -285,7 +295,7 @@ semanticTest(
 );
 
 for (const [name, options] of [
-  ["opaque same-named observe method", { constructor: "UnknownObserver" }],
+  ["opaque same-named observe method", { constructorName: "UnknownObserver" }],
   [
     "locally shadowed eager constructor",
     {
@@ -308,7 +318,7 @@ for (const [name, options] of [
     "aliased native constructor",
     {
       before: "const NativeObserver = IntersectionObserver;",
-      constructor: "NativeObserver",
+      constructorName: "NativeObserver",
     },
   ],
   ["unknown callback reference", { callback: "notify" }],
@@ -403,7 +413,7 @@ for (const [name, options] of [
   ],
 ]) {
   semanticTest(`keeps native observation unproved: ${name}`, (t) => {
-    const f = fixture(t, observationSource(options));
+    const f = observationFixture(t, options);
     addObservation(f);
     assertUnproved(f);
   });
@@ -412,7 +422,7 @@ for (const [name, options] of [
 semanticTest(
   "native registration does not erase an adjacent genuine immediate push",
   (t) => {
-    const f = fixture(t, observationSource({ setup: "notify(target);" }));
+    const f = observationFixture(t, { setup: "notify(target);" });
     addObservation(f);
     const immediate = addObservation(f, "notify(target)");
     const result = f.evaluate();
@@ -426,7 +436,7 @@ semanticTest(
 semanticTest(
   "native registration requires the exact pinned diagnostic and call start",
   (t) => {
-    const f = fixture(t, observationSource());
+    const f = observationFixture(t);
     const diagnostic = addObservation(f);
     assert.equal(f.evaluate("react-doctor@future").status, "requires-review");
     const original = structuredClone(diagnostic);

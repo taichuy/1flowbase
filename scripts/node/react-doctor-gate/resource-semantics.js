@@ -29,6 +29,21 @@ const PROVENANCE = {
     "https://react.dev/reference/react/useRef",
   ],
 };
+const OBSERVATION_MESSAGE =
+  "Pushing state up to a parent from a useEffect costs your users an extra render.";
+const OBSERVATION_PROVENANCE = {
+  toolPackage: TOOL,
+  packageIntegrity: PROVENANCE.packageIntegrity,
+  sourceCommit: PROVENANCE.sourceCommit,
+  ruleSourceSha256:
+    "c1ccf61ff705ec90f43e8b6893a0f8e64937af0704683c977157f260222996d8",
+  references: [
+    "https://github.com/millionco/react-doctor/blob/2d1ab245f0cbaa87529067e6e3ed9ac08362d1fc/packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-pass-live-state-to-parent.ts",
+    "https://w3c.github.io/IntersectionObserver/#observe-a-target-element",
+    "https://w3c.github.io/IntersectionObserver/#queue-an-intersection-observer-task",
+    "https://w3c.github.io/IntersectionObserver/#notify-intersection-observers",
+  ],
+};
 
 function step(context) {
   if (++context.steps > 20000)
@@ -718,7 +733,7 @@ function cleanupStatements(context, unit, statement, kind) {
   evidence(context, unit, statement);
   return true;
 }
-function atDiagnostic(unit, diagnostic) {
+function atDiagnostic(unit, diagnostic, type = null) {
   if (
     !Number.isInteger(diagnostic.line) ||
     !Number.isInteger(diagnostic.column) ||
@@ -740,7 +755,9 @@ function atDiagnostic(unit, diagnostic) {
     1;
   return (
     unit.nodes.find(
-      (node) => FUNCTIONS.has(node.type) && node.range[0] === offset,
+      (node) =>
+        (type ? node.type === type : FUNCTIONS.has(node.type)) &&
+        node.range[0] === offset,
     ) ?? null
   );
 }
@@ -812,6 +829,242 @@ function inspectCleanup(context, unit, effect, refName) {
   };
 }
 
+function nativeObservationGlobal(unit, constructor) {
+  if (
+    constructor?.type !== "Identifier" ||
+    constructor.name !== "IntersectionObserver" ||
+    unit.binding(constructor)?.defs.length
+  )
+    return false;
+  // Ambient globals can have a parser binding with no lexical definitions.
+  // Reject local native API replacement, prototype access and global-object
+  // escapes, including descriptor/assignment helpers, rather than trusting a
+  // method named observe on an arbitrary receiver.
+  return unit.nodes.every((node) => {
+    if (node.type === "Literal" && node.value === "IntersectionObserver")
+      return false;
+    if (memberName(node) === "IntersectionObserver") return false;
+    if (node.type !== "Identifier" || unit.binding(node)?.defs.length)
+      return true;
+    const parent = unit.parents.get(node);
+    if (node.name === "IntersectionObserver")
+      return parent?.type === "NewExpression" && parent.callee === node;
+    if (!["globalThis", "window", "self"].includes(node.name)) return true;
+    return (
+      parent?.type === "MemberExpression" &&
+      parent.object === node &&
+      !parent.computed &&
+      memberName(parent) !== "IntersectionObserver"
+    );
+  });
+}
+
+function observationRead(expression) {
+  expression = unwrap(expression);
+  if (!expression) return false;
+  if (["Identifier", "Literal"].includes(expression.type)) return true;
+  if (expression.type === "UnaryExpression")
+    return (
+      ["!", "typeof", "void"].includes(expression.operator) &&
+      observationRead(expression.argument)
+    );
+  return (
+    (expression.type === "LogicalExpression" ||
+      (expression.type === "BinaryExpression" &&
+        ["===", "!=="].includes(expression.operator))) &&
+    observationRead(expression.left) &&
+    observationRead(expression.right)
+  );
+}
+
+function observationOptions(context, unit, expression) {
+  expression = unwrap(expression);
+  if (expression?.type !== "ObjectExpression") return false;
+  const names = new Set();
+  return expression.properties.every((property) => {
+    if (
+      property.type !== "Property" ||
+      property.computed ||
+      property.kind !== "init" ||
+      property.method
+    )
+      return false;
+    const name = property.key.name ?? property.key.value;
+    if (names.has(name)) return false;
+    names.add(name);
+    const value = unwrap(property.value);
+    if (name === "root") {
+      if (value?.type === "Literal" && value.value === null) return true;
+      return (
+        memberName(value) === "current" &&
+        !value.computed &&
+        !!refBinding(unit, value.object, context)
+      );
+    }
+    if (name === "rootMargin")
+      return value?.type === "Literal" && typeof value.value === "string";
+    const threshold = (node) =>
+      node?.type === "Literal" && typeof node.value === "number";
+    return (
+      name === "threshold" &&
+      (threshold(value) ||
+        (value?.type === "ArrayExpression" && value.elements.every(threshold)))
+    );
+  });
+}
+
+function inspectObservation(context, unit, registration) {
+  const callee = unwrap(registration.callee);
+  const receiver = unwrap(callee?.object);
+  if (
+    registration.optional ||
+    memberName(callee) !== "observe" ||
+    callee.computed ||
+    receiver?.type !== "Identifier" ||
+    registration.arguments.length !== 1 ||
+    unwrap(registration.arguments[0])?.type !== "Identifier"
+  )
+    return null;
+  const variable = unit.binding(receiver);
+  const definition = variable?.defs[0];
+  const declaration = definition && unit.parents.get(definition.node);
+  const acquisition = unwrap(definition?.node.init);
+  if (
+    !immutable(variable) ||
+    definition.type !== "Variable" ||
+    definition.node.id.type !== "Identifier" ||
+    declaration?.type !== "VariableDeclaration" ||
+    declaration.kind !== "const" ||
+    declaration.declarations.length !== 1 ||
+    acquisition?.type !== "NewExpression" ||
+    !nativeObservationGlobal(unit, unwrap(acquisition.callee)) ||
+    ![1, 2].includes(acquisition.arguments.length)
+  )
+    return null;
+  const callback = unwrap(acquisition.arguments[0]);
+  if (
+    !FUNCTIONS.has(callback?.type) ||
+    callback.async ||
+    callback.generator ||
+    (acquisition.arguments.length === 2 &&
+      !observationOptions(context, unit, acquisition.arguments[1]))
+  )
+    return null;
+  const effect = enclosingFunction(unit, registration);
+  const hook = effect && unit.parents.get(effect);
+  if (
+    !effect ||
+    effect.async ||
+    effect.generator ||
+    effect.params.length ||
+    effect.body.type !== "BlockStatement" ||
+    hook?.type !== "CallExpression" ||
+    hook.arguments[0] !== effect ||
+    !reactCall(unit, hook, "useEffect") ||
+    unit.parents.get(declaration) !== effect.body
+  )
+    return null;
+  const statements = effect.body.body;
+  const returned = statements.at(-1);
+  const cleanup =
+    returned?.type === "ReturnStatement" ? unwrap(returned.argument) : null;
+  if (
+    !FUNCTIONS.has(cleanup?.type) ||
+    cleanup.async ||
+    cleanup.generator ||
+    cleanup.params.length
+  )
+    return null;
+  const cleanupBody = cleanup.body;
+  const disconnect = unwrap(
+    cleanupBody.type === "BlockStatement" &&
+      cleanupBody.body.length === 1 &&
+      cleanupBody.body[0].type === "ExpressionStatement"
+      ? cleanupBody.body[0].expression
+      : cleanupBody,
+  );
+  const disconnectMember = unwrap(disconnect?.callee);
+  if (
+    disconnect?.type !== "CallExpression" ||
+    disconnect.optional ||
+    disconnect.arguments.length ||
+    memberName(disconnectMember) !== "disconnect" ||
+    disconnectMember.computed ||
+    unit.binding(unwrap(disconnectMember.object)) !== variable
+  )
+    return null;
+  const registrationStatement = (statement) =>
+    statement.type === "ExpressionStatement" &&
+    unwrap(statement.expression) === registration;
+  let seenDeclaration = false;
+  let seenRegistration = false;
+  for (const statement of statements.slice(0, -1)) {
+    step(context);
+    if (statement === declaration && !seenDeclaration && !seenRegistration) {
+      seenDeclaration = true;
+      continue;
+    }
+    let candidate = statement;
+    if (
+      statement.type === "IfStatement" &&
+      !statement.alternate &&
+      observationRead(statement.test)
+    ) {
+      candidate = statement.consequent;
+      if (
+        candidate.type === "ReturnStatement" &&
+        !candidate.argument &&
+        !seenDeclaration
+      )
+        continue;
+      if (candidate.type === "BlockStatement" && candidate.body.length === 1)
+        candidate = candidate.body[0];
+    }
+    if (
+      !seenDeclaration ||
+      seenRegistration ||
+      !registrationStatement(candidate)
+    )
+      return null;
+    seenRegistration = true;
+  }
+  if (
+    !seenDeclaration ||
+    !seenRegistration ||
+    variable.references.some((reference) => {
+      if (reference.init) return false;
+      const parent = unit.parents.get(reference.identifier);
+      return !(
+        parent?.type === "MemberExpression" &&
+        parent.object === reference.identifier &&
+        (parent === callee || parent === disconnectMember)
+      );
+    })
+  )
+    return null;
+  for (const statement of unit.ast.body)
+    if (
+      statement.type === "ImportDeclaration" &&
+      statement.source.value === "react"
+    )
+      evidence(context, unit, statement);
+  for (const node of [
+    hook,
+    declaration,
+    acquisition,
+    callback,
+    registration,
+    cleanup,
+    disconnect,
+  ])
+    evidence(context, unit, node);
+  return {
+    predicate: "native-intersection-observation-registration",
+    reason:
+      "The pinned rule mistakes native observe(target) registration for a synchronous parent/state call. This locally owned, unmodified native IntersectionObserver only registers its target here and disconnects during cleanup. Its inline callback runs in a deferred observer task, including initial observation; any callback-driven render belongs to that asynchronous notification. The raw diagnostic is retained.",
+  };
+}
+
 function createResourceSemanticCorrections(repoRoot) {
   const units = new Map();
   const read = (file) => {
@@ -822,14 +1075,18 @@ function createResourceSemanticCorrections(repoRoot) {
     if (
       toolPackage !== TOOL ||
       diagnostic.plugin !== "react-doctor" ||
-      diagnostic.rule !== "exhaustive-deps"
+      !["exhaustive-deps", "no-pass-live-state-to-parent"].includes(
+        diagnostic.rule,
+      )
     )
       return null;
+    const observation = diagnostic.rule === "no-pass-live-state-to-parent";
     const match =
       /^Your cleanup may read the wrong node since the ref `([A-Za-z_$][\w$]*)\.current` can change before it runs\.$/.exec(
         diagnostic.message ?? "",
       );
-    if (!match) return null;
+    if (observation ? diagnostic.message !== OBSERVATION_MESSAGE : !match)
+      return null;
     const file = path.posix.normalize(`web/app/${diagnostic.filePath}`);
     if (
       !file.startsWith("web/app/") ||
@@ -839,7 +1096,9 @@ function createResourceSemanticCorrections(repoRoot) {
       return null;
     try {
       const unit = read(file);
-      const node = unit && atDiagnostic(unit, diagnostic);
+      const node =
+        unit &&
+        atDiagnostic(unit, diagnostic, observation ? "CallExpression" : null);
       if (!node) return null;
       const context = {
         repoRoot,
@@ -849,11 +1108,13 @@ function createResourceSemanticCorrections(repoRoot) {
         dependencies: new Set([file]),
         activeFunctions: new Set(),
       };
-      const proof = inspectCleanup(context, unit, node, match[1]);
+      const proof = observation
+        ? inspectObservation(context, unit, node)
+        : inspectCleanup(context, unit, node, match[1]);
       if (!proof) return null;
       return {
         ...proof,
-        provenance: PROVENANCE,
+        provenance: observation ? OBSERVATION_PROVENANCE : PROVENANCE,
         evidence: [...context.evidence].map(([source, spans]) => ({
           file: source.file,
           sha256: createHash("sha256").update(source.source).digest("hex"),
