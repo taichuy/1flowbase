@@ -1309,3 +1309,74 @@ semanticTest(
     assert.deepEqual(requested, [1, 2, 3]);
   },
 );
+
+const { discoveryProvider } = require("./fixtures/shared-http-mutation.js");
+
+for (const renamed of [false, true]) {
+  semanticTest(
+    "does not retain a rejected Provider CSS neighbor " + renamed,
+    (t) => {
+      const { f, graph, diagnostic } = httpFixture(t, { renamed });
+      const neighbor = discoveryProvider(f, graph, { renamed });
+      const proof = assertHttpMutationProof(f, diagnostic, graph.required);
+      for (const file of Object.values(neighbor))
+        assert.ok(
+          !proof.evidence.some((entry) => entry.file === file),
+          "foreign Provider lookup must not create proof evidence: " + file,
+        );
+    },
+  );
+}
+
+for (const [name, mutation] of [
+  ["same CSS module is a genuine host dependency", undefined],
+  [
+    "global fetch replacement in genuine dependency",
+    "globalThis.fetch = customTransport;",
+  ],
+  [
+    "Function capability in genuine dependency",
+    'Function("return globalThis")();',
+  ],
+  [
+    "eval capability in genuine dependency",
+    'eval("globalThis.fetch = customTransport");',
+  ],
+  [
+    "computed global mutation in genuine dependency",
+    "globalThis[propertyName] = replacement;",
+  ],
+  [
+    "native prototype mutation in genuine dependency",
+    "Object.prototype.fetch = replacement;",
+  ],
+  [
+    "foreign document receiver in genuine dependency",
+    'foreignDocument.body.style.userSelect = "none";',
+  ],
+  [
+    "effectful CSS RHS in genuine dependency",
+    "document.body.style.userSelect = obtainStyle();",
+  ],
+]) {
+  semanticTest("preserves native closure after discovery: " + name, (t) => {
+    const { f, graph } = httpFixture(t);
+    discoveryProvider(f, graph, { actualDependency: true, mutation });
+    assertHttpUnproved(f);
+  });
+}
+
+semanticTest(
+  "rejected discovery cannot erase cached genuine barrel provenance",
+  (t) => {
+    const { f, graph } = httpFixture(t);
+    // zz-neighbor is visited before ownership by the graph's directory stack.
+    // The foreign lookup first resolves the same barrel export later used by
+    // the real host. Rolling back spans without its export cache hides this write.
+    discoveryProvider(f, graph, {
+      cachedBarrel: true,
+      mutation: "globalThis.fetch = customTransport;",
+    });
+    assertHttpUnproved(f);
+  },
+);

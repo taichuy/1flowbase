@@ -422,6 +422,89 @@ pub async fn replace_record(State(state): State<Arc<ApiState>>, headers: HeaderM
   };
 }
 
+function discoveryProvider(f, graph, options = {}) {
+  const context = options.renamed ? "SeparateScope" : "OtherContext";
+  const component = options.renamed ? "SeparateProvider" : "OtherProvider";
+  const marker = options.renamed ? "readSeparateValue" : "readOtherValue";
+  const directory = options.renamed ? "zz-separate" : "zz-neighbor";
+  const base = "web/app/src/" + directory;
+  const files = {
+    context: base + "/context.ts",
+    barrel: base + "/index.ts",
+    provider: base + "/Provider.tsx",
+  };
+  const css =
+    options.mutation ??
+    [
+      "const saved = document.body.style.userSelect;",
+      'document.body.style.userSelect = "none";',
+      "const restore = () => { document.body.style.userSelect = saved; };",
+      "return restore;",
+    ].join("\n");
+  f.write(
+    files.context,
+    "import { createContext } from 'react';\n" +
+      "export const " +
+      context +
+      " = createContext(null);\n",
+  );
+  f.write(
+    files.barrel,
+    "export { " +
+      context +
+      " } from './context';\n" +
+      (options.cachedBarrel ? css + "\n" : ""),
+  );
+  f.write(
+    files.provider,
+    "import { " +
+      context +
+      " } from './index';\n" +
+      "export function " +
+      marker +
+      '() { return "neighbor"; }\n' +
+      "function installSelection() {\n" +
+      (options.cachedBarrel ? "" : css) +
+      "\n}\n" +
+      "export function " +
+      component +
+      "({ children }) {\n" +
+      "  const value = {};\n  return <" +
+      context +
+      ".Provider value={value}>{children}</" +
+      context +
+      ".Provider>;\n}\n",
+  );
+  if (options.actualDependency || options.cachedBarrel) {
+    const imported = options.cachedBarrel ? context : marker;
+    const module = options.cachedBarrel ? "index" : "Provider";
+    const expression = options.cachedBarrel ? context : marker + "()";
+    const source = f.sources.get(graph.files.provider);
+    const anchor = options.renamed ? "const envelope = {" : "const host = {";
+    assert.equal(source.split(anchor).length, 2, "unique actual host object");
+    f.write(
+      graph.files.provider,
+      "import { " +
+        imported +
+        " } from '../" +
+        directory +
+        "/" +
+        module +
+        "';\n" +
+        source.replace(
+          anchor,
+          anchor + "\n    neighboringValue: " + expression + ",",
+        ),
+    );
+  }
+  for (const file of [...Object.values(files), graph.files.provider])
+    assert.ok(
+      parseUnit(f.repoRoot, file),
+      "discovery neighbor source parses: " + file,
+    );
+  return files;
+}
+
 module.exports = {
   ROOT,
   CONTROLLER,
@@ -430,5 +513,6 @@ module.exports = {
   RUNTIME_POLICY,
   actualGraph,
   syntheticGraph,
+  discoveryProvider,
   assertRustTokens,
 };
