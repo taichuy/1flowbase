@@ -430,3 +430,38 @@ async fn ephemeral_rejects_unrepresentable_ttl_and_deadline_while_waiting_for_le
     assert_eq!(error.code, "plugin_ephemeral_deadline_exceeded");
     drop(guard);
 }
+
+#[tokio::test]
+async fn execution_gate_requires_live_declared_current_grant_and_exact_installation_identity() {
+    use control_plane::plugin_management::ManagedPluginExecutionGateAuthority;
+    use extension_contracts::{PluginExecutionGateAuthority, PluginExecutionGateBinding};
+    let (mut state, old) = fixture();
+    state.installation.metadata_json["managed"]["module"]["contributions"][0]
+        ["required_permissions"] = json!(["execution.gate"]);
+    state.installation.metadata_json["managed_service_permissions"]["secrets"] = json!("none");
+    let mut grant = state.snapshot.authorizations[0].clone();
+    grant.permission = "execution.gate".into();
+    grant.permission_contract_id = "execution-gate".into();
+    state.snapshot.authorizations = vec![grant];
+    let authority = authority(state);
+    let service = ManagedPluginExecutionGateAuthority::new(authority.clone());
+    let binding = PluginExecutionGateBinding {
+        subject: ManagedContributionSubject::new(
+            ManagedInstallationId::new(&old.installation_id).unwrap(),
+            ManagedWorkspaceId::new(&old.scope_id).unwrap(),
+            ContributionId::new(&old.contribution_id).unwrap(),
+        ),
+        publisher_namespace: old.publisher_namespace,
+        plugin_code: old.plugin_code,
+        plugin_version: old.plugin_version,
+        workspace_id: Uuid::now_v7().to_string(),
+        deadline_unix_ms: old.deadline_unix_ms,
+    };
+    service.authorize(&binding).await.unwrap();
+    assert!(!authority.held.load(Ordering::SeqCst));
+    let mut forged = binding.clone();
+    forged.plugin_code = "forged".into();
+    assert!(service.authorize(&forged).await.is_err());
+    authority.state.lock().await.snapshot.authorizations.clear();
+    assert!(service.authorize(&binding).await.is_err());
+}

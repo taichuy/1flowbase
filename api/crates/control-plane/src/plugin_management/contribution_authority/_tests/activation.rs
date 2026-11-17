@@ -414,3 +414,32 @@ fn frontend_activation_delegates_only_exact_trusted_host_workspace_contract() {
         "regression: QA1 ceiling rejected real frontend enable"
     );
 }
+
+#[test]
+fn execution_gate_is_explicitly_delegated_without_secret_management_authority() {
+    let (mut installation, mut manifest) = fixture();
+    let contribution = &mut manifest.managed.as_mut().unwrap().module.contributions[0];
+    contribution.required_permissions = [
+        plugin_framework::extension_bus::PermissionCode::new("service.execute").unwrap(),
+        plugin_framework::extension_bus::PermissionCode::new("execution.gate").unwrap(),
+    ]
+    .into();
+    installation.metadata_json["managed_service_permissions"]["secrets"] = json!("none");
+    let policy = HostContributionGrantPolicy::root_composition();
+    let grants = policy
+        .declared_activation_grants(&installation, &manifest)
+        .unwrap();
+    assert_eq!(grants.len(), 2);
+    let mut gate = grants
+        .into_iter()
+        .find(|grant| grant.permission == "execution.gate")
+        .unwrap();
+    assert_eq!(gate.permission_contract_id, "execution-gate");
+    assert_eq!(gate.resource_scope, ContributionResourceScope::System);
+    gate.permission_contract_id = "plugin-ephemeral".into();
+    assert!(!policy.admits(
+        &installation,
+        &manifest.managed.as_ref().unwrap().module.contributions[0],
+        &gate
+    ));
+}

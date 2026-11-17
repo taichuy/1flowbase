@@ -1061,6 +1061,7 @@ fn build_host_call_context(
         http_egress: None,
         file_import: None,
         plugin_credentials: None,
+        execution_gate: None,
         plugin_ephemeral: None,
     }))
 }

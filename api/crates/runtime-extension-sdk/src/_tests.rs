@@ -123,3 +123,6 @@ mod communication_command_tests;
 
 #[path = "_tests/plugin_ephemeral_client_tests.rs"]
 mod plugin_ephemeral_client_tests;
+
+#[path = "_tests/execution_gate_client_tests.rs"]
+mod execution_gate_client_tests;

@@ -93,6 +93,7 @@ pub(crate) struct ProviderHostCallContext {
         runtime_core::runtime_backend::FileImportBinding,
         Arc<dyn runtime_core::runtime_backend::FileImportPort>,
     )>,
+    pub execution_gate: Option<super::execution_gate_host::ExecutionGateCall>,
     pub plugin_ephemeral: Option<(
         extension_contracts::PluginEphemeralBinding,
         Arc<dyn extension_contracts::PluginEphemeralPort>,

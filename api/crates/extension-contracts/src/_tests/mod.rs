@@ -40,3 +40,5 @@ mod communication_command_event_tests;
 mod notification_message_content_tests;
 
 mod plugin_ephemeral_contract_tests;
+
+mod execution_gate_contract_tests;
