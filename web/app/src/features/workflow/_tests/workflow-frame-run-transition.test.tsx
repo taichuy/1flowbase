@@ -16,6 +16,8 @@ import * as runtime from '../../agent-flow/api/runtime';
 import * as orchestration from '../../agent-flow/api/orchestration';
 import * as publicApi from '../../applications/api/public-api';
 import type { NodeDetailPanel } from '../../agent-flow/components/detail/NodeDetailPanel';
+import type { FlowEditorState } from '../../flow-editor/store';
+import type { FlowEditorStore } from '../../flow-editor/store/provider';
 import { WorkflowEditorAssembly } from '../components/WorkflowEditorAssembly';
 
 interface CanvasCommit {
@@ -32,19 +34,22 @@ interface DetailCommit {
 }
 const observed = vi.hoisted(() => ({
   canvas: [] as CanvasCommit[],
-  detail: [] as DetailCommit[]
+  detail: [] as DetailCommit[],
+  store: null as FlowEditorStore | null
 }));
 
 vi.mock('../../agent-flow/components/editor/AgentFlowCanvas', async () => {
-  const { useLayoutEffect } = await import('react');
+  const { useContext, useLayoutEffect } = await import('react');
   const { screen } = await import('@testing-library/react');
   const { i18nText } = await import('../../../shared/i18n/text');
-  const { useAgentFlowEditorStore } = await import('../../agent-flow/store/editor/provider');
+  const { AgentFlowEditorStoreContext, useAgentFlowEditorStore } = await import('../../agent-flow/store/editor/provider');
   return {
     AgentFlowCanvas: ({ interactionLocked = false }: { interactionLocked?: boolean }) => {
+      const store = useContext(AgentFlowEditorStoreContext);
       const selectedNodeId = useAgentFlowEditorStore((state) => state.selectedNodeId);
       const setSelection = useAgentFlowEditorStore((state) => state.setSelection);
       useLayoutEffect(() => {
+        observed.store = store;
         observed.canvas.push({
           active: interactionLocked,
           selectedNodeId,
@@ -99,6 +104,18 @@ vi.mock('../../agent-flow/components/detail/NodeDetailPanel', async (original) =
 
 const clients: QueryClient[] = [];
 const releasePending: Array<() => void> = [];
+function runEntrySnapshot(state: FlowEditorState) {
+  return {
+    selectedNodeId: state.selectedNodeId,
+    selectedNodeIds: state.selectedNodeIds,
+    selectedEdgeId: state.selectedEdgeId,
+    historyOpen: state.historyOpen,
+    issuesOpen: state.issuesOpen,
+    nodePickerState: state.nodePickerState,
+    pendingLocateNodeId: state.pendingLocateNodeId,
+    connectingPayload: state.connectingPayload
+  };
+}
 function initialState(): ConsoleApplicationOrchestrationState {
   return {
     flow_id: 'flow-1', messages: [],
@@ -191,6 +208,7 @@ beforeAll(async () => {
 beforeEach(() => {
   observed.canvas.length = 0;
   observed.detail.length = 0;
+  observed.store = null;
   resetAuthStore();
   authenticateEditor(['save_draft', 'start_flow_debug_run_stream', 'replace_application_environment_variables'], 'member');
 });
@@ -203,6 +221,67 @@ afterEach(async () => {
 });
 
 describe('WorkflowCanvasFrame committed run-transition UI', () => {
+  it('notifies the real store once with the complete run-entry cleanup', async () => {
+    const owner = await mountFrame();
+    await selectNode('start');
+    const store = observed.store;
+    if (!store) throw new Error('The real editor provider did not expose its store');
+    await act(async () => {
+      store.getState().setPanelState({
+        historyOpen: true,
+        issuesOpen: true,
+        nodePickerState: {
+          open: true,
+          anchorNodeId: 'node-workflow-start',
+          anchorEdgeId: null,
+          anchorCanvasPosition: { x: 12, y: 24 }
+        }
+      });
+      store.getState().setInteractionState({
+        pendingLocateNodeId: 'node-workflow-start',
+        connectingPayload: {
+          sourceNodeId: 'node-workflow-start',
+          sourceHandleId: 'output',
+          sourceNodeType: 'workflow_start'
+        }
+      });
+    });
+    const notifications: ReturnType<typeof runEntrySnapshot>[] = [];
+    const unsubscribe = store.subscribe((next, previous) => {
+      const snapshot = runEntrySnapshot(next);
+      if (JSON.stringify(snapshot) !== JSON.stringify(runEntrySnapshot(previous)))
+        notifications.push(snapshot);
+    });
+    try {
+      await owner.beginRun();
+
+      const cleared = {
+        selectedNodeId: null,
+        selectedNodeIds: [],
+        selectedEdgeId: null,
+        historyOpen: false,
+        issuesOpen: false,
+        nodePickerState: {
+          open: false,
+          anchorNodeId: null,
+          anchorEdgeId: null,
+          anchorCanvasPosition: null
+        },
+        pendingLocateNodeId: null,
+        connectingPayload: {
+          sourceNodeId: null,
+          sourceHandleId: null,
+          sourceNodeType: null
+        }
+      };
+      expect(runEntrySnapshot(store.getState())).toEqual(cleared);
+      expect(notifications).toHaveLength(1);
+      expect(notifications).toEqual([cleared]);
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it('shows the new run tab on the first ready detail commit after a new run and same-node selection', async () => {
     const owner = await completeFirstRun();
     await chooseConfig();
