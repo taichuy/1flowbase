@@ -1,6 +1,6 @@
 const path = require('node:path');
 const { createHash } = require('node:crypto');
-const { parseUnit, unwrap, memberName, immutable, importedCall } = require('./source-unit.js');
+const { parseUnit, unwrap, memberName, immutable, importedCall, finiteValueProof } = require('./source-unit.js');
 
 const TOOL = 'react-doctor@0.2.16';
 const PROVENANCE = {
@@ -92,94 +92,355 @@ function refRead(unit, expression, context) {
   return memberName(expression) === 'current' ? refVariable(unit, expression.object, context) : null;
 }
 
-function nativeAbortOwner(unit, expression, context, seen = new Set(), depth = 0) {
-  if (depth > 12) return false;
-  expression = unwrap(expression);
-  if (expression?.type === 'NewExpression') {
-    const callee = unwrap(expression.callee);
-    if (callee?.type !== 'Identifier' || callee.name !== 'AbortController' || unit.binding(callee)) return false;
-    addProof(context, expression);
-    return true;
+function constantValue(unit, node, seen = new Set(), depth = 0) {
+  node = unwrap(node);
+  if (!node || depth > 12) return { known: false };
+  if (node.type === 'Literal') return { known: true, value: node.value };
+  if (node.type === 'UnaryExpression' && ['!', '+', '-'].includes(node.operator)) {
+    const argument = constantValue(unit, node.argument, seen, depth + 1);
+    if (!argument.known) return argument;
+    return { known: true, value: node.operator === '!' ? !argument.value
+      : node.operator === '-' ? -argument.value : +argument.value };
   }
-  if (expression?.type === 'Identifier') {
-    const variable = unit.binding(expression);
-    if (!immutable(variable) || seen.has(variable)) return false;
-    seen.add(variable);
-    const definition = variable.defs[0];
-    return definition.type === 'Variable' && definition.node.id.type === 'Identifier'
-      && nativeAbortOwner(unit, definition.node.init, context, seen, depth + 1);
-  }
-  const ref = refRead(unit, expression, context);
-  if (!ref || seen.has(ref)) return false;
-  seen.add(ref);
-  const assignments = unit.nodes.filter((node) => node.type === 'AssignmentExpression'
-    && node.operator === '=' && memberName(node.left) === 'current'
-    && refVariable(unit, unwrap(node.left).object, context) === ref);
-  if (!assignments.length || assignments.length > 8) return false;
-  for (const assignment of assignments) {
-    if (!nativeAbortOwner(unit, assignment.right, context, new Set(seen), depth + 1)) return false;
-    addProof(context, assignment);
-  }
-  return true;
+  if (node.type !== 'Identifier') return { known: false };
+  const variable = unit.binding(node);
+  if (!immutable(variable) || seen.has(variable)) return { known: false };
+  const definition = variable.defs[0];
+  return definition.type === 'Variable'
+    ? constantValue(unit, definition.node.init, new Set([...seen, variable]), depth + 1) : { known: false };
 }
-function liveRead(unit, expression, owner, context) {
-  expression = unwrap(expression);
-  if (refRead(unit, expression, context)) return true;
-  if (memberName(expression) === 'aborted' && memberName(expression.object) === 'signal') {
-    return nativeAbortOwner(unit, unwrap(expression.object).object, context);
-  }
-  if (expression?.type !== 'Identifier') return false;
-  const variable = unit.binding(expression);
-  if (!variable) return false;
-  const writes = variable.references.filter((reference) => reference.isWrite() && !reference.init
-    && functionOwner(unit, reference.identifier) !== owner);
-  if (!writes.length) return false;
-  for (const write of writes) {
-    const parent = unit.parents.get(write.identifier);
-    if (!['AssignmentExpression', 'UpdateExpression'].includes(parent?.type)) return false;
-    addProof(context, parent);
+function reachable(unit, node) {
+  for (let parent = unit.parents.get(node), child = node; parent; child = parent, parent = unit.parents.get(parent)) {
+    if (['IfStatement', 'ConditionalExpression'].includes(parent.type)) {
+      const test = constantValue(unit, parent.test);
+      if (test.known && (child === parent.consequent && !test.value || child === parent.alternate && test.value)) return false;
+    }
+    if (parent.type === 'LogicalExpression' && child === parent.right) {
+      const left = constantValue(unit, parent.left);
+      if (left.known && (parent.operator === '&&' && !left.value || parent.operator === '||' && left.value)) return false;
+    }
+    if (['WhileStatement', 'ForStatement'].includes(parent.type) && child === parent.body) {
+      const test = constantValue(unit, parent.test);
+      if (test.known && !test.value) return false;
+    }
   }
   return true;
 }
 
-// Resolve predicate code and binding ownership, never cancellation-like names.
-function guardExpression(unit, expression, owner, context, seen = new Set(), depth = 0) {
-  if (depth > 12) return null;
-  expression = unwrap(expression);
-  if (!expression) return null;
-  if (expression.type === 'Literal') return { fresh: false };
-  if (expression.type === 'Identifier' || expression.type === 'MemberExpression') {
-    if (expression.type === 'MemberExpression') {
-      const object = guardExpression(unit, expression.object, owner, context, seen, depth + 1);
-      const key = !expression.computed || guardExpression(unit, expression.property, owner, context, seen, depth + 1);
-      if (!object || !key) return null;
+// A memoized callback alone is not a registration. Follow its actual returned,
+// rendered, scheduled or React lifecycle use, including local call forwarding.
+function lifetimeCapability(unit, fn, context, seen = new Set(), depth = 0) {
+  if (!fn || depth > 12 || seen.has(fn) || !reachable(unit, fn)) return false;
+  context.capabilities ??= new Map();
+  if (context.capabilities.has(fn)) return context.capabilities.get(fn);
+  const next = new Set([...seen, fn]);
+  function escapes(node, visits = new Set(), level = 0) {
+    if (++context.steps > 20000 || level > 12 || !node || visits.has(node) || !reachable(unit, node)) return false;
+    visits = new Set([...visits, node]);
+    const parent = unit.parents.get(node);
+    if (!parent) return false;
+    if (['ExportNamedDeclaration', 'ExportDefaultDeclaration'].includes(parent.type)) return true;
+    if (parent.type === 'VariableDeclarator' && parent.id.type === 'Identifier') {
+      const declaration = unit.parents.get(parent);
+      if (unit.parents.get(declaration)?.type === 'ExportNamedDeclaration') return true;
+      const variable = unit.binding(parent.id);
+      return immutable(variable) && variable.references.some((reference) => reference.isRead()
+        && escapes(reference.identifier, visits, level + 1));
     }
-    return { fresh: liveRead(unit, expression, owner, context) };
+    if (parent.type === 'FunctionDeclaration' && parent.id === node) return escapes(parent, visits, level + 1);
+    if (parent.type === 'CallExpression') {
+      if (parent.arguments[0] === node && ['useCallback', 'useMemo'].some((name) => importedCall(unit, parent, 'react', name))) {
+        return escapes(parent, visits, level + 1);
+      }
+      if (parent.arguments[0] === node && ['useEffect', 'useLayoutEffect'].some((name) => importedCall(unit, parent, 'react', name))) {
+        return lifetimeCapability(unit, functionOwner(unit, parent), context, next, depth + 1);
+      }
+      const callee = unwrap(parent.callee);
+      if (parent.arguments[0] === node && callee?.type === 'Identifier' && !unit.binding(callee)
+        && ['setTimeout', 'setInterval', 'queueMicrotask', 'requestAnimationFrame'].includes(callee.name)) {
+        return lifetimeCapability(unit, functionOwner(unit, parent), context, next, depth + 1);
+      }
+      if (parent.arguments[0] === node && memberName(callee)
+        && ['setTimeout', 'setInterval', 'requestAnimationFrame'].includes(memberName(callee))
+        && unwrap(callee.object)?.type === 'Identifier' && unwrap(callee.object).name === 'window'
+        && !unit.binding(unwrap(callee.object))) {
+        return lifetimeCapability(unit, functionOwner(unit, parent), context, next, depth + 1);
+      }
+      if (parent.callee === node) return lifetimeCapability(unit, functionOwner(unit, parent), context, next, depth + 1);
+      return false;
+    }
+    if (parent.type === 'ReturnStatement' || parent.type === 'JSXExpressionContainer') {
+      return lifetimeCapability(unit, functionOwner(unit, parent), context, next, depth + 1);
+    }
+    if (parent.type === 'ArrowFunctionExpression' && parent.body === node) {
+      return lifetimeCapability(unit, parent, context, next, depth + 1);
+    }
+    if (['Property', 'ObjectExpression', 'ArrayExpression', 'TSAsExpression', 'TSNonNullExpression', 'TSSatisfiesExpression'].includes(parent.type)) {
+      return escapes(parent, visits, level + 1);
+    }
+    return false;
   }
-  if (expression.type === 'UnaryExpression' && expression.operator === '!') {
-    return guardExpression(unit, expression.argument, owner, context, seen, depth + 1);
+  let result = escapes(fn);
+  if (!result && fn.type === 'FunctionDeclaration' && fn.id) {
+    const variable = unit.binding(fn.id);
+    result = variable?.references.some((reference) => reference.isRead() && escapes(reference.identifier));
   }
-  if (expression.type === 'LogicalExpression' || expression.type === 'BinaryExpression') {
-    if (expression.type === 'BinaryExpression' && !['===', '!==', '==', '!='].includes(expression.operator)) return null;
-    const left = guardExpression(unit, expression.left, owner, context, seen, depth + 1);
-    const right = guardExpression(unit, expression.right, owner, context, seen, depth + 1);
-    return left && right ? { fresh: left.fresh || right.fresh } : null;
+  context.capabilities.set(fn, Boolean(result));
+  return Boolean(result);
+}
+
+function stateWrites(unit, context) {
+  if (context.stateWrites) return context.stateWrites;
+  const result = [];
+  for (const node of unit.nodes) {
+    if (++context.steps > 20000) throw new Error('semantic proof budget exceeded');
+    if (!['AssignmentExpression', 'UpdateExpression'].includes(node.type) || !reachable(unit, node)) continue;
+    const target = unwrap(node.type === 'AssignmentExpression' ? node.left : node.argument);
+    const ref = refRead(unit, target, context);
+    const scalar = target?.type === 'Identifier' ? unit.binding(target) : null;
+    if (ref || scalar) result.push({ node, variable: ref ?? scalar, ref: Boolean(ref) });
   }
-  if (expression.type !== 'CallExpression' || expression.arguments.length) return null;
-  const callee = unwrap(expression.callee);
-  if (callee?.type !== 'Identifier') return null;
-  const variable = unit.binding(callee);
-  if (!immutable(variable) || seen.has(variable)) return null;
-  const definition = variable.defs[0];
-  const fn = definition.type === 'FunctionName' ? definition.node
-    : definition.type === 'Variable' ? unwrap(definition.node.init) : null;
-  if (!FUNCTIONS.has(fn?.type) || fn.async || fn.generator || fn.params.length) return null;
-  const body = fn.body.type === 'BlockStatement'
-    ? fn.body.body.length === 1 && fn.body.body[0].type === 'ReturnStatement' ? fn.body.body[0].argument : null
-    : fn.body;
-  const result = guardExpression(unit, body, owner, context, new Set([...seen, variable]), depth + 1);
-  if (result?.fresh) addProof(context, variableDeclaration(unit, definition));
+  context.stateWrites = result;
   return result;
+}
+
+function controllerOrigins(unit, expression, context, seen = new Set(), depth = 0) {
+  if (++context.steps > 20000 || depth > 12) return null;
+  expression = unwrap(expression);
+  if (expression?.type === 'NewExpression') {
+    const callee = unwrap(expression.callee);
+    if (callee?.type !== 'Identifier' || callee.name !== 'AbortController' || unit.binding(callee)) return null;
+    addProof(context, expression);
+    return new Set([expression]);
+  }
+  if (expression?.type === 'Identifier') {
+    const variable = unit.binding(expression);
+    if (!immutable(variable) || seen.has(variable)) return null;
+    const definition = variable.defs[0];
+    return definition.type === 'Variable'
+      ? controllerOrigins(unit, definition.node.init, context, new Set([...seen, variable]), depth + 1) : null;
+  }
+  const ref = refRead(unit, expression, context);
+  if (!ref || seen.has(ref)) return null;
+  const assignments = stateWrites(unit, context).filter((write) => write.ref && write.variable === ref);
+  if (!assignments.length || assignments.length > 8) return null;
+  const result = new Set();
+  for (const { node } of assignments) {
+    if (node.operator !== '=') return null;
+    const origins = controllerOrigins(unit, node.right, context, new Set([...seen, ref]), depth + 1);
+    if (!origins) return null;
+    for (const origin of origins) result.add(origin);
+    addProof(context, node);
+  }
+  return result;
+}
+
+function completionDependency(unit, guard, owner, context) {
+  const model = finiteValueProof(context);
+  const keys = new Map();
+  const identities = new Map();
+  const symbol = (node) => {
+    if (!identities.has(node)) identities.set(node, Symbol('source identity'));
+    return identities.get(node);
+  };
+  const key = (node, seen = new Set()) => {
+    node = unwrap(node);
+    if (node?.type === 'Identifier') {
+      const variable = unit.binding(node);
+      if (!variable) return null;
+      const definition = variable.defs[0];
+      if (immutable(variable) && !seen.has(variable) && definition.type === 'Variable'
+        && unwrap(definition.node.init)?.type === 'Identifier') {
+        return key(definition.node.init, new Set([...seen, variable]));
+      }
+      if (!keys.has(variable)) keys.set(variable, `binding:${keys.size}`);
+      return keys.get(variable);
+    }
+    if (node?.type !== 'MemberExpression' || memberName(node) === null) return null;
+    const root = key(node.object, seen);
+    return root === null ? null : `${root}.${memberName(node)}`;
+  };
+  const writes = stateWrites(unit, context);
+  const cells = new Map();
+  const cellFor = (node) => {
+    const ref = refRead(unit, node, context);
+    const variable = ref ?? (node.type === 'Identifier' ? unit.binding(node) : null);
+    if (!variable || !ref && immutable(variable)) return null;
+    if (cells.has(variable)) return cells.get(variable);
+    const mutations = writes.filter((write) => write.variable === variable && write.ref === Boolean(ref)
+      && lifetimeCapability(unit, functionOwner(unit, write.node), context));
+    if (!mutations.length || mutations.length > 8) return null;
+    const definition = variable.defs[0];
+    const initializer = ref ? unwrap(definition.node.init)?.arguments[0] : definition?.node.init;
+    const cell = { variable, key: ref ? `${key(node.object)}.current` : key(node), initializer, mutations };
+    cells.set(variable, cell);
+    return cell;
+  };
+  function arithmeticStep(node, cell, seen = new Set(), depth = 0) {
+    node = unwrap(node);
+    if (!node || depth > 12) return null;
+    if (node.type === 'Identifier') {
+      const variable = unit.binding(node);
+      if (!immutable(variable) || seen.has(variable)) return null;
+      const definition = variable.defs[0];
+      return definition.type === 'Variable'
+        ? arithmeticStep(definition.node.init, cell, new Set([...seen, variable]), depth + 1) : null;
+    }
+    if (node.type !== 'BinaryExpression' || !['+', '-'].includes(node.operator)) return null;
+    const same = cellFor(unwrap(node.left));
+    const value = constantValue(unit, node.right);
+    return same === cell && value.known && typeof value.value === 'number'
+      ? node.operator === '+' ? value.value : -value.value : null;
+  }
+  function sourceValue(node, seen = new Set(), depth = 0) {
+    node = unwrap(node);
+    if (!node || depth > 12) return { known: false };
+    const literal = constantValue(unit, node);
+    if (literal.known) return literal;
+    if (['ObjectExpression', 'ArrayExpression', 'NewExpression'].includes(node.type)) {
+      return { known: true, value: symbol(node) };
+    }
+    if (node.type !== 'Identifier') return { known: false };
+    const variable = unit.binding(node);
+    if (!immutable(variable) || seen.has(variable)) return { known: false };
+    const definition = variable.defs[0];
+    return definition.type === 'Variable'
+      ? sourceValue(definition.node.init, new Set([...seen, variable]), depth + 1) : { known: false };
+  }
+  function domain(cell) {
+    const initial = sourceValue(cell.initializer);
+    let values = initial.known ? [initial.value] : null;
+    if (!values) return undefined;
+    const steps = [];
+    for (const { node } of cell.mutations) {
+      let step;
+      if (node.type === 'UpdateExpression') step = node.operator === '++' ? 1 : -1;
+      else if (['+=', '-='].includes(node.operator)) {
+        const value = sourceValue(node.right);
+        step = value.known && typeof value.value === 'number' ? node.operator === '+=' ? value.value : -value.value : null;
+      } else if (node.operator === '=') {
+        if (cellFor(unwrap(node.right)) === cell) continue;
+        const value = sourceValue(node.right);
+        if (value.known) { values.push(value.value); continue; }
+        step = arithmeticStep(node.right, cell);
+      }
+      if (step === null || step === undefined || typeof initial.value !== 'number' || !Number.isFinite(step)) return undefined;
+      steps.push(step);
+    }
+    for (const step of steps) values.push(initial.value + step, initial.value + 2 * step);
+    // Opposing increments can reach zero, so do not infer a fixed truth value.
+    if (steps.some((step) => step > 0) && steps.some((step) => step < 0)) values.push(0);
+    return [...new Set(values)];
+  }
+  const aborts = new Map();
+  function abortCell(node) {
+    if (memberName(node) !== 'aborted' || memberName(node.object) !== 'signal') return null;
+    const origins = controllerOrigins(unit, unwrap(node.object).object, context);
+    if (!origins) return null;
+    const originKey = [...origins].map((origin) => origin.range[0]).sort().join(':');
+    if (aborts.has(originKey)) return aborts.get(originKey);
+    let cancel = null;
+    for (const call of unit.nodes) {
+      if (++context.steps > 20000) throw new Error('semantic proof budget exceeded');
+      if (call.type !== 'CallExpression' || memberName(call.callee) !== 'abort' || call.arguments.length
+        || !reachable(unit, call)) continue;
+      const targets = controllerOrigins(unit, unwrap(call.callee).object, context);
+      if (!targets || targets.size !== origins.size || ![...targets].every((origin) => origins.has(origin))) continue;
+      if (!lifetimeCapability(unit, functionOwner(unit, call), context)) continue;
+      cancel = call;
+      break;
+    }
+    const result = cancel ? { key: `abort:${originKey}`, cancel, abort: true } : null;
+    aborts.set(originKey, result);
+    return result;
+  }
+  const candidates = new Map();
+  function compile(expression, target = null, mutation = null, after = false, seen = new Set(), depth = 0, writeOwner = null) {
+    return model.expression(unit, expression, (node, localDepth, localSeen) => {
+      const level = depth + localDepth;
+      if (level > 12) return null;
+      if (node.type === 'MemberExpression' || node.type === 'Identifier') {
+        const abort = abortCell(node);
+        const cell = abort ?? cellFor(node);
+        if (cell) {
+          candidates.set(cell.key, cell);
+          const before = model.input(cell.key, cell.abort ? [false] : domain(cell));
+          if (!after || target !== cell) return before;
+          if (cell.abort) return model.constant(true);
+          const change = mutation.node;
+          if (change.type === 'UpdateExpression') return model.operation('+', before, model.constant(change.operator === '++' ? 1 : -1));
+          if (change.operator === '=') return compile(change.right, null, null, false, localSeen, level + 1, functionOwner(unit, change));
+          if (['+=', '-='].includes(change.operator)) return model.operation(change.operator[0], before,
+            compile(change.right, null, null, false, localSeen, level + 1, functionOwner(unit, change)));
+          return null;
+        }
+      }
+      if (['ObjectExpression', 'ArrayExpression'].includes(node.type)) return model.constant(symbol(node));
+      if (node.type === 'Identifier') {
+        const variable = unit.binding(node);
+        if (!variable || localSeen.has(variable)) return null;
+        const definition = variable.defs[0];
+        if (definition.type === 'Variable' && immutable(variable)) {
+          const init = unwrap(definition.node.init);
+          // A ticket produced by ++current, or assigned back to current before
+          // suspension, denotes the value installed for this invocation.
+          const recaptured = writeOwner && writeOwner === functionOwner(unit, definition.node);
+          const installed = recaptured ? null : init?.type === 'UpdateExpression' ? cellFor(unwrap(init.argument))
+            : writes.find((write) => write.node.type === 'AssignmentExpression' && write.node.operator === '='
+              && unwrap(write.node.right)?.type === 'Identifier' && unit.binding(unwrap(write.node.right)) === variable
+              && write.node.range[0] > definition.node.range[0] && write.node.range[0] < guard.range[0]
+              && functionOwner(unit, write.node) === functionOwner(unit, definition.node));
+          const installedCell = installed?.variable ? installed.key ? installed : cells.get(installed.variable)
+            ?? cellFor(unwrap(installed.node.left)) : null;
+          if (installedCell) {
+            candidates.set(installedCell.key, installedCell);
+            return model.input(installedCell.key, domain(installedCell));
+          }
+          if (['ObjectExpression', 'ArrayExpression', 'NewExpression'].includes(init?.type)) {
+            return model.constant(symbol(init));
+          }
+          if (init?.type === 'CallExpression') {
+            return model.input(key(node));
+          }
+          // An initializer ran before this completion guard: do not re-read a
+          // captured snapshot as though it were a completion-time ref access.
+          return compile(init, target, mutation, false, new Set([...localSeen, variable]), level + 1, writeOwner);
+        }
+        if (definition.type === 'Parameter') return model.input(key(node));
+        return null;
+      }
+      if (node.type === 'MemberExpression') {
+        const selector = key(node);
+        return selector === null ? null : model.input(selector);
+      }
+      if (node.type !== 'CallExpression') return undefined;
+      if (node.arguments.length || unwrap(node.callee)?.type !== 'Identifier') return null;
+      const variable = unit.binding(unwrap(node.callee));
+      if (!immutable(variable) || localSeen.has(variable)) return null;
+      const definition = variable.defs[0];
+      const fn = definition.type === 'FunctionName' ? definition.node
+        : definition.type === 'Variable' ? unwrap(definition.node.init) : null;
+      if (!FUNCTIONS.has(fn?.type) || fn.async || fn.generator || fn.params.length) return null;
+      const body = fn.body.type === 'BlockStatement'
+        ? fn.body.body.length === 1 && fn.body.body[0].type === 'ReturnStatement' ? fn.body.body[0].argument : null : fn.body;
+      const result = compile(body, target, mutation, after, new Set([...localSeen, variable]), level + 1, writeOwner);
+      if (result) addProof(context, variableDeclaration(unit, definition));
+      return result;
+    }, depth, seen);
+  }
+  const before = compile(guard);
+  if (!before || candidates.size > 8) return false;
+  for (const cell of candidates.values()) {
+    const mutations = cell.abort ? [{ node: cell.cancel }] : cell.mutations;
+    for (const mutation of mutations) {
+      if (!cell.abort && !lifetimeCapability(unit, functionOwner(unit, mutation.node), context)) continue;
+      const after = compile(guard, cell, mutation, true);
+      if (!after || !model.witness([before, after], ([a, b]) => Boolean(a) !== Boolean(b))) continue;
+      addProof(context, mutation.node);
+      return true;
+    }
+  }
+  return false;
 }
 
 function awaitedArgument(statement) {
@@ -209,8 +470,7 @@ function completionGuard(unit, node, context) {
   if (guard?.type !== 'IfStatement' || guard.alternate || !onlyReturns(guard.consequent)) return null;
   const owner = functionOwner(unit, direct.statement);
   if (!owner?.async) return null;
-  const proof = guardExpression(unit, guard.test, owner, context);
-  if (!proof?.fresh) return null;
+  if (!completionDependency(unit, guard.test, owner, context)) return null;
   addProof(context, direct.statement);
   addProof(context, guard);
   return { predicate: 'completion-time-guard', reason: 'The guard reads a proven mutable lifetime owner after suspension; moving it before the await would permit stale completion.' };

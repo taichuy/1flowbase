@@ -24,7 +24,7 @@ const RULE_PROVENANCE = {
 const FUNCTION_TYPES = new Set(['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression']);
 const READ_METHODS = new Set(['at', 'slice', 'filter', 'map', 'includes', 'some', 'every']);
 const FORM_METHODS = new Map([['setFieldsValue', [1]], ['setFieldValue', [2]], ['resetFields', [0, 1]]]);
-const { parseUnit, unwrap, memberName, immutable, importOrigin, importedCall } = require('./source-unit.js');
+const { parseUnit, unwrap, memberName, immutable, importOrigin, importedCall, finiteValueProof } = require('./source-unit.js');
 const digest = (source) => createHash('sha256').update(source).digest('hex');
 
 function functionOwner(unit, node) {
@@ -143,6 +143,163 @@ function exportedSpan(unit, fn) {
   return parent?.type === 'ExportNamedDeclaration' ? parent : fn;
 }
 
+function filterRetention(unit, callback, context, earlier = []) {
+  callback = unwrap(callback);
+  if (!FUNCTION_TYPES.has(callback?.type) || callback.async || callback.generator
+    || callback.params.length !== 1 || callback.body.type === 'BlockStatement') return null;
+  const parameter = parameterBinding(unit, callback);
+  if (!parameter || !immutable(parameter)) return null;
+  context.filters ??= new Map();
+  if (!context.filters.has(unit)) context.filters.set(unit, new Map());
+  const cache = context.filters.get(unit);
+  const callbacks = [...earlier, callback];
+  const cacheKey = callbacks.map((fn) => fn.range.join(':')).join(',');
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+  const parameters = new Set(callbacks.map((fn) => parameterBinding(unit, fn)));
+  const model = finiteValueProof(context);
+  const memberRoots = new Set();
+  const identity = Symbol('record identity');
+  const key = (node, seen = new Set()) => {
+    node = unwrap(node);
+    if (node?.type === 'Identifier') {
+      const variable = unit.binding(node);
+      if (!variable) return null;
+      if (parameters.has(variable)) return 'element';
+      if (immutable(variable) && !seen.has(variable)) {
+        const definition = variable.defs[0];
+        if (definition.type === 'Variable' && unwrap(definition.node.init)?.type === 'Identifier') {
+          return key(definition.node.init, new Set([...seen, variable]));
+        }
+      }
+      return `${variable.identifiers[0]?.range[0] ?? node.range[0]}`;
+    }
+    if (node?.type !== 'MemberExpression' || memberName(node) === null) return null;
+    const object = key(node.object, seen);
+    if (object === null) return null;
+    memberRoots.add(object);
+    return `${object}.${memberName(node)}`;
+  };
+  // A selector's root denotes a record, so a witness cannot simultaneously
+  // claim that the record is null and that one of its fields was read.
+  for (const node of unit.nodes) {
+    if (callbacks.some((fn) => node.range[0] >= fn.body.range[0] && node.range[1] <= fn.body.range[1])
+      && node.type === 'MemberExpression') key(node);
+  }
+  const expressions = callbacks.map((fn) => model.expression(unit, fn.body, (node) => {
+    if (node.type === 'MemberExpression') {
+      const selector = key(node);
+      return selector === null ? null : model.input(selector, memberRoots.has(selector) ? [identity] : undefined);
+    }
+    if (node.type !== 'Identifier') return undefined;
+    const variable = unit.binding(node);
+    if (!variable) return null;
+    const definition = variable.defs[0];
+    if (definition?.type === 'Variable') return undefined;
+    if (definition?.type !== 'Parameter') return null;
+    const selector = key(node);
+    return model.input(selector, memberRoots.has(selector) ? [identity] : undefined);
+  }));
+  const retains = expressions.every(Boolean) && model.witness(expressions, (values) => values.every(Boolean));
+  const result = retains ? { all: expressions.every((expression) => expression.kind === 'constant' && Boolean(expression.value)) } : null;
+  cache.set(cacheKey, result);
+  return result;
+}
+
+// Concrete lengths are witnesses, not a fixed maximum history size. Intervals
+// represent old/new runs without allocating arrays, even for large slice bounds.
+function retainsArrayElement(unit, expression, prior, context) {
+  const lengths = new Set([1, 2, 3, 4]);
+  const total = (segments) => segments.reduce((sum, segment) => sum + segment.length, 0);
+  function index(node, length, depth, seen) {
+    if (++context.steps > 20000 || depth > 12) return null;
+    node = unwrap(node);
+    if (!node) return null;
+    if (node.type === 'Literal' && Number.isSafeInteger(node.value)) return { value: node.value, dependent: false };
+    if (node.type === 'Identifier') {
+      const variable = unit.binding(node);
+      if (!immutable(variable) || seen.has(variable)) return null;
+      const definition = variable.defs[0];
+      return definition.type === 'Variable' ? index(definition.node.init, length, depth + 1, new Set([...seen, variable])) : null;
+    }
+    if (memberName(node) === 'length') {
+      const receiver = shape(node.object, length, depth + 1, seen);
+      return receiver ? { value: total(receiver), dependent: true } : null;
+    }
+    const unary = node.type === 'UnaryExpression' && ['+', '-'].includes(node.operator);
+    if (!unary && !(node.type === 'BinaryExpression' && ['+', '-', '*', '/'].includes(node.operator))) return null;
+    const left = index(unary ? node.argument : node.left, length, depth + 1, seen);
+    const right = unary ? null : index(node.right, length, depth + 1, seen);
+    if (!left || !unary && !right) return null;
+    const value = unary ? node.operator === '-' ? -left.value : left.value
+      : node.operator === '+' ? left.value + right.value : node.operator === '-' ? left.value - right.value
+        : node.operator === '*' ? left.value * right.value : left.value / right.value;
+    return Number.isFinite(value) ? { value, dependent: left.dependent || Boolean(right?.dependent) } : null;
+  }
+  function shape(node, length, depth = 0, seen = new Set()) {
+    if (++context.steps > 20000 || depth > 12) return null;
+    node = unwrap(node);
+    if (!node) return null;
+    if (node.type === 'Identifier') {
+      const variable = unit.binding(node);
+      if (variable === prior) return [{ old: true, length }];
+      if (!immutable(variable) || seen.has(variable)) return null;
+      const definition = variable.defs[0];
+      return definition.type === 'Variable' ? shape(definition.node.init, length, depth + 1, new Set([...seen, variable])) : null;
+    }
+    if (node.type === 'ArrayExpression') {
+      const result = [];
+      for (const element of node.elements) {
+        if (element?.type === 'SpreadElement') {
+          const spread = shape(element.argument, length, depth + 1, seen);
+          if (!spread) return null;
+          result.push(...spread);
+        } else result.push({ old: false, length: 1 });
+      }
+      return result;
+    }
+    if (node.type !== 'CallExpression') return null;
+    const callee = unwrap(node.callee);
+    const receiver = shape(callee?.object, length, depth + 1, seen);
+    if (!receiver) return null;
+    if (memberName(callee) === 'filter') {
+      const callback = unwrap(node.arguments[0]);
+      const result = [];
+      for (const segment of receiver) {
+        const retention = filterRetention(unit, callback, context, segment.filters ?? []);
+        if (!retention || !retention.all && !segment.old) return null;
+        // Consecutive filters share a single record witness, not independent
+        // satisfying values that might make the composed filter empty.
+        result.push({ ...segment, filters: [...(segment.filters ?? []), callback] });
+      }
+      return result;
+    }
+    if (memberName(callee) !== 'slice' || node.arguments.length > 2) return null;
+    const size = total(receiver);
+    const bounds = [node.arguments[0] ? index(node.arguments[0], length, depth + 1, seen) : { value: 0 },
+      node.arguments[1] ? index(node.arguments[1], length, depth + 1, seen) : { value: size, dependent: true }];
+    if (bounds.some((bound) => !bound)) return null;
+    for (const bound of bounds) {
+      if (!bound.dependent && Math.abs(bound.value) <= 1e9 && lengths.size < 32) {
+        lengths.add(Math.abs(Math.trunc(bound.value)) + 1);
+        lengths.add(Math.abs(Math.trunc(bound.value)) + 2);
+      }
+    }
+    const clamp = (value) => value < 0 ? Math.max(size + Math.trunc(value), 0) : Math.min(Math.trunc(value), size);
+    const [start, end] = bounds.map((bound) => clamp(bound.value));
+    let position = 0;
+    return receiver.map((segment) => {
+      const from = position;
+      position += segment.length;
+      return { ...segment, length: Math.max(0, Math.min(position, end) - Math.max(from, start)) };
+    }).filter((segment) => segment.length > 0);
+  }
+  for (const length of lengths) {
+    const result = shape(expression, length);
+    if (result?.some((segment) => segment.old && segment.length > 0)) return true;
+  }
+  return false;
+}
+
 // A result must preserve history, not merely read it in a guard or an ignored call.
 // An object spread followed by prop-derived field replacement is deliberately absent.
 function lineage(unit, node, prior, context, depth = 0, aliases = new Set()) {
@@ -186,12 +343,9 @@ function lineage(unit, node, prior, context, depth = 0, aliases = new Set()) {
   if (['filter', 'slice'].includes(method)) {
     if (!pure(unit, node, context) || !lineage(unit, callee.object, prior, context, depth + 1, aliases)) return null;
     if (method === 'filter') {
-      const callback = node.arguments[0];
-      if (!FUNCTION_TYPES.has(callback?.type) || !parameterBinding(unit, callback)) return null;
-      const parameter = parameterBinding(unit, callback);
-      if (!parameter.references.some((reference) => reference.isRead())) return null;
+      if (node.arguments.length !== 1 || !filterRetention(unit, node.arguments[0], context)) return null;
     }
-    if (method === 'slice' && node.arguments[1]?.type === 'Literal' && node.arguments[1].value === 0) return null;
+    if (!retainsArrayElement(unit, node, prior, context)) return null;
     return 'history';
   }
   if (callee.type !== 'Identifier' || !node.arguments.some((argument) => lineage(unit, argument, prior, context, depth + 1, aliases))) return null;

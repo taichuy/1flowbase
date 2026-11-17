@@ -92,4 +92,131 @@ function importedCall(unit, node, module, name) {
   return origin?.module === module && ['*', 'default'].includes(origin.name);
 }
 
-module.exports = { parseUnit, unwrap, memberName, immutable, importOrigin, importedCall };
+// A finite witness uses values of shared inputs, never independent truth values
+// for comparisons. In particular x === y and x !== y remain correlated.
+// Callers supply ownership, temporal identity and admissible input domains.
+function finiteValueProof(context) {
+  const unknown = Symbol('unproved value');
+  const identities = [Symbol('identity A'), Symbol('identity B')];
+  const numbers = new Set([-1, 0, 1, 2]);
+  const constants = new Set();
+  const inputs = new Map();
+  const tick = () => {
+    if (++context.steps > 20000) throw new Error('semantic proof budget exceeded');
+  };
+  const constant = (value) => {
+    constants.add(value);
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      numbers.add(value);
+      numbers.add(value - 1);
+      numbers.add(value + 1);
+    }
+    return { kind: 'constant', value };
+  };
+  const input = (key, domain) => {
+    if (!inputs.has(key)) inputs.set(key, domain);
+    return { kind: 'input', key };
+  };
+  const calculate = (operator, values) => {
+    if (values.includes(unknown)) return unknown;
+    const [a, b] = values;
+    switch (operator) {
+      case '!': return !a;
+      case '&&': return a && b;
+      case '||': return a || b;
+      case '===': return a === b;
+      case '!==': return a !== b;
+      case '==': return a == b; // Deliberately model the source operator.
+      case '!=': return a != b;
+      case '<': case '<=': case '>': case '>=':
+        if (!((typeof a === 'number' && typeof b === 'number')
+          || (typeof a === 'string' && typeof b === 'string'))) return unknown;
+        return operator === '<' ? a < b : operator === '<=' ? a <= b : operator === '>' ? a > b : a >= b;
+      case '+': case '-': case '*': case '/': case '%':
+        if (!values.every((value) => typeof value === 'number' && Number.isFinite(value))) return unknown;
+        if (values.length === 1) return operator === '-' ? -a : operator === '+' ? +a : unknown;
+        return operator === '+' ? a + b : operator === '-' ? a - b
+          : operator === '*' ? a * b : operator === '/' ? a / b : a % b;
+      default: return unknown;
+    }
+  };
+  const operation = (operator, ...args) => {
+    if (args.some((arg) => !arg)) return null;
+    if (args.every((arg) => arg.kind === 'constant')) {
+      const value = calculate(operator, args.map((arg) => arg.value));
+      return value === unknown ? null : constant(value);
+    }
+    return { kind: 'operation', operator, args };
+  };
+  function expression(unit, node, resolve, depth = 0, seen = new Set()) {
+    tick();
+    if (depth > 12) return null;
+    node = unwrap(node);
+    if (!node) return null;
+    if (node.type === 'Literal') return constant(node.value);
+    const resolved = resolve?.(node, depth, seen);
+    if (resolved !== undefined) return resolved;
+    const child = (value, nextSeen = seen) => expression(unit, value, resolve, depth + 1, nextSeen);
+    if (node.type === 'Identifier') {
+      const variable = unit.binding(node);
+      if (!immutable(variable) || seen.has(variable)) return null;
+      const definition = variable.defs[0];
+      return definition.type === 'Variable' && definition.node.id.type === 'Identifier'
+        ? child(definition.node.init, new Set([...seen, variable])) : null;
+    }
+    if (node.type === 'UnaryExpression' && ['!', '+', '-'].includes(node.operator)) {
+      return operation(node.operator, child(node.argument));
+    }
+    if (node.type === 'LogicalExpression' && ['&&', '||'].includes(node.operator)) {
+      const left = child(node.left);
+      // Constants can prove short circuits without assigning an unknown value.
+      if (left?.kind === 'constant' && (node.operator === '&&' ? !left.value : left.value)) return left;
+      return operation(node.operator, left, child(node.right));
+    }
+    if (node.type === 'BinaryExpression'
+      && ['===', '!==', '==', '!=', '<', '<=', '>', '>=', '+', '-', '*', '/', '%'].includes(node.operator)) {
+      return operation(node.operator, child(node.left), child(node.right));
+    }
+    return null;
+  }
+  function read(node, values) {
+    tick();
+    if (node.kind === 'constant') return node.value;
+    if (node.kind === 'input') return values.get(node.key);
+    const first = read(node.args[0], values);
+    if (first === unknown) return unknown;
+    if (node.operator === '&&' && !first || node.operator === '||' && first) return first;
+    return calculate(node.operator, [first, ...node.args.slice(1).map((arg) => read(arg, values))]);
+  }
+  function witness(expressions, accepts) {
+    if (expressions.some((node) => !node)) return false;
+    const keys = new Set();
+    const collect = (node, depth = 0) => {
+      tick();
+      if (depth > 24) return false;
+      if (node.kind === 'input') keys.add(node.key);
+      return keys.size <= 8 && (node.kind !== 'operation' || node.args.every((arg) => collect(arg, depth + 1)));
+    };
+    if (!expressions.every((node) => collect(node))) return false;
+    const ordered = [...keys];
+    const values = new Map();
+    const defaults = [...new Set([false, true, null, undefined, ...numbers, ...identities, ...constants])];
+    const visit = (index) => {
+      tick();
+      if (index === ordered.length) {
+        const results = expressions.map((node) => read(node, values));
+        return !results.includes(unknown) && accepts(results);
+      }
+      const key = ordered[index];
+      for (const value of inputs.get(key) ?? defaults) {
+        values.set(key, value);
+        if (visit(index + 1)) return true;
+      }
+      return false;
+    };
+    return visit(0);
+  }
+  return { constant, input, operation, expression, witness };
+}
+
+module.exports = { parseUnit, unwrap, memberName, immutable, importOrigin, importedCall, finiteValueProof };
