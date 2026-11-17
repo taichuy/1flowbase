@@ -9,6 +9,7 @@ const { createCompositionSemanticCorrections } = require('./composition-semantic
 const { createResourceSemanticCorrections } = require('./resource-semantics.js');
 const { createHistoryObservationSemanticCorrections } = require('./history-observation-semantics.js');
 const { createNativeContentSemanticCorrections } = require('./native-content-semantics.js');
+const { createDraftRenderSemanticCorrections } = require('./draft-render-semantics.js');
 
 const REVIEW_FILE = 'scripts/node/react-doctor-gate/reviews.json';
 
@@ -16,7 +17,7 @@ function sourceDigest(content) {
   return createHash('sha256').update(content).digest('hex');
 }
 
-function upstreamSemanticCorrection(diagnostic, toolPackage, inspectEffect, inspectAsync, inspectRender, inspectQuery, inspectComposition, inspectResource, inspectHistory, inspectNativeContent) {
+function upstreamSemanticCorrection(diagnostic, toolPackage, inspectEffect, inspectAsync, inspectRender, inspectQuery, inspectComposition, inspectResource, inspectHistory, inspectNativeContent, inspectDraft) {
   if (toolPackage !== 'react-doctor@0.2.16') return null;
   if (diagnostic.plugin !== 'react-doctor') return null;
   // React documents useContext as a current supported Hook, not a deprecated API.
@@ -35,7 +36,8 @@ function upstreamSemanticCorrection(diagnostic, toolPackage, inspectEffect, insp
   return inspectEffect(diagnostic, toolPackage) ?? inspectAsync(diagnostic, toolPackage)
     ?? inspectRender(diagnostic, toolPackage) ?? inspectQuery(diagnostic, toolPackage)
     ?? inspectComposition(diagnostic, toolPackage) ?? inspectResource(diagnostic, toolPackage)
-    ?? inspectHistory(diagnostic, toolPackage) ?? inspectNativeContent(diagnostic, toolPackage);
+    ?? inspectHistory(diagnostic, toolPackage) ?? inspectNativeContent(diagnostic, toolPackage)
+    ?? inspectDraft(diagnostic, toolPackage);
 }
 
 // Review data is grouped by source owner; missing/ambiguous groups fail closed.
@@ -100,6 +102,7 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
   const inspectResource = createResourceSemanticCorrections(repoRoot);
   const inspectHistory = createHistoryObservationSemanticCorrections(repoRoot);
   const inspectNativeContent = createNativeContentSemanticCorrections(repoRoot);
+  const inspectDraft = createDraftRenderSemanticCorrections(repoRoot);
   const digests = new Map();
   const digestFile = (file) => {
     if (!digests.has(file)) {
@@ -121,7 +124,7 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
       && !diagnostic.filePath.includes('\\');
     const correction = validSource ? upstreamSemanticCorrection(diagnostic, toolPackage,
       inspectEffect, inspectAsync, inspectRender, inspectQuery, inspectComposition,
-      inspectResource, inspectHistory, inspectNativeContent) : null;
+      inspectResource, inspectHistory, inspectNativeContent, inspectDraft) : null;
     let reason;
     if (!validSource) {
       reason = 'diagnostic path is outside the reviewed application source boundary';
