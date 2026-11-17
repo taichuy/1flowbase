@@ -48,7 +48,9 @@ fn shared_schema_requires_the_complete_exact_collection_set() {
         "contribution_version":"1flowbase.plugin-data-model/v1", "storage_binding":"main",
         "owned_collections":[{"collection_code":"hosts","fields":[{"field_code":"name","field_type":"text","nullable":false}]}]
     })).unwrap();
-    contract.validate_schema(&[schema.clone()]).unwrap();
+    contract
+        .validate_schema(std::slice::from_ref(&schema))
+        .unwrap();
     assert!(contract.validate_schema(&[]).is_err());
     let mut other = schema.clone();
     other.owned_collections[0].collection_code = "other".into();
