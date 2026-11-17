@@ -51,7 +51,7 @@ vi.mock('../../../McpInstancesTab/use-mcp-directory-editor', async () => {
           mountLabel:
             selector
               ?.closest('.ant-select')
-              ?.querySelector('.ant-select-selection-item')?.textContent ?? null
+              ?.querySelector('.ant-select-content')?.textContent ?? null
         });
       });
       return result;

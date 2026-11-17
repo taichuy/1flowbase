@@ -175,9 +175,8 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
 
   const directorySnapshot = draft.snapshot;
   const resolveDirectoryId = draft.resolveId;
-  // Server IDs are mapped by the submitted snapshot, independent of later moves.
-  useEffect(() => {
-    if (!editingBinding || !directorySnapshot) return;
+  // Receive mapped server IDs in this owner before its controls commit the snapshot.
+  if (editingBinding && directorySnapshot) {
     const saved = directorySnapshot.bindings.find(
       (row) => row.id === resolveDirectoryId(editingBinding.id)
     );
@@ -187,13 +186,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
         key === `binding:${editingBinding.id}` ? `binding:${saved.id}` : key
       );
     }
-  }, [
-    directorySnapshot,
-    resolveDirectoryId,
-    editingBinding,
-    setEditingBinding,
-    setSelectedDirectoryKey
-  ]);
+  }
   useEffect(() => {
     const group =
       directorySnapshot?.groups.find(
