@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import {
+  useCallback,
+  useRef,
+  useState,
+  type RefObject,
+  type SetStateAction
+} from 'react';
 import type { BlockContext } from '@1flowbase/page-protocol';
 import {
   useDataBlockMetadata,
@@ -41,12 +47,76 @@ export function useFormRecordSession(
   return { ...draft, ...mutation, changeValue };
 }
 
-function useFormRecordDraft(ctx: BlockContext, config: FormBlockConfig) {
-  const [values, setValues] = useState<Record<string, unknown>>(() =>
-    config.mode === 'create' ? defaultFormValues(config.items) : {}
+interface FormRecordSource {
+  items: FormBlockConfig['items'];
+  mode: FormBlockConfig['mode'];
+  relation: FormBlockConfig['relation'];
+  parentId: string | null;
+  metadata: ReturnType<typeof useDataBlockMetadata>['data'];
+  record: ReturnType<typeof useDataBlockRecord>['data'];
+}
+
+interface FormRecordSnapshot {
+  source: FormRecordSource;
+  values: Record<string, unknown>;
+  knownFields: ReadonlySet<string>;
+  initialized: boolean;
+}
+
+function sameFormRecordSource(previous: FormRecordSource, next: FormRecordSource) {
+  return (
+    previous.items === next.items &&
+    previous.mode === next.mode &&
+    previous.relation === next.relation &&
+    previous.parentId === next.parentId &&
+    previous.metadata === next.metadata &&
+    previous.record === next.record
   );
-  const initialized = useRef(false);
-  const knownFields = useRef<Set<string> | null>(null);
+}
+
+function receiveFormRecordSource(
+  previous: FormRecordSnapshot,
+  source: FormRecordSource
+): FormRecordSnapshot {
+  const next = { ...previous, source };
+  if (source.mode === 'create') {
+    if (!source.metadata) return next;
+    const knownFields = new Set(previous.knownFields);
+    const fieldsByCode = new Map<string, DataBlockField>();
+    for (const field of source.metadata.fields) {
+      if (!fieldsByCode.has(field.code)) fieldsByCode.set(field.code, field);
+    }
+    const defaults: Record<string, unknown> = {};
+    for (const item of source.items) {
+      if (!item.field_code || knownFields.has(item.field_code)) continue;
+      knownFields.add(item.field_code);
+      const field = fieldsByCode.get(item.field_code);
+      const value =
+        item.default_value !== undefined
+          ? item.default_value
+          : field?.default_value;
+      if (value !== undefined && value !== null)
+        defaults[item.field_code] = value;
+    }
+    return {
+      ...next,
+      knownFields,
+      values: {
+        ...defaults,
+        ...previous.values,
+        ...(source.relation && source.parentId
+          ? { [source.relation.field_code]: source.parentId }
+          : {})
+      }
+    };
+  }
+  if (!previous.initialized && source.record) {
+    return { ...next, initialized: true, values: { ...source.record } };
+  }
+  return next;
+}
+
+function useFormRecordDraft(ctx: BlockContext, config: FormBlockConfig) {
   const metadata = useDataBlockMetadata(ctx, config.binding);
   const recordId = config.mode === 'create' ? null : formRecordId(ctx.inputs);
   const record = useDataBlockRecord(
@@ -59,12 +129,46 @@ function useFormRecordDraft(ctx: BlockContext, config: FormBlockConfig) {
         metadata.data.record_id_field
       )
   );
+  const parentId = relationRecordId(config.relation, ctx.inputs);
+  const source: FormRecordSource = {
+    items: config.items,
+    mode: config.mode,
+    relation: config.relation,
+    parentId,
+    metadata: metadata.data,
+    record: record.data
+  };
+  const [snapshot, setSnapshot] = useState<FormRecordSnapshot>(() =>
+    receiveFormRecordSource(
+      {
+        source,
+        values: config.mode === 'create' ? defaultFormValues(config.items) : {},
+        knownFields: new Set(),
+        initialized: false
+      },
+      source
+    )
+  );
+  if (!sameFormRecordSource(snapshot.source, source)) {
+    // Update only this owner before its children commit a stale source value.
+    setSnapshot(receiveFormRecordSource(snapshot, source));
+  }
+  const setValues = useCallback(
+    (update: SetStateAction<Record<string, unknown>>) => {
+      setSnapshot((previous) => {
+        const values =
+          typeof update === 'function' ? update(previous.values) : update;
+        return values === previous.values ? previous : { ...previous, values };
+      });
+    },
+    []
+  );
+  const { values, initialized } = snapshot;
   const fields = metadata.data?.fields ?? [];
   const fieldsByCode = new Map<string | undefined, DataBlockField>();
   for (const field of fields) {
     if (!fieldsByCode.has(field.code)) fieldsByCode.set(field.code, field);
   }
-  const parentId = relationRecordId(config.relation, ctx.inputs);
   const missingParent =
     config.mode === 'create' && Boolean(config.relation) && !parentId;
   const missingRecord = config.mode !== 'create' && !recordId;
@@ -78,47 +182,6 @@ function useFormRecordDraft(ctx: BlockContext, config: FormBlockConfig) {
         : false;
   const canRead =
     config.mode === 'create' || metadata.data?.record_capabilities.can_get;
-
-  useEffect(() => {
-    if (config.mode === 'create') {
-      if (!metadata.data) return;
-      const known = (knownFields.current ??= new Set<string>());
-      const defaultFieldsByCode = new Map<string, DataBlockField>();
-      for (const field of metadata.data.fields) {
-        if (!defaultFieldsByCode.has(field.code))
-          defaultFieldsByCode.set(field.code, field);
-      }
-      const defaults: Record<string, unknown> = {};
-      for (const item of config.items) {
-        if (!item.field_code || known.has(item.field_code)) continue;
-        known.add(item.field_code);
-        const field = defaultFieldsByCode.get(item.field_code);
-        const value =
-          item.default_value !== undefined
-            ? item.default_value
-            : field?.default_value;
-        if (value !== undefined && value !== null)
-          defaults[item.field_code] = value;
-      }
-      setValues((previous) => ({
-        ...defaults,
-        ...previous,
-        ...(config.relation && parentId
-          ? { [config.relation.field_code]: parentId }
-          : {})
-      }));
-    } else if (!initialized.current && record.data) {
-      initialized.current = true;
-      setValues({ ...record.data });
-    }
-  }, [
-    config.items,
-    config.mode,
-    config.relation,
-    parentId,
-    metadata.data,
-    record.data
-  ]);
 
   const ready = Boolean(
     metadata.data &&
@@ -186,7 +249,7 @@ function useFormSubmission(
       missingParent ||
       missingPrimaryKey ||
       !metadata.data ||
-      (config.mode !== 'create' && !initialized.current)
+      (config.mode !== 'create' && !initialized)
     )
       return;
     setSuccess(false);
