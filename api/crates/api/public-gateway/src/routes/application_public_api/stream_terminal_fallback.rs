@@ -648,6 +648,23 @@ fn decode_runtime_debug_artifact_preview(payload: &Value) -> Option<Value> {
     })
 }
 
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+impl NativeRunTerminalDependencies {
+    pub fn set_delivery_read_samples_for_test_support(
+        &mut self,
+        samples: Option<DeliveryReadSamples>,
+    ) {
+        self.delivery_read_samples = samples;
+    }
+    pub fn set_delivery_read_attempts_for_test_support(
+        &mut self,
+        attempts: Option<Arc<std::sync::atomic::AtomicUsize>>,
+    ) {
+        self.delivery_read_attempts = attempts;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use control_plane::application_public_api::native::{
@@ -852,22 +869,5 @@ mod tests {
         assert_eq!(deltas[0].text, "结构化思考");
         assert_eq!(deltas[1].kind, TerminalAnswerDeltaKind::Text);
         assert_eq!(deltas[1].text, "结构化回答");
-    }
-}
-
-#[doc(hidden)]
-#[cfg(any(test, feature = "test-support"))]
-impl NativeRunTerminalDependencies {
-    pub fn set_delivery_read_samples_for_test_support(
-        &mut self,
-        samples: Option<DeliveryReadSamples>,
-    ) {
-        self.delivery_read_samples = samples;
-    }
-    pub fn set_delivery_read_attempts_for_test_support(
-        &mut self,
-        attempts: Option<Arc<std::sync::atomic::AtomicUsize>>,
-    ) {
-        self.delivery_read_attempts = attempts;
     }
 }

@@ -344,6 +344,21 @@ fn session_matches_caller(
         && session.expires_at_unix > now
 }
 
+/// Stateless adapter; the caller supplies the original host Arc and principal.
+pub struct NativeResourceImportAdapter;
+#[async_trait::async_trait]
+impl api_host_kernel::terminal_host::NativeResourceImportPort for NativeResourceImportAdapter {
+    async fn import_for_principal(
+        &self,
+        state: Arc<ApiState>,
+        principal: &interface_runtime::UserPrincipal,
+        resource_uri: &str,
+        file_table_id: uuid::Uuid,
+    ) -> Result<extension_contracts::FileImportResponse, FileImportError> {
+        import_for_principal(state, principal, resource_uri, file_table_id).await
+    }
+}
+
 #[cfg(test)]
 mod file_read_identity_tests {
     use super::*;
@@ -386,20 +401,5 @@ mod file_read_identity_tests {
                 "case {case}"
             );
         }
-    }
-}
-
-/// Stateless adapter; the caller supplies the original host Arc and principal.
-pub struct NativeResourceImportAdapter;
-#[async_trait::async_trait]
-impl api_host_kernel::terminal_host::NativeResourceImportPort for NativeResourceImportAdapter {
-    async fn import_for_principal(
-        &self,
-        state: Arc<ApiState>,
-        principal: &interface_runtime::UserPrincipal,
-        resource_uri: &str,
-        file_table_id: uuid::Uuid,
-    ) -> Result<extension_contracts::FileImportResponse, FileImportError> {
-        import_for_principal(state, principal, resource_uri, file_table_id).await
     }
 }
