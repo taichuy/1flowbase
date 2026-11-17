@@ -191,7 +191,7 @@
       "evidence": [
         {
           "file": "api/crates/control-plane/src/plugin_management/install.rs",
-          "sha256": "22ce71106d5f78893c92fc03429d4e108a0ecc1caae8f89d0d98d99170e71ecc",
+          "sha256": "37103bd6d65a543ddfa0ebe4c25a8a9ca6cb1e999a87cd0f872d67b02612b13b",
           "reason": "Seven install call sites await the async preparation wrapper; the private blocking body calls prepare_settings_templates and only constructs owned commit input before publish_installation."
         },
         {
