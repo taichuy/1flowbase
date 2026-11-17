@@ -144,8 +144,11 @@ async function mountFrame() {
   vi.spyOn(runtime, 'fetchApplicationRunNodeLastRun').mockResolvedValue(null);
   vi.spyOn(runtime, 'fetchApplicationRunDebugSnapshot').mockRejectedValue(new Error('Unexpected fallback polling in stream fixture'));
   const streams: Array<{ handlers: runtime.FlowDebugRunStreamHandlers; release: () => void }> = [];
+  const transportEntryStates: ReturnType<typeof runEntrySnapshot>[] = [];
   const start = vi.spyOn(runtime, 'startFlowDebugRunStream').mockImplementation(
     async (_applicationId, _input, _csrfToken, handlers) => {
+      if (!observed.store) throw new Error('The real store was unavailable at transport entry');
+      transportEntryStates.push(runEntrySnapshot(observed.store.getState()));
       let release!: () => void;
       const pending = new Promise<void>((resolve) => { release = resolve; });
       releasePending.push(release);
@@ -175,7 +178,7 @@ async function mountFrame() {
     });
     await waitFor(() => expect(screen.getByRole('button', { name: i18nText('workflow', 'auto.workflow_test_run') })).toBeEnabled());
   }
-  return { beginRun, finishRun, start };
+  return { beginRun, finishRun, start, transportEntryStates };
 }
 async function click(button: HTMLElement) {
   await act(async () => { button.click(); });
@@ -277,6 +280,7 @@ describe('WorkflowCanvasFrame committed run-transition UI', () => {
       expect(runEntrySnapshot(store.getState())).toEqual(cleared);
       expect(notifications).toHaveLength(1);
       expect(notifications).toEqual([cleared]);
+      expect(owner.transportEntryStates).toEqual([cleared]);
     } finally {
       unsubscribe();
     }

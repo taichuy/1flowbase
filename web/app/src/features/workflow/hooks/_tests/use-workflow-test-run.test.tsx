@@ -1,6 +1,7 @@
 import { act, cleanup, render } from '@testing-library/react';
 import { useLayoutEffect, useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiClientError } from '@1flowbase/api-client';
 import {
   createDefaultWorkflowDocument,
   type FlowAuthoringDocument
@@ -8,6 +9,7 @@ import {
 
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import * as runtime from '../../../agent-flow/api/runtime';
+import { authenticateEditor } from '../../../agent-flow/_tests/fixtures/editor-auth';
 import { useWorkflowTestRun } from '../use-workflow-test-run';
 
 type Run = ReturnType<typeof useWorkflowTestRun>;
@@ -87,14 +89,19 @@ function detail(
     events: []
   };
 }
-function mount(applicationId: string, document: FlowAuthoringDocument) {
+function mount(
+  applicationId: string,
+  document: FlowAuthoringDocument,
+  onStarted?: () => void
+) {
   const commits: Commit[] = [];
   let current!: Run;
   function Consumer(props: {
     applicationId: string;
     document: FlowAuthoringDocument;
+    onStarted?: () => void;
   }) {
-    const run = useWorkflowTestRun(props.applicationId, props.document);
+    const run = useWorkflowTestRun(props.applicationId, props.document, props.onStarted);
     const instance = useRef({});
     useLayoutEffect(() => {
       current = run;
@@ -109,18 +116,23 @@ function mount(applicationId: string, document: FlowAuthoringDocument) {
     return <output aria-label="Workflow run status">{run.state.status}</output>;
   }
   const view = render(
-    <Consumer applicationId={applicationId} document={document} />
+    <Consumer applicationId={applicationId} document={document} onStarted={onStarted} />
   );
   return {
     commits,
     get current() {
       return current;
     },
-    rerender(nextApplicationId: string, nextDocument: FlowAuthoringDocument) {
+    rerender(
+      nextApplicationId: string,
+      nextDocument: FlowAuthoringDocument,
+      nextOnStarted = onStarted
+    ) {
       view.rerender(
-        <Consumer applicationId={nextApplicationId} document={nextDocument} />
+        <Consumer applicationId={nextApplicationId} document={nextDocument} onStarted={nextOnStarted} />
       );
-    }
+    },
+    unmount: () => view.unmount()
   };
 }
 function heldStreams() {
@@ -393,5 +405,145 @@ describe('useWorkflowTestRun application provenance', () => {
     expect(owner.current.nodeStatuses).toEqual({ 'node-workflow-start': 'running' });
     expect(owner.current.active).toBe(true);
     expect(snapshot).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useWorkflowTestRun admitted-start ownership', () => {
+  it('notifies synchronously before transport once, guarding repeated and reentrant starts', async () => {
+    const held = deferred<void>(undefined);
+    const order: string[] = [];
+    const transport = vi.spyOn(runtime, 'startFlowDebugRunStream').mockImplementation(
+      async (_applicationId, _input, _csrfToken, handlers) => {
+        order.push('transport');
+        handlers.getAbortController?.(new AbortController());
+        await held.promise;
+      }
+    );
+    let owner!: ReturnType<typeof mount>;
+    const onStarted = vi.fn(() => {
+      order.push('started');
+      expect(owner.current.state.status).toBe('idle');
+      track(owner.current.start(inputs));
+    });
+    owner = mount('app-A', documentFor('app-A'), onStarted);
+
+    await act(async () => { track(owner.current.start(inputs)); });
+
+    expect(order).toEqual(['started', 'transport']);
+    expect(onStarted).toHaveBeenCalledTimes(1);
+    expect(owner.current.state.status).toBe('starting');
+    await act(async () => { await owner.current.start(inputs); });
+    expect(onStarted).toHaveBeenCalledTimes(1);
+    expect(transport).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['permission', 'csrf', 'missing-start-node'] as const)(
+    'does not notify or submit when the actual %s guard rejects the attempt',
+    async (reason) => {
+      if (reason === 'permission') authenticateEditor([], 'member');
+      if (reason === 'csrf') useAuthStore.setState({ csrfToken: null });
+      const document = documentFor('app-A');
+      if (reason === 'missing-start-node') {
+        document.graph.nodes = document.graph.nodes.filter((node) => node.type !== 'workflow_start');
+      }
+      const onStarted = vi.fn();
+      const transport = vi.spyOn(runtime, 'startFlowDebugRunStream').mockResolvedValue(undefined);
+      const owner = mount('app-A', document, onStarted);
+      expect(owner.current.canRun).toBe(reason === 'missing-start-node');
+
+      await act(async () => { await owner.current.start(inputs); });
+
+      expect(onStarted).not.toHaveBeenCalled();
+      expect(transport).not.toHaveBeenCalled();
+      expect(owner.current.state.status).toBe(reason === 'missing-start-node' ? 'failed' : 'idle');
+    }
+  );
+
+  it('uses the latest same-application callback without restarting an active observation', async () => {
+    const { start, streams } = heldStreams();
+    const document = documentFor('app-A');
+    const firstCallback = vi.fn();
+    const currentCallback = vi.fn();
+    const followingCallback = vi.fn();
+    const owner = mount('app-A', document, firstCallback);
+    owner.rerender('app-A', document, currentCallback);
+    await act(async () => { track(owner.current.start(inputs)); });
+    const firstStream = streams.get('app-A')!;
+    expect(firstCallback).not.toHaveBeenCalled();
+    expect(currentCallback).toHaveBeenCalledTimes(1);
+
+    owner.rerender('app-A', { ...document }, followingCallback);
+    await act(async () => { await owner.current.start(inputs); });
+    expect(followingCallback).not.toHaveBeenCalled();
+    expect(firstStream.controller.signal.aborted).toBe(false);
+    expect(start).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      firstStream.handlers.onEvent({ type: 'flow_finished', run_id: 'run-A1', status: 'succeeded', output: {} });
+      firstStream.release();
+    });
+    expect(currentCallback).toHaveBeenCalledTimes(1);
+    expect(followingCallback).not.toHaveBeenCalled();
+
+    await act(async () => { track(owner.current.start(inputs)); });
+    expect(followingCallback).toHaveBeenCalledTimes(1);
+    expect(start).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects retained starts after another application commits, after A returns and after unmount', async () => {
+    const { start, streams } = heldStreams();
+    const firstA = vi.fn();
+    const currentB = vi.fn();
+    const nextA = vi.fn();
+    const owner = mount('app-A', documentFor('app-A'), firstA);
+    const retainedFirstA = owner.current.start;
+    owner.rerender('app-B', documentFor('app-B'), currentB);
+
+    await act(async () => { track(retainedFirstA(inputs)); });
+
+    expect(firstA).not.toHaveBeenCalled();
+    expect(currentB).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+    await act(async () => { track(owner.current.start(inputs)); });
+    const streamB = streams.get('app-B')!;
+    expect(currentB).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      streamB.handlers.onEvent({ type: 'flow_finished', run_id: 'run-B', status: 'succeeded', output: {} });
+      streamB.release();
+    });
+    owner.rerender('app-A', documentFor('app-A'), nextA);
+    await act(async () => { track(retainedFirstA(inputs)); });
+    expect(firstA).not.toHaveBeenCalled();
+    expect(nextA).not.toHaveBeenCalled();
+    expect(start).toHaveBeenCalledTimes(1);
+    await act(async () => { track(owner.current.start(inputs)); });
+    const streamA = streams.get('app-A')!;
+    expect(nextA).toHaveBeenCalledTimes(1);
+    expect(start.mock.calls.map(([id]) => id)).toEqual(['app-B', 'app-A']);
+    await act(async () => {
+      streamA.handlers.onEvent({ type: 'flow_finished', run_id: 'run-A2', status: 'succeeded', output: {} });
+      streamA.release();
+    });
+    const retainedAfterUnmount = owner.current.start;
+    owner.unmount();
+    await act(async () => { track(retainedAfterUnmount(inputs)); });
+    expect(nextA).toHaveBeenCalledTimes(1);
+    expect(currentB).toHaveBeenCalledTimes(1);
+    expect(start).toHaveBeenCalledTimes(2);
+  });
+
+  it('notifies once for an admitted attempt even when the transport immediately rejects it', async () => {
+    const onStarted = vi.fn();
+    const transport = vi.spyOn(runtime, 'startFlowDebugRunStream').mockRejectedValue(
+      new ApiClientError({ status: 403, message: 'Server rejected the admitted attempt' })
+    );
+    const owner = mount('app-A', documentFor('app-A'), onStarted);
+
+    await act(async () => { await track(owner.current.start(inputs)); });
+
+    expect(onStarted).toHaveBeenCalledTimes(1);
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(owner.current.state).toMatchObject({
+      status: 'failed', failure: 'Server rejected the admitted attempt'
+    });
   });
 });
