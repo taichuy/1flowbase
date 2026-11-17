@@ -1384,7 +1384,7 @@ impl crate::openapi_interface::contract::ApiOutput for ApplicationsOutput {
     fn document_output_schema(
         operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Option<serde_json::Value> {
-        matches!(operation.interface_id.as_str(), "applications.environment-variables.list" | "applications.environment-variables.replace").then(|| crate::openapi_interface::contract::schema::<Vec<crate::routes::applications_group::event_projection::EnvironmentVariableResponse>>())
+        matches!(operation.interface_id.as_str(), "applications.environment-variables.list" | "applications.environment-variables.replace").then(crate::openapi_interface::contract::schema::<Vec<crate::routes::applications_group::event_projection::EnvironmentVariableResponse>>)
     }
     fn project_document_output(
         &self,

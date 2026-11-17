@@ -108,18 +108,24 @@ pub(crate) struct ApplicationRuntimeDebugStreamOutput {
     pub(crate) run_id: Uuid,
 }
 
+type RuntimeDebugMcpFactoryFuture<'a> = Pin<
+    Box<
+        dyn Future<
+                Output = Result<
+                    Arc<dyn crate::runtime_ports::RuntimeToolInvokerFactoryHandle>,
+                    ApiError,
+                >,
+            > + Send
+            + 'a,
+    >,
+>;
+
 test_support_item! { pub(crate), []
 trait RuntimeDebugMcpFactory: Send + Sync + 'static {
     fn for_actor<'a>(
         &'a self,
         actor: &'a domain::ActorContext,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Result<Arc<dyn crate::runtime_ports::RuntimeToolInvokerFactoryHandle>, ApiError>>
-                + Send
-                + 'a,
-        >,
-    >;
+    ) -> RuntimeDebugMcpFactoryFuture<'a>;
 }
 }
 
@@ -131,17 +137,7 @@ impl RuntimeDebugMcpFactory for StateRuntimeDebugMcpFactory {
     fn for_actor<'a>(
         &'a self,
         actor: &'a domain::ActorContext,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        Arc<dyn crate::runtime_ports::RuntimeToolInvokerFactoryHandle>,
-                        ApiError,
-                    >,
-                > + Send
-                + 'a,
-        >,
-    > {
+    ) -> RuntimeDebugMcpFactoryFuture<'a> {
         Box::pin(async move {
             let state = self
                 .state

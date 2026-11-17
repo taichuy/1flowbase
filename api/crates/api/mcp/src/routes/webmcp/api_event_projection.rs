@@ -28,7 +28,7 @@ impl ApiInput for WebMcpInput {
 }
 impl ApiOutput for WebMcpOutput {
     fn document_output_schema(operation: &ApiOperationContext) -> Option<Value> {
-        (operation.interface_id == "webmcp.tools.invoke").then(|| event::schema::<ToolEvent>())
+        (operation.interface_id == "webmcp.tools.invoke").then(event::schema::<ToolEvent>)
     }
     fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {

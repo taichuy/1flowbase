@@ -56,7 +56,7 @@ impl ApiOutput for McpCoreOutput {
             operation.interface_id.as_str(),
             "mcp.client_credential.reveal" | "mcp.client_credential.save"
         )
-        .then(|| event::schema::<CredentialEvent>())
+        .then(event::schema::<CredentialEvent>)
     }
     fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
