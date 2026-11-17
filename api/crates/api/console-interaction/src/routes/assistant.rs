@@ -283,18 +283,24 @@ pub struct AssistantRunDependencies {
     runtime_tool_invoker_factory: Arc<dyn AssistantRuntimeToolInvokerFactory>,
 }
 
+type AssistantRuntimeToolInvokerFactoryFuture<'a> = Pin<
+    Box<
+        dyn Future<
+                Output = Result<
+                    Arc<dyn api_host_kernel::runtime_ports::RuntimeToolInvokerFactoryHandle>,
+                    ApiError,
+                >,
+            > + Send
+            + 'a,
+    >,
+>;
+
 test_support_item! { pub(crate), []
 trait AssistantRuntimeToolInvokerFactory: Send + Sync + 'static {
     fn for_actor<'a>(
         &'a self,
         actor: &'a domain::ActorContext,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Result<Arc<dyn api_host_kernel::runtime_ports::RuntimeToolInvokerFactoryHandle>, ApiError>>
-                + Send
-                + 'a,
-        >,
-    >;
+    ) -> AssistantRuntimeToolInvokerFactoryFuture<'a>;
 }
 }
 
@@ -308,17 +314,7 @@ impl AssistantRuntimeToolInvokerFactory for StateAssistantRuntimeToolInvokerFact
     fn for_actor<'a>(
         &'a self,
         actor: &'a domain::ActorContext,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        Arc<dyn api_host_kernel::runtime_ports::RuntimeToolInvokerFactoryHandle>,
-                        ApiError,
-                    >,
-                > + Send
-                + 'a,
-        >,
-    > {
+    ) -> AssistantRuntimeToolInvokerFactoryFuture<'a> {
         Box::pin(async move {
             let state = self
                 .state

@@ -76,7 +76,7 @@ pub(super) fn open(path: &Path) -> Result<(File, FileMetadata), FileError> {
 }
 fn unchanged(file: &File, path: &Path, version: &str) -> Result<(), FileError> {
     if metadata(path, &file.metadata()?).version != version {
-        return Err(FileError::Conflict("terminal_file_changed").into());
+        return Err(FileError::Conflict("terminal_file_changed"));
     }
     Ok(())
 }
@@ -136,7 +136,7 @@ fn read_chunk(
     let path = path(path_value)?;
     let (mut file, meta) = open(&path)?;
     if expected.is_some_and(|v| v != meta.version) {
-        return Err(FileError::Conflict("terminal_file_changed").into());
+        return Err(FileError::Conflict("terminal_file_changed"));
     }
     if offset > meta.size {
         return Err(invalid("terminal_offset_invalid"));

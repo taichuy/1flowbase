@@ -275,9 +275,8 @@ fn project_entry(
                 } else if capabilities
                     .iter()
                     .any(|capability| !capability.observer_enabled)
+                    || descriptors.is_empty()
                 {
-                    Some(ApiEventUnavailableReason::TargetUnavailable)
-                } else if descriptors.is_empty() {
                     Some(ApiEventUnavailableReason::TargetUnavailable)
                 } else {
                     None
