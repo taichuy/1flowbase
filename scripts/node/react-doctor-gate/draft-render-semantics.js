@@ -723,7 +723,7 @@ function visibleFlow(context, unit, start, root) {
       if (attr?.type === 'JSXAttribute') {
         const opening = unit.parents.get(attr);
         if (menuConsumer(context, unit, opening, attr, fields) && returned(unit, opening, root)) {
-          evidence(context, unit, attr); return true;
+          evidence(context, unit, opening); evidence(context, unit, attr); return true;
         }
         continue;
       }

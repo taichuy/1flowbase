@@ -168,6 +168,7 @@ semanticTest('projects all four actual initializer findings with controlled-fiel
     prefix + 'components/data-blocks/shared/DataBlockModal.tsx',
     prefix + 'components/data-blocks/shared/DataRelationEditor.tsx',
     prefix + 'components/data-blocks/shared/DataBlockFilterEditor.tsx',
+    prefix + 'components/data-blocks/shared/filter-editor/FilterConditionRow.tsx',
     prefix + 'components/data-blocks/form/FormFieldControl.tsx',
     prefix + 'lib/data-blocks/types.ts'];
   const f = fixture(t, fs.readFileSync(path.join(ROOT, form), 'utf8'), form);
