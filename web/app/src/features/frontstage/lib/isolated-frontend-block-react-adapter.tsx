@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 
 import {
   prepareIsolatedFrontendBlockRealm,
@@ -21,17 +21,29 @@ export function FrontstageIsolatedFrontendBlockHost({
   capabilityHandlers,
   onRuntimeError
 }: FrontstageIsolatedFrontendBlockHostProps): ReactNode {
+  const {
+    contributionId,
+    program: { source, props }
+  } = preparation;
   const realmRef = useRef<IsolatedFrontendBlockRealmHandle | null>(null);
-  const propsRef = useRef(preparation.program.props);
-  propsRef.current = preparation.program.props;
+  const propsRef = useRef(props);
+  const runtimeErrorRef = useRef(onRuntimeError);
+
+  useLayoutEffect(() => {
+    propsRef.current = props;
+    runtimeErrorRef.current = onRuntimeError;
+  }, [props, onRuntimeError]);
 
   useEffect(() => {
     let active = true;
-    const mountedProps = preparation.program.props;
-    const realm = prepareIsolatedFrontendBlockRealm(preparation.program, {
-      capabilityHandlers,
-      onError: onRuntimeError
-    });
+    const mountedProps = propsRef.current;
+    const realm = prepareIsolatedFrontendBlockRealm(
+      { source, props: mountedProps },
+      {
+        capabilityHandlers,
+        onError: (error) => runtimeErrorRef.current?.(error)
+      }
+    );
     realmRef.current = realm;
     void realm.mount(root).then(
       () => {
@@ -46,20 +58,14 @@ export function FrontstageIsolatedFrontendBlockHost({
       realm.terminate();
     };
     // Contribution identity/source and host authority own a realm; props update over its port.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    root,
-    capabilityHandlers,
-    preparation.contributionId,
-    preparation.program.source
-  ]);
+  }, [root, capabilityHandlers, contributionId, source]);
 
   useEffect(() => {
     const realm = realmRef.current;
     if (realm?.state === 'mounted' || realm?.state === 'updated') {
-      realm.update(preparation.program.props);
+      realm.update(props);
     }
-  }, [preparation.program.props]);
+  }, [props]);
 
   return null;
 }
