@@ -17,6 +17,17 @@ import SettingOutlined from '@ant-design/icons/es/icons/SettingOutlined';
 import { FRONTSTAGE_DESIGN_BLUE } from '../../design-mode-theme';
 import { BLOCK_BUTTON_METRICS } from './theme';
 
+const INITIALIZER_BUTTON_STYLE: CSSProperties = {
+  color: FRONTSTAGE_DESIGN_BLUE.primary,
+  borderColor: FRONTSTAGE_DESIGN_BLUE.dashed,
+  height: BLOCK_BUTTON_METRICS.height,
+  paddingInline: BLOCK_BUTTON_METRICS.paddingInline,
+  columnGap: BLOCK_BUTTON_METRICS.gap,
+  fontSize: BLOCK_BUTTON_METRICS.fontSize,
+  fontWeight: BLOCK_BUTTON_METRICS.fontWeight,
+  borderRadius: BLOCK_BUTTON_METRICS.borderRadius
+};
+
 /** Host-owned design controls, also available to compiled block code. */
 export const BlockDesignButton = forwardRef<
   HTMLButtonElement | HTMLAnchorElement,
@@ -40,17 +51,11 @@ export const BlockDesignButton = forwardRef<
         aria-label={label}
         icon={icon ?? <SettingOutlined />}
         className={`block-design-initializer ${className ?? ''}`}
-        style={{
-          color: FRONTSTAGE_DESIGN_BLUE.primary,
-          borderColor: FRONTSTAGE_DESIGN_BLUE.dashed,
-          height: BLOCK_BUTTON_METRICS.height,
-          paddingInline: BLOCK_BUTTON_METRICS.paddingInline,
-          columnGap: BLOCK_BUTTON_METRICS.gap,
-          fontSize: BLOCK_BUTTON_METRICS.fontSize,
-          fontWeight: BLOCK_BUTTON_METRICS.fontWeight,
-          borderRadius: BLOCK_BUTTON_METRICS.borderRadius,
-          ...style
-        }}
+        style={
+          style
+            ? { ...INITIALIZER_BUTTON_STYLE, ...style }
+            : INITIALIZER_BUTTON_STYLE
+        }
       >
         {children ?? label}
       </Button>
