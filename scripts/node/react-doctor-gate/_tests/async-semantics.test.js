@@ -8,6 +8,14 @@ const {
   sourceDigest,
   evaluateDiagnosticReviews,
 } = require("../diagnostic-review.js");
+const { parseUnit } = require("../source-unit.js");
+const {
+  CONTROLLER: HTTP_CONTROLLER,
+  CANONICAL_CONTRACT,
+  actualGraph: actualHttpGraph,
+  syntheticGraph: syntheticHttpGraph,
+  assertRustTokens,
+} = require("./fixtures/shared-http-mutation.js");
 
 const TOOL = "react-doctor@0.2.16";
 const SOURCE_COMMIT = "2d1ab245f0cbaa87529067e6e3ed9ac08362d1fc";
@@ -130,6 +138,468 @@ function assertProof(f, diagnostic, predicate, spans) {
   }
   return proof;
 }
+
+const HTTP_LOOP_MESSAGE = messages["async-await-in-loop"].replace(
+  "while-loop",
+  "for…of loop",
+);
+const HTTP_MUTATION_PREDICATE = "declared-shared-http-mutation-order";
+
+function assertHttpMutationProof(f, diagnostic, requiredFiles, spans = []) {
+  const proof = assertProof(f, diagnostic, HTTP_MUTATION_PREDICATE, spans);
+  assert.match(proof.reason, /declar/iu);
+  assert.match(proof.reason, /mutat/iu);
+  assert.match(proof.reason, /independen/iu);
+  for (const file of requiredFiles)
+    assert.ok(
+      proof.evidence.some((entry) => entry.file === file),
+      `missing source-bound HTTP/contract witness: ${file}`,
+    );
+  return proof;
+}
+
+function assertHttpUnproved(f) {
+  const result = f.evaluate();
+  assert.equal(result.status, "requires-review");
+  assert.equal(result.upstreamCorrections?.length ?? 0, 0);
+}
+
+function httpFixture(t, options) {
+  const f = fixture(t, "export const pending = null;");
+  const graph = syntheticHttpGraph(f, options);
+  const diagnostic = f.add(
+    "async-await-in-loop",
+    graph.anchor,
+    HTTP_LOOP_MESSAGE,
+  );
+  return { f, graph, diagnostic };
+}
+
+function replaceHttpSource(f, file, from, to) {
+  const source = f.sources.get(file);
+  assert.equal(
+    source.split(from).length - 1,
+    1,
+    `unique fixture edit: ${from}`,
+  );
+  f.write(file, source.replace(from, to));
+  if (/\.(?:ts|tsx)$/.test(file))
+    assert.ok(
+      parseUnit(f.repoRoot, file),
+      `edited HTTP fixture parses: ${file}`,
+    );
+  if (file.endsWith(".rs")) assertRustTokens(f.sources.get(file));
+}
+
+for (const renamed of [false, true]) {
+  semanticTest(
+    `proves authoritative shared mutation with renamed contract ${renamed}`,
+    (t) => {
+      const { f, graph, diagnostic } = httpFixture(t, { renamed });
+      assertHttpMutationProof(f, diagnostic, graph.required, [
+        graph.anchor,
+        graph.declaration,
+      ]);
+    },
+  );
+}
+
+semanticTest(
+  "conditional column mutation keeps its no-action identity branch",
+  (t) => {
+    const { f, graph } = httpFixture(t);
+    f.doctorReport.diagnostics.length = 0;
+    f.doctorReport.summary.totalDiagnosticCount = 0;
+    const diagnostic = f.add(
+      "async-await-in-loop",
+      "await adapt(host, column.action)",
+      HTTP_LOOP_MESSAGE,
+    );
+    assertHttpMutationProof(f, diagnostic, graph.required);
+  },
+);
+
+semanticTest(
+  "every actual shared-tree await has full current-source contract evidence",
+  (t) => {
+    const f = fixture(t, "export const pending = null;", HTTP_CONTROLLER);
+    const required = actualHttpGraph(f);
+    const source = f.sources.get(f.file);
+    const anchors = [
+      "await prepareTableAction(host!, next, action, fields)",
+      "await prepareTableAction(host!, next, action, fields)",
+      "await prepareTableAction(\n                  host!",
+    ];
+    let searchFrom = 0;
+    for (const anchor of anchors) {
+      const offset = source.indexOf(anchor, searchFrom);
+      assert.ok(offset >= 0, `actual await anchor: ${anchor}`);
+      searchFrom = offset + anchor.length;
+      const before = source.slice(0, offset);
+      f.doctorReport.diagnostics.push({
+        filePath: f.file.slice("web/app/".length),
+        plugin: "react-doctor",
+        rule: "async-await-in-loop",
+        severity: "warning",
+        message: HTTP_LOOP_MESSAGE,
+        line: before.split("\n").length,
+        column: before.length - before.lastIndexOf("\n"),
+      });
+      f.doctorReport.summary.totalDiagnosticCount++;
+    }
+    const result = f.evaluate();
+    assert.equal(result.status, "reviewed");
+    assert.equal(result.findings.length, 0);
+    assert.equal(result.upstreamCorrections.length, 3);
+    for (const [index, proof] of result.upstreamCorrections.entries()) {
+      assert.deepEqual(proof.diagnostic, f.doctorReport.diagnostics[index]);
+      assert.equal(proof.predicate, HTTP_MUTATION_PREDICATE);
+      assert.equal(
+        proof.provenance.ruleSourceSha256,
+        RULE_HASHES["async-await-in-loop"],
+      );
+      for (const file of required)
+        assert.ok(
+          proof.evidence.some((entry) => entry.file === file),
+          `actual helper evidence ${file}`,
+        );
+      for (const entry of proof.evidence) {
+        assert.equal(entry.sha256, sourceDigest(f.sources.get(entry.file)));
+        assert.ok(entry.spans.length > 0);
+        for (const span of entry.spans)
+          assert.ok(
+            span.start >= 0 &&
+              span.start < span.end &&
+              span.end <= f.sources.get(entry.file).length,
+          );
+      }
+    }
+  },
+);
+
+for (const [name, options, change] of [
+  ["independent GET contract", { method: "GET", mutating: false }],
+  ["pure POST search contract", { method: "POST", mutating: false }],
+  [
+    "CSRF true does not create a mutation contract",
+    { mutating: false, csrf: true },
+  ],
+  ["CSRF flag conflicts with declaration", { mutating: true, csrf: false }],
+  [
+    "missing declaration",
+    {},
+    (f, g) =>
+      f.write(g.files.declarations, "// No registered mutation declaration.\n"),
+  ],
+  [
+    "shadowed declaration type",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.declarations,
+        "use crate::routes::console_interface::{self, ConsoleInterfaceDeclaration, ConsoleInterfacePort};",
+        "use crate::routes::console_interface::{self, ConsoleInterfacePort};\nstruct ConsoleInterfaceDeclaration { interface_id: &'static str, binding_id: &'static str, method: &'static str, path: &'static str, mutating: bool }",
+      ),
+  ],
+  [
+    "fake canonical import origin",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.facade,
+        "pub use api_host_kernel::routes::console_interface::*;",
+        "pub use pretend_kernel::routes::console_interface::*;",
+      ),
+  ],
+  [
+    "unconsumed declarations",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.declarations,
+        '"fixture-graph", DECLARATIONS, port',
+        '"fixture-graph", &[], port',
+      ),
+  ],
+  [
+    "contract method mismatch",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.declarations,
+        'method: "POST"',
+        'method: "PATCH"',
+      ),
+  ],
+  [
+    "contract path mismatch",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.declarations,
+        `path: "${g.resource}"`,
+        `path: "${g.resource}/different"`,
+      ),
+  ],
+  [
+    "registered route path mismatch",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.route,
+        `route("/${g.names.collection}/:${g.names.key}/records"`,
+        `route("/${g.names.collection}/:${g.names.key}/different-records"`,
+      ),
+  ],
+  [
+    "handler binding mismatch",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.route,
+        `"${g.binding}", body`,
+        '"http.unrelated.binding.v1", body',
+      ),
+  ],
+  [
+    "contradictory first declaration classification",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.declarations,
+        "const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[",
+        `const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[\n ConsoleInterfaceDeclaration { interface_id: "${g.interfaceId}", binding_id: "first.read", method: "GET", path: "/api/console/first-read", mutating: false },`,
+      ),
+  ],
+  [
+    "duplicate binding declaration",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.declarations,
+        "const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[",
+        `const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[\n ${g.declaration},`,
+      ),
+  ],
+  [
+    "dynamic declaration Boolean",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.declarations,
+        g.declaration,
+        g.declaration.replace("mutating: true", "mutating: UNKNOWN"),
+      ),
+  ],
+  [
+    "comment contains a fake mutation declaration",
+    { mutating: false },
+    (f, g) =>
+      f.write(
+        g.files.declarations,
+        f.sources.get(g.files.declarations) +
+          `\n/* ${g.declaration.replace("mutating: false", "mutating: true")} */\n`,
+      ),
+  ],
+  [
+    "string contains a fake declaration",
+    { mutating: false },
+    (f, g) =>
+      f.write(
+        g.files.declarations,
+        f.sources.get(g.files.declarations) +
+          `\nconst DECOY: &str = r###"${g.declaration.replace("mutating: false", "mutating: true")}"###;\n`,
+      ),
+  ],
+  [
+    "different owner keys for each item",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.provider,
+        "creation.mutateAsync({ parent: identity, title: action.title })",
+        "insert(action.owner, { parent: action.id, title: action.title })",
+      ),
+  ],
+  [
+    "provably disjoint mutation owners",
+    {},
+    (f, g) => {
+      replaceHttpSource(
+        f,
+        g.files.provider,
+        "creation.mutateAsync({ parent: identity, title: action.title })",
+        "insert(action.owner, { parent: action.id, title: action.title })",
+      );
+      replaceHttpSource(
+        f,
+        f.file,
+        "for (const action of next.actions)",
+        "for (const action of [{ owner: 'alpha', id: 'a' }, { owner: 'beta', id: 'b' }])",
+      );
+    },
+  ],
+  [
+    "canonical owner no longer classifies business mutations",
+    {},
+    (f) => {
+      const source = f.sources.get(CANONICAL_CONTRACT);
+      assert.equal(
+        source.split("InterfaceAuditPolicy::Mutating").length - 1,
+        2,
+      );
+      f.write(
+        CANONICAL_CONTRACT,
+        source.replaceAll(
+          "InterfaceAuditPolicy::Mutating",
+          "InterfaceAuditPolicy::ReadOnly",
+        ),
+      );
+    },
+  ],
+  [
+    "per-iteration host object",
+    {},
+    (f) =>
+      replaceHttpSource(
+        f,
+        f.file,
+        "\n      actions.push(await adapt(host, action));",
+        "\n      actions.push(await adapt(makeHost(action), action));",
+      ),
+  ],
+  [
+    "unsafe-looking custom transport",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.transport,
+        "export async function transmit",
+        "const fetch = customTransport;\nexport async function transmit",
+      ),
+  ],
+  [
+    "dynamic transport method",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.requests,
+        'method: "POST"',
+        "method: input.method",
+      ),
+  ],
+  [
+    "opaque request options override",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.requests,
+        "method: \"POST\", body: input, baseUrl: ''",
+        "method: \"POST\", body: input, baseUrl: '', ...input.options",
+      ),
+  ],
+  [
+    "dynamic fetch replacement",
+    {},
+    (f, g) =>
+      f.write(
+        g.files.transport,
+        'eval("globalThis.fetch = customTransport");\n' +
+          f.sources.get(g.files.transport),
+      ),
+  ],
+  [
+    "unrelated mutation cannot justify awaited reads",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.helper,
+        `return host.${g.names.operation}(action);`,
+        "return independentRead(action);",
+      ),
+  ],
+  [
+    "infeasible mutation branch",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.provider,
+        "if (!action.enabled) return action;",
+        "if (true) return action;",
+      ),
+  ],
+  [
+    "contradictory mutation branch",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.provider,
+        "if (!action.enabled) return action;",
+        "if (action.enabled || !action.enabled) return action;",
+      ),
+  ],
+  [
+    "unobserved mutation output",
+    {},
+    (f, g) =>
+      replaceHttpSource(
+        f,
+        g.files.helper,
+        `await host.${g.names.store}(candidate);`,
+        "return candidate;",
+      ),
+  ],
+]) {
+  semanticTest(`keeps shared HTTP mutation unproved: ${name}`, (t) => {
+    const { f, graph } = httpFixture(t, options);
+    change?.(f, graph);
+    for (const [file, source] of f.sources) {
+      if (/\.(?:ts|tsx)$/.test(file))
+        assert.ok(
+          parseUnit(f.repoRoot, file),
+          `negative source parses: ${file}`,
+        );
+      if (file.endsWith(".rs")) assertRustTokens(source);
+    }
+    assertHttpUnproved(f);
+  });
+}
+
+semanticTest(
+  "shared mutation proof needs the exact pin and await position",
+  (t) => {
+    const { f, diagnostic } = httpFixture(t);
+    assert.equal(f.evaluate("react-doctor@future").status, "requires-review");
+    const original = structuredClone(diagnostic);
+    for (const mutation of [
+      { plugin: "other" },
+      { rule: "other" },
+      { message: `${HTTP_LOOP_MESSAGE} changed` },
+      { column: original.column + 1 },
+      { filePath: "../../outside.tsx" },
+    ]) {
+      Object.assign(diagnostic, original, mutation);
+      assertHttpUnproved(f);
+    }
+  },
+);
 
 for (const [refName, ticketName] of [
   ["generation", "ticket"],
@@ -319,25 +789,102 @@ for (const [name, declarations, guard] of [
 // These cases exercise Boolean influence and lifetime capability separately:
 // reading a React ref is insufficient if the skip decision cannot change.
 for (const [name, initial, writer, guard, expose = true, declarations = ""] of [
-  ["QA constant short circuit", "0", "revision.current++", "true || revision.current"],
+  [
+    "QA constant short circuit",
+    "0",
+    "revision.current++",
+    "true || revision.current",
+  ],
   ["QA private invariant ref", "true", "", "revision.current", false],
-  ["false and live read", "false", "revision.current = true", "false && revision.current"],
-  ["live read or true", "false", "revision.current = true", "revision.current || true"],
-  ["constant alias short circuit", "false", "revision.current = true", "always || revision.current", true, "const always = true;"],
-  ["correlated tautology", "false", "revision.current = true", "revision.current || !revision.current"],
-  ["correlated contradiction", "false", "revision.current = true", "revision.current && !revision.current"],
-  ["complementary comparisons", "0", "revision.current++", "revision.current !== snapshot || revision.current === snapshot"],
-  ["self comparison", "0", "revision.current++", "revision.current === revision.current"],
-  ["aliased self comparison", "0", "revision.current++", "alias.current === revision.current", true, "const alias = revision;"],
-  ["incompatible comparisons", "0", "revision.current++", "revision.current === 0 && revision.current === 1"],
-  ["dead private writer", "false", "revision.current = true", "revision.current", false],
-  ["unreachable exposed writer", "false", "if (false) revision.current = true", "revision.current"],
+  [
+    "false and live read",
+    "false",
+    "revision.current = true",
+    "false && revision.current",
+  ],
+  [
+    "live read or true",
+    "false",
+    "revision.current = true",
+    "revision.current || true",
+  ],
+  [
+    "constant alias short circuit",
+    "false",
+    "revision.current = true",
+    "always || revision.current",
+    true,
+    "const always = true;",
+  ],
+  [
+    "correlated tautology",
+    "false",
+    "revision.current = true",
+    "revision.current || !revision.current",
+  ],
+  [
+    "correlated contradiction",
+    "false",
+    "revision.current = true",
+    "revision.current && !revision.current",
+  ],
+  [
+    "complementary comparisons",
+    "0",
+    "revision.current++",
+    "revision.current !== snapshot || revision.current === snapshot",
+  ],
+  [
+    "self comparison",
+    "0",
+    "revision.current++",
+    "revision.current === revision.current",
+  ],
+  [
+    "aliased self comparison",
+    "0",
+    "revision.current++",
+    "alias.current === revision.current",
+    true,
+    "const alias = revision;",
+  ],
+  [
+    "incompatible comparisons",
+    "0",
+    "revision.current++",
+    "revision.current === 0 && revision.current === 1",
+  ],
+  [
+    "dead private writer",
+    "false",
+    "revision.current = true",
+    "revision.current",
+    false,
+  ],
+  [
+    "unreachable exposed writer",
+    "false",
+    "if (false) revision.current = true",
+    "revision.current",
+  ],
   ["same value writer", "true", "revision.current = true", "revision.current"],
-  ["positive counter stays truthy", "1", "revision.current++", "revision.current"],
-  ["unknown predicate in dependency", "false", "revision.current = true", "opaque(revision.current)"],
+  [
+    "positive counter stays truthy",
+    "1",
+    "revision.current++",
+    "revision.current",
+  ],
+  [
+    "unknown predicate in dependency",
+    "false",
+    "revision.current = true",
+    "opaque(revision.current)",
+  ],
 ]) {
   semanticTest(`rejects ineffective completion dependency: ${name}`, (t) => {
-    const f = fixture(t, `import { useRef } from 'react';
+    const f = fixture(
+      t,
+      `import { useRef } from 'react';
 export function useOwner(load, commit) {
   const revision = useRef(${initial});
   ${declarations}
@@ -349,7 +896,8 @@ export function useOwner(load, commit) {
     commit(result);
   }
   return ${expose ? "{ run, invalidate }" : "run"};
-}`);
+}`,
+    );
     f.add("async-defer-await", "const result = await load();");
     const result = f.evaluate();
     assert.equal(result.status, "requires-review");
@@ -357,9 +905,15 @@ export function useOwner(load, commit) {
   });
 }
 
-for (const guard of ["revision.current", "false || revision.current", "true && revision.current"]) {
+for (const guard of [
+  "revision.current",
+  "false || revision.current",
+  "true && revision.current",
+]) {
   semanticTest(`retains effective counter truthiness: ${guard}`, (t) => {
-    const f = fixture(t, `import { useRef } from 'react';
+    const f = fixture(
+      t,
+      `import { useRef } from 'react';
 export function useOwner(load, commit) {
   const revision = useRef(0);
   const invalidate = () => { revision.current++; };
@@ -369,14 +923,24 @@ export function useOwner(load, commit) {
     commit(result);
   }
   return { run, invalidate };
-}`);
-    const diagnostic = f.add("async-defer-await", "const result = await load();");
-    assertProof(f, diagnostic, "completion-time-guard", [`if (${guard}) return;`]);
+}`,
+    );
+    const diagnostic = f.add(
+      "async-defer-await",
+      "const result = await load();",
+    );
+    assertProof(f, diagnostic, "completion-time-guard", [
+      `if (${guard}) return;`,
+    ]);
   });
 }
 
-semanticTest("rejects a native controller with no reachable cancellation", (t) => {
-  const f = fixture(t, `export function owner(load, commit) {
+semanticTest(
+  "rejects a native controller with no reachable cancellation",
+  (t) => {
+    const f = fixture(
+      t,
+      `export function owner(load, commit) {
   const controller = new AbortController();
   const dispose = () => controller.abort();
   async function run() {
@@ -385,47 +949,102 @@ semanticTest("rejects a native controller with no reachable cancellation", (t) =
     commit(result);
   }
   return run;
-}`);
-  f.add("async-defer-await", "const result = await load();");
-  assert.equal(f.evaluate().status, "requires-review");
-});
+}`,
+    );
+    f.add("async-defer-await", "const result = await load();");
+    assert.equal(f.evaluate().status, "requires-review");
+  },
+);
 
 // Read actual consumer code; anchors follow the current source rather than old
 // diagnostic line numbers. No stored review entries authorize these controls.
 const actualCompletionGuards = [
-  ["features/agent-flow/hooks/runtime/useAgentFlowDebugSession.ts", "const detail = await fetchApplicationRunDebugSnapshot("],
-  ["features/agent-flow/hooks/useEmbeddedAssistantSession.ts", "const conversation = await createConsoleAssistantConversation("],
-  ["features/agent-flow/hooks/useEmbeddedAssistantSession.ts", "const detail = await fetchApplicationRunDebugSnapshot("],
-  ["features/agent-flow/hooks/useEmbeddedAssistantSession.ts", "const conversation = await createConsoleAssistantConversation(", 1],
-  ["features/agent-flow/hooks/useEmbeddedAssistantSession.ts", "const detail = await cancelConsoleFlowRun("],
-  ["features/auth/components/PublicAuthBlock.tsx", "const prepared = await prepareNativeReactSource("],
-  ["features/frontstage/components/files/FileTableView.tsx", "const result = await uploadConsoleFile("],
-  ["features/frontstage/components/jsx-studio/JsxStudioRunPanel.tsx", "const prepared = await prepareNativeReactSource("],
-  ["features/frontstage/components/jsx-studio/JsxStudioRunPanel.tsx", "const catalog = await fetchFrontstageBlockCatalog();"],
-  ["features/frontstage/pages/frontstage-page/controllers/use-frontstage-page-refresh.ts", "await onRefreshPage();"],
-  ["features/settings/components/mcp-management/McpInstancesTab/use-directory-draft.ts", "const saved = await replaceSettingsMcpInstanceDirectory("],
-  ["features/settings/components/record-permissions/use-record-permission-session.ts", "await replaceRecordPermissions("],
-  ["features/settings/pages/notifications/NotificationAuthorization.tsx", "const result = await authorizeNotificationInstance("],
-  ["features/settings/pages/settings-page/useExtensionCenterController.tsx", "const results = await Promise.all("],
+  [
+    "features/agent-flow/hooks/runtime/useAgentFlowDebugSession.ts",
+    "const detail = await fetchApplicationRunDebugSnapshot(",
+  ],
+  [
+    "features/agent-flow/hooks/useEmbeddedAssistantSession.ts",
+    "const conversation = await createConsoleAssistantConversation(",
+  ],
+  [
+    "features/agent-flow/hooks/useEmbeddedAssistantSession.ts",
+    "const detail = await fetchApplicationRunDebugSnapshot(",
+  ],
+  [
+    "features/agent-flow/hooks/useEmbeddedAssistantSession.ts",
+    "const conversation = await createConsoleAssistantConversation(",
+    1,
+  ],
+  [
+    "features/agent-flow/hooks/useEmbeddedAssistantSession.ts",
+    "const detail = await cancelConsoleFlowRun(",
+  ],
+  [
+    "features/auth/components/PublicAuthBlock.tsx",
+    "const prepared = await prepareNativeReactSource(",
+  ],
+  [
+    "features/frontstage/components/files/FileTableView.tsx",
+    "const result = await uploadConsoleFile(",
+  ],
+  [
+    "features/frontstage/components/jsx-studio/JsxStudioRunPanel.tsx",
+    "const prepared = await prepareNativeReactSource(",
+  ],
+  [
+    "features/frontstage/components/jsx-studio/JsxStudioRunPanel.tsx",
+    "const catalog = await fetchFrontstageBlockCatalog();",
+  ],
+  [
+    "features/frontstage/pages/frontstage-page/controllers/use-frontstage-page-refresh.ts",
+    "await onRefreshPage();",
+  ],
+  [
+    "features/settings/components/mcp-management/McpInstancesTab/use-directory-draft.ts",
+    "const saved = await replaceSettingsMcpInstanceDirectory(",
+  ],
+  [
+    "features/settings/components/record-permissions/use-record-permission-session.ts",
+    "await replaceRecordPermissions(",
+  ],
+  [
+    "features/settings/pages/notifications/NotificationAuthorization.tsx",
+    "const result = await authorizeNotificationInstance(",
+  ],
+  [
+    "features/settings/pages/settings-page/useExtensionCenterController.tsx",
+    "const results = await Promise.all(",
+  ],
   ["features/workflow/hooks/use-workflow-test-run.ts", "await presentation;"],
-  ["features/workflow/hooks/use-workflow-test-run.ts", "const detail = await fetchApplicationRunDebugSnapshot("],
+  [
+    "features/workflow/hooks/use-workflow-test-run.ts",
+    "const detail = await fetchApplicationRunDebugSnapshot(",
+  ],
 ];
 for (const [relative, anchor, occurrence = 0] of actualCompletionGuards) {
-  semanticTest(`retains actual completion guard ${relative} ${anchor} #${occurrence}`, (t) => {
-    const file = `web/app/src/${relative}`;
-    const source = fs.readFileSync(path.resolve(__dirname, "../../../..", file), "utf8");
-    const f = fixture(t, source, file);
-    const diagnostic = f.add("async-defer-await", anchor);
-    if (occurrence) {
-      let offset = -1;
-      for (let index = 0; index <= occurrence; index++) offset = source.indexOf(anchor, offset + 1);
-      assert.ok(offset >= 0, "the actual diagnostic occurrence must exist");
-      const before = source.slice(0, offset);
-      diagnostic.line = before.split("\n").length;
-      diagnostic.column = before.length - before.lastIndexOf("\n");
-    }
-    assertProof(f, diagnostic, "completion-time-guard", []);
-  });
+  semanticTest(
+    `retains actual completion guard ${relative} ${anchor} #${occurrence}`,
+    (t) => {
+      const file = `web/app/src/${relative}`;
+      const source = fs.readFileSync(
+        path.resolve(__dirname, "../../../..", file),
+        "utf8",
+      );
+      const f = fixture(t, source, file);
+      const diagnostic = f.add("async-defer-await", anchor);
+      if (occurrence) {
+        let offset = -1;
+        for (let index = 0; index <= occurrence; index++)
+          offset = source.indexOf(anchor, offset + 1);
+        assert.ok(offset >= 0, "the actual diagnostic occurrence must exist");
+        const before = source.slice(0, offset);
+        diagnostic.line = before.split("\n").length;
+        diagnostic.column = before.length - before.lastIndexOf("\n");
+      }
+      assertProof(f, diagnostic, "completion-time-guard", []);
+    },
+  );
 }
 
 for (const [name, declaration, later] of [
