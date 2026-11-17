@@ -316,6 +316,118 @@ for (const [name, declarations, guard] of [
   );
 }
 
+// These cases exercise Boolean influence and lifetime capability separately:
+// reading a React ref is insufficient if the skip decision cannot change.
+for (const [name, initial, writer, guard, expose = true, declarations = ""] of [
+  ["QA constant short circuit", "0", "revision.current++", "true || revision.current"],
+  ["QA private invariant ref", "true", "", "revision.current", false],
+  ["false and live read", "false", "revision.current = true", "false && revision.current"],
+  ["live read or true", "false", "revision.current = true", "revision.current || true"],
+  ["constant alias short circuit", "false", "revision.current = true", "always || revision.current", true, "const always = true;"],
+  ["correlated tautology", "false", "revision.current = true", "revision.current || !revision.current"],
+  ["correlated contradiction", "false", "revision.current = true", "revision.current && !revision.current"],
+  ["complementary comparisons", "0", "revision.current++", "revision.current !== snapshot || revision.current === snapshot"],
+  ["self comparison", "0", "revision.current++", "revision.current === revision.current"],
+  ["aliased self comparison", "0", "revision.current++", "alias.current === revision.current", true, "const alias = revision;"],
+  ["incompatible comparisons", "0", "revision.current++", "revision.current === 0 && revision.current === 1"],
+  ["dead private writer", "false", "revision.current = true", "revision.current", false],
+  ["unreachable exposed writer", "false", "if (false) revision.current = true", "revision.current"],
+  ["same value writer", "true", "revision.current = true", "revision.current"],
+  ["positive counter stays truthy", "1", "revision.current++", "revision.current"],
+  ["unknown predicate in dependency", "false", "revision.current = true", "opaque(revision.current)"],
+]) {
+  semanticTest(`rejects ineffective completion dependency: ${name}`, (t) => {
+    const f = fixture(t, `import { useRef } from 'react';
+export function useOwner(load, commit) {
+  const revision = useRef(${initial});
+  ${declarations}
+  const invalidate = () => { ${writer}; };
+  async function run() {
+    const snapshot = revision.current;
+    const result = await load();
+    if (${guard}) return;
+    commit(result);
+  }
+  return ${expose ? "{ run, invalidate }" : "run"};
+}`);
+    f.add("async-defer-await", "const result = await load();");
+    const result = f.evaluate();
+    assert.equal(result.status, "requires-review");
+    assert.equal(result.upstreamCorrections?.length ?? 0, 0);
+  });
+}
+
+for (const guard of ["revision.current", "false || revision.current", "true && revision.current"]) {
+  semanticTest(`retains effective counter truthiness: ${guard}`, (t) => {
+    const f = fixture(t, `import { useRef } from 'react';
+export function useOwner(load, commit) {
+  const revision = useRef(0);
+  const invalidate = () => { revision.current++; };
+  async function run() {
+    const result = await load();
+    if (${guard}) return;
+    commit(result);
+  }
+  return { run, invalidate };
+}`);
+    const diagnostic = f.add("async-defer-await", "const result = await load();");
+    assertProof(f, diagnostic, "completion-time-guard", [`if (${guard}) return;`]);
+  });
+}
+
+semanticTest("rejects a native controller with no reachable cancellation", (t) => {
+  const f = fixture(t, `export function owner(load, commit) {
+  const controller = new AbortController();
+  const dispose = () => controller.abort();
+  async function run() {
+    const result = await load();
+    if (controller.signal.aborted) return;
+    commit(result);
+  }
+  return run;
+}`);
+  f.add("async-defer-await", "const result = await load();");
+  assert.equal(f.evaluate().status, "requires-review");
+});
+
+// Read actual consumer code; anchors follow the current source rather than old
+// diagnostic line numbers. No stored review entries authorize these controls.
+const actualCompletionGuards = [
+  ["features/agent-flow/hooks/runtime/useAgentFlowDebugSession.ts", "const detail = await fetchApplicationRunDebugSnapshot("],
+  ["features/agent-flow/hooks/useEmbeddedAssistantSession.ts", "const conversation = await createConsoleAssistantConversation("],
+  ["features/agent-flow/hooks/useEmbeddedAssistantSession.ts", "const detail = await fetchApplicationRunDebugSnapshot("],
+  ["features/agent-flow/hooks/useEmbeddedAssistantSession.ts", "const conversation = await createConsoleAssistantConversation(", 1],
+  ["features/agent-flow/hooks/useEmbeddedAssistantSession.ts", "const detail = await cancelConsoleFlowRun("],
+  ["features/auth/components/PublicAuthBlock.tsx", "const prepared = await prepareNativeReactSource("],
+  ["features/frontstage/components/files/FileTableView.tsx", "const result = await uploadConsoleFile("],
+  ["features/frontstage/components/jsx-studio/JsxStudioRunPanel.tsx", "const prepared = await prepareNativeReactSource("],
+  ["features/frontstage/components/jsx-studio/JsxStudioRunPanel.tsx", "const catalog = await fetchFrontstageBlockCatalog();"],
+  ["features/frontstage/pages/frontstage-page/controllers/use-frontstage-page-refresh.ts", "await onRefreshPage();"],
+  ["features/settings/components/mcp-management/McpInstancesTab/use-directory-draft.ts", "const saved = await replaceSettingsMcpInstanceDirectory("],
+  ["features/settings/components/record-permissions/use-record-permission-session.ts", "await replaceRecordPermissions("],
+  ["features/settings/pages/notifications/NotificationAuthorization.tsx", "const result = await authorizeNotificationInstance("],
+  ["features/settings/pages/settings-page/useExtensionCenterController.tsx", "const results = await Promise.all("],
+  ["features/workflow/hooks/use-workflow-test-run.ts", "await presentation;"],
+  ["features/workflow/hooks/use-workflow-test-run.ts", "const detail = await fetchApplicationRunDebugSnapshot("],
+];
+for (const [relative, anchor, occurrence = 0] of actualCompletionGuards) {
+  semanticTest(`retains actual completion guard ${relative} ${anchor} #${occurrence}`, (t) => {
+    const file = `web/app/src/${relative}`;
+    const source = fs.readFileSync(path.resolve(__dirname, "../../../..", file), "utf8");
+    const f = fixture(t, source, file);
+    const diagnostic = f.add("async-defer-await", anchor);
+    if (occurrence) {
+      let offset = -1;
+      for (let index = 0; index <= occurrence; index++) offset = source.indexOf(anchor, offset + 1);
+      assert.ok(offset >= 0, "the actual diagnostic occurrence must exist");
+      const before = source.slice(0, offset);
+      diagnostic.line = before.split("\n").length;
+      diagnostic.column = before.length - before.lastIndexOf("\n");
+    }
+    assertProof(f, diagnostic, "completion-time-guard", []);
+  });
+}
+
 for (const [name, declaration, later] of [
   [
     "bare await argument",

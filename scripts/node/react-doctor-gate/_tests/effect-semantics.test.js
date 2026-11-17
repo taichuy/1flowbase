@@ -169,6 +169,68 @@ for (const [name, call] of [
   });
 }
 
+for (const [name, body] of [
+  ['QA vacuous filter', '[...previous.filter(item => !!item && false), sample]'],
+  ['correlated filter contradiction', '[...previous.filter(item => !!item && !item), sample]'],
+  ['contradictory selector comparisons', '[...previous.filter(item => item.captured_at > 2 && item.captured_at < 1), sample]'],
+  ['QA self length slice', '[...previous.slice(previous.length), sample]'],
+  ['equal slice bounds', '[...previous.slice(1, 1), sample]'],
+  ['slice only newly appended element', '[...previous, sample].slice(-1)'],
+  ['slice after all prior elements', '[...previous, sample].slice(previous.length)'],
+  ['empty chained slice', '[...previous.slice(0, 1).slice(1), sample]'],
+]) {
+  semanticTest(`rejects history with no retained prior element: ${name}`, (t) => {
+    const call = `setSamples(previous => ${body})`;
+    const f = fixture(t, historySource(call));
+    f.add('no-derived-state', call);
+    const result = f.evaluate();
+    assert.equal(result.status, 'requires-review');
+    assert.equal(result.upstreamCorrections?.length ?? 0, 0);
+  });
+}
+
+for (const [name, call] of [
+  ['constant alias false filter', 'setSamples(previous => { const never = false; return [...previous.filter(item => !!item && never), sample]; })'],
+  ['self length alias slice', 'setSamples(previous => { const start = previous.length; return [...previous.slice(start), sample]; })'],
+  ['zero slice end alias', 'setSamples(previous => { const end = 0; return [...previous.slice(0, end), sample]; })'],
+]) {
+  semanticTest(`rejects vacuous history through immutable aliases: ${name}`, (t) => {
+    const f = fixture(t, historySource(call));
+    f.add('no-derived-state', call);
+    assert.equal(f.evaluate().status, 'requires-review');
+  });
+}
+
+for (const body of [
+  '[...previous.filter(item => !!item && true), sample]',
+  '[...previous.slice(1), sample]',
+  '[...previous, sample].slice(-2)',
+]) {
+  semanticTest(`retains a genuine prior-element witness: ${body}`, (t) => {
+    const call = `setSamples(previous => ${body})`;
+    const f = fixture(t, historySource(call));
+    const diagnostic = f.add('no-derived-state', call);
+    assertProof(f, f.evaluate(), diagnostic, 'history-accumulator', [{ file: f.file, text: call }]);
+  });
+}
+
+for (const [component, helper] of [
+  ['ObservationStatistics', 'observation-statistics'],
+  ['QueueStatistics', 'queue-statistics'],
+]) {
+  semanticTest(`retains actual time-window history consumer ${component}`, (t) => {
+    const directory = 'web/app/src/features/settings/pages/events/runtime/statistics';
+    const file = `${directory}/${component}.tsx`;
+    const helperFile = `${directory}/${helper}.ts`;
+    const repoRoot = path.resolve(__dirname, '../../../..');
+    const f = fixture(t, fs.readFileSync(path.join(repoRoot, file), 'utf8'), file);
+    f.write(helperFile, fs.readFileSync(path.join(repoRoot, helperFile), 'utf8'));
+    const diagnostic = f.add('no-derived-state', 'setSamples((previous) =>');
+    const correction = assertProof(f, f.evaluate(), diagnostic, 'history-accumulator', []);
+    assert.ok(correction.evidence.some((entry) => entry.file === helperFile), 'the actual append helper must be proved');
+  });
+}
+
 semanticTest('does not authorize another setter in the same history effect', (t) => {
   const history = 'setSamples(previous => [...previous, sample])';
   const mirror = 'setLabel(sample.name)';
