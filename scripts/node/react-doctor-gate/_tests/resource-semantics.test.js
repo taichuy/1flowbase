@@ -294,6 +294,137 @@ semanticTest(
   },
 );
 
+const SYNCHRONOUS_OBSERVER_REPLACEMENT =
+  "globalThis.IntersectionObserver = class { constructor(cb) { this.cb = cb; } observe(target) { this.cb([{isIntersecting:true}]); } disconnect() {} }";
+const dynamicPayload = JSON.stringify(SYNCHRONOUS_OBSERVER_REPLACEMENT);
+
+semanticTest("independent QA eval replacement loses native provenance", (t) => {
+  const source = `import {useEffect,useRef,useState} from 'react';
+eval("globalThis.IntersectionObserver = class { constructor(cb) { this.cb = cb; } observe(target) { this.cb([{isIntersecting:true}]); } disconnect() {} }");
+function Owner({notify,ready}) {const viewport=useRef(null);const [target,setTarget]=useState(null);useEffect(()=>{if(!ready)return;const receipt = new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting))void notify();},{root:viewport.current,rootMargin:'200px'});if(target)receipt.observe(target);return ()=>receipt.disconnect();},[target,ready,notify]);return <div ref={viewport}><div ref={setTarget}/></div>;}`;
+  const f = fixture(t, source);
+  assert.ok(parseUnit(f.repoRoot, f.file), "QA countermodel must parse");
+  addObservation(f);
+  assertUnproved(f);
+});
+
+for (const [name, before] of [
+  ["direct eval", `eval(${dynamicPayload});`],
+  ["indirect sequence eval", `(0, eval)(${dynamicPayload});`],
+  ["optional eval", `eval?.(${dynamicPayload});`],
+  ["eval alias", `const execute = eval; execute(${dynamicPayload});`],
+  ["eval call", `eval.call(null, ${dynamicPayload});`],
+  [
+    "bound eval",
+    `const execute = eval.bind(null, ${dynamicPayload}); execute();`,
+  ],
+  ["global eval", `globalThis.eval(${dynamicPayload});`],
+  ["window computed eval", `window['eval'](${dynamicPayload});`],
+  ["Function call", `Function(${dynamicPayload})();`],
+  ["Function construction", `new Function(${dynamicPayload})();`],
+  [
+    "Function alias",
+    `const compile = Function; const execute = compile(${dynamicPayload}); execute();`,
+  ],
+  ["global Function", `globalThis.Function(${dynamicPayload})();`],
+  ["Function apply", `Function.apply(null, [${dynamicPayload}])();`],
+  [
+    "ordinary function constructor",
+    `(function () {}).constructor(${dynamicPayload})();`,
+  ],
+  [
+    "async function constructor",
+    `(async function () {}).constructor(${dynamicPayload})();`,
+  ],
+  [
+    "generator function constructor",
+    `(function* () {}).constructor(${dynamicPayload})().next();`,
+  ],
+  [
+    "computed constructor extraction",
+    `const compile = (() => {})['con' + 'structor']; compile(${dynamicPayload})();`,
+  ],
+  [
+    "destructured constructor extraction",
+    `const { constructor: compile } = () => {}; compile(${dynamicPayload})();`,
+  ],
+  [
+    "reflective Function construction",
+    `Reflect.construct(Function, [${dynamicPayload}])();`,
+  ],
+  [
+    "reflective constructor extraction",
+    `Reflect.get(() => {}, 'constructor')(${dynamicPayload})();`,
+  ],
+  [
+    "prototype constructor extraction",
+    `Object.getPrototypeOf(() => {}).constructor(${dynamicPayload})();`,
+  ],
+  ["string timeout", `setTimeout(${dynamicPayload}, 0);`],
+  ["string interval", `setInterval(${dynamicPayload}, 0);`],
+  [
+    "aliased string timer",
+    `const schedule = setTimeout; schedule(${dynamicPayload}, 0);`,
+  ],
+  [
+    "opaque timer callback",
+    "const callback = foreignCallback; setTimeout(callback, 0);",
+  ],
+  [
+    "dynamic executable import",
+    `void import('data:text/javascript,' + encodeURIComponent(${dynamicPayload}));`,
+  ],
+  [
+    "unknown computed call",
+    `const executor = externalExecutor; executor[operation](${dynamicPayload});`,
+  ],
+  [
+    "unknown computed constructor",
+    `new constructors[operation](${dynamicPayload});`,
+  ],
+  [
+    "unknown computed callable alias",
+    `const execute = externalExecutor[operation]; execute(${dynamicPayload});`,
+  ],
+  [
+    "unknown computed callable alias chain",
+    `const first = externalExecutor[operation]; const execute = first; execute(${dynamicPayload});`,
+  ],
+  [
+    "nested deferred eval also defeats module provenance",
+    `export function replaceLater() { eval(${dynamicPayload}); }`,
+  ],
+]) {
+  semanticTest(`opaque code loses native observer provenance: ${name}`, (t) => {
+    const f = observationFixture(t, { before });
+    addObservation(f);
+    assertUnproved(f);
+  });
+}
+
+for (const [name, before] of [
+  [
+    "plain string mentions",
+    `const explanation = ${JSON.stringify("eval Function constructor Reflect import setTimeout")};`,
+  ],
+  [
+    "comments mention execution facilities",
+    "// eval('replace observer'); new Function('replace observer');\n/* function.constructor and import('data:') are only documentation. */",
+  ],
+  [
+    "ordinary data indexing",
+    "const headings = ['First', 'Second']; const column = 0; const label = headings[column];",
+  ],
+  ["known inline timer callback", "setTimeout(() => {}, 0);"],
+  ["known local timer callback", "const idle = () => {}; setTimeout(idle, 0);"],
+]) {
+  semanticTest(`native observer provenance permits ${name}`, (t) => {
+    const f = observationFixture(t, { before });
+    const diagnostic = addObservation(f);
+    assertObservationProof(f, diagnostic);
+  });
+}
+
 for (const [name, options] of [
   ["opaque same-named observe method", { constructorName: "UnknownObserver" }],
   [
