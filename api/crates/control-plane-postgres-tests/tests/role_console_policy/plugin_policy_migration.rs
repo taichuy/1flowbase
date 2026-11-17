@@ -179,11 +179,11 @@ async fn inactive_plugin_migration_preserves_policy_ids_denials_and_first_seen_s
         assert_eq!(policy.role_id(), id);
         assert_eq!(policy.groups().len(), 1);
         assert_eq!(
-            effective_console_simple_operation(&[policy.clone()], &plugin, &allowed),
+            effective_console_simple_operation(std::slice::from_ref(&policy), &plugin, &allowed),
             grants.0
         );
         assert_eq!(
-            effective_console_simple_operation(&[policy.clone()], &plugin, &denied),
+            effective_console_simple_operation(std::slice::from_ref(&policy), &plugin, &denied),
             grants.1
         );
         if code == "disabled" {
