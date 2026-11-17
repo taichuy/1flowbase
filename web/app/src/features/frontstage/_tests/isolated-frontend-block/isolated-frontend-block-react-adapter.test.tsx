@@ -1,4 +1,4 @@
-import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import type { PreparedFrontstageIsolatedContribution } from '../../lib/isolated-frontend-block-contribution';
@@ -108,7 +108,6 @@ describe('isolated frontend React adapter callback and realm ownership', () => {
   });
 
   afterEach(() => {
-    cleanup();
     vi.unstubAllGlobals();
     document.body.replaceChildren();
     FakeMessageChannel.instances.length = 0;

@@ -154,8 +154,8 @@ function setup(initialValue: CommunicationCommandConfiguration[] = []) {
         : { ...command });
       commands = commands.map((command) => ({ ...command }));
       catalog = catalog.map((event) => ({ ...event, name: 'Invoice refreshed' }));
+      view.rerender(scene());
       await act(async () => {
-        view.rerender(scene());
         await queryClient.refetchQueries({
           queryKey: communicationEventCatalogOptions(
             selectNavigationQueryScope(useAuthStore.getState()), true
