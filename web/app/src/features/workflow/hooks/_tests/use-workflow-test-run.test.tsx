@@ -419,13 +419,12 @@ describe('useWorkflowTestRun admitted-start ownership', () => {
         await held.promise;
       }
     );
-    let owner!: ReturnType<typeof mount>;
     const onStarted = vi.fn(() => {
       order.push('started');
       expect(owner.current.state.status).toBe('idle');
       track(owner.current.start(inputs));
     });
-    owner = mount('app-A', documentFor('app-A'), onStarted);
+    const owner: ReturnType<typeof mount> = mount('app-A', documentFor('app-A'), onStarted);
 
     await act(async () => { track(owner.current.start(inputs)); });
 
