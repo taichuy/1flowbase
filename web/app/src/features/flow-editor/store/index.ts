@@ -246,8 +246,42 @@ export function createFlowEditorStore(
       }),
     setSelection: (payload) =>
       set((current) => ({
-        ...current,
-        ...payload
+        selectedNodeId: Object.prototype.hasOwnProperty.call(
+          payload,
+          'selectedNodeId'
+        )
+          ? payload.selectedNodeId
+          : current.selectedNodeId,
+        selectedEdgeId: Object.prototype.hasOwnProperty.call(
+          payload,
+          'selectedEdgeId'
+        )
+          ? payload.selectedEdgeId
+          : current.selectedEdgeId,
+        selectedNodeIds: Object.prototype.hasOwnProperty.call(
+          payload,
+          'selectedNodeIds'
+        )
+          ? payload.selectedNodeIds
+          : current.selectedNodeIds,
+        selectionMode: Object.prototype.hasOwnProperty.call(
+          payload,
+          'selectionMode'
+        )
+          ? payload.selectionMode
+          : current.selectionMode,
+        focusedFieldKey: Object.prototype.hasOwnProperty.call(
+          payload,
+          'focusedFieldKey'
+        )
+          ? payload.focusedFieldKey
+          : current.focusedFieldKey,
+        openInspectorSectionKey: Object.prototype.hasOwnProperty.call(
+          payload,
+          'openInspectorSectionKey'
+        )
+          ? payload.openInspectorSectionKey
+          : current.openInspectorSectionKey
       })),
     setViewportState: (payload) =>
       set((current) => ({
