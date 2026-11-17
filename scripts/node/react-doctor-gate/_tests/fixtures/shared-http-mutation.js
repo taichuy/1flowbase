@@ -316,11 +316,17 @@ async fn invoke_operations(state: Arc<ApiState>, headers: HeaderMap, binding_id:
   crate::routes::console_interface::invoke(state, binding_id, credential, input).await;
 }
 pub fn routes() {
-  ConsoleRouteAssembly::new().route("/${names.collection}/:${names.key}/records", console_${method.toLowerCase()}(create_record));
+  ConsoleRouteAssembly::new()
+    .route("/${names.collection}/:${names.key}/records", console_${method.toLowerCase()}(create_record))
+    .route("/${names.collection}/:${names.key}/records/:${names.id}", console_patch(replace_record));
 }
 #[utoipa::path(${method.toLowerCase()}, path = "${resource}")]
 pub async fn create_record(State(state): State<Arc<ApiState>>, headers: HeaderMap, Path(owner): Path<String>, Json(body): Json<Request>) {
   invoke_operations(state, headers, "${binding}", body, ${options.csrf ?? mutating}).await;
+}
+#[utoipa::path(patch, path = "${resource}/:${names.id}")]
+pub async fn replace_record(State(state): State<Arc<ApiState>>, headers: HeaderMap, Path((owner, id)): Path<(String, String)>, Json(body): Json<Request>) {
+  invoke_operations(state, headers, "http.example.${names.collection}.patch.v7", body, true).await;
 }
 `,
   );
