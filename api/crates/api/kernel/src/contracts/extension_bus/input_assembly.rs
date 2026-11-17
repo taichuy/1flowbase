@@ -860,6 +860,7 @@ fn managed_host_extension_points() -> Result<Vec<ExtensionPointDescriptor>> {
             "plugin_data.owned.write",
             "credential.manage",
             "ephemeral.manage",
+            "execution.gate",
             "file.import.resource",
             "file.read.content",
             "application.logs.read",
