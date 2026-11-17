@@ -174,12 +174,12 @@ function createSharedHttpMutationProof(repoRoot) {
               candidate.binding(node),
           );
           if (!imported) continue;
-          const providerContext = graph.reference(candidate, imported);
-          if (
-            !providerContext ||
-            graph.key(providerContext.unit, providerContext.node) !== identity
-          )
-            continue;
+          const providerContext = graph.speculate(
+            () => graph.reference(candidate, imported),
+            (result) =>
+              result && graph.key(result.unit, result.node) === identity,
+          );
+          if (!providerContext) continue;
           const attribute = opening.attributes.find(
             (item) =>
               item.type === "JSXAttribute" && item.name.name === "value",
@@ -226,13 +226,14 @@ function createSharedHttpMutationProof(repoRoot) {
             node.type === "CallExpression" &&
             unwrap(node.callee)?.type === "Identifier",
         )) {
-          const target = graph.fn(caller, call.callee);
-          if (
-            !target ||
-            target.unit.file !== source.file ||
-            target.fn.range[0] !== fn.range[0]
-          )
-            continue;
+          const target = graph.speculate(
+            () => graph.fn(caller, call.callee),
+            (result) =>
+              result &&
+              result.unit.file === source.file &&
+              result.fn.range[0] === fn.range[0],
+          );
+          if (!target) continue;
           graph.add(caller, call);
           matches.push(
             value(caller, call.arguments[index], new Map(), depth + 1),

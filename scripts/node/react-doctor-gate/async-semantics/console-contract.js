@@ -8,7 +8,7 @@ const {
 
 function createConsoleContracts(graph) {
   const cache = new Map();
-  let rustFiles, manifests;
+  let rustFiles, manifests, policies;
   function source(file) {
     if (!cache.has(file)) {
       const text = graph.text(file);
@@ -261,9 +261,11 @@ function createConsoleContracts(graph) {
     if (/\b(?:struct|enum|type)\s+InterfaceAuditPolicy\b/.test(code))
       return false;
     rustFiles ??= graph.files("api/crates", /\.rs$/);
-    const policies = rustFiles.filter((file) =>
-      /\bpub\s+enum\s+InterfaceAuditPolicy\b/.test(source(file).code),
-    );
+    policies ??= rustFiles
+      .filter((file) => graph.matchesText(file, ["InterfaceAuditPolicy"]))
+      .filter((file) =>
+        /\bpub\s+enum\s+InterfaceAuditPolicy\b/.test(source(file).code),
+      );
     if (
       policies.length !== 1 ||
       !/enum\s+InterfaceAuditPolicy\s*\{\s*ReadOnly\s*,\s*Mutating\s*,?\s*\}/.test(
@@ -480,13 +482,12 @@ function createConsoleContracts(graph) {
     if (!["POST", "PATCH"].includes(method)) return null;
     families ??= graph
       .files("api/crates", /\.rs$/)
-      .filter((file) => {
-        const value = graph.text(file);
-        return (
-          value.includes("ConsoleInterfaceDeclaration") &&
-          value.includes("mutating:")
-        );
-      })
+      // The canonical type spelling is required by the resolved import, even
+      // when the local declaration type is aliased. Keep every lexical match;
+      // comments/strings and false origins are rejected by full masked parsing.
+      .filter((file) =>
+        graph.matchesText(file, ["ConsoleInterfaceDeclaration"]),
+      )
       .flatMap(declarations);
     const matches = [];
     for (const family of families)

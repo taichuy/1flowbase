@@ -25,27 +25,43 @@ function createSourceGraph(repoRoot) {
   function tick() {
     if (++steps > 600000) throw new Error("HTTP proof budget exceeded");
   }
-  function text(file) {
+  function normalized(file) {
     file = path.posix.normalize(file);
     if (file.startsWith("../") || path.isAbsolute(file))
       throw new Error("source escaped repository");
+    return file;
+  }
+  function loadText(file) {
+    const absolute = path.join(repoRoot, normalized(file));
+    if (
+      !fs
+        .realpathSync(absolute)
+        .startsWith(fs.realpathSync(repoRoot) + path.sep)
+    )
+      throw new Error("source symlink escaped");
+    const value = fs.readFileSync(absolute, "utf8");
+    if (value.length > 512 * 1024)
+      throw new Error("HTTP source budget exceeded");
+    return value;
+  }
+  function text(file) {
+    file = normalized(file);
     if (!texts.has(file)) {
-      const absolute = path.join(repoRoot, file);
-      if (
-        !fs
-          .realpathSync(absolute)
-          .startsWith(fs.realpathSync(repoRoot) + path.sep)
-      )
-        throw new Error("source symlink escaped");
-      const value = fs.readFileSync(absolute, "utf8");
-      if (
-        value.length > 512 * 1024 ||
-        (bytes += value.length) > 20 * 1024 * 1024
-      )
+      const value = loadText(file);
+      if ((bytes += value.length) > 20 * 1024 * 1024)
         throw new Error("HTTP source budget exceeded");
       texts.set(file, value);
     }
     return texts.get(file);
+  }
+  function matchesText(file, needles) {
+    tick();
+    file = normalized(file);
+    // Discovery is only a necessary lexical screen. Do not retain unrelated
+    // repository text as proof; every candidate still goes through text/read.
+    // Each probe retains the same path, symlink and per-file budget checks.
+    const value = texts.get(file) ?? loadText(file);
+    return needles.every((needle) => value.includes(needle));
   }
   function read(file) {
     if (!units.has(file)) {
@@ -228,6 +244,32 @@ function createSourceGraph(repoRoot) {
     }
     return null;
   }
+  function speculate(resolve, accepts) {
+    const priorEvidence = new Map(
+      [...evidence].map(([file, spans]) => [
+        file,
+        new Map([...spans].map(([key, span]) => [key, { ...span }])),
+      ]),
+    );
+    const priorExports = new Map(
+      [...exports].map(([key, result]) => [key, result && { ...result }]),
+    );
+    let committed = false;
+    try {
+      const result = resolve();
+      committed = Boolean(accepts(result));
+      return committed ? result : null;
+    } finally {
+      if (!committed) {
+        // Rejected discovery must not leave proof spans or cached export paths.
+        // Keep parsed/text caches and all spent budgets; errors still propagate.
+        evidence.clear();
+        for (const [file, spans] of priorEvidence) evidence.set(file, spans);
+        exports.clear();
+        for (const [key, result] of priorExports) exports.set(key, result);
+      }
+    }
+  }
   function fn(unit, expression) {
     expression = unwrap(expression);
     if (FUNCTIONS.has(expression?.type)) return { unit, fn: expression };
@@ -322,6 +364,7 @@ function createSourceGraph(repoRoot) {
     repoRoot,
     read,
     text,
+    matchesText,
     add,
     addText,
     files,
@@ -329,6 +372,7 @@ function createSourceGraph(repoRoot) {
     moduleFile,
     exported,
     reference,
+    speculate,
     fn,
     walk,
     owner,
