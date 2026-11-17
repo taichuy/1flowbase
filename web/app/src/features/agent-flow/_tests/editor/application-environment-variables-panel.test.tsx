@@ -249,7 +249,7 @@ describe('ApplicationEnvironmentVariablesPanel source and optimistic submission 
       name: i18nText('agentFlow', 'auto.delete_item', { value1: 'SourceA' })
     }));
     fireEvent.click(await screen.findByRole('button', {
-      name: textButtonName('auto.delete'), exact: true
+      name: textButtonName('auto.delete')
     }));
     expect(owner.onSave).toHaveBeenLastCalledWith([]);
     expect(visibleVariableRows()).toEqual([]);
