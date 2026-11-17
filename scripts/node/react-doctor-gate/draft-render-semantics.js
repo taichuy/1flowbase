@@ -260,6 +260,48 @@ function eventAttribute(context, unit, attr) {
   evidence(context, unit, attr);
   return true;
 }
+function menuEventHost(context, unit, opening, key, seen = new Set()) {
+  step(context);
+  if (provider(context, unit, opening, 'menu', key)) return true;
+  const target = resolveFunction(context, unit, opening.name);
+  if (!target || seen.has(target.fn) || seen.size >= 10) return false;
+  const input = propsBinding(target.unit, target.fn, key);
+  if (!immutable(input)) return false;
+  const active = new Set(seen).add(target.fn);
+  let forwarded = false;
+  const references = input.references.filter((reference) => reference.isRead());
+  if (!references.length) return false;
+  for (const reference of references) {
+    const parent = target.unit.parents.get(reference.identifier);
+    // Reading an unrelated option such as style cannot transport onClick.
+    // Accessing the callback itself, or any computed property, stays opaque.
+    if (parent?.type === 'MemberExpression') {
+      const name = memberName(parent);
+      if (name === null || name === 'onClick') return false;
+      continue;
+    }
+    let value = reference.identifier;
+    if (parent?.type === 'SpreadElement') {
+      const object = target.unit.parents.get(parent);
+      if (object?.type !== 'ObjectExpression' || object.properties.filter((property) => property.type === 'SpreadElement').length !== 1
+          || object.properties.some((property) => property.type !== 'SpreadElement'
+            && (property.type !== 'Property' || property.computed || propertyName(property) === 'onClick'))) return false;
+      value = object;
+    }
+    let container = target.unit.parents.get(value);
+    while (container && unwrap(container) === value) { value = container; container = target.unit.parents.get(value); }
+    const attr = target.unit.parents.get(container);
+    const host = target.unit.parents.get(attr);
+    if (container?.type !== 'JSXExpressionContainer' || attr?.type !== 'JSXAttribute' || host?.type !== 'JSXOpeningElement'
+        || host.attributes.slice(host.attributes.indexOf(attr) + 1).some((entry) => entry.type === 'JSXSpreadAttribute'
+          || entry.name.name === attr.name.name)
+        || !returned(target.unit, host, target.fn) || !menuEventHost(context, target.unit, host, attr.name.name, active)) return false;
+    evidence(context, target.unit, host);
+    forwarded = true;
+  }
+  if (forwarded) evidence(context, target.unit, target.fn);
+  return forwarded;
+}
 function registryEvent(context, unit, fn, property) {
   let call, target;
   for (let node = property; node; node = unit.parents.get(node)) {
@@ -317,7 +359,7 @@ function eventFunction(context, unit, fn) {
         const attr = unit.parents.get(container);
         const opening = unit.parents.get(attr);
         if (attr?.type === 'JSXAttribute' && propertyName(parent) === 'onClick'
-            && provider(context, unit, opening, 'menu', attr.name.name)) {
+            && menuEventHost(context, unit, opening, attr.name.name)) {
           evidence(context, unit, attr); context.eventFunctions.set(key, true); return true;
         }
       }

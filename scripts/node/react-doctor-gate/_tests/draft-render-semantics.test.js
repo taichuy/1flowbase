@@ -165,6 +165,7 @@ semanticTest('projects all four actual initializer findings with controlled-fiel
     prefix + 'components/data-blocks/form/design-settings/FormLayoutSettingsFields.tsx',
     prefix + 'components/data-blocks/form/design-settings/FormRuleSettingsFields.tsx',
     prefix + 'lib/block-settings/registry-store.ts',
+    prefix + 'lib/native-modules/block-design/runtime.tsx',
     prefix + 'components/data-blocks/shared/DataBlockModal.tsx',
     prefix + 'components/data-blocks/shared/DataRelationEditor.tsx',
     prefix + 'components/data-blocks/shared/DataBlockFilterEditor.tsx',
