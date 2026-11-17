@@ -287,7 +287,7 @@ describe('useWorkflowTestRun application provenance', () => {
     const stream = streams.get('app-A')!;
     await act(async () => startEvents(stream.handlers, 'A'));
     const edited = structuredClone(document);
-    edited.graph.nodes[0].title = 'Edited start title';
+    edited.graph.nodes[0].alias = 'Edited start alias';
 
     owner.rerender('app-A', edited);
 

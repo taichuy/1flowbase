@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppThemeProvider } from '@1flowbase/ui/app-theme-provider';
 import { createDefaultWorkflowDocument, type FlowAuthoringDocument } from '@1flowbase/flow-schema';
-import type { ConsoleApplicationApiMapping, ConsoleApplicationOrchestrationState } from '@1flowbase/api-client';
+import { ApiClientError, type ConsoleApplicationApiMapping, type ConsoleApplicationOrchestrationState } from '@1flowbase/api-client';
 import { useLayoutEffect, useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -115,7 +115,6 @@ function mountWarmEditor() {
     client.setQueryData(applications.applicationEnvironmentVariablesQueryKey(applicationId), []);
     client.setQueryData(publicApi.applicationApiMappingQueryKey(applicationId), mapping);
     client.setQueryData(publicApi.workflowScheduleTriggerQueryKey(applicationId), null);
-    client.setQueryData(publicApi.applicationApiPublicationQueryKey(applicationId), null);
   }
   const fetchState = vi.spyOn(orchestration, 'fetchOrchestrationState').mockImplementation(
     async (applicationId) => states.get(applicationId)!
@@ -124,7 +123,9 @@ function mountWarmEditor() {
   vi.spyOn(applications, 'fetchApplicationEnvironmentVariables').mockResolvedValue([]);
   vi.spyOn(publicApi, 'fetchApplicationApiMapping').mockResolvedValue(mapping);
   vi.spyOn(publicApi, 'fetchWorkflowScheduleTrigger').mockResolvedValue(null);
-  vi.spyOn(publicApi, 'fetchApplicationApiPublication').mockResolvedValue(null);
+  vi.spyOn(publicApi, 'fetchApplicationApiPublication').mockRejectedValue(
+    new ApiClientError({ status: 404, message: 'Application has no API publication' })
+  );
   vi.spyOn(orchestration, 'analyzeDocument').mockResolvedValue(stateA.analysis);
   const save = vi.spyOn(orchestration, 'saveDraft').mockImplementation(
     async (applicationId) => states.get(applicationId)!
