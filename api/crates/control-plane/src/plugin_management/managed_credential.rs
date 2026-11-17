@@ -10,6 +10,7 @@ use extension_contracts::{
 use std::sync::Arc;
 
 pub struct ManagedPluginCredentialService {
+    registry: super::SharedResourceRegistry,
     authority: Arc<dyn PluginContributionAuthorityRepository>,
     repository: Arc<dyn PluginCredentialRepository>,
 }
@@ -19,9 +20,18 @@ impl ManagedPluginCredentialService {
         repository: Arc<dyn PluginCredentialRepository>,
     ) -> Self {
         Self {
+            registry: super::shared_resource_registry().clone(),
             authority,
             repository,
         }
+    }
+    #[cfg(test)]
+    pub(super) fn with_shared_resource_registry(
+        mut self,
+        registry: super::SharedResourceRegistry,
+    ) -> Self {
+        self.registry = registry;
+        self
     }
 }
 fn denied() -> PluginCredentialError {
@@ -107,9 +117,17 @@ impl PluginCredentialPort for ManagedPluginCredentialService {
                         )
                         .map_err(|_| denied())?;
                     // Revocation and disable cannot cross the actual storage access.
+                    let shared = self
+                        .registry
+                        .resolve_installation(installation)
+                        .map_err(|_| denied())?;
+                    let resolved = shared
+                        .map(|contract| contract.credential_binding(binding))
+                        .transpose()
+                        .map_err(|_| denied())?;
                     let result = self
                         .repository
-                        .execute_plugin_credential(binding, request)
+                        .execute_plugin_credential(resolved.as_ref().unwrap_or(binding), request)
                         .await;
                     lease.release().await.map_err(|_| denied())?;
                     result

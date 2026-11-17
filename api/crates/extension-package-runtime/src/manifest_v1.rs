@@ -254,6 +254,9 @@ pub struct FrontendBlockContributionManifest {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PluginManifestV1 {
+    /// Reference to a deployment-owned resource delegation; never defines an owner.
+    #[serde(default)]
+    pub shared_resource_contract: Option<String>,
     #[serde(default)]
     pub managed_service: Option<crate::managed_service::ManagedServiceManifest>,
     #[serde(default)]
@@ -421,6 +424,14 @@ fn validate_plugin_manifest(
         ));
     }
 
+    if let Some(reference) = &manifest.shared_resource_contract {
+        validate_non_empty(reference, "shared_resource_contract")?;
+        if manifest.manifest_version != 2 || manifest.managed_service.is_none() {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "shared_resource_contract requires a managed service",
+            ));
+        }
+    }
     validate_non_empty(&manifest.plugin_id, "plugin_id")?;
     validate_non_empty(&manifest.version, "version")?;
     plugin_code_from_identity(&manifest.plugin_id, &manifest.version)?;

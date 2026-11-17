@@ -250,6 +250,9 @@ fn prepare_installation_commit_blocking(
     manifest: &PluginManifestV1,
     package_catalog: Option<UpsertPluginPackageCatalogProjectionInput>,
 ) -> Result<CommitPluginInstallationInput> {
+    if let Some(reference) = &manifest.shared_resource_contract {
+        installation.metadata_json["shared_resource_contract"] = serde_json::json!(reference);
+    }
     if let Some(service) = &manifest.managed_service {
         installation.metadata_json["managed_service"] = serde_json::to_value(service)?;
         installation.metadata_json["managed_service_permissions"] = serde_json::json!({"secrets": manifest.permissions.secrets, "storage": manifest.permissions.storage});

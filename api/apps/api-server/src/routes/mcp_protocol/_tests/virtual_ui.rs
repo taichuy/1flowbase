@@ -697,7 +697,7 @@ fn managed_mcp_get_uses_flat_body_path_query_body_fields_and_retains_existing_co
             }},"output_schema":{},"mcp":{"name":"image.read","description":"Read remote image"}
         }]
     })).unwrap();
-    let service = crate::managed_services::ManagedServiceRegistration {
+    let service = crate::managed_services::ManagedServiceRegistration { shared_resource: None,
         publisher_namespace: "test".into(),
         data_models: Vec::new(),
         display_name: "Fixture plugin".into(),

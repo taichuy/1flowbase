@@ -400,3 +400,154 @@ fn managed_data_rejects_stale_identity_storage_and_collection_grants() {
         );
     }
 }
+
+#[tokio::test]
+async fn shared_callbacks_remap_only_after_live_caller_grants_and_hold_original_lease() {
+    use crate::plugin_management::{SharedResourceContract, SharedResourceRegistry};
+    struct SharedInner {
+        held: Arc<AtomicBool>,
+        calls: AtomicUsize,
+        original_subject: ManagedContributionSubject,
+    }
+    impl PluginDataPort for SharedInner {
+        fn execute<'a>(
+            &'a self,
+            binding: &'a PluginDataBinding,
+            _: &'a PluginDataRequest,
+        ) -> PluginDataFuture<'a> {
+            Box::pin(async move {
+                assert!(self.held.load(Ordering::SeqCst));
+                assert_eq!(binding.publisher_namespace, "original");
+                assert_eq!(binding.plugin_code, "shared_hosts");
+                assert_eq!(binding.plugin_version, "shared-v1");
+                assert_eq!(
+                    binding.managed_subject.as_ref(),
+                    Some(&self.original_subject)
+                );
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                Ok(PluginDataResponse {
+                    results: vec![],
+                    replayed: false,
+                })
+            })
+        }
+    }
+    let (mut state, binding, request) = fixture();
+    state.installation.metadata_json["shared_resource_contract"] = json!("example/hosts/v1");
+    let authority = Arc::new(Authority {
+        state: Arc::new(tokio::sync::Mutex::new(state)),
+        held: Arc::new(AtomicBool::new(false)),
+        locks: AtomicUsize::new(0),
+    });
+    let inner = Arc::new(SharedInner {
+        held: authority.held.clone(),
+        calls: AtomicUsize::new(0),
+        original_subject: binding.managed_subject.clone().unwrap(),
+    });
+    let contract: SharedResourceContract = serde_json::from_value(json!({
+        "contract_id":"example/hosts/v1", "owner":{"publisher_namespace":"original","plugin_code":"shared_hosts"}, "schema_version":"shared-v1",
+        "participants":[{"publisher_namespace":"original","plugin_code":"shared_hosts"},{"publisher_namespace":"acme","plugin_code":"ssh"}],
+        "collections":["connections"], "record_resources":[], "record_resource_bindings":{}, "credentials":true
+    })).unwrap();
+    let mut service = ManagedPluginDataService::new(authority.clone(), inner.clone());
+    service.registry = SharedResourceRegistry(vec![contract]);
+    service.registry.validate().unwrap();
+    service.execute(&binding, &request).await.unwrap();
+    assert!(!authority.held.load(Ordering::SeqCst));
+    authority.state.lock().await.snapshot.authorizations[1].status =
+        ContributionAuthorizationStatus::Revoked;
+    assert!(service.execute(&binding, &request).await.is_err());
+    authority.state.lock().await.snapshot.authorizations[1].status =
+        ContributionAuthorizationStatus::Active;
+    authority.state.lock().await.installation.desired_state = PluginDesiredState::Disabled;
+    assert!(service.execute(&binding, &request).await.is_err());
+    authority.state.lock().await.installation.desired_state = PluginDesiredState::ActiveRequested;
+    service.registry.0[0]
+        .participants
+        .retain(|p| p.publisher_namespace != "acme");
+    assert!(service.execute(&binding, &request).await.is_err());
+    assert_eq!(inner.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn shared_credentials_keep_live_consumer_authority_and_read_existing_owner_credentials() {
+    use crate::plugin_management::{
+        ManagedPluginCredentialService, SharedResourceContract, SharedResourceRegistry,
+    };
+    use extension_contracts::{
+        PluginCredentialBinding, PluginCredentialError, PluginCredentialPort,
+        PluginCredentialRequest, PluginCredentialResponse,
+    };
+    struct ExistingCredentials {
+        held: Arc<AtomicBool>,
+        calls: AtomicUsize,
+    }
+    #[async_trait::async_trait]
+    impl PluginCredentialRepository for ExistingCredentials {
+        async fn execute_plugin_credential(
+            &self,
+            binding: &PluginCredentialBinding,
+            request: &PluginCredentialRequest,
+        ) -> Result<PluginCredentialResponse, PluginCredentialError> {
+            assert!(self.held.load(Ordering::SeqCst));
+            assert_eq!(binding.publisher_namespace, "original");
+            assert_eq!(binding.plugin_code, "shared_hosts");
+            assert_eq!(binding.scope_id, domain::SYSTEM_SCOPE_ID.to_string());
+            assert_eq!(request.credential_id(), "existing-host");
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(PluginCredentialResponse {
+                value: Some(json!({"password":"existing-owner-secret"})),
+            })
+        }
+    }
+    let (mut state, data_binding, _) = fixture();
+    state.installation.metadata_json["shared_resource_contract"] = json!("example/hosts/v1");
+    state.installation.metadata_json["managed_service_permissions"]["secrets"] =
+        json!("host_managed");
+    state.installation.metadata_json["managed"]["module"]["contributions"][0]
+        ["required_permissions"] = json!(["service.execute", "credential.manage"]);
+    state.snapshot.authorizations[1].permission = "credential.manage".into();
+    state.snapshot.authorizations[1].permission_contract_id = "plugin-credential".into();
+    state.snapshot.authorizations[1].resource_scope = ContributionResourceScope::System;
+    let binding = PluginCredentialBinding {
+        installation_id: state.installation.id.to_string(),
+        contribution_id: "ssh.list".into(),
+        publisher_namespace: data_binding.publisher_namespace,
+        plugin_code: data_binding.plugin_code,
+        plugin_version: data_binding.plugin_version,
+        scope_id: data_binding.workspace_id,
+        deadline_unix_ms: data_binding.deadline_unix_ms,
+    };
+    let contract: SharedResourceContract = serde_json::from_value(json!({
+        "contract_id":"example/hosts/v1", "owner":{"publisher_namespace":"original","plugin_code":"shared_hosts"}, "schema_version":"shared-v1",
+        "participants":[{"publisher_namespace":"original","plugin_code":"shared_hosts"},{"publisher_namespace":"acme","plugin_code":"ssh"}],
+        "collections":["connections"], "record_resources":[], "record_resource_bindings":{}, "credentials":true
+    })).unwrap();
+    let authority = Arc::new(Authority {
+        state: Arc::new(tokio::sync::Mutex::new(state)),
+        held: Arc::new(AtomicBool::new(false)),
+        locks: AtomicUsize::new(0),
+    });
+    let repository = Arc::new(ExistingCredentials {
+        held: authority.held.clone(),
+        calls: AtomicUsize::new(0),
+    });
+    let service = ManagedPluginCredentialService::new(authority.clone(), repository.clone())
+        .with_shared_resource_registry(SharedResourceRegistry(vec![contract]));
+    let get = PluginCredentialRequest::Get {
+        credential_id: "existing-host".into(),
+    };
+    assert_eq!(
+        service.execute(&binding, &get).await.unwrap().value,
+        Some(json!({"password":"existing-owner-secret"}))
+    );
+    assert!(!authority.held.load(Ordering::SeqCst));
+    authority.state.lock().await.snapshot.authorizations[1].status =
+        ContributionAuthorizationStatus::Revoked;
+    assert!(service.execute(&binding, &get).await.is_err());
+    authority.state.lock().await.snapshot.authorizations[1].status =
+        ContributionAuthorizationStatus::Active;
+    authority.state.lock().await.installation.desired_state = PluginDesiredState::Disabled;
+    assert!(service.execute(&binding, &get).await.is_err());
+    assert_eq!(repository.calls.load(Ordering::SeqCst), 1);
+}

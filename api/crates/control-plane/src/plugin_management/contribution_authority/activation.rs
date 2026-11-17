@@ -98,6 +98,11 @@ where
             || manifest.plugin_code()? != installation.provider_code
             || manifest.version != installation.plugin_version
             || serde_json::to_value(&manifest.managed)? != installation.metadata_json["managed"]
+            || manifest.shared_resource_contract.as_deref()
+                != installation
+                    .metadata_json
+                    .get("shared_resource_contract")
+                    .and_then(serde_json::Value::as_str)
         {
             return Err(
                 ControlPlaneError::Conflict("managed_contribution_identity_mismatch").into(),
