@@ -2,7 +2,7 @@ import type {
   EventRuntimeQueueSnapshot,
   EventSourceRuntimeSnapshot
 } from '@1flowbase/api-client';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
   appendQueueSample,
   queueStatistics
@@ -54,6 +54,31 @@ function queue(
     consumed: 7,
     admission_rejected: 0,
     ...overrides
+  };
+}
+
+function hostNumberLocale(initialLocale: string) {
+  const NumberFormat = Intl.NumberFormat;
+  let locale = initialLocale;
+  const language = vi
+    .spyOn(navigator, 'language', 'get')
+    .mockImplementation(() => locale);
+  const construction = vi
+    .spyOn(Intl, 'NumberFormat')
+    .mockImplementation(function (locales, options) {
+      return new NumberFormat(locales ?? locale, options);
+    });
+  return {
+    construction,
+    change(nextLocale: string) {
+      locale = nextLocale;
+      window.dispatchEvent(new Event('languagechange'));
+    },
+    restore() {
+      construction.mockRestore();
+      language.mockRestore();
+      vi.resetModules();
+    }
   };
 }
 
@@ -130,6 +155,59 @@ describe('report data contracts', () => {
     expect(formatObservationBytes(0)).toBe('0 B');
     expect(formatObservationBytes(1024)).toBe('1 KiB');
     expect(formatObservationBytes(4194304)).toBe('4 MiB');
+  });
+  test('preserves host-default grouping, fractional precision and binary-unit boundaries', async () => {
+    vi.resetModules();
+    const host = hostNumberLocale('de-DE');
+    try {
+      const { formatObservationBytes: format } = await import(
+        '../runtime/statistics/observation-statistics'
+      );
+      for (const [bytes, expected] of [
+        [0, '0 B'],
+        [1023, '1.023 B'],
+        [1024, '1 KiB'],
+        [1536, '1,5 KiB'],
+        [1.25 * 1024 ** 2, '1,3 MiB'],
+        [1.5 * 1024 ** 3, '1,5 GiB'],
+        [1024 ** 4, '1.024 GiB']
+      ] as const) {
+        expect(format(bytes)).toBe(expected);
+      }
+    } finally {
+      host.restore();
+    }
+  });
+  test('lazily reuses integer and fractional formatters and refreshes after a host-language change', async () => {
+    vi.resetModules();
+    const host = hostNumberLocale('en-US');
+    try {
+      const { formatObservationBytes: format } = await import(
+        '../runtime/statistics/observation-statistics'
+      );
+      expect(host.construction).not.toHaveBeenCalled();
+      host.change('de-DE');
+      expect(format(0)).toBe('0 B');
+      expect(format(1023)).toBe('1.023 B');
+      expect(host.construction).toHaveBeenCalledTimes(1);
+      expect(format(1024)).toBe('1 KiB');
+      expect(format(1536)).toBe('1,5 KiB');
+      expect(host.construction).toHaveBeenCalledTimes(2);
+      for (let render = 0; render < 4; render += 1) {
+        format(1023);
+        format(1536);
+        format(4194304);
+      }
+      expect(host.construction).toHaveBeenCalledTimes(2);
+      host.change('en-US');
+      expect(format(1023)).toBe('1,023 B');
+      expect(format(1536)).toBe('1.5 KiB');
+      expect(host.construction).toHaveBeenCalledTimes(4);
+      expect(format(4194304)).toBe('4 MiB');
+      expect(host.construction).toHaveBeenCalledTimes(4);
+    } finally {
+      host.restore();
+    }
   });
 });
 
