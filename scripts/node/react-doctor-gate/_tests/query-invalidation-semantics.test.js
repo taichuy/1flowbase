@@ -238,3 +238,77 @@ semanticTest('requires the pinned rule identity, message, location and parseable
   f.write(f.file, 'export const invalid = (');
   assertUnresolved(f, diagnostic);
 });
+
+const { receiverThreats, nativeReceivers } = require('./fixtures/native-receiver-runtime.cjs');
+
+function queryReceiverSource(patch = '', receiver = 'client') {
+  return `import { useMutation, useQueryClient } from '@tanstack/react-query';
+function Owner() {
+  const client = useQueryClient();
+  ${patch}
+  return useMutation({ mutationFn: save, onSuccess: () => ${receiver}.invalidateQueries({ queryKey: ['records'] }) });
+}
+`;
+}
+
+for (const [name, patch] of receiverThreats('client', 'invalidateQueries', 'patchClient', '() => {}')) {
+  semanticTest(`requires unchanged native QueryClient provenance: ${name}`, (t) => {
+    const f = fixture(t, queryReceiverSource(patch));
+    assertUnresolved(f, f.add());
+  });
+}
+
+for (const [name, patch, receiver = 'client'] of [
+  ['native receiver', ''],
+  ['immutable receiver aliases', 'const first = client; const second = first;', 'second'],
+  ['same-named unrelated mutations', `const unrelated = { invalidateQueries: submit };
+    Object.assign(unrelated, { invalidateQueries: submit });
+    Object.defineProperty(unrelated, 'invalidateQueries', { value: submit });
+    Reflect.set(unrelated, 'invalidateQueries', submit); patchOther(unrelated);`],
+  ['shadowed Object only sees another receiver', 'const unrelated = {}; const Object = { keys: patchClient }; Object.keys(unrelated);'],
+]) {
+  semanticTest(`retains native QueryClient control: ${name}`, (t) => {
+    const f = fixture(t, queryReceiverSource(patch, receiver));
+    const diagnostic = f.add();
+    assertProof(f, f.evaluate(), [diagnostic], [`${receiver}.invalidateQueries(`]);
+  });
+}
+
+const queryNativeCases = [
+  ['actual native cache action', '', 'client', true],
+  ['immutable alias native action', 'const alias = client;', 'alias', true],
+  ['direct assignment negative control', 'client.invalidateQueries = () => {};', 'client', false],
+  ['QA Object.assign cache countermodel', 'Object.assign(client, { invalidateQueries: () => {} });', 'client', false],
+  ['QA descriptor cache countermodel', 'Object.defineProperty(client, "invalidateQueries", { value: () => {} });', 'client', false],
+  ['QA opaque client countermodel', 'patchClient(client);', 'client', false],
+].map(([name, patch, receiver, native]) => ({ name, source: queryReceiverSource(patch, receiver), native }));
+let queryNativeObservations;
+for (const [index, entry] of queryNativeCases.entries()) {
+  semanticTest(`installed QueryClient runtime evidence: ${entry.name}`, (t) => {
+    queryNativeObservations ??= nativeReceivers('query', queryNativeCases);
+    const observed = queryNativeObservations[index];
+    assert.equal(observed.sourceSha256, sourceDigest(entry.source), 'execute the same source inspected by the gate');
+    assert.match(observed.library, /@tanstack[+\/]/u);
+    assert.equal(observed.before, false, 'the real records query starts fresh');
+    assert.equal(observed.value, entry.native, 'inspect actual installed QueryClient cache state');
+    assert.equal(observed.businessSubmits, 0);
+    const f = fixture(t, entry.source);
+    const diagnostic = f.add();
+    if (entry.native) assertProof(f, f.evaluate(), [diagnostic]);
+    else assertUnresolved(f, diagnostic);
+  });
+}
+
+semanticTest('holds a native client factory with an unproved supplied receiver', (t) => {
+  const source = queryReceiverSource().replace('function Owner()', 'function Owner({ foreign })')
+    .replace('useQueryClient();', 'useQueryClient(foreign);');
+  const f = fixture(t, source);
+  assertUnresolved(f, f.add());
+});
+
+semanticTest('holds an extracted client method without its native receiver', (t) => {
+  const source = queryReceiverSource('const { invalidateQueries: invalidate } = client;')
+    .replace("client.invalidateQueries({ queryKey: ['records'] })", "invalidate({ queryKey: ['records'] })");
+  const f = fixture(t, source);
+  assertUnresolved(f, f.add());
+});

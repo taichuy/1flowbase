@@ -355,3 +355,107 @@ semanticTest('fails closed on unknown tool identity, message, syntax, location o
   fs.unlinkSync(path.join(f.repoRoot, f.file));
   assert.equal(f.evaluate().status, 'requires-review');
 });
+
+const { receiverThreats, nativeReceivers } = require('./fixtures/native-receiver-runtime.cjs');
+
+function formReceiverSource(patch = '', receiver = 'editor', consumer = 'null',
+  formImport = "import { Form } from 'antd';", factory = 'Form.useForm()') {
+  return `import { useEffect } from 'react';
+${formImport}
+function Owner({ receipt }) {
+  const [editor] = ${factory};
+  ${patch}
+  useEffect(() => { ${receiver}.setFieldsValue(receipt); }, [receipt]);
+  return ${consumer};
+}
+`;
+}
+
+function assertFormReceiverUnproved(f) {
+  f.add('no-event-handler', 'receipt);');
+  const result = f.evaluate();
+  assert.equal(result.status, 'requires-review');
+  assert.equal(result.reviewed, 0);
+  assert.equal(result.upstreamCorrections?.length ?? 0, 0);
+  assert.equal(result.findings.length, 1);
+}
+
+for (const [name, patch] of receiverThreats('editor', 'setFieldsValue', 'patchForm')) {
+  semanticTest(`requires unchanged native Form provenance: ${name}`, (t) => {
+    const f = fixture(t, formReceiverSource(patch));
+    assertFormReceiverUnproved(f);
+  });
+}
+
+for (const [name, patch, receiver = 'editor', consumer = 'null', formImport, factory] of [
+  ['native receiver', ''],
+  ['immutable receiver aliases', 'const first = editor; const second = first;', 'second'],
+  ['standard imported AntD Form consumer', '', 'editor', '<Form form={editor}><Form.Item name="value"><input /></Form.Item></Form>'],
+  ['renamed native Form import consumer', '', 'editor', '<AntForm form={editor} />', "import { Form as AntForm } from 'antd';", 'AntForm.useForm()'],
+  ['immutable native component alias consumer', 'const NativeForm = Form;', 'editor', '<NativeForm form={editor} />'],
+  ['same-named unrelated mutations', `const unrelated = { setFieldsValue: submit };
+    Object.assign(unrelated, { setFieldsValue: submit });
+    Object.defineProperty(unrelated, 'setFieldsValue', { value: submit });
+    Reflect.set(unrelated, 'setFieldsValue', submit); patchOther(unrelated);`],
+  ['shadowed Object only sees another receiver', 'const unrelated = {}; const Object = { keys: patchForm }; Object.keys(unrelated);'],
+]) {
+  semanticTest(`retains native Form control: ${name}`, (t) => {
+    const f = fixture(t, formReceiverSource(patch, receiver, consumer, formImport, factory));
+    const diagnostic = f.add('no-event-handler', 'receipt);');
+    assertProof(f, f.evaluate(), diagnostic, 'external-form-synchronization', [{ file: f.file, text: `${receiver}.setFieldsValue(receipt)` }]);
+  });
+}
+
+for (const [name, patch, consumer] of [
+  ['opaque custom JSX consumer', 'const Custom = ({ form }) => { patchForm(form); return null; };', '<Custom form={editor} />'],
+  ['native-looking custom JSX alias', 'const NativeForm = OpaqueForm;', '<NativeForm form={editor} />'],
+]) {
+  semanticTest(`holds an unproved Form receiver consumer: ${name}`, (t) => {
+    const f = fixture(t, formReceiverSource(patch, 'editor', consumer));
+    assertFormReceiverUnproved(f);
+  });
+}
+
+const formNativeCases = [
+  ['actual native form store action', '', 'editor', true],
+  ['immutable alias native action', 'const alias = editor;', 'alias', true],
+  ['direct assignment negative control', 'editor.setFieldsValue = submit;', 'editor', false],
+  ['QA Object.assign form countermodel', 'Object.assign(editor, { setFieldsValue: submit });', 'editor', false],
+  ['QA descriptor form countermodel', 'Object.defineProperty(editor, "setFieldsValue", { value: submit });', 'editor', false],
+  ['QA opaque form countermodel', 'patchForm(editor);', 'editor', false],
+].map(([name, patch, receiver, native]) => ({ name, source: formReceiverSource(patch, receiver), native }));
+let formNativeObservations;
+for (const [index, entry] of formNativeCases.entries()) {
+  semanticTest(`installed AntD FormStore runtime evidence: ${entry.name}`, (t) => {
+    formNativeObservations ??= nativeReceivers('form', formNativeCases);
+    const observed = formNativeObservations[index];
+    assert.equal(observed.sourceSha256, sourceDigest(entry.source), 'execute the same source inspected by the gate');
+    assert.match(observed.library, /@rc-component[+\/]form/u);
+    assert.equal(observed.before, 0, 'the actual installed FormStore starts with value zero');
+    assert.equal(observed.value, entry.native ? 1 : 0, 'inspect actual AntD FormStore data');
+    assert.equal(observed.businessSubmits, entry.native ? 0 : 1, 'a substituted method dispatches business work instead of hydration');
+    const f = fixture(t, entry.source);
+    if (entry.native) {
+      const diagnostic = f.add('no-event-handler', 'receipt);');
+      assertProof(f, f.evaluate(), diagnostic, 'external-form-synchronization', []);
+    } else assertFormReceiverUnproved(f);
+  });
+}
+
+semanticTest('holds a native Form factory with an unproved supplied receiver', (t) => {
+  const source = formReceiverSource().replace('function Owner({ receipt })', 'function Owner({ receipt, foreign })')
+    .replace('Form.useForm();', 'Form.useForm(foreign);');
+  assertFormReceiverUnproved(fixture(t, source));
+});
+
+semanticTest('holds a patched native Form factory surface before construction', (t) => {
+  const source = formReceiverSource().replace('function Owner({ receipt })', 'function Owner({ receipt, foreign })')
+    .replace('  const [editor] = Form.useForm();', '  Object.assign(Form, { useForm: () => [foreign] });\n  const [editor] = Form.useForm();');
+  assertFormReceiverUnproved(fixture(t, source));
+});
+
+semanticTest('holds an extracted Form method without its inspected receiver', (t) => {
+  const source = formReceiverSource('const { setFieldsValue: hydrate } = editor;')
+    .replace('editor.setFieldsValue(receipt);', 'hydrate(receipt);');
+  assertFormReceiverUnproved(fixture(t, source));
+});

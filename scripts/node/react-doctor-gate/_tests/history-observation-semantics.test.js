@@ -1006,3 +1006,127 @@ semanticTest(
     }
   },
 );
+
+const { receiverThreats: historyReceiverThreats, nativeReceivers: historyNativeReceivers } = require('./fixtures/native-receiver-runtime.cjs');
+
+function observationReceiverSource(patch = '', receiver = 'client', consumer = '({ onSuccess() {} })') {
+  return `import { useEffect, useCallback, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+function Owner({ ready = true } = {}) {
+  const client = useQueryClient();
+  ${patch}
+  useEffect(() => {
+    if (ready) { void ${receiver}.invalidateQueries({ queryKey: ['records'] }); }
+  }, [ready, ${receiver}]);
+  return ${consumer};
+}
+`;
+}
+
+for (const [name, patch] of historyReceiverThreats('client', 'invalidateQueries', 'patchClient', '() => {}')) {
+  semanticTest(`completion cache retains native receiver boundary: ${name}`, (t) => {
+    const f = fixture(t, observationReceiverSource(patch));
+    f.add(EVENT, 'ready) {');
+    assertUnproved(f);
+  });
+}
+
+const historyDefaultAlias = 'function install(value = client) { Object.assign(value, { invalidateQueries: submit }); } install();';
+const historyNestedDefault = "function install({ cache = client } = {}) { Object.defineProperty(cache, 'invalidateQueries', { value: submit, configurable: true }); } install();";
+const historyConditionalArgument = 'Object.assign(true ? client : null, { invalidateQueries: submit });';
+const historyConditionalReturn = 'const borrow = () => true ? client : null; Object.assign(borrow(), { invalidateQueries: submit });';
+const historyConstructorAlias = 'const NativeOwner = client.constructor; Object.assign(NativeOwner.prototype, { invalidateQueries: submit });';
+
+for (const [name, patch] of [
+  ['receiver default parameter', historyDefaultAlias],
+  ['receiver nested destructuring default', historyNestedDefault],
+  ['receiver inside conditional argument', historyConditionalArgument],
+  ['receiver returned inside conditional', historyConditionalReturn],
+  ['native constructor alias prototype replacement', historyConstructorAlias],
+]) {
+  semanticTest(`holds hidden completion receiver mutation: ${name}`, (t) => {
+    const f = fixture(t, observationReceiverSource(patch));
+    f.add(EVENT, 'ready) {');
+    assertUnproved(f);
+  });
+}
+
+semanticTest('holds completion invalidation after imported native constructor prototype replacement', (t) => {
+  const source = observationReceiverSource('Object.assign(QueryClient.prototype, { invalidateQueries: submit });')
+    .replace("import { useQueryClient } from '@tanstack/react-query';", "import { useQueryClient, QueryClient } from '@tanstack/react-query';");
+  const f = fixture(t, source);
+  f.add(EVENT, 'ready) {');
+  assertUnproved(f);
+});
+
+semanticTest('holds completion client factory arguments rather than assuming context provenance', (t) => {
+  const source = observationReceiverSource().replace('useQueryClient();', 'useQueryClient(foreign);');
+  const f = fixture(t, source);
+  f.add(EVENT, 'ready) {');
+  assertUnproved(f);
+});
+
+semanticTest('holds a completion action extracted from its native receiver', (t) => {
+  const source = observationReceiverSource('const { invalidateQueries: invalidate } = client;')
+    .replace("client.invalidateQueries({ queryKey: ['records'] })", "invalidate({ queryKey: ['records'] })");
+  const f = fixture(t, source);
+  f.add(EVENT, 'ready) {');
+  assertUnproved(f);
+});
+
+for (const [name, patch, consumer] of [
+  ['opaque JSX consumer', '', '<OpaqueClientConsumer client={client} />'],
+  ['local mutating JSX consumer', 'const Consumer = ({ cache }) => { patchClient(cache); return null; };', '<Consumer cache={client} />'],
+]) {
+  semanticTest(`holds completion client escape through ${name}`, (t) => {
+    const f = fixture(t, observationReceiverSource(patch, 'client', consumer));
+    f.add(EVENT, 'ready) {');
+    assertUnproved(f);
+  });
+}
+
+for (const [name, patch, receiver = 'client'] of [
+  ['native receiver', ''],
+  ['immutable alias', 'const alias = client;', 'alias'],
+  ['nested immutable aliases', 'const first = client; const second = first;', 'second'],
+  ['native React dependency consumers', "const callback = useCallback(() => 42, [client]); const memo = useMemo(() => ['records'], [client]);"],
+  ['unrelated receiver mutation', "const other = {}; Object.assign(other, { invalidateQueries: submit }); Object.defineProperty(other, 'invalidateQueries', { value: submit }); patchOther(other);"],
+]) {
+  semanticTest(`retains completion native receiver control: ${name}`, (t) => {
+    const f = fixture(t, observationReceiverSource(patch, receiver));
+    const diagnostic = f.add(EVENT, 'ready) {');
+    assertProof(f, diagnostic, 'query-observation-synchronization', [`${receiver}.invalidateQueries({ queryKey: ['records'] })`]);
+  });
+}
+
+// Keep the prototype mutation last: each batch has a fresh dedicated process,
+// and no later native control can inherit a changed library prototype.
+const historyNativeCases = [
+  ['actual native observation', '', 'client', true, 0],
+  ['immutable alias native observation', 'const alias = client;', 'alias', true, 0],
+  ['direct assignment negative control', 'client.invalidateQueries = submit;', 'client', false, 1],
+  ['QA assign already closed control', 'Object.assign(client, { invalidateQueries: () => {} });', 'client', false, 0],
+  ['QA descriptor already closed control', "Object.defineProperty(client, 'invalidateQueries', { value: () => {} });", 'client', false, 0],
+  ['QA opaque escape already closed control', 'patchClient(client);', 'client', false, 0],
+  ['default parameter runtime countermodel', historyDefaultAlias, 'client', false, 1],
+  ['nested default runtime countermodel', historyNestedDefault, 'client', false, 1],
+  ['conditional argument runtime countermodel', historyConditionalArgument, 'client', false, 1],
+  ['conditional return runtime countermodel', historyConditionalReturn, 'client', false, 1],
+  ['constructor prototype runtime countermodel', historyConstructorAlias, 'client', false, 1],
+].map(([name, patch, receiver, native, business]) => ({ name, source: observationReceiverSource(patch, receiver), native, business }));
+let historyNativeObservations;
+for (const [index, entry] of historyNativeCases.entries()) {
+  semanticTest(`installed QueryClient completion observation: ${entry.name}`, (t) => {
+    historyNativeObservations ??= historyNativeReceivers('query', historyNativeCases);
+    const observed = historyNativeObservations[index];
+    assert.equal(observed.sourceSha256, sourceDigest(entry.source));
+    assert.match(observed.library, /@tanstack[+\/]/u);
+    assert.equal(observed.before, false);
+    assert.equal(observed.value, entry.native, 'read the actual installed QueryClient query state');
+    assert.equal(observed.businessSubmits, entry.business, 'mutation replacement dispatches business work without native invalidation');
+    const f = fixture(t, entry.source);
+    const diagnostic = f.add(EVENT, 'ready) {');
+    if (entry.native) assertProof(f, diagnostic, 'query-observation-synchronization', []);
+    else assertUnproved(f);
+  });
+}
