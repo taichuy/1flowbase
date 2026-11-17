@@ -1,6 +1,6 @@
 import {
   useCallback,
-  useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -57,30 +57,34 @@ function createRunObservation() {
 
 export function useWorkflowTestRun(
   applicationId: string,
-  document: FlowAuthoringDocument
+  document: FlowAuthoringDocument,
+  onStarted?: () => void
 ) {
   const [ownedState, setOwnedState] = useState(() => ({
     applicationId,
+    token: {},
     state: emptyWorkflowRunState()
   }));
   if (ownedState.applicationId !== applicationId) {
-    setOwnedState({ applicationId, state: emptyWorkflowRunState() });
+    setOwnedState({ applicationId, token: {}, state: emptyWorkflowRunState() });
   }
   const state =
     ownedState.applicationId === applicationId
       ? ownedState.state
       : emptyWorkflowRunState();
+  const ownerToken = ownedState.token;
+  const committedOwnerToken = useRef<object | null>(null);
   const setState = useCallback(
     (next: SetStateAction<WorkflowRunState>) => {
       setOwnedState((current) => {
-        if (current.applicationId !== applicationId) return current;
+        if (current.token !== ownerToken) return current;
         return {
           ...current,
           state: typeof next === 'function' ? next(current.state) : next
         };
       });
     },
-    [applicationId]
+    [ownerToken]
   );
   const observationRef = useRef<ReturnType<typeof createRunObservation> | null>(
     null
@@ -91,16 +95,24 @@ export function useWorkflowTestRun(
   const canRun = can('start_flow_debug_run_stream') && Boolean(csrfToken);
   const nodeStatuses = useMemo(() => workflowNodeRunStatuses(state), [state]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    committedOwnerToken.current = ownerToken;
     return () => {
+      committedOwnerToken.current = null;
       observationRef.current?.dispose();
       observationRef.current = null;
     };
-  }, [applicationId]);
+  }, [ownerToken]);
 
   const start = useCallback(
     async (inputs: Record<string, unknown>) => {
-      if (!canRun || !csrfToken || observationRef.current) return;
+      if (
+        committedOwnerToken.current !== ownerToken ||
+        !canRun ||
+        !csrfToken ||
+        observationRef.current
+      )
+        return;
       let runInput: ReturnType<typeof buildWorkflowTestRunInput>;
       try {
         runInput = buildWorkflowTestRunInput({ document, inputs });
@@ -114,9 +126,13 @@ export function useWorkflowTestRun(
       }
       const observation = createRunObservation();
       observationRef.current = observation;
-      setState({ ...emptyWorkflowRunState(), status: 'starting' });
       const isCurrent = () =>
-        !observation.disposed && observationRef.current === observation;
+        committedOwnerToken.current === ownerToken &&
+        !observation.disposed &&
+        observationRef.current === observation;
+      onStarted?.();
+      if (!isCurrent()) return;
+      setState({ ...emptyWorkflowRunState(), status: 'starting' });
       let presentation = Promise.resolve();
       const visibleSince = new Map<string, number>();
       const shownNodes = new Set<string>();
@@ -241,7 +257,7 @@ export function useWorkflowTestRun(
         await observation.pause(1500);
       }
     },
-    [applicationId, document, canRun, csrfToken, setState]
+    [applicationId, document, canRun, csrfToken, ownerToken, onStarted, setState]
   );
 
   return {

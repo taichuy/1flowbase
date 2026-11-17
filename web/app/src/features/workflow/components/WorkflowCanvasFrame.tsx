@@ -126,7 +126,14 @@ function useWorkflowCanvasController({
   const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const workingDocument = useAgentFlowEditorStore(selectWorkingDocument);
-  const testRun = useWorkflowTestRun(applicationId, workingDocument);
+  const clearRunEntryTransientState = useAgentFlowEditorStore(
+    (state) => state.clearRunEntryTransientState
+  );
+  const testRun = useWorkflowTestRun(
+    applicationId,
+    workingDocument,
+    clearRunEntryTransientState
+  );
   const lastSavedDocument = useAgentFlowEditorStore(selectLastSavedDocument);
   const autosaveStatus = useAgentFlowEditorStore(selectAutosaveStatus);
   const versions = useAgentFlowEditorStore(selectVersions);
@@ -187,7 +194,7 @@ function useWorkflowCanvasController({
   }
   const environmentVariablesOpen =
     !testRun.active && runPanels.environmentVariablesOpen;
-  // Hide the previous detail until the existing store cleanup clears selection.
+  // Keep the first active commit independent of any previously selected detail.
   const selectedDetailNodeId =
     enteringRun || runPanels.dismissedNodeId === selectedNodeId
       ? null
@@ -237,9 +244,6 @@ function useWorkflowCanvasController({
   const navigation = useContainerNavigation();
   const detailActions = useNodeDetailActions();
   useEditorShortcuts({ disabled: testRun.active });
-  const clearRunEntryTransientState = useAgentFlowEditorStore(
-    (state) => state.clearRunEntryTransientState
-  );
   useEffect(() => {
     if (!testRun.active && testRun.state.runId && selectedNodeId) {
       void queryClient.invalidateQueries({
@@ -257,10 +261,6 @@ function useWorkflowCanvasController({
     applicationId,
     queryClient
   ]);
-  useEffect(() => {
-    if (!testRun.active) return;
-    clearRunEntryTransientState();
-  }, [testRun.active, clearRunEntryTransientState]);
   const draftSync = useDraftSync({
     applicationId,
     saveDraftOverride,
