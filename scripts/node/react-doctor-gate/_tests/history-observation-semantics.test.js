@@ -754,9 +754,33 @@ semanticTest("proves the actual Frame query-only completion observation", (t) =>
     "web/app/src/features/agent-flow/api/runtime.ts",
   ];
   for (const dependency of dependencies) f.write(dependency, fs.readFileSync(path.join(repoRoot, dependency), "utf8"));
-  const diagnostic = f.add(EVENT, "useWorkflowTestRun(applicationId, workingDocument)");
+  const diagnostic = f.add(EVENT, "applicationId,\n    workingDocument,\n    clearRunEntryTransientState\n  )");
   const proof = assertProof(f, diagnostic, "query-observation-synchronization", [
     "useQueryClient()",
+    `if (!testRun.active && testRun.state.runId && selectedNodeId) {
+      void queryClient.invalidateQueries({
+        queryKey: applicationRunNodeLastRunQueryKey(
+          applicationId,
+          testRun.state.runId,
+          selectedNodeId
+        )
+      });
+    }`,
+    `export const applicationRunNodeLastRunQueryKey = (
+  applicationId: string,
+  runId: string,
+  nodeId: string
+) =>
+  [
+    'applications',
+    applicationId,
+    'runtime',
+    'runs',
+    runId,
+    'nodes',
+    nodeId,
+    'last-run'
+  ] as const;`,
   ]);
   for (const dependency of dependencies) assert.ok(proof.evidence.some((entry) => entry.file === dependency), `missing actual resolved source ${dependency}`);
 });

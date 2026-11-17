@@ -1,5 +1,6 @@
 const path = require("node:path");
 const { createHash } = require("node:crypto");
+const { completionObservation } = require("./history-observation/completion.js");
 const {
   parseUnit,
   unwrap,
@@ -752,21 +753,17 @@ function observationProof(unit, token, context) {
     return null;
   const candidates = [];
   for (const effect of effects) {
-    let reached = false;
-    walk(unit, effectCallback(effect).body, context, (node) => {
-      if (
-        node.type === "IfStatement" &&
-        depends(unit, node.test, root, context)
-      )
-        reached = true;
-    });
-    if (reached) candidates.push(effect);
+    // A second effect can dispatch an action without an if guard. Every direct
+    // use of this source needs proof; a convenient cache branch is insufficient.
+    if (depends(unit, effectCallback(effect).body, root, context))
+      candidates.push(effect);
   }
   if (!candidates.length) return null;
   const proofs = candidates.map(
     (effect) =>
       historyEffects(unit, effect, context) ??
-      queryProof(unit, effect, context),
+      queryProof(unit, effect, context) ??
+      completionObservation(unit, [effect], root, context),
   );
   if (
     proofs.some((proof) => !proof) ||
@@ -829,7 +826,15 @@ function createHistoryObservationSemanticCorrections(repoRoot) {
       const unit = units.get(file);
       const node = unit && atDiagnostic(unit, diagnostic);
       if (!node) return null;
-      const context = { steps: 0, spans: new Map() };
+      const context = {
+        steps: 0,
+        spans: new Map(),
+        repoRoot,
+        read(file) {
+          if (!units.has(file)) units.set(file, parseUnit(repoRoot, file));
+          return units.get(file);
+        },
+      };
       let proof;
       if (diagnostic.rule === "no-derived-state") {
         const info = stateInfo(unit, node.callee);
@@ -855,6 +860,11 @@ function createHistoryObservationSemanticCorrections(repoRoot) {
             sha256: createHash("sha256").update(unit.source).digest("hex"),
             spans: [...context.spans.values()],
           },
+          ...[...(context.resolvedEvidence ?? [])].map(([dependency, spans]) => ({
+            file: dependency.file,
+            sha256: createHash("sha256").update(dependency.source).digest("hex"),
+            spans: [...spans.values()],
+          })),
         ],
       };
     } catch {
