@@ -67,14 +67,14 @@ vi.mock('../../agent-flow/components/editor/AgentFlowCanvas', async () => {
 // Observe real rendered Tabs; do not substitute activeTab props for visible UI.
 vi.mock('../../agent-flow/components/detail/NodeDetailPanel', async (original) => {
   const { NodeDetailPanel: ActualDetail } = await original<typeof import('../../agent-flow/components/detail/NodeDetailPanel')>();
-  const { useLayoutEffect } = await import('react');
+  const { Profiler } = await import('react');
   const { screen, within } = await import('@testing-library/react');
   const { i18nText } = await import('../../../shared/i18n/text');
   const { useAgentFlowEditorStore } = await import('../../agent-flow/store/editor/provider');
   return {
     NodeDetailPanel: (props: ComponentProps<typeof NodeDetailPanel>) => {
       const selectedNodeId = useAgentFlowEditorStore((state) => state.selectedNodeId);
-      useLayoutEffect(() => {
+      function recordCommittedDetail() {
         const body = screen.queryByTestId('node-detail-body');
         if (!body) return;
         const tabs = within(body);
@@ -87,8 +87,12 @@ vi.mock('../../agent-flow/components/detail/NodeDetailPanel', async (original) =
           configSelected: tabs.getByRole('tab', { name: i18nText('agentFlow', 'auto.settings') }).getAttribute('aria-selected') === 'true',
           runSelected: tabs.getByRole('tab', { name: runLabel }).getAttribute('aria-selected') === 'true'
         });
-      });
-      return <ActualDetail {...props} />;
+      }
+      return (
+        <Profiler id="workflow-detail-commits" onRender={recordCommittedDetail}>
+          <ActualDetail {...props} />
+        </Profiler>
+      );
     }
   };
 });
@@ -162,6 +166,9 @@ async function click(button: HTMLElement) {
 async function selectNode(which: 'start' | 'end') {
   await click(screen.getByRole('button', { name: `Select workflow ${which}` }));
   await screen.findByTestId('node-detail-body');
+  await waitFor(() => expect(screen.getByTestId('node-detail-header')).toHaveTextContent(
+    which === 'start' ? 'Workflow Start' : 'Workflow End'
+  ));
 }
 async function chooseConfig() {
   const tab = screen.getByRole('tab', { name: i18nText('agentFlow', 'auto.settings') });
