@@ -71,7 +71,28 @@ const RULES = {
       "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/toSorted",
     ],
   },
+  "js-hoist-intl": {
+    message: (name) =>
+      `This is slow because new Intl.${name}() rebuilds on every call inside a function, so move it to the top of the file, or wrap it in useMemo`,
+    ruleSourceSha256:
+      "ad9c0a9d6c992567e6cba6c7a14d852c41c57624d8e743c8206bc7e5b1f4ecf0",
+    references: [
+      "https://github.com/millionco/react-doctor/blob/2d1ab245f0cbaa87529067e6e3ed9ac08362d1fc/packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-hoist-intl.ts",
+      "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing_assignment",
+      "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat",
+    ],
+  },
 };
+const INTL_CLASSES = new Set([
+  "NumberFormat",
+  "DateTimeFormat",
+  "Collator",
+  "RelativeTimeFormat",
+  "ListFormat",
+  "PluralRules",
+  "Segmenter",
+  "DisplayNames",
+]);
 const FUNCTIONS = new Set([
   "ArrowFunctionExpression",
   "FunctionExpression",
@@ -191,12 +212,14 @@ function atDiagnostic(unit, diagnostic) {
     diagnostic.column -
     1;
   const wanted =
-    diagnostic.rule === "prefer-tag-over-role"
-      ? "JSXAttribute"
-      : diagnostic.rule === "click-events-have-key-events" ||
-          diagnostic.rule === "no-static-element-interactions"
-        ? "JSXIdentifier"
-        : "CallExpression";
+    diagnostic.rule === "js-hoist-intl"
+      ? "NewExpression"
+      : diagnostic.rule === "prefer-tag-over-role"
+        ? "JSXAttribute"
+        : diagnostic.rule === "click-events-have-key-events" ||
+            diagnostic.rule === "no-static-element-interactions"
+          ? "JSXIdentifier"
+          : "CallExpression";
   return (
     unit.nodes.find(
       (node) => node.range[0] === offset && node.type === wanted,
@@ -618,6 +641,316 @@ function immutableSort(unit, node, context, repoRoot) {
   };
 }
 
+function enclosingFunction(unit, node) {
+  for (
+    let parent = unit.parents.get(node);
+    parent;
+    parent = unit.parents.get(parent)
+  ) {
+    if (FUNCTIONS.has(parent.type)) return parent;
+  }
+  return null;
+}
+function nativeGlobal(unit, node, name) {
+  node = unwrap(node);
+  const binding = unit.binding(node);
+  return (
+    node?.type === "Identifier" &&
+    node.name === name &&
+    (!binding || binding.defs.length === 0)
+  );
+}
+function nativeUndefined(unit, node) {
+  return nativeGlobal(unit, node, "undefined");
+}
+function privateNullishSlot(unit, binding, context) {
+  step(context);
+  if (binding?.defs.length !== 1 || binding.defs[0].type !== "Variable")
+    return null;
+  const declaration = binding.defs[0].node;
+  const statement = unit.parents.get(declaration);
+  if (
+    declaration.id.type !== "Identifier" ||
+    statement?.type !== "VariableDeclaration" ||
+    !["let", "var"].includes(statement.kind) ||
+    unit.parents.get(statement)?.type !== "Program"
+  )
+    return null;
+  const initial = unwrap(declaration.init);
+  if (
+    initial &&
+    !nativeUndefined(unit, initial) &&
+    !(initial.type === "Literal" && initial.value === null)
+  )
+    return null;
+  for (const entry of unit.ast.body) {
+    step(context);
+    if (entry.type === "ExportNamedDeclaration" && !entry.source) {
+      for (const specifier of entry.specifiers) {
+        step(context);
+        if (specifier.local?.name === declaration.id.name) return null;
+      }
+    }
+    if (
+      entry.type === "ExportDefaultDeclaration" &&
+      unwrap(entry.declaration)?.type === "Identifier" &&
+      unit.binding(unwrap(entry.declaration)) === binding
+    )
+      return null;
+  }
+  return { binding, declaration, statement };
+}
+function stableLanguageSignal(
+  unit,
+  expression,
+  owner,
+  context,
+  seen = new Set(),
+) {
+  step(context);
+  expression = unwrap(expression);
+  if (!expression || seen.size > 8) return false;
+  if (expression.type === "Literal")
+    return (
+      expression.regex === undefined &&
+      (expression.value === null ||
+        ["string", "number", "boolean"].includes(typeof expression.value))
+    );
+  if (nativeUndefined(unit, expression)) return true;
+  if (expression.type === "Identifier") {
+    const binding = unit.binding(expression);
+    if (
+      !immutable(binding) ||
+      seen.has(binding) ||
+      binding.defs[0].type !== "Variable"
+    )
+      return false;
+    const declaration = binding.defs[0].node;
+    if (
+      declaration.id.type !== "Identifier" ||
+      enclosingFunction(unit, declaration) !== owner
+    )
+      return false;
+    if (
+      !stableLanguageSignal(
+        unit,
+        declaration.init,
+        owner,
+        context,
+        new Set([...seen, binding]),
+      )
+    )
+      return false;
+    addProof(context, unit.parents.get(declaration));
+    return true;
+  }
+  const browserLanguage = (node) =>
+    node?.type === "MemberExpression" &&
+    !node.computed &&
+    memberName(node) === "language" &&
+    nativeGlobal(unit, node.object, "navigator");
+  if (browserLanguage(expression)) return true;
+  if (
+    expression.type !== "ConditionalExpression" ||
+    !nativeUndefined(unit, expression.consequent) ||
+    !browserLanguage(unwrap(expression.alternate))
+  )
+    return false;
+  const test = unwrap(expression.test);
+  return (
+    test?.type === "BinaryExpression" &&
+    test.operator === "===" &&
+    test.left.type === "UnaryExpression" &&
+    test.left.operator === "typeof" &&
+    nativeGlobal(unit, test.left.argument, "navigator") &&
+    test.right.type === "Literal" &&
+    test.right.value === "undefined"
+  );
+}
+function sameSignal(unit, left, right) {
+  left = unwrap(left);
+  right = unwrap(right);
+  if (!left || !right || left.type !== right.type) return false;
+  return left.type === "Identifier"
+    ? unit.binding(left) === unit.binding(right) && left.name === right.name
+    : left.type === "Literal" && left.value === right.value;
+}
+function languageInvalidation(unit, reset, assignment, owner, context) {
+  if (
+    reset.operator !== "=" ||
+    !nativeUndefined(unit, reset.right) ||
+    enclosingFunction(unit, reset) !== owner
+  )
+    return null;
+  const statement = unit.parents.get(reset);
+  const block = unit.parents.get(statement);
+  const guard = unit.parents.get(block);
+  if (
+    statement?.type !== "ExpressionStatement" ||
+    block?.type !== "BlockStatement" ||
+    guard?.type !== "IfStatement" ||
+    guard.consequent !== block ||
+    guard.alternate ||
+    unit.parents.get(guard) !== owner.body ||
+    guard.range[1] > assignment.range[0]
+  )
+    return null;
+  const test = unwrap(guard.test);
+  if (test?.type !== "BinaryExpression" || test.operator !== "!==") return null;
+  for (const [markerExpression, signal] of [
+    [test.left, test.right],
+    [test.right, test.left],
+  ]) {
+    if (
+      markerExpression.type !== "Identifier" ||
+      !stableLanguageSignal(unit, signal, owner, context)
+    )
+      continue;
+    const marker = privateNullishSlot(
+      unit,
+      unit.binding(markerExpression),
+      context,
+    );
+    if (!marker) continue;
+    let update;
+    let valid = true;
+    for (const child of block.body) {
+      step(context);
+      const write =
+        child.type === "ExpressionStatement" && unwrap(child.expression);
+      if (
+        write?.type !== "AssignmentExpression" ||
+        write.operator !== "=" ||
+        write.left.type !== "Identifier"
+      ) {
+        valid = false;
+        break;
+      }
+      if (unit.binding(write.left) === marker.binding) {
+        if (update || !sameSignal(unit, write.right, signal)) {
+          valid = false;
+          break;
+        }
+        update = write;
+      } else if (
+        !nativeUndefined(unit, write.right) ||
+        !privateNullishSlot(unit, unit.binding(write.left), context)
+      ) {
+        valid = false;
+        break;
+      }
+    }
+    if (
+      !valid ||
+      !update ||
+      marker.binding.references.some((reference) => {
+        step(context);
+        return (
+          reference.isWrite() &&
+          !(reference.init && reference.identifier === marker.declaration.id) &&
+          unit.parents.get(reference.identifier) !== update
+        );
+      })
+    )
+      continue;
+    addProof(context, marker.statement);
+    addProof(context, update);
+    addProof(context, reset);
+    addProof(context, guard);
+    return guard;
+  }
+  return null;
+}
+function nativeIntlClosed(unit, context) {
+  for (const node of unit.nodes) {
+    step(context);
+    if (
+      node.type === "CallExpression" &&
+      unwrap(node.callee)?.type === "Identifier" &&
+      unwrap(node.callee).name === "eval"
+    )
+      return false;
+    if (
+      node.type !== "Identifier" ||
+      node.name !== "Intl" ||
+      !nativeGlobal(unit, node, "Intl") ||
+      !unit.bindings.has(node)
+    )
+      continue;
+    const parent = unit.parents.get(node);
+    if (
+      (parent?.type === "TSQualifiedName" && parent.left === node) ||
+      (parent?.type === "TSTypeReference" && parent.typeName === node)
+    )
+      continue;
+    const construction = unit.parents.get(parent);
+    if (
+      parent?.type !== "MemberExpression" ||
+      parent.object !== node ||
+      parent.computed ||
+      !INTL_CLASSES.has(memberName(parent)) ||
+      construction?.type !== "NewExpression" ||
+      construction.callee !== parent
+    )
+      return false;
+  }
+  return true;
+}
+function lazyIntlCache(unit, node, diagnostic, context) {
+  const callee = unwrap(node.callee);
+  const className = memberName(callee);
+  if (
+    node.type !== "NewExpression" ||
+    callee?.type !== "MemberExpression" ||
+    callee.computed ||
+    !nativeGlobal(unit, callee.object, "Intl") ||
+    !INTL_CLASSES.has(className) ||
+    diagnostic.message !== RULES["js-hoist-intl"].message(className)
+  )
+    return null;
+  const assignment = unit.parents.get(node);
+  const owner = enclosingFunction(unit, node);
+  if (
+    !owner ||
+    assignment?.type !== "AssignmentExpression" ||
+    assignment.operator !== "??=" ||
+    assignment.right !== node ||
+    assignment.left.type !== "Identifier" ||
+    !nativeIntlClosed(unit, context)
+  )
+    return null;
+  const slot = privateNullishSlot(unit, unit.binding(assignment.left), context);
+  if (!slot) return null;
+  let invalidation;
+  for (const reference of slot.binding.references) {
+    step(context);
+    if (
+      !reference.isWrite() ||
+      (reference.init && reference.identifier === slot.declaration.id)
+    )
+      continue;
+    const write = unit.parents.get(reference.identifier);
+    if (write === assignment) continue;
+    if (
+      write?.type !== "AssignmentExpression" ||
+      write.left !== reference.identifier
+    )
+      return null;
+    const guard = languageInvalidation(unit, write, assignment, owner, context);
+    if (!guard || (invalidation && invalidation !== guard)) return null;
+    invalidation = guard;
+  }
+  addProof(context, slot.statement);
+  addProof(context, node);
+  addProof(context, assignment);
+  addProof(context, owner);
+  return {
+    predicate: "module-owned-lazy-intl-cache",
+    reason:
+      "This native Intl constructor only initializes a private module-owned nullish cache. All binding writes and any observed-language invalidation are inspected, so unchanged observations reuse the formatter instead of rebuilding it on every call.",
+  };
+}
+
 function createRenderSemanticCorrections(repoRoot) {
   const units = new Map();
   return (diagnostic, toolPackage) => {
@@ -626,7 +959,11 @@ function createRenderSemanticCorrections(repoRoot) {
       toolPackage !== TOOL ||
       diagnostic.plugin !== "react-doctor" ||
       !rule ||
-      diagnostic.message !== rule.message
+      (typeof rule.message === "function"
+        ? ![...INTL_CLASSES].some(
+            (name) => diagnostic.message === rule.message(name),
+          )
+        : diagnostic.message !== rule.message)
     )
       return null;
     const file = path.posix.normalize(`web/app/${diagnostic.filePath}`);
@@ -649,7 +986,9 @@ function createRenderSemanticCorrections(repoRoot) {
             ? compositeGraphic(unit, node, context)
             : diagnostic.rule === "js-tosorted-immutable"
               ? immutableSort(unit, node, context, repoRoot)
-              : propagationBoundary(unit, node, context);
+              : diagnostic.rule === "js-hoist-intl"
+                ? lazyIntlCache(unit, node, diagnostic, context)
+                : propagationBoundary(unit, node, context);
       if (!proof) return null;
       const { message, ...provenance } = rule;
       return {
