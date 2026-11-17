@@ -15,7 +15,7 @@ import {
   Tooltip,
   Typography
 } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import {
   formatEnvironmentVariableTitle,
@@ -188,16 +188,34 @@ function useEnvironmentVariableDraftController({
 }: ApplicationEnvironmentVariablesPanelProps) {
   const can = useConsoleOperationAccess();
   const canSave = can('replace_application_environment_variables');
-  const [draftVariables, setDraftVariables] = useState(variables);
+  const [variableSource, setVariableSource] = useState<{
+    source: AgentFlowEnvironmentVariable[];
+    token: object;
+    optimisticVariables: AgentFlowEnvironmentVariable[] | null;
+  }>(() => ({ source: variables, token: {}, optimisticVariables: null }));
+  if (variableSource.source !== variables) {
+    setVariableSource({
+      source: variables,
+      token: {},
+      optimisticVariables: null
+    });
+  }
+  const draftVariables =
+    variableSource.source === variables
+      ? variableSource.optimisticVariables ?? variables
+      : variables;
+  const committedSourceToken = useRef<object | null>(null);
+  useLayoutEffect(() => {
+    committedSourceToken.current = variableSource.token;
+    return () => {
+      committedSourceToken.current = null;
+    };
+  }, [variableSource.token]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [valueError, setValueError] = useState<string | null>(null);
   const [form] = Form.useForm<EnvironmentVariableFormValues>();
   const selectedValueType = Form.useWatch('value_type', form) ?? 'string';
-
-  useEffect(() => {
-    setDraftVariables(variables);
-  }, [variables]);
 
   const editingVariable =
     editingIndex === null ? null : draftVariables[editingIndex];
@@ -252,7 +270,9 @@ function useEnvironmentVariableDraftController({
 
   async function submitModal() {
     if (!canSave) return;
+    const sourceToken = variableSource.token;
     const values = await form.validateFields();
+    if (committedSourceToken.current !== sourceToken) return;
     let parsedValue: unknown;
 
     try {
@@ -276,7 +296,11 @@ function useEnvironmentVariableDraftController({
             index === editingIndex ? nextVariable : variable
           );
 
-    setDraftVariables(nextVariables);
+    setVariableSource((current) =>
+      current.token === sourceToken
+        ? { ...current, optimisticVariables: nextVariables }
+        : current
+    );
     onSave(nextVariables);
     setModalOpen(false);
   }
@@ -286,7 +310,11 @@ function useEnvironmentVariableDraftController({
     const nextVariables = draftVariables.filter(
       (_, candidate) => candidate !== index
     );
-    setDraftVariables(nextVariables);
+    setVariableSource((current) =>
+      current.token === variableSource.token
+        ? { ...current, optimisticVariables: nextVariables }
+        : current
+    );
     onSave(nextVariables);
   }
   return {
