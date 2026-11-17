@@ -161,8 +161,43 @@ function useWorkflowCanvasController({
   documentRef.current = workingDocument;
   lastSavedDocumentRef.current = lastSavedDocument;
 
-  const [environmentVariablesOpen, setEnvironmentVariablesOpen] =
-    useState(false);
+  const [runPanels, setRunPanels] = useState<{
+    active: boolean;
+    environmentVariablesOpen: boolean;
+    dismissedNodeId: string | null;
+  }>(() => ({
+    active: testRun.active,
+    environmentVariablesOpen: false,
+    dismissedNodeId: null
+  }));
+  const enteringRun = testRun.active && !runPanels.active;
+  if (runPanels.active !== testRun.active) {
+    setRunPanels({
+      active: testRun.active,
+      environmentVariablesOpen: testRun.active
+        ? false
+        : runPanels.environmentVariablesOpen,
+      dismissedNodeId: testRun.active ? selectedNodeId : null
+    });
+  } else if (
+    runPanels.dismissedNodeId !== null &&
+    runPanels.dismissedNodeId !== selectedNodeId
+  ) {
+    setRunPanels({ ...runPanels, dismissedNodeId: null });
+  }
+  const environmentVariablesOpen =
+    !testRun.active && runPanels.environmentVariablesOpen;
+  // Hide the previous detail until the existing store cleanup clears selection.
+  const selectedDetailNodeId =
+    enteringRun || runPanels.dismissedNodeId === selectedNodeId
+      ? null
+      : selectedNodeId;
+  function setEnvironmentVariablesOpen(open: boolean) {
+    setRunPanels((current) => ({
+      ...current,
+      environmentVariablesOpen: open
+    }));
+  }
   const [nodeDetailTab, setNodeDetailTab] = useState<'config' | 'lastRun'>(
     'config'
   );
@@ -228,7 +263,6 @@ function useWorkflowCanvasController({
         sourceNodeType: null
       }
     });
-    setEnvironmentVariablesOpen(false);
   }, [testRun.active, setSelection, setPanelState, setInteractionState]);
   const draftSync = useDraftSync({
     applicationId,
@@ -463,7 +497,7 @@ function useWorkflowCanvasController({
     nodePickerOptions,
     viewportSnapshotRef,
     viewportGetterRef,
-    selectedNodeId,
+    selectedDetailNodeId,
     nodeDetailLayout,
     isResizingNodeDetail,
     boundedNodeDetailWidth,
@@ -512,7 +546,7 @@ export function WorkflowCanvasFrame(
     nodePickerOptions,
     viewportSnapshotRef,
     viewportGetterRef,
-    selectedNodeId,
+    selectedDetailNodeId,
     nodeDetailLayout,
     isResizingNodeDetail,
     boundedNodeDetailWidth,
@@ -600,7 +634,7 @@ export function WorkflowCanvasFrame(
             viewportGetterRef.current = getter;
           }}
         />
-        {selectedNodeId ? (
+        {selectedDetailNodeId ? (
           <div
             className="agent-flow-editor__detail-dock"
             data-layout={nodeDetailLayout}
