@@ -64,9 +64,9 @@ export function duplicateNodeSubgraph(
     idMap.set(sourceId, copiedId);
     existingNodeIds.add(copiedId);
   }
-  const duplicatedNodes = document.graph.nodes
-    .filter((node) => sourceIdSet.has(node.id))
-    .map((node) =>
+  const duplicatedNodes = document.graph.nodes.flatMap((node) => {
+    if (!sourceIdSet.has(node.id)) return [];
+    return [
       transformNodeSelectorReferences(
         {
           ...node,
@@ -85,18 +85,18 @@ export function duplicateNodeSubgraph(
         },
         (selector) => remapSelector(selector, idMap)
       )
-    );
+    ];
+  });
   const duplicatedEdgeIds = new Set(
     document.graph.edges.map((edge) => edge.id)
   );
-  const duplicatedEdges = document.graph.edges
-    .filter(
-      (edge) => sourceIdSet.has(edge.source) && sourceIdSet.has(edge.target)
-    )
-    .map((edge) => {
-      const copiedId = availableCopyId(duplicatedEdgeIds, edge.id);
-      duplicatedEdgeIds.add(copiedId);
-      return {
+  const duplicatedEdges = document.graph.edges.flatMap((edge) => {
+    if (!(sourceIdSet.has(edge.source) && sourceIdSet.has(edge.target)))
+      return [];
+    const copiedId = availableCopyId(duplicatedEdgeIds, edge.id);
+    duplicatedEdgeIds.add(copiedId);
+    return [
+      {
         ...edge,
         id: copiedId,
         source: idMap.get(edge.source)!,
@@ -105,8 +105,9 @@ export function duplicateNodeSubgraph(
           edge.containerId && idMap.has(edge.containerId)
             ? idMap.get(edge.containerId)!
             : edge.containerId
-      };
-    });
+      }
+    ];
+  });
 
   return fitContainerBounds({
     ...document,
