@@ -133,6 +133,8 @@ fn duplex_upgrade_is_protocol_metadata_and_keeps_exact_original_post_permission(
     op.stream = Some(plugin_framework::ManagedServiceStream {
         input_schema: json!({"type":"object"}),
         event_schema: json!({"type":"object"}),
+        shared_source: None,
+        aggregate_source_interface_id: None,
     });
     let plan = crate::app_state::compile_console_boot_plan_with_managed_services(
         Vec::new(),

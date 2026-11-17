@@ -6,6 +6,8 @@ use std::collections::BTreeSet;
 
 mod record_permissions;
 pub use record_permissions::*;
+mod shared_streams;
+pub use shared_streams::*;
 
 pub const MANAGED_SERVICE_POINT: &str = "1flowbase.managed-service.operation";
 
@@ -229,6 +231,10 @@ impl ManagedMcpMediaMapping {
 pub struct ManagedServiceStream {
     pub input_schema: Value,
     pub event_schema: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared_source: Option<ManagedServiceSharedSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aggregate_source_interface_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -246,6 +252,8 @@ pub struct ManagedServiceOperation {
     pub output_schema: Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stream: Option<ManagedServiceStream>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared_snapshot: Option<ManagedServiceSharedSnapshot>,
     #[serde(default)]
     pub invalidates_streams: bool,
     /// Successful execution retires shared actor workers without unmounting contributions.
@@ -598,7 +606,7 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
                 .map_err(|_| invalid("managed service schema is invalid"))?;
         }
     }
-    Ok(())
+    shared_streams::validate_shared_streams(service)
 }
 
 /// Paths use portable package separators and contain only ordinary nonempty components.
