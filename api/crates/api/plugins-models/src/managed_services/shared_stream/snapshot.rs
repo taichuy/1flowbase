@@ -18,6 +18,7 @@ pub(in crate::managed_services) enum SnapshotLookup {
 pub(in crate::managed_services) struct SnapshotFallback {
     // Serial permit survives the entire raw unary execution and cache write.
     _guard: OwnedMutexGuard<()>,
+    _inspection: OwnedMutexGuard<()>,
     source: ManagedSource,
     revision: String,
     operation: String,
@@ -106,6 +107,9 @@ pub(in crate::managed_services) async fn snapshot(
         host::record_pointer(&source.operation)?,
         serde_json::json!(source.key.record),
     )?;
+    let inspection = broker::inspection(&source.key).lock_owned().await;
+    // Every queued caller still performs its own current Kernel/row admission
+    // and revision check. A shared permit never conveys another caller's grant.
     let principal = source.admit(&principal, &source_payload).await?;
     let revision = source.resolve(&principal, &source_payload).await?;
     if let Some(value) = cached(&source, &revision, operation, &principal, &source_payload).await? {
@@ -115,6 +119,9 @@ pub(in crate::managed_services) async fn snapshot(
         if let Some(entry) = broker::active(&source.key) {
             let mut notices = entry.notices.subscribe();
             entry.refresh_revision(&revision);
+            // The producer owns this wait. Do not queue new members or cadence
+            // changes behind a cache reader waiting for its next ready sample.
+            drop(inspection);
             loop {
                 let notice = notices.borrow_and_update().clone();
                 if let Some(value) =
@@ -148,6 +155,7 @@ pub(in crate::managed_services) async fn snapshot(
         }
         return Ok(SnapshotLookup::Fallback(SnapshotFallback {
             _guard: guard,
+            _inspection: inspection,
             source,
             revision,
             operation: operation.interface_id.clone(),

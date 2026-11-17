@@ -1,6 +1,49 @@
 use super::*;
 
 #[tokio::test]
+async fn inspection_coalesces_same_source_without_holding_its_live_producer_or_retaining_lanes() {
+    let key = key();
+    let fake = Fake::new();
+    let lease = add(key.clone(), &fake, member(1000), "r1").await;
+    fake.started(1).await;
+    let inspection = inspection(&key);
+    let weak = Arc::downgrade(&inspection);
+    let held = tokio::time::timeout(Duration::from_secs(1), inspection.clone().lock_owned())
+        .await
+        .expect("a live producer must not hold the separate inspection lane");
+    assert!(
+        super::super::broker::inspection(&key)
+            .try_lock_owned()
+            .is_err(),
+        "a second same-source inspection must queue"
+    );
+    assert!(
+        serial(&key).try_lock_owned().is_err(),
+        "producer still owns only its separate lifetime permit"
+    );
+    let mut other = key.clone();
+    other.record = "independent-record".into();
+    assert!(
+        super::super::broker::inspection(&other)
+            .try_lock_owned()
+            .is_ok(),
+        "unrelated records inspect independently"
+    );
+    let queued = super::super::broker::inspection(&key);
+    drop(held);
+    let guard = tokio::time::timeout(Duration::from_secs(1), queued.lock_owned())
+        .await
+        .unwrap();
+    drop(guard);
+    drop(inspection);
+    assert!(
+        weak.upgrade().is_none(),
+        "the inspection registry must not retain completed lane ownership"
+    );
+    lease.leave().await;
+}
+
+#[tokio::test]
 async fn a_terminal_source_waits_for_explicit_membership_refresh_instead_of_retrying_permanently() {
     let key = key();
     let fake = Fake::new();

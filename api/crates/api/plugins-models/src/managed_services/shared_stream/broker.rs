@@ -84,6 +84,7 @@ pub(super) struct Entry {
 struct Registry {
     entries: BTreeMap<SourceKey, Arc<Entry>>,
     serial: BTreeMap<SerialKey, Weak<AsyncMutex<()>>>,
+    inspections: BTreeMap<SourceKey, Weak<AsyncMutex<()>>>,
 }
 fn registry() -> &'static Mutex<Registry> {
     static REGISTRY: OnceLock<Mutex<Registry>> = OnceLock::new();
@@ -103,6 +104,20 @@ pub(super) fn serial(key: &SourceKey) -> Arc<AsyncMutex<()>> {
         &mut registry().lock().unwrap_or_else(|e| e.into_inner()),
         key,
     )
+}
+/// Serialize short source inspection independently of the producer's lifetime.
+/// Holding this through unary fallback and cache fill also coalesces concurrent
+/// misses before their resolver callbacks acquire authority/effect resources.
+pub(super) fn inspection(key: &SourceKey) -> Arc<AsyncMutex<()>> {
+    let mut all = registry().lock().unwrap_or_else(|e| e.into_inner());
+    all.inspections.retain(|_, value| value.strong_count() > 0);
+    if let Some(inspection) = all.inspections.get(key).and_then(Weak::upgrade) {
+        return inspection;
+    }
+    let inspection = Arc::new(AsyncMutex::new(()));
+    all.inspections
+        .insert(key.clone(), Arc::downgrade(&inspection));
+    inspection
 }
 pub(super) fn active(key: &SourceKey) -> Option<Arc<Entry>> {
     registry()

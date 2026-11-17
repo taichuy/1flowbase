@@ -171,6 +171,7 @@ impl Session {
                     host::record_pointer(&self.source)?,
                     json!(source.key.record),
                 )?;
+                let _inspection = broker::inspection(&source.key).lock_owned().await;
                 let principal = source.admit(&self.principal, &payload).await?;
                 let revision = source.resolve(&principal, &payload).await?;
                 let record_id = source.key.record.clone();

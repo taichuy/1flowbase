@@ -141,6 +141,7 @@ async fn run(f: &Fixture) {
     );
     assert_eq!(count(f, "shared_source_start:"), 1);
     // MCP uses a real User API key, not a synthesized cookie or service principal.
+    eprintln!("[shared-fixture] member cached snapshot first");
     let first = f
         .mcp(
             false,
@@ -149,6 +150,7 @@ async fn run(f: &Fixture) {
         )
         .await;
     assert_eq!(mcp_success(&first), &member_ready);
+    eprintln!("[shared-fixture] member cached snapshot second");
     let second = f
         .mcp(
             false,
@@ -163,6 +165,7 @@ async fn run(f: &Fixture) {
         "active source cache must not execute unary SSH equivalent"
     );
     f.policy(&f.alpha, "restricted", &[]).await;
+    eprintln!("[shared-fixture] member revoked; awaiting owner rotation");
     let revoked = tokio::time::timeout(Duration::from_secs(10), member.completion)
         .await
         .expect("revoked subscriber completion stays owned")
@@ -197,6 +200,7 @@ async fn run(f: &Fixture) {
         &rotated
     );
     root.close().await;
+    eprintln!("[shared-fixture] last source closed; entering concurrent unary fallback");
     assert_eq!(count(f, "shared_source_cleanup:"), 2);
     let traces = trace(f);
     let cleanup = traces
@@ -250,6 +254,18 @@ async fn real_kernel_row_acl_two_principals_share_source_cache_and_rotate_owner(
     })
     .catch_unwind()
     .await;
+    if result.is_err() {
+        let trace = trace(&fixture);
+        let bounded = trace
+            .chars()
+            .rev()
+            .take(8000)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<String>();
+        eprintln!("[shared-fixture] retained worker trace:\n{bounded}");
+    }
     stream::revoke_installation(fixture.installation);
     fixture
         .host
