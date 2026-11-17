@@ -750,8 +750,17 @@ semanticTest("proves the actual Frame query-only completion observation", (t) =>
   const repoRoot = path.resolve(__dirname, "../../../..");
   const file = "web/app/src/features/workflow/components/WorkflowCanvasFrame.tsx";
   const f = fixture(t, fs.readFileSync(path.join(repoRoot, file), "utf8"), file);
+  const deferredTargets = [
+    ["web/app/src/features/agent-flow/components/editor/ApplicationEnvironmentVariablesPanel.tsx", "ApplicationEnvironmentVariablesPanel"],
+    ["web/app/src/features/agent-flow/components/detail/NodeDetailPanel.tsx", "NodeDetailPanel"],
+    ["web/app/src/features/agent-flow/components/history/VersionHistoryPanel.tsx", "VersionHistoryPanel"],
+    ["web/app/src/features/agent-flow/components/issues/IssuesDrawer.tsx", "IssuesDrawer"],
+  ];
+  const cssFile = "web/app/src/shared/ui/structured-list/structured-list.css";
   const dependencies = [
     "web/app/src/features/agent-flow/api/runtime.ts",
+    ...deferredTargets.map(([target]) => target),
+    cssFile,
   ];
   for (const dependency of dependencies) f.write(dependency, fs.readFileSync(path.join(repoRoot, dependency), "utf8"));
   const diagnostic = f.add(EVENT, "applicationId,\n    workingDocument,\n    clearRunEntryTransientState\n  )");
@@ -783,6 +792,28 @@ semanticTest("proves the actual Frame query-only completion observation", (t) =>
   ] as const;`,
   ]);
   for (const dependency of dependencies) assert.ok(proof.evidence.some((entry) => entry.file === dependency), `missing actual resolved source ${dependency}`);
+  assert.deepEqual(new Set(proof.evidence.map((entry) => entry.file)), new Set([file, ...dependencies]));
+  assert.equal(proof.evidence.filter((entry) => entry.file !== cssFile).length, 6, "six inspected JS/TS code units share one budget");
+  const { parseUnit } = require("../source-unit.js");
+  const ownerUnit = parseUnit(f.repoRoot, file);
+  const ownerEvidence = proof.evidence.find((entry) => entry.file === file);
+  for (const [target, component] of deferredTargets) {
+    const loader = ownerUnit.nodes.find((node) => node.type === "VariableDeclaration"
+      && node.declarations.some((declaration) => declaration.id.name === component));
+    assert.ok(loader, `missing actual deferred declaration ${component}`);
+    assert.ok(ownerEvidence.spans.some(({ start, end }) => start === loader.range[0] && end === loader.range[1]), `bind entire actual loader ${component}`);
+    const targetUnit = parseUnit(f.repoRoot, target);
+    const targetEvidence = proof.evidence.find((entry) => entry.file === target);
+    const selectedExport = targetUnit.ast.body.find((node) => node.type === "ExportNamedDeclaration" && node.declaration?.id?.name === component);
+    assert.ok(selectedExport, `missing actual selected export ${component}`);
+    assert.ok(targetEvidence.spans.some(({ start, end }) => start === selectedExport.range[0] && end === selectedExport.range[1]), `bind entire actual export ${component}`);
+    for (const stylesheet of targetUnit.ast.body.filter((node) => node.type === "ImportDeclaration" && node.source.value.endsWith(".css"))) {
+      assert.ok(targetEvidence.spans.some(({ start, end }) => start === stylesheet.range[0] && end === stylesheet.range[1]), "bind the actual stylesheet import to its importer digest");
+    }
+  }
+  const asset = proof.evidence.find((entry) => entry.file === cssFile);
+  assert.ok(asset.spans.some(({ start, end }) => start === 0 && end === f.sources.get(cssFile).length), "bind the stylesheet data separately from six code units");
+  for (const [sourceFile, source] of f.sources) assert.equal(fs.readFileSync(path.join(f.repoRoot, sourceFile), "utf8"), source, "retain every actual source and asset byte");
 });
 
 semanticTest("resolved key changes and a new same-root action invalidate query-only proof", (t) => {
