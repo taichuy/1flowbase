@@ -12,6 +12,7 @@ const { parseUnit } = require("../source-unit.js");
 const {
   CONTROLLER: HTTP_CONTROLLER,
   CANONICAL_CONTRACT,
+  ACTUAL_DIAGNOSTICS: ACTUAL_HTTP_DIAGNOSTICS,
   actualGraph: actualHttpGraph,
   syntheticGraph: syntheticHttpGraph,
   assertRustTokens,
@@ -231,12 +232,12 @@ semanticTest(
       "await prepareTableAction(\n                  host!",
     ];
     let searchFrom = 0;
-    for (const anchor of anchors) {
+    for (const [index, anchor] of anchors.entries()) {
       const offset = source.indexOf(anchor, searchFrom);
       assert.ok(offset >= 0, `actual await anchor: ${anchor}`);
       searchFrom = offset + anchor.length;
       const before = source.slice(0, offset);
-      f.doctorReport.diagnostics.push({
+      const diagnostic = {
         filePath: f.file.slice("web/app/".length),
         plugin: "react-doctor",
         rule: "async-await-in-loop",
@@ -244,7 +245,15 @@ semanticTest(
         message: HTTP_LOOP_MESSAGE,
         line: before.split("\n").length,
         column: before.length - before.lastIndexOf("\n"),
-      });
+      };
+      const raw = ACTUAL_HTTP_DIAGNOSTICS[index];
+      for (const field of Object.keys(diagnostic))
+        assert.equal(
+          diagnostic[field],
+          raw[field],
+          `raw diagnostic field ${field}`,
+        );
+      f.doctorReport.diagnostics.push({ ...raw });
       f.doctorReport.summary.totalDiagnosticCount++;
     }
     const result = f.evaluate();

@@ -13,6 +13,51 @@ const CONTROLLER =
 const CANONICAL_CONTRACT =
   "api/crates/api/kernel/src/contracts/routes/console_interface.rs";
 const RUNTIME_POLICY = "api/crates/interface-runtime/src/registry.rs";
+// Exact fresh full-Doctor diagnostics; source positions are checked by the test.
+const ACTUAL_DIAGNOSTICS = [
+  {
+    filePath:
+      "src/features/frontstage/components/data-blocks/table/use-table-config-controller.ts",
+    plugin: "react-doctor",
+    rule: "async-await-in-loop",
+    severity: "warning",
+    title: "await inside a loop",
+    message:
+      "This makes the for…of loop slow because each await runs one after another, so collect the independent calls & run them together with `await Promise.all(items.map(...))`",
+    help: "Collect the items, then use `await Promise.all(items.map(...))` so independent work runs at the same time",
+    line: 63,
+    column: 22,
+    category: "Performance",
+  },
+  {
+    filePath:
+      "src/features/frontstage/components/data-blocks/table/use-table-config-controller.ts",
+    plugin: "react-doctor",
+    rule: "async-await-in-loop",
+    severity: "warning",
+    title: "await inside a loop",
+    message:
+      "This makes the for…of loop slow because each await runs one after another, so collect the independent calls & run them together with `await Promise.all(items.map(...))`",
+    help: "Collect the items, then use `await Promise.all(items.map(...))` so independent work runs at the same time",
+    line: 65,
+    column: 26,
+    category: "Performance",
+  },
+  {
+    filePath:
+      "src/features/frontstage/components/data-blocks/table/use-table-config-controller.ts",
+    plugin: "react-doctor",
+    rule: "async-await-in-loop",
+    severity: "warning",
+    title: "await inside a loop",
+    message:
+      "This makes the for…of loop slow because each await runs one after another, so collect the independent calls & run them together with `await Promise.all(items.map(...))`",
+    help: "Collect the items, then use `await Promise.all(items.map(...))` so independent work runs at the same time",
+    line: 71,
+    column: 25,
+    category: "Performance",
+  },
+];
 const ACTUAL_REQUIRED = [
   CONTROLLER,
   "web/app/src/features/frontstage/components/data-blocks/table/table-model.ts",
@@ -34,16 +79,32 @@ function copyFile(f, file) {
   f.write(file, fs.readFileSync(path.join(ROOT, file), "utf8"));
 }
 
-function copyProductionTree(f, directory) {
+function copyProductionTree(f, directory, extension = /\.(?:tsx?|json)$/) {
   for (const entry of fs.readdirSync(path.join(ROOT, directory), {
     withFileTypes: true,
   })) {
-    if (["_tests", "__tests__", "node_modules", "dist"].includes(entry.name))
+    if (
+      [
+        "_tests",
+        "__tests__",
+        "test",
+        "tests",
+        "fixtures",
+        "testdata",
+        "test_support",
+        "test-support",
+        "node_modules",
+        "deps",
+        "dist",
+        "target",
+        ".git",
+      ].includes(entry.name) ||
+      entry.name.endsWith("-tests")
+    )
       continue;
     const file = `${directory}/${entry.name}`;
-    if (entry.isDirectory()) copyProductionTree(f, file);
-    else if (entry.isFile() && /\.(?:tsx?|json)$/.test(entry.name))
-      copyFile(f, file);
+    if (entry.isDirectory()) copyProductionTree(f, file, extension);
+    else if (entry.isFile() && extension.test(entry.name)) copyFile(f, file);
   }
 }
 
@@ -76,8 +137,10 @@ function actualGraph(f) {
     "api/crates/api/console-interaction/src/routes/frontstage/block_tree/interface.rs",
   ])
     copyFile(f, file);
-  copyProductionTree(f, "web/app/src/features/frontstage");
+  // Discovery sees real production neighbors, not only known evidence owners.
+  copyProductionTree(f, "web/app/src", /\.tsx?$/);
   copyProductionTree(f, "web/packages/api-client/src");
+  copyProductionTree(f, "api/crates", /(?:\.rs|^Cargo\.toml)$/);
   canonicalSource(f);
   for (const file of ACTUAL_REQUIRED.filter(
     (name) => name.endsWith(".ts") || name.endsWith(".tsx"),
@@ -362,6 +425,7 @@ pub async fn replace_record(State(state): State<Arc<ApiState>>, headers: HeaderM
 module.exports = {
   ROOT,
   CONTROLLER,
+  ACTUAL_DIAGNOSTICS,
   CANONICAL_CONTRACT,
   RUNTIME_POLICY,
   actualGraph,
