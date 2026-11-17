@@ -23,6 +23,12 @@ const messageFor = (ref) =>
 const semanticTest = (name, fn) =>
   test(`resource semantic correction: ${name}`, fn);
 
+const OBSERVER_RULE = "no-pass-live-state-to-parent";
+const OBSERVER_RULE_HASH =
+  "c1ccf61ff705ec90f43e8b6893a0f8e64937af0704683c977157f260222996d8";
+const OBSERVER_MESSAGE =
+  "Pushing state up to a parent from a useEffect costs your users an extra render.";
+
 function fixture(t, source) {
   const repoRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "doctor-resource-proof-"),
@@ -129,6 +135,318 @@ function assertUnproved(f) {
   assert.equal(result.status, "requires-review");
   assert.equal(result.upstreamCorrections?.length ?? 0, 0);
 }
+
+function observationSource({
+  imports = "import { useEffect, useRef, useState } from 'react';",
+  before = "",
+  parameters = "{ notify, ready }",
+  hook = "useEffect",
+  setup = "",
+  constructor = "IntersectionObserver",
+  callback = "entries => { if (entries.some(entry => entry.isIntersecting)) void notify(); }",
+  options = "{ root: viewport.current, rootMargin: '200px' }",
+  registration = "if (target) receipt.observe(target);",
+  cleanup = "return () => receipt.disconnect();",
+  after = "",
+} = {}) {
+  return `${imports}
+${before}
+function UnrelatedVisibilityOwner(${parameters}) {
+  const viewport = useRef(null);
+  const [target, setTarget] = useState(null);
+  ${hook}(() => {
+    if (!ready) return;
+    ${setup}
+    const receipt = new ${constructor}(${callback}, ${options});
+    ${registration}
+    ${cleanup}
+  }, [target, ready, notify]);
+  ${after}
+  return <div ref={viewport}><div ref={setTarget} /></div>;
+}`;
+}
+
+function addObservation(f, anchor = "receipt.observe(target)") {
+  return Object.assign(f.add("unused", anchor), {
+    rule: OBSERVER_RULE,
+    message: OBSERVER_MESSAGE,
+  });
+}
+
+function assertObservationProof(f, diagnostic, exactSpans = []) {
+  const result = f.evaluate();
+  assert.equal(result.status, "reviewed");
+  assert.equal(result.findings.length, 0);
+  assert.equal(result.upstreamCorrections.length, 1);
+  const proof = result.upstreamCorrections[0];
+  assert.deepEqual(proof.diagnostic, diagnostic);
+  assert.equal(proof.predicate, "native-intersection-observation-registration");
+  assert.equal(proof.provenance.toolPackage, TOOL);
+  assert.equal(proof.provenance.sourceCommit, SOURCE_COMMIT);
+  assert.equal(proof.provenance.ruleSourceSha256, OBSERVER_RULE_HASH);
+  assert.match(proof.provenance.packageIntegrity, /^sha512-/u);
+  assert.ok(
+    proof.provenance.references.some((url) =>
+      url.includes("w3c.github.io/IntersectionObserver"),
+    ),
+  );
+  assert.ok(
+    proof.provenance.references.some(
+      (url) =>
+        url.includes(`/${SOURCE_COMMIT}/`) &&
+        url.endsWith("/no-pass-live-state-to-parent.ts"),
+    ),
+  );
+  assert.match(proof.reason, /registra/iu);
+  assert.match(proof.reason, /defer|asynchronous/iu);
+  assert.ok(proof.evidence.length > 0);
+  for (const entry of proof.evidence) {
+    const source = f.sources.get(entry.file);
+    assert.equal(typeof source, "string");
+    assert.equal(entry.sha256, sourceDigest(source));
+    assert.ok(entry.spans.length > 0);
+    for (const span of entry.spans)
+      assert.ok(
+        Number.isInteger(span.start) &&
+          Number.isInteger(span.end) &&
+          span.start >= 0 &&
+          span.start < span.end &&
+          span.end <= source.length,
+      );
+  }
+  for (const span of exactSpans)
+    assert.ok(
+      proof.evidence.some((entry) =>
+        entry.spans.some(
+          ({ start, end }) =>
+            f.sources.get(entry.file).slice(start, end) === span,
+        ),
+      ),
+      `missing exact observation evidence: ${span}`,
+    );
+  return proof;
+}
+
+for (const [name, options] of [
+  ["native constructor and state-held target", {}],
+  [
+    "renamed React effect import",
+    {
+      imports:
+        "import { useEffect as synchronize, useRef, useState } from 'react';",
+      hook: "synchronize",
+    },
+  ],
+  [
+    "namespace React effect",
+    {
+      imports:
+        "import * as React from 'react'; import { useRef, useState } from 'react';",
+      hook: "React.useEffect",
+    },
+  ],
+  [
+    "independent event handler can notify outside the effect",
+    { after: "const loadFromScroll = () => notify();" },
+  ],
+]) {
+  semanticTest(`native observation registration: ${name}`, (t) => {
+    const f = fixture(t, observationSource(options));
+    const diagnostic = addObservation(f);
+    assertObservationProof(f, diagnostic, [
+      "receipt.observe(target)",
+      "receipt.disconnect()",
+      "entries => { if (entries.some(entry => entry.isIntersecting)) void notify(); }",
+      "new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) void notify(); }, { root: viewport.current, rootMargin: '200px' })",
+    ]);
+  });
+}
+
+semanticTest(
+  "current catalog source proves registration at an unrelated fixture path",
+  (t) => {
+    const source = fs.readFileSync(
+      path.resolve(
+        __dirname,
+        "../../../../web/app/src/features/settings/components/extension-center/ApplicationTemplateCatalogList.tsx",
+      ),
+      "utf8",
+    );
+    const f = fixture(t, source);
+    const diagnostic = addObservation(f, "observer.observe(sentinel)");
+    const proof = assertObservationProof(f, diagnostic, [
+      "observer.observe(sentinel)",
+      "observer.disconnect()",
+    ]);
+    assert.equal(proof.evidence.length, 1);
+    assert.equal(proof.evidence[0].file, f.file);
+    assert.equal(proof.evidence[0].sha256, sourceDigest(source));
+  },
+);
+
+for (const [name, options] of [
+  ["opaque same-named observe method", { constructor: "UnknownObserver" }],
+  [
+    "locally shadowed eager constructor",
+    {
+      before:
+        "class IntersectionObserver { constructor(callback) { callback([]); } observe() {} disconnect() {} }",
+    },
+  ],
+  [
+    "imported constructor",
+    {
+      imports:
+        "import { useEffect, useRef, useState } from 'react'; import { IntersectionObserver } from './foreign';",
+    },
+  ],
+  [
+    "constructor parameter",
+    { parameters: "{ notify, ready, IntersectionObserver }" },
+  ],
+  [
+    "aliased native constructor",
+    {
+      before: "const NativeObserver = IntersectionObserver;",
+      constructor: "NativeObserver",
+    },
+  ],
+  ["unknown callback reference", { callback: "notify" }],
+  [
+    "IIFE callback argument",
+    { callback: "(() => { notify(); return entries => {}; })()" },
+  ],
+  ["options execute during setup", { options: "makeOptions(notify)" }],
+  ["options getter", { options: "{ get root() { notify(); return null; } }" }],
+  ["options spread", { options: "{ ...foreignOptions }" }],
+  ["computed option key", { options: "{ [chooseOption()]: null }" }],
+  ["immediate parent notification", { setup: "notify(target);" }],
+  ["immediate state update", { setup: "setTarget(viewport.current);" }],
+  ["opaque setup executor", { setup: "runUnknown(notify, target);" }],
+  [
+    "immediate nested callback execution",
+    { setup: "(() => notify(target))();" },
+  ],
+  [
+    "observer instance escapes to helper",
+    { registration: "publish(receipt); if (target) receipt.observe(target);" },
+  ],
+  [
+    "observer method escapes to helper",
+    {
+      registration:
+        "publish(receipt.observe); if (target) receipt.observe(target);",
+    },
+  ],
+  [
+    "observer alias escapes",
+    {
+      registration:
+        "const alias = receipt; publish(alias); if (target) receipt.observe(target);",
+    },
+  ],
+  [
+    "observer method replaced",
+    {
+      registration:
+        "receipt.observe = notify; if (target) receipt.observe(target);",
+    },
+  ],
+  [
+    "receiver reassigned",
+    {
+      registration:
+        "receipt = foreignObserver; if (target) receipt.observe(target);",
+    },
+  ],
+  ["missing cleanup", { cleanup: "" }],
+  ["wrong cleanup receiver", { cleanup: "return () => other.disconnect();" }],
+  [
+    "cleanup notifies parent",
+    { cleanup: "return () => { receipt.disconnect(); notify(target); };" },
+  ],
+  [
+    "fake React effect owner",
+    {
+      imports: "import { useRef, useState } from 'react';",
+      before: "const useEffect = callback => callback();",
+    },
+  ],
+  [
+    "global constructor overwritten",
+    { before: "IntersectionObserver = EagerObserver;" },
+  ],
+  [
+    "globalThis constructor overwritten",
+    { before: "globalThis.IntersectionObserver = EagerObserver;" },
+  ],
+  [
+    "window constructor overwritten",
+    { before: "window.IntersectionObserver = EagerObserver;" },
+  ],
+  [
+    "global native method overwritten",
+    { before: "IntersectionObserver.prototype.observe = notifyImmediately;" },
+  ],
+  [
+    "global constructor defined through a descriptor",
+    {
+      before:
+        "Object.defineProperty(globalThis, 'IntersectionObserver', { value: EagerObserver });",
+    },
+  ],
+  [
+    "global constructor replaced through assignment helper",
+    {
+      before: "Object.assign(window, { IntersectionObserver: EagerObserver });",
+    },
+  ],
+]) {
+  semanticTest(`keeps native observation unproved: ${name}`, (t) => {
+    const f = fixture(t, observationSource(options));
+    addObservation(f);
+    assertUnproved(f);
+  });
+}
+
+semanticTest(
+  "native registration does not erase an adjacent genuine immediate push",
+  (t) => {
+    const f = fixture(t, observationSource({ setup: "notify(target);" }));
+    addObservation(f);
+    const immediate = addObservation(f, "notify(target)");
+    const result = f.evaluate();
+    assert.equal(result.status, "requires-review");
+    assert.equal(result.upstreamCorrections?.length ?? 0, 0);
+    assert.equal(result.findings.length, 2);
+    assert.deepEqual(f.doctorReport.diagnostics[1], immediate);
+  },
+);
+
+semanticTest(
+  "native registration requires the exact pinned diagnostic and call start",
+  (t) => {
+    const f = fixture(t, observationSource());
+    const diagnostic = addObservation(f);
+    assert.equal(f.evaluate("react-doctor@future").status, "requires-review");
+    const original = structuredClone(diagnostic);
+    for (const mutation of [
+      { plugin: "foreign" },
+      { rule: "no-derived-state-effect" },
+      { message: `${OBSERVER_MESSAGE} changed` },
+      { filePath: "../../outside.tsx" },
+      { column: original.column + 1 },
+      { line: original.line + 1 },
+      { line: 99999 },
+    ]) {
+      Object.assign(diagnostic, original, mutation);
+      assertUnproved(f);
+    }
+    Object.assign(diagnostic, original);
+    f.write(f.file, "export const broken = (");
+    assertUnproved(f);
+  },
+);
 
 for (const [name, imports, initialize, ref] of [
   [
