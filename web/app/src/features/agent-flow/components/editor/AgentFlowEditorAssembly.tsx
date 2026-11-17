@@ -41,6 +41,7 @@ export function AgentFlowEditorAssembly({
   return (
     <div data-testid="agent-flow-editor-assembly">
       <FlowEditorKernel
+        key={applicationId}
         initialState={initialState}
         slots={{
           toolbar: topSlot,
