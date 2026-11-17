@@ -23,10 +23,15 @@ const RULE_HASHES = {
     "6b3b9ae205ce6a3b85e443d05f2fb9ee6dd4bc897744fc68fce3e99fe8c16831",
   "js-tosorted-immutable":
     "296d54afccde391f23130786c6f601806df3925f1c0983062f6537d017183e48",
+  "js-hoist-intl":
+    "ad9c0a9d6c992567e6cba6c7a14d852c41c57624d8e743c8206bc7e5b1f4ecf0",
 };
 const HYDRATION_RULE = "rendering-hydration-mismatch-time";
 const SORT_RULE = "js-tosorted-immutable";
 const GRAPHIC_RULE = "prefer-tag-over-role";
+const INTL_RULE = "js-hoist-intl";
+const intlMessage = (name) =>
+  `This is slow because new Intl.${name}() rebuilds on every call inside a function, so move it to the top of the file, or wrap it in useMemo`;
 const PROPAGATION_RULES = [
   "click-events-have-key-events",
   "no-static-element-interactions",
@@ -42,6 +47,7 @@ const messages = {
     "Screen reader users can't tell this click handler is interactive because it has no `role`, so add a `role` or use a button or link.",
   [SORT_RULE]:
     "This wastes work because [...array].sort() copies the array just to sort it, so use array.toSorted() to sort without the extra copy (ES2023)",
+  [INTL_RULE]: intlMessage("NumberFormat"),
 };
 const semanticTest = (name, fn) =>
   test(`render semantic correction: ${name}`, fn);
@@ -570,6 +576,169 @@ semanticTest(
     assertUnproved(f);
   },
 );
+
+const INTL_CACHE_SOURCE = `let retained;
+export function formatter() {
+  return (retained ??= new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }));
+}`;
+const GUARDED_INTL_CACHE_SOURCE = `let observedLanguage;
+let retained;
+export function formatter() {
+  const language = typeof navigator === 'undefined' ? undefined : navigator.language;
+  if (language !== observedLanguage) {
+    observedLanguage = language;
+    retained = undefined;
+  }
+  return (retained ??= new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }));
+}`;
+const intlReference = `https://github.com/millionco/react-doctor/blob/${SOURCE_COMMIT}/packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/js-hoist-intl.ts`;
+
+for (const [name, argumentsSource] of [
+  ["NumberFormat", "undefined, { maximumFractionDigits: 1 }"],
+  ["DateTimeFormat", "'en-US', { timeZone: 'UTC' }"],
+  ["Collator", "'de-DE'"],
+  ["RelativeTimeFormat", "'en-US'"],
+  ["ListFormat", "'en-US'"],
+  ["PluralRules", "'en-US'"],
+  ["Segmenter", "'en-US'"],
+  ["DisplayNames", "'en-US', { type: 'language' }"],
+]) {
+  semanticTest(`proves a module-owned lazy Intl cache: ${name}`, (t) => {
+    const construction = `new Intl.${name}(${argumentsSource})`;
+    const assignment = `retained ??= ${construction}`;
+    const source = `let retained; export function formatter() { return (${assignment}); }`;
+    const f = fixture(t, source);
+    const diagnostic = f.add(INTL_RULE, construction, intlMessage(name));
+    const proof = assertProof(f, diagnostic, "module-owned-lazy-intl-cache", [
+      "let retained;",
+      construction,
+      assignment,
+    ]);
+    assert.ok(proof.provenance.references.includes(intlReference));
+  });
+}
+semanticTest("proves same-owner observed-language cache invalidation", (t) => {
+  const f = fixture(t, GUARDED_INTL_CACHE_SOURCE);
+  const diagnostic = f.add(INTL_RULE, "new Intl.NumberFormat");
+  assertProof(f, diagnostic, "module-owned-lazy-intl-cache", [
+    "let observedLanguage;",
+    "let retained;",
+    "const language = typeof navigator === 'undefined' ? undefined : navigator.language;",
+    "observedLanguage = language",
+    "retained = undefined",
+    "retained ??= new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 })",
+  ]);
+});
+semanticTest("proves a renamed module slot owned by an arrow helper", (t) => {
+  const f = fixture(t, "let receipt; const acquire = () => (receipt ??= new Intl.NumberFormat()); export const printer = acquire;");
+  const diagnostic = f.add(INTL_RULE, "new Intl.NumberFormat");
+  assertProof(f, diagnostic, "module-owned-lazy-intl-cache", [
+    "let receipt;",
+    "receipt ??= new Intl.NumberFormat()",
+  ]);
+});
+for (const precision of [0, 1]) {
+  semanticTest(`projects actual observation formatter cache at precision ${precision}`, (t) => {
+    const file = "web/app/src/features/settings/pages/events/runtime/statistics/observation-statistics.ts";
+    const source = fs.readFileSync(path.resolve(__dirname, "../../../..", file), "utf8");
+    const construction = new RegExp(`new Intl\\.NumberFormat\\(undefined,\\s*\\{\\s*maximumFractionDigits: ${precision}\\s*\\}\\)`).exec(source)?.[0];
+    assert.ok(construction);
+    const f = fixture(t, source, file);
+    const diagnostic = f.add(INTL_RULE, construction);
+    const cacheName = precision ? "fractionalFormatter" : "integerFormatter";
+    assertProof(f, diagnostic, "module-owned-lazy-intl-cache", [
+      "let formatterLanguage: string | undefined;",
+      `let ${cacheName}: Intl.NumberFormat | undefined;`,
+      "formatterLanguage = language",
+      `${cacheName} = undefined`,
+      construction,
+    ]);
+  });
+}
+
+for (const [name, source] of [
+  ["unconditional construction per call", "export function formatter() { return new Intl.NumberFormat(); }"],
+  ["a module slot type alone does not cache construction", "let retained: Intl.NumberFormat; export function formatter() { return new Intl.NumberFormat(); }"],
+  ["function-local lazy slot", "export function formatter() { let retained; return (retained ??= new Intl.NumberFormat()); }"],
+  ["shadowed local slot", "let retained; export function formatter() { let retained; return (retained ??= new Intl.NumberFormat()); }"],
+  ["unconditional cache reset", "let retained; export function formatter() { retained = undefined; return (retained ??= new Intl.NumberFormat()); }"],
+  ["reset after every cache read", "let retained; export function formatter() { const value = (retained ??= new Intl.NumberFormat()); retained = undefined; return value; }"],
+  ["reset guard never advances its marker", GUARDED_INTL_CACHE_SOURCE.replace("observedLanguage = language;", "")],
+  ["reset marker receives another value", GUARDED_INTL_CACHE_SOURCE.replace("observedLanguage = language;", "observedLanguage = 'different';")],
+  ["reset condition is always true", GUARDED_INTL_CACHE_SOURCE.replace("language !== observedLanguage", "true")],
+  ["guard compares fresh input each call", GUARDED_INTL_CACHE_SOURCE.replace("typeof navigator === 'undefined' ? undefined : navigator.language", "Math.random()")],
+  ["reset marker has another writer", `${GUARDED_INTL_CACHE_SOURCE}\nexport function clearSignal() { observedLanguage = undefined; }`],
+  ["cache has an exported reset writer", `${INTL_CACHE_SOURCE}\nexport function clearCache() { retained = undefined; }`],
+  ["cache write escapes to an unknown callback owner", `${INTL_CACHE_SOURCE}\nregister(() => { retained = undefined; });`],
+  ["cache write escapes through a callback alias", `${INTL_CACHE_SOURCE}\nconst clear = () => { retained = undefined; }; register(clear);`],
+  ["cache has a destructuring writer", `${INTL_CACHE_SOURCE}\nexport function reset(value) { ({ retained } = value); }`],
+  ["cache is exposed as an object property", "const retained = {}; export function formatter() { return (retained.value ??= new Intl.NumberFormat()); }"],
+  ["cache slot is exported", INTL_CACHE_SOURCE.replace("let retained;", "export let retained;")],
+  ["different assignment operator", INTL_CACHE_SOURCE.replace("??=", "=")],
+  ["slot has a competing initializer", `${INTL_CACHE_SOURCE}\nexport function other() { return (retained ??= makeFormatter()); }`],
+  ["Intl parameter shadows the native constructor", INTL_CACHE_SOURCE.replace("formatter()", "formatter(Intl)")],
+  ["module Intl import shadows the native namespace", `import Intl from 'unknown';\n${INTL_CACHE_SOURCE}`],
+  ["native constructor namespace is overwritten", `Intl.NumberFormat = replacement;\n${INTL_CACHE_SOURCE}`],
+  ["opaque lexical eval can reset the slot", `${INTL_CACHE_SOURCE}\nexport function reset() { eval('retained = undefined'); }`],
+]) {
+  semanticTest(`keeps actual or unproved Intl allocation unresolved: ${name}`, (t) => {
+    const f = fixture(t, source);
+    f.add(INTL_RULE, "new Intl.NumberFormat");
+    assertUnproved(f);
+  });
+}
+semanticTest("new Intl writes invalidate prior source evidence without a review exception", (t) => {
+  const f = fixture(t, INTL_CACHE_SOURCE);
+  const diagnostic = f.add(INTL_RULE, "new Intl.NumberFormat");
+  assertProof(f, diagnostic, "module-owned-lazy-intl-cache", ["let retained;"]);
+  f.write(f.file, `${INTL_CACHE_SOURCE}\nexport function clear() { retained = undefined; }`);
+  assertUnproved(f);
+});
+semanticTest("Intl correction requires the exact pinned constructor, message and location", (t) => {
+  const f = fixture(t, INTL_CACHE_SOURCE);
+  const diagnostic = f.add(INTL_RULE, "new Intl.NumberFormat");
+  assert.equal(f.evaluate("react-doctor@future").status, "requires-review");
+  const original = structuredClone(diagnostic);
+  for (const mutation of [
+    { plugin: "unknown" },
+    { message: intlMessage("DateTimeFormat") },
+    { filePath: "../../outside.ts" },
+    { line: diagnostic.line + 1 },
+    { column: diagnostic.column + 1 },
+  ]) {
+    Object.assign(diagnostic, original, mutation);
+    assertUnproved(f);
+  }
+  Object.assign(diagnostic, original);
+  f.write(f.file, "export const invalid = (");
+  assertUnproved(f);
+});
+semanticTest("real Intl construction stays lazy until the observed language changes", () => {
+  const { runInNewContext } = require("node:vm");
+  let constructions = 0;
+  const host = {
+    navigator: { language: "en-US" },
+    Intl: {
+      NumberFormat: class extends Intl.NumberFormat {
+        constructor(...args) {
+          constructions++;
+          super(...args);
+        }
+      },
+    },
+  };
+  runInNewContext(`${GUARDED_INTL_CACHE_SOURCE.replace("export ", "")}\nglobalThis.read = formatter;`, host);
+  assert.equal(constructions, 0);
+  const first = host.read();
+  for (let call = 0; call < 8; call++) assert.equal(host.read(), first);
+  assert.equal(constructions, 1);
+  assert.equal(first.format(1234.5), new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(1234.5));
+  host.navigator.language = "de-DE";
+  const next = host.read();
+  assert.notEqual(next, first);
+  for (let call = 0; call < 8; call++) assert.equal(host.read(), next);
+  assert.equal(constructions, 2);
+});
 
 semanticTest(
   "actual server render does not invoke a native click callback but does execute an IIFE",
