@@ -813,8 +813,14 @@ describe('event center configuration and observations', () => {
       completion_schema: null
     };
     api.listApiEventOperations.mockResolvedValue([documented, restricted]);
-    api.getApiEventOperation.mockImplementation(async (id: string) =>
-      id === restricted.operation_id ? restricted : documented
+    let resolveDetails!: (value: ApiEventOperationDetails) => void;
+    const pendingDetails = new Promise<ApiEventOperationDetails>((resolve) => {
+      resolveDetails = resolve;
+    });
+    api.getApiEventOperation.mockImplementation((id: string) =>
+      id === restricted.operation_id
+        ? pendingDetails
+        : Promise.resolve(documented)
     );
     renderPage();
     fireEvent.click(
@@ -827,11 +833,25 @@ describe('event center configuration and observations', () => {
     fireEvent.mouseDown(select);
     fireEvent.change(select, { target: { value: 'reports' } });
     fireEvent.click(
-      await screen.findByText('GET /api/console/reports/{id} · Download report')
+      await screen.findByText('GET /api/console/reports/{id} · Download report', {
+        selector: '.ant-select-item-option-content'
+      })
     );
     expect(
       screen.queryByText('interfaces / api-server')
     ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.getApiEventOperation).toHaveBeenCalledWith(
+        restricted.operation_id
+      )
+    );
+    expect(
+      within(drawer).getByRole('combobox', { name: 'Interface phase' })
+    ).toBeDisabled();
+    await act(async () => {
+      resolveDetails(restricted);
+      await pendingDetails;
+    });
     await waitFor(() =>
       expect(
         within(drawer).getByRole('combobox', { name: 'Interface phase' })

@@ -38,6 +38,8 @@ vi.mock('../communications/CommunicationCommandEditor', async (original) => {
   return {
     CommunicationCommandEditor: (props: Parameters<typeof actual.CommunicationCommandEditor>[0]) => {
       function recordVisibleCommit() {
+        // Keep waiting through Portal commits until this action is visible.
+        if (observed.commits.some((commit) => commit.action === observed.action)) return;
         const dialog = screen.queryByRole('dialog');
         if (!dialog) return;
         const ui = within(dialog);
