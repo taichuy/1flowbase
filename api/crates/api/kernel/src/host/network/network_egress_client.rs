@@ -512,6 +512,19 @@ pub fn native_release_client() -> Result<Client> {
         .context("Cannot construct native release download client")
 }
 
+/// Transport for the native updater's explicit loopback fixture command.
+/// The updater validates the feed and asset origin before making any request.
+pub fn native_release_fixture_client() -> Result<Client> {
+    Client::builder()
+        .no_proxy()
+        .timeout(std::time::Duration::from_secs(180))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            attempt.error("Update archive fixtures must not redirect")
+        }))
+        .build()
+        .context("Cannot construct native release fixture client")
+}
+
 #[doc(hidden)]
 #[cfg(any(test, feature = "test-support"))]
 pub fn static_proxy_execution_scope_for_test_support(
