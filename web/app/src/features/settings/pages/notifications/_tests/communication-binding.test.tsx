@@ -2,7 +2,6 @@ import {
   act,
   cleanup,
   fireEvent,
-  getConfig,
   screen,
   waitFor,
   within
@@ -415,183 +414,154 @@ test('the binding update operation enables saving without instance update permis
   expect(writes[0]?.system_prompt).toBe('Custom binding only');
 });
 
-async function nextCommandCommit<T>(read: () => T): Promise<T> {
-  // Preserve Testing Library's polling budget; advance the actual query and
-  // portal timers inside React's commit boundary rather than sleeping in CI.
-  const interval = 50;
-  const budget = getConfig().asyncUtilTimeout;
-  for (let elapsed = 0; elapsed < budget; elapsed += interval) {
-    try {
-      return read();
-    } catch {
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(Math.min(interval, budget - elapsed));
-      });
-    }
-  }
-  return read();
-}
-
 test('E8 adds, persists, reopens, edits and removes a custom event slash command', async () => {
-  vi.useFakeTimers({
-    toFake: [
-      'setTimeout',
-      'clearTimeout',
-      'requestAnimationFrame',
-      'cancelAnimationFrame'
-    ]
+  const { ref, writes, view, mount } = setup({
+    existing: true,
+    withoutMotion: true
   });
-  try {
-    const { ref, writes, view, mount } = setup({ existing: true });
-    let binding = within(view.container);
-    await nextCommandCommit(() => {
-      expect(binding.getByDisplayValue('Custom prompt')).toBeInTheDocument();
-      expect(client.isFetching()).toBe(0);
-      expect(binding.getByRole('switch', { name: 'Enable new' })).toBeEnabled();
-      expect(binding.queryByRole('alert')).not.toBeInTheDocument();
-    });
-    fireEvent.click(binding.getByRole('button', { name: 'Add command' }));
-    const dialog = await nextCommandCommit(() => screen.getByRole('dialog'));
-    await nextCommandCommit(() =>
-      expect(
-        within(dialog).getByRole('button', { name: 'Submit' })
-      ).toBeEnabled()
-    );
-    fireEvent.change(
-      within(dialog).getByRole('textbox', { name: 'Command identity' }),
-      { target: { value: 'user/invoice' } }
-    );
-    fireEvent.change(
-      within(dialog).getByRole('textbox', { name: 'Slash command name' }),
-      { target: { value: 'invoice' } }
-    );
-    fireEvent.change(
-      within(dialog).getByRole('textbox', { name: 'Description' }),
-      { target: { value: 'Request invoice processing' } }
-    );
-    fireEvent.mouseDown(
-      within(dialog).getByRole('combobox', { name: 'Target custom event' })
-    );
-    fireEvent.click(
-      await nextCommandCommit(() =>
-        screen.getByText('Invoice requested', {
-          selector: '.ant-select-item-option-content'
-        })
-      )
-    );
-    fireEvent.mouseDown(
-      await nextCommandCommit(() =>
-        within(dialog).getByRole('combobox', { name: 'Payload field: invoice' })
-      )
-    );
-    fireEvent.click(
-      await nextCommandCommit(() =>
-        screen.getByText('/arguments', {
-          selector: '.ant-select-item-option-content'
-        })
-      )
-    );
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Submit' }));
-    await nextCommandCommit(() =>
-      expect(
-        binding.getByRole('switch', { name: 'Enable invoice' })
-      ).toBeChecked()
-    );
-    await act(async () => {
-      expect(ref.current?.validate()).toBe(true);
-      await ref.current?.save('channel-1');
-    });
+  let binding = within(view.container);
+  await waitFor(() => {
+    expect(binding.getByDisplayValue('Custom prompt')).toBeInTheDocument();
+    expect(client.isFetching()).toBe(0);
+    expect(binding.getByRole('switch', { name: 'Enable new' })).toBeEnabled();
+    expect(binding.queryByRole('alert')).not.toBeInTheDocument();
+  });
+  fireEvent.click(binding.getByRole('button', { name: 'Add command' }));
+  const dialog = await waitFor(() => screen.getByRole('dialog'));
+  await waitFor(() =>
+    expect(within(dialog).getByRole('button', { name: 'Submit' })).toBeEnabled()
+  );
+  fireEvent.change(
+    within(dialog).getByRole('textbox', { name: 'Command identity' }),
+    { target: { value: 'user/invoice' } }
+  );
+  fireEvent.change(
+    within(dialog).getByRole('textbox', { name: 'Slash command name' }),
+    { target: { value: 'invoice' } }
+  );
+  fireEvent.change(
+    within(dialog).getByRole('textbox', { name: 'Description' }),
+    { target: { value: 'Request invoice processing' } }
+  );
+  fireEvent.mouseDown(
+    within(dialog).getByRole('combobox', { name: 'Target custom event' })
+  );
+  fireEvent.click(
+    await waitFor(() =>
+      screen.getByText('Invoice requested', {
+        selector: '.ant-select-item-option-content'
+      })
+    )
+  );
+  fireEvent.mouseDown(
+    await waitFor(() =>
+      within(dialog).getByRole('combobox', { name: 'Payload field: invoice' })
+    )
+  );
+  fireEvent.click(
+    await waitFor(() =>
+      screen.getByText('/arguments', {
+        selector: '.ant-select-item-option-content'
+      })
+    )
+  );
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Submit' }));
+  await waitFor(() =>
     expect(
-      writes[0].commands.filter((command) => command.kind === 'event')
-    ).toEqual([
-      {
-        kind: 'event',
-        command_id: 'user/invoice',
-        name: 'invoice',
-        description: 'Request invoice processing',
-        enabled: true,
-        contract_id: 'custom.invoice',
-        input_mapping: { invoice: '/arguments' }
-      }
-    ]);
+      binding.getByRole('switch', { name: 'Enable invoice' })
+    ).toBeChecked()
+  );
+  await act(async () => {
+    expect(ref.current?.validate()).toBe(true);
+    await ref.current?.save('channel-1');
+  });
+  expect(
+    writes[0].commands.filter((command) => command.kind === 'event')
+  ).toEqual([
+    {
+      kind: 'event',
+      command_id: 'user/invoice',
+      name: 'invoice',
+      description: 'Request invoice processing',
+      enabled: true,
+      contract_id: 'custom.invoice',
+      input_mapping: { invoice: '/arguments' }
+    }
+  ]);
+  expect(
+    writes[0].commands.filter((command) => command.kind === 'event')[0]
+  ).not.toHaveProperty('contract_version');
+  expect(
+    writes[0].commands
+      .filter((command) => command.kind === 'registered')
+      .every((setting) => !setting.command_id.startsWith('user/'))
+  ).toBe(true);
+  view.unmount();
+  client.clear();
+  binding = within(mount('channel-1').container);
+  const editButton = await waitFor(() => {
     expect(
-      writes[0].commands.filter((command) => command.kind === 'event')[0]
-    ).not.toHaveProperty('contract_version');
-    expect(
-      writes[0].commands
-        .filter((command) => command.kind === 'registered')
-        .every((setting) => !setting.command_id.startsWith('user/'))
-    ).toBe(true);
-    view.unmount();
-    client.clear();
-    binding = within(mount('channel-1').container);
-    const editButton = await nextCommandCommit(() => {
-      expect(
-        binding.getByRole('switch', { name: 'Enable invoice' })
-      ).toBeInTheDocument();
-      const row = binding.getByRole('row', { name: /\/invoice/ });
-      const button = within(row).getByRole('button', { name: 'Edit' });
-      expect(button).toBeEnabled();
-      return button;
-    });
-    fireEvent.click(editButton);
-    const edit = await nextCommandCommit(() => {
-      const dialog = screen.getByRole('dialog');
-      expect(
-        within(dialog).getByRole('button', { name: 'Submit' })
-      ).toBeEnabled();
-      return dialog;
-    });
-    expect(
-      within(edit).getByRole('textbox', { name: 'Command identity' })
-    ).toBeDisabled();
-    fireEvent.change(
-      within(edit).getByRole('textbox', { name: 'Description' }),
-      {
-        target: { value: 'Updated invoice processing' }
-      }
-    );
-    fireEvent.click(within(edit).getByRole('button', { name: 'Submit' }));
-    expect(
-      await nextCommandCommit(() =>
-        binding.getByRole('row', { name: /Updated invoice processing/ })
-      )
+      binding.getByRole('switch', { name: 'Enable invoice' })
     ).toBeInTheDocument();
-    fireEvent.click(binding.getByRole('switch', { name: 'Enable invoice' }));
-    await act(async () => {
-      await ref.current?.save('channel-1');
-    });
+    const row = binding.getByRole('row', { name: /\/invoice/ });
+    const button = within(row).getByRole('button', { name: 'Edit' });
+    expect(button).toBeEnabled();
+    return button;
+  });
+  fireEvent.click(editButton);
+  const edit = await waitFor(() => {
+    const dialog = screen.getByRole('dialog');
     expect(
-      writes[1].commands.filter((command) => command.kind === 'event')[0]
-    ).toMatchObject({
-      description: 'Updated invoice processing',
-      enabled: false
-    });
-    fireEvent.click(
-      within(binding.getByRole('row', { name: /\/invoice/ })).getByRole(
-        'button',
-        {
-          name: 'Delete'
-        }
-      )
-    );
-    await act(async () => {
-      await ref.current?.save('channel-1');
-    });
-    expect(
-      writes[2].commands.filter((command) => command.kind === 'event')
-    ).toEqual([]);
-  } finally {
-    vi.useRealTimers();
-  }
+      within(dialog).getByRole('button', { name: 'Submit' })
+    ).toBeEnabled();
+    return dialog;
+  });
+  expect(
+    within(edit).getByRole('textbox', { name: 'Command identity' })
+  ).toBeDisabled();
+  fireEvent.change(within(edit).getByRole('textbox', { name: 'Description' }), {
+    target: { value: 'Updated invoice processing' }
+  });
+  fireEvent.click(within(edit).getByRole('button', { name: 'Submit' }));
+  expect(
+    await waitFor(() =>
+      binding.getByRole('row', { name: /Updated invoice processing/ })
+    )
+  ).toBeInTheDocument();
+  fireEvent.click(binding.getByRole('switch', { name: 'Enable invoice' }));
+  await act(async () => {
+    await ref.current?.save('channel-1');
+  });
+  expect(
+    writes[1].commands.filter((command) => command.kind === 'event')[0]
+  ).toMatchObject({
+    description: 'Updated invoice processing',
+    enabled: false
+  });
+  fireEvent.click(
+    within(binding.getByRole('row', { name: /\/invoice/ })).getByRole(
+      'button',
+      {
+        name: 'Delete'
+      }
+    )
+  );
+  await act(async () => {
+    await ref.current?.save('channel-1');
+  });
+  expect(
+    writes[2].commands.filter((command) => command.kind === 'event')
+  ).toEqual([]);
 });
 
 test('E8 cannot edit event commands with read-only permission', async () => {
   setup({
     permissions: ['communications.binding.get', 'communications.options.get']
   });
-  await waitFor(() => expect(client.isFetching()).toBe(0));
-  expect(screen.getByRole('button', { name: 'Add command' })).toBeDisabled();
+  await waitFor(() => {
+    expect(client.isFetching()).toBe(0);
+    expect(screen.getByRole('button', { name: 'Add command' })).toBeDisabled();
+  });
 });
 
 test('E8 validates reserved slash names before adding a command draft', async () => {

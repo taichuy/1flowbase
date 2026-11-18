@@ -6,7 +6,7 @@
       "rule": "react-doctor/js-combine-iterations",
       "sourceSha256": "ae4940e2122be9e28f04c4ae3c5a916581f04d8a1ddc364f03edd63e663b01c3",
       "reason": "The style-only command catalogue filters a missing declaration for new-channel requests, then overlays persisted enabled flags and model availability on retained declarations. This deliberate two-stage fixture projection preserves declarations and source metadata; it is not production per-row I/O or a repeated whole-catalogue lookup for rendering. P21f reassessed 2026-11-17: Style command fixture replaces command_settings with canonical discriminated commands of kind registered; enabled lookup now checks that discriminator. It still filters the missing declaration only for new-channel views before overlaying persisted enabled/model availability. Communication binding assertions cover canonical registered/event payloads and readonly/save draft behavior; no production request-loop optimization is inferred.",
-      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-binding.test.tsx","sha256":"88d8364a720a131d92316e2eb40df76690568e1ca02e69240f070279f44b87f2"},{"file":"web/app/src/style-boundary/scene-fixtures/notifications/data.ts","sha256":"16632214299b5b396a40df4c97c7c4589a8dad0eff04d17e44928bfc70a3b092"}]
+      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-binding.test.tsx","sha256":"2c8d35b0c43ca4c11aecbb2cf9ab97cceb7ccb804053b5e72c5e77b4bde1f137"},{"file":"web/app/src/style-boundary/scene-fixtures/notifications/data.ts","sha256":"16632214299b5b396a40df4c97c7c4589a8dad0eff04d17e44928bfc70a3b092"}]
     }
   ]
 }

@@ -194,9 +194,11 @@ describe('RecordPermissionEditor', () => {
       await screen.findByRole('checkbox', { name: 'Operator Open' })
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(
-      await screen.findByText('Permissions have changed. Reload before saving.')
-    ).toBeVisible();
+    await waitFor(() =>
+      expect(
+        screen.getByText('Permissions have changed. Reload before saving.')
+      ).toBeVisible()
+    );
     expect(
       screen.getByRole('checkbox', { name: 'Operator Open' })
     ).toBeChecked();
