@@ -324,5 +324,5 @@ impl SharedResourceRegistry {
 }
 
 #[cfg(test)]
-#[path = "_tests/shared_resources.rs"]
+#[path = "../_tests/shared_resources.rs"]
 mod tests;
