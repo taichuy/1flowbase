@@ -54,4 +54,4 @@ HTTP disconnection does not cancel business execution: an independent task owns 
 
 This is not a sandbox, does not promise cleanup of processes escaping the management boundary, and does not roll back external effects. A reverse proxy may time out before a command finishes.
 
-`.github/workflows/local-command.yml` compiles and tests the actual production execution module on native Windows, Linux, and macOS runners. Linux API tests separately exercise real authentication, role grants/revocation, and complete responses. The lightweight native tests are not validation of the entire packaged application; use the actual Actions result and candidate SHA for each delivery.
+Native local-command tests remain in `api/apps/api-server/tests/local-command-platform/`. The dedicated Actions workflow is retired; it no longer verifies Windows, Linux, and macOS automatically. Record the platforms actually tested, the candidate SHA, and the results for each delivery. Module tests do not validate the entire packaged application.
