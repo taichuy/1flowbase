@@ -13,7 +13,7 @@ use tokio::sync::OwnedMutexGuard;
 
 pub(in crate::managed_services) enum SnapshotLookup {
     Ready(Value),
-    Fallback(SnapshotFallback),
+    Fallback(Box<SnapshotFallback>),
 }
 pub(in crate::managed_services) struct SnapshotFallback {
     // Serial permit survives the entire raw unary execution and cache write.
@@ -153,13 +153,13 @@ pub(in crate::managed_services) async fn snapshot(
         {
             return Ok(SnapshotLookup::Ready(value));
         }
-        return Ok(SnapshotLookup::Fallback(SnapshotFallback {
+        return Ok(SnapshotLookup::Fallback(Box::new(SnapshotFallback {
             _guard: guard,
             _inspection: inspection,
             source,
             revision,
             operation: operation.interface_id.clone(),
             interval,
-        }));
+        })));
     }
 }
