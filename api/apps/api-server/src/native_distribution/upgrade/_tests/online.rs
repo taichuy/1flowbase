@@ -51,10 +51,7 @@ fn release_selection_respects_version_platform_and_channel() {
     assert!(select(vec![release("1.1.0-native.1", true, &name)], &old)
         .unwrap()
         .is_none());
-    assert!(!valid_download_url(
-        "https://example.com/malware",
-        "https://api.github.com"
-    ));
+    assert!(!ReleaseSource::Official.allows_asset("https://example.com/malware"));
 }
 struct Server {
     url: String,
@@ -123,6 +120,27 @@ fn server(name: &str, bytes: Vec<u8>, digest: String, version: &str) -> Server {
     }
 }
 #[test]
+fn fixture_feed_and_assets_are_confined_to_one_literal_loopback_origin() {
+    for invalid in [
+        "http://localhost:4321/releases", "http://127.1:4321/releases",
+        "https://127.0.0.1:4321/releases", "http://127.0.0.1:4321@github.com/releases",
+        "http://127.0.0.1:4321/releases#fragment",
+    ] {
+        assert!(ReleaseSource::loopback(invalid).is_err(), "{invalid}");
+    }
+    let source = ReleaseSource::loopback("http://127.0.0.1:4321/releases").unwrap();
+    assert!(source.allows_asset("http://127.0.0.1:4321/archive"));
+    for invalid in [
+        "http://127.0.0.1:4322/archive", "http://127.1:4321/archive",
+        "https://github.com/taichuy/1flowbase/releases/download/v1/x",
+    ] {
+        assert!(!source.allows_asset(invalid), "{invalid}");
+    }
+    assert!(!ReleaseSource::Official.allows_asset("http://127.0.0.1:4321/archive"));
+    assert!(ReleaseSource::Official.allows_asset("https://github.com/taichuy/1flowbase/releases/download/v1/x"));
+}
+
+#[test]
 fn downloads_real_archive_checks_digest_and_leaves_existing_installation_untouched() {
     use sha2::{Digest, Sha256};
     let f = super::super::tests::Fixture::new();
@@ -167,7 +185,7 @@ fn downloads_real_archive_checks_digest_and_leaves_existing_installation_untouch
         .unwrap();
     let work = f.directory.join("download");
     let candidate = runtime
-        .block_on(download(&client, &old, &work, &server.url))
+        .block_on(download(&client, &old, &work, &ReleaseSource::loopback(&server.url).unwrap()))
         .unwrap()
         .unwrap();
     Manifest::read(&candidate)
@@ -180,7 +198,7 @@ fn downloads_real_archive_checks_digest_and_leaves_existing_installation_untouch
     );
     let corrupt = super::tests::server(&asset, bytes, "0".repeat(64), "1.1.0");
     assert!(runtime
-        .block_on(download(&client, &old, &work, &corrupt.url))
+        .block_on(download(&client, &old, &work, &ReleaseSource::loopback(&corrupt.url).unwrap()))
         .is_err());
     assert_eq!(
         fs::read_to_string(f.old.join(Manifest::executable())).unwrap(),
@@ -254,7 +272,7 @@ fn packaged_archive_downloads_and_extracts() {
             &client,
             &old,
             &f.directory.join("actual-archive"),
-            &server.url,
+            &ReleaseSource::loopback(&server.url).unwrap(),
         ))
         .unwrap()
         .unwrap();
