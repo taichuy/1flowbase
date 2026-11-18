@@ -124,25 +124,34 @@ export function CreateDataBlockMenu({
               .toLowerCase()
               .includes(search.toLowerCase())
         );
-        const sourceGroups = (sources.data ?? [])
-          .map((source) => ({
-            key: `${entry.id}:${source.id}`,
-            label: menuLabel(source.display_name),
-            popupStyle: MENU_PANEL,
-            children: available
-              .filter((model) => (model.data_source_id ?? 'main') === source.id)
-              .map((model) => ({
-                key: `${entry.id}:${model.id}`,
-                label: menuLabel(model.title),
-                onClick: () =>
-                  choose(entry, {
-                    model_id: model.id,
-                    model_code: model.code,
-                    data_source_id: model.data_source_id
-                  })
-              }))
-          }))
-          .filter((group) => group.children.length);
+        const sourceGroups = (sources.data ?? []).flatMap((source) => {
+          const children = available.flatMap((model) =>
+            (model.data_source_id ?? 'main') === source.id
+              ? [
+                  {
+                    key: `${entry.id}:${model.id}`,
+                    label: menuLabel(model.title),
+                    onClick: () =>
+                      choose(entry, {
+                        model_id: model.id,
+                        model_code: model.code,
+                        data_source_id: model.data_source_id
+                      })
+                  }
+                ]
+              : []
+          );
+          return children.length
+            ? [
+                {
+                  key: `${entry.id}:${source.id}`,
+                  label: menuLabel(source.display_name),
+                  popupStyle: MENU_PANEL,
+                  children
+                }
+              ]
+            : [];
+        });
         const children: MenuProps['items'] = [
           {
             key: `${entry.id}:search`,

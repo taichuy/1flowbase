@@ -621,7 +621,7 @@ async fn unified_commands_migration_preserves_switches_event_mapping_and_channel
     assert_eq!(preserved, expected);
     assert!(!migrated.config.command_settings()[0].enabled);
     assert_eq!(
-        serde_json::to_value(&migrated.config.event_commands()).unwrap(),
+        serde_json::to_value(migrated.config.event_commands()).unwrap(),
         old["event_commands"]
     );
     let wire = serde_json::to_value(&migrated.config).unwrap();

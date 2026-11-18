@@ -9,6 +9,74 @@ async fn main_durable_store(database_url: &str) -> MainDurableStore {
         .store
 }
 
+/// Positive publication fixtures keep the real default LLM and select a ready provider.
+pub async fn configure_runnable_agent_flow(
+    app: &Router,
+    cookie: &str,
+    csrf: &str,
+    application_id: &str,
+) {
+    let provider_instance_id =
+        crate::test_support::application::create_ready_provider_instance(app, cookie, csrf).await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/applications/{application_id}/orchestration"
+                ))
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(status, StatusCode::OK, "{payload}");
+    let mut document = payload["data"]["draft"]["document"].clone();
+    let llm_node = document["graph"]["nodes"]
+        .as_array_mut()
+        .expect("default draft should include graph nodes")
+        .iter_mut()
+        .find(|node| node["type"] == "llm")
+        .expect("default draft should include an LLM node");
+    assert_eq!(llm_node["id"], json!("node-llm"));
+    llm_node["config"]["model_provider"] = json!({
+        "provider_code": "fixture_provider",
+        "source_instance_id": provider_instance_id,
+        "model_id": "fixture_chat"
+    });
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!(
+                    "/api/console/applications/{application_id}/orchestration/draft"
+                ))
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "document": document,
+                        "change_kind": "logical",
+                        "summary": "configure runnable fixture provider route"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+}
+
 pub async fn seed_workspace(database_url: &str, workspace_name: &str) -> Uuid {
     let store = main_durable_store(database_url).await;
     let tenant_id: Uuid = sqlx::query_scalar("select id from tenants where code = 'root-tenant'")
@@ -251,5 +319,3 @@ pub(super) async fn set_user_preferred_locale(
         .await
         .unwrap();
 }
-
-pub(super) use api_host_kernel::test_support::profiles::sample_runtime_profile;

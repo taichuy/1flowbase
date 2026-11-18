@@ -448,5 +448,7 @@ test('API test profile overrides inherited dev metadata without changing develop
   const apiTest = section('profile.test.package.api-server');
   assert.match(apiTest, /incremental = false/u);
   assert.match(apiTest, /debug = 0/u);
-  assert.doesNotMatch(apiTest, /codegen-units|debug-assertions|overflow-checks|panic|opt-level/u);
+  // Codegen partitioning changes compiler resource use, not runtime checks.
+  assert.match(apiTest, /^codegen-units = 256$/mu);
+  assert.doesNotMatch(apiTest, /debug-assertions|overflow-checks|panic|opt-level/u);
 });

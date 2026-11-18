@@ -1,6 +1,9 @@
 use access_control::ConsoleOperationRegistry;
 use control_plane::ports::RoleConsolePolicyReader;
-use interface_runtime::{AuthorizationAdapterReference,InterfaceAuthorizationError,InterfaceAuthorizationFuture,InterfaceAuthorizationPort,InterfaceAuthorizationRequest,InterfaceInvocationKernel};
+use interface_runtime::{
+    AuthorizationAdapterReference, InterfaceAuthorizationError, InterfaceAuthorizationFuture,
+    InterfaceAuthorizationPort, InterfaceAuthorizationRequest, InterfaceInvocationKernel,
+};
 use std::sync::Arc;
 struct ConsoleInterfaceAuthorizationPort {
     policy_reader: Arc<dyn RoleConsolePolicyReader>,

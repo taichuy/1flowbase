@@ -146,6 +146,13 @@
     },
     {
       "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
+      "specifier": "../../events/EventsPage",
+      "smokePaths": [
+        "/settings/events"
+      ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/shell/SettingsSectionBody.tsx",
       "specifier": "../MemberSettingsTabs",
       "smokePaths": [
         "/settings/members"

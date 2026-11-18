@@ -827,7 +827,11 @@ pub(super) async fn validate(
             }
         }
         if table.columns.iter().any(|c| {
-            !c.nullable && !c.generated && normalized.get(&c.name).is_none_or(Value::is_null)
+            !c.nullable
+                && !c.generated
+                && normalized.get(&c.name).is_none_or(Value::is_null)
+                && !(schema::required_json_value(c)
+                    && record.row.get(&c.name).is_some_and(Value::is_null))
         }) {
             failure(
                 &mut preview,

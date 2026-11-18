@@ -1,7 +1,9 @@
 mod application_public_api_contract_tests;
 mod application_public_runtime_contract_tests;
+#[path = "auth/auth_contract_tests.rs"]
 mod auth_contract_tests;
 mod backup_recovery_contract_tests;
+#[path = "billing/billing_contract_tests.rs"]
 mod billing_contract_tests;
 mod claude_code_control_contract_tests;
 mod console_policy_migration_contract_tests;

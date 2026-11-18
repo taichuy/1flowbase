@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { i18nText } from '../../../shared/i18n/text';
 import { copyTextToClipboard } from '../../../shared/ui/clipboard/copy-text';
 import { FrontstageNodeActionButton } from './FrontstageNodeActionButton';
-import { useBlockSettings } from '../lib/block-settings/registry';
+import { useBlockSettings } from '../lib/block-settings/registry-store';
 
 type BlockHoverToolbarProps = {
   blockId: string;

@@ -60,7 +60,7 @@ impl ApiInput for BusinessFilesInput {
 impl ApiOutput for BusinessFilesOutput {
     fn document_output_schema(operation: &ApiOperationContext) -> Option<Value> {
         (operation.interface_id == "files.access_links.create")
-            .then(|| event::schema::<ShareLinkEvent<'static>>())
+            .then(event::schema::<ShareLinkEvent<'static>>)
     }
     fn document_output_unavailable(
         operation: &ApiOperationContext,

@@ -70,6 +70,29 @@ export function appendObservationSample(
   ].slice(-361);
 }
 
+let formatterLanguage: string | undefined;
+let integerFormatter: Intl.NumberFormat | undefined;
+let fractionalFormatter: Intl.NumberFormat | undefined;
+
+function observationNumberFormatter(fractional: boolean) {
+  const language =
+    typeof navigator === 'undefined' ? undefined : navigator.language;
+  if (language !== formatterLanguage) {
+    formatterLanguage = language;
+    integerFormatter = undefined;
+    fractionalFormatter = undefined;
+  }
+  // The browser language invalidates the cache; Intl still chooses its host default.
+  if (fractional) {
+    return (fractionalFormatter ??= new Intl.NumberFormat(undefined, {
+      maximumFractionDigits: 1
+    }));
+  }
+  return (integerFormatter ??= new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 0
+  }));
+}
+
 export function formatObservationBytes(bytes: number) {
   const units = ['B', 'KiB', 'MiB', 'GiB'];
   const index =
@@ -77,5 +100,5 @@ export function formatObservationBytes(bytes: number) {
       ? Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
       : 0;
   const value = bytes / 1024 ** index;
-  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: index ? 1 : 0 }).format(value)} ${units[index]}`;
+  return `${observationNumberFormatter(Boolean(index)).format(value)} ${units[index]}`;
 }

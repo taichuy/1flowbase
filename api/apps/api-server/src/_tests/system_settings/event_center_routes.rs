@@ -51,7 +51,7 @@ async fn request(
     )
 }
 
-async fn event_state() -> Arc<crate::app_state::ApiState> {
+async fn event_app() -> (Arc<crate::app_state::ApiState>, Router) {
     let (mut state, _) = test_api_state_with_database_url().await;
     let state_mut = Arc::get_mut(&mut state).unwrap();
     state_mut.event_center = EventCenterRuntime::new(
@@ -73,6 +73,8 @@ async fn event_state() -> Arc<crate::app_state::ApiState> {
     // Bind only this fixture to the compiled serving catalog. General support remains
     // deliberately unavailable until a test opts into an event runtime.
     state_mut.event_sources = crate::test_support::event_source_catalog_for_test_support();
+    // Publish the complete serving registry before persisting its interface declarations.
+    let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let snapshot = crate::test_support::event_catalog_snapshot(&state)
         .await
         .unwrap();
@@ -82,7 +84,7 @@ async fn event_state() -> Arc<crate::app_state::ApiState> {
     )
     .await
     .unwrap();
-    state
+    (state, app)
 }
 
 fn interface_rule(interface_id: &str, phase: &str, results: &[&str]) -> Value {
@@ -96,8 +98,7 @@ fn definition() -> Value {
 
 #[tokio::test]
 async fn event_center_mcp_rules_use_declared_dto_fields() {
-    let state = event_state().await;
-    let app = crate::app_with_state_and_config(state, &test_config());
+    let (_, app) = event_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let (status, catalog) = request(
         &app,
@@ -193,8 +194,7 @@ async fn event_center_mcp_rules_use_declared_dto_fields() {
 
 #[tokio::test]
 async fn event_center_routes_keep_definition_configuration_separate_from_publication() {
-    let state = event_state().await;
-    let app = crate::app_with_state_and_config(state.clone(), &test_config());
+    let (_, app) = event_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     assert_eq!(
         request(&app, "GET", "/api/console/events", "", "", None)
@@ -349,8 +349,7 @@ async fn event_center_routes_keep_definition_configuration_separate_from_publica
 
 #[tokio::test]
 async fn event_center_routes_use_independent_operations_and_fail_closed_when_group_disabled() {
-    let state = event_state().await;
-    let app = crate::app_with_state_and_config(state, &test_config());
+    let (_, app) = event_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let role = "event_reader";
     create_role(&app, &cookie, &csrf, role).await;
@@ -467,8 +466,7 @@ async fn event_center_routes_use_independent_operations_and_fail_closed_when_gro
 
 #[tokio::test]
 async fn event_center_runtime_route_observes_without_consuming_or_exposing_payload() {
-    let state = event_state().await;
-    let app = crate::app_with_state_and_config(state.clone(), &test_config());
+    let (state, app) = event_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let (status, created) = request(
         &app,
@@ -587,8 +585,7 @@ fn take_payload(subscription: &control_plane::event_center::EventCenterSubscript
 #[tokio::test]
 async fn interface_rules_publish_actual_call_values_once_and_keep_result_and_workspace_boundaries()
 {
-    let state = event_state().await;
-    let app = crate::app_with_state_and_config(state.clone(), &test_config());
+    let (state, app) = event_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let (status, application) = request(&app, "POST", "/api/console/applications", &cookie, &csrf,
         Some(json!({"application_type":"agent_flow","name":"Actual event app","description":"Actual event description"}))).await;

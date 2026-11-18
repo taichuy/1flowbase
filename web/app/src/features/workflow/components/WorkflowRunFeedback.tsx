@@ -2,24 +2,24 @@ import { Tag, Tooltip, Typography } from 'antd';
 import { i18nText } from '../../../shared/i18n/text';
 import type { WorkflowRunState } from '../lib/run-state';
 
+const labels = new Map<string, () => string>([
+  ['starting', () => i18nText('workflow', 'run.starting')],
+  ['queued', () => i18nText('workflow', 'run.queued')],
+  ['running', () => i18nText('workflow', 'run.running')],
+  ['succeeded', () => i18nText('workflow', 'run.succeeded')],
+  ['failed', () => i18nText('workflow', 'run.failed')],
+  ['cancelled', () => i18nText('workflow', 'run.cancelled')],
+  ['incomplete', () => i18nText('workflow', 'run.incomplete')],
+  ['waiting_human', () => i18nText('workflow', 'run.waiting_human')],
+  ['waiting_callback', () => i18nText('workflow', 'run.waiting_callback')],
+  ['unconfirmed', () => i18nText('workflow', 'run.unconfirmed')]
+]);
+
 export function WorkflowRunFeedback({ state }: { state: WorkflowRunState }) {
   if (state.status === 'idle') return null;
-  const labels: Record<string, string> = {
-    starting: i18nText('workflow', 'run.starting'),
-    queued: i18nText('workflow', 'run.queued'),
-    running: i18nText('workflow', 'run.running'),
-    succeeded: i18nText('workflow', 'run.succeeded'),
-    failed: i18nText('workflow', 'run.failed'),
-    cancelled: i18nText('workflow', 'run.cancelled'),
-    incomplete: i18nText('workflow', 'run.incomplete'),
-    waiting_human: i18nText('workflow', 'run.waiting_human'),
-    waiting_callback: i18nText('workflow', 'run.waiting_callback'),
-    unconfirmed: i18nText('workflow', 'run.unconfirmed')
-  };
-  const label = labels[state.status] ?? state.status;
+  const label = labels.get(state.status)?.() ?? state.status;
   return (
-    <span
-      role="status"
+    <output
       style={{
         display: 'inline-flex',
         alignItems: 'center',
@@ -50,6 +50,6 @@ export function WorkflowRunFeedback({ state }: { state: WorkflowRunState }) {
           {i18nText('workflow', 'run.observation_interrupted')}
         </Typography.Text>
       ) : null}
-    </span>
+    </output>
   );
 }

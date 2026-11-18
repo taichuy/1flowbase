@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { cleanup, render, waitFor, within } from '@testing-library/react';
+import { render, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   compileNativeReactComponent,
@@ -16,8 +16,9 @@ import { createFrontstageNativeReactModuleRegistry } from '../../native-modules/
 import { createFrontstageUnavailableBlockContext } from '../../native-trusted-block/unavailable-context';
 
 const roots: HTMLElement[] = [];
+const views: Array<ReturnType<typeof render>> = [];
 afterEach(() => {
-  cleanup();
+  for (const view of views.splice(0)) view.unmount();
   for (const root of roots.splice(0)) root.remove();
 });
 
@@ -34,7 +35,7 @@ function contributionTemplate(code: string): string {
     .split(`  - contribution_code: ${code}\n`)[1]
     ?.split('\n  - contribution_code:')[0];
   const source = entry?.match(
-    /^    code_template: \|\r?\n([\s\S]*?)(?=^    [A-Za-z_])/m
+    /^ {4}code_template: \|\r?\n([\s\S]*?)(?=^ {4}[A-Za-z_])/m
   )?.[1];
   if (!source) throw new Error(`Missing native template: ${code}`);
   return source.replace(/^ {6}/gm, '').trim();
@@ -96,12 +97,24 @@ describe('shipped data block native templates', () => {
           asset.module_source === '@1flowbase/data-blocks' &&
           asset.role === 'shadow_style'
       );
-      expect(blockStyles).toHaveLength(2);
-      const loadedCss = blockStyles
-        .map((asset) => new TextDecoder().decode(asset.bytes))
-        .join('\n');
+      expect(blockStyles).toHaveLength(4);
+      const selectors = [
+        '.data-table-block',
+        '.data-form-block',
+        '.block-design-surface',
+        '.frontstage-node-action-button'
+      ];
+      const styleBodies = blockStyles.map((asset) =>
+        new TextDecoder().decode(asset.bytes)
+      );
+      expect(styleBodies).toEqual(
+        selectors.map((selector) => expect.stringContaining(selector))
+      );
+      const loadedCss = styleBodies.join('\n');
       expect(loadedCss).toContain('.data-table-block');
       expect(loadedCss).toContain('.data-form-block');
+      expect(loadedCss).toContain('.block-design-surface');
+      expect(loadedCss).toContain('.frontstage-node-action-button');
 
       const plan: NativeTrustedBlockPreparePlan = {
         runtime: 'native_trusted_block',
@@ -118,7 +131,7 @@ describe('shipped data block native templates', () => {
       const onRuntimeError = vi.fn();
       const ctx = createFrontstageUnavailableBlockContext(plan);
       const get = vi.spyOn(ctx.api, 'get');
-      render(
+      const view = render(
         <FrontstageNativeTrustedBlockPortalHost
           root={root}
           renderEpoch={contributionCode}
@@ -131,6 +144,7 @@ describe('shipped data block native templates', () => {
           onRuntimeError={onRuntimeError}
         />
       );
+      views.push(view);
       await waitFor(() => expect(root.shadowRoot).not.toBeNull());
       const shadowRoot = root.shadowRoot!;
       const alert = await within(
@@ -140,15 +154,15 @@ describe('shipped data block native templates', () => {
       expect(onRuntimeError).not.toHaveBeenCalled();
       expect(get).not.toHaveBeenCalled();
       await waitFor(() => {
-        expect(surfaceCss(shadowRoot)).toContain('.data-table-block');
-        expect(surfaceCss(shadowRoot)).toContain('.data-form-block');
+        const css = surfaceCss(shadowRoot);
+        for (const selector of selectors) expect(css).toContain(selector);
       });
       const globalCss = Array.from(
         document.head.querySelectorAll('style'),
         (style) => style.textContent ?? ''
       ).join('\n');
-      expect(globalCss).not.toContain('.data-table-block');
-      expect(globalCss).not.toContain('.data-form-block');
+      for (const selector of selectors)
+        expect(globalCss).not.toContain(selector);
     }
   );
 });

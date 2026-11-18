@@ -15,94 +15,107 @@ struct AutomaticTransportReplay {
     selected: SelectedLlmInvocation,
 }
 
-// Both returned and streamed failures use the same receipt/budget/materialization gate.
-async fn decide_attempt_recovery<I: ProviderInvoker + ?Sized>(
-    ledger: &mut AiNativeRecoveryLedger,
-    receipt: &std::result::Result<Option<extension_contracts::ProviderRecoveryReceipt>, String>,
-    partition: ai_native_recovery::ProviderRetryPartition,
-    now: i64,
-    outer_attempt: u16,
-    invoker: &I,
-    replay: &mut AutomaticTransportReplay,
-    rebuild_attempted: &mut bool,
-    failed: bool,
-) -> ai_native_recovery::AiNativeRecoveryReceipt {
-    let Ok(receipt) = receipt else {
-        return ledger.reject_invalid_receipt(outer_attempt);
-    };
-    let owner_loss = receipt.as_ref().is_some_and(|receipt| {
-        receipt.reason == extension_contracts::RecoveryReason::ContinuationOwnerUnavailable
-    });
-    let materializable = failed
-        && owner_loss
-        && !*rebuild_attempted
-        && replay.selected.input_mode == RecoveryInputMode::NativeOpaque
-        && replay
-            .selected
-            .invocation
-            .input
-            .native_transport
-            .as_ref()
-            .is_some_and(|native| {
-                native.protocol == "openai_responses"
-                    && native
-                        .wire_body
-                        .get("previous_response_id")
-                        .is_some_and(|id| !id.is_null())
-            });
-    if owner_loss && !materializable {
-        // A repeated owner failure cannot reopen generic opaque reconstruction.
-        ledger.select_input_representation(replay.selected.input_mode, false);
-    }
-    let mut decision = if materializable {
-        ai_native_recovery::decide_native_owner_replay_with_default_bucket(
+struct NativeReplayRecovery<'a, I: ProviderInvoker + ?Sized> {
+    ledger: &'a mut AiNativeRecoveryLedger,
+    invoker: &'a I,
+    replay: &'a mut AutomaticTransportReplay,
+    rebuild_attempted: &'a mut bool,
+}
+
+impl<I: ProviderInvoker + ?Sized> NativeReplayRecovery<'_, I> {
+    // Both returned and streamed failures use the same receipt/budget/materialization gate.
+    async fn decide(
+        self,
+        receipt: &std::result::Result<Option<extension_contracts::ProviderRecoveryReceipt>, String>,
+        partition: ai_native_recovery::ProviderRetryPartition,
+        now: i64,
+        outer_attempt: u16,
+        failed: bool,
+    ) -> ai_native_recovery::AiNativeRecoveryReceipt {
+        let Self {
             ledger,
-            receipt.as_ref().expect("typed owner loss"),
-            partition,
-            now,
-            outer_attempt,
-        )
-    } else {
-        decide_outer_replay_with_default_bucket(
-            ledger,
-            receipt.as_ref(),
-            partition,
-            now,
-            outer_attempt,
-        )
-    };
-    if materializable && decision.decision == OuterReplayDecision::Retry {
-        *rebuild_attempted = true;
-        let mut input = replay.selected.invocation.input.clone();
-        input.run_context.insert(
-            "task_deadline_unix_ms".into(),
-            json!(ledger.absolute_deadline_unix_ms()),
-        );
-        let rebuilt = invoker
-            .materialize_native_continuation(
-                &replay.resolved.runtime,
-                replay
-                    .resolved
-                    .route
-                    .as_ref()
-                    .expect("selected frozen route"),
-                input,
+            invoker,
+            replay,
+            rebuild_attempted,
+        } = self;
+        let Ok(receipt) = receipt else {
+            return ledger.reject_invalid_receipt(outer_attempt);
+        };
+        let owner_loss = receipt.as_ref().is_some_and(|receipt| {
+            receipt.reason == extension_contracts::RecoveryReason::ContinuationOwnerUnavailable
+        });
+        let materializable = failed
+            && owner_loss
+            && !*rebuild_attempted
+            && replay.selected.input_mode == RecoveryInputMode::NativeOpaque
+            && replay
+                .selected
+                .invocation
+                .input
+                .native_transport
+                .as_ref()
+                .is_some_and(|native| {
+                    native.protocol == "openai_responses"
+                        && native
+                            .wire_body
+                            .get("previous_response_id")
+                            .is_some_and(|id| !id.is_null())
+                });
+        if owner_loss && !materializable {
+            // A repeated owner failure cannot reopen generic opaque reconstruction.
+            ledger.select_input_representation(replay.selected.input_mode, false);
+        }
+        let mut decision = if materializable {
+            ai_native_recovery::decide_native_owner_replay_with_default_bucket(
+                ledger,
+                receipt.as_ref().expect("typed owner loss"),
+                partition,
+                now,
+                outer_attempt,
             )
-            .await;
-        match rebuilt {
-            Ok(Some(input))
-                if unix_millis(OffsetDateTime::now_utc()) < ledger.absolute_deadline_unix_ms() =>
-            {
-                replay.selected.invocation.input = input;
-            }
-            _ => {
-                // No new send occurred. Preserve the provider's original error and actual debit.
-                decision.decision = OuterReplayDecision::NonReproducible;
-                decision.original_terminal_preserved = true;
+        } else {
+            decide_outer_replay_with_default_bucket(
+                ledger,
+                receipt.as_ref(),
+                partition,
+                now,
+                outer_attempt,
+            )
+        };
+        if materializable && decision.decision == OuterReplayDecision::Retry {
+            *rebuild_attempted = true;
+            let mut input = replay.selected.invocation.input.clone();
+            input.run_context.insert(
+                "task_deadline_unix_ms".into(),
+                json!(ledger.absolute_deadline_unix_ms()),
+            );
+            let rebuilt = invoker
+                .materialize_native_continuation(
+                    &replay.resolved.runtime,
+                    replay
+                        .resolved
+                        .route
+                        .as_ref()
+                        .expect("selected frozen route"),
+                    input,
+                )
+                .await;
+            match rebuilt {
+                Ok(Some(input))
+                    if unix_millis(OffsetDateTime::now_utc())
+                        < ledger.absolute_deadline_unix_ms() =>
+                {
+                    replay.selected.invocation.input = input;
+                }
+                _ => {
+                    // No new send occurred. Preserve the provider's original error and actual debit.
+                    decision.decision = OuterReplayDecision::NonReproducible;
+                    decision.original_terminal_preserved = true;
+                }
             }
         }
+        decision
     }
-    decision
 }
 
 pub(crate) async fn execute_llm_node_provider_round<I>(
@@ -652,15 +665,17 @@ where
                 // receipt stays distinguishable from an absent one so a
                 // corrupted receipt can never authorize a replay.
                 let provider_recovery_receipt = parse_provider_recovery_receipt(&provider_error);
-                let recovery_receipt = decide_attempt_recovery(
-                    &mut recovery_ledger,
+                let recovery_receipt = NativeReplayRecovery {
+                    ledger: &mut recovery_ledger,
+                    invoker,
+                    replay: &mut replay_attempt,
+                    rebuild_attempted: &mut native_rebuild_attempted,
+                }
+                .decide(
                     &provider_recovery_receipt,
                     retry_partition,
                     unix_millis(attempt_finished_at),
                     u16::try_from(attempt_index).unwrap_or(u16::MAX),
-                    invoker,
-                    &mut replay_attempt,
-                    &mut native_rebuild_attempted,
                     matches!(
                         provider_error.kind,
                         ProviderRuntimeErrorKind::ProviderTransportUnavailable
@@ -933,15 +948,17 @@ where
         );
         let ai_native_recovery = Some({
             let outer_attempt = u16::try_from(attempt_index).unwrap_or(u16::MAX);
-            decide_attempt_recovery(
-                &mut recovery_ledger,
+            NativeReplayRecovery {
+                ledger: &mut recovery_ledger,
+                invoker,
+                replay: &mut replay_attempt,
+                rebuild_attempted: &mut native_rebuild_attempted,
+            }
+            .decide(
                 &provider_recovery_receipt,
                 retry_partition,
                 unix_millis(attempt_finished_at),
                 outer_attempt,
-                invoker,
-                &mut replay_attempt,
-                &mut native_rebuild_attempted,
                 error_payload.is_some()
                     && provider_error.as_ref().is_some_and(|error| {
                         matches!(

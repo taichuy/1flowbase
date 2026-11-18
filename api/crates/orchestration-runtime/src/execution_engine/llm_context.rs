@@ -100,6 +100,12 @@ pub(super) fn binding_prompt_messages<'a>(
     messages
 }
 
+struct PromptBindingInputs<'a> {
+    rendered_templates: &'a Map<String, Value>,
+    resolved_inputs: &'a Map<String, Value>,
+    variable_pool: &'a Map<String, Value>,
+}
+
 pub(super) fn binding_prompt_messages_with_context_sources(
     plan: &CompiledPlan,
     node: &CompiledNode,
@@ -109,14 +115,17 @@ pub(super) fn binding_prompt_messages_with_context_sources(
     context_policy: &Value,
     runtime_context: &ExecutionRuntimeContext,
 ) -> Result<Vec<Value>, Value> {
+    let bindings = PromptBindingInputs {
+        rendered_templates,
+        resolved_inputs,
+        variable_pool,
+    };
     if let Some(history) = pending_llm_tool_callback_history(node, variable_pool) {
         if pending_llm_tool_callback_uses_rebuilt_system(node, variable_pool) {
             return assemble_prompt_messages_with_context_sources(
                 plan,
                 node,
-                rendered_templates,
-                resolved_inputs,
-                variable_pool,
+                bindings,
                 context_policy,
                 runtime_context,
                 Some(history),
@@ -131,9 +140,7 @@ pub(super) fn binding_prompt_messages_with_context_sources(
     assemble_prompt_messages_with_context_sources(
         plan,
         node,
-        rendered_templates,
-        resolved_inputs,
-        variable_pool,
+        bindings,
         context_policy,
         runtime_context,
         None,
@@ -143,13 +150,16 @@ pub(super) fn binding_prompt_messages_with_context_sources(
 fn assemble_prompt_messages_with_context_sources(
     plan: &CompiledPlan,
     node: &CompiledNode,
-    rendered_templates: &Map<String, Value>,
-    resolved_inputs: &Map<String, Value>,
-    variable_pool: &Map<String, Value>,
+    bindings: PromptBindingInputs<'_>,
     context_policy: &Value,
     runtime_context: &ExecutionRuntimeContext,
     admitted_history: Option<Vec<Value>>,
 ) -> Result<Vec<Value>, Value> {
+    let PromptBindingInputs {
+        rendered_templates,
+        resolved_inputs,
+        variable_pool,
+    } = bindings;
     // Only the host communication mapper writes this marker; public Native history rejects
     // unknown fields. Keep the session separate and never replay selected/prior history.
     if runtime_context

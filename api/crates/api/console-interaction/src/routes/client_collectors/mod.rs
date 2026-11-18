@@ -12,8 +12,7 @@ use std::sync::Arc;
 pub(crate) mod interface;
 use interface::*;
 
-pub fn route_assembly(
-) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
+pub fn route_assembly() -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
     crate::external_route_assembly::ExternalRouteAssembly::new().route(
         "/api/public/client-collectors/:organization/:artifact_id/:version/assets/:asset",
         crate::external_route_assembly::get(download),

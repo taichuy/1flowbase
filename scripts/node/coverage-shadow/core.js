@@ -225,7 +225,7 @@ function compareCoverageSummaries(monolithic, merged) {
 }
 
 function run(command, {
-  env, spawnSyncImpl = spawnSync, capture = false, logPrefix,
+  env, spawnSyncImpl = spawnSync, capture = false, logPrefix, capturePrefix,
   writeStdout = (text) => process.stdout.write(text),
   writeStderr = (text) => process.stderr.write(text),
 } = {}) {
@@ -247,12 +247,28 @@ function run(command, {
   }
   let stdout = result.stdout || '';
   let stderr = result.stderr || '';
+  if (capturePrefix) {
+    // The bounded console tail may omit the first compiler error. Preserve the
+    // complete buffered listing streams in the current shard artifact as well.
+    fs.writeFileSync(`${capturePrefix}.stdout.log`, stdout);
+    fs.writeFileSync(`${capturePrefix}.stderr.log`, stderr);
+  }
   if (logPrefix) {
     // Keep raw output even on failure; no successful metadata is written then.
     stdout = fs.readFileSync(outputFiles[0], 'utf8');
     stderr = fs.readFileSync(outputFiles[1], 'utf8');
     writeStdout(stdout);
     writeStderr(stderr);
+  } else if (capture && (result.error || result.status !== 0)) {
+    // Listing and environment commands use buffered capture. Keep their failure evidence
+    // visible before throwing, while bounding each stream independently in the CI log.
+    const byteLimit = 64 * 1024;
+    for (const [output, writeOutput] of [[stdout, writeStdout], [stderr, writeStderr]]) {
+      const bytes = Buffer.from(output);
+      writeOutput(bytes.length > byteLimit
+        ? `[${bytes.length - byteLimit} earlier bytes omitted]\n${bytes.subarray(-byteLimit).toString('utf8')}`
+        : output);
+    }
   }
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${command.command} ${command.args.join(' ')} failed with exit code ${result.status ?? 1}`);
@@ -267,7 +283,7 @@ function runApiServerShard({
   fs.rmSync(shardDir, { recursive: true, force: true });
   fs.mkdirSync(shardDir, { recursive: true });
   if (!env.QUALITY_GATE_TARGET_SHA?.trim()) throw new Error('coverage shard requires a frozen SHA');
-  const llvmEnv = parseLlvmCovEnvironment(run(showEnv, { env, spawnSyncImpl, capture: true }));
+  const llvmEnv = parseLlvmCovEnvironment(run(showEnv, { env, spawnSyncImpl, capture: true, writeStdout, writeStderr }));
   const instrumentedEnv = {
     ...env,
     ...llvmEnv,
@@ -276,7 +292,10 @@ function runApiServerShard({
     RUST_MIN_STACK: String(8 * 1024 * 1024),
   };
   run(cleanObjects, { env: instrumentedEnv, spawnSyncImpl });
-  const inventoryText = run(listTests, { env: instrumentedEnv, spawnSyncImpl, capture: true });
+  const inventoryText = run(listTests, {
+    env: instrumentedEnv, spawnSyncImpl, capture: true, writeStdout, writeStderr,
+    capturePrefix: path.join(shardDir, `nextest-list-${shardIndex}`),
+  });
   const inventory = JSON.parse(inventoryText);
   fs.writeFileSync(path.join(shardDir, `inventory-${shardIndex}.json`), `${JSON.stringify(inventory)}\n`, 'utf8');
   const testCount = collectNextestTestIds(inventory).length;

@@ -1,6 +1,10 @@
-import type { ConsoleMcpInstanceDirectory } from '@1flowbase/api-client';
+import type {
+  ConsoleMcpInstanceDirectory,
+  ConsoleMcpToolBinding
+} from '@1flowbase/api-client';
 import { act, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import { useLayoutEffect } from 'react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   change,
   click,
@@ -14,6 +18,46 @@ import {
   waitForRequests
 } from './fixture';
 import { holdNextDirectoryReplace } from '../fixtures/directory-snapshot';
+
+const identityCommits = vi.hoisted(() => ({
+  enabled: false,
+  entries: [] as {
+    binding: ConsoleMcpToolBinding | null;
+    selectedKey: string;
+    snapshot: ConsoleMcpInstanceDirectory | null;
+    mountLabel: string | null;
+  }[]
+}));
+
+vi.mock('../../../McpInstancesTab/use-mcp-directory-editor', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../../McpInstancesTab/use-mcp-directory-editor')
+  >('../../../McpInstancesTab/use-mcp-directory-editor');
+  return {
+    ...actual,
+    useMcpDirectoryEditor(
+      ...args: Parameters<typeof actual.useMcpDirectoryEditor>
+    ) {
+      const result = actual.useMcpDirectoryEditor(...args);
+      useLayoutEffect(() => {
+        if (!identityCommits.enabled) return;
+        const selector = document.querySelector(
+          '[aria-label="编辑 Tool 挂载"]'
+        );
+        identityCommits.entries.push({
+          binding: result.editingBinding,
+          selectedKey: result.selectedDirectoryKey,
+          snapshot: result.directorySnapshot,
+          mountLabel:
+            selector
+              ?.closest('.ant-select')
+              ?.querySelector('.ant-select-content')?.textContent ?? null
+        });
+      });
+      return result;
+    }
+  };
+});
 
 async function openDirectory(
   options: Parameters<typeof renderPanelWithMountedTool>[0] = {
@@ -54,6 +98,14 @@ async function saveNode(dialog: HTMLElement) {
       within(dialog).queryByRole('button', { name: '保存节点' })
     ).not.toBeInTheDocument()
   );
+}
+
+async function stageNewMount(dialog: HTMLElement) {
+  await selectGroup(dialog);
+  await click(within(dialog).getByRole('button', { name: '挂载 Tool' }));
+  await mouseDown(within(dialog).getByRole('combobox', { name: '选择 Tool' }));
+  await selectAntdOption('Search customer');
+  await saveNode(dialog);
 }
 
 async function waitForDirectorySaveReady(dialog: HTMLElement) {
@@ -150,6 +202,10 @@ function expectedBindings(snapshot: ConsoleMcpInstanceDirectory) {
 
 describe('instance directory confirmed tree and node form', () => {
   setupDirectoryEditorFixture();
+  beforeEach(() => {
+    identityCommits.enabled = false;
+    identityCommits.entries = [];
+  });
 
   test('AC-S1 node cancel restores the last confirmed draft, not the original server value', async () => {
     const { dialog } = await openDirectory();
@@ -517,6 +573,144 @@ describe('instance directory confirmed tree and node form', () => {
       }
     ]);
     expectNoImmediateWrites();
+  });
+
+  test('commits a saved mount identity and its selected key together while preserving the node buffer', async () => {
+    identityCommits.enabled = true;
+    const { dialog } = await openDirectory({
+      includeBinding: false,
+      includeGroup: true
+    });
+    await stageNewMount(dialog);
+    const temporary = identityCommits.entries.at(-1)?.binding;
+    expect(temporary?.id).toMatch(/^draft:/);
+    await click(within(dialog).getByRole('button', { name: '编辑节点' }));
+    await click(within(dialog).getByRole('switch', { name: '可见' }));
+    expect(within(dialog).getByRole('switch', { name: '可见' })).not.toBeChecked();
+    expect(identityCommits.entries.at(-1)?.binding).toBe(temporary);
+
+    const response = holdNextDirectoryReplace(mcpManagementApi);
+    try {
+      await click(within(dialog).getByRole('button', { name: '保存目录' }));
+      await waitFor(() =>
+        expect(
+          mcpManagementApi.replaceSettingsMcpInstanceDirectory
+        ).toHaveBeenCalledTimes(1)
+      );
+      const start = identityCommits.entries.length;
+      await act(async () => {
+        response.release();
+        await mcpManagementApi.replaceSettingsMcpInstanceDirectory.mock
+          .results[0]!.value;
+      });
+      await waitForDirectorySaveReady(dialog);
+      const committed: ConsoleMcpInstanceDirectory =
+        await mcpManagementApi.replaceSettingsMcpInstanceDirectory.mock
+          .results[0]!.value;
+      const saved = committed.bindings[0]!;
+      expect(saved.id).not.toBe(temporary?.id);
+      expect(within(dialog).getByRole('switch', { name: '可见' })).not.toBeChecked();
+      const firstCanonical = identityCommits.entries.slice(start).find((entry) =>
+        entry.snapshot?.bindings.some((binding) => binding.id === saved.id)
+      );
+      expect(firstCanonical).toBeDefined();
+      expect(firstCanonical?.binding?.id).toBe(saved.id);
+      expect(firstCanonical?.selectedKey).toBe(`binding:${saved.id}`);
+      expect(firstCanonical?.mountLabel).toBe(saved.tool_id);
+
+      const canonical = identityCommits.entries.at(-1)?.binding;
+      expect(canonical?.id).toBe(saved.id);
+      await click(await waitForDirectorySaveReady(dialog));
+      await waitFor(() =>
+        expect(
+          mcpManagementApi.replaceSettingsMcpInstanceDirectory
+        ).toHaveBeenCalledTimes(2)
+      );
+      await waitForDirectorySaveReady(dialog);
+      const nextBody =
+        mcpManagementApi.replaceSettingsMcpInstanceDirectory.mock.calls[1]![1];
+      expect(nextBody.expected_snapshot).toEqual(committed);
+      expect(nextBody.bindings).toEqual([
+        {
+          id: saved.id,
+          tool_id: 'search_customer',
+          group_path: '/ops',
+          display_alias: null,
+          visible: true,
+          sort_order: 0
+        }
+      ]);
+      expect(identityCommits.entries.at(-1)?.binding).toBe(canonical);
+      expect(within(dialog).getByRole('switch', { name: '可见' })).not.toBeChecked();
+      expectNoImmediateWrites();
+    } finally {
+      response.release();
+    }
+  });
+
+  test('keeps a newer group selection and its unconfirmed values when an earlier mount save returns', async () => {
+    identityCommits.enabled = true;
+    const { dialog, snapshot } = await openDirectory({
+      includeBinding: false,
+      includeGroup: true
+    });
+    await stageNewMount(dialog);
+    const response = holdNextDirectoryReplace(mcpManagementApi);
+    try {
+      await click(within(dialog).getByRole('button', { name: '保存目录' }));
+      await waitFor(() =>
+        expect(
+          mcpManagementApi.replaceSettingsMcpInstanceDirectory
+        ).toHaveBeenCalledTimes(1)
+      );
+      await selectGroup(dialog);
+      await editGroup(dialog, 'New selection buffer');
+      expect(identityCommits.entries.at(-1)?.binding).toBeNull();
+      expect(identityCommits.entries.at(-1)?.selectedKey).toBe('group:/ops');
+      const start = identityCommits.entries.length;
+      await act(async () => {
+        response.release();
+        await mcpManagementApi.replaceSettingsMcpInstanceDirectory.mock
+          .results[0]!.value;
+      });
+      await waitForDirectorySaveReady(dialog);
+      const committed: ConsoleMcpInstanceDirectory =
+        await mcpManagementApi.replaceSettingsMcpInstanceDirectory.mock
+          .results[0]!.value;
+      const saved = committed.bindings[0]!;
+      const firstCanonical = identityCommits.entries.slice(start).find((entry) =>
+        entry.snapshot?.bindings.some((binding) => binding.id === saved.id)
+      );
+      expect(firstCanonical).toBeDefined();
+      expect(firstCanonical?.binding).toBeNull();
+      expect(firstCanonical?.selectedKey).toBe('group:/ops');
+      expect(within(dialog).getByLabelText('显示名称')).toHaveValue(
+        'New selection buffer'
+      );
+      expect(
+        within(dialog).queryByRole('combobox', { name: '编辑 Tool 挂载' })
+      ).not.toBeInTheDocument();
+      await saveNode(dialog);
+      await click(await waitForDirectorySaveReady(dialog));
+      await waitFor(() =>
+        expect(
+          mcpManagementApi.replaceSettingsMcpInstanceDirectory
+        ).toHaveBeenCalledTimes(2)
+      );
+      await waitForDirectorySaveReady(dialog);
+      const nextBody =
+        mcpManagementApi.replaceSettingsMcpInstanceDirectory.mock.calls[1]![1];
+      expect(nextBody.expected_snapshot).toEqual(committed);
+      expect(nextBody.groups).toEqual([
+        expectedGroup(snapshot, 'New selection buffer')
+      ]);
+      expect(nextBody.bindings).toEqual(expectedBindings(committed));
+      expect(identityCommits.entries.at(-1)?.binding).toBeNull();
+      expect(identityCommits.entries.at(-1)?.selectedKey).toBe('group:/ops');
+      expectNoImmediateWrites();
+    } finally {
+      response.release();
+    }
   });
 
   test('AC-S2 new mount starts editing, validates required Tool, and enters the confirmed graph without a client ID', async () => {

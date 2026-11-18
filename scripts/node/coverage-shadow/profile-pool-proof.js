@@ -27,6 +27,14 @@ async function execute(binary, pattern, value) {
   });
 }
 
+function dependencyArtifacts(target, artifactFiles) {
+  return [...new Set(artifactFiles)].sort().map((file) => {
+    const contents = fs.readFileSync(file);
+    return { file: path.relative(target, file), bytes: contents.length,
+      sha256: createHash('sha256').update(contents).digest('hex') };
+  });
+}
+
 function cacheCleanupProof(scratch) {
   const cwd = path.join(scratch, 'api');
   const target = path.join(cwd, 'target');
@@ -82,12 +90,18 @@ function cacheCleanupProof(scratch) {
     assert.equal(env[key], target, `${key} must remain inside the disposable workspace`);
   }
   assert.equal(path.dirname(env.LLVM_PROFILE_FILE), target);
+  const dependencyFiles = new Set();
   function build(buildEnv = env) {
     const artifacts = command('cargo', ['test', ...packages, '--no-run', '--message-format=json'], { cwd, env: buildEnv })
       .split('\n').filter(Boolean).map((line) => JSON.parse(line))
-      .filter((item) => item.reason === 'compiler-artifact' && item.profile.test && item.executable);
-    assert.equal(artifacts.length, owners.length, 'probe must build one test executable per measured API owner');
-    return artifacts.map((item) => item.executable).sort();
+      .filter((item) => item.reason === 'compiler-artifact');
+    // Cargo owns the artifact layout; newer toolchains may separate build intermediates.
+    for (const item of artifacts.filter((item) => item.target.name === 'cache_proof_dependency')) {
+      for (const file of item.filenames.filter((file) => file.endsWith('.rlib'))) dependencyFiles.add(file);
+    }
+    const tests = artifacts.filter((item) => item.profile.test && item.executable);
+    assert.equal(tests.length, owners.length, 'probe must build one test executable per measured API owner');
+    return tests.map((item) => item.executable).sort();
   }
   function report(binaries) {
     for (const name of fs.readdirSync(target).filter((file) => file.endsWith('.profraw'))) {
@@ -126,18 +140,11 @@ function cacheCleanupProof(scratch) {
   }
   assert.ok(contaminated.data[0].totals.lines.count > baseline.data[0].totals.lines.count, 'cached executables must inflate the denominator');
   assert.notDeepEqual(contaminated, baseline, 'controlled cache contamination must be detected');
-  function dependencyArtifacts() {
-    const directory = path.join(target, 'debug/deps');
-    return fs.readdirSync(directory).filter((name) => /^libcache_proof_dependency-.*\.rlib$/u.test(name)).sort().map((name) => {
-      const contents = fs.readFileSync(path.join(directory, name));
-      return { file: name, bytes: contents.length, sha256: createHash('sha256').update(contents).digest('hex') };
-    });
-  }
-  const dependencies = dependencyArtifacts();
+  const dependencies = dependencyArtifacts(target, dependencyFiles);
   assert.ok(dependencies.length > 0, 'probe must contain actual reusable dependency artifacts');
   command(cleanup.command, cleanup.args, { cwd: cleanup.cwd, env });
   for (const binary of staleBinaries) assert.equal(fs.existsSync(binary), false, 'native package cleanup must remove every stale executable');
-  assert.deepEqual(dependencyArtifacts(), dependencies, 'native package cleanup must retain dependency artifacts unchanged');
+  assert.deepEqual(dependencyArtifacts(target, dependencyFiles), dependencies, 'native package cleanup must retain dependency artifacts unchanged');
   const cleaned = report(build());
   assert.deepEqual(cleaned, baseline, 'native package cleanup must restore the entire JSON summary, including every counter');
   return {
@@ -223,6 +230,8 @@ async function main(outputPath) {
     fs.rmSync(scratch, { recursive: true, force: true });
   }
 }
+
+module.exports = { dependencyArtifacts };
 
 if (require.main === module) main(process.argv[2]).catch((error) => {
   process.stderr.write(`${error.stack}\n`);

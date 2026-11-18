@@ -17,7 +17,6 @@ impl OpenApi for ExtensionsOpenApi {
         schemas.extend(api_mcp::openapi::extensions::schemas_fragments());
         schemas.extend(api_plugins_models::openapi::extensions::schemas_fragments());
         schemas.extend(api_console_interaction::openapi::extensions::schemas_fragments());
-        let document = super::compose_category(CategoryMetadata::openapi(), paths, schemas);
-        document
+        super::compose_category(CategoryMetadata::openapi(), paths, schemas)
     }
 }

@@ -80,11 +80,41 @@ function initialRequest(model, correlationKey) {
 }
 
 function toolUseFrom(events) {
-  const toolUse = events
-    .map((event) => event.data?.content_block)
-    .find((block) => block?.type === 'tool_use');
-  if (!toolUse?.id || !toolUse.name || !toolUse.input) {
-    throw new Error('Anthropic callback retry did not receive one complete tool_use block');
+  let toolUse;
+  let toolIndex;
+  let stopped = false;
+  const inputParts = [];
+  const invalidTool = () => new Error('Anthropic callback retry did not receive one complete tool_use block');
+  for (const event of events) {
+    const type = protocolEventType(event);
+    const data = event.data;
+    if (type === 'content_block_start' && data?.content_block?.type === 'tool_use') {
+      if (toolUse || !Number.isInteger(data.index) || data.index < 0) throw invalidTool();
+      toolUse = { ...data.content_block };
+      toolIndex = data.index;
+    } else if (type === 'content_block_delta' && data?.delta?.type === 'input_json_delta') {
+      if (!toolUse || data.index !== toolIndex || stopped
+        || typeof data.delta.partial_json !== 'string') throw invalidTool();
+      inputParts.push(data.delta.partial_json);
+    } else if (type === 'content_block_stop' && toolUse && data?.index === toolIndex) {
+      if (stopped) throw invalidTool();
+      stopped = true;
+    } else if (type === 'message_stop' && (!toolUse || !stopped)) {
+      throw invalidTool();
+    }
+  }
+  if (!toolUse?.id || !toolUse.name || !stopped) throw invalidTool();
+  if (inputParts.length > 0) {
+    // Anthropic starts streamed tools with input={} and sends the JSON bytes
+    // separately; only the completed block is valid assistant retry history.
+    try {
+      toolUse.input = JSON.parse(inputParts.join(''));
+    } catch {
+      throw invalidTool();
+    }
+  }
+  if (!toolUse.input || typeof toolUse.input !== 'object' || Array.isArray(toolUse.input)) {
+    throw invalidTool();
   }
   const eventTypes = events.map(protocolEventType);
   if (eventTypes.filter((type) => type === 'message_stop').length !== 1) {

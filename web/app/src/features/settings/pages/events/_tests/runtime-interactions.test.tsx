@@ -28,7 +28,7 @@ const api = vi.hoisted(() => ({ getEventRuntime: vi.fn() }));
 const clipboard = vi.hoisted(() => ({ copy: vi.fn() }));
 vi.mock('@1flowbase/charts', () => ({
   EChart: ({ ariaLabel }: { ariaLabel?: string }) => (
-    <div role="img" aria-label={ariaLabel} />
+    <img alt={ariaLabel} />
   )
 }));
 vi.mock('@1flowbase/api-client', async (original) => ({

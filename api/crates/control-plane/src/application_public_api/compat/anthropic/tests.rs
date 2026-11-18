@@ -64,7 +64,8 @@ fn issue_1736_ac_001_eager_tool_input_streaming_degrades_without_rejecting_the_t
 
 #[test]
 fn issue_1736_ac_003_semantic_tool_fields_fail_with_a_typed_unsupported_error() {
-    for field in ["strict"] {
+    {
+        let field = "strict";
         let mut tool = json!({
             "name": "Bash",
             "input_schema": { "type": "object" }

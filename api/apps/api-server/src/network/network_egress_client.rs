@@ -7,7 +7,7 @@ use api_host_kernel::network_egress_client::static_proxy_execution_scope_for_tes
 #[cfg(test)]
 use uuid::Uuid;
 #[cfg(test)]
-#[path = "_tests/network_proxy/mod.rs"]
+#[path = "../_tests/network_proxy/mod.rs"]
 mod network_proxy;
 
 #[cfg(test)]

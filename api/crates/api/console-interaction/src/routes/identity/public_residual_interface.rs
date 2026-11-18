@@ -20,7 +20,7 @@ use crate::error_response::ApiError;
 pub(crate) const PROVIDERS_BINDING_ID: &str = "http.public.auth.providers.v1";
 pub(crate) const SIGN_UP_BINDING_ID: &str = "http.public.auth.sign-up.v1";
 
-test_support_item! { pub(crate), [#[derive(serde::Serialize)]
+test_support_item! { pub, [#[derive(serde::Serialize)]
 ]
 struct PublicProvidersInput {
     #[serde(skip)]
@@ -46,7 +46,7 @@ impl InterfaceContract for PublicProvidersInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-test_support_item! { pub(crate), [#[derive(serde::Serialize)]
+test_support_item! { pub, [#[derive(serde::Serialize)]
 #[serde(transparent)]
 ]
 struct PublicProvidersOutput(pub(crate) Vec<AuthProviderResponse>);
@@ -93,7 +93,7 @@ impl InterfaceContract for PublicProvidersOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-test_support_item! { pub(crate), []
+test_support_item! { pub, []
 struct PublicSignUpInput(pub(crate) SignUpCommand);
 }
 
@@ -120,7 +120,7 @@ impl InterfaceContract for PublicSignUpInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-test_support_item! { pub(crate), []
+test_support_item! { pub, []
 struct PublicSignUpOutput(pub(crate) LoginResult);
 }
 
@@ -191,7 +191,7 @@ impl InterfaceContract for PublicSignUpOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-test_support_item! { pub(crate), []
+test_support_item! { pub, []
 struct PublicResidualTargetError(pub(crate) ApiError);
 }
 

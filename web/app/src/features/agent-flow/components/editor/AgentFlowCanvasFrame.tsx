@@ -2,7 +2,7 @@ import { useDocumentAnalysis } from '../../api/analysis/use-document-analysis';
 import { analysisIssues } from '../../api/analysis/presentation';
 import { useCanvasDockLayout } from './canvas-frame/use-canvas-dock-layout';
 import { useCanvasNodePreview } from './canvas-frame/use-canvas-node-preview';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import type { FlowDocumentAnalysis } from '@1flowbase/api-client';
 import { App, Button, Typography } from 'antd';

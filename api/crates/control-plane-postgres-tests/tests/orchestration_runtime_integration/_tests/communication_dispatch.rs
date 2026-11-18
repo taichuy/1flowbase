@@ -7,12 +7,12 @@ use control_plane::{
 use control_plane_contracts::ports::AuthRepository;
 use plugin_framework::provider_contract::{ProviderInvocationInput, ProviderModelDescriptor};
 
+#[path = "communication_dispatch/_tests/cleanup_error.rs"]
+mod cleanup_error;
 #[path = "communication_dispatch/retained.rs"]
 mod retained;
 #[path = "communication_dispatch/_tests/startup_audit.rs"]
 mod startup_audit;
-#[path = "communication_dispatch/_tests/cleanup_error.rs"]
-mod cleanup_error;
 
 // The real service and PostgreSQL adapter execute a start->answer graph.
 // Provider calls are forbidden in this focused initial-ownership fixture.

@@ -358,7 +358,7 @@ test('locale refresh preserves the edited notification config and display name t
   expect(
     screen.getByDisplayValue('https://example.com/locale-draft')
   ).toBeInTheDocument();
-  await click(screen.getByRole('button', { name: 'Save changes' }));
+  await click(screen.getByRole('button', { name: 'Save all' }));
   await waitFor(() => expect(saved).toHaveBeenCalledWith());
   expect(commands[0]?.body).toEqual({
     display_name: 'Draft across locales',

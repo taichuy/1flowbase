@@ -17,7 +17,7 @@ impl InterfaceContract for NativeGetRunInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct NativeGetRunOutput(pub(crate) NativeRunResponse);
+pub struct NativeGetRunOutput(pub(crate) NativeRunResponse);
 
 impl InterfaceContract for NativeGetRunOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -145,7 +145,7 @@ impl InterfaceContract for NativeGetRunOutput {
 
 #[derive(serde::Serialize)]
 #[serde(transparent)]
-pub(crate) struct NativeCancelRunInput(pub(crate) Uuid);
+pub struct NativeCancelRunInput(pub(crate) Uuid);
 impl crate::openapi_interface::json_contract::JsonApiInput for NativeCancelRunInput {
     const LOCATION: crate::openapi_interface::json_contract::JsonInputLocation =
         crate::openapi_interface::json_contract::JsonInputLocation::Path;
@@ -168,7 +168,7 @@ impl InterfaceContract for NativeCancelRunInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct NativeCancelRunOutput(pub(crate) NativeRunResponse);
+pub struct NativeCancelRunOutput(pub(crate) NativeRunResponse);
 
 impl InterfaceContract for NativeCancelRunOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {
@@ -294,7 +294,7 @@ impl InterfaceContract for NativeCancelRunOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct NativeResumeRunInput {
+pub struct NativeResumeRunInput {
     pub(crate) run_id: Uuid,
     pub(crate) callback_task_id: Uuid,
     pub(crate) response_payload: Value,
@@ -343,7 +343,7 @@ impl InterfaceContract for NativeResumeRunInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct NativeResumeRunOutput(pub(crate) NativeRunResponse);
+pub struct NativeResumeRunOutput(pub(crate) NativeRunResponse);
 
 impl InterfaceContract for NativeResumeRunOutput {
     fn managed_projection_schema() -> Option<serde_json::Value> {

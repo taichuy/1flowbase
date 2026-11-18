@@ -35,7 +35,7 @@ test('format retains workspace Cargo coverage and explicitly includes shared roo
   } }), 0);
   assert.deepEqual(calls.map(({ command }) => command), ['cargo', 'rustfmt']);
   assert.deepEqual(calls[0].args, ['fmt', '--all', '--', '--check']);
-  assert.deepEqual(calls[1].args, ['--check', '--edition', '2021', ...f.files.sort()]);
+  assert.deepEqual(calls[1].args, ['--check', '--config', 'skip_children=true', '--edition', '2021', ...f.files.sort()]);
   for (const call of calls) {
     assert.equal(call.options.cwd, path.join(f.root, 'api'));
     assert.deepEqual(call.options.env, { FORMAT_FIXTURE: '1' });
@@ -94,4 +94,30 @@ test('format explicitly includes moved owner macros and tests without requiring 
   }
   f.files.push(f.write('api/crates/api/public-gateway/tests/transport.rs', '#[test] fn transport() {}\n'));
   assert.deepEqual(apiFormatInputs(f.root).files, f.files.sort());
+});
+
+
+test('explicit file formatting does not resolve optional or separately generated module trees', (t) => {
+  const { spawnSync } = require('node:child_process');
+  const f = fixture(t);
+  const module = f.write('api/apps/api-server/tests/optional.rs',
+    '#[cfg(any())]\n#[path = "not-generated-on-this-host.rs"]\nmod generated;\n');
+  const before = apiFormatInputs(f.root).files;
+  assert.ok(before.includes(module));
+  const prepared = spawnSync('rustfmt', ['--config', 'skip_children=true', '--edition', '2021', ...before],
+    { encoding: 'utf8' });
+  assert.equal(prepared.status, 0, prepared.stderr);
+  const result = runRustFormat({ repoRoot: f.root,
+    spawnSyncImpl(command, args, options) {
+      if (command === 'cargo') return { status: 0 };
+      return spawnSync(command, args, { ...options, encoding: 'utf8' });
+    } });
+  assert.equal(result, 0, 'a disabled module is valid Rust; every explicit file is still formatted');
+  assert.deepEqual(apiFormatInputs(f.root).files, before);
+  f.write('api/apps/api-server/tests/optional.rs',
+    '#[cfg(any())]\n#[path = "not-generated-on-this-host.rs"]\nmod generated;\npub fn unformatted(  ) { }\n');
+  assert.equal(runRustFormat({ repoRoot: f.root, spawnSyncImpl(command, args, options) {
+    return command === 'cargo' ? { status: 0 }
+      : spawnSync(command, args, { ...options, encoding: 'utf8' });
+  } }), 1, 'an unformatted explicit file must still fail');
 });

@@ -1,7 +1,6 @@
 //! Best-effort native status shared by ordinary replies and overlapping event workflows.
 use super::{active_binding, actor_for_binding};
 use crate::app_state::ApiState;
-pub use api_host_kernel::communication_runtime::provider_activity::*;
 use control_plane::event_center::{EventCenterSignal, EventCenterSignalBody};
 use control_plane_contracts::ports::CommunicationCommandRepository;
 use extension_contracts::{NotificationActivityState, NotificationSendTarget};

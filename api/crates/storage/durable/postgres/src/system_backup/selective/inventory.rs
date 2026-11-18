@@ -12,11 +12,11 @@ const GROUPS: &[(&str, &str, &str)] = &[
     ("branding", "system_branding", ""),
     // Definitions are event-center configuration; trigger bindings belong to applications.
     // Their workspace/application prerequisites are validated on restore, not auto-selected.
-    ("events", "event_definitions", ""),
+    ("events", "event_definitions event_catalog", ""),
     (
         "applications",
         "applications application_tags application_tag_bindings flows flow_drafts flow_versions flow_compiled_plans application_environment_variables application_api_mappings application_publication_versions workflow_schedule_triggers workflow_extension_triggers workflow_event_triggers application_extension_sources application_js_dependency_selections",
-        "flow_runs node_runs node_run_details flow_run_checkpoints flow_container_checkpoints flow_container_executions flow_container_rounds flow_container_control_failures flow_container_observations flow_run_events flow_run_tool_callback_inbox flow_run_callback_tasks flow_run_callback_resume_attempts flow_run_resume_claims flow_run_recovery_history runtime_spans runtime_events runtime_items runtime_context_projections runtime_usage_ledger runtime_artifacts runtime_audit_hashes runtime_canonical_contents runtime_internal_compaction_contents runtime_internal_compaction_heads runtime_observation_body_ownership runtime_native_snapshot_items runtime_native_snapshot_manifests runtime_native_snapshot_references runtime_invocation_context_bindings runtime_debug_artifacts runtime_legacy_shadow_batches runtime_legacy_shadow_rows application_conversations application_conversation_messages application_public_conversations application_run_conversation_message_items application_run_native_projection_progress application_run_log_summaries application_run_log_tasks application_log_upload_receipts application_log_deletion_jobs application_log_deletion_records application_log_deletion_stop_requests application_run_trace_projection_statuses application_run_trace_nodes application_run_trace_node_contents application_run_trace_refresh_queue external_agent_sessions external_agent_telemetry_events gateway_log_conversations gateway_log_turns gateway_log_invocations gateway_log_output_items gateway_log_tool_results provider_protocol_capsules provider_protocol_trajectory_events provider_semantic_trajectory_steps native_trajectory_integrity client_trajectory_archive_heads client_trajectory_archive_blocks client_trajectory_archive_segments client_trajectory_archive_parts client_trajectory_captures client_trajectory_steps client_trajectory_sections client_trajectory_node_links assistant_conversations run_archive_upload_sessions run_archive_upload_chunks run_archive_import_jobs run_archive_import_mappings capability_invocations debug_variable_cache_entries",
+        "flow_runs workflow_run_identity_snapshots node_runs node_run_details flow_run_checkpoints flow_container_checkpoints flow_container_executions flow_container_rounds flow_container_control_failures flow_container_observations flow_run_events flow_run_tool_callback_inbox flow_run_callback_tasks flow_run_callback_resume_attempts flow_run_resume_claims flow_run_recovery_history runtime_spans runtime_events runtime_items runtime_context_projections runtime_usage_ledger runtime_artifacts runtime_audit_hashes runtime_canonical_contents runtime_internal_compaction_contents runtime_internal_compaction_heads runtime_observation_body_ownership runtime_native_snapshot_items runtime_native_snapshot_manifests runtime_native_snapshot_references runtime_invocation_context_bindings runtime_debug_artifacts runtime_legacy_shadow_batches runtime_legacy_shadow_rows application_conversations application_conversation_messages application_public_conversations application_run_conversation_message_items application_run_native_projection_progress application_run_log_summaries application_run_log_tasks application_log_upload_receipts application_log_deletion_jobs application_log_deletion_records application_log_deletion_stop_requests application_run_trace_projection_statuses application_run_trace_nodes application_run_trace_node_contents application_run_trace_refresh_queue external_agent_sessions external_agent_telemetry_events gateway_log_conversations gateway_log_turns gateway_log_invocations gateway_log_output_items gateway_log_tool_results provider_protocol_capsules provider_protocol_trajectory_events provider_semantic_trajectory_steps native_trajectory_integrity client_trajectory_archive_heads client_trajectory_archive_blocks client_trajectory_archive_segments client_trajectory_archive_parts client_trajectory_captures client_trajectory_steps client_trajectory_sections client_trajectory_node_links assistant_conversations run_archive_upload_sessions run_archive_upload_chunks run_archive_import_jobs run_archive_import_mappings capability_invocations debug_variable_cache_entries",
     ),
     (
         "auth-center",
@@ -43,7 +43,7 @@ const GROUPS: &[(&str, &str, &str)] = &[
     (
         "notifications",
         "notification_instances communication_bindings",
-        "system_notifications notification_send_logs communication_conversations communication_inputs communication_messages communication_sessions communication_reply_turns communication_session_rotations communication_command_events",
+        "system_notifications notification_send_logs communication_conversations communication_inputs communication_messages communication_message_sends communication_sessions communication_reply_turns communication_session_rotations communication_command_events",
     ),
     (
         "network-center",
@@ -64,8 +64,8 @@ const GROUPS: &[(&str, &str, &str)] = &[
     ),
     (
         "roles",
-        "roles permission_definitions role_permissions role_data_policies role_data_model_policies role_console_group_policies role_console_operation_policies console_permission_catalog_sync console_permission_catalog_groups console_permission_catalog_operations",
-        "role_console_policy_migration_runs role_console_policy_migration_role_previews role_console_group_policy_snapshots role_console_operation_policy_snapshots role_console_policy_migration_run_artifacts role_console_policy_migration_actor_previews role_console_policy_migration_cutover_state role_console_policy_migration_ledger",
+        "roles permission_definitions role_permissions role_data_policies role_data_model_policies role_console_group_policies role_console_operation_policies console_permission_catalog_sync console_permission_catalog_groups console_permission_catalog_operations plugin_record_permission_policies plugin_record_permission_grants",
+        "role_console_policy_migration_runs role_console_policy_migration_role_previews role_console_group_policy_snapshots role_console_operation_policy_snapshots role_console_policy_migration_run_artifacts role_console_policy_migration_actor_previews role_console_policy_migration_cutover_state role_console_policy_migration_ledger plugin_record_permission_scope_revisions",
     ),
     (
         "i18n-catalog",
@@ -74,7 +74,7 @@ const GROUPS: &[(&str, &str, &str)] = &[
     ),
     (
         "ui-management",
-        "frontstage_pages frontstage_page_tabs frontstage_page_visibility_rules frontstage_block_nodes frontstage_page_schemas frontstage_block_codes frontend_block_catalog ui_code_templates ui_code_template_revisions ui_code_template_defaults ui_component_records ui_component_overrides ui_component_contract_revisions js_dependency_registry workspace_console_settings_orders workspace_console_settings_order_items",
+        "frontstage_pages frontstage_page_tabs frontstage_page_visibility_rules frontstage_block_nodes frontstage_page_schemas frontstage_block_codes frontend_block_catalog custom_frontend_blocks ui_code_templates ui_code_template_revisions ui_code_template_defaults ui_component_records ui_component_overrides ui_component_contract_revisions js_dependency_registry workspace_console_settings_orders workspace_console_settings_order_items",
         "frontstage_executable_upgrade_markers frontstage_executable_upgrade_runs",
     ),
     (

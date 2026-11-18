@@ -104,6 +104,10 @@ fn node_diagnostics_invalid_graph_remains_a_document_validation_failure() {
         .diagnostics[0];
     assert_eq!(diagnostic.node_id, None);
     assert_eq!(diagnostic.code, "invalid_flow_document");
+    assert!(serde_json::to_value(diagnostic)
+        .unwrap()
+        .get("expected")
+        .is_none());
 }
 
 #[test]
@@ -123,4 +127,29 @@ fn node_diagnostics_aggregator_candidate_error_retains_its_node_and_nested_path(
         "/bindings/groups/value/0/candidates/0"
     );
     assert!(diagnostic.message.contains("missing.name"));
+}
+
+#[test]
+fn node_diagnostics_structural_expected_payload_preserves_public_json_and_first_error() {
+    let mut document = document();
+    document["graph"]["nodes"][0]["outputs"] =
+        json!([{"key":"unexpected","title":"Unexpected","valueType":"string"}]);
+    document["graph"]["nodes"][2]["bindings"]["result"] = json!({"kind":"selector","value":17});
+    let error = FlowCompiler::compile_workflow(Uuid::nil(), "draft", &document, &compile_context())
+        .unwrap_err();
+    let validation = error.downcast_ref::<FlowValidationError>().unwrap();
+    assert_eq!(
+        serde_json::to_value(&validation.diagnostics).unwrap(),
+        json!([{
+            "node_id":"start",
+            "code":"invalid_node_configuration",
+            "field_path":"/outputs",
+            "message":"workflow_start node start outputs must be empty",
+            "expected":[]
+        }])
+    );
+    assert_eq!(
+        validation.to_string(),
+        "workflow_start node start outputs must be empty"
+    );
 }

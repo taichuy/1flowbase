@@ -235,16 +235,18 @@ impl NativeRunTerminalDependencies {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TerminalAnswerDeltaKind {
+test_support_item! { pub(crate), [#[derive(Debug, Clone, Copy, PartialEq, Eq)]]
+enum TerminalAnswerDeltaKind {
     Reasoning,
     Text,
 }
+}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TerminalAnswerDelta {
+test_support_item! { pub(crate), [#[derive(Debug, Clone, PartialEq, Eq)]]
+struct TerminalAnswerDelta {
     pub kind: TerminalAnswerDeltaKind,
     pub text: String,
+}
 }
 
 test_support_item! { pub(crate), [
@@ -646,6 +648,23 @@ fn decode_runtime_debug_artifact_preview(payload: &Value) -> Option<Value> {
     })
 }
 
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+impl NativeRunTerminalDependencies {
+    pub fn set_delivery_read_samples_for_test_support(
+        &mut self,
+        samples: Option<DeliveryReadSamples>,
+    ) {
+        self.delivery_read_samples = samples;
+    }
+    pub fn set_delivery_read_attempts_for_test_support(
+        &mut self,
+        attempts: Option<Arc<std::sync::atomic::AtomicUsize>>,
+    ) {
+        self.delivery_read_attempts = attempts;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use control_plane::application_public_api::native::{
@@ -850,22 +869,5 @@ mod tests {
         assert_eq!(deltas[0].text, "结构化思考");
         assert_eq!(deltas[1].kind, TerminalAnswerDeltaKind::Text);
         assert_eq!(deltas[1].text, "结构化回答");
-    }
-}
-
-#[doc(hidden)]
-#[cfg(any(test, feature = "test-support"))]
-impl NativeRunTerminalDependencies {
-    pub fn set_delivery_read_samples_for_test_support(
-        &mut self,
-        samples: Option<DeliveryReadSamples>,
-    ) {
-        self.delivery_read_samples = samples;
-    }
-    pub fn set_delivery_read_attempts_for_test_support(
-        &mut self,
-        attempts: Option<Arc<std::sync::atomic::AtomicUsize>>,
-    ) {
-        self.delivery_read_attempts = attempts;
     }
 }

@@ -35,8 +35,20 @@ export function CommunicationCommandEditor({
 }) {
   const { t } = useTranslation('notifications');
   const scope = useAuthStore(selectNavigationQueryScope);
-  const [customFields, setCustomFields] = useState<string[]>([]);
-  const [newField, setNewField] = useState('');
+  const [fieldDraft, setFieldDraft] = useState<{
+    source: typeof editing;
+    customFields: string[];
+    newField: string;
+  }>({ source: editing, customFields: [], newField: '' });
+  if (fieldDraft.source !== editing) {
+    setFieldDraft({
+      source: editing,
+      // Keep outgoing fields visible throughout the Modal's exit animation.
+      customFields: editing === undefined ? fieldDraft.customFields : [],
+      newField: editing === undefined ? fieldDraft.newField : ''
+    });
+  }
+  const { customFields, newField } = fieldDraft;
   const [form] = Form.useForm<CommunicationEventCommandBinding>();
   const catalog = useQuery(
     communicationEventCatalogOptions(scope, editing !== undefined)
@@ -79,8 +91,6 @@ export function CommunicationCommandEditor({
   useEffect(() => {
     if (editing === undefined) return;
     form.resetFields();
-    setCustomFields([]);
-    setNewField('');
     form.setFieldsValue(
       editing ?? {
         command_id: '',
@@ -171,7 +181,7 @@ export function CommunicationCommandEditor({
             }
           ]}
         >
-          <Input addonBefore="/" />
+          <Input prefix="/" />
         </Form.Item>
         <Form.Item
           name="description"
@@ -221,7 +231,7 @@ export function CommunicationCommandEditor({
                     )
                   : {}
               );
-              setCustomFields([]);
+              setFieldDraft((current) => ({ ...current, customFields: [] }));
             }}
           />
         </Form.Item>
@@ -276,13 +286,19 @@ export function CommunicationCommandEditor({
             <Input
               aria-label={t('event_commands.payload_field')}
               value={newField}
-              onChange={(event) => setNewField(event.target.value)}
+              onChange={(event) => {
+                const nextField = event.target.value;
+                setFieldDraft((current) => ({ ...current, newField: nextField }));
+              }}
             />
             <Button
               disabled={!newField.trim() || fields.includes(newField.trim())}
               onClick={() => {
-                setCustomFields([...customFields, newField.trim()]);
-                setNewField('');
+                setFieldDraft((current) => ({
+                  ...current,
+                  customFields: [...current.customFields, current.newField.trim()],
+                  newField: ''
+                }));
               }}
             >
               {t('event_commands.add_mapping')}

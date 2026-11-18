@@ -17,15 +17,39 @@ impl PublicSignInPort for UnavailablePublicSignInPort {
 }
 
 #[doc(hidden)]
-impl PublicSignInInput { pub fn test_new(value: LoginCommand) -> Self { Self(value) } }
+impl PublicSignInInput {
+    pub fn test_new(value: LoginCommand) -> Self {
+        Self(value)
+    }
+}
 #[doc(hidden)]
-impl PublicSignInOutput { pub fn test_new(value: LoginResult) -> Self { Self(value) } }
+impl PublicSignInOutput {
+    pub fn test_new(value: LoginResult) -> Self {
+        Self(value)
+    }
+}
 #[doc(hidden)]
-impl PublicSignInTargetError { pub fn test_new(value: ApiError) -> Self { Self(value) } }
+impl PublicSignInTargetError {
+    pub fn test_new(value: ApiError) -> Self {
+        Self(value)
+    }
+}
 
 #[doc(hidden)]
-impl PublicSignInInput { pub fn test_inner(&self) -> &LoginCommand { &self.0 } }
+impl PublicSignInInput {
+    pub fn test_inner(&self) -> &LoginCommand {
+        &self.0
+    }
+}
 #[doc(hidden)]
-impl PublicSignInOutput { pub fn test_inner(&self) -> &LoginResult { &self.0 } }
+impl PublicSignInOutput {
+    pub fn test_inner(&self) -> &LoginResult {
+        &self.0
+    }
+}
 #[doc(hidden)]
-impl PublicSignInTargetError { pub fn test_inner(&self) -> &ApiError { &self.0 } }
+impl PublicSignInTargetError {
+    pub fn test_inner(&self) -> &ApiError {
+        &self.0
+    }
+}

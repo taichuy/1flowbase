@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -16,6 +17,21 @@ import {
   type TableBlockConfig
 } from '../../../../lib/data-blocks/types';
 import { TableBlock } from '../TableBlock';
+import { BlockSettingsProvider } from '../../../../lib/block-settings/registry';
+import { useBlockSettings } from '../../../../lib/block-settings/registry-store';
+
+function BlockSettingsMenu() {
+  const items = useBlockSettings();
+  return (
+    <div role="toolbar" aria-label="Block settings">
+      {items.map((item) => (
+        <button key={item.id} disabled={item.disabled} onClick={item.onSelect}>
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const mocks = vi.hoisted(() => ({
   metadata: vi.fn(),
@@ -23,7 +39,8 @@ const mocks = vi.hoisted(() => ({
   remove: vi.fn(),
   refetch: vi.fn()
 }));
-vi.mock('../../../../api/data-blocks', () => ({
+vi.mock('../../../../api/data-blocks', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../../../api/data-blocks')>(),
   useDataBlockMetadata: mocks.metadata,
   useDataBlockRecords: mocks.records,
   useDataBlockWrites: () => ({ remove: { mutateAsync: mocks.remove } })
@@ -66,7 +83,8 @@ const baseMetadata = {
 };
 function setup(
   configure?: (config: TableBlockConfig) => void,
-  ownerOverrides: Partial<DataBlockHost> = {}
+  ownerOverrides: Partial<DataBlockHost> = {},
+  contextOverrides: Partial<BlockContext> = {}
 ) {
   const config = createTableBlockConfig({
     model_id: 'orders-model',
@@ -78,6 +96,7 @@ function setup(
     { id: 'delete', kind: 'delete', enabled: true },
     { id: 'refresh', kind: 'refresh', enabled: true }
   ];
+  config.action_column = { hidden: false, position: 0 };
   config.row_actions = [
     { id: 'view', kind: 'view', enabled: true, target_block_id: 'detail-form' }
   ];
@@ -86,8 +105,10 @@ function setup(
   const ctx = {
     props: { data_block: config },
     inputs: {},
+    workspace: { id: 'workspace' },
     outputs: { publish },
-    currentUser: { id: 'user' }
+    currentUser: { id: 'user' },
+    ...contextOverrides
   } as unknown as BlockContext;
   const owner: DataBlockHost = {
     block_id: 'orders-table',
@@ -100,12 +121,30 @@ function setup(
     close: vi.fn(),
     ...ownerOverrides
   };
-  render(
-    <DataBlockHostContext.Provider value={owner}>
-      <TableBlock ctx={ctx} />
-    </DataBlockHostContext.Provider>
+  const view = render(
+    <BlockSettingsProvider>
+      <DataBlockHostContext.Provider value={owner}>
+        <TableBlock ctx={ctx} />
+        <BlockSettingsMenu />
+      </DataBlockHostContext.Provider>
+    </BlockSettingsProvider>
   );
-  return { owner, publish };
+  return {
+    owner,
+    publish,
+    config,
+    ctx,
+    rerender(nextContext: BlockContext) {
+      view.rerender(
+        <BlockSettingsProvider>
+          <DataBlockHostContext.Provider value={owner}>
+            <TableBlock ctx={nextContext} />
+            <BlockSettingsMenu />
+          </DataBlockHostContext.Provider>
+        </BlockSettingsProvider>
+      );
+    }
+  };
 }
 
 beforeEach(() => {
@@ -263,18 +302,13 @@ describe('TableBlock design persistence', () => {
       }
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'auto.configuration' })
-    );
-    fireEvent.click(
-      await screen.findByText('data_blocks.form.title_description')
+      screen.getByRole('button', { name: 'data_blocks.form.title_description' })
     );
     const dialog = await screen.findByRole('dialog');
     fireEvent.change(within(dialog).getAllByRole('textbox')[0], {
       target: { value: 'Unsaved title' }
     });
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'files.save' })
-    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'files.save' }));
     await waitFor(() =>
       expect(owner.saveConfig).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'Unsaved title' })
@@ -287,5 +321,224 @@ describe('TableBlock design persistence', () => {
     expect(
       within(screen.getByRole('dialog')).getAllByRole('textbox')[0]
     ).toHaveValue('Unsaved title');
+  });
+});
+
+function deferredResult() {
+  let resolve!: () => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<void>((fulfilled, rejected) => {
+    resolve = fulfilled;
+    reject = rejected;
+  });
+  return { promise, resolve, reject };
+}
+
+async function submitTitle(title: string) {
+  fireEvent.click(
+    screen.getByRole('button', { name: 'data_blocks.form.title_description' })
+  );
+  const dialog = await screen.findByRole('dialog');
+  fireEvent.change(within(dialog).getAllByRole('textbox')[0], {
+    target: { value: title }
+  });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'files.save' }));
+}
+
+function confirmSelectedDeletion() {
+  fireEvent.click(screen.getAllByRole('checkbox')[0]);
+  fireEvent.click(
+    screen.getByRole('button', { name: /^(?:delete )?auto\.delete$/ })
+  );
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', {
+      name: /^(?:delete )?auto\.delete$/
+    })
+  );
+}
+
+describe('TableBlock config and operation lifetimes', () => {
+  it('uses incoming query defaults immediately for a new config source on the same model', () => {
+    const { config, ctx, rerender } = setup();
+    mocks.records.mockClear();
+    rerender({
+      ...ctx,
+      props: {
+        ...ctx.props,
+        data_block: {
+          ...config,
+          page_size: 50,
+          sort: { field: 'name', direction: 'desc' }
+        }
+      }
+    });
+    expect(mocks.records).toHaveBeenCalled();
+    for (const [, , input] of mocks.records.mock.calls) {
+      expect(input).toEqual(
+        expect.objectContaining({
+          page: 1,
+          page_size: 50,
+          sort: { field: 'name', direction: 'desc' }
+        })
+      );
+    }
+  });
+
+  it('displays an acknowledged save while the host has not delivered replacement props', async () => {
+    const { owner } = setup(
+      (config) => {
+        config.title = 'Original title';
+      },
+      { design_mode: true }
+    );
+    await submitTitle('Acknowledged title');
+    await waitFor(() =>
+      expect(owner.saveConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Acknowledged title' })
+      )
+    );
+    expect(await screen.findByText('Acknowledged title')).toBeInTheDocument();
+    expect(screen.queryByText('Original title')).not.toBeInTheDocument();
+  });
+
+  it('does not let a late acknowledged save replace a newer config source', async () => {
+    const saved = deferredResult();
+    const { owner, config, ctx, rerender } = setup(
+      (config) => {
+        config.title = 'Original title';
+      },
+      { design_mode: true, saveConfig: vi.fn(() => saved.promise) }
+    );
+    await submitTitle('Old source saved title');
+    await waitFor(() => expect(owner.saveConfig).toHaveBeenCalled());
+    rerender({
+      ...ctx,
+      props: {
+        ...ctx.props,
+        data_block: { ...config, title: 'New source title' }
+      }
+    });
+    expect(screen.getByText('New source title')).toBeInTheDocument();
+    await act(async () => {
+      saved.resolve();
+      await saved.promise;
+    });
+    expect(screen.getByText('New source title')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Old source saved title')
+    ).not.toBeInTheDocument();
+  });
+
+  it('never publishes failed deletion IDs into a different parent query context', async () => {
+    mocks.metadata.mockReturnValue({
+      data: {
+        ...baseMetadata,
+        fields: [
+          ...baseMetadata.fields,
+          {
+            ...baseMetadata.fields[0],
+            id: 'parent',
+            code: 'parent_id',
+            title: 'Parent'
+          }
+        ]
+      },
+      isPending: false,
+      isError: false
+    });
+    const deleted = deferredResult();
+    mocks.remove.mockImplementation((id: string) =>
+      id === 'A' ? deleted.promise : Promise.resolve()
+    );
+    const { ctx, publish, rerender } = setup(
+      (config) => {
+        config.relation = {
+          field_code: 'parent_id',
+          parent_model_code: 'parents',
+          parent_record_input: 'parent_record_id'
+        };
+      },
+      {},
+      { inputs: { parent_record_id: 'parent-A' } }
+    );
+    confirmSelectedDeletion();
+    await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith('A'));
+    mocks.records.mockReturnValue({
+      data: { items: [{ order_no: 'C', name: 'Gamma' }], total: 1 },
+      isFetching: false,
+      isError: false,
+      refetch: mocks.refetch
+    });
+    rerender({ ...ctx, inputs: { parent_record_id: 'parent-B' } });
+    await waitFor(() =>
+      expect(publish).toHaveBeenLastCalledWith({
+        record_id: '',
+        selected_record_ids: []
+      })
+    );
+    await act(async () => {
+      deleted.reject(new Error('old parent deletion denied'));
+      await deleted.promise.catch(() => undefined);
+    });
+    await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith('B'));
+    expect(screen.getByText('Gamma')).toBeInTheDocument();
+    expect(publish).toHaveBeenLastCalledWith({
+      record_id: '',
+      selected_record_ids: []
+    });
+  });
+
+  it('does not restore an old page when deletion completes after the page-size default changes', async () => {
+    mocks.records.mockReturnValue({
+      data: {
+        items: [
+          { order_no: 'A', name: 'Alpha' },
+          { order_no: 'B', name: 'Beta' }
+        ],
+        total: 60
+      },
+      isFetching: false,
+      isError: false,
+      refetch: mocks.refetch
+    });
+    const deleted = deferredResult();
+    mocks.remove.mockImplementation((id: string) =>
+      id === 'A' ? deleted.promise : Promise.resolve()
+    );
+    const { config, ctx, rerender } = setup();
+    fireEvent.click(screen.getByTitle('3'));
+    await waitFor(() =>
+      expect(mocks.records).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ page: 3 }),
+        true
+      )
+    );
+    confirmSelectedDeletion();
+    await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith('A'));
+    rerender({
+      ...ctx,
+      props: { ...ctx.props, data_block: { ...config, page_size: 10 } }
+    });
+    await waitFor(() =>
+      expect(mocks.records).toHaveBeenLastCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ page: 1, page_size: 10 }),
+        true
+      )
+    );
+    await act(async () => {
+      deleted.resolve();
+      await deleted.promise;
+    });
+    await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith('B'));
+    expect(mocks.records).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ page: 1, page_size: 10 }),
+      true
+    );
   });
 });

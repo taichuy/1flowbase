@@ -14,7 +14,6 @@ struct AuthorizedOperation {
     descriptor: DocumentOperationDescriptor,
     model_id: Uuid,
     model_code: String,
-    workspace_id: Uuid,
     path_parameters: std::collections::BTreeMap<String, String>,
 }
 struct Selector {
@@ -373,7 +372,6 @@ pub(super) async fn prepare(
         descriptor,
         model_id: model.id,
         model_code: model.code,
-        workspace_id: actor.current_workspace_id,
         path_parameters: resolved.path_parameters.clone(),
     });
     // The selector accepts only the sealed Arc created by this authorized execution owner.

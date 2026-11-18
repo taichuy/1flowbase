@@ -374,7 +374,9 @@ async fn test_state_with_runtime_profile_state(
         file_storage_registry,
         runtime_engine,
         provider_runtime,
-        runtime_event_stream_projection: Arc::new(crate::interaction_assembly::RuntimeEventSseAdapter),
+        runtime_event_stream_projection: Arc::new(
+            crate::interaction_assembly::RuntimeEventSseAdapter,
+        ),
         native_resource_import: Arc::new(api_mcp::resource_import::NativeResourceImportAdapter),
         terminal_jobs: Default::default(),
         process_started_at,
@@ -650,6 +652,7 @@ pub async fn test_app_with_runtime_profile_error(permissions: &[&str]) -> (Route
 pub use api_host_kernel::test_support::profiles::{sample_api_profile, sample_runner_profile};
 
 /// Real stateless stream adapter used by explicit native fixture State literals.
-pub fn runtime_event_stream_projection() -> std::sync::Arc<dyn api_host_kernel::debug_stream_contract::RuntimeEventSsePort> {
+pub fn runtime_event_stream_projection(
+) -> std::sync::Arc<dyn api_host_kernel::debug_stream_contract::RuntimeEventSsePort> {
     std::sync::Arc::new(crate::interaction_assembly::RuntimeEventSseAdapter)
 }

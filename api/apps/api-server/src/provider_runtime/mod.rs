@@ -10,6 +10,8 @@ pub(crate) fn services_for_current_cfg(services: ApiRuntimeServices) -> ApiRunti
         services
     }
 }
+#[cfg_attr(test, api_test_selection::group(contracts))]
+#[cfg(test)]
 pub(crate) fn resolver_for_current_cfg(
     resolver: ModelProviderSlotResolver,
 ) -> ModelProviderSlotResolver {

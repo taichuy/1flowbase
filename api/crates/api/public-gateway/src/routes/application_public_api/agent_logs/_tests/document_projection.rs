@@ -1,6 +1,5 @@
 use super::*;
 use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
-use serde_json::json;
 
 fn operation(id: &str) -> ApiOperationContext {
     ApiOperationContext {

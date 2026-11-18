@@ -12,6 +12,8 @@ pub use api_host_kernel::extension_bus::boot_snapshot::*;
 use plugin_framework::extension_bus::EffectiveExtensionGraph;
 use std::sync::Arc;
 pub(crate) trait SnapshotAssembly {
+    #[cfg_attr(test, api_test_selection::group(contracts, routes))]
+    #[cfg(test)]
     fn compile(
         graph: Arc<EffectiveExtensionGraph>,
         descriptors: &[plugin_framework::HostExtensionInterfaceOperationManifest],
@@ -20,8 +22,10 @@ pub(crate) trait SnapshotAssembly {
     where
         Self: Sized;
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     fn new(graph: Arc<EffectiveExtensionGraph>) -> Self;
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     fn compile_for_test(
         graph: Arc<EffectiveExtensionGraph>,
@@ -52,6 +56,8 @@ pub(crate) trait SnapshotAssembly {
     ) -> anyhow::Result<Arc<crate::generation_dispatch::GenerationDispatch>>;
 }
 impl SnapshotAssembly for ExtensionBootSnapshot {
+    #[cfg_attr(test, api_test_selection::group(contracts, routes))]
+    #[cfg(test)]
     fn compile(
         graph: Arc<EffectiveExtensionGraph>,
         descriptors: &[plugin_framework::HostExtensionInterfaceOperationManifest],
@@ -65,6 +71,7 @@ impl SnapshotAssembly for ExtensionBootSnapshot {
         )
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     fn new(graph: Arc<EffectiveExtensionGraph>) -> Self {
         Self::new_ready(
@@ -73,6 +80,7 @@ impl SnapshotAssembly for ExtensionBootSnapshot {
                 .expect("built-in authentication factories must be valid"),
         )
     }
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     fn compile_for_test(
         graph: Arc<EffectiveExtensionGraph>,

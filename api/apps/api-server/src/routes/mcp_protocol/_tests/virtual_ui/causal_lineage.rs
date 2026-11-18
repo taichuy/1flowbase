@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 use axum::{
     body::{to_bytes, Body},
@@ -302,16 +302,17 @@ async fn system_event_center_mcp_spawn_preserves_causal_lineage() {
             .await
             .unwrap();
     assert_eq!(count, 1, "the actual Console model transaction must commit");
-    let recorded = facts.0.lock().unwrap();
-    assert!(
-        recorded.iter().any(|context| context.scope
-            == domain::event_center::EventSourceScope::Workspace {
-                workspace_id: workspace
-            }
-            && context.workflow_ancestor_ids == expected),
-        "actual native postcommit metadata lost the explicit workflow chain: {recorded:?}"
-    );
-    drop(recorded);
+    {
+        let recorded = facts.0.lock().unwrap();
+        assert!(
+            recorded.iter().any(|context| context.scope
+                == domain::event_center::EventSourceScope::Workspace {
+                    workspace_id: workspace
+                }
+                && context.workflow_ancestor_ids == expected),
+            "actual native postcommit metadata lost the explicit workflow chain: {recorded:?}"
+        );
+    }
 
     // A later invocation from the boot store must not retain the prior invocation's chain.
     // It still uses the same real Console dispatch and spawned transaction owner.

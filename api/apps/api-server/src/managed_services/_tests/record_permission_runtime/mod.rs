@@ -1,8 +1,8 @@
 //! Candidate-bound process + PostgreSQL + canonical HTTP/MCP acceptance. No ACL simulator.
 mod cases;
 mod package;
-mod streaming;
 mod shared_streaming;
+mod streaming;
 use crate::_tests::support::{
     create_member, create_role, login_and_capture_cookie, replace_member_roles,
     replace_role_permissions, test_api_state_with_database_pool_capacity, test_config,

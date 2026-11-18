@@ -1,6 +1,6 @@
 //! Read adapters expose route arguments and the real HTTP response DTO.
 use super::*;
-use crate::openapi_interface::contract::{self as ep, ApiInput, ApiOperationContext, ApiOutput};
+use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
 use crate::routes::application_public_api::native_interface::document_projection as native;
 use serde_json::json;
 use std::sync::Arc;

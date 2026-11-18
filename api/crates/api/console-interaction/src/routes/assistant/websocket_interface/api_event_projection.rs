@@ -1,6 +1,6 @@
 use super::*;
-use crate::openapi_interface::contract::{self as event, ApiInput, ApiOperationContext, ApiOutput};
-use serde_json::{json, Value};
+use crate::openapi_interface::contract::{ApiInput, ApiOperationContext, ApiOutput};
+use serde_json::Value;
 use std::sync::Arc;
 
 // This owner invokes commands after upgrade; the registered GET route describes

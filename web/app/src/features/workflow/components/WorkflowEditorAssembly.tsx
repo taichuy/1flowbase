@@ -40,6 +40,7 @@ export function WorkflowEditorAssembly({
 }: WorkflowEditorAssemblyProps) {
   return (
     <FlowEditorKernel
+      key={applicationId}
       initialState={initialState}
       slots={{
         canvas: (

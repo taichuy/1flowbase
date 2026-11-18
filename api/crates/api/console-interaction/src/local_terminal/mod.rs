@@ -27,17 +27,17 @@ struct Budget {
 }
 }
 impl Budget {
-test_support_item! { pub(crate), []
-    fn new(timeout_ms: u64) -> Result<Self, FileError> {
-        if timeout_ms == 0 {
-            return Err(invalid("terminal_timeout_invalid"));
+    test_support_item! { pub(crate), []
+        fn new(timeout_ms: u64) -> Result<Self, FileError> {
+            if timeout_ms == 0 {
+                return Err(invalid("terminal_timeout_invalid"));
+            }
+            let deadline = Instant::now()
+                .checked_add(Duration::from_millis(timeout_ms))
+                .ok_or_else(|| invalid("terminal_timeout_invalid"))?;
+            Ok(Self { deadline })
         }
-        let deadline = Instant::now()
-            .checked_add(Duration::from_millis(timeout_ms))
-            .ok_or_else(|| invalid("terminal_timeout_invalid"))?;
-        Ok(Self { deadline })
     }
-}
     pub(crate) fn check(&self) -> Result<(), FileError> {
         if Instant::now() >= self.deadline {
             return Err(invalid("terminal_timeout"));

@@ -25,7 +25,6 @@ fn snapshot(id: Uuid, operation: &str) -> Arc<AuthorizedOperation> {
         },
         model_id: id,
         model_code: format!("model_{id}"),
-        workspace_id: Uuid::now_v7(),
         path_parameters: [("id".into(), "row-actual".into())].into_iter().collect(),
     })
 }

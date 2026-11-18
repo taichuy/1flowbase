@@ -2,6 +2,7 @@ import { createRef } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi } from 'vitest';
+import { ConfigProvider } from 'antd';
 import type {
   CommunicationBindingInput,
   CommunicationBindingRecord,
@@ -87,6 +88,7 @@ export function setupCommunicationBinding({
   pluginUnavailableReason = 'plugin_unavailable',
   duplicateIdentity = false,
   applicationUnavailable = false,
+  withoutMotion = false,
   permissions
 }: {
   existing?: boolean;
@@ -97,6 +99,7 @@ export function setupCommunicationBinding({
   pluginUnavailableReason?: string;
   duplicateIdentity?: boolean;
   applicationUnavailable?: boolean;
+  withoutMotion?: boolean;
   permissions?: string[];
 } = {}) {
   const writes: CommunicationBindingInput[] = [];
@@ -292,16 +295,27 @@ export function setupCommunicationBinding({
     defaultOptions: { queries: { retry: false } }
   });
   const ref = createRef<CommunicationBindingHandle>();
-  const mount = (instance_id?: string) =>
-    render(
+  const mount = (instance_id?: string) => {
+    const form = (
+      <CommunicationBindingForm
+        ref={ref}
+        instance_id={instance_id}
+        receive={{ default_system_prompt: 'Plugin prompt', mcp_tools: [] }}
+      />
+    );
+    return render(
       <QueryClientProvider client={client}>
-        <CommunicationBindingForm
-          ref={ref}
-          instance_id={instance_id}
-          receive={{ default_system_prompt: 'Plugin prompt', mcp_tools: [] }}
-        />
+        {withoutMotion ? (
+          // CRUD asserts the real portals and persisted state, not CSS animation.
+          <ConfigProvider theme={{ token: { motion: false } }}>
+            {form}
+          </ConfigProvider>
+        ) : (
+          form
+        )}
       </QueryClientProvider>
     );
+  };
   const view = mount(existing ? 'channel-1' : undefined);
   return { ref, writes, client, view, mount, optionRequests };
 }

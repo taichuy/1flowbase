@@ -93,7 +93,7 @@ fn policy_and_provider_binding_are_real_capability_requirements() {
 fn registered_runtime_schema_and_catalog_do_not_add_unbound_graph_placeholders() {
     use control_plane_contracts::ports::EventSourceObserver;
     let assembly = crate::extension_bus::assemble_extension_graph_input(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."),
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.."),
         crate::extension_bus::DEFAULT_PLUGIN_SET_PATH,
         Vec::new(),
     )

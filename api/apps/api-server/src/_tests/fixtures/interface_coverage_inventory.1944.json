@@ -21,7 +21,7 @@
       "handler_application_transaction_runtime": "typed Console handler -> MemoryInspectionAdapter -> host observation ports; no transaction/runtime dispatch",
       "side_effects": "read-only receipt and completion hooks",
       "tests_consumers": "host_infrastructure_tests; interface_operation_tests; console settings UI",
-      "source_anchor": "routes/settings/host_infrastructure/interface_operation.rs",
+      "source_anchor": "crates/api/console-settings/src/routes/settings/host_infrastructure/interface_operation.rs",
       "source_probe": "invocation_kernel"
     },
     {
@@ -36,7 +36,7 @@
       "handler_application_transaction_runtime": "typed public handler -> authenticator registry/store query; no transaction/runtime dispatch",
       "side_effects": "none",
       "tests_consumers": "auth_routes; login UI",
-      "source_anchor": "routes/identity/auth.rs",
+      "source_anchor": "crates/api/console-interaction/src/routes/identity/auth.rs",
       "source_probe": "list_login_entries"
     },
     {
@@ -51,7 +51,7 @@
       "handler_application_transaction_runtime": "AuthKernel::login -> authenticator -> SessionIssuer; application-owned transaction/session side effect",
       "side_effects": "session creation, last-login/auth audit as owned by AuthKernel, Set-Cookie",
       "tests_consumers": "auth_routes; page-debug auth helper; login UI",
-      "source_anchor": "routes/identity/auth.rs",
+      "source_anchor": "crates/api/console-interaction/src/routes/identity/auth.rs",
       "source_probe": "AuthKernel::new"
     },
     {
@@ -66,7 +66,7 @@
       "handler_application_transaction_runtime": "typed run handler -> ApplicationNativeRunService -> OrchestrationRuntimeService -> RuntimeExecutionPort",
       "side_effects": "run creation, audit, runtime dispatch, stream events and terminal",
       "tests_consumers": "application_public_api/native_routes; native_streaming; SDK clients",
-      "source_anchor": "routes/application_public_api/native.rs",
+      "source_anchor": "crates/api/public-gateway/src/routes/application_public_api/native.rs",
       "source_probe": "create_native_run"
     },
     {
@@ -81,7 +81,7 @@
       "handler_application_transaction_runtime": "compat adapter -> native run service -> orchestration/runtime",
       "side_effects": "run creation, runtime dispatch, protocol stream",
       "tests_consumers": "application_public_api compatibility fixtures; OpenAI/Anthropic/Responses clients",
-      "source_anchor": "routes/application_public_api/mod.rs",
+      "source_anchor": "crates/api/public-gateway/src/routes/application_public_api/mod.rs",
       "source_probe": "create_chat_completion"
     },
     {
@@ -96,7 +96,7 @@
       "handler_application_transaction_runtime": "stream adapter -> native/compat handler -> orchestration -> pinned Runtime generation",
       "side_effects": "runtime execution and ordered stream emission",
       "tests_consumers": "native_streaming; application_runtime_stream_routes; Responses/WebSocket clients",
-      "source_anchor": "routes/application_public_api/sse.rs",
+      "source_anchor": "crates/api/public-gateway/src/routes/application_public_api/sse.rs",
       "source_probe": "terminal_event"
     },
     {
@@ -111,7 +111,7 @@
       "handler_application_transaction_runtime": "MCP adapter -> virtual_ui dispatch -> typed tool/application/runtime target",
       "side_effects": "tool-specific; bounded JSON-RPC projection",
       "tests_consumers": "mcp_protocol_routes; MCP clients",
-      "source_anchor": "routes/mcp_protocol.rs",
+      "source_anchor": "crates/api/mcp/src/routes/mcp_protocol.rs",
       "source_probe": "tools/call"
     },
     {
@@ -126,7 +126,7 @@
       "handler_application_transaction_runtime": "WorkflowExtensionRunService -> spawn -> OrchestrationRuntimeService -> RuntimeExecutionPort",
       "side_effects": "run creation and runtime dispatch",
       "tests_consumers": "workflow_extension_routes; configured external webhook consumers",
-      "source_anchor": "routes/application_public_api/ex.rs",
+      "source_anchor": "crates/api/public-gateway/src/routes/application_public_api/ex.rs",
       "source_probe": "invoke_workflow_extension"
     },
     {
@@ -141,7 +141,7 @@
       "handler_application_transaction_runtime": "WorkflowScheduleTriggerService/worker -> OrchestrationRuntimeService -> RuntimeExecutionPort",
       "side_effects": "queue claim/ack, run dispatch, logs",
       "tests_consumers": "workflow_schedule_worker; scheduler",
-      "source_anchor": "workers/workflow_schedule.rs",
+      "source_anchor": "apps/api-server/src/workers/workflow_schedule.rs",
       "source_probe": "consume_one_workflow_schedule_run"
     },
     {
@@ -156,7 +156,7 @@
       "handler_application_transaction_runtime": "InterfaceInvocationKernel -> typed handler -> control-plane query",
       "side_effects": "typed before/after/failure/completion hooks and receipt; no domain transaction",
       "tests_consumers": "interface-runtime invocation tests; interface_operation_tests",
-      "source_anchor": "routes/settings/host_infrastructure/interface_operation.rs",
+      "source_anchor": "crates/api/kernel/src/slices/routes/settings/host_infrastructure/interface_operation.rs",
       "source_probe": "InterfaceInvocationKernel"
     }
   ],

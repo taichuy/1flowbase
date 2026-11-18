@@ -47,7 +47,8 @@ use uuid::Uuid;
 #[cfg(test)]
 mod _tests;
 
-mod client_tools;
+#[path = "assistant/client_tools.rs"]
+mod client_tool_execution;
 pub mod conversation_events;
 pub mod interface;
 mod run_activity;
@@ -55,13 +56,11 @@ pub mod websocket;
 pub mod websocket_interface;
 pub mod websocket_ticket_interface;
 
-pub use self::client_tools::AssistantClientToolBridge;
-use self::client_tools::AssistantRuntimeToolInvoker;
+pub use self::client_tool_execution::AssistantClientToolBridge;
+use self::client_tool_execution::AssistantRuntimeToolInvoker;
 pub use self::conversation_events::AssistantConversationSummaryResponse;
 use self::conversation_events::{AssistantConversationEventKind, AssistantConversationEventScope};
 pub use run_activity::AssistantRunActivityPageResponse;
-
-
 
 use crate::{
     app_state::ApiState,
@@ -71,7 +70,6 @@ use crate::{
     routes::{
         console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
         debug_run_stream,
-
     },
 };
 
@@ -285,18 +283,24 @@ pub struct AssistantRunDependencies {
     runtime_tool_invoker_factory: Arc<dyn AssistantRuntimeToolInvokerFactory>,
 }
 
+type AssistantRuntimeToolInvokerFactoryFuture<'a> = Pin<
+    Box<
+        dyn Future<
+                Output = Result<
+                    Arc<dyn api_host_kernel::runtime_ports::RuntimeToolInvokerFactoryHandle>,
+                    ApiError,
+                >,
+            > + Send
+            + 'a,
+    >,
+>;
+
 test_support_item! { pub(crate), []
 trait AssistantRuntimeToolInvokerFactory: Send + Sync + 'static {
     fn for_actor<'a>(
         &'a self,
         actor: &'a domain::ActorContext,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Result<Arc<dyn api_host_kernel::runtime_ports::RuntimeToolInvokerFactoryHandle>, ApiError>>
-                + Send
-                + 'a,
-        >,
-    >;
+    ) -> AssistantRuntimeToolInvokerFactoryFuture<'a>;
 }
 }
 
@@ -310,19 +314,15 @@ impl AssistantRuntimeToolInvokerFactory for StateAssistantRuntimeToolInvokerFact
     fn for_actor<'a>(
         &'a self,
         actor: &'a domain::ActorContext,
-    ) -> Pin<
-        Box<
-            dyn Future<Output = Result<Arc<dyn api_host_kernel::runtime_ports::RuntimeToolInvokerFactoryHandle>, ApiError>>
-                + Send
-                + 'a,
-        >,
-    > {
+    ) -> AssistantRuntimeToolInvokerFactoryFuture<'a> {
         Box::pin(async move {
             let state = self
                 .state
                 .upgrade()
                 .ok_or_else(crate::generation_dispatch::unavailable)?;
-            crate::generation_dispatch::GenerationDispatch::acquire(&state)?.runtime_debug_mcp_factory(&state, actor).await
+            crate::generation_dispatch::GenerationDispatch::acquire(&state)?
+                .runtime_debug_mcp_factory(&state, actor)
+                .await
         })
     }
 }
@@ -1048,8 +1048,6 @@ fn read_preference(meta: &Value, workspace_id: Uuid) -> AssistantPreferenceBody 
 }
 }
 
-
-
 #[path = "assistant/execution_lifecycle.rs"]
 mod execution_lifecycle;
 
@@ -1060,7 +1058,6 @@ use execution_lifecycle::abort_registered_assistant_execution;
 
 pub(crate) use execution_lifecycle::execute_assistant_run;
 pub(super) use execution_lifecycle::launch_assistant_execution;
-
 
 #[cfg(any(test, feature = "test-support"))]
 #[path = "assistant/_tests/support/accessors.rs"]

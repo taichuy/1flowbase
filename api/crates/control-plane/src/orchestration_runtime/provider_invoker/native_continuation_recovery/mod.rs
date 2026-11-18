@@ -256,13 +256,12 @@ fn rounds(records: &[domain::RuntimeEventRecord]) -> Result<Vec<NativeRound>> {
             round.invalid = true;
             continue;
         }
-        if received || failed {
-            if p["invocation_id"].as_str() != Some(round.invocation.as_str())
-                || p["provider_attempt_index"].as_u64() != Some(round.attempt)
-            {
-                round.invalid = true;
-                continue;
-            }
+        if (received || failed)
+            && (p["invocation_id"].as_str() != Some(round.invocation.as_str())
+                || p["provider_attempt_index"].as_u64() != Some(round.attempt))
+        {
+            round.invalid = true;
+            continue;
         }
         if failed {
             round.invalid = true;

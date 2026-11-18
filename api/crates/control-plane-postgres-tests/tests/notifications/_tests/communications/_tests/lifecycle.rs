@@ -216,23 +216,24 @@ async fn communication_lifecycle_legacy_interrupted_claim_emits_unknown_once() {
             .unwrap()
             .is_none());
     }
-    let recorded = facts.0.lock().unwrap();
-    assert_eq!(recorded.len(), 1);
-    let CommunicationLifecycleFact::SendResult(fact) = &recorded[0] else {
-        panic!("send result")
-    };
-    assert_eq!(fact.result_kind, CommunicationSendResultKind::Unknown);
-    assert_eq!(fact.failure_code.as_deref(), Some("send_interrupted"));
-    assert_eq!(fact.input_id, Some(key.message_id));
-    assert_eq!(fact.workspace_id, w.id);
-    assert_eq!(
-        fact.target.as_ref().unwrap().provider_message_id,
-        "reply-anchor"
-    );
-    assert!(
-        matches!(&fact.content, Some(CommunicationFactContent::Text { content, .. }) if content == "real reply")
-    );
-    drop(recorded);
+    {
+        let recorded = facts.0.lock().unwrap();
+        assert_eq!(recorded.len(), 1);
+        let CommunicationLifecycleFact::SendResult(fact) = &recorded[0] else {
+            panic!("send result")
+        };
+        assert_eq!(fact.result_kind, CommunicationSendResultKind::Unknown);
+        assert_eq!(fact.failure_code.as_deref(), Some("send_interrupted"));
+        assert_eq!(fact.input_id, Some(key.message_id));
+        assert_eq!(fact.workspace_id, w.id);
+        assert_eq!(
+            fact.target.as_ref().unwrap().provider_message_id,
+            "reply-anchor"
+        );
+        assert!(
+            matches!(&fact.content, Some(CommunicationFactContent::Text { content, .. }) if content == "real reply")
+        );
+    }
     assert!(!service
         .retry_message(&actor, channel, key.message_id)
         .await

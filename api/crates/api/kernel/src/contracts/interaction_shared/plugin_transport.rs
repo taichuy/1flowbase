@@ -1,11 +1,17 @@
+use crate::plugin_risk::PluginRiskOverrideBody;
 use crate::{error_response::ApiError, routes::system::LocaleMetaResponse};
-use axum::{body::{to_bytes, Body}, extract::Multipart, http::{Request, StatusCode}, middleware::Next, response::{IntoResponse, Response}};
+use axum::{
+    body::{to_bytes, Body},
+    extract::Multipart,
+    http::{Request, StatusCode},
+    middleware::Next,
+    response::{IntoResponse, Response},
+};
 use control_plane::plugin_management::InstallPluginResult;
 use plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
 use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
 use utoipa::{IntoParams, ToSchema};
-use crate::plugin_risk::PluginRiskOverrideBody;
 #[derive(Debug, Deserialize, ToSchema, Serialize)]
 pub struct InstallOfficialPluginBody {
     pub plugin_id: String,
@@ -164,9 +170,7 @@ pub async fn enforce_plugin_upload_limit(
     }
 }
 
-pub async fn read_upload_file(
-    multipart: &mut Multipart,
-) -> Result<(String, Vec<u8>), ApiError> {
+pub async fn read_upload_file(multipart: &mut Multipart) -> Result<(String, Vec<u8>), ApiError> {
     while let Some(field) = multipart
         .next_field()
         .await
@@ -256,9 +260,7 @@ pub fn to_artifact_instance_response(
     })
 }
 
-pub fn to_install_response(
-    result: InstallPluginResult,
-) -> Result<InstallPluginResponse, ApiError> {
+pub fn to_install_response(result: InstallPluginResult) -> Result<InstallPluginResponse, ApiError> {
     Ok(InstallPluginResponse {
         installation: to_installation_response_with_artifact(
             result.installation,
@@ -268,9 +270,7 @@ pub fn to_install_response(
     })
 }
 
-pub fn to_task_response(
-    task: domain::PluginTaskRecord,
-) -> Result<PluginTaskResponse, ApiError> {
+pub fn to_task_response(task: domain::PluginTaskRecord) -> Result<PluginTaskResponse, ApiError> {
     Ok(PluginTaskResponse {
         id: task.id.to_string(),
         installation_id: task.installation_id.map(|id| id.to_string()),
@@ -296,9 +296,17 @@ pub fn runtime_slot_for_contract(contract_version: &str) -> Option<String> {
 }
 #[async_trait::async_trait]
 pub trait OfficialPluginInstallResolver: Send + Sync {
-    async fn resolve(&self, source: &dyn crate::official_extension_catalog::OfficialExtensionCatalogSourcePort, actor_user_id: uuid::Uuid, workspace_id: uuid::Uuid, body: InstallOfficialPluginBody) -> Result<control_plane::plugin_management::InstallResolvedOfficialPluginCommand, ApiError>;
+    async fn resolve(
+        &self,
+        source: &dyn crate::official_extension_catalog::OfficialExtensionCatalogSourcePort,
+        actor_user_id: uuid::Uuid,
+        workspace_id: uuid::Uuid,
+        body: InstallOfficialPluginBody,
+    ) -> Result<control_plane::plugin_management::InstallResolvedOfficialPluginCommand, ApiError>;
 }
 
-pub fn format_optional_time(value: Option<time::OffsetDateTime>) -> Result<Option<String>, ApiError> {
+pub fn format_optional_time(
+    value: Option<time::OffsetDateTime>,
+) -> Result<Option<String>, ApiError> {
     value.map(format_time).transpose()
 }

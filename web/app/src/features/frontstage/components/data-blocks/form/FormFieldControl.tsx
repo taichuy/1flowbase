@@ -81,14 +81,16 @@ function RelationControl({ ctx, field, value, onChange, readOnly, id }: Props) {
   );
   const merged = [
     ...options,
-    ...selected
-      .filter(
-        (recordId) => !options.some((option) => option.value === recordId)
-      )
-      .map((recordId) => ({
-        value: recordId,
-        label: labels[String(recordId)] ?? String(recordId)
-      }))
+    ...selected.flatMap((recordId) =>
+      options.some((option) => option.value === recordId)
+        ? []
+        : [
+            {
+              value: recordId,
+              label: labels[String(recordId)] ?? String(recordId)
+            }
+          ]
+    )
   ];
   if (readOnly)
     return (

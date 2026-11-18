@@ -20,14 +20,14 @@ pub struct FrontstageModelRecordResultSchema {
 #[derive(ToSchema)]
 #[serde(untagged)]
 pub enum FrontstageQueryResultSchema {
-    PageDetail(super::FrontstagePageDetailResponse),
+    PageDetail(Box<super::FrontstagePageDetailResponse>),
     ModelList(FrontstageModelListResultSchema),
     ModelRecord(FrontstageModelRecordResultSchema),
 }
 #[derive(ToSchema)]
 #[serde(untagged)]
 pub enum FrontstageActionResultSchema {
-    PageDetail(super::FrontstagePageDetailResponse),
+    PageDetail(Box<super::FrontstagePageDetailResponse>),
     ModelRecord(FrontstageModelRecordResultSchema),
 }
 

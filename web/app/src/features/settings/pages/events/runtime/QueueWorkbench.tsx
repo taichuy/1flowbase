@@ -16,6 +16,9 @@ import {
   type SubscribedEvent
 } from './subscription-view';
 
+const openEvent = (row: SubscribedEvent) =>
+  navigateEventState({ event: row.contractId, subscription: null });
+
 /**
  * Operator view: event -> independent subscriptions -> consumers.
  *
@@ -58,11 +61,6 @@ export function QueueWorkbench({
   const selectedSubscription = selectedEvent?.subscriptions.find(
     (row) => row.id === subscriptionId
   );
-  const openEvent = (row: SubscribedEvent) =>
-    navigateEventState({
-      event: row.contractId,
-      subscription: null
-    });
   const columns: DataTableColumn<SubscribedEvent>[] = [
     {
       key: 'contract_id',

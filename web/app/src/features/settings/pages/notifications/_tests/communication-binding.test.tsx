@@ -415,11 +415,22 @@ test('the binding update operation enables saving without instance update permis
 });
 
 test('E8 adds, persists, reopens, edits and removes a custom event slash command', async () => {
-  const { ref, writes, view, mount } = setup({ existing: true });
-  await screen.findByDisplayValue('Custom prompt');
-  await settle();
-  fireEvent.click(screen.getByRole('button', { name: 'Add command' }));
+  const { ref, writes, view, mount } = setup({
+    existing: true,
+    withoutMotion: true
+  });
+  let binding = within(view.container);
+  await waitFor(() => {
+    expect(binding.getByDisplayValue('Custom prompt')).toBeInTheDocument();
+    expect(client.isFetching()).toBe(0);
+    expect(binding.getByLabelText('Enable new')).toBeEnabled();
+    expect(binding.queryByRole('alert')).not.toBeInTheDocument();
+  });
+  fireEvent.click(binding.getByRole('button', { name: 'Add command' }));
   const dialog = await screen.findByRole('dialog');
+  await waitFor(() =>
+    expect(within(dialog).getByRole('button', { name: 'Submit' })).toBeEnabled()
+  );
   fireEvent.change(
     within(dialog).getByRole('textbox', { name: 'Command identity' }),
     { target: { value: 'user/invoice' } }
@@ -441,9 +452,9 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
     })
   );
   fireEvent.mouseDown(
-    await within(dialog).findByRole('combobox', {
-      name: 'Payload field: invoice'
-    })
+    await waitFor(() =>
+      within(dialog).getByRole('combobox', { name: 'Payload field: invoice' })
+    )
   );
   fireEvent.click(
     await screen.findByText('/arguments', {
@@ -452,7 +463,7 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
   );
   fireEvent.click(within(dialog).getByRole('button', { name: 'Submit' }));
   await waitFor(() =>
-    expect(screen.getByRole('switch', { name: 'Enable invoice' })).toBeChecked()
+    expect(binding.getByLabelText('Enable invoice')).toBeChecked()
   );
   await act(async () => {
     expect(ref.current?.validate()).toBe(true);
@@ -481,13 +492,27 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
   ).toBe(true);
   view.unmount();
   client.clear();
-  mount('channel-1');
-  await screen.findByRole('switch', { name: 'Enable invoice' });
-  const row = screen.getByRole('row', { name: /\/invoice/ });
-  const editButton = within(row).getByRole('button', { name: 'Edit' });
-  await waitFor(() => expect(editButton).toBeEnabled());
+  binding = within(mount('channel-1').container);
+  // The saved row renders before the application-specific catalogue is ready.
+  // Wait on the labelled control without repeatedly computing every table row's
+  // accessible name while the query notification and React commit are pending.
+  await waitFor(() => {
+    expect(binding.getByLabelText('Enable invoice')).toBeEnabled();
+  });
+  expect(
+    binding.getByRole('switch', { name: 'Enable invoice' })
+  ).toBeInTheDocument();
+  const reopenedRow = binding.getByRole('row', { name: /\/invoice/ });
+  const editButton = within(reopenedRow).getByRole('button', { name: 'Edit' });
+  expect(editButton).toBeEnabled();
   fireEvent.click(editButton);
-  const edit = await screen.findByRole('dialog');
+  const edit = await waitFor(() => {
+    const dialog = screen.getByRole('dialog');
+    expect(
+      within(dialog).getByRole('button', { name: 'Submit' })
+    ).toBeEnabled();
+    return dialog;
+  });
   expect(
     within(edit).getByRole('textbox', { name: 'Command identity' })
   ).toBeDisabled();
@@ -495,10 +520,11 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
     target: { value: 'Updated invoice processing' }
   });
   fireEvent.click(within(edit).getByRole('button', { name: 'Submit' }));
+  await binding.findByText('Updated invoice processing');
   expect(
-    await screen.findByRole('row', { name: /Updated invoice processing/ })
+    binding.getByRole('row', { name: /Updated invoice processing/ })
   ).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('switch', { name: 'Enable invoice' }));
+  fireEvent.click(binding.getByRole('switch', { name: 'Enable invoice' }));
   await act(async () => {
     await ref.current?.save('channel-1');
   });
@@ -509,9 +535,12 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
     enabled: false
   });
   fireEvent.click(
-    within(screen.getByRole('row', { name: /\/invoice/ })).getByRole('button', {
-      name: 'Delete'
-    })
+    within(binding.getByRole('row', { name: /\/invoice/ })).getByRole(
+      'button',
+      {
+        name: 'Delete'
+      }
+    )
   );
   await act(async () => {
     await ref.current?.save('channel-1');
@@ -525,8 +554,10 @@ test('E8 cannot edit event commands with read-only permission', async () => {
   setup({
     permissions: ['communications.binding.get', 'communications.options.get']
   });
-  await waitFor(() => expect(client.isFetching()).toBe(0));
-  expect(screen.getByRole('button', { name: 'Add command' })).toBeDisabled();
+  await waitFor(() => {
+    expect(client.isFetching()).toBe(0);
+    expect(screen.getByRole('button', { name: 'Add command' })).toBeDisabled();
+  });
 });
 
 test('E8 validates reserved slash names before adding a command draft', async () => {

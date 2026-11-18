@@ -20,8 +20,9 @@ function loadManifest(root, filename = process.env.PLUGIN_COMPOSITION_MANIFEST) 
     throw new Error('R3 Host continuation must remain the frozen one-test batch');
   }
   if (data.batchMode === 'r3-observer' && (data.browserBinary || data.node.length
-      || data.targets.length !== 1 || data.targets[0].id !== 'api-server:lib'
+      || data.targets.length !== 1 || data.targets[0].id !== 'api-server:api_private_contracts'
       || data.targets[0].regressionFilters.length || data.required.length !== 1
+      || data.required[0].target !== 'api-server:api_private_contracts'
       || data.required[0].name !== '_tests::interface_lifecycle_acceptance::managed_interfaces::root_2014_ac_002_installed_two_interface_plugin'
       || data.rootPrefixes?.join(',') !== 'root_2014_ac_002_installed_two_interface_plugin'
       || data.workerFixtures?.length !== 1 || data.workerFixtures[0].example !== 'managed_hook_worker')) {

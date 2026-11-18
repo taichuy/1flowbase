@@ -5,12 +5,10 @@ use super::super::protocol_mappers::{
 use super::super::test_support::support::*;
 use super::super::*;
 use control_plane::{
-    application_public_api::native::{NativeError, NativeRequiredAction, NativeRunStatus},
+    application_public_api::native::{NativeError, NativeRunStatus},
     ports::{RuntimeEventDurability, RuntimeEventPayload, RuntimeEventSource},
 };
 use serde_json::json;
-use std::sync::Arc;
-use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use super::super::test_support::PROVIDER_UPSTREAM_ERROR_BODY;

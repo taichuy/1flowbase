@@ -4,7 +4,7 @@ import type {
   ApplicationTemplateReference
 } from '@1flowbase/api-client';
 import { useNavigate } from '@tanstack/react-router';
-import { UploadOutlined } from '@ant-design/icons';
+import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import { Alert, Button, Flex, Input, Tabs } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -38,16 +38,17 @@ export function ApplicationTemplateCatalogPanel({
   }>();
   const [file, setFile] = useState<File>();
   const fileInput = useRef<HTMLInputElement>(null);
-  const loadingMore = useRef(new Set<string>());
+  const loadingMore = useRef<Set<string> | null>(null);
   useEffect(() => setSearchText(q ?? ''), [q]);
   const loadMore = useCallback(async () => {
     const key = JSON.stringify([q, cursor]);
-    if (loadingMore.current.has(key) || isFetching || !hasNextPage) return;
-    loadingMore.current.add(key);
+    const inFlight = (loadingMore.current ??= new Set<string>());
+    if (inFlight.has(key) || isFetching || !hasNextPage) return;
+    inFlight.add(key);
     try {
       await fetchNextPage({ cancelRefetch: false });
     } finally {
-      loadingMore.current.delete(key);
+      inFlight.delete(key);
     }
   }, [q, cursor, isFetching, hasNextPage, fetchNextPage]);
   const goTo = (nextCursor?: string, query = q) =>

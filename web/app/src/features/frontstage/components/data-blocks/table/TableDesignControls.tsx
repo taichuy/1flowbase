@@ -1,18 +1,12 @@
 import { useDataBlockPopupContainer } from '../shared/useDataBlockPopupContainer';
 import { Fragment, useState, type ReactNode } from 'react';
 import { Button, Input, Popover, Switch, Typography } from 'antd';
-import { HolderOutlined, PlusOutlined, DragOutlined } from '@ant-design/icons';
-import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  closestCenter,
-  useSensor,
-  useSensors
-} from '@dnd-kit/core';
+import HolderOutlined from '@ant-design/icons/es/icons/HolderOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import DragOutlined from '@ant-design/icons/es/icons/DragOutlined';
+import { DndContext, closestCenter } from '@dnd-kit/core';
 import {
   SortableContext,
-  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy
 } from '@dnd-kit/sortable';
@@ -29,13 +23,7 @@ import {
 } from '../../../lib/native-modules/block-design/runtime';
 import { moveTableColumn, tableColumnEntries } from './table-columns';
 import { actionTitle } from './table-labels';
-
-export function useTableDragSensors() {
-  return useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
-}
+import { useTableDragSensors } from './use-table-drag-sensors';
 
 export function SortableTableColumnTitle({
   fieldCode,

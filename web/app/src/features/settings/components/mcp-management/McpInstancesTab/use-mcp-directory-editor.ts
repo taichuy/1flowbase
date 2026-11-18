@@ -36,6 +36,19 @@ import { countMcpInstanceDirectoryItems } from './catalog-view';
 import { useDirectoryDraft } from './use-directory-draft';
 import type { GroupFormValues, BindingFormValues } from './editor-types';
 
+function validateSnapshot(snapshot: ConsoleMcpInstanceDirectory) {
+  if (
+    new Set(snapshot.groups.map((row) => row.path)).size !==
+      snapshot.groups.length ||
+    new Set(snapshot.bindings.map((row) => `${row.group_path}/${row.tool_id}`))
+      .size !== snapshot.bindings.length
+  ) {
+    throw new Error(
+      i18nText('settingsMcpManagement', 'auto.directory_duplicate_path')
+    );
+  }
+}
+
 /** Node editing buffers are independent of the confirmed directory draft and its persistence. */
 export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
   const can = useConsoleOperationAccess();
@@ -162,9 +175,8 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
 
   const directorySnapshot = draft.snapshot;
   const resolveDirectoryId = draft.resolveId;
-  // Server IDs are mapped by the submitted snapshot, independent of later moves.
-  useEffect(() => {
-    if (!editingBinding || !directorySnapshot) return;
+  // Receive mapped server IDs in this owner before its controls commit the snapshot.
+  if (editingBinding && directorySnapshot) {
     const saved = directorySnapshot.bindings.find(
       (row) => row.id === resolveDirectoryId(editingBinding.id)
     );
@@ -174,13 +186,7 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
         key === `binding:${editingBinding.id}` ? `binding:${saved.id}` : key
       );
     }
-  }, [
-    directorySnapshot,
-    resolveDirectoryId,
-    editingBinding,
-    setEditingBinding,
-    setSelectedDirectoryKey
-  ]);
+  }
   useEffect(() => {
     const group =
       directorySnapshot?.groups.find(
@@ -267,7 +273,11 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     bindingForm.resetFields();
     const snapshot = await draft.load(instance.instance_id);
     if (snapshot) {
-      const path = '/';
+      // Tree selection can change while the snapshot is loading. Initialize the
+      // selected group instead of replacing its form with the instance root.
+      const path = normalizeMcpDirectoryPath(
+        groupForm.getFieldValue('path') ?? '/'
+      );
       const group = snapshot.groups.find((row) => row.path === path);
       editingGroupIdRef.current = group?.id ?? null;
       const values = {
@@ -432,19 +442,6 @@ export function useMcpDirectoryEditor(catalog: ConsoleMcpCatalog) {
     bindingForm.resetFields();
     bindingForm.setFieldsValue(values);
     bindingSavedValuesRef.current = values;
-  }
-  function validateSnapshot(snapshot: ConsoleMcpInstanceDirectory) {
-    if (
-      new Set(snapshot.groups.map((row) => row.path)).size !==
-        snapshot.groups.length ||
-      new Set(
-        snapshot.bindings.map((row) => `${row.group_path}/${row.tool_id}`)
-      ).size !== snapshot.bindings.length
-    ) {
-      throw new Error(
-        i18nText('settingsMcpManagement', 'auto.directory_duplicate_path')
-      );
-    }
   }
   function stage(
     transform: (

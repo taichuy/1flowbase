@@ -876,6 +876,14 @@ impl ConsoleInterfacePort<UiManagementInput, UiManagementOutput> for Unavailable
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+impl UiManagementAdapter {
+    #[doc(hidden)]
+    pub fn for_test(dependencies: UiManagementDependencies) -> Self {
+        Self(dependencies)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -893,13 +901,5 @@ mod tests {
         }
         assert_eq!(DECLARATIONS.len(), 20);
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
-    }
-}
-
-#[cfg(any(test, feature = "test-support"))]
-impl UiManagementAdapter {
-    #[doc(hidden)]
-    pub fn for_test(dependencies: UiManagementDependencies) -> Self {
-        Self(dependencies)
     }
 }

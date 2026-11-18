@@ -16,7 +16,6 @@ pub(crate) use api_console_settings::routes::settings_group::membership_interfac
 pub use api_console_settings::routes::settings_group::navigation;
 pub(crate) use api_console_settings::routes::settings_group::navigation_interface;
 pub use api_console_settings::routes::settings_group::permissions;
-pub(crate) use api_console_settings::routes::settings_group::release_status;
 pub(crate) use api_console_settings::routes::settings_group::role_access_interface;
 #[path = "identity_access/roles.rs"]
 pub mod roles;

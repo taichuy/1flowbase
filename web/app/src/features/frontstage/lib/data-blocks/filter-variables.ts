@@ -17,10 +17,10 @@ export interface DataFilterVariable {
 export function dataFilterVariables(ctx: BlockContext): DataFilterVariable[] {
   const result: DataFilterVariable[] = [];
   const labels: Record<string, string> = {
-    currentUser: i18nText('frontstage', 'data_blocks.filter.current_user'),
+    currentUser: i18nText('frontstage', 'auto.current_user'),
     workspace: i18nText('frontstage', 'data_blocks.filter.workspace'),
     application: i18nText('frontstage', 'data_blocks.filter.application'),
-    page: i18nText('frontstage', 'data_blocks.filter.page'),
+    page: i18nText('frontstage', 'auto.page_scope'),
     inputs: i18nText('frontstage', 'data_blocks.filter.inputs'),
     params: i18nText('frontstage', 'data_blocks.filter.params')
   };

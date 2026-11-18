@@ -84,20 +84,24 @@ async fn generation_managed_socket_session_retains_old_owner_until_session_drop(
     let (_, events) = mpsc::channel(1);
     let (_, terminal) = oneshot::channel();
     let (cancel_sender, cancel) = watch::channel(false);
-    let session = SocketSession::test_new(state.clone(),
-owner.clone(),
-Arc::new(operation),
-HeaderMap::new(),
-String::new(),
-uuid::Uuid::now_v7(),
-json!({}),
-input,
-events,
-terminal,
-cancel,
-SocketLease::test_new(uuid::Uuid::now_v7(),
-uuid::Uuid::now_v7(),
-cancel_sender));
+    let session = SocketSession::test_new(
+        SocketSessionTestContext {
+            state: state.clone(),
+            generation: owner.clone(),
+            operation: Arc::new(operation),
+            headers: HeaderMap::new(),
+            session: String::new(),
+            installation: uuid::Uuid::now_v7(),
+        },
+        SocketSessionTestTransport {
+            payload: json!({}),
+            input,
+            events,
+            terminal,
+            cancel,
+            lease: SocketLease::test_new(uuid::Uuid::now_v7(), uuid::Uuid::now_v7(), cancel_sender),
+        },
+    );
     drop(owner);
     drop(state);
     publisher.publish(publisher.prepare(vec![], BTreeMap::new()).await.unwrap());
@@ -150,9 +154,10 @@ fn record_revocation_candidates_are_exact_and_never_include_root_or_untracked_st
             .test_sockets_mut()
             .insert(
                 id,
-                RegisteredStream::test_new(cancel,
-key.map(|key| StreamRecordAdmission::test_new(actor,
-key))),
+                RegisteredStream::test_new(
+                    cancel,
+                    key.map(|key| StreamRecordAdmission::test_new(actor, key)),
+                ),
             );
         id
     };

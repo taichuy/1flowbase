@@ -27,7 +27,7 @@ const INTERFACE_ID: &str = "public.auth.sign-in";
 const HANDLER: &str = "api-server.public-auth.sign-in";
 const OPERATION: &str = "public.auth.sign-in";
 
-test_support_item! { pub(crate), []
+test_support_item! { pub, []
 struct PublicSignInInput(pub(crate) LoginCommand);
 }
 
@@ -54,7 +54,7 @@ impl InterfaceContract for PublicSignInInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-test_support_item! { pub(crate), []
+test_support_item! { pub, []
 struct PublicSignInOutput(pub(crate) LoginResult);
 }
 
@@ -125,7 +125,7 @@ impl InterfaceContract for PublicSignInOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-test_support_item! { pub(crate), []
+test_support_item! { pub, []
 struct PublicSignInTargetError(pub(crate) ApiError);
 }
 

@@ -16,8 +16,7 @@ pub fn start_published_flow_run(
     service: &RuntimeService,
     command: StartPublishedFlowRunCommand,
 ) -> impl std::future::Future<Output = anyhow::Result<domain::ApplicationRunDetail>> + '_ {
-    let future = service.start_published_flow_run(command);
-    async move { future.await }
+    service.start_published_flow_run(command)
 }
 
 pub async fn start_flow_debug_run(

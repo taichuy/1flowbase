@@ -379,6 +379,7 @@ async fn native_source_string_identity_and_causal_metadata_survive_invocation_wi
         publications::{ApplicationPublicationService, PublishApplicationCommand},
         ApplicationPublicApiTestHarness,
     };
+    use control_plane_contracts::ports::EventCatalogRepository;
     use domain::event_center::*;
     let user = Uuid::from_u128(0x11111111111111111111111111111111);
     let harness = ApplicationPublicApiTestHarness::new();
@@ -402,8 +403,9 @@ async fn native_source_string_identity_and_causal_metadata_survive_invocation_wi
         coverage: EventSourceCoverage::Live,
         supported_phases: vec![EventTriggerPhase::Published],
     };
+    let entry: EventCatalogEntry = descriptor.into();
     let service = WorkflowEventTriggerService::new(repository.clone())
-        .with_registered_events(vec![descriptor.into()]);
+        .with_registered_events(vec![entry.clone()]);
     let mut selected = configuration();
     selected.contract_id = "native.fact".into();
     selected.source = Some(EventSourceSelection {
@@ -412,6 +414,41 @@ async fn native_source_string_identity_and_causal_metadata_survive_invocation_wi
         source_id: "native.fact.source".into(),
         scope: scope.clone(),
     });
+    let unavailable = service
+        .replace_trigger(user, application.id, selected.clone())
+        .await
+        .expect_err("a registry projection cannot replace the durable source declaration");
+    assert!(matches!(
+        unavailable.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::InvalidInput("event_unavailable"))
+    ));
+    assert!(service
+        .get_trigger(user, application.id)
+        .await
+        .unwrap()
+        .is_none());
+    repository
+        .synchronize_event_catalog(&EventCatalogSnapshot {
+            scopes: vec![scope.clone()],
+            entries: vec![entry],
+        })
+        .await
+        .unwrap();
+    let actor = repository.load_actor_context_for_user(user).await.unwrap();
+    let catalog = repository
+        .list_event_catalog(&actor, EventCatalogQuery::default())
+        .await
+        .unwrap();
+    assert_eq!(catalog.len(), 1);
+    assert_eq!(catalog[0].scope, scope);
+    let mut foreign_actor = actor.clone();
+    foreign_actor.current_workspace_id = Uuid::now_v7();
+    foreign_actor.is_root = false;
+    assert!(repository
+        .list_event_catalog(&foreign_actor, EventCatalogQuery::default())
+        .await
+        .unwrap()
+        .is_empty());
     service
         .replace_trigger(user, application.id, selected)
         .await
@@ -438,7 +475,7 @@ async fn native_source_string_identity_and_causal_metadata_survive_invocation_wi
         attributes: Default::default(),
 
         registration_id: Uuid::now_v7(),
-        scope,
+        scope: scope.clone(),
         source_id: "native.fact.source".into(),
         point_id: "native.point".into(),
         original_event_id: Some("native:not-a-uuid:42".into()),
@@ -477,20 +514,48 @@ async fn native_source_string_identity_and_causal_metadata_survive_invocation_wi
     let mut mismatched = command.clone();
     mismatched.context["source_context"]["scope"] = json!({"kind":"system"});
     assert!(service.invoke_event(mismatched).await.is_err());
-    let mut missing = command;
+    let mut missing = command.clone();
     missing.context["source_context"]["original_event_id"] = Value::Null;
     assert!(service.invoke_event(missing).await.is_err());
-    assert!(
-        WorkflowEventTriggerService::new(repository)
-            .prepare_subscription(
-                &service
-                    .get_trigger(user, application.id)
-                    .await
-                    .unwrap()
-                    .unwrap()
-            )
-            .await
-            .is_err(),
-        "restored receivers revalidate source availability"
+    let frozen = service
+        .get_trigger(user, application.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let restored = WorkflowEventTriggerService::new(repository.clone());
+    restored.prepare_subscription(&frozen).await.unwrap();
+    repository
+        .synchronize_event_catalog(&EventCatalogSnapshot {
+            scopes: vec![scope],
+            entries: vec![],
+        })
+        .await
+        .unwrap();
+    let unavailable_catalog = repository
+        .list_event_catalog(&actor, EventCatalogQuery::default())
+        .await
+        .unwrap();
+    assert_eq!(
+        unavailable_catalog.len(),
+        1,
+        "revocation retains directory history"
     );
+    assert_eq!(unavailable_catalog[0].enabled, Some(false));
+    assert!(unavailable_catalog[0].supported_phases.is_empty());
+    let unavailable = restored
+        .prepare_subscription(&frozen)
+        .await
+        .expect_err("restored receivers must reject a revoked durable source declaration");
+    assert!(matches!(
+        unavailable.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::InvalidInput("event_unavailable"))
+    ));
+    let unavailable = service
+        .invoke_event(command)
+        .await
+        .expect_err("a cached registry projection cannot reactivate a revoked source");
+    assert!(matches!(
+        unavailable.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::InvalidInput("event_unavailable"))
+    ));
 }

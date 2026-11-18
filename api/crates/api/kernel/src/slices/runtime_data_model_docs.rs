@@ -5,6 +5,7 @@ use runtime_core::{
     ordered_tree_template::CoreOrderedTreeOperationHandler,
 };
 use serde_json::{json, Value};
+#[cfg(test)]
 use uuid::Uuid;
 
 use crate::openapi_docs::{

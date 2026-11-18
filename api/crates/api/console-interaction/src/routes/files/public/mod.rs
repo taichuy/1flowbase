@@ -23,8 +23,7 @@ pub struct TemporaryFileQuery {
     preview: bool,
 }
 
-pub fn route_assembly(
-) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
+pub fn route_assembly() -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
     crate::external_route_assembly::ExternalRouteAssembly::new().route(
         "/api/public/files/content",
         crate::external_route_assembly::get(read_temporary_file),

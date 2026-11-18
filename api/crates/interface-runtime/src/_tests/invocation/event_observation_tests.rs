@@ -578,7 +578,6 @@ async fn stream_completion_waits_for_real_complete_and_preserves_all_terminal_fa
                 Some("stream-terminal-missing"),
                 None,
             ),
-            _ => unreachable!(),
         };
         if error.is_some() {
             assert!(result.is_err());

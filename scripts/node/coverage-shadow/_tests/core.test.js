@@ -334,3 +334,25 @@ test('all existing API owners share list/run/cleanup selection and the original 
     assert.equal(validateCoverageSummary(summary).lineCoveragePercent, 60);
   }
 });
+
+
+test('cache proof reads dependency artifacts from Cargo metadata when build artifacts use another directory', () => {
+  const { dependencyArtifacts } = require('../profile-pool-proof.js');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'coverage-artifact-layout-'));
+  try {
+    const target = path.join(root, 'target');
+    const artifact = path.join(root, 'build', 'debug', 'deps', 'libcache_proof_dependency-fresh.rlib');
+    fs.mkdirSync(path.dirname(artifact), { recursive: true });
+    fs.writeFileSync(artifact, 'dependency from Cargo compiler-artifact');
+    const result = dependencyArtifacts(target, [artifact]);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].bytes, fs.statSync(artifact).size);
+    assert.match(result[0].sha256, /^[a-f0-9]{64}$/u);
+    fs.writeFileSync(artifact, 'changed dependency');
+    assert.notDeepEqual(dependencyArtifacts(target, [artifact]), result);
+    fs.rmSync(artifact);
+    assert.throws(() => dependencyArtifacts(target, [artifact]), /ENOENT/u);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

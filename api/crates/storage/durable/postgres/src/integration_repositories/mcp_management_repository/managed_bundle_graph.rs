@@ -430,7 +430,9 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
             .execute(&mut *transaction).await?;
     }
 
-    if !plugin_template || owned_reset {
+    // A plugin reset owns its declared dedicated instance, not every instance
+    // carrying the same bundle provenance. Whole-bundle imports replace that set.
+    if !plugin_template {
         sqlx::query(
             r#"
         delete from mcp_instances
@@ -446,6 +448,8 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
         .bind(&instance_ids)
         .execute(&mut *transaction)
         .await?;
+    }
+    if !plugin_template || owned_reset {
         sqlx::query(
             r#"
         delete from mcp_tools

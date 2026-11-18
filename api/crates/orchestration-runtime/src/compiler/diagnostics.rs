@@ -40,7 +40,7 @@ impl From<domain::flow::FlowDocumentValidationError> for FlowValidationError {
                 code: "invalid_node_configuration".to_owned(),
                 field_path: error.field_path,
                 message,
-                expected: error.expected,
+                expected: error.expected.map(|value| *value),
             }],
         }
     }

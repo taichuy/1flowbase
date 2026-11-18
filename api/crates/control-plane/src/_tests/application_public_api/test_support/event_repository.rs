@@ -121,9 +121,49 @@ impl control_plane_contracts::ports::EventCatalogRepository for ApplicationPubli
     }
     async fn synchronize_event_catalog(
         &self,
-        _: &domain::event_center::EventCatalogSnapshot,
+        snapshot: &domain::event_center::EventCatalogSnapshot,
     ) -> Result<()> {
-        anyhow::bail!("source reconciliation is outside this invocation fixture")
+        snapshot.validate().map_err(anyhow::Error::msg)?;
+        let same_identity =
+            |left: &domain::event_center::EventCatalogEntry,
+             right: &domain::event_center::EventCatalogEntry| {
+                left.scope == right.scope
+                    && left.contract_id == right.contract_id
+                    && left.source.as_ref().map(|source| &source.selection)
+                        == right.source.as_ref().map(|source| &source.selection)
+            };
+        let now = OffsetDateTime::now_utc();
+        let mut inner = self.inner.lock().unwrap();
+        // The production directory retains unavailable definitions, while
+        // current scope declarations own their availability and source phases.
+        for previous in &mut inner.registered_event_catalog {
+            if snapshot.scopes.contains(&previous.scope)
+                && !snapshot
+                    .entries
+                    .iter()
+                    .any(|entry| same_identity(previous, entry))
+            {
+                previous.enabled = Some(false);
+                previous.supported_phases.clear();
+                previous.updated_at = Some(now);
+            }
+        }
+        for declared in &snapshot.entries {
+            let mut entry = declared.clone();
+            entry.updated_at = Some(now);
+            if let Some(previous) = inner
+                .registered_event_catalog
+                .iter_mut()
+                .find(|previous| same_identity(previous, declared))
+            {
+                entry.created_at = previous.created_at;
+                *previous = entry;
+            } else {
+                entry.created_at = Some(now);
+                inner.registered_event_catalog.push(entry);
+            }
+        }
+        Ok(())
     }
     async fn list_event_catalog(
         &self,
@@ -136,6 +176,21 @@ impl control_plane_contracts::ports::EventCatalogRepository for ApplicationPubli
             .into_iter()
             .map(domain::event_center::EventCatalogEntry::from)
             .collect::<Vec<_>>();
+        entries.extend(
+            self.inner
+                .lock()
+                .unwrap()
+                .registered_event_catalog
+                .iter()
+                .filter(|entry| match &entry.scope {
+                    domain::event_center::EventSourceScope::Workspace { workspace_id } => {
+                        *workspace_id == actor.current_workspace_id
+                    }
+                    domain::event_center::EventSourceScope::System
+                    | domain::event_center::EventSourceScope::Unbound => actor.is_root,
+                })
+                .cloned(),
+        );
         query.sort(&mut entries);
         Ok(entries)
     }

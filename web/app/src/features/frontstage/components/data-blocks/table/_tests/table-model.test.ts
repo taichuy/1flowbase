@@ -158,6 +158,51 @@ describe('table backend scope and record identity', () => {
 });
 
 describe('table data and design write boundaries', () => {
+  it('starts independent unique deletes together and partitions out-of-order results in input order', async () => {
+    const deferred = () => {
+      let resolve!: () => void;
+      let reject!: (error: Error) => void;
+      const promise = new Promise<void>((done, fail) => {
+        resolve = done;
+        reject = fail;
+      });
+      return { promise, resolve, reject };
+    };
+    const a = deferred();
+    const b = deferred();
+    const c = deferred();
+    const pending = { A: a, B: b, C: c };
+    const remove = vi.fn((id: string) => {
+      if (id === 'D') throw new Error('synchronous denial');
+      return pending[id as keyof typeof pending].promise;
+    });
+    const task = deleteTableRecords(['A', 'B', 'C', 'A', 'D', 'B'], remove);
+    let finished = false;
+    void task.then(
+      () => {
+        finished = true;
+      },
+      () => {
+        finished = true;
+      }
+    );
+    try {
+      // A remains pending: waiting for it must not delay any independent call.
+      expect(remove.mock.calls.map(([id]) => id)).toEqual(['A', 'B', 'C', 'D']);
+      c.resolve();
+      b.reject(new Error('asynchronous denial'));
+      await Promise.resolve();
+      expect(finished).toBe(false);
+      a.resolve();
+      expect(await task).toEqual({ deleted: ['A', 'C'], failed: ['B', 'D'] });
+      expect(remove).toHaveBeenCalledTimes(4);
+    } finally {
+      a.resolve();
+      b.resolve();
+      c.resolve();
+      await task.catch(() => {});
+    }
+  });
   it('never deletes without selection and reports independent partial failures for retry', async () => {
     const remove = vi.fn(async (id: string) => {
       if (id === 'B') throw new Error('forbidden');

@@ -114,13 +114,20 @@ export function ApplicationTemplateCatalogList({
                   );
                 const item = row.template;
                 const values = [
-                  item.name,
-                  item.description,
-                  item.release_version,
-                  item.installed_release_version ?? t('not_installed'),
-                  item.source === 'builtin'
-                    ? t('source_builtin')
-                    : t('source_official')
+                  { key: 'name', value: item.name },
+                  { key: 'description', value: item.description },
+                  { key: 'release_version', value: item.release_version },
+                  {
+                    key: 'installed_release_version',
+                    value: item.installed_release_version ?? t('not_installed')
+                  },
+                  {
+                    key: 'source',
+                    value:
+                      item.source === 'builtin'
+                        ? t('source_builtin')
+                        : t('source_official')
+                  }
                 ];
                 return (
                   <div
@@ -128,10 +135,10 @@ export function ApplicationTemplateCatalogList({
                     aria-rowindex={index + 2}
                     className="application-template-catalog__row"
                   >
-                    {values.map((value, column) => (
+                    {values.map(({ key, value }, column) => (
                       <div
                         role="cell"
-                        key={column}
+                        key={key}
                         className={`application-template-catalog__cell application-template-catalog__cell--${column}`}
                       >
                         <span className="application-template-catalog__label">

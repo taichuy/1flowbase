@@ -499,42 +499,6 @@ impl ConsoleInterfacePort<FrontstageCallableDispatchInput, FrontstageCallableDis
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn f12c3_registry_freezes_callable_dispatch_binding() {
-        let registry =
-            compile_registry(Arc::new(UnavailableFrontstageCallableDispatchPort)).unwrap();
-        for declaration in DECLARATIONS {
-            let binding = registry
-                .binding(&interface_runtime::BindingId::new(declaration.binding_id).unwrap())
-                .expect("declared callable dispatch binding must be frozen");
-            let route = binding.projection().http_route().unwrap();
-            assert_eq!(route.method(), declaration.method);
-            assert_eq!(route.path(), declaration.path);
-        }
-        assert_eq!(registry.bindings().count(), DECLARATIONS.len());
-    }
-
-    #[test]
-    fn f12c3_route_key_requires_a_supported_method_and_canonical_relative_path() {
-        let route = canonical_route_key("get", "/api/console/applications/catalog").unwrap();
-        assert_eq!(route.method, "GET");
-        assert_eq!(route.path, "/api/console/applications/catalog");
-        for path in [
-            "https://example.com/api/console/applications",
-            "//example.com/api/console/applications",
-            "/api/console/applications?limit=20",
-            "/api/console/../private",
-        ] {
-            assert!(canonical_route_key("GET", path).is_err(), "{path}");
-        }
-        assert!(canonical_route_key("TRACE", "/api/console/applications").is_err());
-    }
-}
-
 impl crate::openapi_interface::contract::ApiInput for FrontstageCallableDispatchInput {
     fn document_input_schema(
         _operation: &crate::openapi_interface::contract::ApiOperationContext,
@@ -588,5 +552,41 @@ impl crate::openapi_interface::contract::ApiOutput for FrontstageCallableDispatc
         crate::openapi_interface::contract::to_value(&super::event_projection::CallableOutput {
             status,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn f12c3_registry_freezes_callable_dispatch_binding() {
+        let registry =
+            compile_registry(Arc::new(UnavailableFrontstageCallableDispatchPort)).unwrap();
+        for declaration in DECLARATIONS {
+            let binding = registry
+                .binding(&interface_runtime::BindingId::new(declaration.binding_id).unwrap())
+                .expect("declared callable dispatch binding must be frozen");
+            let route = binding.projection().http_route().unwrap();
+            assert_eq!(route.method(), declaration.method);
+            assert_eq!(route.path(), declaration.path);
+        }
+        assert_eq!(registry.bindings().count(), DECLARATIONS.len());
+    }
+
+    #[test]
+    fn f12c3_route_key_requires_a_supported_method_and_canonical_relative_path() {
+        let route = canonical_route_key("get", "/api/console/applications/catalog").unwrap();
+        assert_eq!(route.method, "GET");
+        assert_eq!(route.path, "/api/console/applications/catalog");
+        for path in [
+            "https://example.com/api/console/applications",
+            "//example.com/api/console/applications",
+            "/api/console/applications?limit=20",
+            "/api/console/../private",
+        ] {
+            assert!(canonical_route_key("GET", path).is_err(), "{path}");
+        }
+        assert!(canonical_route_key("TRACE", "/api/console/applications").is_err());
     }
 }

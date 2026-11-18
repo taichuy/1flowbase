@@ -17,8 +17,6 @@ pub use super::event_forwarding::*;
 
 pub use super::protocol_mappers::*;
 
-pub use super::responses_projection::*;
-
 pub use super::durable_replay::*;
 
 pub use super::event_forwarding::terminal_fallback::*;
@@ -94,15 +92,21 @@ impl CompatibleStreamStats {
 
 #[doc(hidden)]
 #[cfg(any(test, feature = "test-support"))]
+pub struct CompatibleReplayTestSupport {
+    pub from_sequence: Option<i64>,
+    pub durable_round_replay: Vec<RuntimeEventEnvelope>,
+    pub ignored_waiting_callback_task_id: Option<uuid::Uuid>,
+}
+
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
 impl SubscribedCompatibleTypedEventStream {
     pub fn for_test_support(
         terminal_dependencies: NativeRunTerminalDependencies,
         initial_run: NativeRunResult,
         delivery_policy: CompatibleDeliveryPolicy,
         delivery_scope: RuntimeEventDeliveryScope,
-        from_sequence: Option<i64>,
-        durable_round_replay: Vec<RuntimeEventEnvelope>,
-        ignored_waiting_callback_task_id: Option<uuid::Uuid>,
+        replay: CompatibleReplayTestSupport,
         subscription: control_plane::ports::RuntimeEventSubscription,
         sender: mpsc::Sender<CompatibleProjectionInput>,
     ) -> Self {
@@ -111,9 +115,9 @@ impl SubscribedCompatibleTypedEventStream {
             initial_run,
             delivery_policy,
             delivery_scope,
-            from_sequence,
-            durable_round_replay,
-            ignored_waiting_callback_task_id,
+            from_sequence: replay.from_sequence,
+            durable_round_replay: replay.durable_round_replay,
+            ignored_waiting_callback_task_id: replay.ignored_waiting_callback_task_id,
             subscription,
             sender,
         }

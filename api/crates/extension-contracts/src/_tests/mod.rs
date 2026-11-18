@@ -41,4 +41,5 @@ mod notification_message_content_tests;
 
 mod plugin_ephemeral_contract_tests;
 
+#[path = "managed_contributions/execution_gate_contract_tests.rs"]
 mod execution_gate_contract_tests;

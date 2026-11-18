@@ -8,13 +8,32 @@ async fn terminal_typed_weak_preserves_real_state_identity_clone_expiration_and_
     let lease = weak.upgrade().unwrap();
     assert!(Arc::ptr_eq(&lease.jobs(), &state.terminal_jobs));
     let cloned_value = Arc::new(state.as_ref().clone());
-    let principal = interface_runtime::UserPrincipal::server_delegation(domain::ActorContext::root(Uuid::nil(), state.bootstrap_workspace_id, "root"));
+    let principal = interface_runtime::UserPrincipal::server_delegation(
+        domain::ActorContext::root(Uuid::nil(), state.bootstrap_workspace_id, "root"),
+    );
     drop(state);
-    assert!(weak.upgrade().is_some(), "the actual typed lease retains the original allocation");
+    assert!(
+        weak.upgrade().is_some(),
+        "the actual typed lease retains the original allocation"
+    );
     drop(lease);
-    assert!(weak.upgrade().is_none(), "a cloned ApiState value must not retain a different Arc allocation");
-    let error = adapter.test_run(&principal, TerminalInput::Info(InfoInput {})).await.err().unwrap();
-    assert!(matches!(error.0.downcast_ref::<control_plane::errors::ControlPlaneError>(), Some(control_plane::errors::ControlPlaneError::InvalidInput("terminal_host_unavailable"))));
+    assert!(
+        weak.upgrade().is_none(),
+        "a cloned ApiState value must not retain a different Arc allocation"
+    );
+    let error = adapter
+        .test_run(&principal, TerminalInput::Info(InfoInput {}))
+        .await
+        .err()
+        .unwrap();
+    assert!(matches!(
+        error
+            .0
+            .downcast_ref::<control_plane::errors::ControlPlaneError>(),
+        Some(control_plane::errors::ControlPlaneError::InvalidInput(
+            "terminal_host_unavailable"
+        ))
+    ));
     let cloned_adapter = TerminalAdapter::test_from_weak(Arc::downgrade(&cloned_value));
     let weak_clone = cloned_adapter.test_host();
     assert!(!std::ptr::addr_eq(weak_clone.as_ptr(), weak.as_ptr()));
@@ -27,8 +46,14 @@ async fn terminal_typed_weak_preserves_real_state_identity_clone_expiration_and_
     });
     started.await.unwrap();
     drop(cloned_value);
-    assert!(weak_clone.upgrade().is_some(), "a live async lease owns the same concrete host");
+    assert!(
+        weak_clone.upgrade().is_some(),
+        "a live async lease owns the same concrete host"
+    );
     task.abort();
     assert!(task.await.unwrap_err().is_cancelled());
-    assert!(weak_clone.upgrade().is_none(), "aborting the async owner releases the typed host lease");
+    assert!(
+        weak_clone.upgrade().is_none(),
+        "aborting the async owner releases the typed host lease"
+    );
 }

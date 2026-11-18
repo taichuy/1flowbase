@@ -3,6 +3,12 @@ import type {
   ConsoleFlowDebugStreamEvent
 } from '@1flowbase/api-client';
 
+const ACTIVE_NODE_EXECUTION_STATUSES: ReadonlySet<string> = new Set([
+  'running',
+  'waiting_human',
+  'waiting_callback'
+]);
+
 export interface WorkflowRunState {
   runId: string | null;
   status: string;
@@ -33,9 +39,7 @@ export function workflowNodeRunStatuses(state: WorkflowRunState) {
   const statuses: Record<string, 'running' | 'succeeded' | 'failed'> = {};
   for (const execution of Object.values(state.executions)) {
     const status = execution.status;
-    const next = ['running', 'waiting_human', 'waiting_callback'].includes(
-      status
-    )
+    const next = ACTIVE_NODE_EXECUTION_STATUSES.has(status)
       ? 'running'
       : status === 'succeeded' || status === 'failed'
         ? status
@@ -94,9 +98,7 @@ export function applyWorkflowRunEvent(
       executions: Object.fromEntries(
         Object.entries(state.executions).map(([id, execution]) => [
           id,
-          ['running', 'waiting_human', 'waiting_callback'].includes(
-            execution.status
-          )
+          ACTIVE_NODE_EXECUTION_STATUSES.has(execution.status)
             ? { ...execution, status: 'cancelled' }
             : execution
         ])

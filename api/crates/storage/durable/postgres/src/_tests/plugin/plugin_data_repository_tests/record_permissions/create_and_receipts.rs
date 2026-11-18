@@ -170,6 +170,106 @@ async fn receipts_never_replay_rows_after_policy_change_or_effective_role_revoca
 }
 
 #[tokio::test]
+async fn restoring_record_permissions_never_revives_an_obsolete_authorization_receipt() {
+    use control_plane_contracts::system_backup::selective::{
+        SelectiveBackupRepository, SelectiveBackupSelection,
+    };
+    use tokio::io::AsyncReadExt;
+
+    let f = fixture().await;
+    seed(&f, "host-a").await;
+    policy(&f, "host-a", Some(f.role), &["view"]).await;
+    let mut read = request(count());
+    read.idempotency_key = Some("before-permission-restore".into());
+    assert!(!f.store.execute(&f.binding, &read).await.unwrap().replayed);
+    assert!(f.store.execute(&f.binding, &read).await.unwrap().replayed);
+    let revision_sql = "select revision from plugin_record_permission_scope_revisions where workspace_id=$1 and publisher_namespace='acme' and plugin_code='session'";
+    let archived_revision: i64 = sqlx::query_scalar(revision_sql)
+        .bind(f.workspace)
+        .fetch_one(&f.pool)
+        .await
+        .unwrap();
+    let backup = crate::system_backup::PgSelectiveBackupRepository::new(f.pool.clone());
+    let source = backup
+        .source(vec![SelectiveBackupSelection {
+            feature_id: "system.roles".into(),
+            structure: true,
+            data: true,
+        }])
+        .await
+        .unwrap();
+    let (writer, mut reader) = tokio::io::duplex(64 * 1024);
+    let task = tokio::spawn(async move { source.write_to(Box::pin(writer)).await.unwrap() });
+    let mut bytes = Vec::new();
+    reader.read_to_end(&mut bytes).await.unwrap();
+    task.await.unwrap();
+
+    policy(&f, "host-a", None, &[]).await;
+    assert_eq!(count_with(&f, &f.binding).await, 0);
+    assert_eq!(
+        f.store.execute(&f.binding, &read).await.unwrap_err().kind,
+        PluginDataErrorKind::Conflict
+    );
+    // Empty policy storage also exercises the real BEFORE grant-scope trigger:
+    // restore must write the policy first, rather than suppressing its rejection.
+    sqlx::query("delete from plugin_record_permission_policies where workspace_id=$1 and publisher_namespace='acme' and plugin_code='session' and resource_code='hosts' and record_id='host-a'")
+        .bind(f.workspace).execute(&f.pool).await.unwrap();
+    let target_revision: i64 = sqlx::query_scalar(revision_sql)
+        .bind(f.workspace)
+        .fetch_one(&f.pool)
+        .await
+        .unwrap();
+    backup
+        .restore(
+            Box::pin(std::io::Cursor::new(bytes.clone())),
+            "source",
+            "target",
+            true,
+        )
+        .await
+        .unwrap();
+    let restored_revision: i64 = sqlx::query_scalar(revision_sql)
+        .bind(f.workspace)
+        .fetch_one(&f.pool)
+        .await
+        .unwrap();
+    assert!(restored_revision > archived_revision && restored_revision > target_revision);
+    assert_eq!(
+        f.store.execute(&f.binding, &read).await.unwrap_err().kind,
+        PluginDataErrorKind::Conflict
+    );
+    read.idempotency_key = Some("after-permission-restore".into());
+    assert_eq!(
+        f.store.execute(&f.binding, &read).await.unwrap().results,
+        vec![PluginDataOperationResult::Count { count: 1 }]
+    );
+    assert!(f.store.execute(&f.binding, &read).await.unwrap().replayed);
+    // An empty target counter must not recreate the archived receipt generation.
+    sqlx::query("delete from plugin_record_permission_scope_revisions where workspace_id=$1 and publisher_namespace='acme' and plugin_code='session'")
+        .bind(f.workspace).execute(&f.pool).await.unwrap();
+    backup
+        .restore(
+            Box::pin(std::io::Cursor::new(bytes)),
+            "source",
+            "target",
+            true,
+        )
+        .await
+        .unwrap();
+    let inserted_revision: i64 = sqlx::query_scalar(revision_sql)
+        .bind(f.workspace)
+        .fetch_one(&f.pool)
+        .await
+        .unwrap();
+    assert!(inserted_revision > archived_revision);
+    read.idempotency_key = Some("before-permission-restore".into());
+    assert_eq!(
+        f.store.execute(&f.binding, &read).await.unwrap_err().kind,
+        PluginDataErrorKind::Conflict
+    );
+}
+
+#[tokio::test]
 async fn receipt_cannot_cross_record_action_or_root_identity_and_failed_batch_has_no_receipt() {
     let f = fixture().await;
     seed(&f, "host-a").await;

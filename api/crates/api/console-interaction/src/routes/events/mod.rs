@@ -15,8 +15,8 @@ use uuid::Uuid;
 pub mod interface;
 use interface::{Input, Output};
 
-pub fn route_assembly(
-) -> crate::routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>> {
+pub fn route_assembly() -> crate::routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>>
+{
     use crate::routes::console_route_assembly::{console_get, console_put, ConsoleRouteAssembly};
     use access_control::ConsoleRouteOwnership::ConsoleOperation as Op;
     ConsoleRouteAssembly::new()

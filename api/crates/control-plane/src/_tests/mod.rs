@@ -4,6 +4,7 @@ mod application_js_dependency;
 mod application_public_api;
 mod auth_provider_instance_tests;
 mod auth_settings;
+#[path = "billing/billing_tests.rs"]
 mod billing_tests;
 mod bootstrap_tests;
 #[path = "extensions/capability_plugin_runtime_tests.rs"]
@@ -34,6 +35,7 @@ mod orchestration_runtime;
 mod plugin_isolation_tests;
 mod plugin_management;
 mod profile;
+#[path = "resource_actions/resource_action_tests.rs"]
 mod resource_action_tests;
 mod resource_crud_tests;
 mod role;

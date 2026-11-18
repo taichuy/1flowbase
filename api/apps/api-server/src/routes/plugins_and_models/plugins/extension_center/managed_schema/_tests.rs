@@ -7,12 +7,13 @@ use extension_contracts::{
 use super::*;
 
 fn declaration(target_table: String) -> ManagedSchemaDeclaration {
-    ManagedSchemaDeclaration::test_new(PluginSchemaOwner {
+    ManagedSchemaDeclaration::test_new(
+        PluginSchemaOwner {
             publisher_namespace: "fixture".to_string(),
             plugin_code: "managed_schema".to_string(),
             plugin_version: "1.0.0".to_string(),
         },
-vec![PluginDataModelContribution {
+        vec![PluginDataModelContribution {
             contribution_version: "1flowbase.plugin-data-model/v1".to_string(),
             storage_binding: PluginStorageBinding::Main,
             owned_collections: vec![PluginOwnedCollection {
@@ -29,7 +30,8 @@ vec![PluginDataModelContribution {
                 field_type: PluginDataFieldType::String,
                 nullable: true,
             }],
-        }])
+        }],
+    )
 }
 
 #[tokio::test]

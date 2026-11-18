@@ -10,7 +10,6 @@ pub(crate) mod core_console_operation_specs;
 pub mod files;
 #[path = "frontstage/mod.rs"]
 pub mod frontstage;
-pub(crate) mod helpers;
 #[path = "identity/mod.rs"]
 mod identity_group;
 pub mod local_commands;

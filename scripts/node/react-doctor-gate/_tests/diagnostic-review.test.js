@@ -194,3 +194,42 @@ test('direct and shared evidence coexist without changing legacy review semantic
   f.writeGroup();
   assert.deepEqual(f.evaluate(), { status: 'reviewed', reviewed: 2, findings: [] });
 });
+
+test('upstream API and HTML semantics mistakes remain visible without requiring source exceptions', (t) => {
+  const f = fixture(t);
+  f.manifest.reviews = [];
+  f.writeManifest();
+  const cases = [
+    ['no-react19-deprecated-apis', 'useContext is replaced by `use()` in React 19, which reads context inside ifs & loops too, so switch to `import { use } from \'react\'`.'],
+    ['prefer-tag-over-role', 'Screen reader users get more reliable semantics from `<address>` than `role="group"`, so use `<address>` instead.'],
+  ];
+  for (const [rule, message] of cases) {
+    Object.assign(f.diagnostic, { rule, message });
+    const result = f.evaluate();
+    assert.equal(result.status, 'reviewed');
+    assert.equal(result.upstreamCorrections.length, 1);
+    assert.deepEqual(result.upstreamCorrections[0].diagnostic, f.diagnostic);
+    assert.equal(f.doctorReport.diagnostics.length, 1, 'raw diagnostic must remain intact');
+    assert.deepEqual(f.manifest.reviews, [], 'no file or rule review exception is introduced');
+  }
+});
+
+test('semantic corrections cannot authorize genuine or unknown diagnostics, tools or invalid paths', (t) => {
+  const f = fixture(t);
+  f.manifest.reviews = [];
+  f.writeManifest();
+  for (const [rule, message] of [
+    ['no-react19-deprecated-apis', 'forwardRef is dead weight in React 19, since ref is a normal prop now'],
+    ['no-react19-deprecated-apis', 'ReactDOM.render is removed in React 19'],
+    ['no-react19-deprecated-apis', 'useContext has an unknown problem'],
+    ['prefer-tag-over-role', 'Screen reader users get more reliable semantics from `<button>` than `role="button"`, so use `<button>` instead.'],
+    ['no-event-handler', 'useContext is replaced by `use()` in React 19'],
+  ]) {
+    Object.assign(f.diagnostic, { rule, message });
+    assert.equal(f.evaluate().status, 'requires-review');
+  }
+  Object.assign(f.diagnostic, { rule: 'no-react19-deprecated-apis', message: 'useContext is replaced by `use()` in React 19' });
+  assert.equal(evaluateDiagnosticReviews({ repoRoot: f.repoRoot, doctorReport: f.doctorReport, toolPackage: 'react-doctor@future' }).status, 'requires-review');
+  f.diagnostic.filePath = '../../outside.tsx';
+  assert.equal(f.evaluate().status, 'requires-review');
+});

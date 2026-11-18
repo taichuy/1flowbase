@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use control_plane::{
     plugin_management::BackupArtifactInventoryError,
-    ports::{BackupRepository, BackupSetCatalogEntry},
+    ports::BackupSetCatalogEntry,
     system_backup::SystemBackupServiceError,
     system_recovery::{
         ConfirmedRecoveryIntent, OfflineRecoveryHandoffReady, RecoveryCoordinatorError,

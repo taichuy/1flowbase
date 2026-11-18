@@ -1,4 +1,5 @@
 use super::*;
+use crate::openapi_interface::contract::ApiInput;
 fn context(id: &str) -> ApiOperationContext {
     ApiOperationContext {
         interface_id: id.into(),

@@ -60,30 +60,3 @@ export function navigateEventTab(tab: EventTab, replace = false) {
   else window.history.pushState(window.history.state, '', href);
   window.dispatchEvent(new PopStateEvent('popstate'));
 }
-
-export function useEventScope(): string | null {
-  const search = useSyncExternalStore(
-    subscribe,
-    () => window.location.search,
-    () => ''
-  );
-  return new URLSearchParams(search).get('scope');
-}
-export function navigateEventScope(scope: string) {
-  navigateEventState({
-    scope,
-    // Clear stale URL parameters from the retired source-inspector UI.
-    source: null,
-    queue: null,
-    source_details: null,
-    source_observation: null,
-    record: null,
-    workflow_queue: null,
-    queues_page: null,
-    activity_page: null,
-    event: null,
-    subscription: null,
-    queue_query: null,
-    'event-groups_page': null
-  });
-}

@@ -3,7 +3,7 @@ import enUS from 'antd/locale/en_US';
 import zhCN from 'antd/locale/zh_CN';
 import 'dayjs/locale/zh-cn';
 import type { PropsWithChildren } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { I18nextProvider } from 'react-i18next';
 
 import { useAuthStore } from '../state/auth-store';
@@ -21,11 +21,26 @@ function getAntdLocale(locale: AppLocale) {
   return locale === 'en_US' ? enUS : zhCN;
 }
 
+function subscribeToLocalePreference(onStoreChange: () => void) {
+  window.addEventListener(LOCALE_PREFERENCE_CHANGE_EVENT, onStoreChange);
+  window.addEventListener('storage', onStoreChange);
+  return () => {
+    window.removeEventListener(LOCALE_PREFERENCE_CHANGE_EVENT, onStoreChange);
+    window.removeEventListener('storage', onStoreChange);
+  };
+}
+
+function getServerLocalePreference() {
+  return null;
+}
+
 export function AppI18nProvider({ children }: PropsWithChildren) {
   const preferredLocale = useAuthStore((state) => state.me?.preferred_locale);
   const userMeta = useAuthStore((state) => state.me?.meta);
-  const [storedLocalePreference, setStoredLocalePreference] = useState(() =>
-    readLocalePreferenceFromStorage()
+  const storedLocalePreference = useSyncExternalStore(
+    subscribeToLocalePreference,
+    readLocalePreferenceFromStorage,
+    getServerLocalePreference
   );
   const urlLocalePreference = readLocalePreferenceFromUrl();
   const userLocalePreference = resolveUserLocalePreference(
@@ -47,26 +62,6 @@ export function AppI18nProvider({ children }: PropsWithChildren) {
 
     writeLocalePreferenceToStorage(userLocalePreference);
   }, [userLocalePreference]);
-
-  useEffect(() => {
-    const handlePreferenceChange = () => {
-      setStoredLocalePreference(readLocalePreferenceFromStorage());
-    };
-
-    window.addEventListener(
-      LOCALE_PREFERENCE_CHANGE_EVENT,
-      handlePreferenceChange
-    );
-    window.addEventListener('storage', handlePreferenceChange);
-
-    return () => {
-      window.removeEventListener(
-        LOCALE_PREFERENCE_CHANGE_EVENT,
-        handlePreferenceChange
-      );
-      window.removeEventListener('storage', handlePreferenceChange);
-    };
-  }, []);
 
   return (
     <I18nextProvider i18n={appI18n}>

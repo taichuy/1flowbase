@@ -629,6 +629,9 @@ impl ConsoleInterfacePort<I18nCatalogInput, I18nCatalogOutput> for UnavailableI1
     }
 }
 
+impl JsonApiInput for I18nCatalogInput {}
+impl JsonApiOutput for I18nCatalogOutput {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -647,6 +650,3 @@ mod tests {
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }
-
-impl JsonApiInput for I18nCatalogInput {}
-impl JsonApiOutput for I18nCatalogOutput {}

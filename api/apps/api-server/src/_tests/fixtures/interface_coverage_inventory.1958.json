@@ -8,7 +8,7 @@
       "status": "migrate",
       "method_or_tool": "POST /v1/chat/completions",
       "owner": "OpenAI protocol adapter -> ApplicationNativeRunService -> OrchestrationRuntimeService",
-      "source_anchor": "routes/application_public_api/openai.rs",
+      "source_anchor": "crates/api/public-gateway/src/routes/application_public_api/openai.rs",
       "source_probe": "create_chat_completion",
       "packet": "CI-M02"
     },
@@ -17,7 +17,7 @@
       "status": "migrate",
       "method_or_tool": "POST /v1/responses | /v1/responses/compact",
       "owner": "Responses protocol adapter -> ApplicationNativeRunService -> OrchestrationRuntimeService",
-      "source_anchor": "routes/application_public_api/openai.rs",
+      "source_anchor": "crates/api/public-gateway/src/routes/application_public_api/openai.rs",
       "source_probe": "create_response_for_endpoint",
       "packet": "CI-M02"
     },
@@ -26,7 +26,7 @@
       "status": "migrate",
       "method_or_tool": "POST /v1/messages",
       "owner": "Anthropic protocol adapter -> ApplicationNativeRunService -> OrchestrationRuntimeService",
-      "source_anchor": "routes/application_public_api/anthropic.rs",
+      "source_anchor": "crates/api/public-gateway/src/routes/application_public_api/anthropic.rs",
       "source_probe": "create_message",
       "packet": "CI-M02"
     },
@@ -35,7 +35,7 @@
       "status": "migrate",
       "method_or_tool": "OpenAI/Anthropic SSE; GET /v1/responses; GET /api/agent/v1/runs/websocket",
       "owner": "compat_sse/native_websocket/responses_websocket adapters -> pinned Runtime execution",
-      "source_anchor": "routes/application_public_api/compat_sse.rs",
+      "source_anchor": "crates/api/public-gateway/src/routes/application_public_api/compat_sse.rs",
       "source_probe": "start_compatible_typed_start_stream_for_actor",
       "packet": "CI-M03"
     },
@@ -44,7 +44,7 @@
       "status": "migrate",
       "method_or_tool": "POST /api/public/auth/sign-in",
       "owner": "AuthKernel -> authenticator -> SessionIssuer",
-      "source_anchor": "routes/identity/auth.rs",
+      "source_anchor": "crates/api/console-interaction/src/routes/identity/auth.rs",
       "source_probe": "AuthKernel::new",
       "packet": "CI-M04"
     },
@@ -53,7 +53,7 @@
       "status": "migrate",
       "method_or_tool": "ANY /api/ex/*slug",
       "owner": "WorkflowExtensionRunService -> OrchestrationRuntimeService -> RuntimeExecutionPort",
-      "source_anchor": "routes/application_public_api/ex.rs",
+      "source_anchor": "crates/api/public-gateway/src/routes/application_public_api/ex.rs",
       "source_probe": "invoke_workflow_extension",
       "packet": "CI-M05"
     },
@@ -62,7 +62,7 @@
       "status": "hold",
       "method_or_tool": "workflow schedule timer + task queue consume",
       "owner": "WorkflowScheduleTriggerService/worker; Internal/System Principal and durable acknowledgement unresolved",
-      "source_anchor": "workers/workflow_schedule.rs",
+      "source_anchor": "apps/api-server/src/workers/workflow_schedule.rs",
       "source_probe": "consume_one_workflow_schedule_run",
       "packet": "HOLD"
     }

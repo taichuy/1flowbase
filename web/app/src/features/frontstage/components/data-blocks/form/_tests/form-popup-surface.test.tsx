@@ -37,7 +37,7 @@ vi.mock('../../../../api/data-blocks', async (importOriginal) => ({
 }));
 // A token consumer inside a normal markdown form item observes the local provider.
 vi.mock('@ant-design/x-markdown', () => ({
-  default: () => {
+  default: function FormTokenProbe() {
     const { token } = theme.useToken();
     const config = useContext(ConfigContext);
     return (

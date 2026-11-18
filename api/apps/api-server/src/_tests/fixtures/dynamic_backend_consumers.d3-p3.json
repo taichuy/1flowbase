@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 479,
+  "projected_interface_count": 506,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -56,6 +56,12 @@
       "DELETE",
       "/api/console/frontstage/pages/:page_id",
       "Delete frontstage pages"
+    ],
+    [
+      "delete_frontstage_block_leaf",
+      "DELETE",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id",
+      "Delete frontstage block leaf"
     ],
     [
       "frontstage.tabs.delete",
@@ -248,6 +254,12 @@
       "DELETE",
       "/api/console/settings/system-backups/:backup_set_id",
       "Delete system backups"
+    ],
+    [
+      "ui_management.blocks.delete",
+      "DELETE",
+      "/api/console/settings/ui-management/blocks/:id",
+      "Delete UI management blocks"
     ],
     [
       "ui_management.components.delete",
@@ -664,6 +676,18 @@
       "Read a received communication file"
     ],
     [
+      "communications.files.image",
+      "GET",
+      "/api/console/communications/instances/:instance_id/files/:message_id/image",
+      "Communications files image"
+    ],
+    [
+      "communications.files.info",
+      "GET",
+      "/api/console/communications/instances/:instance_id/files/:message_id/info",
+      "Communications files info"
+    ],
+    [
       "notifications.logs.list",
       "GET",
       "/api/console/communications/logs",
@@ -752,6 +776,78 @@
       "GET",
       "/api/console/frontend-blocks",
       "View frontend blocks"
+    ],
+    [
+      "list_frontstage_block_roots",
+      "GET",
+      "/api/console/frontstage/pages/:page_id/blocks",
+      "List frontstage block roots"
+    ],
+    [
+      "frontstage.blocks.search",
+      "GET",
+      "/api/console/frontstage/pages/:page_id/blocks/search",
+      "Search frontstage blocks"
+    ],
+    [
+      "get_frontstage_block_node",
+      "GET",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id",
+      "Get frontstage block node"
+    ],
+    [
+      "list_frontstage_block_ancestors",
+      "GET",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id/ancestors",
+      "List frontstage block ancestors"
+    ],
+    [
+      "list_frontstage_block_children",
+      "GET",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id/children",
+      "List frontstage block children"
+    ],
+    [
+      "get_frontstage_block_node_code",
+      "GET",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id/code",
+      "Get frontstage block node code"
+    ],
+    [
+      "get_frontstage_block_code_fragment",
+      "GET",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id/code/fragment",
+      "Get frontstage block code fragment"
+    ],
+    [
+      "search_frontstage_block_code",
+      "GET",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id/code/search",
+      "Search frontstage block code"
+    ],
+    [
+      "get_frontstage_block_delete_impact",
+      "GET",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id/delete-impact",
+      "Get frontstage block delete impact"
+    ],
+    [
+      "list_frontstage_block_descendants",
+      "GET",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id/descendants",
+      "List frontstage block descendants"
+    ],
+    [
+      "frontstage.blocks.open",
+      "GET",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id/open",
+      "Frontstage blocks open"
+    ],
+    [
+      "frontstage.blocks.runtime.view",
+      "GET",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id/runtime-assembly",
+      "View frontstage blocks runtime"
     ],
     [
       "js_dependencies.view",
@@ -1342,6 +1438,12 @@
       "List portable template resources"
     ],
     [
+      "ui_management.blocks.list",
+      "GET",
+      "/api/console/settings/ui-management/blocks",
+      "List UI management blocks"
+    ],
+    [
       "ui_management.components.list",
       "GET",
       "/api/console/settings/ui-management/components",
@@ -1448,6 +1550,18 @@
       "PATCH",
       "/api/console/frontstage/pages/:page_id",
       "Update frontstage pages"
+    ],
+    [
+      "update_frontstage_block_node",
+      "PATCH",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id",
+      "Update frontstage block node"
+    ],
+    [
+      "patch_frontstage_block_node_code",
+      "PATCH",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id/code",
+      "Patch frontstage block node code"
     ],
     [
       "frontstage.tabs.update",
@@ -1772,6 +1886,30 @@
       "POST",
       "/api/console/frontstage/pages/groups",
       "Create frontstage groups"
+    ],
+    [
+      "frontstage.blocks.create",
+      "POST",
+      "/api/console/frontstage/pages/:page_id/blocks",
+      "Create frontstage blocks"
+    ],
+    [
+      "replace_frontstage_block_code",
+      "POST",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id/code/replace",
+      "Replace frontstage block code"
+    ],
+    [
+      "delete_frontstage_block_subtree",
+      "POST",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id/delete-subtree",
+      "Delete frontstage block subtree"
+    ],
+    [
+      "frontstage.blocks.move",
+      "POST",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id/move",
+      "Move frontstage blocks"
     ],
     [
       "frontstage.pages.move",
@@ -2512,6 +2650,12 @@
       "Preview portable template installation"
     ],
     [
+      "ui_management.blocks.create",
+      "POST",
+      "/api/console/settings/ui-management/blocks",
+      "Create UI management blocks"
+    ],
+    [
       "ui_management.components.create",
       "POST",
       "/api/console/settings/ui-management/components",
@@ -2710,6 +2854,18 @@
       "Update a custom event definition"
     ],
     [
+      "save_frontstage_block_node_code",
+      "PUT",
+      "/api/console/frontstage/pages/:page_id/blocks/:block_id/code",
+      "Save frontstage block node code"
+    ],
+    [
+      "update_frontstage_block_descriptors",
+      "PUT",
+      "/api/console/frontstage/pages/:page_id/tabs/:tab_id/block-descriptors",
+      "Update frontstage block descriptors"
+    ],
+    [
       "frontstage.tabs.document.save",
       "PUT",
       "/api/console/frontstage/pages/:page_id/tabs/:tab_id/document",
@@ -2870,6 +3026,12 @@
       "PUT",
       "/api/console/settings/system",
       "Save system settings"
+    ],
+    [
+      "ui_management.blocks.update",
+      "PUT",
+      "/api/console/settings/ui-management/blocks/:id",
+      "Update UI management blocks"
     ],
     [
       "ui_management.components.update",

@@ -22,8 +22,8 @@ pub use dto::*;
 use std::{collections::BTreeMap, sync::Arc};
 use uuid::Uuid;
 
-pub fn route_assembly(
-) -> crate::routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>> {
+pub fn route_assembly() -> crate::routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>>
+{
     use crate::routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly};
     use access_control::ConsoleRouteOwnership::Authenticated;
     ConsoleRouteAssembly::new()
@@ -366,10 +366,6 @@ async fn issue_password_proof(
     .await
 }
 }
-
-
-
-
 
 #[cfg(any(test, feature = "test-support"))]
 #[path = "_tests/support/accessors.rs"]

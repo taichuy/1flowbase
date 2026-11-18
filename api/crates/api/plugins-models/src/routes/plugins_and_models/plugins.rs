@@ -3,22 +3,17 @@ use std::sync::Arc;
 
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
-    body::{to_bytes, Body},
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     handler::Handler,
-    http::{HeaderMap, Request, StatusCode},
-    middleware::{self, Next},
-    response::{IntoResponse, Response},
-    Json, Router,
+    http::{HeaderMap, StatusCode},
+    middleware, Json, Router,
 };
 use control_plane::plugin_management::{
-    InstallPluginResult, OfficialPluginCatalogEntry, OfficialPluginCatalogFilter,
-    PluginCatalogEntry, PluginCatalogFilter, PluginCompatibilityOverride, PluginFamilyView,
-    PluginInstalledVersionView, PluginRiskOverride,
+    OfficialPluginCatalogEntry, OfficialPluginCatalogFilter, PluginCatalogEntry,
+    PluginCatalogFilter, PluginCompatibilityOverride, PluginFamilyView, PluginInstalledVersionView,
+    PluginRiskOverride,
 };
-use plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
 use serde::{Deserialize, Serialize};
-use time::format_description::well_known::Rfc3339;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -39,12 +34,6 @@ const MAX_OFFICIAL_PLUGIN_CATALOG_LIMIT: usize = 50;
 pub struct InstallPluginBody {
     pub package_root: String,
 }
-
-
-
-
-
-
 
 pub use api_host_kernel::plugin_risk::PluginRiskOverrideBody;
 
@@ -67,12 +56,6 @@ pub struct PluginCatalogQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub locale: Option<String>,
 }
-
-
-
-
-
-
 
 #[derive(Debug, Serialize, ToSchema)]
 #[schema(description = "Catalog entry returned by the plugin API.")]
@@ -111,12 +94,6 @@ pub struct PluginCatalogProjectionResponse {
     pub refreshed_at: Option<String>,
     pub updated_at: String,
 }
-
-
-
-
-
-
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct OfficialPluginCatalogResponse {
@@ -172,10 +149,6 @@ pub struct PluginFamilyCatalogResponse {
     pub i18n_catalog: serde_json::Value,
     pub entries: Vec<PluginFamilyResponse>,
 }
-
-
-
-
 
 pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
@@ -401,10 +374,6 @@ async fn invoke_plugin_interface(
     crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
 }
 
-
-
-
-
 fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(raw)
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
@@ -428,12 +397,6 @@ pub(crate) fn to_risk_override(
         acknowledged_warnings: value.acknowledged_warnings,
     })
 }
-
-
-
-
-
-
 
 fn filter_from_query(query: &PluginCatalogQuery) -> PluginCatalogFilter {
     PluginCatalogFilter {
@@ -896,8 +859,5 @@ mod time_response_tests;
 
 #[path = "plugins/response_mapping.rs"]
 mod response_mapping;
-
-
-
 
 use response_mapping::*;

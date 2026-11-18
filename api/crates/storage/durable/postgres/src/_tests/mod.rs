@@ -69,3 +69,5 @@ mod communication_timeline;
 
 #[path = "migrations/event_center/current_identity.rs"]
 mod event_center_current_identity;
+#[path = "migrations/workspace_schema_readiness.rs"]
+mod workspace_schema_readiness;

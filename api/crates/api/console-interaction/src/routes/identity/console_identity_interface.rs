@@ -34,7 +34,7 @@ const AUTHENTICATION_ADAPTER: &str = "api-server.console.require-session";
 const AUTHENTICATION_ACTIVATION: &str = "api-server.console.require-session.activation.v1";
 const AUTHORIZATION_ADAPTER: &str = "api-server.console.compiled-operation";
 
-test_support_item! { pub(crate), []
+test_support_item! { pub, []
 enum ConsoleIdentityInput {
     GetSession,
     DeleteSession,
@@ -295,7 +295,7 @@ impl InterfaceContract for ConsoleIdentityInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) enum ConsoleIdentityOutput {
+pub enum ConsoleIdentityOutput {
     Session(session::SessionResponse),
     Me(me::MeResponse),
     UserApiKeys(user_api_keys::UserApiKeyListResponse),
@@ -305,7 +305,7 @@ pub(crate) enum ConsoleIdentityOutput {
     NoContent,
 }
 
-pub(crate) struct ConsoleIdentityTargetError(pub(crate) ApiError);
+pub struct ConsoleIdentityTargetError(pub(crate) ApiError);
 
 impl InterfaceContract for ConsoleIdentityTargetError {
     fn managed_projection_schema() -> Option<serde_json::Value> {

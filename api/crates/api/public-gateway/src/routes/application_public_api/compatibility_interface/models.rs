@@ -27,7 +27,7 @@ use crate::{
     routes::application_public_api::native::{self, NativeApiError},
 };
 
-pub(crate) struct CompatibilityModelsInput {
+pub struct CompatibilityModelsInput {
     pub(crate) client_version: Option<String>,
 }
 
@@ -51,7 +51,7 @@ impl InterfaceContract for CompatibilityModelsInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct CompatibilityModelsOutput {
+pub struct CompatibilityModelsOutput {
     pub(crate) codex: bool,
     pub(crate) models: Vec<AgentModelDescriptor>,
     pub(crate) publication_created_at: i64,

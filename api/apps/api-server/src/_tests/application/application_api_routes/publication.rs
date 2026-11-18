@@ -1,10 +1,12 @@
 use super::*;
+use crate::_tests::support::configure_runnable_agent_flow;
 
 #[tokio::test]
 async fn application_api_publication_routes_publish_and_patch_api_enabled_state() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let application_id = create_application(&app, &cookie, &csrf, "Publication App").await;
+    configure_runnable_agent_flow(&app, &cookie, &csrf, &application_id).await;
 
     let mapping = json!({
         "input": {
@@ -86,8 +88,9 @@ async fn application_api_publication_routes_publish_and_patch_api_enabled_state(
         )
         .await
         .unwrap();
-    assert_eq!(publish.status(), StatusCode::CREATED);
+    let status = publish.status();
     let publish_payload = response_json(publish).await;
+    assert_eq!(status, StatusCode::CREATED, "{publish_payload}");
     assert_eq!(
         publish_payload["data"]["application_id"].as_str(),
         Some(application_id.as_str())
@@ -186,6 +189,7 @@ async fn application_api_publication_route_unpublish_reverts_to_draft_and_allows
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let application_id = create_application(&app, &cookie, &csrf, "Unpublish App").await;
+    configure_runnable_agent_flow(&app, &cookie, &csrf, &application_id).await;
 
     let mapping = json!({
         "input": {
@@ -225,7 +229,9 @@ async fn application_api_publication_route_unpublish_reverts_to_draft_and_allows
         )
         .await
         .unwrap();
-    assert_eq!(publish.status(), StatusCode::CREATED);
+    let status = publish.status();
+    let payload = response_json(publish).await;
+    assert_eq!(status, StatusCode::CREATED, "{payload}");
 
     let unpublish = app
         .clone()
@@ -298,8 +304,9 @@ async fn application_api_publication_route_unpublish_reverts_to_draft_and_allows
         )
         .await
         .unwrap();
-    assert_eq!(republish.status(), StatusCode::CREATED);
+    let status = republish.status();
     let republish_payload = response_json(republish).await;
+    assert_eq!(status, StatusCode::CREATED, "{republish_payload}");
     assert_eq!(republish_payload["data"]["active"].as_bool(), Some(true));
     assert_eq!(
         republish_payload["data"]["api_enabled"].as_bool(),
@@ -314,6 +321,7 @@ async fn application_public_api_js_dependency_snapshot_is_empty_without_selectio
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let application_id =
         create_application(&app, &cookie, &csrf, "Publication Empty Dependency App").await;
+    configure_runnable_agent_flow(&app, &cookie, &csrf, &application_id).await;
     let mapping = json!({
         "input": {
             "query_target": "node-start.query",
@@ -353,8 +361,9 @@ async fn application_public_api_js_dependency_snapshot_is_empty_without_selectio
         .await
         .unwrap();
 
-    assert_eq!(publish.status(), StatusCode::CREATED);
+    let status = publish.status();
     let payload = response_json(publish).await;
+    assert_eq!(status, StatusCode::CREATED, "{payload}");
     assert_eq!(
         payload["data"]["dependency_snapshot"].as_array().unwrap(),
         &Vec::<Value>::new()
@@ -367,6 +376,7 @@ async fn application_public_api_js_dependency_snapshot_is_returned_on_publish_re
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let application_id =
         create_application(&app, &cookie, &csrf, "Publication Dependency App").await;
+    configure_runnable_agent_flow(&app, &cookie, &csrf, &application_id).await;
     let zod_v3 = seed_js_dependency_pack(&database_url, "3.24.0").await;
     let zod_v4 = seed_js_dependency_pack(&database_url, "4.0.0").await;
     let mapping = json!({
@@ -433,8 +443,9 @@ async fn application_public_api_js_dependency_snapshot_is_returned_on_publish_re
             )
             .await
             .unwrap();
-        assert_eq!(publish.status(), StatusCode::CREATED);
+        let status = publish.status();
         let payload = response_json(publish).await;
+        assert_eq!(status, StatusCode::CREATED, "{payload}");
         let snapshot = payload["data"]["dependency_snapshot"].as_array().unwrap();
         assert_eq!(snapshot.len(), 1);
         assert_eq!(snapshot[0]["alias"].as_str(), Some("zod"));

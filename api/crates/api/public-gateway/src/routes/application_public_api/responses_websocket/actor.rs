@@ -96,7 +96,7 @@ impl ResponsesConnectionActor {
         }
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn state(&self) -> ConnectionState {
         self.state
     }

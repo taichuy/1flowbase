@@ -297,10 +297,6 @@ pub(crate) struct ArchiveDownload {
     document: document_event_projection::ArchiveDocument,
 }
 
-#[expect(
-    clippy::large_enum_variant,
-    reason = "the typed archive output is projected immediately into the console response"
-)]
 pub(crate) enum ApplicationRuntimeArchiveOutput {
     Download(ArchiveDownload),
     UploadSession(RunArchiveUploadSessionResponse),

@@ -26,15 +26,17 @@ fn sealed() -> (ProviderTransportPayload, ProviderInvocationInput) {
     wire.as_object_mut().unwrap().remove("previous_response_id");
     wire["input"] = json!(items);
     let rebuilt = ProviderTransportPayload::openai_responses(wire).unwrap();
-    let mut input = ProviderInvocationInput::default();
-    input.native_transport = Some(
-        plugin_framework::provider_contract::ProviderNativeTransport {
-            protocol: "openai_responses".into(),
-            wire_body: rebuilt.wire_body().clone(),
-            digest: rebuilt.digest().into(),
-            size_bytes: rebuilt.size_bytes() as u64,
-        },
-    );
+    let mut input = ProviderInvocationInput {
+        native_transport: Some(
+            plugin_framework::provider_contract::ProviderNativeTransport {
+                protocol: "openai_responses".into(),
+                wire_body: rebuilt.wire_body().clone(),
+                digest: rebuilt.digest().into(),
+                size_bytes: rebuilt.size_bytes() as u64,
+            },
+        ),
+        ..Default::default()
+    };
     input.run_context.insert(CARRIER.into(),json!({"original_digest":payload.digest(),"source":payload.native_recovery_source(),"history":proof,"rebuilt_digest":rebuilt.digest()}));
     (payload, input)
 }

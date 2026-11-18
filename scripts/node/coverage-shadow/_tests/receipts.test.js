@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const {
   collectNextestTestIds,
   mergeApiServerShadow,
@@ -153,6 +154,43 @@ test('successful shard persists raw output and metadata only after exact runnabl
   assert.equal(fs.readFileSync(path.join(directory, 'nextest-1.stderr.log'), 'utf8'), rawStderr);
   assert.equal(echoedStdout, rawStdout);
   assert.equal(echoedStderr, rawStderr);
+});
+
+test('buffered nextest-list failures expose bounded child diagnostics before rejecting the shard', (t) => {
+  const repoRoot = temporaryRepo(t);
+  const directory = path.join(repoRoot, 'tmp/test-governance/coverage-shadow/api-server/shard-1');
+  const stdoutTail = '\nlist stdout evidence\n';
+  const stderrTail = '\nerror[E0425]: compiler diagnostic evidence\n';
+  const childScript = `process.stdout.write('界'.repeat(30000) + ${JSON.stringify(stdoutTail)});`
+    + `process.stderr.write('界'.repeat(30000) + ${JSON.stringify(stderrTail)}); process.exitCode = 101;`;
+  let echoedStdout = '';
+  let echoedStderr = '';
+  let executionStarted = false;
+  assert.throws(() => runApiServerShard({
+    repoRoot, shardIndex: 1, shardCount: 4, cargoTestThreads: 2,
+    env: { QUALITY_GATE_TARGET_SHA: sha },
+    writeStdout(text) { echoedStdout += text; }, writeStderr(text) { echoedStderr += text; },
+    spawnSyncImpl(_command, args, options) {
+      if (args[1] === 'show-env') return { status: 0, stdout: llvmEnvironment };
+      if (args[0] === 'clean') return { status: 0, stdout: '' };
+      if (args[1] === 'list') {
+        // Exercise actual buffered child IO, without invoking Cargo or compiling anything.
+        return spawnSync(process.execPath, ['-e', childScript], options);
+      }
+      executionStarted = true;
+      throw new Error('listing failure must prevent test execution');
+    },
+  }), /nextest list .*failed with exit code 101/u);
+  assert.ok(echoedStdout.endsWith(stdoutTail), 'failed buffered stdout must remain visible');
+  assert.ok(echoedStderr.endsWith(stderrTail), 'failed buffered stderr must remain visible');
+  for (const output of [echoedStdout, echoedStderr]) {
+    assert.ok(Buffer.byteLength(output) <= 64 * 1024 + 128, 'failure diagnostics must be bounded');
+  }
+  assert.equal(executionStarted, false);
+  assert.equal(fs.readFileSync(path.join(directory, 'nextest-list-1.stdout.log'), 'utf8'), '界'.repeat(30000) + stdoutTail);
+  assert.equal(fs.readFileSync(path.join(directory, 'nextest-list-1.stderr.log'), 'utf8'), '界'.repeat(30000) + stderrTail);
+  assert.equal(fs.existsSync(path.join(directory, 'metadata-1.json')), false);
+  assert.equal(fs.existsSync(path.join(directory, 'inventory-1.json')), false);
 });
 
 test('failed, empty or incomplete shard execution cannot leave a successful receipt', (t) => {

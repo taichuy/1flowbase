@@ -236,15 +236,16 @@ pub(super) fn validate_record_permissions(
                     ));
                 }
             }
-            ManagedServiceRecordSelector::Handle { pointer } => {
+            ManagedServiceRecordSelector::Handle { pointer }
                 if binding.action_code != "open"
                     || !schema_string_pointer(&operation.input_schema, pointer, true)
                     || !["/path/", "/query/", "/body/"]
                         .iter()
-                        .any(|prefix| pointer.starts_with(prefix))
-                {
-                    return Err(invalid("managed handle selector requires an open action and a required schema string"));
-                }
+                        .any(|prefix| pointer.starts_with(prefix)) =>
+            {
+                return Err(invalid(
+                    "managed handle selector requires an open action and a required schema string",
+                ));
             }
             _ => {}
         }

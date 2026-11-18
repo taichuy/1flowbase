@@ -211,9 +211,11 @@ fn spawn_scoped_typed_stream(
                 run.clone(),
                 CompatibleDeliveryPolicy::ScopedResponses,
                 delivery_scope,
-                None,
-                durable_round_replay,
-                None,
+                CompatibleReplayTestSupport {
+                    from_sequence: None,
+                    durable_round_replay,
+                    ignored_waiting_callback_task_id: None,
+                },
                 RuntimeEventSubscription {
                     terminal_writer: Arc::new(UnusedTerminalWriter),
                     replay,

@@ -5,19 +5,16 @@ import {
   updateEventDefinition,
   type CreateEventDefinitionInput,
   type EventCatalogEntry,
-  type EventCatalogQuery,
-  type EventTriggerPhase
+  type EventCatalogQuery
 } from '@1flowbase/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
-import { Alert, Button, Flex, Switch, Tabs, Tag, TreeSelect } from 'antd';
-import { useEffect, useState } from 'react';
+import { Alert, Button, Flex, Tabs, TreeSelect } from 'antd';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../../state/auth-store';
 import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
-import { formatDateTime } from '../../../../shared/i18n/format';
-import type { DataTableColumn } from '../../../../shared/ui/data-table/DataTable';
-import { DataTableRowActions } from '../../../../shared/ui/data-table/DataTableRowActions';
+import { useEventCatalogColumns } from './catalog/use-event-catalog-columns';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { EventDefinitionDrawer } from './EventDefinitionDrawer';
 import { EventRuntimePanel } from './EventRuntimePanel';
@@ -29,16 +26,26 @@ import {
 } from './event-navigation';
 import { eventGroupTree } from './event-groups';
 
+type DrawerSession = { entry: EventCatalogEntry | null; mode: 'view' | 'edit' };
+
 export function EventsPage() {
   const { t } = useTranslation('settingsEvents');
   const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
   const requestedTab = useEventTab();
-  const [drawer, setDrawer] = useState<{
-    entry: EventCatalogEntry | null;
-    mode: 'view' | 'edit';
-  } | null>(null);
+  const [drawer, setDrawer] = useState<DrawerSession | null>(null);
+  const currentDrawer = useRef<DrawerSession | null>(null);
+  useEffect(
+    () => () => {
+      currentDrawer.current = null;
+    },
+    []
+  );
+  const closeDrawer = () => {
+    currentDrawer.current = null;
+    setDrawer(null);
+  };
   const [group, setGroup] = useState<string>();
   const [sort, setSort] = useState<EventCatalogQuery | null>({
     sort_by: 'updated_at',
@@ -69,15 +76,22 @@ export function EventsPage() {
         can('events.definitions.update')
       : can('events.definitions.create'));
   const save = useMutation({
-    mutationFn: async (values: CreateEventDefinitionInput) => {
-      if (!csrfToken || !editable) throw new Error('operation not permitted');
-      if (drawer?.entry?.id) {
-        return updateEventDefinition(drawer.entry.id, values, csrfToken);
+    mutationFn: async ({
+      values,
+      session
+    }: {
+      values: CreateEventDefinitionInput;
+      session: DrawerSession;
+    }) => {
+      if (!csrfToken || !editable || currentDrawer.current !== session)
+        throw new Error('operation not permitted');
+      if (session.entry?.id) {
+        return updateEventDefinition(session.entry.id, values, csrfToken);
       }
       return createEventDefinition(values, csrfToken);
     },
-    onSuccess: async () => {
-      setDrawer(null);
+    onSuccess: async (_, { session }) => {
+      if (currentDrawer.current === session) closeDrawer();
       await queryClient.invalidateQueries({
         queryKey: ['events', 'catalog']
       });
@@ -123,155 +137,11 @@ export function EventsPage() {
     mode: 'view' | 'edit' = 'view'
   ) => {
     save.reset();
-    setDrawer({ entry, mode });
+    const session = { entry, mode };
+    currentDrawer.current = session;
+    setDrawer(session);
   };
-  const phase = (value: EventTriggerPhase) =>
-    ({
-      subscribed: t('subscribed'),
-      published: t('published'),
-      consumed: t('consumed')
-    })[value];
-  const columns: DataTableColumn<EventCatalogEntry>[] = [
-    {
-      key: 'name',
-      title: t('name'),
-      width: 220,
-      ellipsis: true,
-      mobileRole: 'title',
-      render: (_, row) => (
-        <Button
-          type="link"
-          title={row.name}
-          styles={{
-            root: { maxWidth: '100%' },
-            content: {
-              minWidth: 0,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis'
-            }
-          }}
-          onClick={() => open(row)}
-        >
-          {row.name}
-        </Button>
-      )
-    },
-    {
-      key: 'group_path',
-      title: t('group_path'),
-      width: 220,
-      render: (_, row) => row.group_path?.join(' / ') || '—'
-    },
-    {
-      key: 'contract_id',
-      title: t('contract_id'),
-      dataIndex: 'contract_id',
-      width: 240
-    },
-    {
-      key: 'origin',
-      title: t('origin'),
-      width: 120,
-      render: (_, row) => (
-        <Tag>
-          {
-            { custom: t('custom'), core: t('core'), plugin: t('plugin') }[
-              row.origin
-            ]
-          }
-        </Tag>
-      )
-    },
-    {
-      key: 'event_kind',
-      title: t('event_kind'),
-      width: 160,
-      render: (_, row) =>
-        row.event_kind === 'communication_command'
-          ? t('communication_command_event')
-          : row.event_kind === 'interface'
-            ? t('interface_event')
-            : '—'
-    },
-    {
-      key: 'enabled',
-      title: t('enabled'),
-      width: 120,
-      render: (_, row) => (
-        <Switch
-          aria-label={t('enabled')}
-          checked={row.enabled !== false}
-          disabled={
-            row.origin !== 'custom' ||
-            !row.id ||
-            (!row.interface_event &&
-              row.event_kind !== 'communication_command') ||
-            row.supported_phases.length === 0 ||
-            !csrfToken ||
-            !can('events.definitions.update') ||
-            toggleEnabled.isPending
-          }
-          loading={
-            toggleEnabled.isPending &&
-            toggleEnabled.variables.entry.id === row.id
-          }
-          onChange={(enabled) => toggleEnabled.mutate({ entry: row, enabled })}
-        />
-      )
-    },
-    {
-      key: 'supported_phases',
-      title: t('supported_phases'),
-      width: 260,
-      render: (_, row) =>
-        row.supported_phases.length
-          ? row.supported_phases.map(phase).join(' / ')
-          : t('unsupported')
-    },
-    {
-      key: 'updated_at',
-      title: t('updated_at'),
-      dataIndex: 'updated_at',
-      width: 190,
-      sorter: true,
-      sortOrder:
-        sort?.sort_by === 'updated_at'
-          ? sort.sort_order === 'asc'
-            ? 'ascend'
-            : 'descend'
-          : null,
-      render: (_, row) =>
-        row.updated_at ? formatDateTime(row.updated_at) : '—'
-    },
-    {
-      key: 'actions',
-      title: t('actions'),
-      width: 180,
-      mobileRole: 'actions',
-      render: (_, row) => (
-        <DataTableRowActions
-          moreAriaLabel={t('actions')}
-          actions={[
-            ...(row.origin === 'custom' &&
-            (row.interface_event ||
-              row.event_kind === 'communication_command') &&
-            row.id &&
-            row.supported_phases.length > 0 &&
-            can('events.definitions.update')
-              ? [
-                  {
-                    key: 'edit',
-                    label: t('edit'),
-                    onClick: () => open(row, 'edit')
-                  }
-                ]
-              : []),
-            { key: 'view', label: t('view'), onClick: () => open(row) }
-          ]}
-        />
-      )
-    }
-  ];
+  const columns = useEventCatalogColumns({ sort, onOpen: open, toggleEnabled });
   return (
     <SettingsSectionSurface heightMode="fill">
       <Flex
@@ -376,10 +246,10 @@ export function EventsPage() {
           key={drawer.entry ? eventCatalogIdentity(drawer.entry) : 'create'}
           entry={drawer.entry}
           editable={editable}
-          saving={save.isPending}
-          error={save.isError}
-          onClose={() => setDrawer(null)}
-          onSave={(values) => save.mutate(values)}
+          saving={save.isPending && save.variables.session === drawer}
+          error={save.isError && save.variables.session === drawer}
+          onClose={closeDrawer}
+          onSave={(values) => save.mutate({ values, session: drawer })}
         />
       )}
     </SettingsSectionSurface>

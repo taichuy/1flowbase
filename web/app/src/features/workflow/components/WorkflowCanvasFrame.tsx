@@ -126,7 +126,14 @@ function useWorkflowCanvasController({
   const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const workingDocument = useAgentFlowEditorStore(selectWorkingDocument);
-  const testRun = useWorkflowTestRun(applicationId, workingDocument);
+  const clearRunEntryTransientState = useAgentFlowEditorStore(
+    (state) => state.clearRunEntryTransientState
+  );
+  const testRun = useWorkflowTestRun(
+    applicationId,
+    workingDocument,
+    clearRunEntryTransientState
+  );
   const lastSavedDocument = useAgentFlowEditorStore(selectLastSavedDocument);
   const autosaveStatus = useAgentFlowEditorStore(selectAutosaveStatus);
   const versions = useAgentFlowEditorStore(selectVersions);
@@ -161,11 +168,69 @@ function useWorkflowCanvasController({
   documentRef.current = workingDocument;
   lastSavedDocumentRef.current = lastSavedDocument;
 
-  const [environmentVariablesOpen, setEnvironmentVariablesOpen] =
-    useState(false);
-  const [nodeDetailTab, setNodeDetailTab] = useState<'config' | 'lastRun'>(
-    'config'
-  );
+  const [runPanels, setRunPanels] = useState<{
+    active: boolean;
+    environmentVariablesOpen: boolean;
+    dismissedNodeId: string | null;
+  }>(() => ({
+    active: testRun.active,
+    environmentVariablesOpen: false,
+    dismissedNodeId: null
+  }));
+  const enteringRun = testRun.active && !runPanels.active;
+  if (runPanels.active !== testRun.active) {
+    setRunPanels({
+      active: testRun.active,
+      environmentVariablesOpen: testRun.active
+        ? false
+        : runPanels.environmentVariablesOpen,
+      dismissedNodeId: testRun.active ? selectedNodeId : null
+    });
+  } else if (
+    runPanels.dismissedNodeId !== null &&
+    runPanels.dismissedNodeId !== selectedNodeId
+  ) {
+    setRunPanels({ ...runPanels, dismissedNodeId: null });
+  }
+  const environmentVariablesOpen =
+    !testRun.active && runPanels.environmentVariablesOpen;
+  // Keep the first active commit independent of any previously selected detail.
+  const selectedDetailNodeId =
+    enteringRun || runPanels.dismissedNodeId === selectedNodeId
+      ? null
+      : selectedNodeId;
+  function setEnvironmentVariablesOpen(open: boolean) {
+    setRunPanels((current) => ({
+      ...current,
+      environmentVariablesOpen: open
+    }));
+  }
+  const [nodeDetailTabState, setNodeDetailTabState] = useState<{
+    runId: string | null;
+    selectedNodeId: string | null;
+    tab: 'config' | 'lastRun';
+  }>(() => ({
+    runId: testRun.state.runId,
+    selectedNodeId,
+    tab: testRun.state.runId && selectedNodeId ? 'lastRun' : 'config'
+  }));
+  if (
+    nodeDetailTabState.runId !== testRun.state.runId ||
+    nodeDetailTabState.selectedNodeId !== selectedNodeId
+  ) {
+    setNodeDetailTabState({
+      runId: testRun.state.runId,
+      selectedNodeId,
+      tab:
+        testRun.state.runId && selectedNodeId
+          ? 'lastRun'
+          : nodeDetailTabState.tab
+    });
+  }
+  const nodeDetailTab = nodeDetailTabState.tab;
+  function setNodeDetailTab(tab: 'config' | 'lastRun') {
+    setNodeDetailTabState((current) => ({ ...current, tab }));
+  }
   const [isResizingNodeDetail, setIsResizingNodeDetail] = useState(false);
   const [environmentVariables, setEnvironmentVariables] = useState<
     AgentFlowEnvironmentVariable[]
@@ -179,10 +244,6 @@ function useWorkflowCanvasController({
   const navigation = useContainerNavigation();
   const detailActions = useNodeDetailActions();
   useEditorShortcuts({ disabled: testRun.active });
-  const setSelection = useAgentFlowEditorStore((state) => state.setSelection);
-  const setInteractionState = useAgentFlowEditorStore(
-    (state) => state.setInteractionState
-  );
   useEffect(() => {
     if (!testRun.active && testRun.state.runId && selectedNodeId) {
       void queryClient.invalidateQueries({
@@ -200,36 +261,6 @@ function useWorkflowCanvasController({
     applicationId,
     queryClient
   ]);
-  useEffect(() => {
-    if (testRun.state.runId && selectedNodeId) setNodeDetailTab('lastRun');
-  }, [testRun.state.runId, selectedNodeId]);
-  useEffect(() => {
-    if (!testRun.active) return;
-    setSelection({
-      selectedNodeId: null,
-      selectedNodeIds: [],
-      selectedEdgeId: null
-    });
-    setPanelState({
-      historyOpen: false,
-      issuesOpen: false,
-      nodePickerState: {
-        open: false,
-        anchorNodeId: null,
-        anchorEdgeId: null,
-        anchorCanvasPosition: null
-      }
-    });
-    setInteractionState({
-      pendingLocateNodeId: null,
-      connectingPayload: {
-        sourceNodeId: null,
-        sourceHandleId: null,
-        sourceNodeType: null
-      }
-    });
-    setEnvironmentVariablesOpen(false);
-  }, [testRun.active, setSelection, setPanelState, setInteractionState]);
   const draftSync = useDraftSync({
     applicationId,
     saveDraftOverride,
@@ -463,7 +494,7 @@ function useWorkflowCanvasController({
     nodePickerOptions,
     viewportSnapshotRef,
     viewportGetterRef,
-    selectedNodeId,
+    selectedDetailNodeId,
     nodeDetailLayout,
     isResizingNodeDetail,
     boundedNodeDetailWidth,
@@ -512,7 +543,7 @@ export function WorkflowCanvasFrame(
     nodePickerOptions,
     viewportSnapshotRef,
     viewportGetterRef,
-    selectedNodeId,
+    selectedDetailNodeId,
     nodeDetailLayout,
     isResizingNodeDetail,
     boundedNodeDetailWidth,
@@ -600,7 +631,7 @@ export function WorkflowCanvasFrame(
             viewportGetterRef.current = getter;
           }}
         />
-        {selectedNodeId ? (
+        {selectedDetailNodeId ? (
           <div
             className="agent-flow-editor__detail-dock"
             data-layout={nodeDetailLayout}

@@ -387,7 +387,7 @@ test('verify-backend uses all available CPU for cargo jobs and tests in CI', asy
     .split('\n');
 
   assert.deepEqual(JSON.parse(fs.readFileSync(rustfmtLogPath, 'utf8')),
-    ['--check', '--edition', '2021', ...formatFiles.sort()]);
+    ['--check', '--config', 'skip_children=true', '--edition', '2021', ...formatFiles.sort()]);
   assert.equal(invocations.length, 9);
   assert.match(invocations[1], new RegExp(`clippy --workspace --all-targets --jobs ${expectedParallelism} -- -D warnings`));
   assert.equal(invocations.filter((invocation) => invocation.startsWith('test --workspace ')).length, 1);

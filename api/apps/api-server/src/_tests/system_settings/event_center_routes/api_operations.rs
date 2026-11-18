@@ -40,8 +40,7 @@ async fn detail(app: &Router, cookie: &str, operation_id: &str) -> Value {
 #[tokio::test]
 async fn event_center_api_directory_matches_complete_shared_catalog_including_mcp_restricted_rows()
 {
-    let state = event_state().await;
-    let app = crate::app_with_state_and_config(state, &test_config());
+    let (_, app) = event_app().await;
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
     let (status, events) = request(
         &app,
@@ -223,8 +222,7 @@ async fn event_center_api_directory_matches_complete_shared_catalog_including_mc
 
 #[tokio::test]
 async fn event_center_document_rule_outside_legacy_catalog_observes_real_query_and_result_once() {
-    let state = event_state().await;
-    let app = crate::app_with_state_and_config(state.clone(), &test_config());
+    let (state, app) = event_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let path = "/api/console/settings/applications";
     let selected = operation(&app, &cookie, "GET", path).await;
@@ -291,8 +289,7 @@ async fn event_center_document_rule_outside_legacy_catalog_observes_real_query_a
 #[tokio::test]
 async fn event_center_document_key_creation_preserves_http_token_and_omits_it_from_event_schema_and_value(
 ) {
-    let state = event_state().await;
-    let app = crate::app_with_state_and_config(state.clone(), &test_config());
+    let (state, app) = event_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let selected = operation(&app, &cookie, "POST", "/api/console/user-api-keys").await;
     let id = selected["operation_id"].as_str().unwrap();
@@ -354,8 +351,7 @@ async fn create_model(app: &Router, cookie: &str, csrf: &str, code: &str) -> Str
 }
 #[tokio::test]
 async fn event_center_dynamic_models_same_verb_keep_distinct_rules_and_actual_owner_values() {
-    let state = event_state().await;
-    let app = crate::app_with_state_and_config(state.clone(), &test_config());
+    let (state, app) = event_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let model_a = create_model(&app, &cookie, &csrf, "events_model_a").await;
     let model_b = create_model(&app, &cookie, &csrf, "events_model_b").await;
@@ -438,8 +434,7 @@ async fn event_center_dynamic_models_same_verb_keep_distinct_rules_and_actual_ow
 #[tokio::test]
 async fn event_center_previously_undocumented_business_queries_publish_real_dtos_with_inherited_schemas(
 ) {
-    let state = event_state().await;
-    let app = crate::app_with_state_and_config(state.clone(), &test_config());
+    let (state, app) = event_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     for (path, query) in [
         (

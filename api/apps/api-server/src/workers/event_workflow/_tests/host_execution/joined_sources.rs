@@ -100,6 +100,16 @@ async fn joined_fixture(
     state.event_center = center;
     state.event_sources = sources;
     fixture.state = Arc::new(state);
+    // Availability validation reads the persisted directory, as it does after production boot.
+    let catalog = crate::test_support::event_catalog_snapshot(&fixture.state)
+        .await
+        .unwrap();
+    control_plane_contracts::ports::EventCatalogRepository::synchronize_event_catalog(
+        &fixture.state.store,
+        &catalog,
+    )
+    .await
+    .unwrap();
     let scope = scope(&fixture);
     let entries = fixture
         .state

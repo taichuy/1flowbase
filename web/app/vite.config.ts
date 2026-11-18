@@ -388,7 +388,9 @@ export default defineConfig(({ command, mode }) => {
       // Vitest otherwise stubs even CSS ?inline exports with an empty string.
       css: {
         include: [
-          /\/features\/frontstage\/components\/data-blocks\/(?:table\/table-block|form\/form-block)\.css(?:\?|$)/
+          /\/features\/frontstage\/components\/data-blocks\/(?:table\/table-block|form\/form-block)\.css(?:\?|$)/,
+          /\/features\/frontstage\/lib\/native-modules\/block-design\/block-design\.css\?inline(?:&|$)/,
+          /\/features\/frontstage\/components\/frontstage-node-action-button\.css\?inline(?:&|$)/
         ]
       },
       // Match browser ESM resolution so leaf providers and barrel consumers share context.

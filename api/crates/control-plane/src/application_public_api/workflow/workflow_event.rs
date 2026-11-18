@@ -275,7 +275,7 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
             "workflow-event:{}:{}:{}",
             application.id, command.subscription_id, command.signal_id
         );
-        Ok(WorkflowEventInvocationOutcome::Invoked(
+        Ok(WorkflowEventInvocationOutcome::Invoked(Box::new(
             WorkflowInvocationService::new(self.repository.clone())
                 .invoke(InvokeWorkflowCommand {
                     actor_user_id: snapshot.updated_by,
@@ -303,7 +303,7 @@ impl<R: ApplicationRepository + EventCenterRepository + Clone> WorkflowEventTrig
                     },
                 })
                 .await?,
-        ))
+        )))
     }
 }
 
@@ -323,7 +323,7 @@ pub struct InvokeWorkflowEventCommand {
 
 #[derive(Debug, Clone)]
 pub enum WorkflowEventInvocationOutcome {
-    Invoked(WorkflowInvocationResult),
+    Invoked(Box<WorkflowInvocationResult>),
     Skipped { reason: &'static str },
 }
 

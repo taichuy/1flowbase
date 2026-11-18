@@ -51,23 +51,24 @@ async fn communication_lifecycle_turn_interruption_is_unknown_with_original_repl
             .unwrap()
             .is_none());
     }
-    let recorded = facts.0.lock().unwrap();
-    assert_eq!(recorded.len(), 1);
-    let CommunicationLifecycleFact::SendResult(fact) = &recorded[0] else {
-        panic!("send result")
-    };
-    assert_eq!(fact.result_kind, CommunicationSendResultKind::Unknown);
-    assert_eq!(fact.failure_code.as_deref(), Some("send_interrupted"));
-    assert_eq!(fact.input_id, Some(first));
-    assert_eq!(fact.turn_id, Some(claimed.claim.turn_id));
-    assert_eq!(fact.conversation_id, Some(scope.conversation_id));
-    assert_eq!(fact.workspace_id, scope.workspace_id);
-    assert_eq!(fact.workflow_ancestor_ids, vec![ancestor]);
-    assert_eq!(fact.target.as_ref().unwrap().provider_message_id, "first");
-    assert!(
-        matches!(&fact.content, Some(CommunicationFactContent::Text { content, .. }) if content == "one complete answer")
-    );
-    drop(recorded);
+    {
+        let recorded = facts.0.lock().unwrap();
+        assert_eq!(recorded.len(), 1);
+        let CommunicationLifecycleFact::SendResult(fact) = &recorded[0] else {
+            panic!("send result")
+        };
+        assert_eq!(fact.result_kind, CommunicationSendResultKind::Unknown);
+        assert_eq!(fact.failure_code.as_deref(), Some("send_interrupted"));
+        assert_eq!(fact.input_id, Some(first));
+        assert_eq!(fact.turn_id, Some(claimed.claim.turn_id));
+        assert_eq!(fact.conversation_id, Some(scope.conversation_id));
+        assert_eq!(fact.workspace_id, scope.workspace_id);
+        assert_eq!(fact.workflow_ancestor_ids, vec![ancestor]);
+        assert_eq!(fact.target.as_ref().unwrap().provider_message_id, "first");
+        assert!(
+            matches!(&fact.content, Some(CommunicationFactContent::Text { content, .. }) if content == "one complete answer")
+        );
+    }
     assert!(!store
         .retry_communication_message(scope.workspace_id, scope.instance_id, first)
         .await

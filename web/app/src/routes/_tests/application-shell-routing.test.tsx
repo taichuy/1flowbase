@@ -1,3 +1,7 @@
+import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
+import {
+  historicalAnalysisFixture
+} from '../../features/agent-flow/_tests/fixtures/analysis-fixture';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Grid } from 'antd';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -123,6 +127,7 @@ const orchestrationApi = vi.hoisted(() => ({
     'orchestration'
   ],
   fetchOrchestrationState: vi.fn(),
+  analyzeDocument: vi.fn(),
   saveDraft: vi.fn(),
   restoreVersion: vi.fn()
 }));
@@ -317,6 +322,11 @@ describe('application shell routing', () => {
     publicApi.fetchApplicationApiDocsOperationSpec.mockResolvedValue({});
     publicApi.getApplicationApiDocsLocale.mockReset();
     publicApi.getApplicationApiDocsLocale.mockReturnValue('zh_Hans');
+    orchestrationApi.analyzeDocument.mockReset();
+    orchestrationApi.analyzeDocument.mockImplementation(
+      async (_applicationId: string, document: FlowAuthoringDocument) =>
+        historicalAnalysisFixture(document)
+    );
     orchestrationApi.fetchOrchestrationState.mockReset();
     orchestrationApi.fetchOrchestrationState.mockResolvedValue({
       flow_id: 'flow-1',

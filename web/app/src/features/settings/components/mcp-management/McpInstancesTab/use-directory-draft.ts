@@ -39,9 +39,9 @@ export function useDirectoryDraft(csrfToken: string) {
   const [session, setSession] = useState<Session>(empty);
   const current = useRef(session);
   const generation = useRef(0);
-  const identities = useRef(new Map<string, string>());
+  const identities = useRef<Map<string, string> | null>(null);
   const resolveId = useCallback(
-    (id: string) => identities.current.get(id) ?? id,
+    (id: string) => identities.current?.get(id) ?? id,
     []
   );
   useEffect(
@@ -56,7 +56,7 @@ export function useDirectoryDraft(csrfToken: string) {
   }
   async function load(instanceId: string) {
     const ticket = ++generation.current;
-    identities.current.clear();
+    identities.current?.clear();
     publish({ ...empty, instanceId, loading: true });
     try {
       const snapshot = await fetchSettingsMcpInstanceDirectory(instanceId);
@@ -90,7 +90,7 @@ export function useDirectoryDraft(csrfToken: string) {
   }
   function clear() {
     ++generation.current;
-    identities.current.clear();
+    identities.current?.clear();
     publish(empty);
   }
   const saveDirectoryMutation = useMutation({
@@ -112,18 +112,32 @@ export function useDirectoryDraft(csrfToken: string) {
       );
       if (ticket !== generation.current) return;
       const latest = current.current;
+      const resolvedIds = (identities.current ??= new Map<string, string>());
+      const groupsByPath = new Map<string, (typeof saved.groups)[number]>();
+      for (const group of saved.groups) {
+        if (!groupsByPath.has(group.path)) groupsByPath.set(group.path, group);
+      }
+      const bindingsByGroup = new Map<
+        string,
+        Map<string, (typeof saved.bindings)[number]>
+      >();
+      for (const binding of saved.bindings) {
+        let group = bindingsByGroup.get(binding.group_path);
+        if (!group) {
+          group = new Map();
+          bindingsByGroup.set(binding.group_path, group);
+        }
+        if (!group.has(binding.tool_id)) group.set(binding.tool_id, binding);
+      }
       for (const row of submitted.groups) {
-        const persisted = saved.groups.find((value) => value.path === row.path);
+        const persisted = groupsByPath.get(row.path);
         if (persisted && persisted.id !== row.id)
-          identities.current.set(row.id, persisted.id);
+          resolvedIds.set(row.id, persisted.id);
       }
       for (const row of submitted.bindings) {
-        const persisted = saved.bindings.find(
-          (value) =>
-            value.group_path === row.group_path && value.tool_id === row.tool_id
-        );
+        const persisted = bindingsByGroup.get(row.group_path)?.get(row.tool_id);
         if (persisted && persisted.id !== row.id)
-          identities.current.set(row.id, persisted.id);
+          resolvedIds.set(row.id, persisted.id);
       }
       publish({
         ...latest,

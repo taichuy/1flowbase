@@ -3,7 +3,6 @@ import type {
   ConsoleReferencedI18nMessage
 } from '@1flowbase/api-client';
 import type {
-  FlowAuthoringDocument,
   FlowConditionGroupDocument,
   FlowNodeDocument,
   FlowVariableGroupDocument,

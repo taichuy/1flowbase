@@ -186,6 +186,12 @@ pub struct ExternalRouteAssembly<S> {
     routes: Vec<(String, String, Option<&'static str>)>,
 }
 
+impl<S: HttpRouteState> Default for ExternalRouteAssembly<S> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<S: Clone + Send + Sync + 'static> ExternalRouteAssembly<S> {
     pub fn new() -> Self
     where

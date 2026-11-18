@@ -151,12 +151,12 @@
         },
         {
           "file": "api/crates/runtime-extension-host/src/runtime_host.rs",
-          "sha256": "3d61f1843966634b5d7b45e1a277944a39f73103da125424be4e28284a1d4d5e",
+          "sha256": "14c2b702d63dbcc068cda86638fb88cf8cfea2491ec390104f9b6a7ee8ecb485",
           "reason": "RuntimeExtensionHost constructs and stores a collector at host construction, rather than constructing per profile request."
         },
         {
           "file": "api/crates/runtime-extension-host/src/runtime_host/capability_port.rs",
-          "sha256": "1f5b7c6ceca7ab21645786d293988096e33514c48e41cfaab46c0d27d34b8778",
+          "sha256": "16f2c51375f6451af871b3f33dacd63bdd88865f145bb29da5ad4292c7e6fdc8",
           "reason": "Private responsibility extraction from api/crates/runtime-extension-host/src/runtime_host.rs preserves the reviewed behavior: impl_item. RuntimeExtensionHost constructs and stores a collector at host construction, rather than constructing per profile request."
         }
       ]
@@ -171,12 +171,12 @@
       "evidence": [
         {
           "file": "api/crates/runtime-extension-host/src/runtime_host.rs",
-          "sha256": "3d61f1843966634b5d7b45e1a277944a39f73103da125424be4e28284a1d4d5e",
+          "sha256": "14c2b702d63dbcc068cda86638fb88cf8cfea2491ec390104f9b6a7ee8ecb485",
           "reason": "verify_managed_executable obtains the hash permit, resolves the frozen binding, then calls binding.verify_executable only inside tokio::task::spawn_blocking; managed calls await it."
         },
         {
           "file": "api/crates/runtime-extension-host/src/runtime_host/capability_port.rs",
-          "sha256": "1f5b7c6ceca7ab21645786d293988096e33514c48e41cfaab46c0d27d34b8778",
+          "sha256": "16f2c51375f6451af871b3f33dacd63bdd88865f145bb29da5ad4292c7e6fdc8",
           "reason": "Private responsibility extraction from api/crates/runtime-extension-host/src/runtime_host.rs preserves the reviewed behavior: impl_item. verify_managed_executable obtains the hash permit, resolves the frozen binding, then calls binding.verify_executable only inside tokio::task::spawn_blocking; managed calls await it."
         }
       ]
@@ -191,7 +191,7 @@
       "evidence": [
         {
           "file": "api/crates/control-plane/src/plugin_management/install.rs",
-          "sha256": "22ce71106d5f78893c92fc03429d4e108a0ecc1caae8f89d0d98d99170e71ecc",
+          "sha256": "37103bd6d65a543ddfa0ebe4c25a8a9ca6cb1e999a87cd0f872d67b02612b13b",
           "reason": "Seven install call sites await the async preparation wrapper; the private blocking body calls prepare_settings_templates and only constructs owned commit input before publish_installation."
         },
         {

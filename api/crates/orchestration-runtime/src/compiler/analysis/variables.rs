@@ -1,5 +1,11 @@
 use super::*;
 
+#[derive(Clone, Copy)]
+struct VariableOptionSource<'a> {
+    node_id: &'a str,
+    node_label: &'a str,
+}
+
 pub(super) fn visible_variables(
     document: &Value,
     nodes: &BTreeMap<String, CompiledNode>,
@@ -54,8 +60,10 @@ pub(super) fn visible_variables(
                 let schema = output_schema(&output);
                 push_option(
                     &mut options,
-                    &source.node_id,
-                    &source.alias,
+                    VariableOptionSource {
+                        node_id: &source.node_id,
+                        node_label: &source.alias,
+                    },
                     &output.key,
                     &output.title,
                     &output.value_type,
@@ -64,8 +72,10 @@ pub(super) fn visible_variables(
                 );
                 expand_properties(
                     &mut options,
-                    &source.node_id,
-                    &source.alias,
+                    VariableOptionSource {
+                        node_id: &source.node_id,
+                        node_label: &source.alias,
+                    },
                     &schema,
                     &schema,
                     &selector,
@@ -103,8 +113,10 @@ pub(super) fn visible_variables(
                 .unwrap_or_else(|| "json".into());
             push_option(
                 &mut options,
-                &source.node_id,
-                &source.alias,
+                VariableOptionSource {
+                    node_id: &source.node_id,
+                    node_label: &source.alias,
+                },
                 &label,
                 &label,
                 &value_type,
@@ -118,8 +130,10 @@ pub(super) fn visible_variables(
             let key = key.join(".");
             push_option(
                 &mut options,
-                node_id,
-                node_id,
+                VariableOptionSource {
+                    node_id,
+                    node_label: node_id,
+                },
                 &key,
                 &key,
                 if declaration
@@ -145,8 +159,10 @@ pub(super) fn visible_variables(
             if let Some(name) = variable["name"].as_str() {
                 push_option(
                     &mut options,
-                    "conversation",
-                    "conversation",
+                    VariableOptionSource {
+                        node_id: "conversation",
+                        node_label: "conversation",
+                    },
                     name,
                     name,
                     variable["valueType"].as_str().unwrap_or("json"),
@@ -204,8 +220,10 @@ pub(super) fn visible_variables(
                 }
                 push_option(
                     &mut options,
-                    "visible_internal_llm_tool",
-                    "tool",
+                    VariableOptionSource {
+                        node_id: "visible_internal_llm_tool",
+                        node_label: "tool",
+                    },
                     key,
                     key,
                     &schema_value_type(property),
@@ -226,8 +244,7 @@ pub(super) fn visible_variables(
 
 fn push_option(
     options: &mut Vec<FlowVariableOption>,
-    node_id: &str,
-    node_label: &str,
+    source: VariableOptionSource<'_>,
     key: &str,
     title: &str,
     value_type: &str,
@@ -235,8 +252,8 @@ fn push_option(
     selector: Vec<String>,
 ) {
     options.push(FlowVariableOption {
-        node_id: node_id.into(),
-        node_label: node_label.into(),
+        node_id: source.node_id.into(),
+        node_label: source.node_label.into(),
         output_key: key.into(),
         output_label: title.into(),
         value_type: value_type.into(),
@@ -247,8 +264,7 @@ fn push_option(
 
 fn expand_properties(
     options: &mut Vec<FlowVariableOption>,
-    node_id: &str,
-    node_label: &str,
+    source: VariableOptionSource<'_>,
     root: &Value,
     schema: &Value,
     parent: &[String],
@@ -270,18 +286,21 @@ fn expand_properties(
     for key in
         super::super::output_contract::schema_property_names(root, schema, &mut BTreeSet::new())
     {
-        let property =
-            match super::super::output_contract::schema_path(root, schema, &[key.clone()], 0) {
-                PathContract::Missing => continue,
-                PathContract::Dynamic => Value::Bool(true),
-                PathContract::Known(property) => property,
-            };
+        let property = match super::super::output_contract::schema_path(
+            root,
+            schema,
+            std::slice::from_ref(&key),
+            0,
+        ) {
+            PathContract::Missing => continue,
+            PathContract::Dynamic => Value::Bool(true),
+            PathContract::Known(property) => property,
+        };
         let mut selector = parent.to_vec();
         selector.push(key.clone());
         push_option(
             options,
-            node_id,
-            node_label,
+            source,
             &key,
             &key,
             &schema_value_type(&property),
@@ -290,8 +309,7 @@ fn expand_properties(
         );
         expand_properties(
             options,
-            node_id,
-            node_label,
+            source,
             root,
             &property,
             &selector,

@@ -506,10 +506,12 @@ describe('McpManagementPanel', () => {
     expect(rootNode).toHaveClass('ant-tree-node-selected');
     expect(groupNode).not.toHaveClass('ant-tree-node-selected');
 
-    fireEvent.mouseEnter(groupNode as HTMLElement);
-    fireEvent.click(
-      within(groupNode as HTMLElement).getByRole('button', { name: '编辑' })
-    );
+    await act(async () => {
+      fireEvent.mouseEnter(groupNode as HTMLElement);
+      fireEvent.click(
+        within(groupNode as HTMLElement).getByRole('button', { name: '编辑' })
+      );
+    });
 
     const status = dialog.querySelector(
       '.mcp-management__directory-editor-status'
@@ -531,18 +533,26 @@ describe('McpManagementPanel', () => {
     expect(rootNode).not.toHaveClass('ant-tree-node-selected');
     expect(groupNode).toHaveClass('ant-tree-node-selected');
     expect(status).toHaveTextContent('分组');
-    fireEvent.change(within(dialog).getByLabelText('显示名称'), {
-      target: { value: 'Discard shortcut form' }
+    await act(async () => {
+      fireEvent.change(within(dialog).getByLabelText('显示名称'), {
+        target: { value: 'Discard shortcut form' }
+      });
     });
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: '取消节点编辑' })
-    );
+    await act(async () => {
+      fireEvent.click(
+        within(dialog).getByRole('button', { name: '取消节点编辑' })
+      );
+    });
     expect(groupNode).toHaveClass('ant-tree-node-selected');
     expect(
       within(dialog).queryByRole('textbox', { name: '显示名称' })
     ).not.toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: '编辑节点' }));
-    expect(within(dialog).getByLabelText('显示名称')).toHaveValue('ops');
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: '编辑节点' }));
+    });
+    await waitFor(() =>
+      expect(within(dialog).getByLabelText('显示名称')).toHaveValue('ops')
+    );
   });
 
   test('selects a group node and opens that group read-only', async () => {
@@ -558,8 +568,13 @@ describe('McpManagementPanel', () => {
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     const tree = within(dialog).getByRole('tree');
-    expandTreeRootIfCollapsed(tree);
-    fireEvent.click(within(within(dialog).getByRole('tree')).getByText('ops'));
+    await act(async () => {
+      expandTreeRootIfCollapsed(tree);
+    });
+    const group = await within(tree).findByText('ops');
+    await act(async () => {
+      fireEvent.click(group);
+    });
 
     await waitFor(() => {
       expect(

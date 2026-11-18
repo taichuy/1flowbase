@@ -179,7 +179,8 @@ fn root_2014_ac_004_schema_identity_and_secret_negatives() {
         input: input_view.clone(),
     });
     assert_eq!(
-        input.test_inner().password, SECRET,
+        input.test_inner().password,
+        SECRET,
         "projection must not alter handler input"
     );
     let mut injected = input_view.clone();
@@ -231,7 +232,8 @@ fn root_2014_ac_004_schema_identity_and_secret_negatives() {
     assert_eq!(output.test_inner().session.session_id, SECRET);
     assert_eq!(output.test_inner().session.csrf_token, SECRET);
 
-    let error = PublicSignInTargetError::test_new(crate::error_response::ApiError(anyhow::anyhow!(SECRET)));
+    let error =
+        PublicSignInTargetError::test_new(crate::error_response::ApiError(anyhow::anyhow!(SECRET)));
     let error_view = view(&error);
     assert!(!serde_json::to_string(&error_view).unwrap().contains(SECRET));
     assert!(

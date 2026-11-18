@@ -26,19 +26,20 @@ pub(crate) async fn download(
     path(&input.target_path).map_err(super::file_error)?;
     let duration = std::time::Duration::from_millis(input.timeout_ms);
     tokio::time::timeout(duration, async {
-        let source = host.read_file(actor, input.file_table_id, input.record_id)
-        .await
-        .map_err(|error| {
-            if let Some(runtime_core::runtime_acl::RuntimeAclError::PermissionDenied(reason)) =
-                error.downcast_ref::<runtime_core::runtime_acl::RuntimeAclError>()
-            {
-                ApiError::from(control_plane::errors::ControlPlaneError::PermissionDenied(
-                    reason,
-                ))
-            } else {
-                ApiError::from(error)
-            }
-        })?;
+        let source = host
+            .read_file(actor, input.file_table_id, input.record_id)
+            .await
+            .map_err(|error| {
+                if let Some(runtime_core::runtime_acl::RuntimeAclError::PermissionDenied(reason)) =
+                    error.downcast_ref::<runtime_core::runtime_acl::RuntimeAclError>()
+                {
+                    ApiError::from(control_plane::errors::ControlPlaneError::PermissionDenied(
+                        reason,
+                    ))
+                } else {
+                    ApiError::from(error)
+                }
+            })?;
         let reader = source
             .reader
             .into_inner()

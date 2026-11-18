@@ -33,6 +33,13 @@ struct ResolvedTarget {
     fields: BTreeMap<String, ResolvedField>,
 }
 
+struct RowSelection<'a> {
+    requested_fields: &'a [String],
+    filters: &'a [PluginDataFilter],
+    order: &'a [PluginDataOrder],
+    page: Option<(u32, u64)>,
+}
+
 impl PluginDataPort for PgControlPlaneStore {
     fn execute<'a>(
         &'a self,
@@ -196,10 +203,12 @@ async fn execute_operation(
                 transaction,
                 workspace_id,
                 &resolved,
-                fields,
-                filters,
-                order,
-                Some((page.limit, page.offset)),
+                RowSelection {
+                    requested_fields: fields,
+                    filters,
+                    order,
+                    page: Some((page.limit, page.offset)),
+                },
                 record_permission.as_ref(),
             )
             .await?;
@@ -219,10 +228,12 @@ async fn execute_operation(
                 transaction,
                 workspace_id,
                 &resolved,
-                fields,
-                filters,
-                &[],
-                Some((1, 0)),
+                RowSelection {
+                    requested_fields: fields,
+                    filters,
+                    order: &[],
+                    page: Some((1, 0)),
+                },
                 record_permission.as_ref(),
             )
             .await?
@@ -455,12 +466,15 @@ async fn select_rows(
     transaction: &mut Transaction<'_, Postgres>,
     workspace_id: Uuid,
     target: &ResolvedTarget,
-    requested_fields: &[String],
-    filters: &[PluginDataFilter],
-    order: &[PluginDataOrder],
-    page: Option<(u32, u64)>,
+    selection: RowSelection<'_>,
     record_permission: Option<&ResolvedRecordPermission>,
 ) -> Result<Vec<PluginDataRow>, PluginDataError> {
+    let RowSelection {
+        requested_fields,
+        filters,
+        order,
+        page,
+    } = selection;
     let fields = resolve_fields(target, requested_fields, false)?;
     let mut query = QueryBuilder::<Postgres>::new("select ");
     {

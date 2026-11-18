@@ -4,7 +4,6 @@ use super::{
 };
 use crate::error_response::ApiError;
 
-
 use control_plane::ports::{
     ManagedSchemaApplyReceipt, ManagedSchemaPlan, ManagedSchemaPreview, ManagedSchemaRepository,
 };
@@ -58,16 +57,16 @@ impl PreparedManagedSchema {
         self.preview.clone()
     }
 
-test_support_item! { pub(super), []
-    async fn apply(
-        self,
-        dependencies: &ExtensionCenterDependencies,
-    ) -> Result<ManagedSchemaApplyReceiptResponse, ApiError> {
-        let receipt =
-            ManagedSchemaRepository::apply_managed_schema(&dependencies.store, &self.plan).await?;
-        Ok(receipt_response(receipt))
+    test_support_item! { pub(super), []
+        async fn apply(
+            self,
+            dependencies: &ExtensionCenterDependencies,
+        ) -> Result<ManagedSchemaApplyReceiptResponse, ApiError> {
+            let receipt =
+                ManagedSchemaRepository::apply_managed_schema(&dependencies.store, &self.plan).await?;
+            Ok(receipt_response(receipt))
+        }
     }
-}
 }
 
 test_support_item! { pub(super), []
@@ -146,10 +145,6 @@ fn receipt_response(receipt: ManagedSchemaApplyReceipt) -> ManagedSchemaApplyRec
         applied_at: receipt.applied_at.to_string(),
     }
 }
-
-
-
-
 
 #[cfg(any(test, feature = "test-support"))]
 #[path = "managed_schema/_tests/support/accessors.rs"]

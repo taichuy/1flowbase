@@ -225,11 +225,13 @@ async fn authorized_workflow_input_uses_resolved_path_coercions_and_declared_val
         .authorize_operation(&actor, WorkflowExtensionHttpMethod::Post, "frozen-http")
         .await
         .unwrap();
-    let mut parameters = WorkflowExtensionRequestParameters::default();
-    parameters.query = serde_json::from_value(
-        serde_json::json!({"count":"7","credential-sentinel":"must-not-project"}),
-    )
-    .unwrap();
+    let mut parameters = WorkflowExtensionRequestParameters {
+        query: serde_json::from_value(
+            serde_json::json!({"count":"7","credential-sentinel":"must-not-project"}),
+        )
+        .unwrap(),
+        ..Default::default()
+    };
     parameters
         .path
         .insert("injected".into(), serde_json::json!("other-target"));

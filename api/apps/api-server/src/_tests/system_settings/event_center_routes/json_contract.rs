@@ -179,8 +179,7 @@ async fn call_tool(app: &Router, token: &str, tool: &str, arguments: Value) -> V
 
 #[tokio::test]
 async fn event_center_public_json_file_tables_http_mcp_events_preserve_body_path_null_and_204() {
-    let state = event_state().await;
-    let app = crate::app_with_state_and_config(state.clone(), &test_config());
+    let (state, app) = event_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let token = mcp_client(&app, &cookie, &csrf).await;
     let base = "/api/console/settings/files/tables";
@@ -290,8 +289,7 @@ async fn event_center_public_json_file_tables_http_mcp_events_preserve_body_path
 
 #[tokio::test]
 async fn event_center_public_json_organization_http_mcp_events_share_dto_and_normalized_query() {
-    let state = event_state().await;
-    let app = crate::app_with_state_and_config(state.clone(), &test_config());
+    let (state, app) = event_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let token = mcp_client(&app, &cookie, &csrf).await;
     let base = "/api/console/settings/departments";

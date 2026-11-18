@@ -4,14 +4,7 @@ import {
   type EventSourceSelection
 } from '@1flowbase/api-client';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Alert,
-  AutoComplete,
-  Form,
-  Input,
-  Select,
-  type FormInstance
-} from 'antd';
+import { Alert, AutoComplete, Form, Input, Select } from 'antd';
 import { eventSchemaPointers } from './workflow-event-schema';
 import { useTranslation } from 'react-i18next';
 import {
@@ -19,11 +12,25 @@ import {
   workflowEventCatalogQueryKey
 } from '../api/applications';
 
+const identity = (
+  entry: Pick<
+    Parameters<typeof eventCatalogIdentity>[0],
+    'contract_id' | 'source'
+  >
+) =>
+  eventCatalogIdentity({
+    contract_id: entry.contract_id,
+    source: entry.source
+  });
+
+const eligible = (entry: EventCatalogEntry) =>
+  (entry.origin === 'custom'
+    ? entry.enabled !== false
+    : Boolean(entry.source)) && entry.supported_phases.length > 0;
+
 export function WorkflowEventTriggerFields({
-  form,
   fields
 }: {
-  form: FormInstance;
   fields: Array<{
     key: string;
     label: string;
@@ -33,28 +40,20 @@ export function WorkflowEventTriggerFields({
   }>;
 }) {
   const { t } = useTranslation('applications');
+  const form = Form.useFormInstance();
   const catalog = useQuery({
     queryKey: workflowEventCatalogQueryKey,
     queryFn: fetchWorkflowEventCatalog
   });
-  const contract_id = Form.useWatch(['event', 'contract_id'], form);
-  const trigger_phase = Form.useWatch(['event', 'trigger_phase'], form);
-  const source = Form.useWatch(['event', 'source'], form) as
+  const contract_id = Form.useWatch(['event', 'contract_id']);
+  const trigger_phase = Form.useWatch(['event', 'trigger_phase']);
+  const source = Form.useWatch(['event', 'source']) as
     | EventSourceSelection
     | undefined;
-  const identity = (entry: Pick<Parameters<typeof eventCatalogIdentity>[0], 'contract_id' | 'source'>) =>
-    eventCatalogIdentity({
-      contract_id: entry.contract_id,
-      source: entry.source
-    });
   const currentIdentity = identity({
     contract_id,
     source: source ? { selection: source } : undefined
   });
-  const eligible = (entry: EventCatalogEntry) =>
-    (entry.origin === 'custom'
-      ? entry.enabled !== false
-      : Boolean(entry.source)) && entry.supported_phases.length > 0;
   const available = catalog.data?.filter(eligible) ?? [];
   const selected = catalog.data?.find(
     (entry) => identity(entry) === currentIdentity
@@ -188,35 +187,35 @@ export function WorkflowEventTriggerFields({
       >
         <Input />
       </Form.Item>
-      {fields
-        .filter((field) =>
-          ['string', 'number', 'boolean'].includes(field.valueType)
-        )
-        .map((field) => (
-          <Form.Item
-            key={field.key}
-            label={`${field.label} · ${field.valueType}`}
-            name={['event', 'input_mapping', field.key]}
-            rules={[
-              {
-                required: field.required && field.defaultValue === undefined
-              },
-              {
-                pattern: /^(?:\/(?:[^~]|~[01])*)*$/,
-                message: t('event.pointer_invalid')
-              }
-            ]}
-            tooltip={t('event.pointer_hint')}
-          >
-            <AutoComplete
-              aria-label={`${field.label} · ${field.valueType}`}
-              options={pointerOptions}
-              filterOption={(input, option) =>
-                !!option?.value.toLowerCase().includes(input.toLowerCase())
-              }
-            />
-          </Form.Item>
-        ))}
+      {fields.flatMap((field) =>
+        ['string', 'number', 'boolean'].includes(field.valueType)
+          ? [
+              <Form.Item
+                key={field.key}
+                label={`${field.label} · ${field.valueType}`}
+                name={['event', 'input_mapping', field.key]}
+                rules={[
+                  {
+                    required: field.required && field.defaultValue === undefined
+                  },
+                  {
+                    pattern: /^(?:\/(?:[^~]|~[01])*)*$/,
+                    message: t('event.pointer_invalid')
+                  }
+                ]}
+                tooltip={t('event.pointer_hint')}
+              >
+                <AutoComplete
+                  aria-label={`${field.label} · ${field.valueType}`}
+                  options={pointerOptions}
+                  filterOption={(input, option) =>
+                    !!option?.value.toLowerCase().includes(input.toLowerCase())
+                  }
+                />
+              </Form.Item>
+            ]
+          : []
+      )}
     </>
   );
 }

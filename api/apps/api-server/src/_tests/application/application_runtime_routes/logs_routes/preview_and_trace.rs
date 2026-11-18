@@ -1,8 +1,9 @@
 use super::*;
+use control_plane::ports::CreateNodeRunInput;
 
 #[tokio::test]
 async fn application_runtime_routes_start_node_preview_and_query_logs() {
-    let (state, _) = test_api_state_with_database_url().await;
+    let (state, database_url) = test_api_state_with_database_url().await;
     let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     fund_log_fixture(&app, &cookie, &csrf).await;
@@ -325,6 +326,58 @@ async fn application_runtime_routes_start_node_preview_and_query_logs() {
         }),
         "application log run-detail must not be cached: {cache_entries:?}"
     );
+    // Seed both allowed flow context and an unrelated node event in the same run.
+    // The node projection must retain the former and exclude the latter.
+    let flow_run_uuid = Uuid::parse_str(&flow_run_id).unwrap();
+    let other_node_id = seed_node_run_history_record(
+        &database_url,
+        &CreateNodeRunInput {
+            flow_run_id: flow_run_uuid,
+            node_id: "node-other".into(),
+            node_type: "code".into(),
+            node_alias: "Other node".into(),
+            status: domain::NodeRunStatus::Succeeded,
+            input_payload: json!({}),
+            debug_payload: json!({}),
+            started_at: time::OffsetDateTime::now_utc(),
+        },
+    )
+    .await
+    .unwrap();
+    // The preview is already terminal. These are historical read fixtures;
+    // ordinary repository writes must continue to reject post-terminal facts.
+    let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
+    let unrelated_event_id = Uuid::now_v7();
+    let flow_context_id = Uuid::now_v7();
+    for (id, node_run_id, event_type) in [
+        (
+            unrelated_event_id,
+            Some(other_node_id),
+            "unrelated_node_fixture",
+        ),
+        (flow_context_id, None, "flow_context_fixture"),
+    ] {
+        sqlx::query(
+            r#"
+            insert into flow_run_events (
+                id, scope_id, flow_run_id, node_run_id, sequence, event_type, payload
+            )
+            select $1, applications.workspace_id, flow_runs.id, $3,
+                coalesce((select max(sequence) from flow_run_events where flow_run_id=$2), 0) + 1,
+                $4, '{}'::jsonb
+            from flow_runs
+            join applications on applications.id=flow_runs.application_id
+            where flow_runs.id=$2
+            "#,
+        )
+        .bind(id)
+        .bind(flow_run_uuid)
+        .bind(node_run_id)
+        .bind(event_type)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
     let scoped_node_run = app
         .clone()
         .oneshot(
@@ -348,16 +401,28 @@ async fn application_runtime_routes_start_node_preview_and_query_logs() {
         scoped_node_run_payload["data"]["node_run"]["node_id"].as_str(),
         Some("node-llm")
     );
-    assert!(scoped_node_run_payload["data"]["events"]
+    let selected_node_run_id = scoped_node_run_payload["data"]["node_run"]["id"]
+        .as_str()
+        .unwrap();
+    let scoped_events = scoped_node_run_payload["data"]["events"]
         .as_array()
-        .unwrap()
+        .unwrap();
+    for event in scoped_events {
+        assert_eq!(event["flow_run_id"].as_str(), Some(flow_run_id.as_str()));
+        if !event["node_run_id"].is_null() {
+            assert_eq!(event["node_run_id"].as_str(), Some(selected_node_run_id));
+        }
+        assert_ne!(event["id"], json!(unrelated_event_id));
+    }
+    for event_type in ["node_preview_started", "node_preview_completed"] {
+        assert!(scoped_events.iter().any(|event| {
+            event["event_type"] == event_type
+                && event["node_run_id"].as_str() == Some(selected_node_run_id)
+        }));
+    }
+    assert!(scoped_events
         .iter()
-        .all(|event| event["node_run_id"].as_str()
-            == Some(
-                scoped_node_run_payload["data"]["node_run"]["id"]
-                    .as_str()
-                    .unwrap()
-            )));
+        .any(|event| { event["id"] == json!(flow_context_id) && event["node_run_id"].is_null() }));
 
     let last_run = app
         .clone()

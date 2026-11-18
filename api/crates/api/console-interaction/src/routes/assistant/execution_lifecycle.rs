@@ -56,9 +56,17 @@ pub(in super::super) async fn launch_assistant_execution(
     let mcp_client_bridge = client_tool_bridge.clone();
     let mcp_runtime_invoker: Arc<
         dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
-    > = dependencies.runtime_tool_invoker_factory.for_actor(&execution.actor).await?.create_for_assistant(
-        execution.request_headers.clone(), execution.actor.clone(), execution.mcp_instance_ids.clone(), mcp_client_bridge
-    ).await?;
+    > = dependencies
+        .runtime_tool_invoker_factory
+        .for_actor(&execution.actor)
+        .await?
+        .create_for_assistant(
+            execution.request_headers.clone(),
+            execution.actor.clone(),
+            execution.mcp_instance_ids.clone(),
+            mcp_client_bridge,
+        )
+        .await?;
     let assistant_runtime_tool_invoker = Arc::new(AssistantRuntimeToolInvoker::new(
         mcp_runtime_invoker,
         client_tool_bridge.clone(),
@@ -198,9 +206,16 @@ pub(crate) async fn execute_assistant_run(
         body,
     )
     .await?;
-    let mcp_runtime_invoker = dependencies.runtime_tool_invoker_factory.for_actor(&execution.actor).await?.create_server_delegated(
-        execution.request_headers.clone(), execution.actor.clone(), execution.mcp_instance_ids.clone()
-    ).await?;
+    let mcp_runtime_invoker = dependencies
+        .runtime_tool_invoker_factory
+        .for_actor(&execution.actor)
+        .await?
+        .create_server_delegated(
+            execution.request_headers.clone(),
+            execution.actor.clone(),
+            execution.mcp_instance_ids.clone(),
+        )
+        .await?;
     let runtime = OrchestrationRuntimeService::new(
         dependencies.store.clone(),
         crate::provider_runtime::ApiProviderRuntime::new_with_activity(
@@ -367,4 +382,5 @@ pub(super) async fn publish_assistant_conversation_summary(
 }
 
 pub(crate) use api_host_kernel::assistant_execution::abort_assistant_execution_in;
+#[cfg(test)]
 pub(super) use api_host_kernel::assistant_execution::abort_registered_assistant_execution;

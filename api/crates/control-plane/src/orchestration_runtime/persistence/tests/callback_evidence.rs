@@ -275,7 +275,7 @@ async fn semantic_round_evidence_is_atomic_with_callback_and_checkpoint() {
     .unwrap();
     let round_id = Uuid::now_v7();
     let reserved_callback_ids = [Uuid::now_v7(), Uuid::now_v7()];
-    for index in 0..2 {
+    for (index, reserved_callback_id) in reserved_callback_ids.iter().enumerate() {
         let payload =
             json!({"tool_calls":[{"id":format!("call-{index}"),"name":"read","arguments":{}}]});
         let outcome = FlowDebugExecutionOutcome {
@@ -303,7 +303,7 @@ async fn semantic_round_evidence_is_atomic_with_callback_and_checkpoint() {
                 0,
                 json!({"type":"function_call","id":format!("item-{index}"),"call_id":format!("call-{index}"),"name":"read","arguments":"{}"}),
             );
-        candidate.payload["reserved_callback_task_id"] = json!(reserved_callback_ids[index]);
+        candidate.payload["reserved_callback_task_id"] = json!(reserved_callback_id);
         run = super::super::persist_flow_debug_outcome(
             &service.repository,
             super::super::PersistFlowDebugOutcomeInput {

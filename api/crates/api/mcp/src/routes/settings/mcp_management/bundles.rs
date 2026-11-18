@@ -1,9 +1,7 @@
 pub use api_host_kernel::routes::mcp_management::bundles::*;
 pub mod openapi;
 
-use std::{
-    sync::Arc,
-};
+use std::sync::Arc;
 
 use axum::{
     body::Body,
@@ -28,7 +26,6 @@ use crate::{
 use super::bundles_interface;
 
 use api_host_kernel::mcp_bundle_archive::MAX_BUNDLE_BYTES;
-
 
 async fn invoke(
     state: Arc<ApiState>,
