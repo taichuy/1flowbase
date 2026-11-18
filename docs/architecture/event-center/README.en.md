@@ -166,7 +166,7 @@ The only new tables store configuration: `event_definitions` belongs to the `sys
 
 ## Verification
 
-The `full-api-events` scope in `event-lifecycle.yml` runs the assembled API-event Test Batch. `full-api-events-types` collects compile diagnostics only. The existing `event-business` scope runs the business-event Test Batch and retains the exact source SHA, nonzero test results, and matching host candidate. Interface observation, application terminals, credit filters, communication deduplication/results, and permissions have separate evidence; source checks do not replace runtime verification.
+API and business event acceptance requires the exact source SHA, nonzero test results, and a matching host candidate. The one-off Actions entry point is retired. Verify interface observation, application terminals, credit filters, communication deduplication/results, and permissions separately; source checks and type diagnostics do not replace runtime evidence.
 
 Implementation evidence comes from event-service unit tests, the `event_center_configuration` PostgreSQL target, event routes in `api_system_settings`, event workflow/communication cases in `api_private_contracts`, frontend feature tests and page-debug evidence. Finite design models do not replace implementation tests.
 
