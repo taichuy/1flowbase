@@ -89,9 +89,12 @@ impl ReleaseSource {
 
     fn allows_asset(&self, asset: &str) -> bool {
         match self {
-            Self::Official => asset.starts_with("https://github.com/taichuy/1flowbase/releases/download/"),
-            Self::LoopbackFixture(feed) => loopback_url(asset)
-                .is_ok_and(|asset| asset.origin() == feed.origin()),
+            Self::Official => {
+                asset.starts_with("https://github.com/taichuy/1flowbase/releases/download/")
+            }
+            Self::LoopbackFixture(feed) => {
+                loopback_url(asset).is_ok_and(|asset| asset.origin() == feed.origin())
+            }
         }
     }
 }

@@ -111,23 +111,30 @@ pub fn handle_cli(
 fn verify_update_archive(baseline: &Path, feed: &str) -> Result<PathBuf> {
     let source = online::ReleaseSource::loopback(feed)?;
     let old = Manifest::read(baseline)?;
-    let client = reqwest::Client::builder()
-        .no_proxy()
-        .timeout(Duration::from_secs(180))
-        .redirect(reqwest::redirect::Policy::custom(|attempt| {
-            attempt.error("Update archive fixtures must not redirect")
-        }))
+    let client = api_server::network_egress_client::native_release_fixture_client()?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
         .build()?;
-    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
     let scratch = std::env::temp_dir().join(format!("1flowbase-verify-{}", uuid::Uuid::now_v7()));
     fs::create_dir(&scratch)?;
     let result = (|| {
         private_dir(&scratch)?;
         let candidate = runtime
-            .block_on(online::download(&client, &old, &scratch.join("download"), &source))?
+            .block_on(online::download(
+                &client,
+                &old,
+                &scratch.join("download"),
+                &source,
+            ))?
             .context("Fixture did not offer a newer package")?;
-        ensure!(candidate.join(".env").is_file(), "Fixture package is missing .env");
-        ensure!(!candidate.join("data").exists(), "Fixture package must not contain data");
+        ensure!(
+            candidate.join(".env").is_file(),
+            "Fixture package is missing .env"
+        );
+        ensure!(
+            !candidate.join("data").exists(),
+            "Fixture package must not contain data"
+        );
         Ok(candidate)
     })();
     if result.is_err() {
