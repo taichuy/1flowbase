@@ -1,4 +1,4 @@
 interface:
   display_name: "Problem Framing"
-  short_description: "对齐产品诊断与需求，以三方向收敛决策与计划"
-  default_prompt: "使用 $problem-framing 先推理后结论，按现状、需求分析、保守 / 平衡 / 激进、最终建议的固定结构对齐需求，再选择 Single Issue 或两层 Issue Tree。"
+  short_description: "从现状与因果关系比较三个结果，推荐一个方向"
+  default_prompt: "使用 $problem-framing 说明现状、用户需求与两者差距的原因，再比较三个方案的结果，结合环境、原则、任务给出唯一建议。"

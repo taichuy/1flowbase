@@ -10,6 +10,8 @@
 
 ## API Consumption
 
+确需兼容旧字段时，在兼容处最近行标 `@field-contract-compat source=... alias=... remove_by=yyyy-mm-dd`，附移除计划和测试，由 `repo-hygiene` 报 warning。
+
 - `api-client` 负责 DTO、transport、协议解析；feature 请求层负责 query key、query/mutation 和消费编排；组件负责展示与交互。共享层按真实复用提取，不为单次调用增加转发层。
 - 前端可维护选择、展开、表单草稿、加载与连接状态，也可按 contract 格式化展示；不得补造后端缺失的业务字段、权限、运行结果或错误原因。
 - 缺字段或契约互相矛盾时保留缺口证据，交给对应后端 owner；不通过默认值、字段别名、局部缓存或旧协议 fallback 掩盖。旧测试不能单独构成兼容要求。

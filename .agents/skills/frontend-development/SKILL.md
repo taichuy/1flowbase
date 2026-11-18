@@ -13,7 +13,7 @@ description: 实现或审查 1flowbase web/ 页面、交互、schema UI、样式
 
 ## Design Truth and Architecture
 
-[DESIGN.md](../../../DESIGN.md) 是前端设计真值；先理解第 1–2 节的真值关系和视觉层，再按任务定位章节。精确 token 值和实际组件能力查它指向的源码，不从偶然页面样式反推全局设计。skill 只说明如何定位、应用和验证，不维护第二份 recipe / 状态色 / 断点规范。
+[DESIGN.md](../../../DESIGN.md) 是前端设计真值；按页面所属视觉层定位相关章节。精确 token 值和实际组件能力查它指向的源码，不从偶然页面样式反推全局设计。skill 只说明如何定位、应用和验证，不维护第二份 recipe / 状态色 / 断点规范。
 
 ```text
 设计约束：DESIGN.md → theme / token → shared UI → feature 局部实现
@@ -40,12 +40,11 @@ description: 实现或审查 1flowbase web/ 页面、交互、schema UI、样式
 | 样式、第三方 slot、共享组件覆写 | [visual-baseline](references/visual-baseline.md)；运行态再读 [browser-verification](references/browser-verification.md) |
 | 报表、ECharts、JS Block chart | [chart-reporting](references/chart-reporting.md) |
 | 新公共 props、抽象、重复防御或转发层 | [design-rules](../_shared/design-rules.md)；具体坏味道查 [anti-patterns](references/anti-patterns.md) |
-| 实现完成、直接风险自查 | [review-checklist](references/review-checklist.md) |
+| 明确请求前端 review | [review-checklist](references/review-checklist.md) |
 | 修改本 skill 或检查合法例外 | [pressure-scenarios](examples/pressure-scenarios.md) |
 
-## Execution and Handoff
+## 先看页面，再集中验收
 
-- 先确认主路径、详情规则、反馈位置与 owner，再落组件与样式；缺后端 DTO / 聚合时联动 `backend-development`，不添加前端兼容推断。
-- 测试资源沿用仓库包装器与 `.1flowbase.verify.local.json`，不写死并发；执行成本、停止与证据复用见 `test-driven-development`。
-- 完成开发后使用 `qa-evaluation`；交付保留页面 / 组件 / API 消费链、关键决策与证据指针，已有 AC 逐点映射，不复制代码或重述 diff。
-- 当前结果与直接风险证据充分即停止；缺证据明确标为未验证，不自动升级全仓 lint / build / 浏览器回归。
+先用现有组件走通用户的主操作，再在最近的样式 owner 调整布局；上层或全局样式的改动先取得同意。页面只展示用户能理解的业务状态；内部提示词、mock、原始异常和调试对象不进入正式 UI，开发辅助信息仅在 `import.meta.env.DEV` 下展示。缺少业务状态或跨页排序结果时回到后端查询，不在页面拼装兼容层。
+
+用户说「先看效果」时，展示目标页面或交互结果就停。受保护页面使用 [page-debug](references/browser-verification.md)；没有运行页面就直接说看了什么，不把补全测试当作预览的前置条件。确认效果后，按受影响场景集中回归；正式验收用 `qa-evaluation`。

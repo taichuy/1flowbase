@@ -40,3 +40,7 @@
 ## Smell Check
 
 如果你一改协议字段名就要改核心业务规则，说明边界已经脏了。
+
+## HTTP 出口
+
+宿主外部请求从 Host-owned Network Egress 取得 client，并声明消费者语义；业务模块不直接构造 `reqwest::Client`。确需独立构造的协议安全边界由 `repo-hygiene` 窄白名单记录 owner 和原因。

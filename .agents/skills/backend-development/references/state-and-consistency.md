@@ -34,3 +34,9 @@
 - 只有代码路径，没有显式状态规则
 - 没有办法回答“为什么现在是这个状态”
 - 一个面板读 snapshot，另一个面板读 latest record，用户却以为它们代表同一次运行
+
+## 涉及用户、作用域或业务文件时
+
+- 删除用户清理登录身份、角色绑定与凭据，保留业务资源、会话与账务历史。历史归属 UUID 可指向已删除用户；查询不以用户存在为条件，姓名 / 账号可空。
+- session 持有 `tenant_id`、`current_workspace_id`，登录结果和请求中间件传递后者，一次请求对应一个 workspace。建模 `scope_kind` 为 `workspace` 或 `system`，物理路由列用 `scope_id`，system 用 `SYSTEM_SCOPE_ID`。应用标识是 `application_id`，不另设 team/app 别名。
+- 业务二进制归 `storage-object`，不同于插件包；默认本地根是 `api/storage`，`rustfs` 非默认。`root/system` 管 `file_storages` 及绑定，workspace 创建和消费可见 `file_tables`。记录保留上传时的 `storage_id`，改绑只影响新上传。
