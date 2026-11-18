@@ -65,7 +65,7 @@ pub fn handle_cli(
                 let pending = Manifest::read(&source)?;
                 let incoming = work.join(uuid::Uuid::now_v7().to_string());
                 let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
-                let next = runtime.block_on(async { online::download(&client()?, &pending, &incoming, online::RELEASES).await });
+                let next = runtime.block_on(async { online::download(&client()?, &pending, &incoming, &online::ReleaseSource::Official).await });
                 match next {
                     Ok(Some(candidate)) => {
                         let new = Manifest::read(&candidate)?;
@@ -82,7 +82,7 @@ pub fn handle_cli(
                 old.verify(&target)?;
                 let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
                 let candidate = runtime.block_on(async {
-                    online::download(&client()?, &old, &work, online::RELEASES).await
+                    online::download(&client()?, &old, &work, &online::ReleaseSource::Official).await
                 })?;
                 let Some(candidate) = candidate else { println!("Already up to date / 当前已是最新版本"); return Ok(true); };
                 let new = Manifest::read(&candidate)?;
@@ -90,6 +90,11 @@ pub fn handle_cli(
                 install(&target, &work, &candidate, old, new, stopped, validate_startup)?;
             }
             println!("Update complete. Configuration and data preserved; no backup created.\n更新完成，配置和数据已保留，未创建备份。请正常启动 1flowbase。");
+        }
+        "--verify-update-archive" => {
+            ensure!(arguments.len() == 3, "Usage: --verify-update-archive <baseline-directory> <loopback-feed>");
+            let package = verify_update_archive(Path::new(&arguments[1]), &arguments[2])?;
+            println!("Verified update package: {}", package.display());
         }
         // Explicit package application is also used by the cross-platform real-package tests.
         "--apply-update" => {
@@ -99,6 +104,36 @@ pub fn handle_cli(
         _ => bail!("Unknown argument. Launch normally, or run upgrade.cmd / upgrade.sh to update this installation."),
     }
     Ok(true)
+}
+
+// Keep fixture transport separate from the official HTTPS updater. The download
+// and archive policy is shared; only this entry point may choose a fixture feed.
+fn verify_update_archive(baseline: &Path, feed: &str) -> Result<PathBuf> {
+    let source = online::ReleaseSource::loopback(feed)?;
+    let old = Manifest::read(baseline)?;
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(180))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            attempt.error("Update archive fixtures must not redirect")
+        }))
+        .build()?;
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+    let scratch = std::env::temp_dir().join(format!("1flowbase-verify-{}", uuid::Uuid::now_v7()));
+    fs::create_dir(&scratch)?;
+    let result = (|| {
+        private_dir(&scratch)?;
+        let candidate = runtime
+            .block_on(online::download(&client, &old, &scratch.join("download"), &source))?
+            .context("Fixture did not offer a newer package")?;
+        ensure!(candidate.join(".env").is_file(), "Fixture package is missing .env");
+        ensure!(!candidate.join("data").exists(), "Fixture package must not contain data");
+        Ok(candidate)
+    })();
+    if result.is_err() {
+        files::remove(&scratch)?;
+    }
+    result
 }
 
 fn lock(path: &Path) -> Result<File> {

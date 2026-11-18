@@ -19,27 +19,64 @@ async function freePort() {
   await new Promise(resolve => server.close(resolve));
   return port;
 }
-async function smoke(stage, evidence) {
+async function smoke(stage, evidence, { verifyBootstrapAndTcp = false } = {}) {
   assert.notEqual(process.platform, 'win32', 'Windows graceful console shutdown requires a native/manual test');
   stage = path.resolve(stage);
   evidence = path.resolve(evidence);
   fs.mkdirSync(evidence, { recursive: true, mode: 0o700 });
-  const data = path.join(evidence, 'data');
+  const data = path.join(evidence, verifyBootstrapAndTcp ? 'data with spaces' : 'data');
   assert.ok(!fs.existsSync(data), 'Use a fresh evidence directory');
   const httpPort = await freePort();
   let pgPort = await freePort();
   while (pgPort === httpPort) pgPort = await freePort();
   const env = { ...process.env };
   writeEnv(stage, { FLOWBASE_DATA_DIR: data, API_SERVER_ADDR: `127.0.0.1:${httpPort}`, API_DATABASE_URL: `postgres://postgres:__GENERATE__@127.0.0.1:${pgPort}/1flowbase`, API_PROVIDER_SECRET_MASTER_KEY: '__GENERATE__', API_AUTH_PUBLIC_ORIGIN: `http://127.0.0.1:${httpPort}`, API_ALLOWED_ORIGINS: `http://127.0.0.1:${httpPort}`, FLOWBASE_OPEN_BROWSER: 'false', API_BUSINESS_FILE_LOCAL_ROOT: path.join(data, 'api/storage'), API_PROVIDER_INSTALL_ROOT: path.join(data, 'api/plugins'), API_HOST_EXTENSION_DROPIN_ROOT: path.join(data, 'api/plugins/host-extension/dropins'), API_MCP_TEMPLATE_LIBRARY_ROOT: path.join(data, 'api/storage/extension-center/mcp'), API_SYSTEM_BACKUP_REPOSITORY_ROOT: path.join(data, 'backups') });
+  const bootstrap = verifyBootstrapAndTcp ? {
+    BOOTSTRAP_ROOT_ACCOUNT: 'native-config-probe',
+    BOOTSTRAP_ROOT_EMAIL: 'native-config-probe@example.com',
+    BOOTSTRAP_ROOT_PASSWORD: 'Native-env-probe123',
+  } : null;
+  if (bootstrap) writeEnv(stage, bootstrap);
   const executable = path.join(stage, '1flowbase');
   const origin = `http://127.0.0.1:${httpPort}`;
   let child;
   let exited;
   let settings;
   function sql(query) {
-    const result = spawnSync(path.join(stage, 'postgres/bin/psql'), ['-X', '-w', '-h', '127.0.0.1', '-p', String(pgPort), '-U', 'postgres', '-d', '1flowbase', '-v', 'ON_ERROR_STOP=1', '-Atc', query], { env: { ...process.env, PGPASSWORD: settings.postgres_password }, encoding: 'utf8' });
+    const pgEnv = { ...process.env, PGPASSWORD: settings.postgres_password };
+    delete pgEnv.PGSERVICE;
+    delete pgEnv.PGOPTIONS;
+    const result = spawnSync(path.join(stage, 'postgres/bin/psql'), ['-X', '-w', '-h', '127.0.0.1', '-p', String(pgPort), '-U', 'postgres', '-d', '1flowbase', '-v', 'ON_ERROR_STOP=1', '-Atc', query], { env: pgEnv, timeout: 15000, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
     return result.stdout.trim();
+  }
+  async function checkOwner(account, password) {
+    const session = await openTemporaryOwnerSession({ apiBaseUrl: origin, account, password });
+    try {
+      const me = await fetch(origin + '/api/console/me', { headers: { cookie: session.cookie }, signal: AbortSignal.timeout(10000) });
+      assert.equal(me.status, 200, 'Authenticated console route must remain reachable');
+      if (bootstrap) {
+        const { data: identity } = await me.json();
+        assert.equal(identity.account, bootstrap.BOOTSTRAP_ROOT_ACCOUNT);
+        assert.equal(identity.email, bootstrap.BOOTSTRAP_ROOT_EMAIL);
+      }
+    } finally { await session.dispose(); }
+  }
+  async function checkWrongPassword() {
+    let status;
+    let code;
+    await assert.rejects(async () => {
+      const session = await openTemporaryOwnerSession({
+        apiBaseUrl: origin, account: bootstrap.BOOTSTRAP_ROOT_ACCOUNT, password: 'wrong-password',
+        fetchImpl: async (url, init) => {
+          const response = await fetch(url, { ...init, signal: AbortSignal.timeout(10000) });
+          status = response.status;
+          if (!response.ok) code = (await response.clone().json()).code;
+          return response;
+        },
+      });
+      await session.dispose();
+    }, () => status === 401 && code === 'not_authenticated', 'Wrong bootstrap password must be refused by authentication');
   }
   async function stop() {
     if (!child) return;
@@ -75,13 +112,15 @@ async function smoke(stage, evidence) {
       assert.equal((await fetch(origin + '/api/native-smoke-missing', { headers: { accept: 'text/html' } })).status, 404);
       const values = readEnv(stage);
       const current = { postgres_password: decodeURIComponent(new URL(values.API_DATABASE_URL).password), root_password: values.BOOTSTRAP_ROOT_PASSWORD, root_account: values.BOOTSTRAP_ROOT_ACCOUNT, master_key: values.API_PROVIDER_SECRET_MASTER_KEY };
+      if (iteration === 0) settings = current;
+      if (bootstrap) {
+        assert.equal(sql(`SELECT current_setting('unix_socket_directories') = '', current_setting('listen_addresses') = '127.0.0.1', current_setting('port') = '${pgPort}'`), 't|t|t', 'Bundled PostgreSQL must listen only on the configured loopback TCP port');
+        await checkOwner(bootstrap.BOOTSTRAP_ROOT_ACCOUNT, bootstrap.BOOTSTRAP_ROOT_PASSWORD);
+        await checkWrongPassword();
+      } else if (iteration === 0) {
+        await checkOwner(settings.root_account, settings.root_password);
+      }
       if (iteration === 0) {
-        settings = current;
-        const session = await openTemporaryOwnerSession({ apiBaseUrl: origin, account: settings.root_account, password: settings.root_password });
-        try {
-          const me = await fetch(origin + '/api/console/me', { headers: { cookie: session.cookie }, signal: AbortSignal.timeout(10000) });
-          assert.equal(me.status, 200, 'Authenticated console route must remain reachable');
-        } finally { await session.dispose(); }
         sql('CREATE TABLE native_release_smoke (value text); INSERT INTO native_release_smoke VALUES (\'persisted\')');
         const backup = path.join(evidence, 'sentinel.dump');
         const pgEnv = { ...process.env, PGPASSWORD: settings.postgres_password };
@@ -112,6 +151,7 @@ async function smoke(stage, evidence) {
       await stop();
     }
     const result = { platform: process.platform, arch: process.arch, http_port: httpPort, postgres_port: pgPort, passed: ['first-start', 'root-login-and-session-cleanup', 'pg-dump-restore', 'static-index', 'spa-deep-link', 'api-404', 'instance-lock', 'postgres-port-conflict', 'restart-persistence', 'stable-secrets', 'graceful-stop'], archive_defaults: { http_port: 7800, postgres_port: 35432 } };
+    if (bootstrap) result.passed.push('tcp-only-on-first-start-and-reopen', 'configured-root-and-password-refusal-on-first-start-and-reopen');
     fs.writeFileSync(path.join(evidence, 'result.json'), JSON.stringify(result, null, 2) + '\n');
     console.log(JSON.stringify(result));
   } finally {
@@ -123,5 +163,5 @@ async function smoke(stage, evidence) {
     }
   }
 }
-if (require.main === module) smoke(process.argv[2], process.argv[3]).catch(error => { console.error(error.message); process.exitCode = 1; });
+if (require.main === module) smoke(process.argv[2], process.argv[3], { verifyBootstrapAndTcp: process.argv[4] === '--verify-bootstrap-and-tcp' }).catch(error => { console.error(error.message); process.exitCode = 1; });
 module.exports = { smoke };

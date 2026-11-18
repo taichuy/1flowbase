@@ -12,6 +12,10 @@ on:
         description: Optional new Release tag (for example v0.5.8-native.1); requires all targets
         type: string
         required: false
+      rust_cold:
+        description: Validate macos-x64 without Rust caches (no release tag)
+        type: boolean
+        default: false
       publish:
         description: Publish the validated Release as a prerelease (otherwise keep it as a draft)
         type: boolean
@@ -53,6 +57,7 @@ jobs:
     with:
       target: ${{ inputs.target }}
       release_tag: ${{ inputs.release_tag }}
+      rust_cold: ${{ inputs.rust_cold }}
 
   release:
     if: inputs.release_tag != '' && inputs.target == 'all'

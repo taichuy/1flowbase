@@ -9,6 +9,9 @@ on:
       release_tag:
         type: string
         default: ''
+      rust_cold:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -27,9 +30,12 @@ jobs:
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
           RELEASE_TARGET: ${{ inputs.target }}
+          RUST_COLD: ${{ inputs.rust_cold }}
         run: |
           node <<'NODE'
-          require('./scripts/node/native-release/plan.js').validateBuildInputs({ target: process.env.RELEASE_TARGET, tag: process.env.RELEASE_TAG });
+          const { RELEASE_TARGET: target, RELEASE_TAG: tag, RUST_COLD: cold } = process.env;
+          require('./scripts/node/native-release/plan.js').validateBuildInputs({ target, tag });
+          if (cold === 'true' && (target !== 'macos-x64' || tag)) throw new Error('Rust cold validation requires macos-x64 and no release tag');
           NODE
       - name: Prepare pinned bootstrap resources
         run: node scripts/node/native-release/resources.js tmp/native-resources
@@ -53,6 +59,43 @@ jobs:
           if (!include.length) throw new Error('Unsupported target');
           console.log('matrix=' + JSON.stringify({include}));
           NODE
+
+  intel-source:
+    if: inputs.target == 'all' || inputs.target == 'macos-x64'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      RUSTUP_TOOLCHAIN: '1.99.0'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24.22.1'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.0'
+      - name: Verify native sources at the candidate SHA
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          root=tmp/test-governance/native-release/source
+          mkdir -p "$root"
+          echo "$GITHUB_SHA" > "$root/sha.txt"
+          node --test scripts/node/native-release/_tests/*.test.js scripts/node/container-image-security/_tests/restore-cargo-inputs.test.js | tee "$root/node.log"
+          cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution --timings 2>&1 | tee "$root/rust.log"
+          cp api/target/cargo-timings/cargo-timing.html "$root/"
+          node - "$root/rust.log" <<'NODE'
+          const text = require('node:fs').readFileSync(process.argv[2], 'utf8');
+          const summary = /^test result: ok\. (\d+) passed; 0 failed; 3 ignored;/m.exec(text);
+          if (!summary || Number(summary[1]) < 17) throw new Error('Incomplete native source test evidence');
+          NODE
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: native-intel-source-evidence
+          path: tmp/test-governance/native-release/source
+          if-no-files-found: ignore
 
   build:
     needs: select
@@ -103,7 +146,22 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `fingerprint=${fingerprint}\n`);
           console.log(JSON.stringify({ compiler, fingerprint, cpus: os.availableParallelism(), memory_bytes: os.totalmem() }));
           NODE
+      - name: Start with empty Rust caches and no compiler wrapper
+        if: inputs.rust_cold
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(uname -m)" = x86_64
+          test ! -e api/target
+          cold_home=$(mktemp -d "$RUNNER_TEMP/native-cargo.XXXXXXXX")
+          {
+            echo "CARGO_HOME=$cold_home"
+            echo "CARGO_TARGET_DIR=$PWD/api/target"
+            echo "RUSTC_WRAPPER="
+            echo "RUSTC_WORKSPACE_WRAPPER="
+          } >> "$GITHUB_ENV"
+          node -e 'require("node:fs").writeFileSync("tmp/test-governance/native-release/backend/cold.json", JSON.stringify({sha: process.env.GITHUB_SHA, target_present: false, initial_cargo_home_entries: require("node:fs").readdirSync(process.argv[1])}) + "\n")' "$cold_home"
       - name: Restore native Cargo downloads
+        if: ${{ !inputs.rust_cold }}
         id: cargo_downloads
         uses: actions/cache/restore@v5
         with:
@@ -114,6 +172,7 @@ jobs:
           restore-keys: |
             native-cargo-v1-${{ runner.os }}-${{ matrix.arch }}-
       - name: Restore native release target
+        if: ${{ !inputs.rust_cold }}
         id: release_target
         uses: actions/cache/restore@v5
         with:
@@ -125,6 +184,7 @@ jobs:
             native-target-v1-${{ matrix.target }}-${{ steps.compiler.outputs.fingerprint }}-${{ hashFiles('scripts/node/container-image-security/restore-cargo-inputs.js', '.cargo/config*', 'api/.cargo/config*') }}-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml', 'api/rust-toolchain.toml') }}-
             native-target-v1-${{ matrix.target }}-${{ steps.compiler.outputs.fingerprint }}-${{ hashFiles('scripts/node/container-image-security/restore-cargo-inputs.js', '.cargo/config*', 'api/.cargo/config*') }}-
       - name: Restore native checkout timestamps
+        if: ${{ !inputs.rust_cold }}
         run: node scripts/node/container-image-security/restore-cargo-inputs.js api/target/cargo-inputs.json | tee tmp/test-governance/native-release/backend/input-reuse.json
       - name: Fetch pinned PostgreSQL
         env:
@@ -136,8 +196,9 @@ jobs:
           const root = fetchPostgres(process.env.NATIVE_TARGET, 'tmp/native-postgres');
           fs.appendFileSync(process.env.GITHUB_ENV, `FLOWBASE_TEST_POSTGRES_ROOT=${root}\n`);
           NODE
-      - name: Test native behavior and build backend
-        id: backend
+      - name: Test native behavior (legacy platforms)
+        if: matrix.target != 'macos-x64'
+        id: native_tests
         run: |
           mkdir -p tmp/test-governance/native-release
           started=$(date +%s)
@@ -149,11 +210,16 @@ jobs:
           cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution::tests::bundled_postgres_uses_tcp_only -- --ignored --exact
           tested=$(date +%s)
           echo "test_seconds=$((tested - started))" >> "$GITHUB_OUTPUT"
+      - name: Build release binaries
+        id: backend
+        run: |
+          mkdir -p tmp/test-governance/native-release/backend
+          started=$(date +%s)
           node scripts/node/native-release/build/measure.js tmp/test-governance/native-release/backend/build cargo build --manifest-path api/Cargo.toml --locked --release -p api-server --bin api-server --bin system_recovery --timings
           cp api/target/cargo-timings/cargo-timing.html tmp/test-governance/native-release/backend/build-cargo-timing.html
-          echo "build_seconds=$(($(date +%s) - tested))" >> "$GITHUB_OUTPUT"
+          echo "build_seconds=$(($(date +%s) - started))" >> "$GITHUB_OUTPUT"
       - name: Save native Cargo downloads
-        if: ${{ !cancelled() && steps.cargo_downloads.outcome == 'success' && steps.cargo_downloads.outputs.cache-hit != 'true' }}
+        if: ${{ !inputs.rust_cold && !cancelled() && steps.cargo_downloads.outcome == 'success' && steps.cargo_downloads.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5
         with:
           path: |
@@ -161,7 +227,7 @@ jobs:
             ${{ env.CARGO_HOME }}/git
           key: ${{ steps.cargo_downloads.outputs.cache-primary-key }}
       - name: Save native release target
-        if: steps.backend.outcome == 'success' && steps.release_target.outputs.cache-hit != 'true'
+        if: ${{ !inputs.rust_cold && steps.backend.outcome == 'success' && steps.release_target.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v5
         with:
           path: |
@@ -175,7 +241,7 @@ jobs:
           CACHE_EXACT_HIT: ${{ steps.release_target.outputs.cache-hit }}
           TARGET_CACHE_KEY: ${{ steps.release_target.outputs.cache-matched-key }}
           DOWNLOAD_CACHE_KEY: ${{ steps.cargo_downloads.outputs.cache-matched-key }}
-          TEST_SECONDS: ${{ steps.backend.outputs.test_seconds }}
+          TEST_SECONDS: ${{ steps.native_tests.outputs.test_seconds }}
           BUILD_SECONDS: ${{ steps.backend.outputs.build_seconds }}
           BUILD_OUTCOME: ${{ steps.backend.outcome }}
         run: |
@@ -196,6 +262,7 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Native backend (${target})\n\n\x60${JSON.stringify(report)}\x60\n\nTarget and downloads report their matched keys; null means a cache miss.\n`);
           NODE
       - name: Preserve native backend artifacts
+        if: matrix.target != 'macos-x64'
         uses: actions/upload-artifact@v7
         with:
           name: native-backend-${{ matrix.target }}
@@ -233,6 +300,7 @@ jobs:
           NATIVE_TARGET: ${{ matrix.target }}
         run: node scripts/node/native-release/unpack.js "tmp/native-release/1flowbase-$NATIVE_TARGET" tmp/native-extracted
       - name: Verify actual archive through the updater download and extraction path
+        if: matrix.target != 'macos-x64'
         env:
           NATIVE_TARGET: ${{ matrix.target }}
           NATIVE_PLATFORM: ${{ matrix.platform }}
@@ -241,11 +309,15 @@ jobs:
           export FLOWBASE_TEST_ARCHIVE_PATH="$(node -e 'console.log(require("node:path").resolve("tmp/native-release/1flowbase-" + process.env.NATIVE_TARGET + (process.env.NATIVE_PLATFORM === "windows" ? ".zip" : ".tar.gz")))')"
           cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution::upgrade::online::tests::packaged_archive_downloads_and_extracts -- --ignored --exact
       - name: Verify packaged application bootstrap and reopen
+        if: matrix.target != 'macos-x64'
         env:
           NATIVE_TARGET: ${{ matrix.target }}
         run: |
           export FLOWBASE_TEST_PACKAGE_ROOT="$(node -e 'console.log(require("node:path").resolve("tmp/native-extracted/1flowbase-" + process.env.NATIVE_TARGET))')"
           cargo test --manifest-path api/Cargo.toml --release --locked -p api-server --bin api-server native_distribution::tests::bootstrap::packaged_application_bootstraps_and_reopens -- --ignored --exact
+      - name: Verify Intel archive through the packaged updater
+        if: matrix.target == 'macos-x64'
+        run: node scripts/node/native-release/online-upgrade-smoke.js tmp/native-extracted/1flowbase-macos-x64 tmp/native-release/1flowbase-macos-x64.tar.gz tmp/test-governance/native-release/online
       - name: Verify direct update, retry and relative-path launcher
         env:
           NATIVE_TARGET: ${{ matrix.target }}
@@ -259,11 +331,40 @@ jobs:
         with:
           node-version: '26.7.0'
       - name: Verify startup, restart and shutdown
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && matrix.target != 'macos-x64'
         env:
           NATIVE_TARGET: ${{ matrix.target }}
         run: node scripts/node/native-release/smoke.js "tmp/native-extracted/1flowbase-$NATIVE_TARGET" tmp/test-governance/native-release/smoke
+      - name: Verify Intel startup, TCP-only PostgreSQL, restart and shutdown
+        if: matrix.target == 'macos-x64'
+        run: |
+          stage=$(node -p 'require("./tmp/test-governance/native-release/online/result.json").package_root')
+          node scripts/node/native-release/smoke.js "$stage" tmp/test-governance/native-release/smoke --verify-bootstrap-and-tcp
+      - name: Verify the tested Intel archive before staging
+        if: matrix.target == 'macos-x64'
+        working-directory: tmp/native-release
+        run: shasum -a 256 -c 1flowbase-macos-x64.tar.gz.sha256
+      - name: Preserve verified Intel backend binaries
+        if: matrix.target == 'macos-x64'
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-backend-macos-x64
+          path: |
+            api/target/release/api-server
+            api/target/release/system_recovery
+          if-no-files-found: error
+      - name: Stage the verified Intel candidate (not a release artifact)
+        if: matrix.target == 'macos-x64'
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-intel-candidate
+          path: |
+            tmp/native-release/1flowbase-macos-x64.tar.gz
+            tmp/native-release/1flowbase-macos-x64.tar.gz.sha256
+          compression-level: 0
+          if-no-files-found: error
       - uses: actions/upload-artifact@v7
+        if: matrix.target != 'macos-x64'
         with:
           name: 1flowbase-${{ matrix.target }}
           path: |
@@ -284,3 +385,22 @@ jobs:
             tmp/test-governance/native-release/backend/*.json
             tmp/test-governance/native-release/backend/*.log
           if-no-files-found: ignore
+
+  promote-intel:
+    needs: [build, intel-source]
+    if: ${{ (inputs.target == 'all' || inputs.target == 'macos-x64') && needs.build.result == 'success' && needs.intel-source.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: native-intel-candidate
+          path: tmp/native-intel-candidate
+      - name: Verify promoted bytes against the Intel acceptance digest
+        working-directory: tmp/native-intel-candidate
+        run: sha256sum -c 1flowbase-macos-x64.tar.gz.sha256
+      - uses: actions/upload-artifact@v7
+        with:
+          name: 1flowbase-macos-x64
+          path: tmp/native-intel-candidate/1flowbase-macos-x64.tar.gz
+          compression-level: 0
+          if-no-files-found: error
