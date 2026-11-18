@@ -427,7 +427,7 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
     expect(binding.queryByRole('alert')).not.toBeInTheDocument();
   });
   fireEvent.click(binding.getByRole('button', { name: 'Add command' }));
-  const dialog = await waitFor(() => screen.getByRole('dialog'));
+  const dialog = await screen.findByRole('dialog');
   await waitFor(() =>
     expect(within(dialog).getByRole('button', { name: 'Submit' })).toBeEnabled()
   );
@@ -447,11 +447,9 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
     within(dialog).getByRole('combobox', { name: 'Target custom event' })
   );
   fireEvent.click(
-    await waitFor(() =>
-      screen.getByText('Invoice requested', {
-        selector: '.ant-select-item-option-content'
-      })
-    )
+    await screen.findByText('Invoice requested', {
+      selector: '.ant-select-item-option-content'
+    })
   );
   fireEvent.mouseDown(
     await waitFor(() =>
@@ -459,11 +457,9 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
     )
   );
   fireEvent.click(
-    await waitFor(() =>
-      screen.getByText('/arguments', {
-        selector: '.ant-select-item-option-content'
-      })
-    )
+    await screen.findByText('/arguments', {
+      selector: '.ant-select-item-option-content'
+    })
   );
   fireEvent.click(within(dialog).getByRole('button', { name: 'Submit' }));
   await waitFor(() =>
@@ -524,9 +520,7 @@ test('E8 adds, persists, reopens, edits and removes a custom event slash command
   });
   fireEvent.click(within(edit).getByRole('button', { name: 'Submit' }));
   expect(
-    await waitFor(() =>
-      binding.getByRole('row', { name: /Updated invoice processing/ })
-    )
+    await binding.findByRole('row', { name: /Updated invoice processing/ })
   ).toBeInTheDocument();
   fireEvent.click(binding.getByRole('switch', { name: 'Enable invoice' }));
   await act(async () => {
