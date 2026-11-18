@@ -163,31 +163,30 @@ describe('McpManagementPanel', () => {
     await waitFor(() => expect(dialog).not.toBeInTheDocument());
   });
 
-  test('AC-001 AC-002 fills a temporary API key into the common MCP JSON tab', async () => {
+  test('AC-001 AC-002 shows the full common MCP JSON and fills a temporary API key', async () => {
     await renderPanelWithMountedTool();
 
     await click(screen.getByRole('button', { name: '连接客户端' }));
 
     expect(await screen.findByText('MCP 客户端配置')).toBeInTheDocument();
-    expect(screen.getByRole('dialog')).toHaveTextContent(
-      `${window.location.origin}/api/mcp/ops_mcp`
-    );
+    const readConfiguration = () =>
+      JSON.parse(screen.getByLabelText('完整 JSON 配置 JSON').textContent ?? '');
+    const expectedConfiguration = (token: string) => ({
+      mcpServers: {
+        ops_mcp: {
+          serverUrl: `${window.location.origin}/api/mcp/ops_mcp`,
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      }
+    });
+
+    expect(readConfiguration()).toEqual(expectedConfiguration('YOUR_API_TOKEN'));
+
     await change(screen.getByLabelText('API Key'), {
       target: { value: 'test-secret-key' }
     });
 
-    const configuration = JSON.stringify(
-      {
-        type: 'http',
-        url: `${window.location.origin}/api/mcp/ops_mcp`,
-        headers: { Authorization: 'Bearer test-secret-key' }
-      },
-      null,
-      2
-    );
-    expect(
-      JSON.parse(screen.getByLabelText('完整 JSON 配置 JSON').textContent ?? '')
-    ).toEqual(JSON.parse(configuration));
+    expect(readConfiguration()).toEqual(expectedConfiguration('test-secret-key'));
     expect(
       screen.getByRole('button', { name: '复制完整 JSON 配置' })
     ).toBeInTheDocument();
