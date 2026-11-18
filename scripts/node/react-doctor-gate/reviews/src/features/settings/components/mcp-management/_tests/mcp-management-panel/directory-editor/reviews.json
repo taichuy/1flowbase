@@ -1,7 +1,7 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/fixture.tsx","sha256":"602e1ee10307ced06791297916685cb2a4b3cf6c8b68fc7ce25944ec748b530d"},{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/instance-contract.test.tsx","sha256":"ba812b42cc13e59c680c6b8aea82afc09b7a9bca9c2e76a5aabe99c8d031159b"},{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/tool-editor.test.tsx","sha256":"fcbe775aa76a0e4712d1c0bb76f080cda7e96d9f83b8c9e24b3056500a741d87"}]
+    [{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/fixture.tsx","sha256":"602e1ee10307ced06791297916685cb2a4b3cf6c8b68fc7ce25944ec748b530d"},{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/instance-contract.test.tsx","sha256":"8d39e642ae3160521fc39d4d242036437083bb55a5451e7f2feb1e8122ac0e5e"},{"file":"web/app/src/features/settings/components/mcp-management/_tests/mcp-management-panel/directory-editor/tool-editor.test.tsx","sha256":"fcbe775aa76a0e4712d1c0bb76f080cda7e96d9f83b8c9e24b3056500a741d87"}]
   ],
   "reviews": [
     {
