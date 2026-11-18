@@ -11,6 +11,7 @@ import {
   sampleRunOverview
 } from './floating-windows.support';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -218,10 +219,14 @@ describe('ApplicationLogsPage - floating windows shell', () => {
     expect(window.location.search).toBe('');
   });
   test('collects four backend-associated calls in the original detail and opens each original trace', async () => {
-    runtimeApi.fetchApplicationRunOverview.mockResolvedValue({
+    const overview = {
       ...sampleRunOverview(),
       log_conversation_id: 'conversation-1'
-    });
+    };
+    const initialOverview = Promise.withResolvers<typeof overview>();
+    runtimeApi.fetchApplicationRunOverview
+      .mockResolvedValue(overview)
+      .mockReturnValueOnce(initialOverview.promise);
     runtimeApi.fetchApplicationRuns.mockResolvedValue(
       applicationRunsPage([
         {
@@ -265,17 +270,19 @@ describe('ApplicationLogsPage - floating windows shell', () => {
         }))
       )
     );
-    runtimeApi.fetchApplicationLogConversationMessages.mockResolvedValue(
-      conversationMessagesPage(
-        [1, 2, 3, 4].map((n) => ({
-          id: `message-${n}`,
-          flow_run_id: `run-${n}`,
-          role: 'assistant' as const,
-          content: `调用 ${n}`,
-          sequence: n
-        }))
-      )
+    const conversation = conversationMessagesPage(
+      [1, 2, 3, 4].map((n) => ({
+        id: `message-${n}`,
+        flow_run_id: `run-${n}`,
+        role: 'assistant' as const,
+        content: `调用 ${n}`,
+        sequence: n
+      }))
     );
+    const initialConversation = Promise.withResolvers<typeof conversation>();
+    runtimeApi.fetchApplicationLogConversationMessages
+      .mockResolvedValue(conversation)
+      .mockReturnValueOnce(initialConversation.promise);
     render(
       <AppProviders>
         <AntdApp>
@@ -296,7 +303,23 @@ describe('ApplicationLogsPage - floating windows shell', () => {
         name: '查看运行详情'
       })
     );
-    const links = await screen.findAllByRole('button', {
+    const detail = await screen.findByTestId(
+      'application-logs-floating-run-detail'
+    );
+    expect(runtimeApi.fetchApplicationRunOverview).toHaveBeenCalledWith(
+      'app-1',
+      'run-1'
+    );
+    await act(async () => initialOverview.resolve(overview));
+    await waitFor(() =>
+      expect(runtimeApi.fetchApplicationLogConversationMessages).toHaveBeenCalledWith(
+        'app-1',
+        'conversation-1',
+        { aroundRunId: 'run-1', limit: 5 }
+      )
+    );
+    await act(async () => initialConversation.resolve(conversation));
+    const links = await within(detail).findAllByRole('button', {
       name: '查看对话日志'
     });
     expect(links).toHaveLength(4);
