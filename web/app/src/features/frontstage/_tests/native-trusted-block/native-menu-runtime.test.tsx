@@ -1,4 +1,11 @@
-import { fireEvent, render, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  getConfig,
+  render,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { createRef, type ComponentType, type Ref } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -43,49 +50,71 @@ describe('native block Menu runtime adapter', () => {
     const menuRef = createRef<MenuRef>();
     document.body.append(root);
 
-    render(
-      <FrontstageNativeTrustedBlockPortalHost
-        root={root}
-        renderEpoch="menu:controlled"
-        plan={createPlan()}
-        component={() => (
-          <Menu
-            ref={menuRef}
-            mode="horizontal"
-            openKeys={['features']}
-            items={[
-              {
-                key: 'features',
-                label: 'Features',
-                children: [{ key: 'components', label: 'Components' }]
-              }
-            ]}
-            popupRender={() => <div>Custom popup panel</div>}
-          />
-        )}
-        ctx={createContext()}
-      />
-    );
-
-    const shadowRoot = await waitFor(() => root.shadowRoot as ShadowRoot);
-    const layer = await waitFor(() => {
-      const node = shadowRoot.querySelector<HTMLElement>(
-        '[data-flowbase-native-overlay-layer="native-menu-block"]'
-      );
-      expect(node).not.toBeNull();
-      return node as HTMLElement;
+    vi.useFakeTimers({
+      toFake: [
+        'setTimeout',
+        'clearTimeout',
+        'requestAnimationFrame',
+        'cancelAnimationFrame'
+      ]
     });
-    expect(layer).toHaveAttribute('popover', 'manual');
-    await waitFor(() =>
+    try {
+      render(
+        <FrontstageNativeTrustedBlockPortalHost
+          root={root}
+          renderEpoch="menu:controlled"
+          plan={createPlan()}
+          component={() => (
+            <Menu
+              ref={menuRef}
+              mode="horizontal"
+              openKeys={['features']}
+              items={[
+                {
+                  key: 'features',
+                  label: 'Features',
+                  children: [{ key: 'components', label: 'Components' }]
+                }
+              ]}
+              popupRender={() => <div>Custom popup panel</div>}
+            />
+          )}
+          ctx={createContext()}
+        />
+      );
+      const selector =
+        '[data-flowbase-native-overlay-layer="native-menu-block"]';
+      const frameMs = 16;
+      // Drive the real Menu and overlay observer to their next committed frame,
+      // rather than racing motion/portal timers against a wall-clock poll in CI.
+      for (
+        let elapsed = 0;
+        elapsed < getConfig().asyncUtilTimeout;
+        elapsed += frameMs
+      ) {
+        const layer = root.shadowRoot?.querySelector<HTMLElement>(selector);
+        if (
+          layer?.dataset.flowbaseNativeOverlayState === 'open' &&
+          within(layer).queryByText('Custom popup panel')
+        )
+          break;
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(frameMs);
+        });
+      }
+      const layer = root.shadowRoot?.querySelector<HTMLElement>(selector);
+      expect(layer).toBeInTheDocument();
+      if (!layer) throw new Error('Missing native menu overlay layer');
+      expect(layer).toHaveAttribute('popover', 'manual');
       expect(layer).toHaveAttribute(
         'data-flowbase-native-overlay-state',
         'open'
-      )
-    );
-    expect(showPopover).toHaveBeenCalledOnce();
-    await waitFor(() =>
-      expect(within(layer).getByText('Custom popup panel')).toBeVisible()
-    );
+      );
+      expect(showPopover).toHaveBeenCalledOnce();
+      expect(within(layer).getByText('Custom popup panel')).toBeVisible();
+    } finally {
+      vi.useRealTimers();
+    }
     expect(menuRef.current).not.toBeNull();
     expect(Menu.Item).toBe(AntdMenu.Item);
     expect(Menu.SubMenu).toBe(AntdMenu.SubMenu);
@@ -109,11 +138,11 @@ describe('native block Menu runtime adapter', () => {
         component={() => (
           <Menu
             getPopupContainer={(trigger) => {
-                if (authoredContainer.getRootNode() !== trigger.getRootNode()) {
-                  trigger.getRootNode().appendChild(authoredContainer);
-                }
-                return authoredContainer;
-              }}
+              if (authoredContainer.getRootNode() !== trigger.getRootNode()) {
+                trigger.getRootNode().appendChild(authoredContainer);
+              }
+              return authoredContainer;
+            }}
             mode="horizontal"
             openKeys={['resources']}
             items={[
@@ -134,7 +163,9 @@ describe('native block Menu runtime adapter', () => {
       expect(within(authoredContainer).getByText('Docs')).toBeVisible()
     );
     expect(authoredContainer.getRootNode()).toBe(shadowRoot);
-    expect(within(authoredContainer).getByText('Docs').getRootNode()).toBe(shadowRoot);
+    expect(within(authoredContainer).getByText('Docs').getRootNode()).toBe(
+      shadowRoot
+    );
     expect(
       shadowRoot.querySelector('[data-flowbase-native-overlay-layer]')
     ).toHaveAttribute('data-flowbase-native-overlay-state', 'closed');
