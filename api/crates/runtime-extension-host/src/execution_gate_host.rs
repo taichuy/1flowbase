@@ -5,7 +5,7 @@ use extension_contracts::{
 };
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Mutex, PoisonError, Weak},
 };
 use tokio::sync::{watch, OwnedSemaphorePermit, Semaphore};
 
@@ -24,7 +24,10 @@ struct Group {
 impl Drop for Group {
     fn drop(&mut self) {
         if let Some(registry) = self.registry.upgrade() {
-            let mut groups = registry.groups.lock().unwrap();
+            let mut groups = registry
+                .groups
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
             // A newer group may already have replaced our un-upgradeable weak entry.
             if groups
                 .get(&self.key)
@@ -36,15 +39,19 @@ impl Drop for Group {
     }
 }
 impl ExecutionGateRegistry {
-    fn group(&self, binding: &PluginExecutionGateBinding, key: &str) -> Arc<Group> {
+    fn group(
+        &self,
+        binding: &PluginExecutionGateBinding,
+        key: &str,
+    ) -> Result<Arc<Group>, PluginExecutionGateError> {
         let key = (
             binding.subject.installation_id().as_str().into(),
             binding.workspace_id.clone(),
             key.into(),
         );
-        let mut groups = self.0.groups.lock().unwrap();
+        let mut groups = self.0.groups.lock().map_err(|_| state_unavailable())?;
         if let Some(group) = groups.get(&key).and_then(Weak::upgrade) {
-            return group;
+            return Ok(group);
         }
         let group = Arc::new(Group {
             key: key.clone(),
@@ -52,7 +59,7 @@ impl ExecutionGateRegistry {
             semaphore: Arc::new(Semaphore::new(1)),
         });
         groups.insert(key, Arc::downgrade(&group));
-        group
+        Ok(group)
     }
 }
 struct Held {
@@ -85,6 +92,9 @@ impl Drop for ExecutionGateCallGuard {
 fn error(code: &str) -> PluginExecutionGateError {
     PluginExecutionGateError::new(code)
 }
+fn state_unavailable() -> PluginExecutionGateError {
+    error("execution_gate_state_unavailable")
+}
 impl ExecutionGateCall {
     pub(crate) fn new(
         registry: ExecutionGateRegistry,
@@ -107,7 +117,12 @@ impl ExecutionGateCall {
     }
     /// Explicit active-call cleanup also invalidates any context clones held by the caller.
     pub(crate) fn close(&self) {
-        let mut state = self.inner.state.lock().unwrap();
+        // Cleanup must still release held permits and wake waiters after a panic.
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         state.closed = true;
         state.held.clear();
         self.inner.closed.send_replace(true);
@@ -139,14 +154,14 @@ impl ExecutionGateCall {
                         .inner
                         .state
                         .lock()
-                        .unwrap()
+                        .map_err(|_| state_unavailable())?
                         .held
                         .values()
                         .any(|held| held.key == key)
                     {
                         return Err(error("execution_gate_already_acquired"));
                     }
-                    let group = self.registry.group(&self.binding, &key);
+                    let group = self.registry.group(&self.binding, &key)?;
                     let permit = group
                         .semaphore
                         .clone()
@@ -156,7 +171,7 @@ impl ExecutionGateCall {
                     // Authority can change while queued; never admit using an old grant.
                     self.authority.authorize(&self.binding).await?;
                     let token = uuid::Uuid::now_v7().to_string();
-                    let mut state = self.inner.state.lock().unwrap();
+                    let mut state = self.inner.state.lock().map_err(|_| state_unavailable())?;
                     if state.closed {
                         return Err(error("execution_gate_call_closed"));
                     }
@@ -171,7 +186,7 @@ impl ExecutionGateCall {
                     Ok(PluginExecutionGateResponse::Acquire { token })
                 }
                 PluginExecutionGateRequest::Release { key, token } => {
-                    let mut state = self.inner.state.lock().unwrap();
+                    let mut state = self.inner.state.lock().map_err(|_| state_unavailable())?;
                     if state.closed {
                         return Err(error("execution_gate_call_closed"));
                     }

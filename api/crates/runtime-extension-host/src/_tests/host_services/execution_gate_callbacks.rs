@@ -264,3 +264,28 @@ async fn execution_gate_admitted_future_guard_releases_before_carrier_cleanup() 
     release(&follower, "entry", token).await;
     assert!(registry.0.groups.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn poisoned_call_state_denies_operations_and_cleanup_releases_permit() {
+    let registry = ExecutionGateRegistry::default();
+    let grant = authority();
+    let active = call(&registry, grant.clone(), "installation", "workspace");
+    acquire(&active, "group").await;
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _state = active.inner.state.lock().unwrap();
+        panic!("poison active call state");
+    }))
+    .is_err());
+
+    let result = active
+        .execute(json!({"operation":"acquire", "key":"other-group"}))
+        .await;
+    assert_eq!(result.unwrap_err().code, "execution_gate_state_unavailable");
+    active.close();
+    assert!(*active.inner.closed.borrow());
+
+    let follower = call(&registry, grant, "installation", "workspace");
+    tokio::time::timeout(Duration::from_secs(1), acquire(&follower, "group"))
+        .await
+        .expect("cleanup releases the active call's permit even after poisoning");
+}

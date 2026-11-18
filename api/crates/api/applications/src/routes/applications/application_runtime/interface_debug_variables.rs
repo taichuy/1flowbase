@@ -458,50 +458,6 @@ pub fn compile_registry(
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use interface_runtime::BindingId;
-
-    use super::*;
-
-    #[test]
-    fn f09r3_registry_freezes_debug_variable_bindings() {
-        struct Unavailable;
-        impl
-            ConsoleInterfacePort<
-                ApplicationRuntimeDebugVariablesInput,
-                ApplicationRuntimeDebugVariablesOutput,
-            > for Unavailable
-        {
-            fn execute<'a>(
-                &'a self,
-                _principal: &'a UserPrincipal,
-                _input: ApplicationRuntimeDebugVariablesInput,
-            ) -> ConsoleInterfaceFuture<'a, ApplicationRuntimeDebugVariablesOutput> {
-                Box::pin(async {
-                    Err(ConsoleInterfaceTargetError(
-                        anyhow::anyhow!("fixture unavailable").into(),
-                    ))
-                })
-            }
-        }
-
-        let registry = console_interface::compile_registry(
-            "api-server.console-application-runtime-debug-variables",
-            "graph:console-application-runtime-debug-variables-v1",
-            DECLARATIONS,
-            Arc::new(Unavailable),
-        )
-        .unwrap();
-        for declaration in DECLARATIONS {
-            assert!(registry
-                .binding(&BindingId::new(declaration.binding_id).unwrap())
-                .is_some());
-        }
-        assert_eq!(registry.bindings().count(), DECLARATIONS.len());
-    }
-}
-
 impl crate::openapi_interface::contract::ApiInput for ApplicationRuntimeDebugVariablesInput {
     fn project_document_input(
         &self,
@@ -547,5 +503,49 @@ impl crate::openapi_interface::contract::ApiOutput for ApplicationRuntimeDebugVa
             Self::Snapshot(value) => crate::openapi_interface::contract::to_value(value),
             Self::Updated => Ok(serde_json::json!({"ok":true})),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use interface_runtime::BindingId;
+
+    use super::*;
+
+    #[test]
+    fn f09r3_registry_freezes_debug_variable_bindings() {
+        struct Unavailable;
+        impl
+            ConsoleInterfacePort<
+                ApplicationRuntimeDebugVariablesInput,
+                ApplicationRuntimeDebugVariablesOutput,
+            > for Unavailable
+        {
+            fn execute<'a>(
+                &'a self,
+                _principal: &'a UserPrincipal,
+                _input: ApplicationRuntimeDebugVariablesInput,
+            ) -> ConsoleInterfaceFuture<'a, ApplicationRuntimeDebugVariablesOutput> {
+                Box::pin(async {
+                    Err(ConsoleInterfaceTargetError(
+                        anyhow::anyhow!("fixture unavailable").into(),
+                    ))
+                })
+            }
+        }
+
+        let registry = console_interface::compile_registry(
+            "api-server.console-application-runtime-debug-variables",
+            "graph:console-application-runtime-debug-variables-v1",
+            DECLARATIONS,
+            Arc::new(Unavailable),
+        )
+        .unwrap();
+        for declaration in DECLARATIONS {
+            assert!(registry
+                .binding(&BindingId::new(declaration.binding_id).unwrap())
+                .is_some());
+        }
+        assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }

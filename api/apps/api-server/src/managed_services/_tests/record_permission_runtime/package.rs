@@ -189,32 +189,54 @@ pub(super) fn manifest() -> Value {
         .expect("valid synthetic record resource declaration");
     manifest
 }
-fn shared_operations()->Vec<Value> {
-    let event=object(json!({"ready":{"type":"boolean","const":true},"record_id":{"type":"string"},"stream_id":{"type":"string"}}),vec!["ready","record_id","stream_id"]);
-    let mut operations=Vec::new();
-    for handler in ["shared_source","shared_resolve","shared_snapshot"] {
-        let mut op=operation(handler,"POST",&format!("/records/{{record_id}}/{handler}"),Some("open"),json!({"kind":"record","pointer":"/path/record_id"}));
-        op["input_schema"]["properties"]["body"]=object(json!({"interval_ms":{"type":"integer","minimum":1,"default":1000}}),vec![]);
+fn shared_operations() -> Vec<Value> {
+    let event = object(
+        json!({"ready":{"type":"boolean","const":true},"record_id":{"type":"string"},"stream_id":{"type":"string"}}),
+        vec!["ready", "record_id", "stream_id"],
+    );
+    let mut operations = Vec::new();
+    for handler in ["shared_source", "shared_resolve", "shared_snapshot"] {
+        let mut op = operation(
+            handler,
+            "POST",
+            &format!("/records/{{record_id}}/{handler}"),
+            Some("open"),
+            json!({"kind":"record","pointer":"/path/record_id"}),
+        );
+        op["input_schema"]["properties"]["body"] = object(
+            json!({"interval_ms":{"type":"integer","minimum":1,"default":1000}}),
+            vec![],
+        );
         match handler {
-            "shared_source"=>{
+            "shared_source" => {
                 op.as_object_mut().unwrap().remove("mcp");
-                op["output_schema"]=object(json!({"closed":{"type":"boolean"}}),vec!["closed"]);
-                op["stream"]=json!({"input_schema":object(json!({"type":{"const":"close"}}),vec!["type"]),"event_schema":event,"shared_source":{"resolve_interface_id":format!("{CODE}.shared_resolve"),"interval_pointer":"/body/interval_ms","close_output":{"closed":true}}});
+                op["output_schema"] = object(json!({"closed":{"type":"boolean"}}), vec!["closed"]);
+                op["stream"] = json!({"input_schema":object(json!({"type":{"const":"close"}}),vec!["type"]),"event_schema":event,"shared_source":{"resolve_interface_id":format!("{CODE}.shared_resolve"),"interval_pointer":"/body/interval_ms","close_output":{"closed":true}}});
             }
-            "shared_resolve"=>op["output_schema"]=object(json!({"revision":{"type":"string"}}),vec!["revision"]),
-            "shared_snapshot"=>{
-                op["output_schema"]=event.clone();
-                op["shared_snapshot"]=json!({"source_interface_id":format!("{CODE}.shared_source"),"value_pointer":"","ready_pointer":"/ready","ready_value":true,"interval_pointer":"/body/interval_ms"});
+            "shared_resolve" => {
+                op["output_schema"] =
+                    object(json!({"revision":{"type":"string"}}), vec!["revision"])
             }
-            _=>unreachable!(),
+            "shared_snapshot" => {
+                op["output_schema"] = event.clone();
+                op["shared_snapshot"] = json!({"source_interface_id":format!("{CODE}.shared_source"),"value_pointer":"","ready_pointer":"/ready","ready_value":true,"interval_pointer":"/body/interval_ms"});
+            }
+            _ => unreachable!(),
         }
         operations.push(op);
     }
-    let records=json!({"type":"array","items":object(json!({"record_id":{"type":"string"},"interval_ms":{"type":"integer","minimum":1}}),vec!["record_id","interval_ms"])});
-    let mut aggregate=operation("shared_aggregate","POST","/shared/stream",None,Value::Null);
+    let records = json!({"type":"array","items":object(json!({"record_id":{"type":"string"},"interval_ms":{"type":"integer","minimum":1}}),vec!["record_id","interval_ms"])});
+    let mut aggregate = operation(
+        "shared_aggregate",
+        "POST",
+        "/shared/stream",
+        None,
+        Value::Null,
+    );
     aggregate.as_object_mut().unwrap().remove("mcp");
-    aggregate["input_schema"]["properties"]["body"]=object(json!({"records":records}),vec!["records"]);
-    aggregate["stream"]=json!({"aggregate_source_interface_id":format!("{CODE}.shared_source"),"input_schema":object(json!({"type":{"const":"set"},"records":records}),vec!["type","records"]),"event_schema":{"oneOf":[object(json!({"type":{"const":"source"},"record_id":{"type":"string"},"event":event}),vec!["type","record_id","event"]),object(json!({"type":{"const":"subscription_error"},"record_id":{"type":"string"},"error_code":{"type":"string"}}),vec!["type","record_id","error_code"])]}});
+    aggregate["input_schema"]["properties"]["body"] =
+        object(json!({"records":records}), vec!["records"]);
+    aggregate["stream"] = json!({"aggregate_source_interface_id":format!("{CODE}.shared_source"),"input_schema":object(json!({"type":{"const":"set"},"records":records}),vec!["type","records"]),"event_schema":{"oneOf":[object(json!({"type":{"const":"source"},"record_id":{"type":"string"},"event":event}),vec!["type","record_id","event"]),object(json!({"type":{"const":"subscription_error"},"record_id":{"type":"string"},"error_code":{"type":"string"}}),vec!["type","record_id","error_code"])]}});
     operations.push(aggregate);
     operations
 }

@@ -248,7 +248,7 @@ async fn execute(
                 }],
             )
             .await?;
-            let row = rows(&result[0])
+            let row = rows(&result[0])?
                 .into_iter()
                 .next()
                 .ok_or("fixture_record_absent")?;

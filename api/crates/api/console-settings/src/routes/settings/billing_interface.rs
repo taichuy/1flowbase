@@ -537,6 +537,9 @@ impl ConsoleInterfacePort<BillingInput, BillingOutput> for UnavailableBillingPor
     }
 }
 
+impl JsonApiInput for BillingInput {}
+impl JsonApiOutput for BillingOutput {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -555,6 +558,3 @@ mod tests {
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }
-
-impl JsonApiInput for BillingInput {}
-impl JsonApiOutput for BillingOutput {}

@@ -128,6 +128,7 @@ pub use extension_contracts::ManagedServiceCallContext;
 #[cfg(feature = "javascript")]
 pub use sync_js_runtime as javascript;
 
+#[path = "host_services/plugin_execution_gate.rs"]
 mod plugin_execution_gate;
 pub use extension_contracts::{
     PluginExecutionGateError, PluginExecutionGateRequest, PluginExecutionGateResponse,

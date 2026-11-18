@@ -6,6 +6,7 @@ pub use authentication_egress::authorize_authentication_egress;
 pub use managed_activation::*;
 mod managed_data;
 pub use managed_data::ManagedPluginDataService;
+#[path = "managed_execution/gate.rs"]
 mod managed_execution_gate;
 pub use managed_execution_gate::ManagedPluginExecutionGateAuthority;
 mod managed_ephemeral;
