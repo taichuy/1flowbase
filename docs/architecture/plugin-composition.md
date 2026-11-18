@@ -50,7 +50,7 @@ Root 的明确启用/切换会批准该版本声明且宿主支持的能力，�
 - 同一 actor worker 的所有执行绑定可显式声明 `runtime_worker_retention/v1`。宿主先通告支持，SDK `MultiplexEmitter::retain_resource().await` 再取得可跨调用持有的 RAII 租约；取得前刷新控制帧，释放后合并发送资源计数。序号阻止旧计数覆盖新状态。插件在业务资源关闭、到期或断连时释放租约，宿主只管理 worker 回收，不推测 SSH 等业务的会话期限。失败、卸载、升级和显式重置优先于租约；旧宿主未通告时获取租约明确失败。
 - 操作默认 `execution_concurrency: serialized`，写调用持有安装级变更锁；显式 `parallel` 仅跳过该串行锁，不改变 method 对应的授权与写语义。成功的 `invalidates_workers: true` 操作由底座重置同一挂载的共享 actor 池：拒绝旧代准入，等待旧进程退出，再允许新 worker。变更期间已准入操作可能被取消，返回成功后旧连接不再可用；`invalidates_streams` 仍独立撤销流入口。
 - 流操作可用 `shared_source` 声明同包、同记录授权的 revision resolver 与采样周期 JSON pointer；聚合流通过 `aggregate_source_interface_id` 引用该源，单个 socket 使用 `set` 替换订阅集合。进程内唯一 Host 按安装、代际、源操作、资源与规范记录 ID 合并生产者，逐订阅者重新检查真实 session、操作和记录权限。取最快订阅周期；负责人离开、权限撤销、配置 revision 或周期变化时，先取消并等待旧调用收尾，再启动新源。最后一个订阅者离开也等待收尾；慢订阅者通过合并最新事件隔离。此契约不提供多个 API 进程间的分布式 fencing。
-- `shared_snapshot` 声明 ready 条件和事件到 unary 输出的投影；Host ephemeral 仅存最新 ready 值，TTL 为采样周期的三倍，并隔离安装、代际与 revision。快照读缓存仍检查调用者权限；存在生产者时等待其样本，无生产者时在同一源的串行锁内执行原 unary 并回填缓存，排队请求再次查缓存。错误或非 ready 事件使健康缓存失效；不持久化监控样本。
+- `shared_snapshot` 声明 ready 条件和事件到 unary 输出的投影；Host ephemeral 仅存最新 ready 值，TTL 为采样周期的三倍，并隔离安装、代际与 revision。同一源先串行检查：每位排队调用者都须按当前身份通过操作和记录授权，源准入返回 `Completed` 后才解析 revision 和查缓存。共享锁不传递前一位调用者的权限。存在生产者时等待其样本，无生产者时在同一源的串行锁内执行原 unary 并回填缓存，排队请求再次查缓存。错误或非 ready 事件使健康缓存失效；不持久化监控样本。
 - `execution.gate` 是 typed Host Service。SDK permit 按可信安装、workspace 与插件声明的业务 key 排队，身份不来自插件 payload；请求等待前后重验权限。permit 只覆盖插件指定的临界区，显式 release 或调用取消、期限到达及 worker 退出时由宿主回收。插件负责自己的 SSH 握手和指标采样，通用排队、调用关联和取消协议由 Host/SDK 维护。
 - 插件出站凭据属于 Extension Center 配置备份；备份与恢复复用凭据存储的身份绑定 AAD，校验源密钥并按目标密钥重加密。归属或凭据 ID 被改写时拒绝恢复，不能把原密文直接搬到另一主密钥环境。
 - 系统作用域、启动时注册恢复与按需 worker 启动是独立维度。当前系统服务仍为受管子进程，不因此成为原生 HostExtension。共享表格通过 `@1flowbase/data-table` 暴露，页面请求通过 `@1flowbase/plugin-settings` 复用会话和 CSRF；后端是唯一授权真值。
@@ -59,7 +59,7 @@ Root 的明确启用/切换会批准该版本声明且宿主支持的能力，�
 
 日志来源适配层读取 Agent Flow 原生完整事实和 Agent Logs 采集事实；来源中立语义通过标准 OTLP/GenAI 输出。供应商 API、元数据转换和分页归官方插件仓库，Langfuse 页面为 `/settings/langfuse`；导入只生成 Agent Logs 历史事实。原生 ZIP 和标准 OTLP 仍由底座提供。旧内置 `/logs/langfuse/export`、`/logs/langfuse/import` 入口由已安装插件的 `/api/console/managed-services/langfuse/export`、`/import` 工作流替代，不存在前端静默回退。统一协议不表示原生执行状态与外部采集日志共用持久化执行表。
 
-实现入口为 `extension-package-runtime/src/managed_service.rs`、`api-server/src/managed_services/` 与共享 `runtime-extension-sdk`。本文描述契约，实际通过范围以集中 QA 与发布产物证据为准。
+实现按职责定位：[包声明校验](../../api/crates/extension-package-runtime/src/managed_service/shared_streams.rs) → [受管服务协议域](../../api/crates/api/plugins-models/src/managed_services/mod.rs) → [快照准入、缓存与回退](../../api/crates/api/plugins-models/src/managed_services/shared_stream/snapshot.rs)。执行许可由 [Control Plane](../../api/crates/control-plane/src/plugin_management/managed_execution_gate.rs) 核验当前授权，[Runtime Host](../../api/crates/runtime-extension-host/src/execution_gate_host.rs) 持有进程内队列和调用许可。这里共享的是采样；跨插件共享持久数据或出站凭据是另一套[部署批准的资源归属规则](plugin-managed-data-model.md#deployment-approved-shared-resources)。
 
 历史验收报告保留其当时事实，不作为当前插件选型规则；遇到旧整包限制，以本节治理边界判断，并单独记录实际代码缺口。
 
