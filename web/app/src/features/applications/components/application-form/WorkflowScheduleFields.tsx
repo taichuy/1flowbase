@@ -1,10 +1,10 @@
 import { Form, Input, InputNumber, Select, Switch } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { ScheduleCronEditor } from '../schedule/ScheduleCronEditor';
-import type { useApplicationFormController } from './use-application-form-controller';
+import type { ApplicationFormFieldsProps } from './ApplicationFormFields';
 
 type WorkflowScheduleFieldsProps = Pick<
-  ReturnType<typeof useApplicationFormController>,
+  ApplicationFormFieldsProps,
   'isEdit' | 'timezoneOptions' | 'extensionContract'
 >;
 

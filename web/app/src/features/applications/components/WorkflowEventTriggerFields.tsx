@@ -4,14 +4,7 @@ import {
   type EventSourceSelection
 } from '@1flowbase/api-client';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Alert,
-  AutoComplete,
-  Form,
-  Input,
-  Select,
-  type FormInstance
-} from 'antd';
+import { Alert, AutoComplete, Form, Input, Select } from 'antd';
 import { eventSchemaPointers } from './workflow-event-schema';
 import { useTranslation } from 'react-i18next';
 import {
@@ -36,10 +29,8 @@ const eligible = (entry: EventCatalogEntry) =>
     : Boolean(entry.source)) && entry.supported_phases.length > 0;
 
 export function WorkflowEventTriggerFields({
-  form,
   fields
 }: {
-  form: FormInstance;
   fields: Array<{
     key: string;
     label: string;
@@ -49,13 +40,14 @@ export function WorkflowEventTriggerFields({
   }>;
 }) {
   const { t } = useTranslation('applications');
+  const form = Form.useFormInstance();
   const catalog = useQuery({
     queryKey: workflowEventCatalogQueryKey,
     queryFn: fetchWorkflowEventCatalog
   });
-  const contract_id = Form.useWatch(['event', 'contract_id'], form);
-  const trigger_phase = Form.useWatch(['event', 'trigger_phase'], form);
-  const source = Form.useWatch(['event', 'source'], form) as
+  const contract_id = Form.useWatch(['event', 'contract_id']);
+  const trigger_phase = Form.useWatch(['event', 'trigger_phase']);
+  const source = Form.useWatch(['event', 'source']) as
     | EventSourceSelection
     | undefined;
   const currentIdentity = identity({

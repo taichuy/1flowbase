@@ -80,7 +80,6 @@ test.each(['disabled', 'missing', 'unsupported phase', 'interface capability'])(
           onFinishFailed={rejected}
         >
           <WorkflowEventTriggerFields
-            form={form}
             fields={[
               {
                 key: 'invoice',
@@ -179,7 +178,7 @@ test('same-contract source scopes remain distinct and save canonical source with
         initialValues={{ event: { enabled: true, input_mapping: {} } }}
         onFinish={saved}
       >
-        <WorkflowEventTriggerFields form={form} fields={[]} />
+        <WorkflowEventTriggerFields fields={[]} />
         <Button htmlType="submit">Save source</Button>
       </Form>
     );
@@ -241,7 +240,7 @@ test('an unavailable stored system registration keeps its identity and cannot cr
         onFinish={saved}
         onFinishFailed={rejected}
       >
-        <WorkflowEventTriggerFields form={form} fields={[]} />
+        <WorkflowEventTriggerFields fields={[]} />
         <Button htmlType="submit">Save system source</Button>
       </Form>
     );
@@ -348,7 +347,6 @@ test('same-contract subtype leaves save complete backend filters and discover es
         onFinish={saved}
       >
         <WorkflowEventTriggerFields
-          form={form}
           fields={[
             {
               key: 'amount',
@@ -424,7 +422,7 @@ test('new listeners default to publication and retain every supported phase with
         initialValues={{ event: { input_mapping: {} } }}
         onFinish={saved}
       >
-        <WorkflowEventTriggerFields form={form} fields={[]} />
+        <WorkflowEventTriggerFields fields={[]} />
         <Button htmlType="submit">Save listener</Button>
       </Form>
     );
@@ -497,7 +495,7 @@ test('editing preserves a consumed phase even with a legacy disabled configurati
         initialValues={{ event: { ...stored, enabled: false } }}
         onFinish={saved}
       >
-        <WorkflowEventTriggerFields form={form} fields={[]} />
+        <WorkflowEventTriggerFields fields={[]} />
         <Button htmlType="submit">Save existing listener</Button>
       </Form>
     );

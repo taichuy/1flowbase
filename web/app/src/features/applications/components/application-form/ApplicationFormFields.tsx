@@ -1,4 +1,5 @@
 import { Alert, Form, Input, Select } from 'antd';
+import type { UseQueryResult } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type {
   ConsoleApplicationType,
@@ -7,31 +8,39 @@ import type {
 import { WorkflowEventTriggerFields } from '../WorkflowEventTriggerFields';
 import { WorkflowExtensionFields } from './WorkflowExtensionFields';
 import { WorkflowScheduleFields } from './WorkflowScheduleFields';
-import type { useApplicationFormController } from './use-application-form-controller';
+import type {
+  fetchApplicationCatalog,
+  fetchApplicationDetail
+} from '../../api/applications';
+import type { fetchApplicationApiMapping } from '../../api/public-api';
+import type { getStartInputFields } from '../../../agent-flow/lib/variables/start-node-variables';
+import type { fetchOrchestrationState } from '../../../agent-flow/api/orchestration';
 
-type ApplicationFormFieldsProps = Pick<
-  ReturnType<typeof useApplicationFormController>,
-  | 'form'
-  | 'isEdit'
-  | 'catalogQuery'
-  | 'applicationTypeOption'
-  | 'workflowTriggerTypeOption'
-  | 'showWorkflow'
-  | 'triggerType'
-  | 'extension'
-  | 'extensionContract'
-  | 'timezoneOptions'
-  | 'triggerLoadFailed'
->;
+type OrchestrationNode = Awaited<
+  ReturnType<typeof fetchOrchestrationState>
+>['draft']['document']['graph']['nodes'][number];
+
+export interface ApplicationFormFieldsProps {
+  isEdit: boolean;
+  catalogQuery: UseQueryResult<
+    Awaited<ReturnType<typeof fetchApplicationCatalog>>
+  >;
+  application: Awaited<ReturnType<typeof fetchApplicationDetail>> | null;
+  extension:
+    | Awaited<ReturnType<typeof fetchApplicationApiMapping>>['extension']
+    | null;
+  extensionContract: {
+    requestFields: ReturnType<typeof getStartInputFields>;
+    responseFields: NonNullable<OrchestrationNode['outputs']>;
+  };
+  timezoneOptions: Array<{ value: string; label: string }>;
+  triggerLoadFailed: boolean;
+}
 
 export function ApplicationFormFields({
-  form,
   isEdit,
   catalogQuery,
-  applicationTypeOption,
-  workflowTriggerTypeOption,
-  showWorkflow,
-  triggerType,
+  application,
   extension,
   extensionContract,
   timezoneOptions,
@@ -39,6 +48,27 @@ export function ApplicationFormFields({
 }: ApplicationFormFieldsProps) {
   const { t } = useTranslation('applications');
   const { t: workflowT } = useTranslation('workflow');
+  const defaultApplicationType = catalogQuery.data?.types[0]?.value;
+  const defaultWorkflowTriggerType =
+    catalogQuery.data?.workflow_triggers[0]?.value;
+  const watchedApplicationType =
+    Form.useWatch('application_type') ?? defaultApplicationType;
+  const watchedTriggerType =
+    Form.useWatch('trigger_type') ?? defaultWorkflowTriggerType;
+  const showWorkflow = isEdit
+    ? application?.application_type === 'workflow'
+    : watchedApplicationType === 'workflow';
+  const triggerType = isEdit
+    ? (application?.workflow_trigger_type ?? defaultWorkflowTriggerType)
+    : watchedTriggerType;
+  const applicationTypeOption = catalogQuery.data?.types.find(
+    (option) =>
+      option.value ===
+      (isEdit ? application?.application_type : watchedApplicationType)
+  );
+  const workflowTriggerTypeOption = catalogQuery.data?.workflow_triggers.find(
+    (option) => option.value === triggerType
+  );
   return (
     <>
       {isEdit ? (
@@ -106,10 +136,7 @@ export function ApplicationFormFields({
       ) : null}
 
       {showWorkflow && triggerType === 'event' ? (
-        <WorkflowEventTriggerFields
-          form={form}
-          fields={extensionContract.requestFields}
-        />
+        <WorkflowEventTriggerFields fields={extensionContract.requestFields} />
       ) : null}
 
       {triggerLoadFailed ? (

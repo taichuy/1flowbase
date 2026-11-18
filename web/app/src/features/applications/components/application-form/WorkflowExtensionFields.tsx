@@ -1,9 +1,9 @@
 import { Form, Input, Select, Space } from 'antd';
 import { useTranslation } from 'react-i18next';
-import type { useApplicationFormController } from './use-application-form-controller';
+import type { ApplicationFormFieldsProps } from './ApplicationFormFields';
 
 type WorkflowExtensionFieldsProps = Pick<
-  ReturnType<typeof useApplicationFormController>,
+  ApplicationFormFieldsProps,
   'isEdit' | 'extension' | 'extensionContract'
 >;
 
