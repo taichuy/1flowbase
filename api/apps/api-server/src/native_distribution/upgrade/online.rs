@@ -70,33 +70,59 @@ async fn metadata(client: &reqwest::Client, url: &str) -> Result<Vec<Release>> {
     }
     Ok(serde_json::from_slice(&bytes)?)
 }
-fn valid_download_url(url: &str, feed: &str) -> bool {
-    if url.starts_with("https://github.com/taichuy/1flowbase/releases/download/") {
-        return true;
-    }
-    // Only compiled unit tests can provide a local HTTP fixture. Production has no feed override.
-    #[cfg(test)]
-    if let (Ok(url), Ok(feed)) = (url::Url::parse(url), url::Url::parse(feed)) {
-        return feed.scheme() == "http"
-            && feed.host_str() == Some("127.0.0.1")
-            && url.origin() == feed.origin();
-    }
-    let _ = feed;
-    false
+pub(super) enum ReleaseSource {
+    Official,
+    LoopbackFixture(url::Url),
 }
+
+impl ReleaseSource {
+    pub(super) fn loopback(feed: &str) -> Result<Self> {
+        Ok(Self::LoopbackFixture(loopback_url(feed)?))
+    }
+
+    fn feed(&self) -> &str {
+        match self {
+            Self::Official => RELEASES,
+            Self::LoopbackFixture(url) => url.as_str(),
+        }
+    }
+
+    fn allows_asset(&self, asset: &str) -> bool {
+        match self {
+            Self::Official => asset.starts_with("https://github.com/taichuy/1flowbase/releases/download/"),
+            Self::LoopbackFixture(feed) => loopback_url(asset)
+                .is_ok_and(|asset| asset.origin() == feed.origin()),
+        }
+    }
+}
+
+fn loopback_url(raw: &str) -> Result<url::Url> {
+    let url = url::Url::parse(raw)?;
+    ensure!(
+        raw.starts_with("http://127.0.0.1:")
+            && url.host_str() == Some("127.0.0.1")
+            && url.port().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.fragment().is_none(),
+        "Fixture URLs must use literal http://127.0.0.1 with an explicit port"
+    );
+    Ok(url)
+}
+
 pub(super) async fn download(
     client: &reqwest::Client,
     old: &Manifest,
     work: &Path,
-    feed: &str,
+    source: &ReleaseSource,
 ) -> Result<Option<PathBuf>> {
-    let Some(candidate) = select(metadata(client, feed).await?, old)? else {
+    let Some(candidate) = select(metadata(client, source.feed()).await?, old)? else {
         return Ok(None);
     };
     let asset = candidate.asset;
     ensure!(
-        valid_download_url(&asset.browser_download_url, feed),
-        "Release asset is not hosted by the official repository"
+        source.allows_asset(&asset.browser_download_url),
+        "Release asset is outside its allowed source"
     );
     ensure!(
         asset.size > 0 && asset.size <= MAX_ARCHIVE,
