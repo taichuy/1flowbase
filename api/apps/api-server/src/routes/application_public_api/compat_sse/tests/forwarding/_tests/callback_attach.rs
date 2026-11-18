@@ -370,7 +370,7 @@ async fn assert_terminal_callback_attach_scenario(
             assert!(matches!(
                 durable_compatible_round_replay(
                     &dependencies,
-                    &attached.initial_run_for_test_support(),
+                    attached.initial_run_for_test_support(),
                     callback_task_id,
                 )
                 .await
