@@ -90,6 +90,22 @@ flowchart LR
 - **Assembly changes:** domains supply routes, handlers and OpenAPI fragments. The executable assembles the Router, validates the endpoint catalog, retains its health routes and [merges OpenAPI](../../api/apps/api-server/src/openapi/mod.rs) in `application → console → extensions` order. Some executable modules only re-export the implementation; use the [domain map](../../api/crates/api/AGENTS.md) to find it.
 - **Testing:** pure module tests follow the domain; cross-domain, full HTTP and mixed host-private fixtures stay in the executable. Testing `api-server` alone does not exercise all six domains. For local feedback, choose a [Cargo target](../../api/apps/api-server/tests/README.md) before filtering test names.
 
+#### From cold start to one HTTP request
+
+The six crates in the previous diagram are linked into the executable. Startup loads configuration, declarations and runtime state; it does not start six services.
+
+```text
+Boot: bind TCP → connect to the main store and prepare host extensions → compile graph and boot snapshot
+               → load managed registrations and compile console routes and permissions
+               → publish the complete catalog and build the initial Router → ingress → axum::serve
+HTTP: ingress takes (Router, generation owner) under one read lock, then releases the lock
+               → that Router runs oneshot(request) → the response body retains the owner
+```
+
+- **Bound is not ready.** [main](../../api/apps/api-server/src/main.rs) binds the listener before [startup assembly](../../api/apps/api-server/src/internal/startup_assembly.rs) returns. A failed database connection or console permission catalog sync returns an error before `serve`; the executable does not serve a partially assembled API.
+- **Example: a non-streaming managed operation.** At assembly time the [protocol adapter](../../api/crates/api/plugins-models/src/managed_services/routes.rs) binds each registered method and path to an operation. At request time it parses the input, selects credentials (with CSRF for non-GET), and invokes the console interface by `http.<interface_id>.v1`. The [handler](../../api/crates/api/plugins-models/src/managed_services/interface.rs) checks record permissions and executes the operation; the adapter projects the result to JSON. This is a business path, not a universal one: the executable answers `/health` directly.
+- **Publication during a request.** The [publisher](../../api/apps/api-server/src/boot_composition/managed_publication.rs) prepares a candidate independently. Conflicting routes fail preparation without replacing the serving router. Successful publication replaces the router and owner together; subsequent requests select the new generation. An admitted HTTP request stays on the old one; its [response body](../../api/crates/api/kernel/src/contracts/boot_composition/generation_dispatch.rs) releases its reference at end of stream, on error, or on drop. This lifetime says nothing about transaction commit or peer acknowledgement. The [generation ownership tests](../../api/apps/api-server/src/boot_composition/_tests/generation_ownership.rs) cover candidate failure, in-flight requests and streaming bodies.
+
 #### Why the compiler needs less peak memory
 
 Moving files alone does not help. Three changes affect the work Cargo and rustc perform:

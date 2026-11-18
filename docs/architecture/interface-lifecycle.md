@@ -105,6 +105,22 @@ flowchart LR
 - **改装配**：域提供路由、Handler 和 OpenAPI 片段，宿主合并 Router、校验端点目录，并按 `application → console → extensions` 顺序[合并 OpenAPI](../../api/apps/api-server/src/openapi/mod.rs)。宿主自有 health 路由；在宿主目录看到同名模块不代表实现仍在那里。[域目录与允许依赖](../../api/crates/api/AGENTS.md)按源码归属查。
 - **找测试**：域内纯模块测试跟域走；跨域、完整 HTTP 和需要宿主私有状态的混合场景留在宿主。只测 `api-server` 不等于覆盖六个域；局部反馈先查[测试目标表](../../api/apps/api-server/tests/README.md)，按 target 选编译范围，再按名称选用例。
 
+#### 从冷启动推演到一次请求
+
+下面是生产 HTTP 入口的执行顺序；上一张图的六个 crate 已经链接进二进制，**启动时加载的是配置、注册声明和运行状态，不是逐个启动六个服务**。
+
+```text
+启动：bind TCP → 连接主库、准备宿主扩展 → 编译扩展图与启动快照
+             → 加载受管服务注册、编译 console 路由与权限目录
+             → 发布完整目录、构造初始 Router → ingress → axum::serve
+请求：ingress 在同一个读锁内取得 (Router, generation owner)，随即释放锁
+             → 该代 Router.oneshot(request) → 响应体保留该代 owner
+```
+
+- **监听不等于就绪。** [main](../../api/apps/api-server/src/main.rs) 先绑定端口，等[启动装配](../../api/apps/api-server/src/internal/startup_assembly.rs)成功返回才调用 `serve`。例如主库连接或 console 权限目录同步失败，错误返回，不会启动一个缺少部分域的 HTTP 服务。
+- **以受管服务的一次非流式操作为例。** 装配时，[协议域](../../api/crates/api/plugins-models/src/managed_services/routes.rs)已把注册声明的 method、path 与 operation 绑定。请求到达后解析参数，选择凭据（非 GET 使用带 CSRF 的形式），按 `http.<interface_id>.v1` 进入 console interface；[业务 Handler](../../api/crates/api/plugins-models/src/managed_services/interface.rs)检查记录权限并执行操作，最后由协议域投影为 JSON。不是每个请求都走这个业务 Handler：`/health` 直接由宿主回答。
+- **若服务期间发布新一代。** [发布器](../../api/apps/api-server/src/boot_composition/managed_publication.rs)先独立准备候选；候选路由冲突会在准备阶段报错，不替换正在服务的 Router。成功发布才成对替换 Router 与 owner。发布前已选中旧代的 HTTP 请求继续用旧代，[响应体](../../api/crates/api/kernel/src/contracts/boot_composition/generation_dispatch.rs)在结束、出错或被丢弃时释放自己的引用；发布后的新请求选择新代。这是 HTTP 响应的生命周期，不代表业务事务已提交或对端已确认。对应的[代际切换用例](../../api/apps/api-server/src/boot_composition/_tests/generation_ownership.rs)覆盖候选失败、在途请求和流式响应。
+
 #### 为什么编译峰值会变小
 
 拆目录本身不省内存；这里改了 Cargo 的编译边界和生成代码的位置：
