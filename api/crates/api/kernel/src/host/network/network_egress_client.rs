@@ -517,7 +517,7 @@ pub fn native_release_client() -> Result<Client> {
 pub fn native_release_fixture_client() -> Result<Client> {
     Client::builder()
         .no_proxy()
-        .timeout(Duration::from_secs(180))
+        .timeout(std::time::Duration::from_secs(180))
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
             attempt.error("Update archive fixtures must not redirect")
         }))
