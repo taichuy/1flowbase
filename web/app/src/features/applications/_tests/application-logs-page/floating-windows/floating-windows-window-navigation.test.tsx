@@ -19,6 +19,14 @@ import {
   within
 } from '@testing-library/react';
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 describe('ApplicationLogsPage - floating windows shell', () => {
   test('drags and resizes floating run detail window', async () => {
     setPreferenceActor({ role: 'root', permissions: [] });
@@ -223,7 +231,7 @@ describe('ApplicationLogsPage - floating windows shell', () => {
       ...sampleRunOverview(),
       log_conversation_id: 'conversation-1'
     };
-    const initialOverview = Promise.withResolvers<typeof overview>();
+    const initialOverview = deferred<typeof overview>();
     runtimeApi.fetchApplicationRunOverview
       .mockResolvedValue(overview)
       .mockReturnValueOnce(initialOverview.promise);
@@ -279,7 +287,7 @@ describe('ApplicationLogsPage - floating windows shell', () => {
         sequence: n
       }))
     );
-    const initialConversation = Promise.withResolvers<typeof conversation>();
+    const initialConversation = deferred<typeof conversation>();
     runtimeApi.fetchApplicationLogConversationMessages
       .mockResolvedValue(conversation)
       .mockReturnValueOnce(initialConversation.promise);
