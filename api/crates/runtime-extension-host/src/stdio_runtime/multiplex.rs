@@ -89,6 +89,13 @@ struct ReaderContext {
 
 impl Drop for ActiveCall {
     fn drop(&mut self) {
+        if let Some(gate) = self
+            .host_calls
+            .as_ref()
+            .and_then(|context| context.execution_gate.as_ref())
+        {
+            gate.close();
+        }
         for (_, task) in self.callbacks.drain() {
             task.abort();
         }
@@ -809,6 +816,13 @@ fn request_cancel(id: &str, call: &mut ActiveCall, controls: &mpsc::Sender<Contr
     }
     call.cancelling_since = Some(Instant::now());
     call.live.store(false, Ordering::Release);
+    if let Some(gate) = call
+        .host_calls
+        .as_ref()
+        .and_then(|context| context.execution_gate.as_ref())
+    {
+        gate.close();
+    }
     call.host_calls = None;
     for (_, task) in call.callbacks.drain() {
         task.abort();
@@ -848,6 +862,18 @@ async fn execute_callback(
     context: Option<ProviderHostCallContext>,
 ) -> Value {
     match service {
+        MultiplexHostService::PluginExecutionGateV1 => {
+            let result = match context.and_then(|context| context.execution_gate) {
+                Some(gate) => gate.execute(request).await,
+                None => Err(extension_contracts::PluginExecutionGateError::new(
+                    "execution_gate_not_granted",
+                )),
+            };
+            match result {
+                Ok(result) => serde_json::json!({"result":result}),
+                Err(error) => serde_json::json!({"error":error}),
+            }
+        }
         MultiplexHostService::ApplicationLogsV1 => {
             let result = async {
                 let request: extension_contracts::ApplicationLogsRequest =
@@ -1110,3 +1136,7 @@ async fn wait_explicit_cancel(cancel: &mut Option<tokio::sync::watch::Receiver<b
 #[cfg(test)]
 #[path = "../_tests/host_services/plugin_ephemeral_callbacks.rs"]
 mod ephemeral_tests;
+
+#[cfg(test)]
+#[path = "../_tests/host_services/execution_gate_dispatch.rs"]
+mod execution_gate_dispatch;

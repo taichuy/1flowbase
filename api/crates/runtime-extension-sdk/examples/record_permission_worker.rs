@@ -233,6 +233,48 @@ async fn execute(
             while input.recv().await.is_some() {}
             Ok(json!({"closed":true}))
         }
+        "shared_resolve" => {
+            let result = data(
+                &emitter,
+                vec![PluginDataOperation::Find {
+                    target: target(),
+                    fields: vec!["id".into(), "name".into()],
+                    filters: filter(record),
+                    order: vec![],
+                    page: PluginDataPage {
+                        limit: 1,
+                        offset: 0,
+                    },
+                }],
+            )
+            .await?;
+            let row = rows(&result[0])
+                .into_iter()
+                .next()
+                .ok_or("fixture_record_absent")?;
+            Ok(
+                json!({"revision":format!("{}:{}",row["id"].as_str().ok_or("fixture_id")?,row["name"].as_str().ok_or("fixture_name")?)}),
+            )
+        }
+        "shared_source" => {
+            sequence.set(sequence.get() + 1);
+            let stream_id = format!("{}-{}", std::process::id(), sequence.get());
+            trace(&format!("shared_source_start:{record}:{stream_id}"));
+            let _cleanup = Trace(format!("shared_source_cleanup:{record}:{stream_id}"));
+            emitter
+                .event(json!({"ready":true,"record_id":record,"stream_id":stream_id}))
+                .await
+                .map_err(|_| "fixture_stream".to_owned())?;
+            while input.recv().await.is_some() {}
+            Ok(json!({"closed":true}))
+        }
+        "shared_snapshot" => {
+            trace(&format!("shared_snapshot:{record}"));
+            sequence.set(sequence.get() + 1);
+            Ok(
+                json!({"ready":true,"record_id":record,"stream_id":format!("unary-{}-{}",std::process::id(),sequence.get())}),
+            )
+        }
         _ => Err("fixture_unknown_handler".into()),
     }
 }

@@ -667,21 +667,11 @@ where
 {
     let snapshot = frozen_snapshot(&state)?;
     let binding_id = BindingId::new(binding_id).expect("static Console binding is valid");
-    let activated = activated_authentication(&snapshot, &binding_id)?;
     let kernel = console_invocation_kernel(
         &state,
         crate::extension_bus::ConsoleProtocolAdmission::allowed(),
     );
-    let envelope = InvocationEnvelope::with_principal(
-        InvocationLineage::root(InvocationId::now_v7()),
-        binding_id,
-        InterfaceProtocol::Http,
-        activated.adapter().clone(),
-        activated.activation().clone(),
-        principal,
-        None,
-        input,
-    );
+    let envelope = established_principal_envelope(&snapshot, binding_id, principal, input)?;
     let envelope = preparation.prepare(&state, &snapshot, envelope).await?;
     match kernel
         .invoke::<I, O, ConsoleInterfaceTargetError>(snapshot, envelope)
@@ -690,6 +680,64 @@ where
         Ok(outcome) => Ok(outcome.into_value()),
         Err(failure) => Err(console_invocation_error(failure.into_error())),
     }
+}
+
+/// Starts an independently owned producer using an established live principal.
+/// Preparation may freeze Host-only context; authorization, admission and hooks
+/// still execute against the frozen Console plan. The caller owns completion.
+/// Each invocation has fresh lineage and controls, independent of any subscriber.
+pub async fn invoke_server_stream_with_principal_prepared<I, S, O, P>(
+    state: Arc<ApiState>,
+    binding_id: &str,
+    principal: UserPrincipal,
+    input: I,
+    preparation: P,
+) -> Result<interface_runtime::InterfaceStreamInvocation<S, O, ConsoleInterfaceTargetError>, ApiError>
+where
+    I: InterfaceContract,
+    S: InterfaceContract,
+    O: InterfaceContract,
+    P: ConsoleInvocationPreparation<I>,
+{
+    let snapshot = frozen_snapshot(&state)?;
+    let binding_id = BindingId::new(binding_id).expect("static Console binding is valid");
+    let envelope = established_principal_envelope(&snapshot, binding_id.clone(), principal, input)?;
+    let envelope = preparation.prepare(&state, &snapshot, envelope).await?;
+    let plan = snapshot
+        .plan(&binding_id)
+        .ok_or_else(|| anyhow::anyhow!("Console binding is unavailable"))?;
+    let target = interface_runtime::ExecutionTargetPin::BuiltIn {
+        handler: plan.definition().handler_reference().clone(),
+        target: plan.definition().target_reference().clone(),
+    };
+    console_invocation_kernel(
+        &state,
+        crate::extension_bus::ConsoleProtocolAdmission::allowed(),
+    )
+    .invoke_server_stream_with_dispatch_target::<I, S, O, ConsoleInterfaceTargetError>(
+        snapshot, envelope, target,
+    )
+    .await
+    .map_err(|failure| console_invocation_error(failure.into_error()))
+}
+
+fn established_principal_envelope<I: InterfaceContract>(
+    snapshot: &CompiledInterfaceRegistry,
+    binding_id: BindingId,
+    principal: UserPrincipal,
+    input: I,
+) -> Result<InvocationEnvelope<I, UserPrincipal>, ApiError> {
+    let activated = activated_authentication(snapshot, &binding_id)?;
+    Ok(InvocationEnvelope::with_principal(
+        InvocationLineage::root(InvocationId::now_v7()),
+        binding_id,
+        InterfaceProtocol::Http,
+        activated.adapter().clone(),
+        activated.activation().clone(),
+        principal,
+        None,
+        input,
+    ))
 }
 
 pub async fn invoke_server_stream<I, S, O>(

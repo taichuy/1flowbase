@@ -88,3 +88,7 @@ pub use file_read_contract::*;
 #[path = "managed_contributions/managed_service_contract.rs"]
 pub mod managed_service_contract;
 pub use managed_service_contract::*;
+
+#[path = "host_services/execution_gate_contract.rs"]
+pub mod execution_gate_contract;
+pub use execution_gate_contract::*;

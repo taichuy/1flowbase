@@ -34,6 +34,10 @@ struct MountedContribution {
 pub(crate) struct ManagedHostServices {
     pub(crate) plugin_data: Arc<dyn extension_contracts::PluginDataPort>,
     pub(crate) plugin_credentials: Option<Arc<dyn extension_contracts::PluginCredentialPort>>,
+    pub(crate) execution_gate: Option<(
+        crate::execution_gate_host::ExecutionGateRegistry,
+        Arc<dyn extension_contracts::PluginExecutionGateAuthority>,
+    )>,
     pub(crate) plugin_ephemeral: Option<Arc<dyn extension_contracts::PluginEphemeralPort>>,
     pub(crate) file_import: Option<Arc<dyn runtime_core::runtime_backend::FileImportPort>>,
     pub(crate) file_read: Option<Arc<dyn runtime_core::runtime_backend::FileReadPort>>,
@@ -226,6 +230,7 @@ impl ManagedWorkers {
         let ManagedHostServices {
             plugin_data,
             plugin_credentials,
+            execution_gate,
             plugin_ephemeral,
             file_import,
             file_read,
@@ -373,6 +378,36 @@ impl ManagedWorkers {
             } else {
                 None
             },
+            execution_gate: if permissions.contains("execution.gate") {
+                execution_gate.map(|(registry, authority)| {
+                    crate::execution_gate_host::ExecutionGateCall::new(
+                        registry,
+                        extension_contracts::PluginExecutionGateBinding {
+                            subject: request.handle.identity().subject().clone(),
+                            publisher_namespace: binding.publisher_namespace.clone(),
+                            plugin_code: binding.plugin_code.clone(),
+                            plugin_version: binding.plugin_version.clone(),
+                            workspace_id: request
+                                .principal
+                                .caller
+                                .as_ref()
+                                .map(|caller| caller.actor.current_workspace_id.to_string())
+                                .or_else(|| {
+                                    request
+                                        .principal
+                                        .record_permissions
+                                        .as_ref()
+                                        .map(|context| context.caller_workspace_id.clone())
+                                })
+                                .unwrap_or_else(|| request.principal.workspace_id.clone()),
+                            deadline_unix_ms: request.principal.deadline_unix_ms,
+                        },
+                        authority,
+                    )
+                })
+            } else {
+                None
+            },
             plugin_ephemeral: if permissions.contains("ephemeral.manage") {
                 plugin_ephemeral.map(|port| {
                     (
@@ -503,6 +538,11 @@ impl ManagedWorkers {
             return Err(invalid("duplex requires multiplex transport").into());
         }
         Ok(async move {
+            // Also cover future drop while registration/cancel delivery is still queued.
+            let _gate_cleanup = host_calls
+                .as_ref()
+                .and_then(|context| context.execution_gate.as_ref())
+                .map(|gate| gate.cleanup_guard());
             let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
             let cancel_task = scope_cancel.map(|mut scope| {
                 tokio::spawn(async move {

@@ -126,7 +126,7 @@ impl HostContributionGrantPolicy {
             base16ct::HexDisplay(&sha2::Sha256::digest(
                 [
                     bytes.as_slice(),
-                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2;application-logs/v1;http-egress/v1;plugin-ephemeral/v1;authentication/v1;frontend-block-trusted-host/v1"
+                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2;application-logs/v1;http-egress/v1;plugin-ephemeral/v1;execution-gate/v1;authentication/v1;frontend-block-trusted-host/v1"
                 ]
                 .concat()
             ))
@@ -239,6 +239,10 @@ impl HostContributionGrantPolicy {
                     }
                     "network.http.request" => {
                         request.permission_contract_id == "http-egress"
+                            && request.resource_scope == ContributionResourceScope::System
+                    }
+                    "execution.gate" => {
+                        request.permission_contract_id == "execution-gate"
                             && request.resource_scope == ContributionResourceScope::System
                     }
                     "credential.manage" | "ephemeral.manage" => {

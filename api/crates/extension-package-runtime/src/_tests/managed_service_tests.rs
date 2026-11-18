@@ -1,5 +1,7 @@
 use crate::parse_plugin_manifest;
 use serde_json::{json, Value};
+#[path = "shared_stream_tests.rs"]
+mod shared_stream_tests;
 fn fixture() -> Value {
     let mut value: Value = serde_yaml::from_str(include_str!("managed_manifest.yaml")).unwrap();
     value["binding_targets"] = json!(["system"]);

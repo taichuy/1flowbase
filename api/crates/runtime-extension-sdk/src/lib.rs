@@ -127,3 +127,11 @@ pub use extension_contracts::ManagedServiceCallContext;
 /// Optional per-call synchronous JavaScript and release-anchored packaged scripts.
 #[cfg(feature = "javascript")]
 pub use sync_js_runtime as javascript;
+
+mod plugin_execution_gate;
+pub use extension_contracts::{
+    PluginExecutionGateError, PluginExecutionGateRequest, PluginExecutionGateResponse,
+};
+pub use plugin_execution_gate::{
+    PluginExecutionGateClient, PluginExecutionGateClientError, PluginExecutionGatePermit,
+};

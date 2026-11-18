@@ -112,6 +112,7 @@ sys.stdin.read()
     let services = |plugin_data: Arc<dyn PluginDataPort>| ManagedHostServices {
         plugin_data,
         plugin_credentials: None,
+        execution_gate: None,
         plugin_ephemeral: None,
         file_import: None,
         file_read: None,

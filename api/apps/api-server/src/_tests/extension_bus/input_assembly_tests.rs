@@ -17,6 +17,7 @@ fn exchange_host_services_and_file_read_compile_only_with_host_authority() {
         "application.logs.read",
         "application.logs.import",
         "network.http.request",
+        "execution.gate",
     ] {
         use plugin_framework::extension_bus::{
             compile_extension_graph_with_authority, ContributionId, ManagedContributionAuthority,
