@@ -17,6 +17,33 @@ const DEFAULT_MAX_RESPONSE_BYTES: u64 = 6 * 1024 * 1024;
 const MAX_RESPONSE_BYTES_LIMIT: u64 = 10 * 1024 * 1024;
 const INLINE_RESPONSE_STORAGE_ID: &str = "runtime-inline";
 
+mod workflow_credentials;
+
+/// Freeze consumed configuration before the request waits, alongside its bound body/headers.
+/// Template errors still belong to HTTP execution after a node receipt has been created.
+pub(super) fn request_input_payload(
+    node: &CompiledNode,
+    inputs: &Map<String, Value>,
+    pool: &Map<String, Value>,
+) -> Value {
+    let mut payload = inputs.clone();
+    payload.insert(
+        "method".into(),
+        json!(node
+            .config
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or("GET")
+            .to_uppercase()),
+    );
+    if let Some(template) = node.config.get("url").and_then(Value::as_str) {
+        if let Ok(url) = render_template(template, pool) {
+            payload.insert("url".into(), json!(url));
+        }
+    }
+    Value::Object(payload)
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct HttpRequestNodeExecution {
     pub output_payload: Value,
@@ -137,6 +164,19 @@ pub async fn execute_http_request_node_with_provider_invoker<I>(
 where
     I: super::ProviderInvoker + ?Sized,
 {
+    if let Some(reference) = workflow_credentials::credential_reference(resolved_inputs) {
+        return http_request_execution_result(
+            workflow_credentials::execute(
+                node,
+                resolved_inputs,
+                variable_pool,
+                file_persister,
+                provider_invoker,
+                &reference,
+            )
+            .await,
+        );
+    }
     let timeout = Duration::from_millis(config_u64(&node.config, "timeout_ms", DEFAULT_TIMEOUT_MS));
     let verify_ssl = node
         .config

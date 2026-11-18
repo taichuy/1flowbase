@@ -3,6 +3,31 @@ use super::*;
 pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration> {
     vec![
         SettingsFeatureRegistration {
+            feature_id: "system.events".to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.events".to_string(),
+                surface_key: "events".to_string(),
+                path: "/settings/events".to_string(),
+                label_key: "events.title".to_string(),
+                description_key: "console.policy_groups.settings.system.events.description".to_string(),
+                order: 520,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/events"),
+                ("POST", "/api/console/events"),
+                ("PUT", "/api/console/events/{event_definition_id}"),
+                ("GET", "/api/console/events/runtime"),
+                ("GET", "/api/console/events/api-operations"),
+                ("GET", "/api/console/events/api-operations/{operation_id}"),
+            ]),
+        },
+        SettingsFeatureRegistration {
             feature_id: "system.branding".to_owned(),
             owner: SettingsFeatureOwner { kind: SettingsFeatureOwnerKind::Core, owner_id: "boot-core".to_owned(), version: env!("CARGO_PKG_VERSION").to_owned() },
             lifecycle: SettingsFeatureLifecycle::Active,
@@ -71,7 +96,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
-            feature_id: SYSTEM_UI_MANAGEMENT_SETTINGS_FEATURE_ID.to_string(),
+            feature_id: "system.ui-management".to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
                 owner_id: "boot-core".to_string(),
@@ -87,6 +112,27 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 order: 550,
             },
             api_routes: settings_api_routes(&[
+                ("GET", "/api/console/frontstage/pages/{page_id}/blocks"),
+                ("POST", "/api/console/frontstage/pages/{page_id}/blocks"),
+                ("GET", "/api/console/frontstage/pages/{page_id}/blocks/search"),
+                ("GET", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}"),
+                ("PATCH", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}"),
+                ("DELETE", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}"),
+                ("GET", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/children"),
+                ("GET", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/ancestors"),
+                ("GET", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/descendants"),
+                ("GET", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/delete-impact"),
+                ("POST", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/move"),
+                ("POST", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/delete-subtree"),
+                ("GET", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/open"),
+                ("GET", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/code"),
+                ("PUT", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/code"),
+                ("PATCH", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/code"),
+                ("GET", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/code/search"),
+                ("GET", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/code/fragment"),
+                ("POST", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/code/replace"),
+                ("GET", "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/runtime-assembly"),
+                ("PUT", "/api/console/frontstage/pages/{page_id}/tabs/{tab_id}/block-descriptors"),
                 ("POST", "/api/console/frontstage/pages/groups"),
                 ("POST", "/api/console/frontstage/pages"),
                 ("DELETE", "/api/console/frontstage/pages/{page_id}"),
@@ -114,6 +160,10 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("GET", "/api/console/settings/ui-management/components/catalog/update-status"),
                 ("POST", "/api/console/settings/ui-management/components/catalog/{component_code}/download"),
                 ("POST", "/api/console/settings/ui-management/components/catalog/groups/{source}/{group}/sync"),
+                ("GET", "/api/console/settings/ui-management/blocks"),
+                ("POST", "/api/console/settings/ui-management/blocks"),
+                ("PUT", "/api/console/settings/ui-management/blocks/{id}"),
+                ("DELETE", "/api/console/settings/ui-management/blocks/{id}"),
             ]),
         },
         SettingsFeatureRegistration {
@@ -759,6 +809,8 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("GET", "/api/console/mcp/export"),
                 ("GET", "/api/console/mcp/instances"),
                 ("POST", "/api/console/mcp/instances"),
+                ("GET", "/api/console/mcp/instances/{instance_id}/directory"),
+                ("PUT", "/api/console/mcp/instances/{instance_id}/directory"),
                 (
                     "POST",
                     "/api/console/mcp/instances/{instance_id}/copy",

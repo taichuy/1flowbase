@@ -1,0 +1,40 @@
+.block-design-initializer {
+  flex: none;
+  white-space: nowrap;
+}
+.block-design-surface {
+  display: inline-flex;
+  position: relative;
+  align-items: center;
+  min-width: 0;
+}
+.block-design-surface-enabled:hover,
+.block-design-surface-enabled:focus-within {
+  outline: 1px solid var(--block-design-color);
+  outline-offset: 2px;
+  background: var(--block-design-hover-bg);
+}
+.block-design-toolbar {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+.block-design-surface:hover > .block-design-toolbar,
+.block-design-surface:focus-within > .block-design-toolbar,
+.block-design-toolbar:has([aria-expanded='true']) {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .block-design-toolbar {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}

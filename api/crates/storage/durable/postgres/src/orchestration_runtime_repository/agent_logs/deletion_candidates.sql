@@ -18,5 +18,5 @@ where t.application_id=$1 and t.scope_id=$2
   and ($4::timestamptz is null or t.started_at < $4)
   and ($5::timestamptz is null or t.ingested_at < $5)
   and ((a.application_type='agent_logs' and t.source_kind='imported')
-       or (a.application_type='agent_flow' and t.source_kind='native'
+       or (a.application_type in ('agent_flow','workflow') and t.source_kind='native'
            and m.terminal and not m.assistant_seed))

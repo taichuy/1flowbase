@@ -416,6 +416,44 @@ async fn preview_agent_flow_template_marks_unsupported_node_type_as_unresolved_n
 }
 
 #[tokio::test]
+async fn notification_template_preserves_channel_and_text_binding_without_a_send() {
+    let owner_id = Uuid::now_v7();
+    let service = FlowService::for_tests();
+    let application = service
+        .seed_application_for_actor(owner_id, "Notification template")
+        .await
+        .unwrap();
+    let mut template = service
+        .export_agent_flow_template(owner_id, application.id)
+        .await
+        .unwrap();
+    let notification = json!({
+        "id":"node-llm", "type":"notification", "alias":"Reply", "configVersion":1,
+        "config":{"instance_id":Uuid::now_v7()},
+        "bindings":{"input":{"kind":"named_bindings","value":[{
+            "name":"text","valueType":"string","value":{"kind":"selector","selector":["node-start","query"]}
+        }]}},
+        "outputs":[{"key":"result","title":"result","valueType":"object","selector":["result"]}]
+    });
+    template.flow_document["graph"]["nodes"][1] = notification.clone();
+    let imported = service
+        .import_agent_flow_template(ImportAgentFlowTemplateCommand {
+            actor_user_id: owner_id,
+            template,
+            name: Some("Imported notification".into()),
+            description: None,
+            resources: AgentFlowTemplateResourceSnapshot::default(),
+        })
+        .await
+        .unwrap();
+    assert!(imported.preview.unresolved_nodes.is_empty());
+    assert_eq!(
+        imported.orchestration.draft.document["graph"]["nodes"][1],
+        notification
+    );
+}
+
+#[tokio::test]
 async fn ac_006_preview_agent_flow_template_recognizes_variable_aggregator_as_builtin() {
     let owner_id = Uuid::now_v7();
     let service = FlowService::for_tests();

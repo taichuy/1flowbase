@@ -1171,3 +1171,83 @@ fn d4_ac_016_native_transport_serializes_for_provider_but_debug_stays_redacted()
         .expect("wire audit should serialize")
         .contains(SECRET));
 }
+
+#[test]
+fn anthropic_dynamic_tools_require_source_restore_instead_of_lossy_fallback() {
+    for extension in [
+        json!({"tools":[{"name":"Glob","defer_loading":true}], "messages":[{"role":"user","content":"inspect"}]}),
+        json!({"messages":[{"role":"user","content":"inspect"},{"role":"system","content":[
+            {"type":"text","text":"environment"},
+            {"type":"tool_addition","tool":{"type":"tool_reference","name":"Glob"}}
+        ]}]}),
+    ] {
+        let input = ProviderInvocationInput {
+            client_protocol_envelope: Some(
+                serde_json::from_value(json!({
+                    "source_protocol":"anthropic_messages",
+                    "source_request":{"body":extension}
+                }))
+                .unwrap(),
+            ),
+            ..ProviderInvocationInput::default()
+        };
+        for capabilities in [
+            vec![],
+            vec!["protocol_context.restore.openai_chat.v1".to_string()],
+            vec!["protocol_context.consume.anthropic_messages.v1".to_string()],
+            vec!["protocol_context.restore.anthropic_messages.v1".to_string()],
+        ] {
+            let error = input
+                .project_current_provider_generate(&capabilities)
+                .expect_err("dynamic tools must not disappear on a non-restoring provider");
+            match error {
+                ProviderGenerateProjectionError::InvalidContract { message } => {
+                    assert!(message.contains("dynamic tool semantics"));
+                    assert!(message.contains("protocol_context.restore.anthropic_messages.v2"));
+                }
+                other => panic!("unexpected projection error: {other:?}"),
+            }
+        }
+        let projection = input
+            .project_current_provider_generate(&[
+                "protocol_context.restore.anthropic_messages.v2".to_string()
+            ])
+            .expect("matching source-restoring provider");
+        assert_eq!(
+            projection.provider_bound_input.client_protocol_envelope,
+            input.client_protocol_envelope
+        );
+        assert!(!projection
+            .receipt
+            .decisions
+            .contains(&ProviderGenerateTranslationDecision::OmittedProtocolContextProfileMismatch));
+    }
+}
+
+#[test]
+fn false_defer_loading_allows_existing_canonical_cross_protocol_projection() {
+    let input = ProviderInvocationInput {
+        client_protocol_envelope: Some(
+            serde_json::from_value(json!({
+                "source_protocol":"anthropic_messages",
+                "source_request":{"body":{
+                    "messages":[{"role":"user","content":"inspect"}],
+                    "tools":[{"name":"Glob","defer_loading":false}]
+                }}
+            }))
+            .unwrap(),
+        ),
+        ..ProviderInvocationInput::default()
+    };
+    let projection = input
+        .project_current_provider_generate(&[])
+        .expect("false retains canonical eager default");
+    assert!(projection
+        .provider_bound_input
+        .client_protocol_envelope
+        .is_none());
+    assert!(projection
+        .receipt
+        .decisions
+        .contains(&ProviderGenerateTranslationDecision::OmittedProtocolContextProfileMismatch));
+}

@@ -178,7 +178,7 @@ async fn network_proxy_socks5_http_authentication_and_remote_dns() {
         .unwrap()
         .unwrap();
         let result = scope
-            .client
+            .http_client()
             .get("http://proxy-origin.invalid/")
             .timeout(Duration::from_secs(5))
             .send()

@@ -151,6 +151,11 @@ where
         actor: &domain::ActorContext,
         command: CreateApplicationCommand,
     ) -> Result<domain::ApplicationRecord> {
+        validate_create_workflow_trigger_config(
+            command.application_type,
+            command.workflow_trigger_type,
+            command.workflow_trigger_config.as_ref(),
+        )?;
         let created = self
             .repository
             .create_application(&CreateApplicationInput {

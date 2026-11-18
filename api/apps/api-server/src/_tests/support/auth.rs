@@ -1,12 +1,14 @@
 use super::applications::{
     create_member, create_role, replace_member_roles, replace_role_permissions,
-    sample_runtime_profile, set_user_preferred_locale,
+    set_user_preferred_locale,
 };
 use super::plugins::{
     InMemoryOfficialExtensionCatalogSource, InMemoryOfficialMcpBundleSource,
     InMemoryOfficialPluginSource,
 };
 use super::*;
+use crate::event_center::catalog::EventSourceCatalogAssembly;
+use crate::system_backup::SystemBackupRuntimeAssembly;
 use axum::response::Response;
 use control_plane::ports::{FileManagementRepository, SessionStore};
 use postgres_test_support::PostgresTestSchema;
@@ -38,7 +40,7 @@ impl RuntimeHostSystemPort for StubRuntimeHostSystemClient {
     }
 }
 
-pub(crate) fn default_test_config() -> ApiConfig {
+pub fn default_test_config() -> ApiConfig {
     let database_url = std::env::var("API_DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into());
     let root_account = std::env::var("BOOTSTRAP_ROOT_ACCOUNT").unwrap_or_else(|_| "root".into());
@@ -71,7 +73,7 @@ pub(crate) fn default_test_config() -> ApiConfig {
     ApiConfig::from_env_map(&refs).unwrap()
 }
 
-pub(crate) fn test_config() -> ApiConfig {
+pub fn test_config() -> ApiConfig {
     default_test_config()
 }
 
@@ -140,8 +142,12 @@ async fn test_state_with_runtime_profile_state(
     process_started_at: OffsetDateTime,
     api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
     runtime_host_system: Arc<dyn RuntimeHostSystemPort>,
+    pool_capacity: Option<std::num::NonZeroU32>,
 ) -> (Arc<ApiState>, String) {
     let mut config = default_test_config();
+    if let Some(capacity) = pool_capacity {
+        config.database_pool_max_connections = capacity.get();
+    }
     let database = isolated_database(&config.database_url).await;
     config.database_url = database.database_url().to_owned();
     config.business_file_local_root = std::env::temp_dir()
@@ -231,8 +237,25 @@ async fn test_state_with_runtime_profile_state(
         .ensure_builtin_user_and_role_models(bootstrap.root_user_id)
         .await
         .unwrap();
-    let provider_runtime =
-        Arc::new(ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests());
+    let test_resources = Arc::new(crate::test_support::TestResources::new(
+        database,
+        vec![
+            std::path::PathBuf::from(&config.business_file_local_root),
+            std::path::PathBuf::from(&config.provider_install_root),
+            std::path::PathBuf::from(&config.mcp_template_library_root),
+            std::path::PathBuf::from(&config.system_backup_repository_root),
+            postgres_toolchain_root,
+        ],
+    ));
+    #[cfg(test)]
+    let services = ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests();
+    #[cfg(not(test))]
+    let services = ApiRuntimeServices::for_test_support(
+        store.clone(),
+        &config.api_node_id,
+        &config.provider_install_root,
+    );
+    let provider_runtime = Arc::new(services.with_fixture_resources(Arc::clone(&test_resources)));
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
     let data_model_template_catalog = provider_runtime.data_model_template_catalog();
     let runtime_registry = runtime_core::runtime_model_registry::RuntimeModelRegistry::default();
@@ -273,14 +296,13 @@ async fn test_state_with_runtime_profile_state(
     )
     .expect("test extension graph input should assemble");
     let extension_boot_snapshot = Arc::new(
-        crate::extension_bus::ExtensionBootSnapshot::compile(
+        crate::extension_bus::compile_extension_boot_snapshot(
             Arc::new(
                 extension_assembly
                     .compile_graph()
                     .expect("test extension graph should compile"),
             ),
-            extension_assembly.interface_operations(),
-            Vec::new(),
+            &extension_assembly,
         )
         .expect("test extension boot snapshot should compile"),
     );
@@ -327,17 +349,14 @@ async fn test_state_with_runtime_profile_state(
         .with_events(notification_events.clone()),
     );
     notification_service.bootstrap().await.unwrap();
+    let event_center = control_plane::event_center::EventCenterRuntime::new(
+        infrastructure.event_bus(),
+        config.event_center_policy,
+    )
+    .unwrap();
     let state = Arc::new(ApiState {
-        test_resources: Some(Arc::new(crate::app_state::TestResources::new(
-            database,
-            vec![
-                std::path::PathBuf::from(&config.business_file_local_root),
-                std::path::PathBuf::from(&config.provider_install_root),
-                std::path::PathBuf::from(&config.mcp_template_library_root),
-                std::path::PathBuf::from(&config.system_backup_repository_root),
-                postgres_toolchain_root,
-            ],
-        ))),
+        #[cfg(any(test, feature = "test-support"))]
+        test_resources: Some(test_resources),
         store: store.clone(),
         console_policy_reader: Arc::new(store.clone()),
         system_backup,
@@ -346,11 +365,20 @@ async fn test_state_with_runtime_profile_state(
         settings_feature_registry,
         console_operation_registry,
         infrastructure,
+        event_center,
+        event_sources: Arc::new(crate::event_center::catalog::EventSourceCatalog::default()),
+        event_workflow_changes: Arc::default(),
+        event_workflow_statuses: Default::default(),
         extension_boot_snapshot: Some(Arc::clone(&extension_boot_snapshot)),
         console_surface_registry,
         file_storage_registry,
         runtime_engine,
         provider_runtime,
+        runtime_event_stream_projection: Arc::new(
+            crate::interaction_assembly::RuntimeEventSseAdapter,
+        ),
+        native_resource_import: Arc::new(api_mcp::resource_import::NativeResourceImportAdapter),
+        terminal_jobs: Default::default(),
         process_started_at,
         communication_activity: Default::default(),
         runtime_activity: Arc::new(
@@ -406,6 +434,7 @@ async fn test_app_with_runtime_profile_state(
         process_started_at,
         api_runtime_profile,
         runtime_host_system,
+        None,
     )
     .await;
     let config = default_test_config();
@@ -429,7 +458,7 @@ pub async fn test_app() -> Router {
     test_app_with_database_url().await.0
 }
 
-pub(crate) async fn test_app_with_model_pricing_catalog_url(catalog_index_url: String) -> Router {
+pub async fn test_app_with_model_pricing_catalog_url(catalog_index_url: String) -> Router {
     let (mut state, _) = test_api_state_with_database_url().await;
     Arc::get_mut(&mut state)
         .expect("test API state should be uniquely owned before router construction")
@@ -437,7 +466,7 @@ pub(crate) async fn test_app_with_model_pricing_catalog_url(catalog_index_url: S
     crate::app_with_state_and_config(state, &default_test_config())
 }
 
-pub(crate) async fn test_app_with_official_extension_source(
+pub async fn test_app_with_official_extension_source(
     source: Arc<dyn crate::official_extension_catalog::OfficialExtensionCatalogSourcePort>,
 ) -> Router {
     let (mut state, _) = test_api_state_with_database_url().await;
@@ -447,22 +476,35 @@ pub(crate) async fn test_app_with_official_extension_source(
     crate::app_with_state_and_config(state, &default_test_config())
 }
 
-pub(crate) async fn test_api_state_with_database_url() -> (Arc<ApiState>, String) {
+pub async fn test_api_state_with_database_url() -> (Arc<ApiState>, String) {
+    test_api_state_with_database_pool_capacity(
+        std::num::NonZeroU32::new(default_test_config().database_pool_max_connections)
+            .expect("default test pool capacity is positive"),
+    )
+    .await
+}
+
+/// Explicit resource capacity for tests whose real services retain concurrent transactions.
+/// The default helpers keep their existing one-connection budget and isolated database owner.
+pub async fn test_api_state_with_database_pool_capacity(
+    pool_capacity: std::num::NonZeroU32,
+) -> (Arc<ApiState>, String) {
     test_state_with_runtime_profile_state(
         OffsetDateTime::now_utc(),
         Arc::new(HostApiRuntimeProfileCollector::new(OffsetDateTime::now_utc()).unwrap()),
         Arc::new(StubRuntimeHostSystemClient {
             result: Ok(sample_runner_profile("host_api_server")),
         }),
+        Some(pool_capacity),
     )
     .await
 }
 
-pub(crate) async fn seed_session(state: &ApiState, session: domain::SessionRecord) {
+pub async fn seed_session(state: &ApiState, session: domain::SessionRecord) {
     state.session_store.put(session).await.unwrap();
 }
 
-pub(crate) async fn read_first_sse_frame(response: Response) -> String {
+pub async fn read_first_sse_frame(response: Response) -> String {
     let mut stream = response.into_body().into_data_stream();
     let mut buffer = Vec::new();
 
@@ -500,18 +542,18 @@ pub async fn login_and_capture_cookie(
         .await
         .unwrap();
 
+    let status = response.status();
     let cookie = response
         .headers()
         .get("set-cookie")
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
+        .and_then(|value| value.to_str().ok())
+        .map(ToOwned::to_owned);
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
+    assert_eq!(status, StatusCode::OK, "sign-in failed: {payload}");
     (
-        cookie,
+        cookie.unwrap_or_else(|| panic!("sign-in response omitted Set-Cookie: {payload}")),
         payload["data"]["csrf_token"].as_str().unwrap().to_string(),
     )
 }
@@ -553,14 +595,6 @@ pub async fn post_json(app: &Router, path: &str, cookie: &str) -> serde_json::Va
 
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     serde_json::from_slice(&body).unwrap()
-}
-
-pub fn sample_api_profile(host_fingerprint: &str) -> RuntimeProfile {
-    sample_runtime_profile("api-server", host_fingerprint)
-}
-
-pub fn sample_runner_profile(host_fingerprint: &str) -> RuntimeProfile {
-    sample_runtime_profile("runtime-extension-host", host_fingerprint)
 }
 
 pub async fn test_app_with_runtime_profiles(
@@ -613,4 +647,12 @@ pub async fn test_app_with_runtime_profile_error(permissions: &[&str]) -> (Route
         None,
     )
     .await
+}
+
+pub use api_host_kernel::test_support::profiles::{sample_api_profile, sample_runner_profile};
+
+/// Real stateless stream adapter used by explicit native fixture State literals.
+pub fn runtime_event_stream_projection(
+) -> std::sync::Arc<dyn api_host_kernel::debug_stream_contract::RuntimeEventSsePort> {
+    std::sync::Arc::new(crate::interaction_assembly::RuntimeEventSseAdapter)
 }

@@ -1071,5 +1071,10 @@ async fn workflow_extension_openapi_and_settings_docs_register_concrete_slug_ope
 
 #[path = "workflow_extension_routes/callable_catalog.rs"]
 mod callable_catalog;
+#[path = "workflow_extension_routes/document_event_observation.rs"]
+mod document_event_observation;
 #[path = "workflow_extension_routes/schedule_publication.rs"]
 mod schedule_publication;
+
+#[path = "workflow_extension_routes/workflow_credentials.rs"]
+mod workflow_credentials;

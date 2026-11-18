@@ -1,5 +1,6 @@
 //! The ingress selects one complete host generation. Candidate construction never mutates the
 //! serving router, and publication contains no fallible work or await point.
+use crate::extension_bus::SnapshotAssembly;
 use std::{
     collections::BTreeMap,
     panic::AssertUnwindSafe,
@@ -25,11 +26,14 @@ use crate::{
 };
 
 pub(crate) struct PreparedGeneration {
+    #[cfg(feature = "test-support")]
+    pub(crate) mounted: Vec<crate::external_endpoint_catalog::ExternalEndpointContribution>,
     router: Router,
     owner: Arc<crate::generation_dispatch::GenerationDispatch>,
     stream_generation: String,
     state: Weak<ApiState>,
     pub(crate) permission_catalog: control_plane_contracts::CompiledConsolePolicyCatalog,
+    pub(crate) event_catalog: domain::event_center::EventCatalogSnapshot,
 }
 
 struct PublishedGeneration {
@@ -116,6 +120,7 @@ impl ManagedGenerationPublisher {
         Some(crate::generation_dispatch::GenerationLease { state, owner })
     }
 
+    #[cfg_attr(test, api_test_selection::group(core, contracts))]
     #[cfg(test)]
     pub(crate) fn current_state(&self) -> Option<Arc<ApiState>> {
         self.current_generation().map(|lease| lease.state)
@@ -183,7 +188,7 @@ impl ManagedGenerationPublisher {
                 .extension_boot_snapshot
                 .as_ref()
                 .ok_or_else(|| anyhow::anyhow!("host generation template has no boot snapshot"))?
-                .fork_generation(snapshots)?,
+                .fork_generation(snapshots.clone())?,
         );
         let host_extensions = self
             .host_contributions
@@ -247,7 +252,11 @@ impl ManagedGenerationPublisher {
             control_plane::role::console_policy_migration::compiled_catalog_from_inventory(
                 state.console_operation_registry.inventory(),
             )?;
+        let event_catalog = crate::event_center::persistence::snapshot(&state, &snapshots).await?;
         Ok(PreparedGeneration {
+            #[cfg(feature = "test-support")]
+            mounted,
+            event_catalog,
             owner,
             state: Arc::downgrade(&state),
             stream_generation: crate::managed_services::stream_ticket::generation(&state)
@@ -280,6 +289,15 @@ impl ManagedGenerationPublisher {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/generation_ownership.rs"]
 mod generation_ownership;
+
+impl api_host_kernel::resource_import_ports::CurrentGenerationSource
+    for ManagedGenerationPublisher
+{
+    fn current_generation(&self) -> Option<crate::generation_dispatch::GenerationLease> {
+        ManagedGenerationPublisher::current_generation(self)
+    }
+}

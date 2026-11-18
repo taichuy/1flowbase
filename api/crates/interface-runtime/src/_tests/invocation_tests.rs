@@ -34,11 +34,22 @@ use crate::{
 #[path = "invocation/stack_budget_tests.rs"]
 mod stack_budget_tests;
 
+#[path = "invocation/event_observation_tests.rs"]
+mod event_observation_tests;
+
 #[derive(Clone)]
 struct Input(u8);
 impl InterfaceContract for Input {
     const CONTRACT_ID: &'static str = "invocation-input";
     const CONTRACT_VERSION: &'static str = "1";
+    fn event_projection_schema() -> Option<serde_json::Value> {
+        Some(
+            serde_json::json!({"type":"object","properties":{"value":{"type":"integer"}},"required":["value"],"additionalProperties":false}),
+        )
+    }
+    fn project_for_event(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({"value":self.0}))
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -46,6 +57,14 @@ struct Output(u8);
 impl InterfaceContract for Output {
     const CONTRACT_ID: &'static str = "invocation-output";
     const CONTRACT_VERSION: &'static str = "1";
+    fn event_projection_schema() -> Option<serde_json::Value> {
+        Some(
+            serde_json::json!({"type":"object","properties":{"value":{"type":"integer"}},"required":["value"],"additionalProperties":false}),
+        )
+    }
+    fn project_for_event(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({"value":self.0}))
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

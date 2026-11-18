@@ -83,7 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         result
                     }
                 }
-                NotificationOperation::Receive { .. } | NotificationOperation::DownloadAttachment { .. } => return Err("send-only fixture"),
+                NotificationOperation::SetActivity { .. } | NotificationOperation::Receive { .. } | NotificationOperation::DownloadAttachment { .. } => return Err("send-only fixture"),
             };
             Ok::<NotificationRuntimeResult, &str>(serde_json::from_value(result).expect("fixture outcome"))
         }).await;

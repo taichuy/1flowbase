@@ -354,7 +354,7 @@ fn ac_001_anthropic_tools_and_choice_map_to_native_inputs() {
     );
     assert_eq!(
         native.inputs.as_value()["tool_choice"],
-        json!({"name": "lookup_order"})
+        json!({"type":"function","name": "lookup_order"})
     );
 }
 

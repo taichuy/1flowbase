@@ -350,11 +350,42 @@ impl ProviderRuntimePort for InMemoryProviderRuntime {
             hook();
         }
 
-        if let Some(output) = self
+        if let Some(mut output) = self
             .provider_outputs
             .as_ref()
             .and_then(|provider_outputs| provider_outputs.lock().ok()?.pop_front())
         {
+            if let Some(failure) = output
+                .result
+                .provider_metadata
+                .get("__fixture_recovery_failure")
+            {
+                let directive: plugin_framework::provider_contract::ProviderRecoveryDirective =
+                    serde_json::from_value(input.run_context["provider_recovery"].clone())?;
+                let mut receipt = failure.clone();
+                receipt["transport_epoch"] = serde_json::to_value(directive.transport_epoch)?;
+                let error_kind = if output.result.provider_metadata["__fixture_auth_failure"]
+                    == true
+                {
+                    plugin_framework::provider_contract::ProviderRuntimeErrorKind::AuthFailed
+                } else {
+                    plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderTransportUnavailable
+                };
+                let error = plugin_framework::provider_contract::ProviderRuntimeError::new(
+                    error_kind,
+                    "scripted continuation owner unavailable",
+                )
+                .with_provider_details(json!({"1flowbase_provider_recovery":receipt.clone()}));
+                if output.result.provider_metadata["__fixture_recovery_streamed"] == true {
+                    output.events.push(ProviderStreamEvent::Error { error });
+                    output
+                        .result
+                        .set_recovery_receipt(serde_json::from_value(receipt)?)
+                        .map_err(anyhow::Error::msg)?;
+                    return Ok(output);
+                }
+                return Err(plugin_framework::PluginFrameworkError::runtime(error).into());
+            }
             return Ok(output);
         }
 

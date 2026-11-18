@@ -17,6 +17,40 @@ fn descriptor() -> NotificationTypeDescriptor {
     })).unwrap()
 }
 
+#[test]
+fn managed_receipt_identities_require_declared_unique_bounded_account_state() {
+    let mut descriptor = descriptor();
+    let authorization = descriptor.authorization.as_mut().unwrap();
+    assert!(authorization.managed_identity_keys.is_empty());
+    authorization
+        .managed_secret_keys
+        .push("account_identity".into());
+    authorization.managed_identity_keys = vec!["account_identity".into()];
+    assert!(authorization.validate().is_ok());
+    for value in [json!("fixture-user"), Value::Null] {
+        assert!(authorization
+            .validate_secret_keys(&std::collections::BTreeMap::from([(
+                "account_identity".into(),
+                value
+            )]))
+            .is_ok());
+    }
+    for value in [json!(""), json!("bad\nidentity"), json!({"token":"opaque"})] {
+        assert!(authorization
+            .validate_secret_keys(&std::collections::BTreeMap::from([(
+                "account_identity".into(),
+                value
+            )]))
+            .is_err());
+    }
+    authorization
+        .managed_identity_keys
+        .push("account_identity".into());
+    assert!(authorization.validate().is_err());
+    authorization.managed_identity_keys = vec!["undeclared".into()];
+    assert!(authorization.validate().is_err());
+}
+
 fn input() -> NotificationRuntimeInput {
     serde_json::from_value(json!({"operation":{"type":"receive","cursor":"opaque-provider-cursor","max_messages":10,"wait_seconds":20}})).unwrap()
 }
@@ -28,6 +62,25 @@ fn result() -> Value {
             "reference":{"provider_message_id":"m1","provider_attachment_id":"a1","download_token":{"cdn_token":"provider-private"}}
         }]}],"candidate_cursor":"next-opaque-cursor","has_more":false
     }},"managed_secret_patch":{"context_token":"provider-context"}})
+}
+
+#[test]
+fn quotation_is_optional_bounded_user_data_and_cannot_assert_host_identity() {
+    let mut wire = result();
+    wire["outcome"]["batch"]["messages"][0]["reply_to"] = json!({
+        "provider_message_id":"previous-client-id", "title":"Report", "text":"Birth: 2026-11-11"
+    });
+    let parsed: NotificationRuntimeResult = serde_json::from_value(wire.clone()).unwrap();
+    parsed.validate_for(&input(), &descriptor()).unwrap();
+    assert_eq!(serde_json::to_value(parsed).unwrap(), wire);
+    wire["outcome"]["batch"]["messages"][0]["reply_to"]["message_id"] = json!("host-uuid");
+    assert!(serde_json::from_value::<NotificationRuntimeResult>(wire.clone()).is_err());
+    wire["outcome"]["batch"]["messages"][0]["reply_to"] = json!({});
+    let parsed: NotificationRuntimeResult = serde_json::from_value(wire.clone()).unwrap();
+    assert!(parsed.validate_for(&input(), &descriptor()).is_err());
+    wire["outcome"]["batch"]["messages"][0]["reply_to"] = json!({"text":"x".repeat(65_537)});
+    let parsed: NotificationRuntimeResult = serde_json::from_value(wire).unwrap();
+    assert!(parsed.validate_for(&input(), &descriptor()).is_err());
 }
 
 #[test]
@@ -86,6 +139,7 @@ fn receive_rejects_bad_identities_duplicates_secret_cursor_and_mismatched_operat
     let result: NotificationRuntimeResult = serde_json::from_value(result()).unwrap();
     let mut send = input.clone();
     send.operation = NotificationOperation::Send {
+        request_id: None,
         target: None,
         input_payload: json!({}),
     };
@@ -227,6 +281,7 @@ fn reply_target_is_explicit_and_rejects_missing_identity() {
     let descriptor = descriptor();
     let mut request = input();
     request.operation = NotificationOperation::Send {
+        request_id: None,
         input_payload: json!({}),
         target: Some(NotificationSendTarget {
             sender_id: "peer".into(),
@@ -243,4 +298,145 @@ fn reply_target_is_explicit_and_rejects_missing_identity() {
         target.sender_id.clear();
     }
     assert!(request.validate(&descriptor).is_err());
+}
+
+#[test]
+fn native_activity_requires_declared_capability_and_keeps_tickets_private() {
+    let mut descriptor = descriptor();
+    let input: NotificationRuntimeInput = serde_json::from_value(json!({"operation":{
+        "type":"set_activity", "state":"replying", "target":{
+            "sender_id":"peer", "conversation_id":"peer", "provider_message_id":"message"
+        }
+    }}))
+    .unwrap();
+    assert!(input.validate(&descriptor).is_err());
+    descriptor.receive.as_mut().unwrap().supports_activity = true;
+    input.validate(&descriptor).unwrap();
+    let result: NotificationRuntimeResult =
+        serde_json::from_value(json!({"type":"activity", "applied":true})).unwrap();
+    result.validate_for(&input, &descriptor).unwrap();
+    let injected: NotificationRuntimeResult = serde_json::from_value(json!({"type":"activity", "applied":true,"managed_secret_patch":{"undeclared_ticket":"secret"}})).unwrap();
+    assert!(injected.validate_for(&input, &descriptor).is_err());
+    assert!(result
+        .validate_for(
+            &serde_json::from_value::<NotificationRuntimeInput>(
+                json!({"operation":{"type":"receive","max_messages":1,"wait_seconds":0}})
+            )
+            .unwrap(),
+            &descriptor
+        )
+        .is_err());
+    let mut bad = input.clone();
+    if let NotificationOperation::SetActivity { target, .. } = &mut bad.operation {
+        target.sender_id.clear();
+    }
+    assert!(bad.validate(&descriptor).is_err());
+}
+
+const SEND_REQUEST_ID: &str = "926926b7-a099-4e69-bbd7-0f91d3721ff8";
+
+fn correlated_send() -> (NotificationTypeDescriptor, NotificationRuntimeInput, Value) {
+    let mut descriptor = descriptor();
+    descriptor.receive.as_mut().unwrap().supports_send_receipts = true;
+    let input = serde_json::from_value(json!({"operation":{
+        "type":"send","request_id":SEND_REQUEST_ID,"input_payload":{},
+        "target":{"sender_id":"provider-peer","conversation_id":"provider-room","provider_message_id":"inbound-id"}
+    }})).unwrap();
+    let result = json!({"type":"send","outcome":{"status":"succeeded","result":{}},
+        "receipt":{"request_id":SEND_REQUEST_ID,"recipient_id":"provider-peer","conversation_id":"provider-room",
+            "client_message_id":"actual-client-id"}});
+    (descriptor, input, result)
+}
+
+#[test]
+fn send_receipt_correlates_host_request_and_external_destination() {
+    let (descriptor, input, wire) = correlated_send();
+    let result: NotificationRuntimeResult = serde_json::from_value(wire.clone()).unwrap();
+    result.validate_for(&input, &descriptor).unwrap();
+    assert_eq!(serde_json::to_value(result).unwrap(), wire);
+    // The provider need not expose a provider message id; a real client id stays distinct.
+    assert!(wire["receipt"].get("provider_message_id").is_none());
+    for (pointer, replacement) in [
+        (
+            "/receipt/request_id",
+            json!("b3598376-0dd7-4fac-aa40-37a1d4188e58"),
+        ),
+        ("/receipt/recipient_id", json!("other-peer")),
+        ("/receipt/conversation_id", json!("other-room")),
+        ("/receipt/request_id", json!("not-a-uuid")),
+        ("/receipt/recipient_id", json!("")),
+        ("/receipt/conversation_id", json!("bad\nidentity")),
+        ("/receipt/client_message_id", json!("")),
+        ("/receipt/client_message_id", json!("x".repeat(1025))),
+        ("/receipt", Value::Null),
+    ] {
+        let mut changed = wire.clone();
+        *changed.pointer_mut(pointer).unwrap() = replacement;
+        let result: NotificationRuntimeResult = serde_json::from_value(changed).unwrap();
+        assert!(
+            result.validate_for(&input, &descriptor).is_err(),
+            "{pointer}"
+        );
+    }
+    let mut changed = wire;
+    changed["receipt"]["provider_message_id"] = json!("bad\nprovider-id");
+    let result: NotificationRuntimeResult = serde_json::from_value(changed).unwrap();
+    assert!(result.validate_for(&input, &descriptor).is_err());
+}
+
+#[test]
+fn send_receipt_is_optional_for_failure_and_unknown_but_never_uncorrelated() {
+    let (descriptor, input, wire) = correlated_send();
+    for outcome in [
+        json!({"status":"failed","failure_code":"provider_rejected"}),
+        json!({"status":"unknown","failure_code":"provider_result_unknown"}),
+    ] {
+        let mut changed = wire.clone();
+        changed["outcome"] = outcome;
+        for receipt in [Value::Null, wire["receipt"].clone()] {
+            changed["receipt"] = receipt;
+            let result: NotificationRuntimeResult =
+                serde_json::from_value(changed.clone()).unwrap();
+            result.validate_for(&input, &descriptor).unwrap();
+        }
+        changed["receipt"]["request_id"] = json!("b3598376-0dd7-4fac-aa40-37a1d4188e58");
+        let result: NotificationRuntimeResult = serde_json::from_value(changed).unwrap();
+        assert!(result.validate_for(&input, &descriptor).is_err());
+    }
+}
+
+#[test]
+fn send_receipt_capability_defaults_false_and_legacy_wire_stays_unchanged() {
+    let legacy = descriptor();
+    assert!(!legacy.receive.as_ref().unwrap().supports_send_receipts);
+    assert!(serde_json::to_value(&legacy).unwrap()["receive"]
+        .get("supports_send_receipts")
+        .is_none());
+    let (mut capable, mut input, wire) = correlated_send();
+    assert!(input.validate(&legacy).is_err());
+    for invalid_id in ["".into(), "not-a-uuid".into(), "x".repeat(1025)] {
+        let mut changed = input.clone();
+        if let NotificationOperation::Send { request_id, .. } = &mut changed.operation {
+            *request_id = Some(invalid_id);
+        }
+        assert!(changed.validate(&capable).is_err());
+    }
+    if let NotificationOperation::Send { request_id, .. } = &mut input.operation {
+        *request_id = None;
+    }
+    let result: NotificationRuntimeResult = serde_json::from_value(wire).unwrap();
+    assert!(result.validate_for(&input, &capable).is_err());
+    let legacy_wire = json!({"type":"send","outcome":{"status":"succeeded","result":{}}});
+    let result: NotificationRuntimeResult = serde_json::from_value(legacy_wire.clone()).unwrap();
+    for descriptor in [&legacy, &capable] {
+        result.validate_for(&input, descriptor).unwrap();
+    }
+    assert_eq!(serde_json::to_value(result).unwrap(), legacy_wire);
+    assert!(serde_json::to_value(input).unwrap()["operation"]
+        .get("request_id")
+        .is_none());
+    capable.receive.as_mut().unwrap().supports_send_receipts = false;
+    assert!(serde_json::to_value(capable).unwrap()["receive"]
+        .get("supports_send_receipts")
+        .is_none());
 }

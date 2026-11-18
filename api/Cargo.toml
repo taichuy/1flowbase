@@ -1,6 +1,14 @@
 [workspace]
 members = [
   "apps/api-server",
+  "crates/api/kernel",
+  "crates/api/public-gateway",
+  "crates/api/applications",
+  "crates/api/mcp",
+  "crates/api/console-settings",
+  "crates/api/plugins-models",
+  "crates/api/console-interaction",
+  "crates/api-test-selection",
   "crates/domain",
   "crates/control-plane-contracts",
   "crates/control-plane",
@@ -31,7 +39,7 @@ resolver = "2"
 rust-version = "1.99"
 edition = "2021"
 license = "MIT"
-version = "0.6.3"
+version = "0.6.4"
 
 [workspace.dependencies]
 base16ct = "1.0.0"
@@ -96,13 +104,29 @@ debug = 1
 [profile.dev.package.api-server]
 debug = "line-tables-only"
 
+[profile.dev.package.api-host-kernel]
+debug = "line-tables-only"
+
 # Gateway history and durable facts hash their complete input in development too.
 # Keep SHA-256 compression optimized without disabling application debug checks.
 [profile.dev.package.sha2]
 opt-level = 3
 
+# Match cache warmup and ordinary test commands so dependency artifacts are reusable.
 [profile.test]
-debug = 1
+debug = 0
+
+# Avoid the composition root test harness incremental cache and inherited dev DWARF.
+# Other crates retain the configured incremental policy; development keeps line tables.
+[profile.test.package.api-server]
+incremental = false
+debug = 0
+codegen-units = 256
+
+[profile.test.package.api-host-kernel]
+incremental = false
+debug = 0
+codegen-units = 256
 
 # Managed hook admission hashes installed worker bytes inside the invocation's
 # 1 s observer finalization budget. Keep that SHA-256 path representative of
@@ -116,3 +140,48 @@ tungstenite = { path = "vendor/tungstenite-0.27.0-openai-memory" }
 
 [patch.crates-io]
 tungstenite = { path = "vendor/tungstenite-0.29.0-memory" }
+
+[profile.dev.package.api-public-gateway]
+debug="line-tables-only"
+[profile.test.package.api-public-gateway]
+incremental=false
+debug=0
+codegen-units=256
+
+[profile.dev.package.api-applications]
+debug="line-tables-only"
+[profile.test.package.api-applications]
+incremental=false
+debug=0
+codegen-units=256
+
+[profile.dev.package.api-mcp]
+debug = "line-tables-only"
+
+[profile.test.package.api-mcp]
+incremental = false
+debug = 0
+codegen-units = 256
+
+[profile.dev.package.api-console-settings]
+debug = "line-tables-only"
+
+[profile.test.package.api-console-settings]
+incremental = false
+debug = 0
+codegen-units = 256
+
+[profile.dev.package.api-plugins-models]
+debug = "line-tables-only"
+
+[profile.test.package.api-plugins-models]
+incremental = false
+debug = 0
+codegen-units = 256
+
+[profile.dev.package.api-console-interaction]
+debug="line-tables-only"
+[profile.test.package.api-console-interaction]
+incremental=false
+debug=0
+codegen-units=256

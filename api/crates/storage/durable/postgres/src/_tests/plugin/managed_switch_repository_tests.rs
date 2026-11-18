@@ -239,14 +239,38 @@ async fn system_managed_switch_is_atomic_without_workspace_assignment() {
         .execute(store.pool()).await.unwrap();
     sqlx::query("create trigger reject_switch_audit before insert on audit_logs for each row execute function reject_switch_audit()")
         .execute(store.pool()).await.unwrap();
+    let event_catalog = domain::event_center::EventCatalogSnapshot {
+        scopes: vec![domain::event_center::EventSourceScope::System],
+        entries: vec![serde_json::from_value(json!({
+            "id":null,"scope":{"kind":"system"},"enabled":null,"owner_id":"fixture.plugin",
+            "contract_id":"fixture.switch.event","name":"Switched event","description":"",
+            "payload_schema":{"type":"object"},"origin":"plugin","supported_phases":["published"]
+        }))
+        .unwrap()],
+    };
     let failed = store
         .lock_managed_installation_switch(&command)
         .await
         .unwrap()
-        .commit_with_catalog(invalid, Some(permission_catalog()), Vec::new())
+        .commit_with_catalog(
+            invalid,
+            Some(permission_catalog()),
+            Vec::new(),
+            Some(event_catalog.clone()),
+        )
         .await;
     assert!(failed.is_err());
     assert!(!catalog_published(&store).await);
+    let catalog_rows: i64 = sqlx::query_scalar(
+        "select count(*) from event_catalog where metadata->>'contract_id'='fixture.switch.event'",
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        catalog_rows, 0,
+        "failed authority publication must roll back the event directory"
+    );
     assert_eq!(selected(&store).await, vec![current.id]);
     assert_eq!(
         store.list_ui_code_templates().await.unwrap()[0]
@@ -266,10 +290,17 @@ async fn system_managed_switch_is_atomic_without_workspace_assignment() {
             audit(actor, target.id),
             Some(permission_catalog()),
             Vec::new(),
+            Some(event_catalog),
         )
         .await
         .unwrap();
     assert!(catalog_published(&store).await);
+    let catalog_rows: i64 = sqlx::query_scalar("select count(*) from event_catalog where metadata->>'contract_id'='fixture.switch.event' and available")
+        .fetch_one(store.pool()).await.unwrap();
+    assert_eq!(
+        catalog_rows, 1,
+        "successful authority publication commits the event directory"
+    );
     assert_eq!(selected(&store).await, vec![target.id]);
     assert_eq!(
         store.list_ui_code_templates().await.unwrap()[0]
@@ -309,7 +340,7 @@ async fn managed_template_commit_requires_locked_active_system_authority() {
         .lock_installation_contribution_authority(installation.id, domain::SYSTEM_SCOPE_ID)
         .await
         .unwrap()
-        .commit_managed_settings_templates(vec![installation.id], None)
+        .commit_managed_settings_templates(vec![installation.id], None, None)
         .await;
     assert!(denied
         .unwrap_err()
@@ -328,7 +359,7 @@ async fn managed_template_commit_requires_locked_active_system_authority() {
         .lock_installation_contribution_authority(installation.id, domain::SYSTEM_SCOPE_ID)
         .await
         .unwrap()
-        .commit_managed_settings_templates(Vec::new(), None)
+        .commit_managed_settings_templates(Vec::new(), None, None)
         .await
         .unwrap();
     assert!(store.list_ui_code_templates().await.unwrap().is_empty());
@@ -338,7 +369,7 @@ async fn managed_template_commit_requires_locked_active_system_authority() {
         .lock_installation_contribution_authority(installation.id, domain::SYSTEM_SCOPE_ID)
         .await
         .unwrap()
-        .commit_managed_settings_templates(vec![installation.id], Some(invalid_catalog))
+        .commit_managed_settings_templates(vec![installation.id], Some(invalid_catalog), None)
         .await;
     assert!(rejected_catalog
         .unwrap_err()
@@ -352,7 +383,11 @@ async fn managed_template_commit_requires_locked_active_system_authority() {
         .lock_installation_contribution_authority(installation.id, domain::SYSTEM_SCOPE_ID)
         .await
         .unwrap()
-        .commit_managed_settings_templates(vec![installation.id, Uuid::from_u128(u128::MAX)], None)
+        .commit_managed_settings_templates(
+            vec![installation.id, Uuid::from_u128(u128::MAX)],
+            None,
+            None,
+        )
         .await;
     assert!(rejected_batch
         .unwrap_err()
@@ -374,6 +409,7 @@ async fn managed_template_commit_requires_locked_active_system_authority() {
         .commit_managed_settings_templates(
             vec![installation.id, installation.id],
             Some(permission_catalog()),
+            None,
         )
         .await
         .unwrap();

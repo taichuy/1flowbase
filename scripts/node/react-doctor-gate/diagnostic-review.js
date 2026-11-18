@@ -1,11 +1,44 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
+const { createEffectSemanticCorrections } = require('./effect-semantics.js');
+const { createAsyncSemanticCorrections } = require('./async-semantics.js');
+const { createRenderSemanticCorrections } = require('./render-semantics.js');
+const { createQueryInvalidationSemanticCorrections } = require('./query-invalidation-semantics.js');
+const { createCompositionSemanticCorrections } = require('./composition-semantics.js');
+const { createResourceSemanticCorrections } = require('./resource-semantics.js');
+const { createHistoryObservationSemanticCorrections } = require('./history-observation-semantics.js');
+const { createNativeContentSemanticCorrections } = require('./native-content-semantics.js');
+const { createDraftRenderSemanticCorrections } = require('./draft-render-semantics.js');
+const { createMarkerSemanticCorrections } = require('./marker-semantics.js');
 
 const REVIEW_FILE = 'scripts/node/react-doctor-gate/reviews.json';
 
 function sourceDigest(content) {
   return createHash('sha256').update(content).digest('hex');
+}
+
+function upstreamSemanticCorrection(diagnostic, toolPackage, inspectEffect, inspectAsync, inspectRender, inspectQuery, inspectComposition, inspectResource, inspectHistory, inspectNativeContent, inspectDraft, inspectMarker) {
+  if (toolPackage !== 'react-doctor@0.2.16') return null;
+  if (diagnostic.plugin !== 'react-doctor') return null;
+  // React documents useContext as a current supported Hook, not a deprecated API.
+  // https://react.dev/reference/react/useContext
+  if (diagnostic.rule === 'no-react19-deprecated-apis'
+      && diagnostic.message?.startsWith('useContext is replaced by `use()` in React 19')) {
+    return 'React 19 still supports useContext; use() is an additional API, so this deprecation claim is false.';
+  }
+  // An address has implicit role=group, but the converse is not true: address
+  // adds contact-information meaning which a generic group does not carry.
+  // https://html.spec.whatwg.org/multipage/sections.html#the-address-element
+  if (diagnostic.rule === 'prefer-tag-over-role'
+      && diagnostic.message === 'Screen reader users get more reliable semantics from `<address>` than `role="group"`, so use `<address>` instead.') {
+    return 'A generic ARIA group does not imply contact information; address is not a semantically equivalent replacement.';
+  }
+  return inspectEffect(diagnostic, toolPackage) ?? inspectAsync(diagnostic, toolPackage)
+    ?? inspectRender(diagnostic, toolPackage) ?? inspectQuery(diagnostic, toolPackage)
+    ?? inspectComposition(diagnostic, toolPackage) ?? inspectResource(diagnostic, toolPackage)
+    ?? inspectHistory(diagnostic, toolPackage) ?? inspectNativeContent(diagnostic, toolPackage)
+    ?? inspectDraft(diagnostic, toolPackage) ?? inspectMarker(diagnostic, toolPackage);
 }
 
 // Review data is grouped by source owner; missing/ambiguous groups fail closed.
@@ -61,6 +94,17 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
     byKey.set(key, byKey.has(key) ? null : review);
   }
   const findings = [];
+  const upstreamCorrections = [];
+  const inspectEffect = createEffectSemanticCorrections(repoRoot);
+  const inspectAsync = createAsyncSemanticCorrections(repoRoot);
+  const inspectRender = createRenderSemanticCorrections(repoRoot);
+  const inspectQuery = createQueryInvalidationSemanticCorrections(repoRoot);
+  const inspectComposition = createCompositionSemanticCorrections(repoRoot);
+  const inspectResource = createResourceSemanticCorrections(repoRoot);
+  const inspectHistory = createHistoryObservationSemanticCorrections(repoRoot);
+  const inspectNativeContent = createNativeContentSemanticCorrections(repoRoot);
+  const inspectDraft = createDraftRenderSemanticCorrections(repoRoot);
+  const inspectMarker = createMarkerSemanticCorrections(repoRoot);
   const digests = new Map();
   const digestFile = (file) => {
     if (!digests.has(file)) {
@@ -78,9 +122,16 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
     const file = path.posix.normalize(`web/app/${diagnostic.filePath}`);
     const rule = `${diagnostic.plugin}/${diagnostic.rule}`;
     const review = byKey.get(`${file}\0${rule}`);
+    const validSource = file.startsWith('web/app/') && !diagnostic.filePath.startsWith('/')
+      && !diagnostic.filePath.includes('\\');
+    const correction = validSource ? upstreamSemanticCorrection(diagnostic, toolPackage,
+      inspectEffect, inspectAsync, inspectRender, inspectQuery, inspectComposition,
+      inspectResource, inspectHistory, inspectNativeContent, inspectDraft, inspectMarker) : null;
     let reason;
-    if (!file.startsWith('web/app/') || diagnostic.filePath.startsWith('/') || diagnostic.filePath.includes('\\')) {
+    if (!validSource) {
       reason = 'diagnostic path is outside the reviewed application source boundary';
+    } else if (correction) {
+      upstreamCorrections.push({ diagnostic, ...(typeof correction === 'string' ? { reason: correction } : correction) });
     } else if (!review || typeof review.reason !== 'string' || !review.reason.trim() || !Array.isArray(review.evidence) || review.evidence.length === 0) {
       reason = 'diagnostic has no explicit source and contract review';
     } else {
@@ -101,6 +152,7 @@ function evaluateDiagnosticReviews({ repoRoot, doctorReport, toolPackage }) {
     status: findings.length ? 'requires-review' : 'reviewed',
     reviewed: diagnostics.length - findings.length,
     findings,
+    ...(upstreamCorrections.length ? { upstreamCorrections } : {}),
   };
 }
 

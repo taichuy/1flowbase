@@ -6,6 +6,7 @@ use serde_json::json;
 mod admission;
 mod delivery;
 mod effects;
+mod event_commands;
 
 struct Fixture {
     state: Arc<ApiState>,
@@ -58,7 +59,7 @@ impl Fixture {
                     file_table_id: None,
                     mcp_instance_ids: vec![],
                     system_prompt: "Command fixture".into(),
-                    command_settings: vec![],
+                    commands: vec![],
                 },
                 "fixture-tools".into(),
             )
@@ -104,6 +105,7 @@ impl Fixture {
                     sender_display_name: None,
                     received_at_ms: 42,
                     text: Some(text.into()),
+                    reply_to: None,
                     attachments: vec![],
                 }],
             })

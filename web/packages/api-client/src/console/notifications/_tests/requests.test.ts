@@ -214,9 +214,13 @@ test('communication binding and cursor history preserve canonical DTO fields and
     file_table_id: null,
     mcp_instance_ids: ['plugin', 'extra'],
     system_prompt: 'Edited prompt',
-    command_settings: [
-      { command_id: 'host/help', enabled: false },
-      { command_id: 'acme/tools/status', enabled: true }
+    commands: [
+      { kind: 'registered' as const, command_id: 'host/help', enabled: false },
+      {
+        kind: 'registered' as const,
+        command_id: 'acme/tools/status',
+        enabled: true
+      }
     ]
   };
   await putCommunicationBinding('channel/1', body, 'csrf');
@@ -251,4 +255,50 @@ test('communication binding and cursor history preserve canonical DTO fields and
     expect.stringContaining('/messages/message%2F1/retry'),
     expect.objectContaining({ method: 'POST' })
   );
+});
+
+test('E8 serializes every command source in one canonical collection', async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(new Response(JSON.stringify({ data: {}, meta: null })));
+  vi.stubGlobal('fetch', fetch);
+  const { putCommunicationBinding } = await import('../communications');
+  const event_commands = [
+    {
+      kind: 'event' as const,
+      command_id: 'user/invoice',
+      name: 'invoice',
+      description: 'Invoice',
+      enabled: true,
+      contract_id: 'custom.invoice',
+      input_mapping: { invoice: '/arguments', channel: '/instance_id' }
+    }
+  ];
+  await putCommunicationBinding(
+    'channel',
+    {
+      application_id: 'agent-app',
+      model: null,
+      reasoning_effort: null,
+      file_table_id: null,
+      mcp_instance_ids: [],
+      system_prompt: '',
+      commands: [
+        { kind: 'registered', command_id: 'host/help', enabled: true },
+        ...event_commands
+      ]
+    },
+    'csrf'
+  );
+  const request = fetch.mock.calls[0] as unknown as [string, RequestInit];
+  expect(JSON.parse(String(request[1].body))).toMatchObject({
+    application_id: 'agent-app',
+    commands: [
+      { kind: 'registered', command_id: 'host/help', enabled: true },
+      ...event_commands
+    ]
+  });
+  const body = JSON.parse(String(request[1].body));
+  expect(body).not.toHaveProperty('command_settings');
+  expect(body).not.toHaveProperty('event_commands');
 });

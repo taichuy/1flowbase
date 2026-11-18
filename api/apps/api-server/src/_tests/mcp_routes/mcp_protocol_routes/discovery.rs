@@ -336,3 +336,74 @@ async fn mcp_meta_tools_progressively_disclose_only_visible_instance_tools() {
     .await;
     assert_eq!(missing_tool_payload["error"]["code"], json!(-32602));
 }
+
+#[tokio::test]
+async fn mcp_protocol_versions_negotiate_and_project_legacy_wire_over_http() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_mcp_instance(&app, &cookie, &csrf).await;
+    let token = create_api_key(&app, &cookie, &csrf).await;
+    for (proposed, expected) in [
+        ("2025-03-26", "2025-03-26"),
+        ("2025-11-25", "2025-11-25"),
+        ("2099-01-01", "2025-11-25"),
+    ] {
+        let response = app.clone().oneshot(Request::builder().method("POST").uri("/api/mcp/taichuy")
+            .header("authorization", format!("Bearer {token}")).header("content-type", "application/json")
+            .body(Body::from(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":proposed,"capabilities":{},"clientInfo":{"name":"fixture","version":"1"}}}).to_string())).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload = response_json(response).await;
+        assert_eq!(payload["result"]["protocolVersion"], expected);
+        assert_eq!(
+            payload["result"]["capabilities"],
+            json!({"tools":{},"resources":{}})
+        );
+    }
+    for version in [
+        None,
+        Some("2025-03-26"),
+        Some("2025-11-25"),
+        Some("2099-01-01"),
+    ] {
+        let mut request = Request::builder()
+            .method("POST")
+            .uri("/api/mcp/taichuy")
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json");
+        if let Some(version) = version {
+            request = request.header("mcp-protocol-version", version);
+        }
+        let response = app.clone().oneshot(request.body(Body::from(json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"mcp_list","arguments":{}}}).to_string())).unwrap()).await.unwrap();
+        if version == Some("2099-01-01") {
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            continue;
+        }
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload = response_json(response).await;
+        assert!(payload.get("error").is_none(), "{payload}");
+        let result = &payload["result"];
+        assert_eq!(
+            result.get("structuredContent").is_some(),
+            version == Some("2025-11-25")
+        );
+        assert!(result["content"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|block| block["type"] == "text"));
+    }
+    for method in ["resources/list", "resources/templates/list"] {
+        let payload = call_mcp(
+            &app,
+            &token,
+            json!({"jsonrpc":"2.0","id":3,"method":method,"params":{}}),
+        )
+        .await;
+        let field = if method == "resources/list" {
+            "resources"
+        } else {
+            "resourceTemplates"
+        };
+        assert_eq!(payload["result"][field], json!([]));
+    }
+}

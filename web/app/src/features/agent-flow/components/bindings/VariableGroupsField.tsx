@@ -51,13 +51,6 @@ const VALUE_TYPE_OPTIONS: Array<{
   { label: i18nText('agentFlow', 'auto.array'), value: 'array' }
 ];
 
-function selectorEquals(left: string[], right: string[]) {
-  return (
-    left.length === right.length &&
-    left.every((segment, index) => segment === right[index])
-  );
-}
-
 function declaredSelectorType(valueType: string) {
   return valueType.startsWith('array[') ? 'array' : valueType;
 }
@@ -121,8 +114,6 @@ function SortableCandidateRow({
   selectorAriaLabel,
   selector,
   options,
-  incompatible,
-  valueType,
   deleteDisabled,
   onChange,
   onDelete
@@ -132,8 +123,6 @@ function SortableCandidateRow({
   selectorAriaLabel: string;
   selector: string[];
   options: FlowSelectorOption[];
-  incompatible: boolean;
-  valueType: FlowVariableGroupValueType;
   deleteDisabled: boolean;
   onChange: (selector: string[]) => void;
   onDelete: () => void;
@@ -175,15 +164,6 @@ function SortableCandidateRow({
           value={selector}
           onChange={(nextSelector) => onChange(nextSelector as string[])}
         />
-        {incompatible ? (
-          <Typography.Text type="danger">
-            {i18nText(
-              'agentFlow',
-              'auto.variable_group_candidate_type_mismatch',
-              { value1: valueType }
-            )}
-          </Typography.Text>
-        ) : null}
       </div>
       <Button
         aria-label={i18nText('agentFlow', 'auto.delete_candidate')}
@@ -348,15 +328,6 @@ function VariableGroupSection({
         >
           <div className="agent-flow-variable-groups__candidates">
             {group.candidates.map((selector, candidateIndex) => {
-              const selectedOption = options.find((option) =>
-                selectorEquals(option.value, selector)
-              );
-              const incompatible =
-                selector.length > 0 &&
-                (!selectedOption ||
-                  declaredSelectorType(selectedOption.valueType) !==
-                    group.valueType);
-
               return (
                 <SortableCandidateRow
                   key={candidateIds[candidateIndex]}
@@ -365,11 +336,9 @@ function VariableGroupSection({
                     value1: candidateIndex + 1
                   })}
                   deleteDisabled={group.candidates.length === 1}
-                  incompatible={incompatible}
                   options={selectorOptions}
                   selector={selector}
                   selectorAriaLabel={`${ariaLabel}-${group.key}-${candidateIndex + 1}`}
-                  valueType={group.valueType}
                   onChange={(nextSelector) =>
                     onChange({
                       ...group,

@@ -46,8 +46,9 @@ fn compatible(old: &NotificationTypeDescriptor, new: &NotificationTypeDescriptor
             (None, None) => true,
             (Some(old), Some(new)) => {
                 old.supports_delivery_window == new.supports_delivery_window
+                    // New private cache fields may be added without dropping existing credentials.
                     && old.managed_secret_keys.iter().collect::<BTreeSet<_>>()
-                        == new.managed_secret_keys.iter().collect::<BTreeSet<_>>()
+                        .is_subset(&new.managed_secret_keys.iter().collect::<BTreeSet<_>>())
                     && old.actions.len() == new.actions.len()
                     && old.actions.iter().all(|action| {
                         new.actions.iter().any(|candidate| {

@@ -1,6 +1,7 @@
 //! The actual callback binding must resolve its credential factory and record a
 //! rejected authentication attempt before canonical business dispatch.
 use super::*;
+use crate::extension_bus::authentication_activation::AuthenticationFactoryAssembly;
 use crate::extension_bus::{AuthenticationAdapterFactoryRegistry, PublicAuthenticationCredential};
 use interface_runtime::{BindingId, InterfaceProtocol, PublicPrincipal};
 use std::io::Write;

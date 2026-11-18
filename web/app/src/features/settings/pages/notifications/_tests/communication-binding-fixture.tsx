@@ -2,6 +2,7 @@ import { createRef } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi } from 'vitest';
+import { ConfigProvider } from 'antd';
 import type {
   CommunicationBindingInput,
   CommunicationBindingRecord,
@@ -87,6 +88,7 @@ export function setupCommunicationBinding({
   pluginUnavailableReason = 'plugin_unavailable',
   duplicateIdentity = false,
   applicationUnavailable = false,
+  withoutMotion = false,
   permissions
 }: {
   existing?: boolean;
@@ -97,6 +99,7 @@ export function setupCommunicationBinding({
   pluginUnavailableReason?: string;
   duplicateIdentity?: boolean;
   applicationUnavailable?: boolean;
+  withoutMotion?: boolean;
   permissions?: string[];
 } = {}) {
   const writes: CommunicationBindingInput[] = [];
@@ -109,10 +112,18 @@ export function setupCommunicationBinding({
         file_table_id: null,
         mcp_instance_ids: ['dedicated', 'extra'],
         system_prompt: 'Custom prompt',
-        command_settings: [
-          { command_id: 'host/help', enabled: false },
-          { command_id: 'acme/reports/summary', enabled: true },
-          { command_id: 'acme/retired/archive', enabled: true }
+        commands: [
+          { kind: 'registered', command_id: 'host/help', enabled: false },
+          {
+            kind: 'registered',
+            command_id: 'acme/reports/summary',
+            enabled: true
+          },
+          {
+            kind: 'registered',
+            command_id: 'acme/retired/archive',
+            enabled: true
+          }
         ]
       }
     : null;
@@ -129,9 +140,23 @@ export function setupCommunicationBinding({
     application_id?: string | null,
     instance_id?: string | null
   ) => {
-    const settings = instance_id ? saved?.command_settings : undefined;
+    const settings = instance_id
+      ? saved?.commands.filter((command) => command.kind === 'registered')
+      : undefined;
     const entries = [
       ...commands,
+      ...(instance_id
+        ? (saved?.commands.filter((command) => command.kind === 'event') ?? [])
+        : []
+      ).map((item) => ({
+        ...item,
+        usage: `/${item.name} [arguments]`,
+        source_kind: 'user' as const,
+        source_name: 'user',
+        installation_id: null,
+        available: true,
+        unavailable_reason: null
+      })),
       ...(settings?.some(
         (setting) => setting.command_id === retiredCommand.command_id
       ) && !omitRetiredFromCatalog
@@ -179,6 +204,26 @@ export function setupCommunicationBinding({
         saved = writes.at(-1)!;
         return respond(record());
       }
+      if (url.pathname === '/api/console/events')
+        return respond([
+          {
+            id: 'event-1',
+            enabled: true,
+            origin: 'custom',
+            contract_id: 'custom.invoice',
+            name: 'Invoice requested',
+            description: 'Invoice request',
+            owner_id: null,
+            scope: { kind: 'workspace', workspace_id: 'workspace-1' },
+            payload_schema: {
+              type: 'object',
+              properties: { invoice: { type: 'string' } },
+              required: ['invoice'],
+              additionalProperties: false
+            },
+            supported_phases: ['subscribed', 'published', 'consumed']
+          }
+        ]);
       if (url.pathname.endsWith('/options')) {
         optionRequests.push(url);
         if (failOptions) return failure();
@@ -227,23 +272,50 @@ export function setupCommunicationBinding({
   );
   useAuthStore.setState({
     csrfToken: 'csrf',
-    actor: { id: 'user-1', account: 'test', effective_display_role: permissions ? 'member' : 'root', current_workspace_id: 'workspace-1' },
-    me: { id: 'user-1', account: 'test', email: '', phone: null, nickname: '', name: '', avatar_url: null, introduction: '', effective_display_role: permissions ? 'member' : 'root', permissions: permissions ?? [] }
+    actor: {
+      id: 'user-1',
+      account: 'test',
+      effective_display_role: permissions ? 'member' : 'root',
+      current_workspace_id: 'workspace-1'
+    },
+    me: {
+      id: 'user-1',
+      account: 'test',
+      email: '',
+      phone: null,
+      nickname: '',
+      name: '',
+      avatar_url: null,
+      introduction: '',
+      effective_display_role: permissions ? 'member' : 'root',
+      permissions: permissions ?? []
+    }
   });
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } }
   });
   const ref = createRef<CommunicationBindingHandle>();
-  const mount = (instance_id?: string) =>
-    render(
+  const mount = (instance_id?: string) => {
+    const form = (
+      <CommunicationBindingForm
+        ref={ref}
+        instance_id={instance_id}
+        receive={{ default_system_prompt: 'Plugin prompt', mcp_tools: [] }}
+      />
+    );
+    return render(
       <QueryClientProvider client={client}>
-        <CommunicationBindingForm
-          ref={ref}
-          instance_id={instance_id}
-          receive={{ default_system_prompt: 'Plugin prompt', mcp_tools: [] }}
-        />
+        {withoutMotion ? (
+          // CRUD asserts the real portals and persisted state, not CSS animation.
+          <ConfigProvider theme={{ token: { motion: false } }}>
+            {form}
+          </ConfigProvider>
+        ) : (
+          form
+        )}
       </QueryClientProvider>
     );
+  };
   const view = mount(existing ? 'channel-1' : undefined);
   return { ref, writes, client, view, mount, optionRequests };
 }

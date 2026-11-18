@@ -1,5 +1,14 @@
 {
   "exemptions": {
+    "communication_message_sends": {
+      "kind": "notification_send_owned_receipt",
+      "reason": "Each communication send is keyed by its notification_send_logs owner and correlated to optional timeline history; repository status and receipt updates do not use an independent row identity, mutable timestamp, or workspace chronology.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-time-index"
+      ]
+    },
     "system_branding": {
       "kind": "system_singleton_state",
       "reason": "Global branding is one row keyed by a fixed TRUE singleton, read and upserted without workspace routing or time pagination",
@@ -1033,6 +1042,36 @@
         "managed-table-scope-column",
         "managed-table-scope-time-index"
       ]
+    },
+    "event_catalog": {
+      "kind": "scoped_event_definition_directory",
+      "reason": "The durable event directory uses generated JSON identity for metadata scope, contract, source selection and definition identity. Workspace/system/unbound listing uses scope_kind/scope_id/updated_at; custom projection uses metadata definition id. Generic UUID identity and id-based chronology are not repository contracts.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "plugin_record_permission_grants": {
+      "kind": "policy_owned_role_action_set",
+      "reason": "Grants are a bounded replacement set keyed by policy_id and role_id, inherit workspace from the policy, and cascade with policy or role deletion. A scope validation trigger rejects mismatched role workspaces and revision triggers invalidate receipts; rows have no independent timestamp lifecycle.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "plugin_record_permission_scope_revisions": {
+      "kind": "workspace_plugin_revision_counter",
+      "reason": "One receipt freshness counter exists for each workspace/publisher/plugin composite identity. Policy and grant lifecycle triggers bump revision, exact composite reads validate worker receipts, and workspace deletion cascades the counter. Independent row identity and chronology are not consumed.",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
     }
   },
   "ownedTableContracts": {
@@ -1674,10 +1713,10 @@
         "scope_id",
         "instance_id",
         "external_identity",
-        "conversation_id",
-        "input_id"
+        "conversation_id"
       ],
       "requiredColumns": [
+        "input_id",
         "created_at",
         "updated_at",
         "type",
@@ -1725,6 +1764,30 @@
           "function": "communication_touch_updated_at"
         }
       ]
+    },
+    "communication_message_sends": {
+      "primaryKey": ["send_log_id"],
+      "ownerColumns": ["scope_id", "instance_id"],
+      "nullableOwnerColumns": ["message_id"],
+      "requiredColumns": [
+        "created_at", "message_id", "conversation_id", "input_id", "run_id",
+        "target_json", "receipt_json", "send_status", "failure_code"
+      ],
+      "foreignKeys": [
+        {
+          "columns": ["send_log_id"],
+          "table": "notification_send_logs",
+          "references": ["id"],
+          "onDelete": "no action"
+        },
+        {
+          "columns": ["message_id"],
+          "table": "communication_messages",
+          "references": ["id"],
+          "onDelete": "no action"
+        }
+      ],
+      "unconditionalIndexes": [["scope_id", "message_id", "created_at"]]
     },
     "communication_sessions": {
       "primaryKey": [
@@ -2314,6 +2377,234 @@
           ],
           "predicate": "completed_at is null"
         }
+      ]
+    },
+    "event_catalog": {
+      "primaryKey": [
+        "identity"
+      ],
+      "routingColumns": [
+        "scope_kind",
+        "scope_id",
+        "origin"
+      ],
+      "requiredColumns": [
+        "metadata",
+        "identity",
+        "available",
+        "created_at",
+        "updated_at"
+      ],
+      "indexes": [
+        [
+          "scope_kind",
+          "scope_id",
+          "updated_at"
+        ]
+      ],
+      "unconditionalIndexes": [
+        [
+          "scope_kind",
+          "scope_id",
+          "updated_at"
+        ]
+      ],
+      "partialIndexes": [
+        {
+          "columns": [
+            "(metadata->>'id')"
+          ],
+          "predicate": "origin = 'custom'"
+        }
+      ],
+      "triggers": [
+        {
+          "table": "event_definitions",
+          "name": "event_definitions_catalog_projection",
+          "function": "project_custom_event_catalog",
+          "timing": "after",
+          "events": [
+            {
+              "event": "insert"
+            },
+            {
+              "event": "update"
+            },
+            {
+              "event": "delete"
+            }
+          ]
+        }
+      ]
+    },
+    "plugin_record_permission_grants": {
+      "primaryKey": [
+        "policy_id",
+        "role_id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "policy_id"
+          ],
+          "table": "plugin_record_permission_policies",
+          "references": [
+            "id"
+          ],
+          "onDelete": "cascade"
+        },
+        {
+          "columns": [
+            "role_id"
+          ],
+          "table": "roles",
+          "references": [
+            "id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "requiredColumns": [
+        "actions"
+      ],
+      "indexes": [
+        [
+          "policy_id",
+          "role_id"
+        ],
+        [
+          "role_id",
+          "policy_id"
+        ]
+      ],
+      "triggers": [
+        {
+          "table": "plugin_record_permission_grants",
+          "name": "plugin_record_permission_grant_scope",
+          "function": "plugin_record_permission_check_role_scope",
+          "timing": "before",
+          "events": [
+            {
+              "event": "insert"
+            },
+            {
+              "event": "update"
+            }
+          ]
+        },
+        {
+          "table": "plugin_record_permission_grants",
+          "name": "plugin_record_permission_grant_revision",
+          "function": "plugin_record_permission_bump_scope",
+          "timing": "after",
+          "events": [
+            {
+              "event": "insert"
+            },
+            {
+              "event": "update"
+            },
+            {
+              "event": "delete"
+            }
+          ]
+        }
+      ]
+    },
+    "plugin_record_permission_scope_revisions": {
+      "primaryKey": [
+        "workspace_id",
+        "publisher_namespace",
+        "plugin_code"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "workspace_id"
+          ],
+          "table": "workspaces",
+          "references": [
+            "id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "routingColumns": [
+        "publisher_namespace",
+        "plugin_code"
+      ],
+      "requiredColumns": [
+        "revision"
+      ],
+      "indexes": [
+        [
+          "workspace_id",
+          "publisher_namespace",
+          "plugin_code"
+        ]
+      ],
+      "triggers": [
+        {
+          "table": "plugin_record_permission_policies",
+          "name": "plugin_record_permission_policy_revision",
+          "function": "plugin_record_permission_bump_scope",
+          "timing": "after",
+          "events": [
+            {
+              "event": "insert"
+            },
+            {
+              "event": "update"
+            },
+            {
+              "event": "delete"
+            }
+          ]
+        },
+        {
+          "table": "plugin_record_permission_grants",
+          "name": "plugin_record_permission_grant_revision",
+          "function": "plugin_record_permission_bump_scope",
+          "timing": "after",
+          "events": [
+            {
+              "event": "insert"
+            },
+            {
+              "event": "update"
+            },
+            {
+              "event": "delete"
+            }
+          ]
+        }
+      ]
+    },
+    "workflow_run_identity_snapshots": {
+      "primaryKey": [
+        "flow_run_id"
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "flow_run_id"
+          ],
+          "table": "flow_runs",
+          "references": [
+            "id"
+          ],
+          "onDelete": "cascade"
+        }
+      ],
+      "requiredColumns": [
+        "creator_identity",
+        "executor_identity",
+        "created_at"
+      ],
+      "indexes": [
+        [
+          "flow_run_id"
+        ]
       ]
     }
   }

@@ -73,6 +73,49 @@ Crate ownership and allowed dependencies are maintained in [crates/AGENTS.md](..
 
 ## Ingress and ownership
 
+<a id="http-host-crates"></a>
+
+### HTTP host after the crate split
+
+`api-server` is still the single composition root. The split changed where adapters compile, not where they run: it introduced neither a service process nor a network hop. This diagram shows direct Cargo dependencies within the HTTP layer (consumer → dependency), not the request path at the top of the page.
+
+```mermaid
+flowchart LR
+    R["api-server · process and assembly"] --> D["Six adapter domains · crates/api/"]
+    R --> K["api-host-kernel · HTTP state, middleware and primitives"]
+    D --> K
+```
+
+- **Protocol changes:** `public-gateway` owns public protocols and streaming projections; `applications` owns application management; `console-settings` owns settings; `mcp` owns MCP and WebMCP; `plugins-models` owns plugins, models and managed services; `console-interaction` owns sessions, files and interactive features. The domains do not depend on one another. The [HTTP host kernel](../../api/crates/api/kernel/src/lib.rs) supplies shared HTTP primitives; `interface-runtime` separately owns bindings, frozen plans and invocation outcomes.
+- **Assembly changes:** domains supply routes, handlers and OpenAPI fragments. The executable assembles the Router, validates the endpoint catalog, retains its health routes and [merges OpenAPI](../../api/apps/api-server/src/openapi/mod.rs) in `application → console → extensions` order. Some executable modules only re-export the implementation; use the [domain map](../../api/crates/api/AGENTS.md) to find it.
+- **Testing:** pure module tests follow the domain; cross-domain, full HTTP and mixed host-private fixtures stay in the executable. Testing `api-server` alone does not exercise all six domains. For local feedback, choose a [Cargo target](../../api/apps/api-server/tests/README.md) before filtering test names.
+
+#### From cold start to one HTTP request
+
+The six crates in the previous diagram are linked into the executable. Startup loads configuration, declarations and runtime state; it does not start six services.
+
+```text
+Boot: bind TCP → connect to the main store and prepare host extensions → compile graph and boot snapshot
+               → load managed registrations and compile console routes and permissions
+               → publish the complete catalog and build the initial Router → ingress → axum::serve
+HTTP: ingress takes (Router, generation owner) under one read lock, then releases the lock
+               → that Router runs oneshot(request) → the response body retains the owner
+```
+
+- **Bound is not ready.** [main](../../api/apps/api-server/src/main.rs) binds the listener before [startup assembly](../../api/apps/api-server/src/internal/startup_assembly.rs) returns. A failed database connection or console permission catalog sync returns an error before `serve`; the executable does not serve a partially assembled API.
+- **Example: a non-streaming managed operation.** At assembly time the [protocol adapter](../../api/crates/api/plugins-models/src/managed_services/routes.rs) binds each registered method and path to an operation. At request time it parses the input, selects credentials (with CSRF for non-GET), and invokes the console interface by `http.<interface_id>.v1`. The [handler](../../api/crates/api/plugins-models/src/managed_services/interface.rs) checks record permissions and executes the operation; the adapter projects the result to JSON. This is a business path, not a universal one: the executable answers `/health` directly.
+- **Publication during a request.** The [publisher](../../api/apps/api-server/src/boot_composition/managed_publication.rs) prepares a candidate independently. Conflicting routes fail preparation without replacing the serving router. Successful publication replaces the router and owner together; subsequent requests select the new generation. An admitted HTTP request stays on the old one; its [response body](../../api/crates/api/kernel/src/contracts/boot_composition/generation_dispatch.rs) releases its reference at end of stream, on error, or on drop. This lifetime says nothing about transaction commit or peer acknowledgement. The [generation ownership tests](../../api/apps/api-server/src/boot_composition/_tests/generation_ownership.rs) cover candidate failure, in-flight requests and streaming bodies.
+
+#### Why the compiler needs less peak memory
+
+Moving files alone does not help. Three changes affect the work Cargo and rustc perform:
+
+1. **Separate compilation.** Each domain compiles its routes, protocol adapters and OpenAPI fragments. With other inputs unchanged, editing an MCP adapter allows Cargo to reuse the other five domains; checking MCP alone need not link the service. A shared kernel change or a final executable build still has a wider impact.
+2. **Less generic code generation.** Each Axum handler has a distinct Rust type. The domain keeps the typed handler, then converts it to an [ErasedRouteHandler](../../api/crates/api/kernel/src/slices/console_contracts/erased_route_handler.rs) before kernel route construction. For a given state type, the common stack no longer needs a separate instantiation per handler. The boundary uses indirect dispatch and boxing; it is not a request-latency optimization.
+3. **Narrow test targets.** Select the owning crate or integration target for local feedback. A test-name filter on a large `--lib` target narrows execution, not compilation or linking.
+
+**Historical measurement (#2824, not a benchmark of HEAD):** with `cargo build --locked --offline -p api-server`, jobs=2 and a fresh target, the cgroup anonymous-memory peak went from **8.327 to 3.338 GiB** at the split candidate `c9071ce90` (one sample per side). The executable still links all domains: the linker peak actually rose from **3.840 to 4.147 GiB** in that comparison. A later candidate, `80a933b1f`, measured **3.926 GiB**, still above the original 3.9 GiB limit. The observed reduction is in cold-build memory pressure, not a proportional reduction in wall time.
+
 The actual Router and Endpoint Inventory are derived from the same route construction declarations. The composition root compiles the Effective Graph, activated authentication factories and typed handlers into a registry snapshot, then cross-checks mount, catalog, binding and protocol projections before publication. A second handwritten list cannot prove actual route coverage. Adapters stay static; requests do not construct new routes or splice execution plans.
 
 ```text
@@ -93,7 +136,7 @@ These are disjoint endpoint categories, not a restriction to one Binding per Int
 
 HTTP/SSE/WebSocket and MCP/WebMCP retain their input, error and streaming contracts. WebMCP owns its outer lifecycle; downstream invocations are related by lineage and cannot finalize it on its behalf. A runtime worker is an execution target after Dispatch; a background worker or scheduler is an active caller. Their complete ingress set, System Principal and durable retry/ACK responsibilities require explicit ownership and evidence.
 
-Source entry points: [route assembly](../../api/apps/api-server/src/console_contracts/external_route_assembly.rs), [endpoint catalog](../../api/apps/api-server/src/console_contracts/external_endpoint_catalog.rs), [WebMCP interface](../../api/apps/api-server/src/routes/webmcp/interface.rs).
+Source entry points: [route assembly](../../api/crates/api/kernel/src/slices/console_contracts/external_route_assembly.rs), [endpoint catalog](../../api/apps/api-server/src/console_contracts/external_endpoint_catalog.rs), [WebMCP interface](../../api/crates/api/mcp/src/routes/webmcp/interface.rs).
 
 Responses ingress validates structure, field types, continuation identity, and callback correlation without imposing an input item-count ceiling independent of protocol and provider contracts. Ordinary requests and V2 compaction retain the complete input; existing protocol validation still requires a unique V2 trigger at the end.
 
@@ -265,7 +308,7 @@ Explicit business cancel API
 
 Disconnect does not automatically cancel business work, and business cancellation does not guarantee that a remote provider stops computing. This architecture does not add `response.cancel` to Responses WebSocket; explicit cancellation uses the existing Native API. Outbox lease/retry/deduplication/per-subscriber ACK and PluginData local idempotency remain with their respective owners, not an implicit global exactly-once guarantee.
 
-Sources: [finalization](../../api/crates/interface-runtime/src/finalization.rs), [stream ownership](../../api/crates/interface-runtime/src/stream.rs), [WebSocket bridge](../../api/apps/api-server/src/routes/application_public_api/responses_websocket/turn_bridge.rs).
+Sources: [finalization](../../api/crates/interface-runtime/src/finalization.rs), [stream ownership](../../api/crates/interface-runtime/src/stream.rs), [WebSocket bridge](../../api/crates/api/public-gateway/src/routes/application_public_api/responses_websocket/turn_bridge.rs).
 
 <a id="equivalence-and-evidence"></a>
 

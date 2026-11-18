@@ -69,6 +69,7 @@ pub(super) fn contributions(
             &["api-server.console-network-plugins"],
             crate::routes::network_center::plugins::plugins_interface::compile_registry(
                 crate::routes::network_center::plugins::plugins_interface::NetworkPluginDependencies {
+                    official_install_resolver: Arc::new(crate::interaction_assembly::OfficialPluginInstallAdapter),
                     store: state.store.clone(),
                     provider_runtime: state.provider_runtime.clone(),
                     official_plugin_source: state.official_plugin_source.clone(),

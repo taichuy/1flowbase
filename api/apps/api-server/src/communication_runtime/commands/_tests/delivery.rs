@@ -41,13 +41,16 @@ async fn communication_command_response_target_is_persisted_scoped_and_uncertain
         )
         .await
         .unwrap();
-    assert!(fixture
+    let admitted_target = fixture
         .state
         .notification_service
         .command_response_target(&scope, event.event_id)
         .await
         .unwrap()
-        .is_none());
+        .expect("the admitted command already has a scoped reply target");
+    assert_eq!(admitted_target.sender_id, "alice");
+    assert_eq!(admitted_target.conversation_id, "external-chat-alice");
+    assert_eq!(admitted_target.provider_message_id, "external-original-key");
     let claim = fixture
         .state
         .notification_service

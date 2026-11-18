@@ -15,8 +15,7 @@ import {
   Switch,
   Tag,
   Tooltip,
-  Typography,
-  type MenuProps
+  Typography
 } from 'antd';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -50,7 +49,7 @@ import {
   unpublishApplicationApiVersion,
   updateApplicationApiStatus
 } from '../../../applications/api/public-api';
-import { ApplicationFormModal } from '../../../applications/components/ApplicationFormModal';
+import { ApplicationFormDrawer } from '../../../applications/components/ApplicationFormDrawer';
 import { downloadApplicationArchive } from '../../../applications/lib/template-download';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';
 import {
@@ -78,6 +77,8 @@ const PAGE_SIZE = 20;
 function triggerTypeLabel(
   triggerType: SettingsApplicationManagementItem['workflow_trigger_type']
 ) {
+  if (triggerType === 'event')
+    return i18nText('settings', 'auto.workflow_trigger_event');
   if (triggerType === 'schedule') {
     return i18nText('settings', 'auto.workflow_trigger_schedule');
   }
@@ -634,31 +635,6 @@ export function ApplicationManagementPanel() {
         render: (_, application) => {
           const editAllowed = canEdit(application);
           const deleteAllowed = canDelete(application);
-          const items: MenuProps['items'] = [
-            {
-              key: 'copy',
-              icon: <CopyOutlined />,
-              label: i18nText('applications', 'auto.copy'),
-              disabled: !canCreate
-            },
-            {
-              key: 'export',
-              icon: <ExportOutlined />,
-              label: i18nText('applications', 'auto.export_template'),
-              disabled: exportMutation.isPending
-            },
-            { type: 'divider' },
-            {
-              key: 'delete',
-              icon: <DeleteOutlined />,
-              label: i18nText('applications', 'auto.delete'),
-              danger: true,
-              disabled:
-                !deleteAllowed ||
-                batchDeleteMutation.isPending ||
-                deleteMutation.isPending
-            }
-          ];
           return (
             <DataTableRowActions
               moreAriaLabel={i18nText(
@@ -666,42 +642,51 @@ export function ApplicationManagementPanel() {
                 'auto.more_actions_named',
                 { value1: application.name }
               )}
-              moreItems={items}
-              onMoreAction={(key) => {
-                if (key === 'copy') copyApplication(application);
-                if (key === 'export') exportApplications([application.id]);
-                if (key === 'delete') confirmDelete(application);
-              }}
-            >
-              <Button
-                href={`/applications/${application.id}/orchestration`}
-                size="small"
-                type="link"
-              >
-                {i18nText('settings', 'auto.view')}
-              </Button>
-              <Tooltip
-                title={
-                  editAllowed
+              actions={[
+                {
+                  key: 'view',
+                  label: i18nText('settings', 'auto.view'),
+                  href: `/applications/${application.id}/orchestration`
+                },
+                {
+                  key: 'edit',
+                  label: i18nText('settings', 'auto.edit'),
+                  disabled: !editAllowed,
+                  tooltip: editAllowed
                     ? undefined
                     : i18nText(
                         'settingsApplicationManagement',
                         'auto.application_management_permission_required'
-                      )
+                      ),
+                  onClick: () => setDetailsApplication(application)
+                },
+                {
+                  key: 'copy',
+                  icon: <CopyOutlined />,
+                  label: i18nText('applications', 'auto.copy'),
+                  disabled: !canCreate,
+                  onClick: () => copyApplication(application)
+                },
+                {
+                  key: 'export',
+                  icon: <ExportOutlined />,
+                  label: i18nText('applications', 'auto.export_template'),
+                  disabled: exportMutation.isPending,
+                  onClick: () => exportApplications([application.id])
+                },
+                {
+                  key: 'delete',
+                  icon: <DeleteOutlined />,
+                  label: i18nText('applications', 'auto.delete'),
+                  danger: true,
+                  disabled:
+                    !deleteAllowed ||
+                    batchDeleteMutation.isPending ||
+                    deleteMutation.isPending,
+                  onClick: () => confirmDelete(application)
                 }
-              >
-                <span>
-                  <Button
-                    disabled={!editAllowed}
-                    onClick={() => setDetailsApplication(application)}
-                    size="small"
-                    type="link"
-                  >
-                    {i18nText('settings', 'auto.edit')}
-                  </Button>
-                </span>
-              </Tooltip>
-            </DataTableRowActions>
+              ]}
+            />
           );
         }
       }
@@ -1074,7 +1059,7 @@ export function ApplicationManagementPanel() {
         />
       </DataTableLayout>
 
-      <ApplicationFormModal
+      <ApplicationFormDrawer
         open={createOpen}
         csrfToken={csrfToken}
         intent={{
@@ -1084,7 +1069,7 @@ export function ApplicationManagementPanel() {
         onClose={() => setCreateOpen(false)}
       />
 
-      <ApplicationFormModal
+      <ApplicationFormDrawer
         open={Boolean(detailsApplication)}
         csrfToken={csrfToken}
         intent={{

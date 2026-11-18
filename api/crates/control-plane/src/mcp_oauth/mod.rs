@@ -159,7 +159,7 @@ fn resource_instance(origin: &str, resource: &str) -> Result<String> {
     }
     Ok(instance)
 }
-pub fn allowed_redirect(value: &str) -> bool {
+fn chatgpt_redirect(value: &str) -> bool {
     let Ok(url) = Url::parse(value) else {
         return false;
     };
@@ -186,6 +186,26 @@ pub fn allowed_redirect(value: &str) -> bool {
                     .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
         })
 }
+/// Registration accepts HTTPS callback metadata, never fetches it, and does not
+/// establish client trust. Authorization must match the exact registered URI.
+pub fn allowed_redirect(value: &str) -> bool {
+    if value.len() > 2048
+        || value
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || c == '\\')
+    {
+        return false;
+    }
+    let Ok(url) = Url::parse(value) else {
+        return false;
+    };
+    url.scheme() == "https"
+        && url.host_str().is_some()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.fragment().is_none()
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Client {
     pub client_id: String,
@@ -338,7 +358,7 @@ where
             return Err(OAuthError {
                 error: "invalid_client_metadata",
                 description:
-                    "Only registered ChatGPT HTTPS callbacks and public PKCE clients are supported.",
+                    "HTTPS callbacks and public PKCE clients with token_endpoint_auth_method=none are supported.",
             });
         }
         // The untrusted registration name is not an identity assertion.
@@ -346,10 +366,35 @@ where
         redirect_uris.sort();
         redirect_uris.dedup();
         // Public client identity is deterministic for the exact registered callback set.
-        let client_id = format!("chatgpt_{}", hash(&serde_json::to_string(&redirect_uris)?));
+        // Preserve the identity of existing ChatGPT registrations and grants.
+        let legacy = redirect_uris.iter().all(|uri| chatgpt_redirect(uri));
+        let prefix = if legacy { "chatgpt" } else { "mcp" };
+        let client_id = format!("{prefix}_{}", hash(&serde_json::to_string(&redirect_uris)?));
+        let client_name = if legacy {
+            "ChatGPT".into()
+        } else {
+            // Names are unverified metadata. Always show the callback origin too.
+            let origins = redirect_uris
+                .iter()
+                .map(|uri| {
+                    Url::parse(uri)
+                        .map(|url| url.origin().ascii_serialization())
+                        .map_err(|_| OAuthError::invalid())
+                })
+                .collect::<Result<std::collections::BTreeSet<_>>>()?;
+            let origins = origins.into_iter().collect::<Vec<_>>().join(", ");
+            let name = input.client_name.as_deref().unwrap_or("MCP client").trim();
+            if name.len() > 128 || name.chars().any(char::is_control) {
+                return Err(OAuthError::invalid());
+            }
+            format!(
+                "{} ({origins})",
+                if name.is_empty() { "MCP client" } else { name }
+            )
+        };
         let client = Client {
             client_id,
-            client_name: "ChatGPT".into(),
+            client_name,
             redirect_uris,
             token_endpoint_auth_method: "none".into(),
         };
@@ -588,7 +633,10 @@ where
         Ok((g, actor))
     }
     pub async fn token(&self, input: TokenRequest) -> Result<TokenResponse> {
-        self.client(&input.client_id).await?;
+        let client = self.client(&input.client_id).await?;
+        // Existing ChatGPT clients retain rotating refresh-token replay detection.
+        // New DCR clients use persistent linking within the same 30-day grant.
+        let persistent = !client.client_id.starts_with("chatgpt_");
         let (grant, old) = match input.grant_type.as_str() {
             "authorization_code" => {
                 let code = input.code.as_deref().ok_or_else(OAuthError::grant)?;
@@ -653,19 +701,21 @@ where
                 })
             }
         };
-        let refresh_token = format!("mcp_rt_{}", random_token());
-        if !self
-            .repository
-            .oauth_rotate_refresh(
-                grant.id,
-                old.as_deref(),
-                &hash(&refresh_token),
-                grant.expires_at,
-            )
-            .await?
-        {
-            return Err(OAuthError::grant());
-        }
+        let refresh_token = if persistent && old.is_some() {
+            // Reuse the opaque refresh token only after client/resource, key,
+            // permissions, instance status and grant expiry have been validated.
+            input.refresh_token.ok_or_else(OAuthError::grant)?
+        } else {
+            let token = format!("mcp_rt_{}", random_token());
+            if !self
+                .repository
+                .oauth_rotate_refresh(grant.id, old.as_deref(), &hash(&token), grant.expires_at)
+                .await?
+            {
+                return Err(OAuthError::grant());
+            }
+            token
+        };
         let access_token = format!("mcp_at_{}", random_token());
         let expires_in = ACCESS_SECONDS.min(grant.expires_at - now());
         self.repository
@@ -684,6 +734,40 @@ where
             scope: SCOPE,
         })
     }
+    /// RFC7009: unknown or already-invalid tokens are successful no-ops. The
+    /// token identifies its grant; an optional client_id must match. Origin
+    /// binding is checked before any revocation.
+    pub async fn revoke(&self, client_id: Option<&str>, token: &str) -> Result<()> {
+        if let Some(client_id) = client_id {
+            self.client(client_id).await?;
+        }
+        let id = if token.starts_with("mcp_rt_") {
+            self.repository.oauth_refresh_grant(&hash(token)).await?
+        } else if token.starts_with("mcp_at_") {
+            match self.repository.oauth_get("access", &hash(token)).await? {
+                Some(value) => Some(serde_json::from_value::<Uuid>(
+                    value
+                        .get("grant_id")
+                        .cloned()
+                        .ok_or_else(OAuthError::invalid)?,
+                )?),
+                None => None,
+            }
+        } else {
+            None
+        };
+        if let Some(id) = id {
+            if let Some(grant) = self.repository.oauth_grant(id).await? {
+                if client_id.is_none_or(|id| grant.client_id == id)
+                    && grant.resource == self.resource_url(&grant.instance_id)?
+                {
+                    self.repository.oauth_revoke_grant(id).await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub async fn authenticate(&self, token: &str, instance: &str) -> Result<UserApiKeyActor> {
         if !token.starts_with("mcp_at_") {
             return Err(OAuthError::grant());

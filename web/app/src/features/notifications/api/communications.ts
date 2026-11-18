@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
 import {
+  listEventCatalog,
   getCommunicationBinding,
   getCommunicationOptions,
   fetchConsoleFileTables
@@ -12,6 +13,7 @@ export {
   listCommunicationFiles,
   retryCommunicationMessage,
   getCommunicationFile,
+  getCommunicationFileInfo,
   listCommunicationConversationOverview,
   listCommunicationMessageOverview,
   listCommunicationChatMessages,
@@ -37,4 +39,14 @@ export const communicationFileTablesOptions = (scope: string) =>
   queryOptions({
     queryKey: ['communications', scope, 'file-tables'],
     queryFn: () => fetchConsoleFileTables()
+  });
+
+export const communicationEventCatalogOptions = (
+  scope: string,
+  enabled: boolean
+) =>
+  queryOptions({
+    queryKey: ['communications', scope, 'event-catalog'],
+    queryFn: () => listEventCatalog(),
+    enabled
   });

@@ -1,4 +1,5 @@
 use super::*;
+use crate::extension_bus::SnapshotAssembly;
 
 fn entry() -> LoginEntryRecord {
     LoginEntryRecord {

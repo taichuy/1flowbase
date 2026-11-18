@@ -549,3 +549,5 @@ mod durable_lifecycle;
 mod evidence;
 
 mod optional_deadline;
+
+mod workflow_credentials;

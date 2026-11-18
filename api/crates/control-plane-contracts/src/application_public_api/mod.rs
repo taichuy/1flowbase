@@ -69,6 +69,10 @@ pub struct WorkflowExtensionApiConfig {
     pub slug: String,
     pub method: WorkflowExtensionHttpMethod,
     pub response_mode: WorkflowExtensionResponseMode,
+    /// Additional current-workspace roles allowed to invoke this published workflow.
+    /// This grants execution only; application management and data grants remain independent.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub invoke_role_codes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

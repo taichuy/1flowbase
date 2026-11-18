@@ -18,6 +18,9 @@ import {
 
 import { i18nText } from '../../../../../shared/i18n/text';
 import { createCatalogBlockInput } from '../block-catalog-helpers';
+import type { NormalizedFrontstageBlockCatalogEntry } from '../../../lib/block-catalog';
+import type { DataBlockConfig } from '../../../lib/data-blocks/types';
+import { dataBlockPorts } from '../../../lib/data-blocks/ports';
 import { toDisplayErrorMessage } from '../page-action-helpers';
 
 import type { Dispatch, SetStateAction } from 'react';
@@ -143,12 +146,16 @@ export function useFrontstageDesignPersistence({
     canAddBlock,
     blockCatalog,
     activePageContent,
-    blockCompositionState
+    blockCompositionState,
+    entry,
+    dataBlockConfig
   }: {
     canAddBlock: boolean;
     blockCatalog: ReturnType<typeof useFrontstageBlockCatalog>;
     activePageContent: FrontstagePageContent | undefined;
     blockCompositionState: FrontstageBlockCompositionState | null;
+    entry: NormalizedFrontstageBlockCatalogEntry;
+    dataBlockConfig?: DataBlockConfig;
   }) => {
     if (
       !canAddBlock ||
@@ -175,15 +182,12 @@ export function useFrontstageDesignPersistence({
       return;
     }
 
-    if (blockCatalog.items.length !== 1) {
+    if (!blockCatalog.items.some((candidate) => candidate.id === entry.id)) {
       setBlockSaveError(
         i18nText('frontstage', 'auto.block_catalog_load_failed')
       );
       return;
     }
-
-    const [entry] = blockCatalog.items;
-    if (!entry) return;
 
     const codeTemplate = entry.codeCapabilities?.template;
     if (!codeTemplate) {
@@ -197,6 +201,10 @@ export function useFrontstageDesignPersistence({
       entry,
       blockCompositionState.document.blocks.length
     );
+    if (dataBlockConfig) {
+      nextBlockInput.props = { data_block: dataBlockConfig };
+      nextBlockInput.ports = dataBlockPorts(dataBlockConfig);
+    }
     const nextCompositionState = appendFrontstageBlock(
       blockCompositionState,
       nextBlockInput

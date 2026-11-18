@@ -1,15 +1,7 @@
 use super::*;
+use api_plugins_models::managed_services::support::fixture;
 use serde_json::json;
-fn fixture() -> ManagedServiceRegistration {
-    ManagedServiceRegistration {
-        installation_id: uuid::Uuid::nil(), plugin_code:"fixture".into(), plugin_version:"1.0.0".into(),
-        declaration:serde_json::from_value(json!({"scope":"system","feature":{"feature_id":"fixture.settings","label":"Fixture service","description":"Configure fixture service","route_id":"fixture","path":"/settings/fixture"},"operations":[{
-            "interface_id":"fixture.list","contribution_id":"fixture.list","method":"GET","path":"/api/console/managed-services/fixture/items","summary":"List fixture items","description":"List shared fixture items.","input_schema":{"type":"object","properties":{"path":{"type":"object"},"query":{"type":"object"},"body":{"type":"object"}}},"output_schema":{"type":"object"}
-        }]})).unwrap(),
-        pages:vec![plugin_framework::PluginSettingsPageManifest { code_modules: Vec::new(),
-feature_id:"fixture.settings".into(), contribution_code:"settings".into(), source_file:"ui/Settings.tsx".into(), language:"tsx".into() }],
-    }
-}
+
 #[test]
 fn service_boot_registry_registers_one_operation_per_route_and_managed_page() {
     let service = fixture();
@@ -30,6 +22,10 @@ fn service_boot_registry_registers_one_operation_per_route_and_managed_page() {
     assert_eq!(
         operation.owner.kind,
         access_control::SettingsFeatureOwnerKind::ManagedService
+    );
+    assert_eq!(
+        operation.policy_group,
+        access_control::ConsolePolicyGroup::Plugin("fixture".into())
     );
     assert_eq!(operation.routes.len(), 1);
     assert_eq!(
@@ -127,8 +123,6 @@ fn business_failures_expose_only_classification_codes() {
 
 mod hot_generation;
 
-mod stream_ticket;
-
 #[test]
 fn duplex_upgrade_is_protocol_metadata_and_keeps_exact_original_post_permission() {
     let mut service = fixture();
@@ -137,6 +131,8 @@ fn duplex_upgrade_is_protocol_metadata_and_keeps_exact_original_post_permission(
     op.stream = Some(plugin_framework::ManagedServiceStream {
         input_schema: json!({"type":"object"}),
         event_schema: json!({"type":"object"}),
+        shared_source: None,
+        aggregate_source_interface_id: None,
     });
     let plan = crate::app_state::compile_console_boot_plan_with_managed_services(
         Vec::new(),
@@ -205,3 +201,123 @@ fn parallel_operation_keeps_post_authorization_and_route() {
         .iter()
         .any(|b| b.route.method == "POST" && b.route.path == operation.routes[0].path));
 }
+
+#[test]
+fn backend_only_plugin_has_permissions_without_a_settings_surface() {
+    for legacy_feature in [true, false] {
+        let mut service = fixture();
+        service.pages.clear();
+        if !legacy_feature {
+            service.declaration.feature = None;
+        }
+        let plan = crate::app_state::compile_console_boot_plan_with_managed_services(
+            Vec::new(),
+            None,
+            crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES,
+            vec![service],
+        )
+        .unwrap();
+        let access = plan
+            .console_operation_registry
+            .access_for_console_route("GET", "/api/console/managed-services/fixture/items")
+            .unwrap();
+        assert_eq!(
+            access.policy_group,
+            &access_control::ConsolePolicyGroup::Plugin("fixture".into())
+        );
+        assert!(plan.console_surface_registry.page("fixture").is_none());
+        assert!(!plan
+            .settings_feature_registry
+            .inventory()
+            .features
+            .iter()
+            .any(|f| f.owner.owner_id == "fixture"));
+        assert!(plan
+            .console_operation_registry
+            .inventory()
+            .locale_catalog
+            .as_ref()
+            .unwrap()
+            .policy_group_display(access.policy_group, "en_US")
+            .is_ok());
+    }
+}
+
+#[test]
+fn plugin_settings_navigation_and_api_use_the_same_canonical_grant() {
+    use domain::{
+        ConsoleOperationId, ConsoleOperationPolicy, ConsolePolicyGroup, ConsolePolicyStrategy,
+        RoleConsoleGroupPolicy, RoleConsolePolicy,
+    };
+    let plan = crate::app_state::compile_console_boot_plan_with_managed_services(
+        Vec::new(),
+        None,
+        crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES,
+        vec![fixture()],
+    )
+    .unwrap();
+    let mut actor = domain::ActorContext::root(uuid::Uuid::nil(), uuid::Uuid::nil(), "root");
+    actor.is_root = false;
+    let access = plan
+        .console_operation_registry
+        .access_for_console_route("GET", "/api/console/managed-services/fixture/items")
+        .unwrap();
+    for (group, enabled, operation_enabled, expected) in [
+        (
+            ConsolePolicyGroup::plugin("fixture").unwrap(),
+            true,
+            true,
+            true,
+        ),
+        (
+            ConsolePolicyGroup::plugin("fixture").unwrap(),
+            true,
+            false,
+            false,
+        ),
+        (
+            ConsolePolicyGroup::plugin("fixture").unwrap(),
+            false,
+            true,
+            false,
+        ),
+        (
+            ConsolePolicyGroup::settings_feature("fixture.settings").unwrap(),
+            true,
+            true,
+            false,
+        ),
+        (
+            ConsolePolicyGroup::plugin("another-plugin").unwrap(),
+            true,
+            true,
+            false,
+        ),
+    ] {
+        let policies = [RoleConsolePolicy::new(
+            uuid::Uuid::nil(),
+            vec![RoleConsoleGroupPolicy::new(
+                group,
+                enabled,
+                ConsolePolicyStrategy::Custom,
+                vec![ConsoleOperationPolicy::simple(
+                    ConsoleOperationId::try_from("fixture.list").unwrap(),
+                    operation_enabled,
+                )],
+            )],
+        )];
+        let permissions =
+            crate::middleware::require_session::settings_feature_navigation_permissions(
+                plan.console_operation_registry.inventory(),
+                &policies,
+                &plan.settings_feature_registry.inventory().features,
+            );
+        assert_eq!(
+            permissions.contains("settings_feature.access.fixture.settings"),
+            expected
+        );
+        assert_eq!(crate::middleware::require_settings_feature_permission::authorize_compiled_console_access(&access, &actor, &policies), expected);
+    }
+}
+
+mod record_permission_runtime;

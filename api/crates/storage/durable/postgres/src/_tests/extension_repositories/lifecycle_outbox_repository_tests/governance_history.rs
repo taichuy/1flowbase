@@ -31,6 +31,7 @@ async fn root_2014_generic_event_history_scope_is_verified_or_conservative() {
     let graph = plan.graph_fingerprint.clone();
     store
         .record_lifecycle_fact(&RecordLifecycleFactInput {
+            observation_context: None,
             event_id: event,
             transaction_id: transaction,
             contract_id: fact.contract_id.clone(),

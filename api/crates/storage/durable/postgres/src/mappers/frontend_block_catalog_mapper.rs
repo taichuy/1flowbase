@@ -12,6 +12,8 @@ pub struct StoredFrontendBlockCatalogRow {
     pub runtime: String,
     pub entry: String,
     pub ui_registration: String,
+    /// Explicit opt-in to block management and page creation, independent of reusable UI registration.
+    pub block_registration: bool,
     pub code_template: Option<String>,
     pub code_template_version: Option<String>,
     pub code_template_language: Option<String>,
@@ -39,6 +41,7 @@ impl PgFrontendBlockCatalogMapper {
             runtime: row.runtime,
             entry: row.entry,
             ui_registration: row.ui_registration,
+            block_registration: row.block_registration,
             code_template: row.code_template,
             code_template_version: row.code_template_version,
             code_template_language: row.code_template_language,

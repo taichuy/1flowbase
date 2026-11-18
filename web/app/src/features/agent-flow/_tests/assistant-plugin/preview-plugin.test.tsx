@@ -96,6 +96,7 @@ test('#2018 AC-101/103 preview uses the assistant plugin and writes model select
               document
             },
             versions: [],
+            analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
             autosave_interval_seconds: 30,
             user_protection_limit: 10
           }}

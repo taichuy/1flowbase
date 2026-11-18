@@ -33,6 +33,9 @@ const TEST_ROOT_USER_ID: Uuid = Uuid::from_u128(0x333333333333333333333333333333
 #[derive(Default)]
 struct ApplicationPublicApiTestRepositoryInner {
     applications: HashMap<Uuid, domain::ApplicationRecord>,
+    event_definitions: HashMap<Uuid, domain::event_center::EventDefinitionRecord>,
+    registered_event_catalog: Vec<domain::event_center::EventCatalogEntry>,
+    workflow_event_triggers: HashMap<Uuid, domain::event_center::WorkflowEventTriggerRecord>,
     api_keys: HashMap<Uuid, domain::ApiKeyRecord>,
     conversations:
         HashMap<(Uuid, Uuid, String, String), conversations::ApplicationPublicConversationRecord>,
@@ -222,6 +225,9 @@ impl ApplicationPublicApiTestRepository {
             .expect("application public api test repo mutex poisoned")
             .applications
             .insert(application.id, application.clone());
+        if application.application_type == domain::ApplicationType::AgentFlow {
+            self.seed_publishable_agent_flow(&application);
+        }
         application
     }
 
@@ -813,6 +819,7 @@ mod api_key_repository;
 mod application_repository;
 mod auth_repository;
 mod compiled_plan_repository;
+mod event_repository;
 mod flow_repository;
 mod publication_repository;
 mod repository_seeders;

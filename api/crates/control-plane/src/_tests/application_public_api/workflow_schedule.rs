@@ -1,5 +1,90 @@
 use super::*;
 
+#[test]
+fn workflow_schedule_follows_system_timezone_at_each_scheduled_instant() {
+    const TEST_NAME: &str = "_tests::application_public_api::workflow_schedule::workflow_schedule_follows_system_timezone_at_each_scheduled_instant";
+    if let Ok(zone) = std::env::var("FLOWBASE_SCHEDULE_TIMEZONE_TEST_CHILD") {
+        use control_plane::application_public_api::workflow_schedule::resolve_workflow_schedule_local_time;
+        for (at, expected_offset) in [
+            (
+                time::macros::datetime!(2026-01-15 12:00 UTC),
+                if zone == "Asia/Shanghai" {
+                    28_800
+                } else {
+                    -18_000
+                },
+            ),
+            (
+                time::macros::datetime!(2026-07-15 12:00 UTC),
+                if zone == "Asia/Shanghai" {
+                    28_800
+                } else {
+                    -14_400
+                },
+            ),
+        ] {
+            let local = resolve_workflow_schedule_local_time("", at).unwrap();
+            assert_eq!(local.unix_timestamp(), at.unix_timestamp());
+            assert_eq!(local.offset().whole_seconds(), expected_offset);
+            let explicit = resolve_workflow_schedule_local_time("UTC", at).unwrap();
+            assert_eq!(explicit.offset(), time::UtcOffset::UTC);
+        }
+        return;
+    }
+
+    // Isolate TZ in child processes; never mutate the multi-threaded test host's environment.
+    for zone in ["Asia/Shanghai", "America/New_York"] {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([TEST_NAME, "--exact", "--nocapture"])
+            .env("TZ", zone)
+            .env("FLOWBASE_SCHEDULE_TIMEZONE_TEST_CHILD", zone)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success(),
+            "{zone}: {stdout} {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            stdout.contains("1 passed"),
+            "timezone child test did not execute: {stdout}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn workflow_schedule_timezone_can_be_cleared_to_follow_system() {
+    let harness = ApplicationPublicApiTestHarness::new();
+    let application = harness.seed_workflow_application(actor_user_id(), "System Timezone");
+    let service = WorkflowScheduleTriggerService::new(harness.repository());
+
+    for timezone in ["Asia/Shanghai", ""] {
+        let stored = service
+            .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
+                actor_user_id: actor_user_id(),
+                application_id: application.id,
+                enabled: false,
+                cron: "0 9 * * *".into(),
+                timezone: timezone.into(),
+                input_payload: serde_json::json!({}),
+            })
+            .await
+            .unwrap();
+        assert_eq!(stored.timezone, timezone);
+
+        let loaded = service
+            .get_trigger(GetWorkflowScheduleTriggerCommand {
+                actor_user_id: actor_user_id(),
+                application_id: application.id,
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.timezone, timezone);
+    }
+}
+
 #[tokio::test]
 async fn workflow_schedule_trigger_service_replaces_config_and_rejects_invalid_values() {
     let harness = ApplicationPublicApiTestHarness::new();

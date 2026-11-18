@@ -336,6 +336,7 @@ async function main(_argv = [], deps = {}) {
 }
 
 module.exports = {
+  walkFiles,
   collectRustBackendFindings,
   main,
   scanRustSource,

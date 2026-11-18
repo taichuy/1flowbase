@@ -47,6 +47,7 @@ function createInitialState() {
       updated_at: '2026-04-18T10:00:00Z',
       document: createDefaultAgentFlowDocument({ flowId: 'flow-1' })
     },
+    analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
     autosave_interval_seconds: 30,
     user_protection_limit: 10,
     versions: []

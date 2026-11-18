@@ -15,20 +15,29 @@ use crate::compiled_plan::{
 use crate::output_schema::{history_messages_schema, output_schema_is_llm_context_messages};
 use crate::payload_builder::PublicOutputContract;
 
+mod analysis;
 mod code_runtime_config;
 mod containers;
 mod diagnostics;
 mod node_compilation;
+mod output_contract;
 mod selector_paths;
 mod topology;
 pub(crate) mod variable_aggregator_contract;
 
+pub use analysis::{
+    analyze_flow_document, analyze_flow_document_for_application, analyze_flow_document_for_node,
+    ensure_flow_analysis_valid, validate_flow_output_contracts,
+};
 pub use diagnostics::{FlowValidationError, NodeDiagnostic};
 pub use node_compilation::js_dependency_lookup_key;
 pub use topology::FlowCompiler;
 
 pub fn ensure_plan_execution_contract(plan: &CompiledPlan) -> Result<()> {
     containers::validate_containers(&plan.nodes, &plan.edges)?;
+    if let Some(issue) = validate_code_sources(&plan.nodes).first() {
+        return Err(FlowValidationError::from_issues([issue]).into());
+    }
     if let Some(issue) = topology::validate_variable_scope_contracts(&plan.nodes)
         .into_iter()
         .next()
@@ -42,6 +51,32 @@ pub fn ensure_plan_execution_contract(plan: &CompiledPlan) -> Result<()> {
         return Err(FlowValidationError::from_issues([&issue]).into());
     }
     Ok(())
+}
+
+fn validate_code_sources(nodes: &BTreeMap<String, CompiledNode>) -> Vec<CompileIssue> {
+    nodes
+        .values()
+        .filter(|node| node.node_type == "code")
+        .filter(|node| {
+            node.code_runtime.as_ref().is_none_or(|runtime| {
+                runtime
+                    .source
+                    .as_deref()
+                    .is_none_or(|source| source.trim().is_empty())
+                    && runtime
+                        .source_ref
+                        .as_deref()
+                        .is_none_or(|reference| reference.trim().is_empty())
+            })
+        })
+        .map(|node| CompileIssue {
+            node_id: node.node_id.clone(),
+            field_path: Some("/config/source".into()),
+            code: CompileIssueCode::MissingCodeSource,
+            message: "Code nodes require config.source or config.source_ref before execution"
+                .into(),
+        })
+        .collect()
 }
 
 const FLOW_SCHEMA_VERSION: &str = "1flowbase.flow/v2";

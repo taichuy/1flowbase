@@ -93,7 +93,7 @@ pub(super) fn validate_console_contributions(
         .iter()
         .filter_map(|operation| match &operation.policy_group {
             ConsolePolicyGroup::Other(group_id) => Some(group_id.as_str()),
-            ConsolePolicyGroup::SettingsFeature(_) => None,
+            ConsolePolicyGroup::SettingsFeature(_) | ConsolePolicyGroup::Plugin(_) => None,
         })
         .collect::<BTreeSet<_>>();
     let mut declared_other_groups = BTreeSet::new();
@@ -340,6 +340,11 @@ pub(super) fn validate_console_policy_group(
                     "{field}.policy_group references unknown settings feature"
                 )));
             }
+        }
+        ConsolePolicyGroup::Plugin(_) => {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "plugin policy groups are registered by managed services",
+            ));
         }
         ConsolePolicyGroup::Other(group_id) => {
             validate_non_empty(group_id, &format!("{field}.policy_group"))?;

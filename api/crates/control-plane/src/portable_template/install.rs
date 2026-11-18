@@ -75,6 +75,7 @@ pub trait PortableTemplateInstallRepository:
     + ApplicationCompileContextRepository
     + ApplicationJsDependencySelectionRepository
     + WorkflowScheduleTriggerRepository
+    + control_plane_contracts::ports::EventCenterRepository
     + FrontstagePageRepository
     + FrontstageBlockTreeRepository
     + FrontendBlockCatalogRepository
@@ -98,6 +99,7 @@ impl<T> PortableTemplateInstallRepository for T where
         + ApplicationCompileContextRepository
         + ApplicationJsDependencySelectionRepository
         + WorkflowScheduleTriggerRepository
+        + control_plane_contracts::ports::EventCenterRepository
         + FrontstagePageRepository
         + FrontstageBlockTreeRepository
         + FrontendBlockCatalogRepository

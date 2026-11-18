@@ -10,6 +10,7 @@ import { i18nText } from '../../../shared/i18n/text';
 
 interface WorkflowOverlayProps {
   applicationName: string;
+  interactionLocked?: boolean;
   autosaveLabel: string;
   autosaveStatus: 'idle' | 'saving' | 'saved' | 'error';
   issueErrorCount: number;
@@ -31,6 +32,7 @@ interface WorkflowOverlayProps {
 
 export function WorkflowOverlay({
   applicationName,
+  interactionLocked = false,
   autosaveLabel,
   autosaveStatus,
   issueErrorCount,
@@ -57,10 +59,9 @@ export function WorkflowOverlay({
   }[autosaveStatus];
 
   return (
-    <div
+    <section
       aria-label={i18nText('workflow', 'auto.workflow_action_bar')}
       className="agent-flow-editor__overlay"
-      role="region"
     >
       <Space className="agent-flow-editor__overlay-status" size="small">
         <Typography.Text strong>{applicationName}</Typography.Text>
@@ -74,6 +75,7 @@ export function WorkflowOverlay({
           <Button
             aria-label="Issues"
             icon={<IssuesCloseOutlined />}
+            disabled={interactionLocked}
             onClick={onOpenIssues}
             title="Issues"
           />
@@ -81,6 +83,7 @@ export function WorkflowOverlay({
         <Button
           aria-label={i18nText('agentFlow', 'auto.environment_variables')}
           icon={<CodeOutlined />}
+          disabled={interactionLocked}
           onClick={onOpenEnvironmentVariables}
           title={i18nText('agentFlow', 'auto.environment_variables')}
         />
@@ -128,10 +131,11 @@ export function WorkflowOverlay({
         <Button
           aria-label={i18nText('agentFlow', 'auto.historical_version')}
           icon={<HistoryOutlined />}
+          disabled={interactionLocked}
           onClick={onOpenHistory}
           title={i18nText('agentFlow', 'auto.historical_version')}
         />
       </Space>
-    </div>
+    </section>
   );
 }

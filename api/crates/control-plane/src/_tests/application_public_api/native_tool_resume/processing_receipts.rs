@@ -24,6 +24,7 @@ async fn identical_processing_native_callback_attaches_without_second_consumer()
     let service =
         ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
     let command = ResumePublishedCallbackCommand {
+        anthropic_continuation: None,
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,
@@ -170,6 +171,7 @@ async fn full_context_successor_waits_for_processing_predecessor_without_replayi
     let service =
         ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
     let mut command = ResumePublishedCallbackCommand {
+        anthropic_continuation: None,
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,
@@ -272,6 +274,7 @@ async fn expired_processing_tool_receipt_reclaims_the_same_attempt() {
     let service =
         ApplicationPublishedCallbackResumeService::new(repository.clone(), consumer.clone());
     let mut command = ResumePublishedCallbackCommand {
+        anthropic_continuation: None,
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,
@@ -361,6 +364,7 @@ async fn completed_tool_receipt_after_incomplete_inference_starts_new_full_conte
         },
     );
     let mut command = ResumePublishedCallbackCommand {
+        anthropic_continuation: None,
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,

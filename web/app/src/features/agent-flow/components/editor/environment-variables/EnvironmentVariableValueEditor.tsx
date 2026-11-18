@@ -546,12 +546,15 @@ export function EnvironmentVariableValueEditor({
   onChange,
   onValueErrorChange
 }: EnvironmentVariableValueEditorProps) {
-  const [editInJson, setEditInJson] = useState(false);
+  const [editMode, setEditMode] = useState(() => ({ valueType, editInJson: false }));
+  if (editMode.valueType !== valueType) {
+    setEditMode({ valueType, editInJson: false });
+  }
+  const editInJson = editMode.editInJson;
+  function setEditInJson(editInJson: boolean) {
+    setEditMode((current) => ({ ...current, editInJson }));
+  }
   const structured = valueType === 'object' || valueType.startsWith('array[');
-
-  useEffect(() => {
-    setEditInJson(false);
-  }, [valueType]);
 
   if (valueType === 'number') {
     return (

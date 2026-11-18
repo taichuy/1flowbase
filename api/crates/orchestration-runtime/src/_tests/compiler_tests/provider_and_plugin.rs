@@ -56,7 +56,7 @@ fn compile_visible_internal_llm_tool_entry_from_source_handle_edge() {
             "tool_name": "inspect_visible_context",
             "connector_id": "inspect_visible_context",
             "internal_llm_node_policy": "allowed",
-            "input_schema": { "type": "object" }
+            "input_schema": { "type": "object", "properties":{"task":{"type":"string"}} }
         }
     ]);
     document["graph"]["nodes"]
@@ -138,6 +138,47 @@ fn compile_visible_internal_llm_tool_entry_from_source_handle_edge() {
 
     let plan = FlowCompiler::compile(flow_id, "draft-1", &document, &compile_context()).unwrap();
     let main_llm = plan.nodes.get("node-llm").expect("main llm should compile");
+    let analysis = orchestration_runtime::compiler::analyze_flow_document_for_node(
+        &document,
+        &compile_context(),
+        domain::ApplicationType::AgentFlow,
+        "node-mounted-llm",
+    );
+    let mounted = analysis
+        .variable_catalogs
+        .iter()
+        .find(|catalog| catalog.node_id == "node-mounted-llm" && catalog.field_path.is_empty())
+        .unwrap();
+    assert!(mounted
+        .variables
+        .iter()
+        .any(|option| option.selector == vec!["visible_internal_llm_tool", "arguments", "task"]));
+    let main_analysis = orchestration_runtime::compiler::analyze_flow_document_for_node(
+        &document,
+        &compile_context(),
+        domain::ApplicationType::AgentFlow,
+        "node-llm",
+    );
+    let main = main_analysis
+        .variable_catalogs
+        .iter()
+        .find(|catalog| catalog.node_id == "node-llm" && catalog.field_path.is_empty())
+        .unwrap();
+    assert!(!main
+        .variables
+        .iter()
+        .any(|option| option.node_id == "visible_internal_llm_tool"));
+    document["graph"]["nodes"][1]["config"]["visible_internal_llm_tools_enabled"] = json!(false);
+    let disabled = orchestration_runtime::compiler::analyze_flow_document_for_node(
+        &document,
+        &compile_context(),
+        domain::ApplicationType::AgentFlow,
+        "node-mounted-llm",
+    );
+    assert!(!disabled.variable_catalogs.iter().any(|catalog| catalog
+        .variables
+        .iter()
+        .any(|option| option.node_id == "visible_internal_llm_tool")));
     let mounted_llm = plan
         .nodes
         .get("node-mounted-llm")

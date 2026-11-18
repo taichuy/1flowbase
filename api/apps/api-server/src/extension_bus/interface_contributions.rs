@@ -7,8 +7,7 @@ mod system;
 use std::{collections::BTreeSet, sync::Arc};
 
 use interface_runtime::{
-    AuthorizationOperation, CompiledInterfaceRegistry, GraphFingerprint, InterfaceId,
-    InterfaceOwner, RegistryCompilationError, RegistryCompiler,
+    CompiledInterfaceRegistry, GraphFingerprint, InterfaceId, RegistryCompilationError,
 };
 
 use crate::console_operation_compilation::{
@@ -17,117 +16,18 @@ use crate::console_operation_compilation::{
     ConsoleBindingOwnershipContribution,
 };
 
-#[derive(Clone)]
-pub(crate) struct InterfaceRegistryContribution {
-    contribution_id: String,
-    authorization_operations: Vec<String>,
-    owners: Vec<String>,
-    registry: Arc<CompiledInterfaceRegistry>,
+pub use api_host_kernel::extension_bus::interface_contributions::*;
+pub(crate) trait InterfaceContributionCollectorAssembly {
+    fn compile_complete_console_snapshot(
+        self,
+        inventory: &access_control::ConsoleOperationCompiledInventory,
+    ) -> anyhow::Result<(
+        Arc<CompiledInterfaceRegistry>,
+        CompiledConsoleOperationSnapshot,
+    )>;
 }
-
-impl InterfaceRegistryContribution {
-    pub(crate) fn new(
-        contribution_id: &'static str,
-        authorization_operations: &'static [&'static str],
-        owners: &'static [&'static str],
-        registry: Arc<CompiledInterfaceRegistry>,
-    ) -> Self {
-        Self {
-            contribution_id: contribution_id.into(),
-            authorization_operations: authorization_operations
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-            owners: owners.iter().map(|s| s.to_string()).collect(),
-            registry,
-        }
-    }
-
-    pub(crate) fn managed(
-        owner: String,
-        operations: Vec<String>,
-        registry: Arc<CompiledInterfaceRegistry>,
-    ) -> Self {
-        Self {
-            contribution_id: format!("managed-service.{owner}"),
-            authorization_operations: operations,
-            owners: vec![owner],
-            registry,
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn with_test_contribution_id(mut self, contribution_id: &'static str) -> Self {
-        self.contribution_id = contribution_id.into();
-        self
-    }
-
-    fn console_binding_contributions(&self) -> Vec<ConsoleBindingOwnershipContribution> {
-        console_bindings_from_registry(
-            &self.contribution_id,
-            ConsoleBindingOwnerKind::Family,
-            self.registry.as_ref(),
-        )
-    }
-}
-
-pub(crate) struct InterfaceContributionCollector {
-    managed_factory: Option<Arc<dyn interface_runtime::ManagedInterfaceInvocationFactory>>,
-    graph_fingerprint: GraphFingerprint,
-    contributions: Vec<InterfaceRegistryContribution>,
-    contribution_ids: BTreeSet<String>,
-}
-
-impl InterfaceContributionCollector {
-    pub(crate) fn new(graph_fingerprint: GraphFingerprint) -> Self {
-        Self {
-            managed_factory: None,
-            graph_fingerprint,
-            contributions: Vec::new(),
-            contribution_ids: BTreeSet::new(),
-        }
-    }
-
-    pub(crate) fn add(
-        &mut self,
-        contribution: InterfaceRegistryContribution,
-    ) -> anyhow::Result<()> {
-        if !self
-            .contribution_ids
-            .insert(contribution.contribution_id.clone())
-        {
-            anyhow::bail!(
-                "duplicate interface registry contribution `{}`",
-                contribution.contribution_id
-            );
-        }
-        self.contributions.push(contribution);
-        Ok(())
-    }
-
-    pub(crate) fn compile(self) -> anyhow::Result<Arc<CompiledInterfaceRegistry>> {
-        let mut operations = BTreeSet::new();
-        let mut owners = BTreeSet::new();
-        for contribution in &self.contributions {
-            for operation in &contribution.authorization_operations {
-                operations.insert(AuthorizationOperation::new(operation)?);
-            }
-            for owner in &contribution.owners {
-                owners.insert(InterfaceOwner::new(owner)?);
-            }
-        }
-
-        let mut compiler = RegistryCompiler::new(self.graph_fingerprint, operations, owners);
-        if let Some(factory) = self.managed_factory {
-            compiler = compiler.with_managed_invocations(factory);
-        }
-        for contribution in self.contributions {
-            compiler.absorb_snapshot(contribution.registry.as_ref())?;
-        }
-        Ok(compiler.compile()?)
-    }
-
-    pub(crate) fn compile_complete_console_snapshot(
+impl InterfaceContributionCollectorAssembly for InterfaceContributionCollector {
+    fn compile_complete_console_snapshot(
         self,
         console_inventory: &access_control::ConsoleOperationCompiledInventory,
     ) -> anyhow::Result<(
@@ -140,11 +40,15 @@ impl InterfaceContributionCollector {
             )?;
         let mut binding_contributions = Vec::new();
         let mut known_binding_owners = BTreeSet::new();
-        for contribution in &self.contributions {
-            binding_contributions.extend(contribution.console_binding_contributions());
+        for contribution in self.contributions() {
+            binding_contributions.extend(console_bindings_from_registry(
+                contribution.contribution_id(),
+                ConsoleBindingOwnerKind::Family,
+                contribution.registry(),
+            ));
             known_binding_owners.extend(
                 contribution
-                    .registry
+                    .registry()
                     .definitions()
                     .map(|definition| definition.owner().as_str().to_string()),
             );
@@ -155,16 +59,20 @@ impl InterfaceContributionCollector {
             disposition: crate::console_operation_compilation::ConsoleMigrationDisposition::DefaultDisabled { evidence: "New managed service operation requires explicit role policy; no legacy grants".into() },
         }));
         let managed_stream_controls = self
-            .contributions
+            .contributions()
             .iter()
-            .filter(|contribution| contribution.contribution_id.starts_with("managed-service."))
+            .filter(|contribution| {
+                contribution
+                    .contribution_id()
+                    .starts_with("managed-service.")
+            })
             .flat_map(|contribution| {
                 contribution
-                    .registry
+                    .registry()
                     .bindings()
                     .filter_map(|binding| {
                         let definition = contribution
-                            .registry
+                            .registry()
                             .definition(binding.interface_identity().interface_id())?;
                         let route = binding.projection().http_route()?;
                         (definition.execution_mode()
@@ -188,7 +96,6 @@ impl InterfaceContributionCollector {
         Ok((registry, snapshot))
     }
 }
-
 fn console_bindings_from_registry(
     contribution_id: &str,
     owner_kind: ConsoleBindingOwnerKind,
@@ -224,7 +131,6 @@ fn console_bindings_from_registry(
         })
         .collect()
 }
-
 pub(crate) fn production_interface_contributions(
     state: &Arc<crate::app_state::ApiState>,
     owner: &Arc<crate::generation_dispatch::GenerationDispatch>,
@@ -261,8 +167,10 @@ pub(crate) fn production_interface_contributions(
         Arc::clone(&state.session_store),
         state.cookie_name.clone(),
     );
-    let console_membership =
-        crate::routes::membership_interface::membership_port(state.store.clone());
+    let console_membership = crate::routes::membership_interface::membership_port(
+        state.store.clone(),
+        state.event_workflow_changes.clone(),
+    );
     let console_organization = crate::routes::organization::interface::port(
         state.store.clone(),
         control_plane::navigation_cache::NavigationCache(state.infrastructure.cache_store()),
@@ -292,6 +200,7 @@ pub(crate) fn production_interface_contributions(
         state.console_operation_registry.inventory().clone(),
         state.settings_feature_registry.inventory().features.clone(),
         state.bootstrap_workspace_id,
+        state.event_workflow_changes.clone(),
     );
     let console_auth_center = crate::routes::auth_center_interface::auth_center_port(
         state.store.clone(),
@@ -323,6 +232,7 @@ pub(crate) fn production_interface_contributions(
             state.bootstrap_workspace_id,
             state.api_node_id.clone(),
             state.provider_install_root.clone(),
+            state.event_workflow_changes.clone(),
         );
     let console_applications = crate::routes::applications::interface::applications_port(
         state.store.clone(),
@@ -332,6 +242,7 @@ pub(crate) fn production_interface_contributions(
             install_root: state.provider_install_root.clone(),
             node_id: state.api_node_id.clone(),
         },
+        state.event_workflow_changes.clone(),
     );
     let console_application_api_keys =
         crate::routes::application_api::interface_keys::port(state.store.clone());
@@ -339,12 +250,14 @@ pub(crate) fn production_interface_contributions(
         crate::routes::application_api::interface_publication::port(
             state.store.clone(),
             state.infrastructure.cache_store(),
+            state.event_workflow_changes.clone(),
         );
     let console_workflow_schedule =
         crate::routes::application_api::interface_schedule::port(state.store.clone());
     let console_application_docs = crate::routes::application_api::interface_docs::port(
         state.store.clone(),
         Arc::clone(&state.api_docs),
+        Arc::new(crate::applications_assembly::PublicDocs),
     );
     let native_interface_registry = state
         .extension_boot_snapshot
@@ -538,6 +451,8 @@ pub(crate) fn production_interface_contributions(
                 "communications.messages.list",
                 "communications.files.list",
                 "communications.files.get",
+                "communications.files.info",
+                "communications.files.image",
                 "communications.messages.retry",
             ],
             &["api-server.console-communications"],
@@ -545,6 +460,7 @@ pub(crate) fn production_interface_contributions(
                 crate::routes::communications::interface::Dependencies::new(
                     state,
                     mcp_interface_catalog_dependencies.clone(),
+                    Arc::new(crate::mcp_assembly::InterfaceCatalog),
                 ),
             )?,
         ),
@@ -575,6 +491,7 @@ pub(crate) fn production_interface_contributions(
                 crate::routes::communications::interface::Dependencies::new(
                     state,
                     mcp_interface_catalog_dependencies.clone(),
+                    Arc::new(crate::mcp_assembly::InterfaceCatalog),
                 ),
             )?,
         ),
@@ -621,6 +538,16 @@ pub(crate) fn production_interface_contributions(
             ],
             &["api-server.console-i18n-catalog"],
             crate::routes::i18n_catalog::interface::compile_registry(console_i18n_catalog)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.record-permissions",
+            &[
+                "roles.record_permissions.view",
+                "roles.record_permissions.replace",
+                "roles.record_capabilities.get",
+            ],
+            &["api-server.record-permissions"],
+            crate::managed_services::record_permissions::compile_registry(state)?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-role-access",
@@ -745,6 +672,35 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-events",
+            &[
+                "events.api_operations.list",
+                "events.api_operations.get",
+                "events.catalog.list",
+                "events.definitions.create",
+                "events.definitions.update",
+                "events.runtime.get",
+            ],
+            &["api-server.console-events"],
+            crate::routes::events::interface::compile_registry(
+                crate::routes::events::interface::Dependencies::new(
+                    state,
+                    Arc::new(crate::interaction_assembly::ApiEventDescriptors),
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-workflow-event",
+            &[
+                "applications.workflow-event.get",
+                "applications.workflow-event.replace",
+            ],
+            &["api-server.console-workflow-event"],
+            crate::routes::application_api::interface_event::compile_registry(
+                crate::routes::application_api::interface_event::port(state),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-workflow-schedule",
             &[
                 "applications.workflow-schedule.get",
@@ -774,6 +730,7 @@ pub(crate) fn production_interface_contributions(
         InterfaceRegistryContribution::new(
             "api-server.console-application-orchestration",
             &[
+                "applications.orchestration.analysis",
                 "applications.orchestration.get",
                 "applications.orchestration.draft.save",
                 "applications.orchestration.version.restore",
@@ -999,6 +956,9 @@ pub(crate) fn production_interface_contributions(
             crate::routes::docs::interface::compile_registry(
                 crate::routes::docs::interface::port(
                     crate::routes::docs::interface::DocsDependencies {
+                        workflow_extension_document: Arc::new(
+                            crate::settings_assembly::WorkflowExtensionDocument,
+                        ),
                         store: state.store.clone(),
                         api_docs: Arc::clone(&state.api_docs),
                         template_catalog: state.runtime_engine.template_catalog().clone(),
@@ -1148,6 +1108,7 @@ pub(crate) fn production_interface_contributions(
                     state.infrastructure.task_queue(),
                     Arc::clone(&state.runtime_event_stream),
                     state.notification_service.clone(),
+                    Arc::clone(&native_runtime_invoker_factory),
                 ),
             )?,
         ),
@@ -1165,16 +1126,6 @@ pub(crate) fn production_interface_contributions(
         ),
     ]);
     Ok(contributions)
-}
-
-impl InterfaceContributionCollector {
-    pub(crate) fn with_managed_invocations(
-        mut self,
-        factory: Arc<dyn interface_runtime::ManagedInterfaceInvocationFactory>,
-    ) -> Self {
-        self.managed_factory = Some(factory);
-        self
-    }
 }
 
 #[path = "interface_contributions/runtime_interfaces.rs"]

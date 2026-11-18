@@ -10,7 +10,6 @@ pub(crate) mod core_console_operation_specs;
 pub mod files;
 #[path = "frontstage/mod.rs"]
 pub mod frontstage;
-pub(crate) mod helpers;
 #[path = "identity/mod.rs"]
 mod identity_group;
 pub mod local_commands;
@@ -21,6 +20,7 @@ mod plugins_and_models_group;
 pub mod runtime_i18n_catalog;
 #[path = "settings/mod.rs"]
 mod settings_group;
+pub mod terminal;
 pub mod webmcp;
 
 pub use applications_group::{
@@ -44,8 +44,20 @@ pub(crate) use settings_group::{
     role_access_interface, ui_management_interface,
 };
 
-pub const PUBLIC_API_PATH_PREFIX: &str = "/api/public/";
+pub use api_console_settings::routes::PUBLIC_API_PATH_PREFIX;
 
+// Only these shared assertions are exposed to the thin integration target.
+#[cfg(all(feature = "test-support", not(test)))]
+#[path = "_tests/console_route_assembly_tests.rs"]
+pub(crate) mod console_route_assembly_assertions;
+#[cfg(all(feature = "test-support", not(test)))]
+#[path = "_tests/file_console_route_assembly_tests.rs"]
+pub(crate) mod file_console_route_assembly_assertions;
+#[cfg(all(feature = "test-support", not(test)))]
+#[path = "_tests/settings_owner_console_route_assembly_tests.rs"]
+pub(crate) mod settings_owner_console_route_assembly_assertions;
+
+#[cfg_attr(test, api_test_selection::group(routes))]
 #[cfg(test)]
 mod _tests;
 
@@ -56,4 +68,5 @@ pub use settings_group::organization;
 pub(crate) mod client_collectors;
 
 pub(crate) mod communications;
+pub(crate) mod events;
 pub mod notifications;

@@ -9,6 +9,8 @@ description: 验收或审计 1flowbase 当前任务、PR 或项目质量。对�
 
 独立判断实现是否满足目标与架构边界，不能只复述开发者说明或测试绿灯。QA 负责取证与结论，默认不修改产品；已有修复授权可由对应开发 skill 承接，不重复申请同一授权，也不扩张到未授权清理。
 
+QA 同时取得原始用户目标、明确批准的变化与 Root AC，核对 AC 是否完整承接目标；不能按开发实现边界默默缩小验收。记忆不替代当前授权与当前事实。
+
 当前任务的目标 / AC、设计和架构约束、源码与行为证据分别承担不同职责。文档与实现冲突时定位偏离及影响，不把改文档、改测试或改产品视为自动获准。
 
 ## Architecture Baseline
@@ -48,8 +50,9 @@ R = {规则 r | r 与 C 相关}
 - Dev Acceptance：当前目标与直接风险，复用有效证据，补缺口；不自动跑全仓门禁。
 - PR Merge：使用对应候选的 CI / artifact；本地通过不冒充远端门禁通过。
 - Project Health：先用 [project-evaluation-checklist](references/governance/project-evaluation-checklist.md) 建质量维度矩阵，再归类证据与风险；单个失败脚本不代表体检全范围。
-- Issue Tree：遵循 [long-running-work](../problem-framing/references/long-running-work.md)，全部产品与 fixture 装配冻结后由一个 fresh QA 集中验收，不做 per-packet QA。一次返回全部 blocker，修复后只补受影响证据；语义 / 范围变化或同根因第二次失败回到 Root 定界。
+- Issue Tree：遵循 [long-running-work](../problem-framing/references/long-running-work.md)，全部产品与 fixture 装配冻结后由一个 fresh QA 集中验收，不做 per-packet QA。一次返回全部 blocker，修复后仍由新的独立 QA 核对原始 receipt 并只补受影响证据，不沿用旧 PASS 或开发者背书；fixture 语义变化须验证仍能拒绝原缺陷。语义 / 范围变化或同根因第二次失败回到 Root 定界。
 - 执行成本、并发、资源失败转向、日志和证据失效条件统一使用 [test-driven-development](../test-driven-development/SKILL.md#execution-cost-and-stop-conditions)。换 agent 或进入收尾不自动使证据失效；编译、零用例与未完成链接不算行为测试通过。
+- 受影响的最终实际消费者契约须进入原 AC，例如 MCP 公开 schema → 构造请求 → 业务结果；直调 API 绿不能替代实际消费链路。基线推进时核对目标分支快照与实际合并结果，只补受影响的交互证据，不为无关功能扩展任务。
 - 四基座需要对应 candidate-bound receipt，通用 tooling green 不替代；资源限制触发时停止该验证路径并列出缺口，不宣布验收通过。
 
 ## Read by Risk

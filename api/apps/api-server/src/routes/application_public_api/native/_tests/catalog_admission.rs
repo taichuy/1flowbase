@@ -82,7 +82,17 @@ async fn no_mcp_factory_leases_g2_without_catalog_and_keeps_detached_task_tail()
             },
             interface_registry: Arc::new(ForbiddenCatalog),
         });
-    let invoker = factory.without_mcp().unwrap();
+    let user_id: uuid::Uuid = sqlx::query_scalar("select id from users where account = 'root'")
+        .fetch_one(selected.state.store.pool())
+        .await
+        .unwrap();
+    let actor = control_plane::ports::AuthRepository::load_actor_context_for_user(
+        &selected.state.store,
+        user_id,
+    )
+    .await
+    .unwrap();
+    let invoker = factory.without_mcp(&actor).await.unwrap();
     let body = crate::generation_dispatch::bind_response(
         axum::response::Response::new(axum::body::Body::empty()),
         selected.owner.clone(),
@@ -125,7 +135,7 @@ async fn no_mcp_factory_leases_g2_without_catalog_and_keeps_detached_task_tail()
         "retained static factory must stay Weak"
     );
     assert!(
-        factory.without_mcp().is_err(),
+        factory.without_mcp(&actor).await.is_err(),
         "expired generation cannot fall back to latest"
     );
 }

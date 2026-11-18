@@ -1,16 +1,10 @@
+pub use crate::event_center::catalog::EventSourceCatalog;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
-    sync::{Arc, Mutex},
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
 };
 
-use axum::http::{header::ACCEPT_LANGUAGE, HeaderMap};
-use control_plane::i18n_catalog::CatalogResolver;
-use control_plane::ports::{
-    OfficialPluginSourcePort, RoleConsolePolicyReader, RuntimeEventStream, SessionStore,
-};
-use domain::{CatalogLocale, CatalogMessageIdentity};
 use plugin_framework::HostExtensionContributionManifest;
-use runtime_core::runtime_engine::RuntimeEngine;
 use serde::Serialize;
 use storage_durable_postgres::MainDurableStore;
 
@@ -58,111 +52,16 @@ pub type ApiUiComponentCatalogService =
         MainDurableStore,
         crate::ui_component_catalog_source::ApiUiComponentCatalogSource,
     >;
-use time::OffsetDateTime;
 
-use crate::error_response::ApiError;
-use crate::openapi_docs::ApiDocsRegistry;
 use crate::{
-    config::ApiConfig,
     console_surface_registry::ConsoleSurfaceRegistry,
-    extension_bus::ExtensionBootSnapshot,
     host_extensions::console::ResolvedHostExtensionConsoleContribution,
-    host_infrastructure::HostInfrastructureRegistry,
     routes::console_route_assembly::{
         compile_complete_migrated_console_operation_registry, ConsoleRouteAssembly,
     },
 };
-use crate::{
-    official_extension_catalog::OfficialExtensionCatalogSourcePort,
-    official_i18n_catalog_source::ApiOfficialI18nCatalogSource,
-    official_mcp_bundles::OfficialMcpBundleSourcePort,
-    provider_runtime::ApiRuntimeServices,
-    routes::assistant::conversation_events::AssistantConversationEventHub,
-    runtime_activity::ApplicationRuntimeActivityTracker,
-    runtime_profile_client::{ApiRuntimeProfilePort, RuntimeHostSystemPort},
-};
 
-pub fn build_official_i18n_catalog_update_service(
-    store: MainDurableStore,
-    config: &ApiConfig,
-    network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
-    workspace_id: uuid::Uuid,
-) -> Arc<control_plane::i18n_catalog::OfficialI18nCatalogUpdateService<MainDurableStore>> {
-    let source = Arc::new(ApiOfficialI18nCatalogSource::new(
-        config.resolve_official_i18n_catalog_source(),
-        network_egress,
-        workspace_id,
-    ));
-    Arc::new(control_plane::i18n_catalog::OfficialI18nCatalogUpdateService::new(store, source))
-}
-
-pub(crate) fn request_catalog_locale(
-    headers: &HeaderMap,
-    preferred_locale: Option<String>,
-) -> CatalogLocale {
-    let resolved = runtime_profile::resolve_locale(runtime_profile::LocaleResolutionInput {
-        query_locale: None,
-        explicit_header_locale: headers
-            .get("x-1flowbase-locale")
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string),
-        user_preferred_locale: preferred_locale,
-        accept_language: headers
-            .get(ACCEPT_LANGUAGE)
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string),
-        fallback_locale: runtime_profile::FALLBACK_LOCALE,
-        supported_locales: runtime_profile::SUPPORTED_LOCALES
-            .iter()
-            .map(|value| value.to_string())
-            .collect(),
-    });
-    CatalogLocale::new(resolved.resolved_locale)
-        .expect("runtime profile must resolve a supported catalog locale")
-}
-
-pub(crate) async fn resolve_request_text_with(
-    store: &MainDurableStore,
-    bootstrap_workspace_id: uuid::Uuid,
-    locale: &CatalogLocale,
-    key: &str,
-) -> Result<String, ApiError> {
-    let identity =
-        CatalogMessageIdentity::new(key).expect("backend display catalog key must be valid");
-    let resolver = CatalogResolver::new(store.clone(), bootstrap_workspace_id);
-    Ok(resolver
-        .resolve(bootstrap_workspace_id, &identity, locale)
-        .await?
-        .value)
-}
-
-pub(crate) async fn project_canonical_display_with(
-    store: &MainDurableStore,
-    bootstrap_workspace_id: uuid::Uuid,
-    locale: &CatalogLocale,
-    key: &'static str,
-    stored: &str,
-) -> Result<String, ApiError> {
-    if !stored.trim().is_empty() && stored != key {
-        return Ok(stored.to_owned());
-    }
-    resolve_request_text_with(store, bootstrap_workspace_id, locale, key).await
-}
-
-pub(crate) async fn resolve_official_source_label_with(
-    store: &MainDurableStore,
-    bootstrap_workspace_id: uuid::Uuid,
-    locale: &CatalogLocale,
-    source_kind: &str,
-    fallback: String,
-) -> Result<String, ApiError> {
-    let key = match source_kind {
-        "official_registry" => "Official source",
-        "mirror_registry" => "Mirror source",
-        _ => return Ok(fallback),
-    };
-    resolve_request_text_with(store, bootstrap_workspace_id, locale, key).await
-}
+pub use api_host_kernel::app_state::*;
 
 pub fn compile_core_settings_feature_registry() -> Result<
     Arc<access_control::SettingsFeatureRegistry>,
@@ -312,7 +211,11 @@ pub(crate) fn compile_console_boot_plan_with_managed_services(
                     .iter()
                     .flat_map(|c| c.settings_features.iter().cloned()),
             )
-            .chain(managed_services.iter().map(|service| service.feature())),
+            .chain(
+                managed_services
+                    .iter()
+                    .filter_map(|service| service.feature()),
+            ),
     )?);
     let mut route_assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations_and_plugin_upload_max_bytes(
         interface_registry,
@@ -390,111 +293,3 @@ fn validate_linked_host_console_route_assembly(
     }
     Ok(())
 }
-
-#[derive(Clone)]
-pub struct ApiState {
-    #[cfg(test)]
-    pub(crate) test_resources: Option<Arc<TestResources>>,
-    pub store: MainDurableStore,
-    pub system_backup: Option<Arc<crate::system_backup::SystemBackupRuntime>>,
-    pub system_maintenance: Arc<control_plane::system_recovery::SystemMaintenance>,
-    pub authenticator_registry: Arc<control_plane::auth::AuthenticatorRegistry>,
-    pub settings_feature_registry: Arc<access_control::SettingsFeatureRegistry>,
-    pub console_operation_registry: Arc<access_control::ConsoleOperationRegistry>,
-    pub console_policy_reader: Arc<dyn RoleConsolePolicyReader>,
-    pub infrastructure: Arc<HostInfrastructureRegistry>,
-    /// Present on production boot; lightweight test states may omit the production graph.
-    pub extension_boot_snapshot: Option<Arc<ExtensionBootSnapshot>>,
-    pub console_surface_registry: Arc<ConsoleSurfaceRegistry>,
-    pub file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
-    pub runtime_engine: Arc<RuntimeEngine>,
-    pub provider_runtime: Arc<ApiRuntimeServices>,
-    pub process_started_at: OffsetDateTime,
-    pub runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
-    pub assistant_conversation_events: Arc<AssistantConversationEventHub>,
-    pub notification_service: Arc<ApiNotificationService>,
-    pub communication_activity: Arc<crate::communication_runtime::CommunicationActivity>,
-    pub notification_events: Arc<crate::routes::notifications::events::NotificationEventHub>,
-    /// Process-local owner for detached embedded Assistant executions. Durable run state remains
-    /// owned by the runtime repository.
-    pub assistant_executions: Arc<Mutex<HashMap<uuid::Uuid, tokio::task::AbortHandle>>>,
-    /// Active browser capability lease for each detached Assistant execution.
-    pub assistant_client_sessions:
-        Arc<Mutex<HashMap<uuid::Uuid, Arc<crate::routes::assistant::AssistantClientToolBridge>>>>,
-    pub api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
-    pub runtime_host_system: Arc<dyn RuntimeHostSystemPort>,
-    pub runtime_process_sampler: Arc<runtime_profile::RuntimeProcessSampler>,
-    pub official_plugin_source: Arc<dyn OfficialPluginSourcePort>,
-    pub official_mcp_bundle_source: Arc<dyn OfficialMcpBundleSourcePort>,
-    pub official_extension_catalog_source: Arc<dyn OfficialExtensionCatalogSourcePort>,
-    pub official_i18n_catalog_update_service:
-        Arc<control_plane::i18n_catalog::OfficialI18nCatalogUpdateService<MainDurableStore>>,
-    pub official_model_pricing_catalog_index_url: String,
-    pub model_billing_require_provider_usage: bool,
-    pub api_node_id: String,
-    pub provider_install_root: String,
-    pub application_template_root: String,
-    pub provider_secret_master_key: String,
-    pub host_extension_dropin_root: String,
-    pub allow_unverified_filesystem_dropins: bool,
-    pub allow_uploaded_host_extensions: bool,
-    pub session_store: Arc<dyn SessionStore>,
-    pub runtime_event_stream: Arc<dyn RuntimeEventStream>,
-    pub api_docs: Arc<ApiDocsRegistry>,
-    pub cookie_name: String,
-    pub cookie_secure: bool,
-    pub session_ttl_days: i64,
-    pub bootstrap_workspace_id: uuid::Uuid,
-    pub bootstrap_workspace_name: String,
-}
-
-impl ApiState {
-    pub(crate) fn network_egress_http_clients(
-        &self,
-    ) -> crate::network_egress_client::NetworkEgressHttpClientResolver {
-        crate::network_egress_client::NetworkEgressHttpClientResolver::new(
-            self.store.clone(),
-            crate::provider_runtime::ApiProviderRuntime::new(Arc::clone(&self.provider_runtime)),
-            self.provider_secret_master_key.clone(),
-            self.api_node_id.clone(),
-        )
-    }
-}
-
-#[cfg(test)]
-pub(crate) struct TestResources {
-    _database: postgres_test_support::PostgresTestSchema,
-    filesystem_roots: Vec<std::path::PathBuf>,
-}
-
-#[cfg(test)]
-impl TestResources {
-    pub(crate) fn new(
-        database: postgres_test_support::PostgresTestSchema,
-        filesystem_roots: Vec<std::path::PathBuf>,
-    ) -> Self {
-        Self {
-            _database: database,
-            filesystem_roots,
-        }
-    }
-}
-
-#[cfg(test)]
-impl Drop for TestResources {
-    fn drop(&mut self) {
-        for root in &self.filesystem_roots {
-            if let Err(error) = std::fs::remove_dir_all(root) {
-                if error.kind() != std::io::ErrorKind::NotFound {
-                    eprintln!(
-                        "failed to clean API test filesystem root {}: {error}",
-                        root.display()
-                    );
-                }
-            }
-        }
-    }
-}
-
-/// Composition-root alias; protocol routes do not depend on the PostgreSQL adapter.
-pub(crate) type ApiMcpOAuthService = control_plane::mcp_oauth::McpOAuthService<MainDurableStore>;

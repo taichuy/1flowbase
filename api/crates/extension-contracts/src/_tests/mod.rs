@@ -38,3 +38,8 @@ mod communication_command_event_tests;
 
 #[path = "notification/message_content_tests.rs"]
 mod notification_message_content_tests;
+
+mod plugin_ephemeral_contract_tests;
+
+#[path = "managed_contributions/execution_gate_contract_tests.rs"]
+mod execution_gate_contract_tests;

@@ -1,3 +1,4 @@
+const { apiPackageArgs } = require('../testing/contracts/api-source-owners.js');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -233,9 +234,7 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
       command: 'cargo',
       args: [
         'llvm-cov',
-        ...(usesNextest ? ['nextest'] : []),
-        '--package',
-        entry.packageName,
+        ...(usesNextest ? ['nextest', ...apiPackageArgs(repoRoot)] : ['--package', entry.packageName]),
         '--no-clean',
         '--json',
         '--summary-only',

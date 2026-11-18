@@ -1,6 +1,12 @@
 import { StrictMode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { App } from 'antd';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -92,7 +98,12 @@ describe('application templates extension tab', () => {
       csrfToken: 'csrf-token',
       actor: null,
       me: {
-        permissions: ['system_templates.catalog', 'system_templates.download', 'system_templates.preview', 'system_templates.install']
+        permissions: [
+          'system_templates.catalog',
+          'system_templates.download',
+          'system_templates.preview',
+          'system_templates.install'
+        ]
       } as NonNullable<ReturnType<typeof useAuthStore.getState>['me']>
     });
     api.getApplicationTemplateCatalog.mockResolvedValue({
@@ -315,9 +326,18 @@ describe('application templates extension tab', () => {
     expect(api.downloadSystemTemplate).toHaveBeenCalledTimes(2);
   });
   test('readonly catalog grant keeps templates visible and installation disabled', async () => {
-    useAuthStore.setState({ me: { permissions: ['system_templates.catalog'] } as NonNullable<ReturnType<typeof useAuthStore.getState>['me']> });
+    useAuthStore.setState({
+      me: { permissions: ['system_templates.catalog'] } as NonNullable<
+        ReturnType<typeof useAuthStore.getState>['me']
+      >
+    });
     setup();
-    expect(await screen.findByRole('button', { name: 'Install template' })).toBeDisabled();
+    expect(
+      await screen.findByRole('button', { name: 'Install template' })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Upload template' })
+    ).toBeDisabled();
     expect(api.getApplicationTemplateCatalog).toHaveBeenCalled();
     expect(api.downloadSystemTemplate).not.toHaveBeenCalled();
     expect(api.installSystemTemplate).not.toHaveBeenCalled();
@@ -342,6 +362,9 @@ describe('application templates extension tab', () => {
     expect(
       await screen.findByRole('button', { name: 'Install template' })
     ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Upload template' })
+    ).toBeDisabled();
     expect(api.previewSystemTemplate).not.toHaveBeenCalled();
   });
   test('catalog failure remains visible with a retry', async () => {
@@ -356,49 +379,54 @@ describe('application templates extension tab', () => {
       screen.getByRole('button', { name: 'Reload templates' })
     ).toBeEnabled();
   });
-  test('fetches the URL cursor and query and navigates to the backend next cursor', async () => {
-    api.getApplicationTemplateCatalog.mockResolvedValue({
-      application_templates: [
-        {
-          template_id: 'second',
-          catalog_id: 'official/second',
-          release_version: 3,
-          name: 'Second page template',
-          description: 'Only on the second page',
-          checksum: 'second',
-          installed_release_version: null,
-          installed_checksum: null,
-          source: 'official'
-        }
-      ],
-      next_cursor: 'third-cursor',
-      total: 37
-    });
-    setup({ cursor: 'second-cursor', q: 'gateway' });
-    expect(await screen.findByText('Second page template')).toBeInTheDocument();
-    expect(api.getApplicationTemplateCatalog).toHaveBeenCalledWith({
-      cursor: 'second-cursor',
-      q: 'gateway'
-    });
-    expect(screen.queryByText('Gateway demo')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
-    expect(navigate).toHaveBeenLastCalledWith({
-      to: '/settings/extension-center/$category',
-      params: { category: 'application-templates' },
-      search: { q: 'gateway', cursor: 'third-cursor' }
-    });
-  });
-  test('search resets pagination and an empty last page cannot advance', async () => {
-    api.getApplicationTemplateCatalog.mockResolvedValue({
-      application_templates: [],
-      next_cursor: null,
-      total: 0
-    });
-    setup({ cursor: 'old-cursor', q: 'old' });
+  test('keeps the URL query and appends the backend next cursor without page navigation', async () => {
+    const first = {
+      template_id: 'first',
+      catalog_id: 'official/first',
+      release_version: 1,
+      name: 'First template',
+      description: 'First description',
+      checksum: 'first',
+      installed_release_version: null,
+      installed_checksum: null,
+      source: 'official'
+    };
+    api.getApplicationTemplateCatalog
+      .mockResolvedValueOnce({
+        application_templates: [first],
+        next_cursor: 'next',
+        total: 2
+      })
+      .mockResolvedValueOnce({
+        application_templates: [
+          { ...first, catalog_id: 'official/second', name: 'Second template' }
+        ],
+        next_cursor: null,
+        total: 2
+      });
+    const { container } = setup({ q: 'demo' });
+    expect(await screen.findByText('First template')).toBeInTheDocument();
     expect(
-      await screen.findByText('No application templates available.')
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled();
+      screen.queryByRole('heading', { name: 'Application templates' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Next page' })
+    ).not.toBeInTheDocument();
+    const scroll = container.querySelector('.ant-listy-holder')!;
+    fireEvent.scroll(scroll);
+    expect(await screen.findByText('Second template')).toBeInTheDocument();
+    expect(screen.getByText('First template')).toBeInTheDocument();
+    expect(api.getApplicationTemplateCatalog).toHaveBeenLastCalledWith({
+      q: 'demo',
+      cursor: 'next'
+    });
+    fireEvent.scroll(scroll);
+    expect(api.getApplicationTemplateCatalog).toHaveBeenCalledTimes(2);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+  test('search resets the cursor and replaces accumulated results', async () => {
+    const view = setup({ q: 'old', cursor: 'old-cursor' });
+    expect(await screen.findByText('Gateway demo')).toBeInTheDocument();
     const search = screen.getByRole('searchbox', {
       name: 'Search application templates'
     });
@@ -414,48 +442,154 @@ describe('application templates extension tab', () => {
       params: { category: 'application-templates' },
       search: { q: 'gateway', cursor: undefined }
     });
+    api.getApplicationTemplateCatalog.mockResolvedValue({
+      application_templates: [],
+      next_cursor: null,
+      total: 0
+    });
+    view.rerenderSection({ q: 'gateway' });
+    expect(
+      await screen.findByText('No application templates available.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Gateway demo')).not.toBeInTheDocument();
+    expect(api.getApplicationTemplateCatalog).toHaveBeenLastCalledWith({
+      q: 'gateway',
+      cursor: undefined
+    });
+  });
+  test('preserves loaded rows on next-page failure and retries the failed cursor', async () => {
+    const firstPage = await api.getApplicationTemplateCatalog();
+    api.getApplicationTemplateCatalog.mockClear();
+    api.getApplicationTemplateCatalog
+      .mockResolvedValueOnce({ ...firstPage, next_cursor: 'next', total: 2 })
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({
+        application_templates: [],
+        next_cursor: null,
+        total: 2
+      });
+    const { container } = setup();
+    expect(await screen.findByText('Gateway demo')).toBeInTheDocument();
+    const scroll = container.querySelector('.ant-listy-holder')!;
+    fireEvent.scroll(scroll);
+    expect(
+      await screen.findByText('Could not load application templates.')
+    ).toBeInTheDocument();
+    expect(screen.getByText('Gateway demo')).toBeInTheDocument();
+    fireEvent.scroll(scroll);
+    expect(api.getApplicationTemplateCatalog).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Reload templates' }));
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Could not load application templates.')
+      ).not.toBeInTheDocument()
+    );
+    expect(api.getApplicationTemplateCatalog).toHaveBeenLastCalledWith({
+      q: undefined,
+      cursor: 'next'
+    });
+    expect(screen.getByText('Gateway demo')).toBeInTheDocument();
+  });
+  test('repeated scroll events do not duplicate an in-flight next page', async () => {
+    const firstPage = await api.getApplicationTemplateCatalog();
+    api.getApplicationTemplateCatalog.mockClear();
+    let resolvePage!: (page: typeof firstPage) => void;
+    api.getApplicationTemplateCatalog
+      .mockResolvedValueOnce({ ...firstPage, next_cursor: 'next', total: 2 })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolvePage = resolve;
+          })
+      );
+    const { container } = setup();
+    expect(await screen.findByText('Gateway demo')).toBeInTheDocument();
+    const scroll = container.querySelector('.ant-listy-holder')!;
+    fireEvent.scroll(scroll);
+    fireEvent.scroll(scroll);
+    fireEvent.scroll(scroll);
+    await waitFor(() =>
+      expect(api.getApplicationTemplateCatalog).toHaveBeenCalledTimes(2)
+    );
+    resolvePage({ application_templates: [], next_cursor: null, total: 1 });
+    await waitFor(() =>
+      expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'false')
+    );
+  });
+  test.each(['json', 'zip'])(
+    'uploads a local %s template through preview before installation',
+    async (extension) => {
+      const { container } = setup();
+      expect(
+        await screen.findByRole('button', { name: 'Upload template' })
+      ).toBeEnabled();
+      const content =
+        extension === 'json'
+          ? JSON.stringify(downloadedPackage)
+          : 'zip-fixture';
+      const file = new File([content], `template.${extension}`, {
+        type: extension === 'json' ? 'application/json' : 'application/zip'
+      });
+      if (extension === 'json')
+        Object.defineProperty(file, 'text', { value: async () => content });
+      fireEvent.change(container.querySelector('input[type="file"]')!, {
+        target: { files: [file] }
+      });
+      const packageBody =
+        extension === 'json'
+          ? downloadedPackage
+          : { archive_base64: btoa(content) };
+      await waitFor(() =>
+        expect(api.previewSystemTemplate).toHaveBeenCalledWith(
+          packageBody,
+          'csrf-token'
+        )
+      );
+      expect(api.installSystemTemplate).not.toHaveBeenCalled();
+      expect(api.downloadSystemTemplate).not.toHaveBeenCalled();
+      const confirm = within(
+        await screen.findByRole('dialog', { name: 'Import template' })
+      ).getByRole('button', { name: 'Install template' });
+      await waitFor(() => expect(confirm).toBeEnabled());
+      fireEvent.click(confirm);
+      expect(await screen.findByText('Template installed')).toBeInTheDocument();
+      expect(api.installSystemTemplate).toHaveBeenCalledWith(
+        packageBody,
+        'csrf-token'
+      );
+    }
+  );
+  test('an unreadable local file cannot preview or install', async () => {
+    const { container } = setup();
+    await screen.findByRole('button', { name: 'Upload template' });
+    const file = new File(['invalid json'], 'invalid.json');
+    Object.defineProperty(file, 'text', { value: async () => 'invalid json' });
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [file] }
+    });
+    expect(
+      await screen.findByText(
+        'Could not read this template file. Choose a ZIP archive or a legacy JSON file.'
+      )
+    ).toBeInTheDocument();
     expect(api.previewSystemTemplate).not.toHaveBeenCalled();
     expect(api.installSystemTemplate).not.toHaveBeenCalled();
   });
-  test('replaces server pages and returns to the previously visited cursor', async () => {
-    api.getApplicationTemplateCatalog.mockImplementation(
-      async ({ cursor }) => ({
-        application_templates: [
-          {
-            template_id: cursor ?? 'first',
-            catalog_id: cursor ?? 'first',
-            release_version: 1,
-            name: cursor ?? 'First page template',
-            description: 'Page metadata',
-            checksum: 'digest',
-            installed_release_version: null,
-            installed_checksum: null,
-            source: 'official'
-          }
-        ],
-        next_cursor:
-          cursor === 'page-three' ? null : cursor ? 'page-three' : 'page-two',
-        total: 3
-      })
-    );
-    const view = setup({ q: 'demo' });
-    expect(await screen.findByText('First page template')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
-    view.rerenderSection({ q: 'demo', cursor: 'page-two' });
-    expect(await screen.findByText('page-two')).toBeInTheDocument();
-    expect(screen.queryByText('First page template')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
-    view.rerenderSection({ q: 'demo', cursor: 'page-three' });
-    expect(await screen.findByText('page-three')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Previous page' }));
-    expect(navigate).toHaveBeenLastCalledWith({
-      to: '/settings/extension-center/$category',
-      params: { category: 'application-templates' },
-      search: { q: 'demo', cursor: 'page-two' }
+  test('upload requires preview, install and csrf grants', async () => {
+    useAuthStore.setState({
+      me: {
+        permissions: ['system_templates.catalog', 'system_templates.install']
+      } as NonNullable<ReturnType<typeof useAuthStore.getState>['me']>
     });
-    expect(api.getApplicationTemplateCatalog).toHaveBeenCalledWith({
-      q: 'demo',
-      cursor: 'page-three'
+    const { container } = setup();
+    expect(
+      await screen.findByRole('button', { name: 'Upload template' })
+    ).toBeDisabled();
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: {
+        files: [new File([JSON.stringify(downloadedPackage)], 'template.json')]
+      }
     });
+    expect(api.previewSystemTemplate).not.toHaveBeenCalled();
   });
 });

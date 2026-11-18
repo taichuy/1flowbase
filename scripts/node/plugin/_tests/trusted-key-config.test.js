@@ -9,7 +9,7 @@ const keyId = '1flowbase-signing-20261010-e7a2c47a';
 const publicBody = 'MCowBQYDK2VwAyEAOMjRrNChRtu4aR+yVpFUwvOVxonoNizhWuQ4+DwJjrg=';
 
 test('host default trusts the rotated Ed25519 key under its new identity', () => {
-  const source = fs.readFileSync(path.join(root, 'api/apps/api-server/src/config.rs'), 'utf8');
+  const source = fs.readFileSync(path.join(root, 'api/crates/api/kernel/src/host/network/config.rs'), 'utf8');
   const body = source.match(/fn default_official_plugin_trusted_public_keys_json\(\) -> String \{\s*r#"(.*?)"#/s);
   assert.ok(body, 'host default must be inspectable');
   const keys = JSON.parse(body[1]);

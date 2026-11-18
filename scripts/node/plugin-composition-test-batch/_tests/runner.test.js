@@ -13,11 +13,14 @@ test('finite manifest covers actual Root source inventory and all AC/AUTH rows',
     'root_2007_ir_f01_upgrade_and_concurrent_identity',
   ]);
   for (const entry of reinstall) {
-    assert.equal(entry.target, 'api-server:lib');
+    assert.equal(entry.target, 'api-server:api_private_contracts');
     assert.equal(entry.expected, 1);
     assert.deepEqual(entry.env, ['MANAGED_EVENT_WORKER_FIXTURE']);
   }
-  assert.equal(manifest.targets.length, 12);
+  assert.equal(manifest.targets.length, 13);
+  assert.deepEqual(manifest.targets.find(row => row.id === 'api-server:lib').regressionFilters, []);
+  assert.deepEqual(manifest.targets.find(row => row.id === 'api-server:api_private_contracts').regressionFilters,
+    ['_tests::extension_bus', '_tests::interface_lifecycle_acceptance']);
   assert.equal(manifest.node.length, 4);
   for (const command of manifest.node.filter(command => command.args.includes('--test'))) {
     assert.deepEqual(command.args.filter(arg => arg.startsWith('--test-reporter')), ['--test-reporter=tap'],
@@ -81,6 +84,17 @@ test('Root 2014 retains legacy requirements and rejects missing new candidate ev
     assert.equal(originRoot, 2007);
     assert.deepEqual(actual, legacy);
   }
+  // The before-list receipt discovers only the lifetime owner tests in lib;
+  // all Root integration cases retain their exact names in the contracts target.
+  const rootRows = data.required.filter(row => row.target.startsWith('api-server:'));
+  assert.equal(rootRows.length, 36);
+  assert.deepEqual(rootRows.filter(row => row.target === 'api-server:lib').map(row => row.name).sort(), [
+    'extension_bus::managed_activation::lifetime::tests::root_2007_ac_010_lane_budgets_retirement_saturation',
+    'extension_bus::managed_activation::lifetime::tests::root_2007_ac_010_lane_budgets_snapshot_capacity',
+  ]);
+  assert.equal(rootRows.filter(row => row.target === 'api-server:api_private_contracts').length, 34);
+  assert.deepEqual(data.targets.find(row => row.id === 'api-server:api_private_contracts'),
+    manifest.targets.find(row => row.id === 'api-server:api_private_contracts'));
   validateSources(root, data);
   assert.equal(data.requiredAc.length, 18);
   assert.deepEqual(rootTestNames('#[test]\nfn root_2014_real() {}\nfn root_2014_fixture() {}', data.rootPrefixes), ['root_2014_real']);
@@ -180,6 +194,43 @@ test('R3 observer diagnostic stays on the installed host-chain exact test', () =
   validateSources(root, data);
   const names = data.required.map(row => row.name);
   assert.deepEqual(selectTests(data.targets[0], [...names, 'old::unrelated'], data.required, data), names);
+});
+
+test('native Root discovery retains probe and observer cases in the contracts target', () => {
+  const { loadManifest } = require('../selection.js');
+  const root = path.resolve(__dirname, '../../../..');
+  // Exact names and owners from the completed before-valid-list-api-server
+  // receipt: the lib binary has lifetime owners; the contracts binary has these
+  // integration cases. Moving selection cannot remove a required execution.
+  const listed = {
+    'api-server:lib': [
+      'extension_bus::managed_activation::lifetime::tests::root_2007_ac_010_lane_budgets_retirement_saturation',
+      'extension_bus::managed_activation::lifetime::tests::root_2007_ac_010_lane_budgets_snapshot_capacity',
+    ],
+    'api-server:api_private_contracts': [
+      '_tests::interface_lifecycle_acceptance::managed_interfaces::root_2014_r3_probe_complete_contract_compilation',
+      '_tests::interface_lifecycle_acceptance::managed_projection::root_2014_r3_probe_reference_binding_and_projection',
+      '_tests::interface_lifecycle_acceptance::managed_interfaces::root_2014_ac_002_installed_two_interface_plugin',
+    ],
+  };
+  for (const filename of ['root-2014-r3-probe-manifest.json', 'root-2014-r3-observer-manifest.json']) {
+    const { data } = loadManifest(root, `scripts/node/plugin-composition-test-batch/${filename}`);
+    const target = data.targets.find(row => row.package === 'api-server');
+    assert.equal(target.id, 'api-server:api_private_contracts');
+    assert.equal(target.target, 'api_private_contracts');
+    const required = data.required.filter(row => row.target === target.id);
+    assert.equal(required.length, data.batchMode === 'r3-probe' ? 2 : 1);
+    assert.deepEqual(selectTests(target, listed[target.id], data.required, data),
+      required.map(row => row.name).sort());
+    const obsolete = { ...target, id: 'api-server:lib', target: 'lib' };
+    const obsoleteRequired = data.required.map(row => row.target === target.id
+      ? { ...row, target: obsolete.id } : row);
+    assert.throws(() => selectTests(obsolete, listed[obsolete.id], obsoleteRequired, data), /missing/);
+    for (const row of required) {
+      assert.throws(() => selectTests(target, listed[target.id].filter(name => name !== row.name),
+        data.required, data), /missing/);
+    }
+  }
 });
 
 

@@ -120,10 +120,12 @@ impl ManagedExtensionComposition {
                 tracing::debug!(%error, "managed retained snapshot remains protected");
             }
         }
+        self.refresh_lifecycle_source_observations().await;
         drop(assembly);
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 #[path = "_tests/reclamation.rs"]
 mod tests;

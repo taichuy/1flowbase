@@ -271,6 +271,16 @@ async fn runtime_assembly_is_one_visible_root_to_target_public_snapshot() {
     )
     .await;
     assert_eq!(routes_status, StatusCode::NO_CONTENT, "{routes_payload}");
+    super::ui_management::set_ui_policy(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "runtime_assembly_viewer",
+        true,
+        "custom",
+        json!([{"kind":"simple","operation_id":"frontstage.blocks.runtime.view","enabled":true}]),
+    )
+    .await;
     let (viewer_cookie, _) =
         login_and_capture_cookie(&app, "runtime-assembly-viewer", "temp-pass").await;
     let (visible_status, visible_payload) = get_json(&app, &assembly_path, &viewer_cookie).await;

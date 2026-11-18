@@ -50,13 +50,27 @@ pub(super) async fn append_runtime_event<R, H>(
                         serde_json::json!(generation_id),
                     );
                 }
-                if let Err(error) = runtime_event_persister::persist_runtime_event_payload(
-                    &service.repository,
-                    flow_run_id,
-                    &durable_event,
-                )
-                .await
+                let persisted =
+                    runtime_event_persister::persist_runtime_event_payload_for_generation(
+                        &service.repository,
+                        flow_run_id,
+                        &durable_event,
+                        writer.as_deref(),
+                    )
+                    .await;
+                if persisted.is_ok()
+                    && durable_event.persist_required
+                    && durable_event.durability != RuntimeEventDurability::Ephemeral
+                    && !runtime_event_persister::is_stream_delta_event(&durable_event.event_type)
                 {
+                    if let Some(observation) = writer
+                        .as_ref()
+                        .and_then(|writer| writer.after_commit_observation())
+                    {
+                        observation.published(&envelope);
+                    }
+                }
+                if let Err(error) = persisted {
                     if let Some(writer) = &writer {
                         writer.record_persistence_failure();
                     }

@@ -1,0 +1,934 @@
+//! Managed duplex admission and socket projection. Runtime frames never touch durable storage.
+use super::{
+    interface::{Adapter, ManagedServiceInput, ManagedServiceOutput},
+    ManagedServiceRegistration,
+};
+use crate::{
+    app_state::ApiState,
+    error_response::ApiError,
+    response::ApiSuccess,
+    routes::console_interface::{
+        self, ConsoleInterfaceTargetError, ConsoleServerStreamFuture, ConsoleServerStreamPort,
+    },
+};
+use axum::{
+    extract::{
+        ws::{Message, WebSocket},
+        Path, Query, State, WebSocketUpgrade,
+    },
+    http::HeaderMap,
+    response::Response,
+    Json,
+};
+use control_plane::errors::ControlPlaneError as Error;
+use interface_runtime::{InterfaceContract, InterfaceStreamTerminal, UserPrincipal};
+use runtime_core::runtime_backend::{RuntimeManagedDuplex, RuntimeManagedDuplexEvent};
+use serde_json::{json, Value};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex, OnceLock},
+};
+use tokio::sync::{mpsc, oneshot, watch};
+
+test_support_item! { pub(super), []
+const FRAME_BYTES: usize = 1024 * 1024;
+}
+
+test_support_item! { pub(crate), []
+enum StreamInput {
+    Ticket {
+        origin: String,
+    },
+    Run {
+        duplex: RuntimeManagedDuplex,
+        cancel: watch::Receiver<bool>,
+    },
+    /// Host-only canonical producer call; cannot be populated by a client JSON frame.
+    Source {
+        duplex: RuntimeManagedDuplex,
+        cancel: watch::Receiver<bool>,
+    },
+    /// Executes source admission and hooks without opening a worker or minting a ticket.
+    SourceAdmission,
+}
+}
+test_support_item! { pub(crate), []
+struct StreamEvent(pub RuntimeManagedDuplexEvent);
+}
+impl InterfaceContract for StreamEvent {
+    const CONTRACT_ID: &'static str = "managed-service-stream-event";
+    const CONTRACT_VERSION: &'static str = "1";
+    fn managed_projection_schema() -> Option<Value> {
+        ManagedServiceInput::managed_projection_schema()
+    }
+    fn project_for_managed_hook(&self) -> Option<Value> {
+        Some(json!({"body_bytes":serde_json::to_vec(&self.0.event).ok()?.len()}))
+    }
+}
+test_support_item! { , [#[derive(Clone)]
+]
+struct StreamRecordAdmission {
+    actor: domain::ActorContext,
+    key: domain::RecordPermissionKey,
+}
+}
+test_support_item! { , []
+struct RegisteredStream {
+    cancel: watch::Sender<bool>,
+    // Derived by authenticated upgrade admission, never accepted from a worker/frame/body.
+    record_permission: Option<StreamRecordAdmission>,
+}
+}
+test_support_item! { , [#[derive(Default)]
+]
+struct InstallationStreams {
+    epoch: u64,
+    sockets: BTreeMap<uuid::Uuid, RegisteredStream>,
+}
+}
+test_support_item! { , [#[derive(Default)]
+]
+struct StreamRegistry {
+    generation: Option<String>,
+    installations: BTreeMap<uuid::Uuid, InstallationStreams>,
+}
+}
+test_support_item! { , []
+fn streams() -> &'static Mutex<StreamRegistry> {
+    static STREAMS: OnceLock<Mutex<StreamRegistry>> = OnceLock::new();
+    STREAMS.get_or_init(Mutex::default)
+}
+}
+pub fn publish_generation(generation: String) {
+    super::shared_stream::retire(None);
+    super::record_acl::clear_handles();
+    let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
+    all.generation = Some(generation);
+    for entry in all.installations.values_mut() {
+        entry.epoch += 1;
+        for (_, stream) in std::mem::take(&mut entry.sockets) {
+            let _ = stream.cancel.send(true);
+        }
+    }
+}
+test_support_item! { pub(crate), []
+fn revoke_installation(id: uuid::Uuid) {
+    super::shared_stream::retire(Some(id));
+    let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
+    let entry = all.installations.entry(id).or_default();
+    entry.epoch += 1;
+    for (_, stream) in std::mem::take(&mut entry.sockets) {
+        let _ = stream.cancel.send(true);
+    }
+}
+}
+test_support_item! { , []
+fn record_candidates(
+    all: &StreamRegistry,
+    installation: uuid::Uuid,
+    key: &domain::RecordPermissionKey,
+) -> Vec<(uuid::Uuid, StreamRecordAdmission)> {
+    all.installations
+        .get(&installation)
+        .into_iter()
+        .flat_map(|entry| &entry.sockets)
+        .filter_map(|(id, stream)| {
+            stream
+                .record_permission
+                .as_ref()
+                .filter(|admission| !admission.actor.is_root && &admission.key == key)
+                .map(|admission| (*id, admission.clone()))
+        })
+        .collect()
+}
+}
+/// A record policy change revokes only newly denied streams in that caller workspace.
+/// Admission and periodic validation still own the separate global operation/session gates.
+pub(crate) async fn revoke_record_permissions(
+    state: &ApiState,
+    installation: uuid::Uuid,
+    key: &domain::RecordPermissionKey,
+) {
+    super::shared_stream::revoke_record_permissions(installation, key).await;
+    let candidates = {
+        let all = streams().lock().unwrap_or_else(|e| e.into_inner());
+        record_candidates(&all, installation, key)
+    };
+    let service =
+        control_plane::record_permissions::RecordPermissionService::new(state.store.clone());
+    for (id, admission) in candidates {
+        // This can only withdraw a previously admitted stream; it cannot grant an operation.
+        // Effective role IDs and record policy are loaded durably on every check.
+        if service
+            .authorize(&admission.actor, &admission.key, "open", true)
+            .await
+            .is_ok()
+        {
+            continue;
+        }
+        let cancel = {
+            let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
+            all.installations
+                .get_mut(&installation)
+                .and_then(|entry| entry.sockets.remove(&id))
+                .map(|stream| stream.cancel)
+        };
+        if let Some(cancel) = cancel {
+            let _ = cancel.send(true);
+        }
+    }
+}
+pub fn revoke_all() {
+    super::shared_stream::retire(None);
+    let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
+    for entry in all.installations.values_mut() {
+        entry.epoch += 1;
+        for (_, stream) in std::mem::take(&mut entry.sockets) {
+            let _ = stream.cancel.send(true);
+        }
+    }
+}
+test_support_item! { pub(super), []
+fn epoch(id: uuid::Uuid) -> u64 {
+    streams()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .installations
+        .entry(id)
+        .or_default()
+        .epoch
+}
+}
+test_support_item! { pub(super), []
+struct SocketLease {
+    installation: uuid::Uuid,
+    id: uuid::Uuid,
+    cancel: watch::Sender<bool>,
+}
+}
+impl Drop for SocketLease {
+    fn drop(&mut self) {
+        let _ = self.cancel.send(true);
+        if let Some(entry) = streams()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .installations
+            .get_mut(&self.installation)
+        {
+            entry.sockets.remove(&self.id);
+        }
+    }
+}
+test_support_item! { , []
+fn register(
+    installation: uuid::Uuid,
+    expected_epoch: u64,
+    generation: &str,
+    record_permission: Option<StreamRecordAdmission>,
+) -> Result<(SocketLease, watch::Receiver<bool>), ApiError> {
+    let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
+    if all
+        .generation
+        .as_ref()
+        .is_some_and(|current| current != generation)
+    {
+        return Err(Error::Conflict("managed_service_generation_mismatch").into());
+    }
+    let entry = all.installations.entry(installation).or_default();
+    if entry.epoch != expected_epoch {
+        return Err(Error::Conflict("managed_service_generation_mismatch").into());
+    }
+    let (cancel, receiver) = watch::channel(false);
+    let id = uuid::Uuid::now_v7();
+    entry.sockets.insert(
+        id,
+        RegisteredStream {
+            cancel: cancel.clone(),
+            record_permission,
+        },
+    );
+    Ok((
+        SocketLease {
+            installation,
+            id,
+            cancel,
+        },
+        receiver,
+    ))
+}
+}
+
+impl ConsoleServerStreamPort<ManagedServiceInput, StreamEvent, ManagedServiceOutput> for Adapter {
+    fn execute_stream(
+        &self,
+        principal: &UserPrincipal,
+        input: ManagedServiceInput,
+    ) -> ConsoleServerStreamFuture<StreamEvent, ManagedServiceOutput> {
+        let state = self.state.upgrade();
+        let principal = principal.clone();
+        let registration = self.registration.clone();
+        let op = self
+            .operations
+            .get(&input.interface_id)
+            .map(|op| op.declaration.clone());
+        Box::pin(async move {
+            let prepare = async {
+                let state = state.ok_or(Error::UpstreamUnavailable("managed_service_host"))?;
+                let op = op.ok_or(Error::NotFound("managed_service_operation"))?;
+                let validator = jsonschema::validator_for(&op.input_schema)?;
+                if !validator.is_valid(&input.payload) { return Err(ApiError::from(Error::InvalidInput("managed_service_input"))); }
+                let event_policy=input.event_policy.clone();
+                let record_permissions = super::record_acl::authorize(&state, &registration, principal.actor(), &op, &input.payload).await?;
+                let shared = op.stream.as_ref().is_some_and(|stream| stream.shared_source.is_some() || stream.aggregate_source_interface_id.is_some());
+                if shared && matches!(&input.stream, Some(StreamInput::Run { .. })) {
+                    let Some(StreamInput::Run {duplex,cancel}) = input.stream else { unreachable!() };
+                    return super::shared_stream::subscribe(state, registration, principal, op, input.payload, duplex, cancel).await;
+                }
+                let (publisher, stream) = interface_runtime::interface_stream_channel(16);
+                match input.stream.ok_or(Error::InvalidInput("managed_service_stream"))? {
+                    StreamInput::Ticket { origin } => {
+                        let session = principal.authenticated_session().ok_or(Error::PermissionDenied("cookie_session_required"))?;
+                        let ticket = super::stream_ticket::Ticket {
+                            session: session.expose_to_trusted_handler().to_owned(), actor: principal.actor().user_id,
+                            origin, installation: registration.installation_id,
+                            generation: super::stream_ticket::generation(&state)?, epoch: epoch(registration.installation_id),
+                            operation: op.interface_id, payload: input.payload,
+                        };
+                        let token = super::stream_ticket::store(state.infrastructure.cache_store().as_ref(), &ticket).await?;
+                        publisher.finish(InterfaceStreamTerminal::Completed(ManagedServiceOutput(json!({"ticket":token}),super::event_projection::OutputPolicy::TicketIssued(event_policy.clone())))).await.map_err(|_| Error::UpstreamUnavailable("managed_service_stream"))?;
+                    }
+                    StreamInput::SourceAdmission => {
+                        let output=op.stream.as_ref().and_then(|stream|stream.shared_source.as_ref()).and_then(|source|source.close_output.clone()).unwrap_or_else(||json!({}));
+                        publisher.finish(InterfaceStreamTerminal::Completed(ManagedServiceOutput(output,super::event_projection::OutputPolicy::BusinessResult(event_policy.clone())))).await.map_err(|_| Error::UpstreamUnavailable("managed_service_stream"))?;
+                    }
+                    StreamInput::Run { duplex, mut cancel } | StreamInput::Source { duplex, mut cancel } => {
+                        let specification = op.stream.clone().ok_or(Error::InvalidInput("managed_service_stream"))?;
+                        let event_validator = jsonschema::validator_for(&specification.event_schema)?;
+                        // The receiver is separately forwarded through the canonical kernel event projection.
+                        let runtime = state.provider_runtime.managed_composition()?;
+                        let snapshot = match state.extension_boot_snapshot.as_ref().filter(|boot| boot.has_pinned_managed_snapshots()) {
+                            Some(boot) => boot.managed_snapshot(domain::SYSTEM_SCOPE_ID),
+                            None => runtime.snapshot(domain::SYSTEM_SCOPE_ID).await,
+                        }.ok_or(Error::Conflict("managed_service_inactive"))?;
+                        let contribution = plugin_framework::extension_bus::ContributionId::new(&op.contribution_id)?;
+                        let binding = snapshot.bindings.get(&contribution).ok_or(Error::Conflict("managed_service_inactive"))?;
+                        if binding.handle.identity().installation_id().as_str() != registration.installation_id.to_string() { return Err(Error::Conflict("managed_service_generation_mismatch").into()); }
+                        // A duplex session has no one-shot business duration. Explicit transport
+                        // cancellation, current authority/session checks and plugin idle own its life.
+                        let deadline = i64::MAX;
+                        let (sender, mut events) = mpsc::channel(16);
+                        let duplex = RuntimeManagedDuplex { input: duplex.input, events: sender };
+                        let needs_call_context = registration.declaration.worker_lifetime == plugin_framework::ManagedServiceWorkerLifetime::ActorWorkspaceScope;
+                        let caller = if needs_call_context || binding.descriptor.required_permissions.iter().any(|permission| matches!(permission.as_str(), "file.import.resource" | "file.read.content" | "application.logs.read" | "application.logs.import" | "network.http.request")) {
+                            api_host_kernel::resource_import_context::capture_caller(&state, &principal, &op.interface_id).await?
+                        } else { None };
+                        if needs_call_context && caller.is_none() && record_permissions.is_none() { return Err(Error::NotAuthenticated.into()); }
+                        tokio::spawn(async move {
+                            let execution = runtime.execute_snapshot_duplex(snapshot, domain::SYSTEM_SCOPE_ID, &contribution,
+                                crate::extension_bus::ManagedExecutionInput {
+                                    principal: runtime_core::runtime_backend::RuntimeExecutionPrincipal { record_permissions, caller, workspace_id: domain::SYSTEM_SCOPE_ID.to_string(), actor_id: Some(principal.actor().user_id.to_string()), deadline_unix_ms: deadline },
+                                    config_payload: json!({}), input_payload: input.payload, duplex: Some(duplex),
+                                });
+                            tokio::pin!(execution);
+                            let outcome = loop {
+                                tokio::select! {
+                                    biased;
+                                    _ = cancel.changed() => break Err(Error::Conflict("managed_service_stream_cancelled").into()),
+                                    result = &mut execution => break result,
+                                    Some(event) = events.recv() => {
+                                        if !event_validator.is_valid(&event.event) || serde_json::to_vec(&event.event).map_or(true, |bytes| bytes.len() > FRAME_BYTES - 128) { break Err(Error::UpstreamUnavailable("managed_service_event_contract").into()); }
+                                        // Do not await subscriber ACK here. Its oneshot travels with the event.
+                                        tokio::select! {
+                                            _ = cancel.changed() => break Err(Error::Conflict("managed_service_stream_cancelled").into()),
+                                            result = publisher.emit(StreamEvent(event)) => if result.is_err() { break Err(Error::Conflict("managed_service_stream_closed").into()); }
+                                        }
+                                    }
+                                }
+                            };
+                            // Dropping the in-flight ephemeral runtime future explicitly cancels its call.
+                            // Preserve output already emitted before the execution terminal.
+                            while !*cancel.borrow() {
+                                let Ok(event) = events.try_recv() else { break; };
+                                if !event_validator.is_valid(&event.event) { break; }
+                                tokio::select! {
+                                    _ = cancel.changed() => break,
+                                    result = publisher.emit(StreamEvent(event)) => if result.is_err() { break; }
+                                }
+                            }
+                            let terminal = match outcome {
+                                Ok(output) if jsonschema::validator_for(&op.output_schema).is_ok_and(|schema| schema.is_valid(&output)) => InterfaceStreamTerminal::Completed(ManagedServiceOutput(output,super::event_projection::OutputPolicy::BusinessResult(event_policy.clone()))),
+                                Err(error) => InterfaceStreamTerminal::Failed(interface_runtime::InterfaceTargetFailure::new("managed_service_stream", ConsoleInterfaceTargetError(super::ManagedServiceFailure::from_runtime(&error).map(ApiError::from).unwrap_or_else(|| Error::UpstreamUnavailable("managed_service_stream_execution").into())))),
+                            _ => InterfaceStreamTerminal::Failed(interface_runtime::InterfaceTargetFailure::new("managed_service_stream", ConsoleInterfaceTargetError(Error::UpstreamUnavailable("managed_service_stream_execution").into()))),
+                            };
+                            let _ = publisher.finish(terminal).await;
+                        });
+                    }
+                }
+                Ok(stream)
+            }.await;
+            prepare.map_err(|error| {
+                interface_runtime::InterfaceTargetFailure::new(
+                    "managed_service_stream",
+                    ConsoleInterfaceTargetError(error),
+                )
+            })
+        })
+    }
+}
+
+pub(super) fn route_assembly(
+    service: &ManagedServiceRegistration,
+    operation: &plugin_framework::ManagedServiceOperation,
+) -> crate::routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>> {
+    use crate::routes::console_route_assembly::*;
+    let path = super::routes::axum_path(&operation.path);
+    let owner =
+        access_control::ConsoleRouteOwnership::ConsoleOperation(operation.interface_id.clone());
+    let operation = Arc::new(operation.clone());
+    let post_op = operation.clone();
+    let installation = service.installation_id;
+    ConsoleRouteAssembly::new().route(&path, console_get(move |State(state): State<Arc<ApiState>>, Path(path): Path<BTreeMap<String,String>>, Query(query): Query<BTreeMap<String,String>>, headers: HeaderMap, ws: WebSocketUpgrade| {
+        let operation = operation.clone();
+        async move { upgrade(state, installation, operation, path, query, headers, ws).await }
+    }, access_control::ConsoleRouteOwnership::Authenticated).post(move |State(state): State<Arc<ApiState>>, Path(path): Path<BTreeMap<String,String>>, headers: HeaderMap, Json(body): Json<Value>| {
+        let operation = post_op.clone();
+        async move {
+            let origin = super::stream_ticket::origin(&headers)?;
+            let stream = console_interface::invoke_server_stream::<ManagedServiceInput,StreamEvent,ManagedServiceOutput>(state.clone(), &format!("http.{}.v1",operation.interface_id), crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {state,headers}, ManagedServiceInput {event_policy:Arc::new(super::event_projection::OperationPolicy::new(&operation)),interface_id:operation.interface_id.clone(),payload:json!({"path":path,"query":{},"body":body}),stream:Some(StreamInput::Ticket {origin})}).await?;
+            let (_,completion) = stream.into_parts();
+            match completion.complete().await.map_err(|_| Error::UpstreamUnavailable("managed_service_ticket"))?.into_parts().0 {
+                InterfaceStreamTerminal::Completed(ManagedServiceOutput(value,_)) => Ok::<_,ApiError>(Json(ApiSuccess::new(value))),
+                _ => Err(Error::UpstreamUnavailable("managed_service_ticket").into())
+            }
+        }
+    }, owner))
+}
+
+async fn revalidate(
+    state: &ApiState,
+    headers: &HeaderMap,
+    session: &str,
+    operation: &plugin_framework::ManagedServiceOperation,
+    installation: uuid::Uuid,
+    payload: &Value,
+) -> Result<Option<StreamRecordAdmission>, ApiError> {
+    let context = crate::middleware::require_session::require_session(state, headers).await?;
+    if context.cookie_session()?.session_id != session {
+        return Err(Error::PermissionDenied("managed_service_session").into());
+    }
+    let access =
+        crate::middleware::require_settings_feature_permission::compiled_console_route_access(
+            &state.console_operation_registry,
+            &operation.method,
+            &operation.path,
+        )
+        .map_err(Error::PermissionDenied)?;
+    let policies = state
+        .console_policy_reader
+        .load_role_console_policies_for_user(&context.actor)
+        .await?;
+    if !crate::middleware::require_settings_feature_permission::authorize_compiled_console_access(
+        &access,
+        &context.actor,
+        &policies,
+    ) {
+        return Err(Error::PermissionDenied("console_operation_permission_denied").into());
+    }
+    let registration = state
+        .console_surface_registry
+        .managed_services()
+        .iter()
+        .find(|r| r.installation_id == installation)
+        .ok_or(Error::Conflict("managed_service_inactive"))?;
+    let record_permissions =
+        super::record_acl::authorize(state, registration, &context.actor, operation, payload)
+            .await?;
+    let admission = match operation
+        .record_permission
+        .as_ref()
+        .filter(|permission| permission.action_code == "open")
+    {
+        Some(permission) => {
+            match record_permissions
+                .as_ref()
+                .and_then(|context| {
+                    context
+                        .resources
+                        .iter()
+                        .find(|resource| resource.resource_code == permission.resource_code)
+                })
+                .and_then(|resource| resource.record_id.as_deref())
+            {
+                Some(record_id) => {
+                    let resource =
+                        super::record_acl::resource(registration, &permission.resource_code)?;
+                    Some(StreamRecordAdmission {
+                        key: super::record_acl::key(
+                            registration,
+                            &context.actor,
+                            resource,
+                            record_id,
+                        )?,
+                        actor: context.actor,
+                    })
+                }
+                None => None,
+            }
+        }
+        None => None,
+    };
+    Ok(admission)
+}
+async fn upgrade(
+    state: Arc<ApiState>,
+    installation: uuid::Uuid,
+    operation: Arc<plugin_framework::ManagedServiceOperation>,
+    path: BTreeMap<String, String>,
+    query: BTreeMap<String, String>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> Result<Response, ApiError> {
+    let generation = crate::generation_dispatch::GenerationDispatch::acquire(&state)?;
+    let context = crate::middleware::require_session::require_session(&state, &headers).await?;
+    let session = context.cookie_session()?.session_id.clone();
+    let origin = super::stream_ticket::origin(&headers)?;
+    let token = query
+        .get("ticket")
+        .ok_or(Error::PermissionDenied("managed_service_ticket"))?;
+    let ticket = super::stream_ticket::claim(
+        state.infrastructure.cache_store().as_ref(),
+        token,
+        super::stream_ticket::TicketBinding {
+            session: &session,
+            actor: context.actor.user_id,
+            origin: &origin,
+            installation,
+            generation: &super::stream_ticket::generation(&state)?,
+            operation: &operation.interface_id,
+        },
+    )
+    .await?;
+    if ticket.payload.get("path") != Some(&json!(path)) {
+        return Err(Error::PermissionDenied("managed_service_ticket_route").into());
+    }
+    let record_permission = revalidate(
+        &state,
+        &headers,
+        &session,
+        &operation,
+        installation,
+        &ticket.payload,
+    )
+    .await?;
+    let (lease, cancel) = register(
+        installation,
+        ticket.epoch,
+        &ticket.generation,
+        record_permission,
+    )?;
+    let (input, input_receiver) = mpsc::channel(64);
+    let (unused_events, _) = mpsc::channel(1);
+    let stream = console_interface::invoke_server_stream::<
+        ManagedServiceInput,
+        StreamEvent,
+        ManagedServiceOutput,
+    >(
+        state.clone(),
+        &format!("http.{}.v1", operation.interface_id),
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: state.clone(),
+            headers: headers.clone(),
+        },
+        ManagedServiceInput {
+            event_policy: Arc::new(super::event_projection::OperationPolicy::new(&operation)),
+            interface_id: operation.interface_id.clone(),
+            payload: ticket.payload.clone(),
+            stream: Some(StreamInput::Run {
+                duplex: RuntimeManagedDuplex {
+                    input: Arc::new(tokio::sync::Mutex::new(input_receiver)),
+                    events: unused_events,
+                },
+                cancel: cancel.clone(),
+            }),
+        },
+    )
+    .await?;
+    let (events, completion) = stream.into_parts();
+    let (terminal_tx, terminal_rx) = oneshot::channel();
+    // This owner is independent of upgrade success, socket task abort and event projection failure.
+    let completion_generation = generation.clone();
+    tokio::spawn(async move {
+        let _generation = completion_generation;
+        let _ = terminal_tx.send(completion.complete().await);
+    });
+    Ok(ws
+        .max_message_size(FRAME_BYTES)
+        .max_frame_size(FRAME_BYTES)
+        .on_upgrade(move |socket| {
+            run_socket(
+                socket,
+                SocketSession {
+                    generation,
+                    state,
+                    operation,
+                    headers,
+                    session,
+                    installation,
+                    payload: ticket.payload,
+                    input,
+                    events,
+                    terminal: terminal_rx,
+                    cancel,
+                    lease,
+                },
+            )
+        }))
+}
+test_support_item! { , []
+struct SocketSession {
+    generation: Arc<crate::generation_dispatch::GenerationDispatch>,
+    state: Arc<ApiState>,
+    operation: Arc<plugin_framework::ManagedServiceOperation>,
+    headers: HeaderMap,
+    session: String,
+    installation: uuid::Uuid,
+    payload: Value,
+    input: mpsc::Sender<Value>,
+    events: mpsc::Receiver<StreamEvent>,
+    terminal: oneshot::Receiver<
+        Result<
+            interface_runtime::InterfaceStreamTerminalOutcome<
+                ManagedServiceOutput,
+                ConsoleInterfaceTargetError,
+            >,
+            interface_runtime::InterfaceInvocationFailure,
+        >,
+    >,
+    cancel: watch::Receiver<bool>,
+    lease: SocketLease,
+}
+}
+async fn run_socket(socket: WebSocket, session: SocketSession) {
+    let SocketSession {
+        generation,
+        state,
+        operation,
+        headers,
+        session,
+        installation,
+        payload,
+        input,
+        mut events,
+        mut terminal,
+        mut cancel,
+        lease,
+    } = session;
+    use futures_util::{SinkExt, StreamExt};
+    let specification = operation
+        .stream
+        .as_ref()
+        .expect("compiled stream operation");
+    let Ok(input_validator) = jsonschema::validator_for(&specification.input_schema) else {
+        return;
+    };
+    let (mut writer, mut reader) = socket.split();
+    let (outgoing, mut outgoing_frames) =
+        mpsc::channel::<(Message, Option<oneshot::Sender<()>>)>(16);
+    let acknowledgements = Arc::new(Mutex::new(BTreeMap::<u64, oneshot::Sender<()>>::new()));
+    let mut writer_cancel = cancel.clone();
+    let writer_generation = generation.clone();
+    let writer_state = state.clone();
+    let writer_headers = headers.clone();
+    let writer_session = session.clone();
+    let writer_operation = operation.clone();
+    let writer_payload = payload.clone();
+    let writer_stop = lease.cancel.clone();
+    let writer_task = tokio::spawn(async move {
+        let _generation = writer_generation;
+        loop {
+            tokio::select! {
+                _ = writer_cancel.changed() => break,
+                frame = outgoing_frames.recv() => match frame {
+                    Some((mut frame, delivered)) => {
+                        if let Message::Text(text)=&frame {
+                            if let Ok(mut value)=serde_json::from_str::<Value>(text) {
+                                if let Some(event)=value.get("event") {
+                                    match super::shared_stream::authorize_frame(writer_state.clone(),&writer_headers,&writer_session,installation,&writer_operation,&writer_payload,event).await {
+                                        Ok(true)=>{},
+                                        Ok(false) if writer_operation.stream.as_ref().is_some_and(|stream|stream.aggregate_source_interface_id.is_some())=>{
+                                            value["event"]=json!({"type":"subscription_error","record_id":event.get("record_id"),"error_code":"managed_service_subscription_denied"});
+                                            frame=Message::Text(value.to_string().into());
+                                        }
+                                        _=>{let _=writer_stop.send(true);break;}
+                                    }
+                                }
+                            }
+                        }
+                        tokio::select! {
+                            _ = writer_cancel.changed() => break,
+                            result = writer.send(frame) => {
+                                if result.is_err() { break; }
+                                if let Some(delivered) = delivered { let _ = delivered.send(()); }
+                            },
+                        }
+                    }
+                    None => break,
+                }
+            }
+        }
+        let _ = writer.close().await;
+    });
+    let projection_ack = acknowledgements.clone();
+    let projection_out = outgoing.clone();
+    let mut projection_cancel = cancel.clone();
+    let (projection_done, mut projected) = oneshot::channel();
+    let projection_generation = generation.clone();
+    let projection_state = state.clone();
+    let projection_headers = headers.clone();
+    let projection_session = session.clone();
+    let projection_operation = operation.clone();
+    let projection_payload = payload.clone();
+    let projection_stop = lease.cancel.clone();
+    let projection_task = tokio::spawn(async move {
+        let _generation = projection_generation;
+        let mut id = 0;
+        loop {
+            let event = tokio::select! {
+                _ = projection_cancel.changed() => break,
+                event = events.recv() => event,
+            };
+            let Some(StreamEvent(mut event)) = event else {
+                break;
+            };
+            match super::shared_stream::authorize_frame(
+                projection_state.clone(),
+                &projection_headers,
+                &projection_session,
+                installation,
+                &projection_operation,
+                &projection_payload,
+                &event.event,
+            )
+            .await
+            {
+                Ok(true) => {}
+                Ok(false)
+                    if projection_operation
+                        .stream
+                        .as_ref()
+                        .is_some_and(|stream| stream.aggregate_source_interface_id.is_some()) =>
+                {
+                    event.event = json!({"type":"subscription_error","record_id":event.event.get("record_id"),"error_code":"managed_service_subscription_denied"});
+                }
+                _ => {
+                    let _ = projection_stop.send(true);
+                    break;
+                }
+            }
+            let frame = json!({"type":"event","id":id,"event":event.event}).to_string();
+            if frame.len() > FRAME_BYTES {
+                break;
+            }
+            projection_ack
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(id, event.consumed);
+            id += 1;
+            // Multiple frames may remain in flight; only browser subscriber ACK releases credit.
+            tokio::select! {
+                _ = projection_cancel.changed() => break,
+                result = projection_out.send((Message::Text(frame.into()),None)) => if result.is_err() { break; },
+            }
+        }
+        let _ = projection_done.send(());
+    });
+    let mut auth_cancel = cancel.clone();
+    let auth_stop = lease.cancel.clone();
+    let auth_generation = generation.clone();
+    let auth_task = tokio::spawn(async move {
+        let _generation = auth_generation;
+        let mut validation = tokio::time::interval(std::time::Duration::from_secs(30));
+        validation.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        validation.tick().await;
+        loop {
+            tokio::select! {
+                _ = auth_cancel.changed() => break,
+                _ = validation.tick() => {
+                    let valid = tokio::select! {
+                        _ = auth_cancel.changed() => break,
+                        result = revalidate(&state,&headers,&session,&operation,installation,&payload) => result.is_ok(),
+                    };
+                    if !valid { let _ = auth_stop.send(true); break; }
+                }
+            }
+        }
+    });
+    let (pending_input, mut pending_inputs) =
+        mpsc::unbounded_channel::<(Value, tokio::sync::OwnedSemaphorePermit)>();
+    let input_bytes = Arc::new(tokio::sync::Semaphore::new(FRAME_BYTES));
+    let mut input_cancel = cancel.clone();
+    let input_generation = generation.clone();
+    let input_task = tokio::spawn(async move {
+        let _generation = input_generation;
+        loop {
+            tokio::select! {
+                _ = input_cancel.changed() => break,
+                pending = pending_inputs.recv() => match pending {
+                    Some((value,permit)) => {
+                        tokio::select! {
+                            _ = input_cancel.changed() => break,
+                            result = input.send(value) => if result.is_err() { break; },
+                        }
+                        drop(permit);
+                    }
+                    None => break,
+                }
+            }
+        }
+    });
+    let mut terminal_open = true;
+    let mut projection_open = true;
+    let mut completed = None;
+    loop {
+        if !terminal_open
+            && !projection_open
+            && acknowledgements
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_empty()
+        {
+            if let Some(output) = completed.take() {
+                let (delivered, received) = oneshot::channel();
+                if outgoing
+                    .send((
+                        Message::Text(
+                            json!({"type":"complete","output":output})
+                                .to_string()
+                                .into(),
+                        ),
+                        Some(delivered),
+                    ))
+                    .await
+                    .is_ok()
+                {
+                    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), received).await;
+                }
+            }
+            break;
+        }
+        tokio::select! {
+            biased;
+            _ = cancel.changed() => break,
+
+            _ = &mut projected, if projection_open => { projection_open = false; },
+            result = &mut terminal, if terminal_open => {
+                terminal_open = false;
+                let mut failure = "managed_service_stream_execution".to_owned();
+                if let Ok(Ok(outcome)) = result {
+                    match outcome.into_parts().0 {
+                        InterfaceStreamTerminal::Completed(ManagedServiceOutput(output,_)) => { completed = Some(output); }
+                        InterfaceStreamTerminal::Failed(error) => {
+                            if let Some(safe) = error.error().0.0.downcast_ref::<super::ManagedServiceFailure>() { failure = safe.0.clone(); }
+                        }
+                        _ => {}
+                    }
+                }
+                if completed.is_none() {
+                    let (delivered, received) = oneshot::channel();
+                    if outgoing.send((Message::Text(json!({"type":"error","message":failure}).to_string().into()),Some(delivered))).await.is_ok() {
+                        let _ = tokio::time::timeout(std::time::Duration::from_secs(5),received).await;
+                    }
+                    break;
+                }
+            },
+            frame = reader.next() => match frame {
+                Some(Ok(Message::Text(text))) if text.len()<=FRAME_BYTES => {
+                    match parse_client_frame(&text,&input_validator) {
+                        Ok(ClientFrame::Input(value)) => {
+                            let Ok(permit) = input_bytes.clone().try_acquire_many_owned(text.len().max(1) as u32) else { break; };
+                            if pending_input.send((value,permit)).is_err() { break; }
+                        }
+                        Ok(ClientFrame::Ack(id)) => {
+                            let Some(consumed) = acknowledgements.lock().unwrap_or_else(|e| e.into_inner()).remove(&id) else { break; };
+                            let _ = consumed.send(());
+                        }
+                        Err(InvalidClientFrame) => break,
+                    }
+                }
+                Some(Ok(Message::Ping(bytes))) => { if outgoing.try_send((Message::Pong(bytes),None)).is_err() { break; } }
+                Some(Ok(Message::Pong(_))) => {},
+                _ => break,
+            }
+        }
+    }
+    drop(lease); // Explicit ephemeral-call cancellation on every exit, including invalid frames.
+    auth_task.abort();
+    input_task.abort();
+    projection_task.abort();
+    writer_task.abort();
+    let _ = auth_task.await;
+    let _ = input_task.await;
+    let _ = projection_task.await;
+    let _ = writer_task.await;
+}
+
+test_support_item! { , []
+enum ClientFrame {
+    Input(Value),
+    Ack(u64),
+}
+}
+test_support_item! { , [#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+]
+struct InvalidClientFrame;
+}
+test_support_item! { , []
+fn parse_client_frame(text: &str, input: &jsonschema::Validator) -> Result<ClientFrame, InvalidClientFrame> {
+    if text.len() > FRAME_BYTES {
+        return Err(InvalidClientFrame);
+    }
+    let frame: Value = serde_json::from_str(text).map_err(|_| InvalidClientFrame)?;
+    if !frame.as_object().is_some_and(|o| o.len() == 2) {
+        return Err(InvalidClientFrame);
+    }
+    match frame.get("type").and_then(Value::as_str) {
+        Some("input") => frame
+            .get("input")
+            .filter(|v| input.is_valid(v))
+            .cloned()
+            .map(ClientFrame::Input)
+            .ok_or(InvalidClientFrame),
+        Some("ack") => frame
+            .get("id")
+            .and_then(Value::as_u64)
+            .map(ClientFrame::Ack)
+            .ok_or(InvalidClientFrame),
+        _ => Err(InvalidClientFrame),
+    }
+}
+}
+
+// Runtime frames and their consumed ACK owner are not a business terminal DTO.
+impl crate::openapi_interface::contract::ApiOutput for StreamEvent {
+    fn document_output_unavailable(
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Option<domain::event_center::ApiEventUnavailableReason> {
+        Some(domain::event_center::ApiEventUnavailableReason::MissingStreamingTerminal)
+    }
+    fn project_document_output(
+        &self,
+        _operation: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<Value, Arc<str>> {
+        Err(Arc::from("managed_service_frame_is_not_a_stream_terminal"))
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+#[path = "_tests/support/stream.rs"]
+mod test_accessors;
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub use test_accessors::{
+    register_test_stream, revalidate_test_stream, SocketSessionTestContext,
+    SocketSessionTestTransport,
+};

@@ -231,14 +231,9 @@ impl NativeExecutionModelParameters {
         {
             return Ok(payload);
         }
-        let affinity = payload.affinity().cloned();
-        let mut body = payload.into_wire_body();
+        let mut body = payload.wire_body().clone();
         Self::insert_published_reasoning_default(&mut body, default)?;
-        let sealed = crate::ports::ProviderTransportPayload::openai_responses(body)?;
-        Ok(match affinity {
-            Some(affinity) => sealed.with_affinity(affinity),
-            None => sealed,
-        })
+        payload.with_wire_body(body)
     }
 
     pub(crate) fn configuration_digest_with_published_reasoning_default(

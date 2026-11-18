@@ -2,6 +2,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { apiSourceOwners } = require('../testing/contracts/api-source-owners.js');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -26,17 +27,31 @@ async function execute(binary, pattern, value) {
   });
 }
 
-function cacheCleanupProof(scratch, plan) {
+function dependencyArtifacts(target, artifactFiles) {
+  return [...new Set(artifactFiles)].sort().map((file) => {
+    const contents = fs.readFileSync(file);
+    return { file: path.relative(target, file), bytes: contents.length,
+      sha256: createHash('sha256').update(contents).digest('hex') };
+  });
+}
+
+function cacheCleanupProof(scratch) {
   const cwd = path.join(scratch, 'api');
   const target = path.join(cwd, 'target');
-  const retiredSource = path.join(cwd, 'apps/api-server/src/retired.rs');
+  const owners = apiSourceOwners(path.resolve(__dirname, '../../..'));
+  const packages = owners.flatMap(({ packageName }) => ['--package', packageName]);
+  const retiredSources = owners.map(({ directory }) => path.join(scratch, directory, 'src/retired.rs'));
   const files = {
-    'Cargo.toml': '[workspace]\nmembers = ["apps/api-server", "crates/cache-proof-dependency"]\nresolver = "2"\n',
-    'apps/api-server/Cargo.toml': '[package]\nname = "api-server"\nversion = "0.0.0"\nedition = "2021"\n'
-      + '[dependencies]\ncache-proof-dependency = { path = "../../crates/cache-proof-dependency" }\n',
+    'Cargo.toml': `[workspace]\nmembers = ${JSON.stringify([...owners.map(({ directory }) => directory.slice(4)), 'crates/cache-proof-dependency'])}\nresolver = "2"\n`,
     'crates/cache-proof-dependency/Cargo.toml': '[package]\nname = "cache-proof-dependency"\nversion = "0.0.0"\nedition = "2021"\n',
     'crates/cache-proof-dependency/src/lib.rs': 'pub fn increment(n: u32) -> u32 { n + 1 }\n',
-    'apps/api-server/src/lib.rs': [
+  };
+  for (const { packageName, directory } of owners) {
+    const local = directory.slice(4);
+    const dependency = path.relative(local, 'crates/cache-proof-dependency').replaceAll('\\', '/');
+    files[`${local}/Cargo.toml`] = `[package]\nname = "${packageName}"\nversion = "0.0.0"\nedition = "2021"\n`
+      + `[dependencies]\ncache-proof-dependency = { path = "${dependency}" }\n`;
+    files[`${local}/src/lib.rs`] = [
       '#![allow(unexpected_cfgs)]',
       '#[cfg(proof_retired)] mod retired;',
       'pub fn classify(n: u32) -> u32 {',
@@ -47,12 +62,13 @@ function cacheCleanupProof(scratch, plan) {
       '#[test] fn exercises_current() {',
       '    for n in [0, 1, 2, 3] { assert!(classify(n) > n); }',
       '}',
-    ].join('\n'),
-  };
+    ].join('\n');
+  }
   for (const [name, contents] of Object.entries(files)) {
     fs.mkdirSync(path.dirname(path.join(cwd, name)), { recursive: true });
     fs.writeFileSync(path.join(cwd, name), contents);
   }
+  const plan = buildApiServerShardCommands({ repoRoot: scratch, shardIndex: 1, shardCount: 2, cargoTestThreads: 2 });
   // Neither inherited coverage paths nor Cargo's separate build directory may escape this probe.
   const baseEnv = Object.fromEntries(Object.entries(process.env).filter(([name]) =>
     !/^(?:CARGO_LLVM_COV|LLVM_|RUSTFLAGS$|CARGO_ENCODED_RUSTFLAGS$|RUSTC_WRAPPER$|RUSTC_WORKSPACE_WRAPPER$|CARGO_BUILD_TARGET$)/u.test(name)));
@@ -65,7 +81,7 @@ function cacheCleanupProof(scratch, plan) {
   });
   const showEnv = plan.find(({ args }) => args[0] === 'llvm-cov' && args[1] === 'show-env');
   const cleanup = plan.find(({ args }) => args[0] === 'clean');
-  assert.deepEqual(cleanup?.args, ['clean', '--package', 'api-server']);
+  assert.deepEqual(cleanup?.args, ['clean', ...packages]);
   assert.equal(cleanup.command, 'cargo');
   assert.equal(cleanup.cwd, cwd);
   assert.equal(showEnv?.cwd, cwd);
@@ -74,58 +90,68 @@ function cacheCleanupProof(scratch, plan) {
     assert.equal(env[key], target, `${key} must remain inside the disposable workspace`);
   }
   assert.equal(path.dirname(env.LLVM_PROFILE_FILE), target);
+  const dependencyFiles = new Set();
   function build(buildEnv = env) {
-    const artifacts = command('cargo', ['test', '--package', 'api-server', '--no-run', '--message-format=json'], { cwd, env: buildEnv })
+    const artifacts = command('cargo', ['test', ...packages, '--no-run', '--message-format=json'], { cwd, env: buildEnv })
       .split('\n').filter(Boolean).map((line) => JSON.parse(line))
-      .filter((item) => item.reason === 'compiler-artifact' && item.profile.test && item.executable);
-    assert.equal(artifacts.length, 1, 'probe must build exactly one test executable');
-    return artifacts[0].executable;
+      .filter((item) => item.reason === 'compiler-artifact');
+    // Cargo owns the artifact layout; newer toolchains may separate build intermediates.
+    for (const item of artifacts.filter((item) => item.target.name === 'cache_proof_dependency')) {
+      for (const file of item.filenames.filter((file) => file.endsWith('.rlib'))) dependencyFiles.add(file);
+    }
+    const tests = artifacts.filter((item) => item.profile.test && item.executable);
+    assert.equal(tests.length, owners.length, 'probe must build one test executable per measured API owner');
+    return tests.map((item) => item.executable).sort();
   }
-  function report(binary) {
+  function report(binaries) {
     for (const name of fs.readdirSync(target).filter((file) => file.endsWith('.profraw'))) {
       fs.rmSync(path.join(target, name));
     }
-    assert.match(command(binary, ['--exact', 'exercises_current'], { cwd, env }), /test result: ok\. 1 passed;/u);
-    return JSON.parse(command('cargo', ['llvm-cov', 'report', '--package', 'api-server', '--json', '--summary-only'], { cwd, env }));
+    for (const binary of binaries) {
+      assert.match(command(binary, ['--exact', 'exercises_current'], { cwd, env }), /test result: ok\. 1 passed;/u);
+    }
+    const summary = JSON.parse(command('cargo', ['llvm-cov', 'report', ...packages, '--json', '--summary-only'], { cwd, env }));
+    for (const { directory } of owners) {
+      assert.ok(summary.data[0].files.some((file) => file.filename === path.join(scratch, directory, 'src/lib.rs')),
+        `report must retain the measured source owner ${directory}`);
+    }
+    return summary;
   }
-  const currentBinary = build();
-  const baseline = report(currentBinary);
+  const currentBinaries = build();
+  const baseline = report(currentBinaries);
   assert.ok(baseline.data[0].totals.lines.covered > 0, 'cache baseline must cover real source lines');
-  fs.writeFileSync(retiredSource, [
+  for (const retiredSource of retiredSources) fs.writeFileSync(retiredSource, [
     'pub fn classify(n: u32) -> u32 {',
     '    if n % 2 == 0 { n * 2 } else { n + 3 }',
     '}',
   ].join('\n'));
-  const staleBinary = build({ ...env, RUSTFLAGS: `${env.RUSTFLAGS || ''} --cfg proof_retired`.trim() });
-  assert.notEqual(staleBinary, currentBinary, 'changed compiler flags must leave a distinct cached executable');
-  fs.rmSync(retiredSource);
-  const rebuiltBinary = build();
-  assert.equal(rebuiltBinary, currentBinary);
-  assert.ok(fs.existsSync(staleBinary), 'current build must retain the stale cached executable');
-  // Only the current executable runs; the old executable contributes mappings, never profiles.
-  const contaminated = report(rebuiltBinary);
-  const retiredCoverage = contaminated.data[0].files.find((file) => file.filename === retiredSource);
-  assert.ok(retiredCoverage, 'cached executable must expose the deleted source');
-  assert.equal(retiredCoverage.summary.lines.covered, 0, 'the retired source must have no execution profile');
-  assert.ok(contaminated.data[0].totals.lines.count > baseline.data[0].totals.lines.count, 'cached executable must inflate the denominator');
-  assert.notDeepEqual(contaminated, baseline, 'controlled cache contamination must be detected');
-  function dependencyArtifacts() {
-    const directory = path.join(target, 'debug/deps');
-    return fs.readdirSync(directory).filter((name) => /^libcache_proof_dependency-.*\.rlib$/u.test(name)).sort().map((name) => {
-      const contents = fs.readFileSync(path.join(directory, name));
-      return { file: name, bytes: contents.length, sha256: createHash('sha256').update(contents).digest('hex') };
-    });
+  const staleBinaries = build({ ...env, RUSTFLAGS: `${env.RUSTFLAGS || ''} --cfg proof_retired`.trim() });
+  for (const binary of staleBinaries) assert.ok(!currentBinaries.includes(binary), 'changed compiler flags must leave distinct cached executables');
+  for (const retiredSource of retiredSources) fs.rmSync(retiredSource);
+  const rebuiltBinaries = build();
+  assert.deepEqual(rebuiltBinaries, currentBinaries);
+  for (const binary of staleBinaries) assert.ok(fs.existsSync(binary), 'current build must retain the stale cached executables');
+  // Only the current executables run; old executables contribute mappings, never profiles.
+  const contaminated = report(rebuiltBinaries);
+  for (const retiredSource of retiredSources) {
+    const retiredCoverage = contaminated.data[0].files.find((file) => file.filename === retiredSource);
+    assert.ok(retiredCoverage, 'cached executable must expose each deleted source owner');
+    assert.equal(retiredCoverage.summary.lines.covered, 0, 'the retired source must have no execution profile');
   }
-  const dependencies = dependencyArtifacts();
+  assert.ok(contaminated.data[0].totals.lines.count > baseline.data[0].totals.lines.count, 'cached executables must inflate the denominator');
+  assert.notDeepEqual(contaminated, baseline, 'controlled cache contamination must be detected');
+  const dependencies = dependencyArtifacts(target, dependencyFiles);
   assert.ok(dependencies.length > 0, 'probe must contain actual reusable dependency artifacts');
   command(cleanup.command, cleanup.args, { cwd: cleanup.cwd, env });
-  assert.equal(fs.existsSync(staleBinary), false, 'native package cleanup must remove the stale executable');
-  assert.deepEqual(dependencyArtifacts(), dependencies, 'native package cleanup must retain dependency artifacts unchanged');
+  for (const binary of staleBinaries) assert.equal(fs.existsSync(binary), false, 'native package cleanup must remove every stale executable');
+  assert.deepEqual(dependencyArtifacts(target, dependencyFiles), dependencies, 'native package cleanup must retain dependency artifacts unchanged');
   const cleaned = report(build());
   assert.deepEqual(cleaned, baseline, 'native package cleanup must restore the entire JSON summary, including every counter');
   return {
+    packages: owners.map((owner) => owner.packageName),
     nativeCleanup: [cleanup.command, ...cleanup.args], staleCacheDetected: true, staleExecutableRemoved: true,
-    staleExecutable: path.relative(scratch, staleBinary), deletedSource: path.relative(scratch, retiredSource),
+    staleExecutables: staleBinaries.map((binary) => path.relative(scratch, binary)),
+    deletedSources: retiredSources.map((source) => path.relative(scratch, source)),
     identicalSummaryAfterCleanup: true, retainedDependencyArtifacts: dependencies,
     dependencyArtifactsPreserved: true, retainedDependencyCount: dependencies.length,
     retainedDependencyBytes: dependencies.reduce((sum, artifact) => sum + artifact.bytes, 0),
@@ -191,7 +217,7 @@ async function main(outputPath) {
     const report = {
       sha: process.env.QUALITY_GATE_TARGET_SHA, status: 'passed', workers, runs,
       identicalCoverage: true, controlledLossDetected: true, measurements,
-      cacheCleanup: cacheCleanupProof(scratch, plan),
+      cacheCleanup: cacheCleanupProof(scratch),
     };
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`);
@@ -204,6 +230,8 @@ async function main(outputPath) {
     fs.rmSync(scratch, { recursive: true, force: true });
   }
 }
+
+module.exports = { dependencyArtifacts };
 
 if (require.main === module) main(process.argv[2]).catch((error) => {
   process.stderr.write(`${error.stack}\n`);

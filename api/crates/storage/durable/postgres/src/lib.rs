@@ -122,3 +122,11 @@ mod notification_publication;
 
 #[path = "integration_repositories/communications/mod.rs"]
 mod communications;
+
+pub mod event_center_repository;
+
+#[path = "extension_repositories/record_permissions_repository/mod.rs"]
+mod record_permissions_repository;
+
+#[path = "integration_repositories/workflow_run_identity_repository.rs"]
+mod workflow_run_identity_repository;

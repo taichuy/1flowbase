@@ -21,12 +21,12 @@ import {
   updateNodeField
 } from '../lib/document/transforms/node';
 import { getDirectDownstreamNodes } from '../lib/document/relations';
-import { listVisibleSelectorOptions } from '../lib/selector-options';
+import { analysisSelectorOptions } from '../api/analysis/presentation';
+import type { FlowDocumentAnalysis } from '@1flowbase/api-client';
 import type { LlmVisibleInternalTool } from '../lib/llm-node-config';
 import { getNodeDefinitionMeta } from '../lib/node-definitions';
 import { isOutputVariableKeyAllowed } from '../lib/output-contract/variable-key';
 import { transformDocumentSelectorReferences } from '../lib/document/transforms/selector-references';
-import { getBuiltinNodeRuntimeContract } from '../lib/node-definitions/contracts';
 import { parseHttpRequestUrlParts } from '../lib/http-request/url';
 import type { AgentFlowEnvironmentVariable } from '../lib/variables/application-environment-variables';
 import {
@@ -66,7 +66,7 @@ function createRootValues(node: FlowNodeDocument) {
     ...node,
     config: {
       ...node.config,
-      output_contract: getDisplayOutputs(node)
+      output_contract: node.outputs
     }
   };
 }
@@ -104,23 +104,6 @@ function updateHttpRequestUrlField(
     fieldKey: 'bindings.params',
     value: toHttpRequestParamsBinding(parsed.params)
   });
-}
-
-function getDisplayOutputs(node: FlowNodeDocument) {
-  if (node.type !== 'http_request') {
-    return node.outputs;
-  }
-
-  const contractOutputs =
-    getBuiltinNodeRuntimeContract(node.type)?.defaults.outputs ?? [];
-  const outputsByKey = new Map(
-    node.outputs.map((output) => [output.key, output])
-  );
-
-  return [
-    ...node.outputs,
-    ...contractOutputs.filter((output) => !outputsByKey.has(output.key))
-  ];
 }
 
 function isStateWriteBinding(
@@ -307,10 +290,12 @@ export function createAgentFlowNodeSchemaAdapter({
   conversationVariables,
   issues = [],
   workflowTriggerContext = null,
-  messages = []
+  messages = [],
+  analysis = null
 }: {
   document: FlowAuthoringDocument;
   nodeId: string;
+  analysis?: FlowDocumentAnalysis | null;
   environmentVariables?: AgentFlowEnvironmentVariable[];
   conversationVariables?: AgentFlowConversationVariable[];
   issues?: AgentFlowIssue[];
@@ -338,7 +323,7 @@ export function createAgentFlowNodeSchemaAdapter({
       }
 
       if (path === 'config.output_contract' || path === 'outputs') {
-        return getDisplayOutputs(node);
+        return node.outputs;
       }
 
       if (path.startsWith('outputs.')) {
@@ -644,11 +629,9 @@ export function createAgentFlowNodeSchemaAdapter({
       }
 
       if (key === 'selectorOptions' || key.startsWith('selectorOptions:')) {
-        return listVisibleSelectorOptions(
-          document,
+        return analysisSelectorOptions(
+          analysis,
           nodeId,
-          environmentVariables,
-          workflowTriggerContext,
           key.startsWith('selectorOptions:')
             ? key.slice('selectorOptions:'.length)
             : ''
@@ -672,7 +655,10 @@ export function createAgentFlowNodeSchemaAdapter({
       }
 
       if (key === 'outputContract') {
-        return node.outputs;
+        return (
+          analysis?.node_outputs.find((item) => item.node_id === nodeId)
+            ?.outputs ?? []
+        );
       }
 
       if (key === 'messages') {

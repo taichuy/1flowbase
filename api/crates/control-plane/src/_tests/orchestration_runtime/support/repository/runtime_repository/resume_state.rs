@@ -438,10 +438,22 @@ impl InMemoryOrchestrationRuntimeRepository {
                 .filter_map(|(_, result)| result.as_ref().map(|(_, payload)| payload.clone()))
                 .collect::<Vec<_>>()
         });
+        if let Some(continuation) = &input.anthropic_continuation {
+            response_payload["anthropic_continuation"] = serde_json::to_value(continuation)?;
+        }
         if let Some(continuation) = &input.responses_continuation {
             response_payload["responses_continuation"] = serde_json::to_value(continuation)?;
         }
         if callback.status == domain::CallbackTaskStatus::Completed {
+            if !domain::orchestration::callback_resume_payloads_match(
+                &json!({"anthropic_continuation":callback.response_payload.as_ref().and_then(|payload| payload.get("anthropic_continuation"))}),
+                &json!({"anthropic_continuation":response_payload.get("anthropic_continuation")}),
+            ) {
+                return Err(crate::errors::ControlPlaneError::Conflict(
+                    "anthropic_continuation_conflict",
+                )
+                .into());
+            }
             if callback
                 .response_payload
                 .as_ref()

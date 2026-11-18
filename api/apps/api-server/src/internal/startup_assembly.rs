@@ -1,8 +1,14 @@
 use super::*;
+use crate::event_center::catalog::EventSourceCatalogAssembly;
+use crate::extension_bus::SnapshotAssembly;
+use crate::system_backup::SystemBackupRuntimeAssembly;
 
 pub(super) async fn app_and_runtime_host_from_config(
     config: &ApiConfig,
 ) -> Result<(Router, ApiRuntimeShutdown)> {
+    control_plane::plugin_management::configure_shared_resources(
+        config.plugin_shared_resource_contracts.clone(),
+    )?;
     let durable = storage_durable_postgres::build_main_durable_postgres_with_max_connections(
         &config.database_url,
         config.database_pool_max_connections,
@@ -45,6 +51,19 @@ pub(super) async fn app_and_runtime_host_from_config(
         &extension_graph,
         store.pool().clone(),
     )?;
+    let event_center = control_plane::event_center::EventCenterRuntime::new(
+        infrastructure.event_bus(),
+        config.event_center_policy,
+    )?;
+    let (store, event_sources) = crate::event_center::catalog::EventSourceCatalog::attach_local(
+        &mut infrastructure,
+        store,
+        &event_center,
+        Some(Arc::new(lifecycle_plan.clone())),
+    )?;
+    let lifecycle_source_observer = event_sources.lifecycle_observer.clone().ok_or_else(|| {
+        anyhow::anyhow!("local event source assembly must provide lifecycle observer")
+    })?;
     let capsule_store = storage_durable_postgres::PgProviderProtocolCapsuleStore::new(
         store.pool().clone(),
         config.provider_secret_master_key.clone(),
@@ -191,6 +210,12 @@ pub(super) async fn app_and_runtime_host_from_config(
                     store.pool().clone(), config.provider_secret_master_key.clone(),
                 )?),
             ),
+        )).with_execution_gate(Arc::new(
+            control_plane::plugin_management::ManagedPluginExecutionGateAuthority::new(Arc::new(store.clone())),
+        )).with_plugin_ephemeral(Arc::new(
+            control_plane::plugin_management::ManagedPluginEphemeralService::new(
+                Arc::new(store.clone()), infrastructure.ephemeral_kv_store(),
+            ),
         )),
     );
     runtime_extension_host
@@ -199,24 +224,30 @@ pub(super) async fn app_and_runtime_host_from_config(
     let mut runtime_backend_slot = runtime_core::runtime_backend::RuntimeBackendSlot::default();
     runtime_backend_slot.bind(runtime_extension_host.clone())?;
     let runtime_backend = runtime_backend_slot.backend()?;
-    let provider_runtime = Arc::new(
-        ApiRuntimeServices::new_with_runtime_backend_and_transport_config(
-            runtime_backend,
-            Arc::clone(&extension_graph),
-            config.transport_session_registry.clone(),
-        )?
-        .with_managed_composition(
+    let (provider_runtime, managed_composition) =
+        crate::managed_runtime_assembly::bind_managed_runtime(
+            crate::provider_runtime::services_for_current_cfg(
+                ApiRuntimeServices::new_with_runtime_backend_and_transport_config(
+                    runtime_backend,
+                    Arc::clone(&extension_graph),
+                    config.transport_session_registry.clone(),
+                )?,
+            ),
             store.clone(),
             config.api_node_id.clone(),
             managed_base_modules,
-        ),
-    );
-    let managed_composition = provider_runtime.managed_composition()?;
+        );
+    let provider_runtime = Arc::new(provider_runtime);
     managed_composition.attach_native_lifecycle_plan(lifecycle_plan.clone())?;
+    managed_composition
+        .attach_lifecycle_source_observer(lifecycle_source_observer.clone())
+        .await?;
     lifecycle_publication_catalog.attach_workspace_source(Arc::new(
         extension_bus::ManagedWorkspacePublicationSource(Arc::downgrade(&managed_composition)),
     ))?;
-    let lifecycle_delivery = lifecycle_delivery.with_managed(&managed_composition);
+    let lifecycle_delivery = lifecycle_delivery.with_managed(
+        &(managed_composition.clone() as Arc<dyn extension_bus::ManagedCompositionPort>),
+    );
     let lifecycle_worker =
         control_plane::lifecycle_outbox_dispatcher::LifecycleOutboxDispatcher::new(
             store.clone(),
@@ -225,6 +256,7 @@ pub(super) async fn app_and_runtime_host_from_config(
                 &managed_composition,
             ))),
         )
+        .with_lifecycle_observer(lifecycle_source_observer.clone())
         .spawn();
     extension_boot_snapshot.attach_managed_composition(provider_runtime.managed_composition()?)?;
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
@@ -300,26 +332,27 @@ pub(super) async fn app_and_runtime_host_from_config(
         network_egress_http_clients.as_ref().clone(),
         bootstrap_result.workspace_id,
     );
-    let plugin_management = control_plane::plugin_management::PluginManagementService::new(
-        store.clone(),
-        ApiProviderRuntime::new(provider_runtime.clone()),
-        official_plugin_source.clone(),
-        config.provider_install_root.clone(),
-    )
-    .with_node_id(config.api_node_id.clone())
-    .with_managed_activation()
-    .with_allow_uploaded_host_extensions(config.allow_uploaded_host_extensions);
-    plugin_management
-        .ensure_builtin_plugin(
-            control_plane::plugin_management::EnsureBuiltinPluginCommand {
-                actor_user_id: bootstrap_result.root_user_id,
-                package_root: builtin_frontstage_code_block_package_root()?
-                    .display()
-                    .to_string(),
-            },
+    let plugin_management = api_host_kernel::plugin_execution::with_managed_activation(
+        control_plane::plugin_management::PluginManagementService::new(
+            store.clone(),
+            ApiProviderRuntime::new(provider_runtime.clone()),
+            official_plugin_source.clone(),
+            config.provider_install_root.clone(),
         )
-        .await?;
-    plugin_management.reconcile_all_installations().await?;
+        .with_node_id(config.api_node_id.clone()),
+    )
+    .with_allow_uploaded_host_extensions(config.allow_uploaded_host_extensions);
+    api_host_kernel::plugin_execution::ensure_builtin_plugin(
+        &plugin_management,
+        control_plane::plugin_management::EnsureBuiltinPluginCommand {
+            actor_user_id: bootstrap_result.root_user_id,
+            package_root: builtin_frontstage_code_block_package_root()?
+                .display()
+                .to_string(),
+        },
+    )
+    .await?;
+    api_host_kernel::plugin_execution::reconcile_all_installations(&plugin_management).await?;
     intake_active_data_source_templates_at_startup(
         &store,
         &api_provider_runtime,
@@ -384,6 +417,7 @@ pub(super) async fn app_and_runtime_host_from_config(
     let notification_service = Arc::new(control_plane::notifications::NotificationService::new(
         store.clone(), config.provider_secret_master_key.clone(),
     ).with_events(notification_events.clone())
+        .with_communication_lifecycle_observer(crate::event_center::business::BusinessSourceObserver::new(&event_center))
         .with_provider(Arc::new(notification_runtime::ManagedNotificationProvider::new(managed_composition.clone())))
         .with_command_provider(Arc::new(crate::extension_bus::ManagedCommunicationCommandProvider::new(managed_composition.clone()))));
     notification_service.bootstrap().await?;
@@ -414,7 +448,7 @@ pub(super) async fn app_and_runtime_host_from_config(
     runtime_extension_host.mark_ready()?;
 
     let state = Arc::new(ApiState {
-        #[cfg(test)]
+        #[cfg(any(test,feature="test-support"))]
         test_resources: None,
         console_policy_reader: Arc::new(store.clone()),
         store: store.clone(),
@@ -424,11 +458,18 @@ pub(super) async fn app_and_runtime_host_from_config(
         settings_feature_registry: compiled_console_plan.settings_feature_registry.clone(),
         console_operation_registry: compiled_console_plan.console_operation_registry.clone(),
         infrastructure,
+        event_center,
+        event_sources,
+        event_workflow_changes: Arc::default(),
+        event_workflow_statuses: Default::default(),
         extension_boot_snapshot: Some(Arc::clone(&extension_boot_snapshot)),
         console_surface_registry: compiled_console_plan.console_surface_registry.clone(),
         file_storage_registry,
         runtime_engine,
         provider_runtime: provider_runtime.clone(),
+        runtime_event_stream_projection: Arc::new(crate::interaction_assembly::RuntimeEventSseAdapter),
+        native_resource_import: Arc::new(api_mcp::resource_import::NativeResourceImportAdapter),
+        terminal_jobs: Default::default(),
         process_started_at,
         runtime_activity,
         assistant_conversation_events,
@@ -470,6 +511,13 @@ pub(super) async fn app_and_runtime_host_from_config(
     )?;
     managed_composition.refresh_boot_snapshots().await?;
     extension_boot_snapshot.set_pinned_managed_snapshots(managed_composition.current_snapshots().await)?;
+    let event_catalog = crate::event_center::persistence::snapshot(
+        &state, &managed_composition.current_snapshots().await,
+    ).await?;
+    control_plane_contracts::ports::EventCatalogRepository::synchronize_event_catalog(
+        &state.store, &event_catalog,
+    ).await?;
+
     let builtin_mcp_interfaces =
         openapi_interface::build_openapi_capability_catalog(&state, bootstrap_result.workspace_id)
             .await
@@ -490,11 +538,15 @@ pub(super) async fn app_and_runtime_host_from_config(
     if config.application_template_auto_update {
         if let Err(error) = routes::system_templates::releases::synchronize_at_startup(
             &state, bootstrap_result.root_user_id, bootstrap_result.workspace_id,
+            Arc::new(crate::mcp_assembly::InterfaceCatalog),
         ).await {
             tracing::error!(error = ?error, "application template discovery failed; retry on next startup");
         }
     }
     crate::workers::workflow_schedule::spawn_workflow_schedule_loops(state.clone(), generation_owner.clone());
+    let event_workflow_worker = crate::workers::event_workflow::spawn_event_workflow_loop(
+        state.clone(), generation_owner.clone(), state.event_workflow_statuses.clone(),
+    );
     crate::workers::provider_request_logs::spawn_provider_request_log_worker(state.clone());
     crate::workers::trace_projection::spawn_trace_projection_worker(state.clone());
     crate::workers::application_log_deletion::spawn(state.clone());
@@ -517,7 +569,8 @@ pub(super) async fn app_and_runtime_host_from_config(
     let generation_publisher = managed_publication::ManagedGenerationPublisher::new(
         &state, config.clone(), generation_host_contributions, initial_router,
     )?;
-    file_import_port.bind(&generation_publisher)?;
+    let file_import_publisher: Arc<dyn api_host_kernel::resource_import_ports::CurrentGenerationSource> = generation_publisher.clone();
+    file_import_port.bind(Arc::downgrade(&file_import_publisher), Arc::new(crate::mcp_assembly::ApplicationLogExchange))?;
     managed_composition.attach_generation_publisher(Arc::downgrade(&generation_publisher))?;
     let communication_worker = crate::communication_runtime::CommunicationWorker::spawn(state.clone(), generation_owner);
     Ok((
@@ -528,6 +581,7 @@ pub(super) async fn app_and_runtime_host_from_config(
             operations: store.managed_operation_lifetime(),
             lifecycle_worker,
             communication_worker,
+            event_workflow_worker: tokio::sync::Mutex::new(Some(event_workflow_worker)),
         },
     ))
     }.await;

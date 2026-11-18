@@ -12,6 +12,7 @@ import { i18nText } from '../../i18n/text';
 import './data-table-mobile-list.css';
 
 export type DataTableMobilePagination = {
+  scrollMode?: 'page' | 'region';
   resetKey?: string;
   showSelectAll?: boolean;
   hasMore: boolean;
@@ -41,8 +42,9 @@ export function DataTableMobileList<T extends object>({
   const footer = useRef<HTMLDivElement>(null);
   const inFlight = useRef(false);
   const [height, setHeight] = useState(400);
+  const pageScroll = pagination.scrollMode === 'page';
   useLayoutEffect(() => {
-    if (!container.current) return;
+    if (pageScroll || !container.current) return;
     const element = container.current;
     const measure = () =>
       setHeight(
@@ -62,7 +64,7 @@ export function DataTableMobileList<T extends object>({
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, []);
+  }, [pageScroll]);
   const getKey = (item: T) =>
     typeof rowKey === 'function' ? rowKey(item) : (item[rowKey] as Key);
   async function loadMore() {
@@ -124,8 +126,8 @@ export function DataTableMobileList<T extends object>({
       <div className="data-table-mobile__viewport" ref={container}>
         {items.length ? (
           <Listy<T>
-            virtual
-            height={height}
+            virtual={!pageScroll}
+            height={pageScroll ? undefined : height}
             items={items}
             rowKey={getKey}
             onScroll={(event) => {

@@ -1,3 +1,4 @@
+pub mod custom_blocks;
 use anyhow::Result;
 use std::{
     collections::{hash_map::Entry, HashMap},

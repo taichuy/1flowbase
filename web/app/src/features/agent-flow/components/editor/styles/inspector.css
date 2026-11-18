@@ -594,6 +594,7 @@
 .agent-flow-templated-text-field__editor-shell--input {
   flex: 1 1 auto;
   min-width: 0;
+  padding-right: 40px;
 }
 
 .agent-flow-templated-text-field__editor {
@@ -613,9 +614,10 @@
   box-sizing: border-box;
   min-height: 38px;
   max-height: 38px;
-  overflow: hidden;
-  padding: 9px 40px 9px 12px;
-  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 9px 0 9px 12px;
+  scrollbar-width: none;
 }
 
 .agent-flow-templated-text-field__editor p {
@@ -624,6 +626,12 @@
 
 .agent-flow-templated-text-field__editor p + p {
   margin-top: 4px;
+}
+
+.agent-flow-templated-text-field__editor--input p {
+  /* Lexical sets pre-wrap on the root; keep input paragraphs on one line. */
+  white-space: pre;
+  word-break: normal;
 }
 
 .agent-flow-templated-text-field__editor:focus {

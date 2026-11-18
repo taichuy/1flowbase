@@ -45,9 +45,11 @@ export function IssuesDrawer({
                   </Tag>
                   {issue.sectionKey ? <Tag>{issue.sectionKey}</Tag> : null}
                 </Space>
-                <Typography.Text type="secondary">
-                  {issue.message}
-                </Typography.Text>
+                {issue.message !== issue.title ? (
+                  <Typography.Text type="secondary">
+                    {issue.message}
+                  </Typography.Text>
+                ) : null}
               </Space>
             </li>
           ))}

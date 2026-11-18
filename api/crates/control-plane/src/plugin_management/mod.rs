@@ -1,9 +1,16 @@
+mod shared_resources;
+pub use shared_resources::*;
 mod authentication_egress;
 mod managed_activation;
 pub use authentication_egress::authorize_authentication_egress;
 pub use managed_activation::*;
 mod managed_data;
 pub use managed_data::ManagedPluginDataService;
+#[path = "managed_execution/gate.rs"]
+mod managed_execution_gate;
+pub use managed_execution_gate::ManagedPluginExecutionGateAuthority;
+mod managed_ephemeral;
+pub use managed_ephemeral::ManagedPluginEphemeralService;
 mod managed_credential;
 pub use managed_credential::ManagedPluginCredentialService;
 mod managed_execution;
@@ -13,7 +20,9 @@ mod artifact_instance;
 mod backup_export;
 #[path = "backup/backup_restore.rs"]
 mod backup_restore;
+#[path = "catalog/catalog.rs"]
 mod catalog;
+#[path = "catalog/catalog_projection.rs"]
 mod catalog_projection;
 mod extension_installation;
 mod family;

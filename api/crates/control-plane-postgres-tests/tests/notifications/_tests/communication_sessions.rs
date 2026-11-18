@@ -8,6 +8,9 @@ use uuid::Uuid;
 
 type Service = NotificationService<PgControlPlaneStore>;
 
+#[path = "communication_sessions/_tests/lifecycle.rs"]
+mod lifecycle;
+
 async fn fixture() -> (
     PgControlPlaneStore,
     Service,
@@ -347,7 +350,7 @@ async fn communication_turn_append_checkpoint_and_seal_preserve_every_original_o
     let grouped: Vec<_> = history
         .items
         .iter()
-        .filter(|message| message.input_id != third)
+        .filter(|message| message.input_id != Some(third))
         .collect();
     assert_eq!(grouped.len(), 4);
     assert!(grouped.iter().all(|message| message.run_id == Some(run)

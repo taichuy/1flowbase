@@ -8,30 +8,35 @@ const { productionRustSources, bootRustSources } = require('../../testing/contra
 const { inspectInterfaceLifecycleBoundary } = require('../core');
 
 const sources = [
-  'api/apps/api-server/src/routes/application_public_api/compat_sse.rs',
-  'api/apps/api-server/src/routes/application_public_api/openai.rs',
-  'api/apps/api-server/src/routes/application_public_api/anthropic.rs',
-  'api/apps/api-server/src/routes/application_public_api/ex.rs',
+  'api/crates/api/public-gateway/src/routes/application_public_api/compat_sse.rs',
+  'api/crates/api/public-gateway/src/routes/application_public_api/openai.rs',
+  'api/crates/api/public-gateway/src/routes/application_public_api/anthropic.rs',
+  'api/crates/api/public-gateway/src/routes/application_public_api/ex.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions.rs',
-  'api/apps/api-server/src/routes/identity/auth.rs',
-  'api/apps/api-server/src/routes/identity/sign_in_interface.rs',
-  'api/apps/api-server/src/routes/application_public_api/native.rs',
-  'api/apps/api-server/src/routes/application_public_api/compatibility_interface.rs',
-  'api/apps/api-server/src/routes/mcp_protocol.rs',
+  'api/crates/api/console-interaction/src/routes/identity/auth.rs',
+  'api/crates/api/console-interaction/src/routes/identity/sign_in_interface.rs',
+  'api/crates/api/public-gateway/src/routes/application_public_api/native.rs',
+  'api/crates/api/public-gateway/src/routes/application_public_api/compatibility_interface.rs',
+  'api/crates/api/mcp/src/routes/mcp_protocol.rs',
   'api/apps/api-server/src/lib.rs',
-  'api/apps/api-server/src/console_contracts/external_endpoint_catalog.rs',
-  'api/apps/api-server/src/routes/application_public_api/openai/response_dispatch.rs',
+  'api/crates/api/kernel/src/slices/console_contracts/external_endpoint_catalog.rs',
+  'api/crates/api/public-gateway/src/routes/application_public_api/openai/response_dispatch.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions/provider_operations.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions/network.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions/plugins.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions/mcp.rs',
   'api/apps/api-server/src/extension_bus/interface_contributions/system.rs',
-  'api/apps/api-server/src/routes/application_public_api/openai/response_dispatch/execution.rs',
+  'api/crates/api/public-gateway/src/routes/application_public_api/openai/response_dispatch/execution.rs',
 ];
 
 function fixture(overrides = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'interface-lifecycle-boundary-'));
+  fs.mkdirSync(path.join(root, 'api/apps/api-server/src/routes'), { recursive: true });
+  const manifest = path.join(root, 'api/crates/api/console-interaction/Cargo.toml');
+  fs.mkdirSync(path.dirname(manifest), { recursive: true });
+  fs.writeFileSync(manifest, '[package]\n');
   const defaults = {
+    'api/apps/api-server/src/console_contracts/external_endpoint_catalog.rs': 'fn compile_complete() {} enum Error { UnclassifiedRows }',
     [sources[0]]: 'public_mcp_runtime_invoker_for_actor(&state);',
     [sources[1]]: 'compatibility_interface::invoke_blocking(); compatibility_interface::invoke_client_stream_with_principal();',
     [sources[2]]: 'compatibility_interface::invoke_blocking(); compatibility_interface::invoke_client_stream_with_principal();',
@@ -59,7 +64,7 @@ function fixture(overrides = {}) {
     [sources[17]]: '',
     [sources[18]]: '',
   };
-  for (const source of sources) {
+  for (const source of Object.keys(defaults)) {
     const target = path.join(root, source);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, overrides[source] ?? defaults[source]);
@@ -185,7 +190,7 @@ test('root_1998 rejects a bare mount at the final application root', () => {
 // A4: mutate the real route so a bypass cannot hide behind the wrapper's presence elsewhere.
 test('root_1998 rejects direct authentication and discarded lineage in production source', () => {
   const { inspectAuthenticationInvocationBoundary } = require('../core');
-  const file = 'api/apps/api-server/src/routes/application_public_api/native.rs';
+  const file = 'api/crates/api/public-gateway/src/routes/application_public_api/native.rs';
   const production = productionRustSources(path.resolve(__dirname, '../../../..', file));
   assert.deepEqual(inspectAuthenticationInvocationBoundary(file, production), []);
   const bypass = production.replace('.authenticate_invocation', '.authenticate');
@@ -224,7 +229,7 @@ test('rejects client streams which bypass the typed kernel or discard the princi
 
 test('notification refresh authentication requires its exact Protocol Control catalog declaration', () => {
   const productionRoot = path.resolve(__dirname, '../../../..');
-  const route = 'api/apps/api-server/src/routes/notifications/events.rs';
+  const route = 'api/crates/api/console-interaction/src/routes/notifications/events.rs';
   const catalog = fs.readFileSync(path.join(productionRoot, sources[11]), 'utf8');
   const control = fs.readFileSync(path.join(productionRoot, route), 'utf8');
   for (const classified of [true, false]) {
@@ -240,7 +245,7 @@ test('notification refresh authentication requires its exact Protocol Control ca
       const violations = inspectInterfaceLifecycleBoundary(root);
       if (classified) assert.deepEqual(violations, []);
       else assert.ok(violations.some((item) => item.includes(`${route} retains a direct route authentication owner`)));
-      const businessRoute = 'api/apps/api-server/src/routes/notifications/business.rs';
+      const businessRoute = 'api/crates/api/console-interaction/src/routes/notifications/business.rs';
       fs.writeFileSync(path.join(root, businessRoute), 'require_session(&state);');
       assert.ok(inspectInterfaceLifecycleBoundary(root).some((item) =>
         item.includes(`${businessRoute} retains a direct route authentication owner`)));
@@ -254,7 +259,7 @@ test('private invocation and startup splits retain the same positive and negativ
   const root = fixture();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   for (const [owner, child] of [
-    [sources[8], 'api/apps/api-server/src/routes/application_public_api/compatibility_interface/stream_dispatch.rs'],
+    [sources[8], 'api/crates/api/public-gateway/src/routes/application_public_api/compatibility_interface/stream_dispatch.rs'],
     [sources[10], 'api/apps/api-server/src/internal/startup_assembly.rs'],
   ]) {
     const original = fs.readFileSync(path.join(root, owner), 'utf8');
@@ -272,4 +277,83 @@ test('private invocation and startup splits retain the same positive and negativ
   fs.writeFileSync(startup, fs.readFileSync(startup, 'utf8')
     .replace('router.into_router()', 'router.into_router().merge(rogue_router())'));
   assert.ok(inspectInterfaceLifecycleBoundary(root).some((value) => value.includes('bare external mount')));
+});
+
+test('route ownership enforcement follows current API owner manifests', (t) => {
+  const root = fixture();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const owner of ['kernel', 'public-gateway', 'console-settings', 'mcp', 'plugins-models', 'console-interaction']) {
+    const manifest = path.join(root, 'api/crates/api', owner, 'Cargo.toml');
+    fs.mkdirSync(path.dirname(manifest), { recursive: true });
+    fs.writeFileSync(manifest, '[package]\n');
+    const route = `api/crates/api/${owner}/src/routes/unowned.rs`;
+    const target = path.join(root, route);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, 'struct UnownedAdapter { state: Arc<ApiState> }\nrequire_session(&state);');
+    const violations = inspectInterfaceLifecycleBoundary(root);
+    assert.ok(violations.some((value) => value.includes(`${route} Interface adapter retains the global ApiState`)));
+    assert.ok(violations.some((value) => value.includes(`${route} retains a direct route authentication owner`)));
+  }
+});
+
+
+test('MCP retention follows the implementation and backup authentication keeps one exact owner', (t) => {
+  const root = fixture();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const owner of ['console-settings', 'mcp']) {
+    const manifest = path.join(root, 'api/crates/api', owner, 'Cargo.toml');
+    fs.mkdirSync(path.dirname(manifest), { recursive: true });
+    fs.writeFileSync(manifest, '[package]\n');
+  }
+  // A clean Root facade cannot conceal retention in the current MCP owner.
+  const facade = path.join(root, 'api/apps/api-server/src/routes/mcp_protocol.rs');
+  fs.writeFileSync(facade, 'pub use api_mcp::routes::mcp_protocol::*;');
+  fs.writeFileSync(path.join(root, sources[9]), 'struct McpAdapter { state: Arc<ApiState> }');
+  assert.ok(inspectInterfaceLifecycleBoundary(root).some(value => value.includes('MCP Interface adapter retains')));
+  fs.writeFileSync(path.join(root, sources[9]), 'struct McpAdapter { dispatch: Arc<dyn McpDispatchService> }');
+  const current = 'api/crates/api/console-settings/src/routes/settings/system_backups/mod.rs';
+  const former = 'api/apps/api-server/src/routes/settings/system_backups/mod.rs';
+  for (const route of [current, former]) {
+    fs.mkdirSync(path.dirname(path.join(root, route)), { recursive: true });
+    fs.writeFileSync(path.join(root, route), 'require_session(&state); require_csrf(&headers);');
+  }
+  assert.deepEqual(inspectInterfaceLifecycleBoundary(root), [`${former} retains a direct route authentication owner`]);
+});
+
+
+test('Interaction retention is enforced at the canonical identity and Terminal owners behind clean Root facades', (t) => {
+  const productionRoot = path.resolve(__dirname, '../../../..');
+  const terminal = 'api/crates/api/console-interaction/src/routes/terminal/mod.rs';
+  const original = productionRustSources(path.join(productionRoot, terminal));
+  const root = fixture();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const target = path.join(root, terminal);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, original);
+  const facade = path.join(root, 'api/apps/api-server/src/routes/terminal/mod.rs');
+  fs.mkdirSync(path.dirname(facade), { recursive: true });
+  fs.writeFileSync(facade, 'pub use api_console_interaction::routes::terminal::*;');
+  assert.deepEqual(inspectInterfaceLifecycleBoundary(root), []);
+  const retained = original.replace('struct TerminalAdapter {', 'struct TerminalAdapter { retained: Weak<ApiState>,');
+  assert.notEqual(retained, original);
+  fs.writeFileSync(target, retained);
+  assert.ok(inspectInterfaceLifecycleBoundary(root).includes(`${terminal} Interface adapter retains the global ApiState container`));
+  fs.writeFileSync(target, original);
+  fs.writeFileSync(path.join(root, sources[5]), 'struct PublicProvidersAdapter { state: Weak<ApiState> }');
+  assert.ok(inspectInterfaceLifecycleBoundary(root).some(value => value.includes('public auth Interface adapter retains')));
+});
+
+test('Interaction protocol exceptions move exactly once without exempting former or neighboring routes', (t) => {
+  const root = fixture();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const current = 'api/crates/api/console-interaction/src/routes/assistant/websocket.rs';
+  const former = 'api/apps/api-server/src/routes/assistant/websocket.rs';
+  const neighbor = 'api/crates/api/console-interaction/src/routes/assistant/unowned.rs';
+  for (const route of [current, former, neighbor]) {
+    const target = path.join(root, route);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, 'require_session(&state); require_csrf(&headers);');
+  }
+  assert.deepEqual(inspectInterfaceLifecycleBoundary(root).sort(), [former, neighbor]
+    .map(route => `${route} retains a direct route authentication owner`).sort());
 });

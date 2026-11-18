@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Alert, Form, Input, Select, Tag } from 'antd';
+import { Alert, App, Form, Input, Select, Tag } from 'antd';
 import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
 import MessageOutlined from '@ant-design/icons/es/icons/MessageOutlined';
 import { useTranslation } from 'react-i18next';
@@ -38,6 +38,7 @@ export function NotificationInstanceDrawer({
   onSaved: (options?: { keepOpen: boolean }) => void;
 }) {
   const { t } = useTranslation('notifications');
+  const { message } = App.useApp();
   const localizeType = useNotificationTypeLocalization();
   const [savedInstance, setSavedInstance] = useState(instance);
   const [selectedIdentity, setSelectedIdentity] = useState<string>();
@@ -297,6 +298,7 @@ export function NotificationInstanceDrawer({
       }}
       onSubmitSuccess={(result) => {
         draftConfig.current = undefined;
+        void message.success(t('save_success'), 1);
         if (type?.authorization) {
           setBeginOnMount(createdInSubmit.current);
           setSavedInstance(result as NotificationInstance);

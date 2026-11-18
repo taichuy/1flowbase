@@ -1,118 +1,21 @@
-pub mod agent_logs;
-pub mod anthropic;
-#[path = "tool_callbacks/callback_adapter.rs"]
-pub(crate) mod callback_adapter;
-mod client_observer;
+pub use api_public_gateway::routes::application_public_api::agent_logs;
+pub use api_public_gateway::routes::application_public_api::anthropic;
+pub use api_public_gateway::routes::application_public_api::callback_adapter;
 pub mod compat_sse;
-pub(crate) mod compatibility_interface;
-pub(crate) mod delivery_receipt;
-pub mod ex;
-#[path = "tool_callbacks/llm_tool_visibility.rs"]
-pub(crate) mod llm_tool_visibility;
+pub use api_public_gateway::routes::application_public_api::compatibility_interface;
+pub use api_public_gateway::routes::application_public_api::delivery_receipt;
+pub use api_public_gateway::routes::application_public_api::ex;
+pub use api_public_gateway::routes::application_public_api::llm_tool_visibility;
 pub mod native;
-pub(crate) mod native_interface;
-pub(crate) mod native_read_interface;
-pub(crate) mod native_websocket;
-pub mod openai;
-mod provider_session;
-pub(crate) mod responses_websocket;
-pub mod sse;
-pub(crate) mod stream_terminal_fallback;
-#[path = "tool_callbacks/tool_callback_ids.rs"]
-pub(crate) mod tool_callback_ids;
-pub(crate) mod workflow_extension_interface;
-
-use std::sync::Arc;
-
-use axum::{extract::DefaultBodyLimit, Router};
-
-use crate::app_state::ApiState;
-
-pub fn router() -> Router<Arc<ApiState>> {
-    route_assembly().into_router()
-}
-
-pub(crate) fn route_assembly(
-) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
-    crate::external_route_assembly::ExternalRouteAssembly::new()
-        .route(
-            "/models",
-            crate::external_route_assembly::get(native::list_native_models),
-        )
-        .route(
-            "/runs",
-            crate::external_route_assembly::post(native::create_native_run),
-        )
-        .route(
-            "/runs/websocket",
-            crate::external_route_assembly::get(native_websocket::upgrade),
-        )
-        .route(
-            "/runs/:run_id",
-            crate::external_route_assembly::get(native::get_native_run),
-        )
-        .route(
-            "/runs/:run_id/cancel",
-            crate::external_route_assembly::post(native::cancel_native_run),
-        )
-        .route(
-            "/runs/:run_id/resume",
-            crate::external_route_assembly::post(native::resume_native_run),
-        )
-        .route(
-            "/files",
-            crate::external_route_assembly::post(native::upload_native_file),
-        )
-        .default_body_limit(DefaultBodyLimit::disable())
-}
-
-pub fn compatible_router() -> Router<Arc<ApiState>> {
-    compatible_route_assembly().into_router()
-}
-
-pub(crate) fn compatible_route_assembly(
-) -> crate::external_route_assembly::ExternalRouteAssembly<Arc<ApiState>> {
-    crate::external_route_assembly::ExternalRouteAssembly::new()
-        .route(
-            "/models",
-            crate::external_route_assembly::get(openai::list_models),
-        )
-        .route(
-            "/chat/completions",
-            crate::external_route_assembly::post(openai::create_chat_completion),
-        )
-        .route(
-            "/responses",
-            crate::external_route_assembly::post(openai::create_response),
-        )
-        .route(
-            "/v1/models",
-            crate::external_route_assembly::get(openai::list_models),
-        )
-        .route(
-            "/v1/chat/completions",
-            crate::external_route_assembly::post(openai::create_chat_completion),
-        )
-        .route(
-            "/v1/responses",
-            crate::external_route_assembly::get(responses_websocket::upgrade)
-                .post(openai::create_response),
-        )
-        .route(
-            "/v1/responses/compact",
-            crate::external_route_assembly::post(openai::create_response_compact),
-        )
-        .route(
-            "/v1/chat/completions/models",
-            crate::external_route_assembly::get(openai::list_models),
-        )
-        .route(
-            "/v1/messages/count_tokens",
-            crate::external_route_assembly::post(anthropic::count_message_tokens),
-        )
-        .route(
-            "/v1/messages",
-            crate::external_route_assembly::post(anthropic::create_message),
-        )
-        .default_body_limit(DefaultBodyLimit::disable())
-}
+pub use api_public_gateway::routes::application_public_api::native_interface;
+pub use api_public_gateway::routes::application_public_api::native_read_interface;
+pub use api_public_gateway::routes::application_public_api::native_websocket;
+pub use api_public_gateway::routes::application_public_api::openai;
+pub mod responses_websocket;
+pub use api_public_gateway::routes::application_public_api::sse;
+pub use api_public_gateway::routes::application_public_api::stream_terminal_fallback;
+pub use api_public_gateway::routes::application_public_api::tool_callback_ids;
+pub use api_public_gateway::routes::application_public_api::workflow_extension_interface;
+pub use api_public_gateway::routes::application_public_api::{
+    compatible_route_assembly, compatible_router, route_assembly, router,
+};

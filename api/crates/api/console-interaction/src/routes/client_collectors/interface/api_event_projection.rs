@@ -1,0 +1,21 @@
+use super::*;
+use crate::openapi_interface::contract::{ApiOperationContext, ApiOutput};
+use serde_json::Value;
+use std::sync::Arc;
+
+impl ApiOutput for CollectorAssetOutput {
+    fn document_output_unavailable(
+        _: &ApiOperationContext,
+    ) -> Option<domain::event_center::ApiEventUnavailableReason> {
+        Some(domain::event_center::ApiEventUnavailableReason::BinaryResponse)
+    }
+    fn project_document_output(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
+        Err(Arc::from(
+            "collector asset is a byte response without a JSON business view",
+        ))
+    }
+}
+
+#[cfg(test)]
+#[path = "_tests/api_event_projection.rs"]
+mod api_event_tests;

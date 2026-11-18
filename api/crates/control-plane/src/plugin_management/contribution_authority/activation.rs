@@ -38,6 +38,8 @@ impl HostContributionGrantPolicy {
                     "application.logs.read" | "application.logs.import" => Some("application-logs"),
                     "network.http.request" => Some("http-egress"),
                     "credential.manage" => Some("plugin-credential"),
+                    "ephemeral.manage" => Some("plugin-ephemeral"),
+                    "execution.gate" => Some("execution-gate"),
                     "event.subscribe" | "event.publish" => Some("managed-event"),
                     "plugin_data.owned.write" => Some("plugin-data"),
                     _ => plugin_framework::extension_bus::managed_interface_point_phase(
@@ -97,6 +99,11 @@ where
             || manifest.plugin_code()? != installation.provider_code
             || manifest.version != installation.plugin_version
             || serde_json::to_value(&manifest.managed)? != installation.metadata_json["managed"]
+            || manifest.shared_resource_contract.as_deref()
+                != installation
+                    .metadata_json
+                    .get("shared_resource_contract")
+                    .and_then(serde_json::Value::as_str)
         {
             return Err(
                 ControlPlaneError::Conflict("managed_contribution_identity_mismatch").into(),
@@ -169,49 +176,3 @@ where
 #[cfg(test)]
 #[path = "_tests/activation.rs"]
 mod tests;
-
-/// Read the same verified artifact for schema restoration and activation authority.
-pub async fn verified_installed_managed_manifest<R: PluginRepository>(
-    repository: &R,
-    node_id: &str,
-    install_root: &std::path::Path,
-    installation_id: Uuid,
-) -> Result<Option<plugin_framework::PluginManifestV1>> {
-    use sha2::{Digest, Sha256};
-    let installation = repository
-        .get_installation(installation_id)
-        .await?
-        .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
-    if installation.contract_version != "1flowbase.extension-bus/v1" {
-        return Ok(None);
-    }
-    let local = crate::plugin_management::ready_current_node_plugin_installation(
-        repository,
-        node_id,
-        install_root,
-        installation_id,
-    )
-    .await?;
-    let manifest_path = std::path::Path::new(
-        local
-            .local_path()
-            .ok_or(ControlPlaneError::PluginUnavailable)?,
-    )
-    .join("manifest.yaml");
-    let raw = tokio::fs::read(manifest_path).await?;
-    let fingerprint = format!("sha256:{:x}", base16ct::HexDisplay(&Sha256::digest(&raw)));
-    if local.installation.verification_status != domain::PluginVerificationStatus::Valid
-        || local.artifact.manifest_fingerprint.as_deref() != Some(fingerprint.as_str())
-    {
-        return Err(ControlPlaneError::Conflict("managed_schema_artifact_identity").into());
-    }
-    let manifest = plugin_framework::parse_plugin_manifest(std::str::from_utf8(&raw)?)?;
-    if manifest.publisher_namespace != local.installation.organization
-        || manifest.plugin_code()? != local.installation.provider_code
-        || manifest.version != local.installation.plugin_version
-        || manifest.managed.is_none()
-    {
-        return Err(ControlPlaneError::Conflict("managed_schema_artifact_identity").into());
-    }
-    Ok(Some(manifest))
-}

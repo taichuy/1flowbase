@@ -5,6 +5,7 @@ export interface NotificationAuthorizationDescriptor {
   supports_delivery_window?: boolean;
   actions: Array<{ code: string; label: string; kind: 'qr_code' }>;
   managed_secret_keys: string[];
+  managed_identity_keys?: string[];
 }
 export interface NotificationDeliveryWindowView {
   status: 'unknown' | 'waiting_for_message' | 'active' | 'expired';
@@ -65,7 +66,7 @@ export interface NotificationType {
   input_form: ConsolePluginFormSchema;
   output_schema: Record<string, unknown>;
   log?: NotificationLogDescriptor | null;
-  receive?: { default_system_prompt: string; mcp_tools: unknown } | null;
+  receive?: { default_system_prompt: string; mcp_tools: unknown; mcp_instance_id?: string | null } | null;
   authorization?: NotificationAuthorizationDescriptor | null;
   i18n?: Partial<Record<'zh_Hans' | 'en_US', NotificationTypeLocale>>;
   contribution_id: string;

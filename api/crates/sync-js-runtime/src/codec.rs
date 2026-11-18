@@ -19,6 +19,24 @@ pub(crate) struct StrictCodec<'js> {
     array_class: rquickjs::qjs::JSClassID,
 }
 impl<'js> StrictCodec<'js> {
+    pub(crate) fn exception_message(&self, value: JsValue<'js>, max: usize) -> Option<String> {
+        // Only native Error instances and primitive strings qualify. In particular,
+        // do not invoke a proxy, accessor, toString or guest-overridden intrinsic.
+        let message = if value.is_string() {
+            value
+        } else {
+            let error = value.as_object().filter(|object| object.is_error())?;
+            self.data(error, "message").ok()?
+        };
+        let mut text = message.as_string()?.to_string().ok()?;
+        let mut end = text.len().min(max);
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        text.truncate(end);
+        (!text.is_empty()).then_some(text)
+    }
+
     pub fn capture(ctx: &Ctx<'js>) -> rquickjs::Result<Self> {
         let plain: Object = ctx.eval("({})")?;
         let array: Object = ctx.eval("[]")?;

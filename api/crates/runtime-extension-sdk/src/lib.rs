@@ -52,16 +52,17 @@ pub use extension_contracts::{
     MULTIPLEX_CALL_EVENT_BUDGET_BYTES, MULTIPLEX_OUTPUT_BUDGET_BYTES, STDIO_JSON_MULTIPLEX_V1,
 };
 pub use extension_contracts::{
-    NotificationAttachmentDownloadOutcome, NotificationAttachmentReference,
-    NotificationAuthorizationAction, NotificationAuthorizationActionKind,
-    NotificationAuthorizationDescriptor, NotificationAuthorizationOperation,
-    NotificationAuthorizationStatus, NotificationAuthorizationUserAction,
-    NotificationAuthorizationView, NotificationDeliveryWindowStatus,
-    NotificationDeliveryWindowView, NotificationFailureCode, NotificationMcpOperation,
-    NotificationMcpToolDescriptor, NotificationOperation, NotificationReceiveBatch,
-    NotificationReceiveDescriptor, NotificationReceiveOutcome, NotificationReceivedAttachment,
-    NotificationReceivedMessage, NotificationRuntimeInput, NotificationRuntimeResult,
-    NotificationSendOutcome, NotificationSendTarget, NotificationSender,
+    NotificationActivityState, NotificationAttachmentDownloadOutcome,
+    NotificationAttachmentReference, NotificationAuthorizationAction,
+    NotificationAuthorizationActionKind, NotificationAuthorizationDescriptor,
+    NotificationAuthorizationOperation, NotificationAuthorizationStatus,
+    NotificationAuthorizationUserAction, NotificationAuthorizationView, NotificationContractError,
+    NotificationDeliveryWindowStatus, NotificationDeliveryWindowView, NotificationFailureCode,
+    NotificationMcpOperation, NotificationMcpToolDescriptor, NotificationMessageReference,
+    NotificationOperation, NotificationReceiveBatch, NotificationReceiveDescriptor,
+    NotificationReceiveOutcome, NotificationReceivedAttachment, NotificationReceivedMessage,
+    NotificationRuntimeInput, NotificationRuntimeResult, NotificationSendOutcome,
+    NotificationSendReceipt, NotificationSendTarget, NotificationSender,
     NOTIFICATION_MAX_ATTACHMENT_CHUNK_BYTES, NOTIFICATION_MAX_RECEIVE_BATCH_BYTES,
     NOTIFICATION_MAX_RECEIVE_MESSAGES, NOTIFICATION_MAX_RECEIVE_WAIT_SECONDS,
     NOTIFICATION_RECEIVE_PERMISSION, NOTIFICATION_RECEIVE_POINT,
@@ -75,7 +76,7 @@ pub use multiplex::{
 };
 pub use notification::{
     complete_authorizable_notification, execute_authorizable_notification, execute_communication,
-    execute_notification, prepare_authorizable_notification,
+    execute_notification, notification_send_receipt, prepare_authorizable_notification,
 };
 pub use plugin_data::{PluginDataClient, RuntimeExtensionSdkError};
 pub use simulator::PluginDataHostSimulator;
@@ -101,6 +102,12 @@ pub use extension_contracts::{
 };
 pub use managed_event::{serve_communication_command, serve_managed_event};
 
+mod plugin_ephemeral;
+pub use extension_contracts::{
+    PluginEphemeralError, PluginEphemeralRequest, PluginEphemeralResponse,
+};
+pub use plugin_ephemeral::{PluginEphemeralClient, PluginEphemeralClientError};
+
 mod plugin_credential;
 pub use extension_contracts::{
     PluginCredentialError, PluginCredentialRequest, PluginCredentialResponse,
@@ -120,3 +127,12 @@ pub use extension_contracts::ManagedServiceCallContext;
 /// Optional per-call synchronous JavaScript and release-anchored packaged scripts.
 #[cfg(feature = "javascript")]
 pub use sync_js_runtime as javascript;
+
+#[path = "host_services/plugin_execution_gate.rs"]
+mod plugin_execution_gate;
+pub use extension_contracts::{
+    PluginExecutionGateError, PluginExecutionGateRequest, PluginExecutionGateResponse,
+};
+pub use plugin_execution_gate::{
+    PluginExecutionGateClient, PluginExecutionGateClientError, PluginExecutionGatePermit,
+};

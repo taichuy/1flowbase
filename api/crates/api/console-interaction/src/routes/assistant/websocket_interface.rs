@@ -1,0 +1,812 @@
+use std::sync::Arc;
+
+use control_plane::{
+    application_public_api::run_service::{
+        ApplicationPublishedFlowRunRepository, ListAssistantConversationsInput,
+    },
+    orchestration_runtime::{CancelFlowRunCommand, OrchestrationRuntimeService},
+    ports::OrchestrationRuntimeRepository,
+};
+use interface_runtime::{InterfaceContract, UserPrincipal};
+use serde_json::Value;
+use tokio::sync::broadcast;
+use uuid::Uuid;
+
+use super::{
+    abort_assistant_execution_in, launch_assistant_execution, prepare_assistant_execution,
+    AssistantClientToolBridge, AssistantClientToolId, AssistantConversationPageResponse,
+    AssistantRunDependencies, StartAssistantRunBody,
+};
+use super::{
+    conversation_events::{
+        AssistantConversationEvent, AssistantConversationEventScope,
+        AssistantConversationSummaryResponse,
+    },
+    websocket::enabled_client_tools_for_connection,
+};
+use crate::{
+    error_response::ApiError,
+    routes::console_interface::{
+        self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
+        ConsoleInterfaceTargetError,
+    },
+};
+
+pub(crate) const BINDING_ID: &str = "ws.console.assistant.runs.command.v1";
+
+pub(crate) enum AssistantWebSocketCommandInput {
+    SubscribeConversations {
+        application_id: Uuid,
+    },
+    Create {
+        application_id: Uuid,
+        request: StartAssistantRunBody,
+        request_headers: axum::http::HeaderMap,
+        client_tool_ids: Vec<AssistantClientToolId>,
+        client_tool_bridge: AssistantClientToolBridge,
+    },
+    Attach {
+        application_id: Uuid,
+        run_id: Uuid,
+        after_event_id: Option<String>,
+        client_tool_ids: Vec<AssistantClientToolId>,
+        client_tool_bridge: AssistantClientToolBridge,
+    },
+    Cancel {
+        application_id: Uuid,
+        run_id: Uuid,
+    },
+    ClientToolResult {
+        connection_id: Uuid,
+        call_id: Uuid,
+        result: Value,
+        is_error: bool,
+    },
+}
+
+impl InterfaceContract for AssistantWebSocketCommandInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema([
+                ("variant", mp::tag_schema("SubscribeConversations")),
+                ("application_id", mp::text_schema()),
+            ]),
+            mp::object_schema([
+                ("variant", mp::tag_schema("Create")),
+                ("application_id", mp::text_schema()),
+                (
+                    "request",
+                    mp::object_schema([
+                        ("application_id", mp::text_schema()),
+                        (
+                            "conversation_id",
+                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                        ),
+                        (
+                            "query",
+                            mp::object_schema([("byte_count", mp::count_schema())]),
+                        ),
+                        (
+                            "page_references",
+                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("page_title",mp::object_schema([("byte_count",mp::count_schema())])), ("outer_html",mp::object_schema([("byte_count",mp::count_schema())]))])}),
+                        ),
+                        (
+                            "title",
+                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+                (
+                    "client_tool_ids",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("GetClientContext"))]), mp::object_schema([("variant",mp::tag_schema("RefreshClientView"))]), mp::object_schema([("variant",mp::tag_schema("ListPageBlocks"))]), mp::object_schema([("variant",mp::tag_schema("InspectBlockRender"))]), mp::object_schema([("variant",mp::tag_schema("SearchBlockRender"))]), mp::object_schema([("variant",mp::tag_schema("ReadBlockRenderFragment"))]), mp::object_schema([("variant",mp::tag_schema("ClickBlockElement"))]), mp::object_schema([("variant",mp::tag_schema("RecompileBlock"))])])}),
+                ),
+            ]),
+            mp::object_schema([
+                ("variant", mp::tag_schema("Attach")),
+                ("application_id", mp::text_schema()),
+                ("run_id", mp::text_schema()),
+                (
+                    "after_event_id",
+                    serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                ),
+                (
+                    "client_tool_ids",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("GetClientContext"))]), mp::object_schema([("variant",mp::tag_schema("RefreshClientView"))]), mp::object_schema([("variant",mp::tag_schema("ListPageBlocks"))]), mp::object_schema([("variant",mp::tag_schema("InspectBlockRender"))]), mp::object_schema([("variant",mp::tag_schema("SearchBlockRender"))]), mp::object_schema([("variant",mp::tag_schema("ReadBlockRenderFragment"))]), mp::object_schema([("variant",mp::tag_schema("ClickBlockElement"))]), mp::object_schema([("variant",mp::tag_schema("RecompileBlock"))])])}),
+                ),
+            ]),
+            mp::object_schema([
+                ("variant", mp::tag_schema("Cancel")),
+                ("application_id", mp::text_schema()),
+                ("run_id", mp::text_schema()),
+            ]),
+            mp::object_schema([
+                ("variant", mp::tag_schema("ClientToolResult")),
+                ("connection_id", mp::text_schema()),
+                ("call_id", mp::text_schema()),
+                ("result", mp::json_summary_schema()),
+                ("is_error", serde_json::json!({"type":"boolean"})),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::SubscribeConversations {
+                application_id: _field_application_id,
+                ..
+            } => mp::object_value([
+                (
+                    "variant",
+                    serde_json::Value::String("SubscribeConversations".to_owned()),
+                ),
+                (
+                    "application_id",
+                    serde_json::Value::String((_field_application_id).to_string()),
+                ),
+            ]),
+            Self::Create {
+                application_id: _field_application_id,
+                request: _field_request,
+                client_tool_ids: _field_client_tool_ids,
+                ..
+            } => mp::object_value([
+                ("variant", serde_json::Value::String("Create".to_owned())),
+                (
+                    "application_id",
+                    serde_json::Value::String((_field_application_id).to_string()),
+                ),
+                (
+                    "request",
+                    mp::object_value([
+                        (
+                            "application_id",
+                            serde_json::Value::String((_field_request).application_id.to_string()),
+                        ),
+                        (
+                            "conversation_id",
+                            match (_field_request).conversation_id.as_ref() {
+                                Some(item) => serde_json::Value::String((item).to_string()),
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                        (
+                            "query",
+                            mp::object_value([(
+                                "byte_count",
+                                serde_json::json!((_field_request).query.len()),
+                            )]),
+                        ),
+                        ("page_references", {
+                            if (_field_request).page_references.len() > 32 {
+                                return None;
+                            }
+                            serde_json::Value::Array(
+                                (_field_request)
+                                    .page_references
+                                    .iter()
+                                    .map(|item| {
+                                        Some(mp::object_value([
+                                            (
+                                                "page_title",
+                                                mp::object_value([(
+                                                    "byte_count",
+                                                    serde_json::json!((item).page_title.len()),
+                                                )]),
+                                            ),
+                                            (
+                                                "outer_html",
+                                                mp::object_value([(
+                                                    "byte_count",
+                                                    serde_json::json!((item).outer_html.len()),
+                                                )]),
+                                            ),
+                                        ]))
+                                    })
+                                    .collect::<Option<Vec<_>>>()?,
+                            )
+                        }),
+                        (
+                            "title",
+                            match (_field_request).title.as_ref() {
+                                Some(item) => mp::object_value([(
+                                    "byte_count",
+                                    serde_json::json!((item).len()),
+                                )]),
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                    ]),
+                ),
+                ("client_tool_ids", {
+                    if (_field_client_tool_ids).len() > 32 {
+                        return None;
+                    }
+                    serde_json::Value::Array((_field_client_tool_ids).iter().map(|item| Some(match item {crate::routes::assistant::AssistantClientToolId::GetClientContext => mp::object_value([("variant",serde_json::Value::String("GetClientContext".to_owned()))]), crate::routes::assistant::AssistantClientToolId::RefreshClientView => mp::object_value([("variant",serde_json::Value::String("RefreshClientView".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ListPageBlocks => mp::object_value([("variant",serde_json::Value::String("ListPageBlocks".to_owned()))]), crate::routes::assistant::AssistantClientToolId::InspectBlockRender => mp::object_value([("variant",serde_json::Value::String("InspectBlockRender".to_owned()))]), crate::routes::assistant::AssistantClientToolId::SearchBlockRender => mp::object_value([("variant",serde_json::Value::String("SearchBlockRender".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ReadBlockRenderFragment => mp::object_value([("variant",serde_json::Value::String("ReadBlockRenderFragment".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ClickBlockElement => mp::object_value([("variant",serde_json::Value::String("ClickBlockElement".to_owned()))]), crate::routes::assistant::AssistantClientToolId::RecompileBlock => mp::object_value([("variant",serde_json::Value::String("RecompileBlock".to_owned()))])})).collect::<Option<Vec<_>>>()?)
+                }),
+            ]),
+            Self::Attach {
+                application_id: _field_application_id,
+                run_id: _field_run_id,
+                after_event_id: _field_after_event_id,
+                client_tool_ids: _field_client_tool_ids,
+                ..
+            } => mp::object_value([
+                ("variant", serde_json::Value::String("Attach".to_owned())),
+                (
+                    "application_id",
+                    serde_json::Value::String((_field_application_id).to_string()),
+                ),
+                (
+                    "run_id",
+                    serde_json::Value::String((_field_run_id).to_string()),
+                ),
+                (
+                    "after_event_id",
+                    match (_field_after_event_id).as_ref() {
+                        Some(item) => mp::text(item)?,
+                        None => serde_json::Value::Null,
+                    },
+                ),
+                ("client_tool_ids", {
+                    if (_field_client_tool_ids).len() > 32 {
+                        return None;
+                    }
+                    serde_json::Value::Array((_field_client_tool_ids).iter().map(|item| Some(match item {crate::routes::assistant::AssistantClientToolId::GetClientContext => mp::object_value([("variant",serde_json::Value::String("GetClientContext".to_owned()))]), crate::routes::assistant::AssistantClientToolId::RefreshClientView => mp::object_value([("variant",serde_json::Value::String("RefreshClientView".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ListPageBlocks => mp::object_value([("variant",serde_json::Value::String("ListPageBlocks".to_owned()))]), crate::routes::assistant::AssistantClientToolId::InspectBlockRender => mp::object_value([("variant",serde_json::Value::String("InspectBlockRender".to_owned()))]), crate::routes::assistant::AssistantClientToolId::SearchBlockRender => mp::object_value([("variant",serde_json::Value::String("SearchBlockRender".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ReadBlockRenderFragment => mp::object_value([("variant",serde_json::Value::String("ReadBlockRenderFragment".to_owned()))]), crate::routes::assistant::AssistantClientToolId::ClickBlockElement => mp::object_value([("variant",serde_json::Value::String("ClickBlockElement".to_owned()))]), crate::routes::assistant::AssistantClientToolId::RecompileBlock => mp::object_value([("variant",serde_json::Value::String("RecompileBlock".to_owned()))])})).collect::<Option<Vec<_>>>()?)
+                }),
+            ]),
+            Self::Cancel {
+                application_id: _field_application_id,
+                run_id: _field_run_id,
+                ..
+            } => mp::object_value([
+                ("variant", serde_json::Value::String("Cancel".to_owned())),
+                (
+                    "application_id",
+                    serde_json::Value::String((_field_application_id).to_string()),
+                ),
+                (
+                    "run_id",
+                    serde_json::Value::String((_field_run_id).to_string()),
+                ),
+            ]),
+            Self::ClientToolResult {
+                connection_id: _field_connection_id,
+                call_id: _field_call_id,
+                result: _field_result,
+                is_error: _field_is_error,
+                ..
+            } => mp::object_value([
+                (
+                    "variant",
+                    serde_json::Value::String("ClientToolResult".to_owned()),
+                ),
+                (
+                    "connection_id",
+                    serde_json::Value::String((_field_connection_id).to_string()),
+                ),
+                (
+                    "call_id",
+                    serde_json::Value::String((_field_call_id).to_string()),
+                ),
+                ("result", mp::json_summary(_field_result)),
+                ("is_error", serde_json::Value::Bool(*(_field_is_error))),
+            ]),
+        })
+    }
+
+    const CONTRACT_ID: &'static str = "console-assistant-websocket-command-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+pub(crate) enum AssistantWebSocketCommandOutput {
+    ConversationSubscription(AssistantConversationSubscription),
+    Run(AssistantWebSocketRun),
+    Cancelled,
+    ClientToolResult { completed: bool },
+}
+
+impl InterfaceContract for AssistantWebSocketCommandOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema([
+                ("variant", mp::tag_schema("ConversationSubscription")),
+                (
+                    "0",
+                    mp::object_schema([(
+                        "snapshot",
+                        mp::object_schema([
+                            (
+                                "items",
+                                mp::object_schema([("item_count", mp::count_schema())]),
+                            ),
+                            ("total", serde_json::json!({"type":"integer"})),
+                            ("page", serde_json::json!({"type":"integer"})),
+                            ("page_size", serde_json::json!({"type":"integer"})),
+                        ]),
+                    )]),
+                ),
+            ]),
+            mp::object_schema([
+                ("variant", mp::tag_schema("Run")),
+                (
+                    "0",
+                    mp::object_schema([
+                        ("run_id", mp::text_schema()),
+                        (
+                            "from_sequence",
+                            serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
+                        ),
+                    ]),
+                ),
+            ]),
+            mp::object_schema([("variant", mp::tag_schema("Cancelled"))]),
+            mp::object_schema([
+                ("variant", mp::tag_schema("ClientToolResult")),
+                ("completed", serde_json::json!({"type":"boolean"})),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::ConversationSubscription(_field_0) => mp::object_value([
+                (
+                    "variant",
+                    serde_json::Value::String("ConversationSubscription".to_owned()),
+                ),
+                (
+                    "0",
+                    mp::object_value([(
+                        "snapshot",
+                        mp::object_value([
+                            (
+                                "items",
+                                mp::object_value([(
+                                    "item_count",
+                                    serde_json::json!((_field_0).snapshot.items.len()),
+                                )]),
+                            ),
+                            ("total", serde_json::json!((_field_0).snapshot.total)),
+                            ("page", serde_json::json!((_field_0).snapshot.page)),
+                            (
+                                "page_size",
+                                serde_json::json!((_field_0).snapshot.page_size),
+                            ),
+                        ]),
+                    )]),
+                ),
+            ]),
+            Self::Run(_field_0) => mp::object_value([
+                ("variant", serde_json::Value::String("Run".to_owned())),
+                (
+                    "0",
+                    mp::object_value([
+                        (
+                            "run_id",
+                            serde_json::Value::String((_field_0).run_id.to_string()),
+                        ),
+                        (
+                            "from_sequence",
+                            match (_field_0).from_sequence.as_ref() {
+                                Some(item) => serde_json::json!(*(item)),
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                    ]),
+                ),
+            ]),
+            Self::Cancelled => {
+                mp::object_value([("variant", serde_json::Value::String("Cancelled".to_owned()))])
+            }
+            Self::ClientToolResult {
+                completed: _field_completed,
+                ..
+            } => mp::object_value([
+                (
+                    "variant",
+                    serde_json::Value::String("ClientToolResult".to_owned()),
+                ),
+                ("completed", serde_json::Value::Bool(*(_field_completed))),
+            ]),
+        })
+    }
+
+    const CONTRACT_ID: &'static str = "console-assistant-websocket-command-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+pub(crate) struct AssistantConversationSubscription {
+    pub(crate) snapshot: AssistantConversationPageResponse,
+    pub(crate) events: broadcast::Receiver<AssistantConversationEvent>,
+}
+
+pub(crate) struct AssistantWebSocketRun {
+    pub(crate) run_id: Uuid,
+    pub(crate) from_sequence: Option<i64>,
+}
+
+struct AssistantWebSocketCommandAdapter {
+    dependencies: AssistantRunDependencies,
+}
+
+pub(crate) fn command_port(
+    dependencies: AssistantRunDependencies,
+) -> Arc<dyn ConsoleInterfacePort<AssistantWebSocketCommandInput, AssistantWebSocketCommandOutput>>
+{
+    Arc::new(AssistantWebSocketCommandAdapter { dependencies })
+}
+
+impl AssistantWebSocketCommandAdapter {
+    async fn subscribe_conversations(
+        &self,
+        principal: &UserPrincipal,
+        application_id: Uuid,
+    ) -> Result<AssistantConversationSubscription, ApiError> {
+        let actor = principal.actor();
+        let scope = AssistantConversationEventScope {
+            workspace_id: actor.current_workspace_id,
+            application_id,
+            actor_user_id: actor.user_id,
+        };
+        let page = self
+            .dependencies
+            .store
+            .list_assistant_conversations(&ListAssistantConversationsInput {
+                workspace_id: scope.workspace_id,
+                application_id: scope.application_id,
+                actor_user_id: scope.actor_user_id,
+                page: 1,
+                page_size: 20,
+            })
+            .await?;
+        Ok(AssistantConversationSubscription {
+            snapshot: AssistantConversationPageResponse {
+                items: page
+                    .items
+                    .into_iter()
+                    .map(AssistantConversationSummaryResponse::from)
+                    .collect(),
+                total: page.total,
+                page: page.page,
+                page_size: page.page_size,
+            },
+            events: self.dependencies.conversation_events.subscribe(scope),
+        })
+    }
+
+    async fn create_run(
+        &self,
+        principal: &UserPrincipal,
+        application_id: Uuid,
+        request: StartAssistantRunBody,
+        request_headers: axum::http::HeaderMap,
+        client_tool_ids: Vec<AssistantClientToolId>,
+        client_tool_bridge: AssistantClientToolBridge,
+    ) -> Result<AssistantWebSocketRun, ApiError> {
+        if request.application_id != application_id {
+            return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+                "assistant_application_id",
+            )
+            .into());
+        }
+        let execution = prepare_assistant_execution(
+            &self.dependencies.store,
+            &self.dependencies.published_plan_cache,
+            &self.dependencies.published_publication_cache,
+            &request_headers,
+            principal.actor(),
+            request,
+        )
+        .await?;
+        let enabled_client_tools =
+            enabled_client_tools_for_connection(&execution.enabled_client_tools, &client_tool_ids);
+        tracing::debug!(
+            application_id = %application_id,
+            declared_client_tools = ?client_tool_ids,
+            preferred_client_tools = ?execution.enabled_client_tools,
+            enabled_client_tools = ?enabled_client_tools,
+            "Assistant WebSocket client tool selection"
+        );
+        let client_tool_bridge = Arc::new(
+            client_tool_bridge
+                .for_tools(enabled_client_tools, client_tool_ids)
+                .await,
+        );
+        let run_id = launch_assistant_execution(
+            self.dependencies.clone(),
+            execution,
+            Some(client_tool_bridge),
+        )
+        .await?;
+        Ok(AssistantWebSocketRun {
+            run_id,
+            from_sequence: None,
+        })
+    }
+
+    async fn attach_run(
+        &self,
+        principal: &UserPrincipal,
+        application_id: Uuid,
+        run_id: Uuid,
+        after_event_id: Option<String>,
+        client_tool_ids: Vec<AssistantClientToolId>,
+        client_tool_bridge: AssistantClientToolBridge,
+    ) -> Result<AssistantWebSocketRun, ApiError> {
+        let actor = principal.actor();
+        let run = self
+            .dependencies
+            .store
+            .get_flow_run(application_id, run_id)
+            .await?
+            .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                "flow_run",
+            ))?;
+        if run.created_by != actor.user_id {
+            return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+                "assistant_run",
+            )
+            .into());
+        }
+        let from_sequence = api_host_kernel::native_websocket_cursor::sequence_from_event_id(
+            run_id,
+            after_event_id.as_deref(),
+        )
+        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("event_id"))?;
+        let session = self
+            .dependencies
+            .assistant_client_sessions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(&run_id)
+            .cloned()
+            .ok_or(control_plane::errors::ControlPlaneError::Conflict(
+                "assistant_client_session",
+            ))?;
+        session
+            .replace_connection(&client_tool_bridge, client_tool_ids)
+            .await;
+        Ok(AssistantWebSocketRun {
+            run_id,
+            from_sequence,
+        })
+    }
+
+    async fn cancel_run(
+        &self,
+        principal: &UserPrincipal,
+        application_id: Uuid,
+        run_id: Uuid,
+    ) -> Result<(), ApiError> {
+        let actor = principal.actor();
+        let run = self
+            .dependencies
+            .store
+            .get_flow_run(application_id, run_id)
+            .await?
+            .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                "flow_run",
+            ))?;
+        if run.created_by != actor.user_id {
+            return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+                "assistant_run",
+            )
+            .into());
+        }
+        abort_assistant_execution_in(&self.dependencies.assistant_executions, run_id);
+        let runtime = OrchestrationRuntimeService::new(
+            self.dependencies.store.clone(),
+            crate::provider_runtime::ApiProviderRuntime::new_with_activity(
+                self.dependencies.provider_runtime.clone(),
+                self.dependencies.runtime_activity.clone(),
+            ),
+            self.dependencies.runtime_engine.clone(),
+            self.dependencies.provider_secret_master_key.clone(),
+            self.dependencies.provider_transport_store.clone(),
+            self.dependencies.model_billing_require_provider_usage,
+        )
+        .with_published_plan_cache(self.dependencies.published_plan_cache.clone())
+        .with_node_artifact_context(
+            self.dependencies.api_node_id.clone(),
+            self.dependencies.provider_install_root.clone(),
+        )
+        .with_file_storage_registry(self.dependencies.file_storage_registry.clone())
+        .with_notification_sender(self.dependencies.notification_sender.clone())
+        .with_llm_routing_counter_store(self.dependencies.cache_store.clone())
+        .with_provider_request_log_queue(self.dependencies.task_queue.clone())
+        .with_runtime_event_stream(self.dependencies.runtime_event_stream.clone());
+        runtime
+            .cancel_flow_run(CancelFlowRunCommand {
+                actor_user_id: actor.user_id,
+                application_id,
+                flow_run_id: run_id,
+            })
+            .await?;
+        Ok(())
+    }
+
+    async fn complete_client_tool_result(
+        &self,
+        connection_id: Uuid,
+        call_id: Uuid,
+        result: Value,
+        is_error: bool,
+    ) -> bool {
+        let sessions = self
+            .dependencies
+            .assistant_client_sessions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        for session in sessions {
+            if session
+                .complete_for_connection(connection_id, call_id, result.clone(), is_error)
+                .await
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    async fn execute_inner(
+        &self,
+        principal: &UserPrincipal,
+        input: AssistantWebSocketCommandInput,
+    ) -> Result<AssistantWebSocketCommandOutput, ApiError> {
+        match input {
+            AssistantWebSocketCommandInput::SubscribeConversations { application_id } => {
+                Ok(AssistantWebSocketCommandOutput::ConversationSubscription(
+                    self.subscribe_conversations(principal, application_id)
+                        .await?,
+                ))
+            }
+            AssistantWebSocketCommandInput::Create {
+                application_id,
+                request,
+                request_headers,
+                client_tool_ids,
+                client_tool_bridge,
+            } => Ok(AssistantWebSocketCommandOutput::Run(
+                self.create_run(
+                    principal,
+                    application_id,
+                    request,
+                    request_headers,
+                    client_tool_ids,
+                    client_tool_bridge,
+                )
+                .await?,
+            )),
+            AssistantWebSocketCommandInput::Attach {
+                application_id,
+                run_id,
+                after_event_id,
+                client_tool_ids,
+                client_tool_bridge,
+            } => Ok(AssistantWebSocketCommandOutput::Run(
+                self.attach_run(
+                    principal,
+                    application_id,
+                    run_id,
+                    after_event_id,
+                    client_tool_ids,
+                    client_tool_bridge,
+                )
+                .await?,
+            )),
+            AssistantWebSocketCommandInput::Cancel {
+                application_id,
+                run_id,
+            } => {
+                self.cancel_run(principal, application_id, run_id).await?;
+                Ok(AssistantWebSocketCommandOutput::Cancelled)
+            }
+            AssistantWebSocketCommandInput::ClientToolResult {
+                connection_id,
+                call_id,
+                result,
+                is_error,
+            } => Ok(AssistantWebSocketCommandOutput::ClientToolResult {
+                completed: self
+                    .complete_client_tool_result(connection_id, call_id, result, is_error)
+                    .await,
+            }),
+        }
+    }
+}
+
+impl ConsoleInterfacePort<AssistantWebSocketCommandInput, AssistantWebSocketCommandOutput>
+    for AssistantWebSocketCommandAdapter
+{
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: AssistantWebSocketCommandInput,
+    ) -> ConsoleInterfaceFuture<'a, AssistantWebSocketCommandOutput> {
+        Box::pin(async move {
+            self.execute_inner(principal, input)
+                .await
+                .map_err(ConsoleInterfaceTargetError)
+        })
+    }
+}
+
+const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[ConsoleInterfaceDeclaration {
+    interface_id: "assistant.runs.websocket.command",
+    binding_id: BINDING_ID,
+    method: "GET",
+    path: "/api/console/assistant/runs/websocket",
+    mutating: true,
+}];
+
+pub fn compile_registry(
+    dependencies: AssistantRunDependencies,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    compile_registry_with_port(command_port(dependencies))
+}
+
+fn compile_registry_with_port(
+    port: Arc<
+        dyn ConsoleInterfacePort<AssistantWebSocketCommandInput, AssistantWebSocketCommandOutput>,
+    >,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    console_interface::compile_registry(
+        "api-server.console-assistant-websocket-commands",
+        "graph:console-assistant-websocket-commands-v1",
+        DECLARATIONS,
+        port,
+    )
+}
+
+#[cfg(test)]
+struct UnavailableAssistantWebSocketCommandPort;
+
+#[cfg(test)]
+impl ConsoleInterfacePort<AssistantWebSocketCommandInput, AssistantWebSocketCommandOutput>
+    for UnavailableAssistantWebSocketCommandPort
+{
+    fn execute<'a>(
+        &'a self,
+        _principal: &'a UserPrincipal,
+        _input: AssistantWebSocketCommandInput,
+    ) -> ConsoleInterfaceFuture<'a, AssistantWebSocketCommandOutput> {
+        Box::pin(async {
+            Err(ConsoleInterfaceTargetError(
+                anyhow::anyhow!("assistant websocket command fixture unavailable").into(),
+            ))
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use interface_runtime::BindingId;
+
+    use super::*;
+
+    #[test]
+    fn f09b2_registry_freezes_assistant_websocket_command_binding() {
+        let registry =
+            compile_registry_with_port(Arc::new(UnavailableAssistantWebSocketCommandPort)).unwrap();
+        for declaration in DECLARATIONS {
+            assert!(registry
+                .binding(&BindingId::new(declaration.binding_id).unwrap())
+                .is_some());
+        }
+        assert_eq!(registry.bindings().count(), DECLARATIONS.len());
+    }
+}
+
+#[path = "websocket_interface/api_event_projection.rs"]
+mod api_event_projection;

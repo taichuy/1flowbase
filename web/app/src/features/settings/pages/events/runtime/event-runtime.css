@@ -1,0 +1,154 @@
+.event-runtime {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.event-runtime .data-table__scroll-area {
+  overflow-y: hidden;
+}
+.event-runtime-freshness {
+  font-size: 12px;
+}
+
+.event-runtime-workbench {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  flex: none;
+}
+.event-runtime-source-button {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-inline: 0;
+}
+.event-runtime-source-button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.event-runtime-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+}
+.event-runtime-identity__value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-runtime-identity--full {
+  display: flex;
+  align-items: flex-start;
+}
+.event-runtime-identity--full .event-runtime-identity__value {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.event-runtime-identity > button {
+  flex: none;
+}
+.event-runtime-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 360px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.event-runtime-filters {
+  flex: 1 1 520px;
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.event-runtime-search {
+  flex: 1 1 240px;
+  width: auto;
+  min-width: 160px;
+}
+.event-runtime-filter-select {
+  min-width: 165px;
+}
+.event-runtime-loading {
+  min-height: 280px;
+}
+.event-runtime-details {
+  overflow-wrap: anywhere;
+}
+.event-runtime-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .event-runtime-filter-select {
+    flex: 1 1 140px;
+    min-width: 0;
+  }
+  .event-runtime-activity {
+    min-height: 440px;
+  }
+}
+
+/* Event-first queue overview; detail tables keep the shared DataTable shell. */
+.event-runtime-event-search {
+  flex: 1 1 230px;
+  max-width: 370px;
+  min-width: 180px;
+}
+.event-runtime-event-row {
+  cursor: pointer;
+}
+.event-runtime-event-row:hover > td {
+  background: var(--bg-hover);
+}
+.event-runtime-event-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.event-runtime-detail-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 16px;
+  padding-top: 8px;
+}
+.event-runtime-detail-heading h5 {
+  margin: 0;
+}
+.event-runtime-detail-heading > .ant-typography {
+  font-size: 12px;
+}
+.event-runtime-receiver {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+}
+@media (max-width: 767px) {
+  .event-runtime-event-search {
+    max-width: none;
+    width: 100%;
+    flex: 1 1 100%;
+  }
+}

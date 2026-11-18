@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { App } from 'antd';
 import {
   act,
   cleanup,
@@ -164,7 +165,7 @@ test('switches plugin metadata while an edit drawer is open and preserves user n
     reads
   );
   expect(plugin.display_name).toBe('Raw plugin name');
-  await click(screen.getByRole('button', { name: 'Save changes' }));
+  await click(screen.getByRole('button', { name: 'Save all' }));
   await waitFor(() =>
     expect(calls.find((call) => call.method === 'PATCH')?.body).toEqual({
       display_name: 'User supplied 新名称',
@@ -218,7 +219,9 @@ function renderUI(ui: ReactNode) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
   });
   return render(
-    <QueryClientProvider client={client}>{ui}</QueryClientProvider>
+    <App>
+      <QueryClientProvider client={client}>{ui}</QueryClientProvider>
+    </App>
   );
 }
 beforeEach(() => {
@@ -586,7 +589,7 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     const token = document.querySelector('input[type="password"]');
     expect(token).toBeInstanceOf(HTMLInputElement);
     expect(token).toHaveValue('');
-    await click(screen.getByRole('button', { name: '保存修改' }));
+    await click(screen.getByRole('button', { name: '统一保存' }));
     await screen.findByRole('button', { name: '团队通知' });
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

@@ -1,0 +1,26 @@
+[package]
+name = "api-test-selection"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+proc-macro = true
+
+[[example]]
+name = "api_server"
+test = true
+
+[[example]]
+name = "api_private_contracts"
+test = true
+
+[[example]]
+name = "api_public_api"
+test = true
+
+[[example]]
+name = "api_private_routes"
+test = true

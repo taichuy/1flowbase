@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test } from 'vitest';
 
 import { createDefaultAgentFlowDocument } from '@1flowbase/flow-schema';
 import { NodeConfigTab } from '../../components/detail/tabs/NodeConfigTab';
-import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
+import { AgentFlowEditorStoreProvider } from './fixtures/analysis-provider';
 import {
   DocumentObserver,
   SelectionSeed,

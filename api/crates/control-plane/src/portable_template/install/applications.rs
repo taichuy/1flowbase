@@ -69,7 +69,11 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                 .map(|p| &p.mapping)
                 .or(app.mapping.as_ref())
                 .and_then(|m| m.extension.as_ref());
-            let trigger = if let Some(schedule) = &app.schedule {
+            let trigger = if let Some(configuration) = &app.event_trigger {
+                let mut configuration = configuration.clone();
+                configuration.enabled = false;
+                Some(CreateWorkflowTriggerConfig::Event { configuration })
+            } else if let Some(schedule) = &app.schedule {
                 Some(CreateWorkflowTriggerConfig::Schedule {
                     cron: schedule.cron.clone(),
                     timezone: schedule.timezone.clone(),
@@ -171,6 +175,32 @@ impl<R: PortableTemplateInstallRepository> PortableTemplateInstallService<R> {
                         )?,
                     })
                     .await?;
+            }
+            if let Some(configuration) = &app.event_trigger {
+                // Restore the portable declaration like schedules. The host separately validates
+                // publication, event availability and authorization before activating a consumer.
+                let configuration = configuration.clone();
+                let contract = crate::application_public_api::workflow_start_http_inputs::parse_workflow_start_event_inputs(&app.flow_document)?;
+                crate::application_public_api::workflow_event::validate_event_input_mapping(
+                    &contract,
+                    &configuration,
+                )?;
+                let record = domain::event_center::WorkflowEventTriggerRecord {
+                    id: self
+                        .repository
+                        .get_workflow_event_trigger(actor.current_workspace_id, application_id)
+                        .await?
+                        .map(|t| t.id)
+                        .unwrap_or_else(Uuid::now_v7),
+                    workspace_id: actor.current_workspace_id,
+                    application_id,
+                    configuration,
+                    updated_by: actor.user_id,
+                    updated_at: time::OffsetDateTime::now_utc(),
+                };
+                if !self.repository.save_workflow_event_trigger(&record).await? {
+                    return Err(crate::errors::ControlPlaneError::NotFound("application").into());
+                }
             }
             if let Some(schedule) = &app.schedule {
                 WorkflowScheduleTriggerService::new(self.repository.clone())

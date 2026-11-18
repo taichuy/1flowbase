@@ -75,6 +75,10 @@ pub use capability_contract::*;
 pub mod plugin_credential_contract;
 pub use plugin_credential_contract::*;
 
+#[path = "host_services/plugin_ephemeral_contract.rs"]
+pub mod plugin_ephemeral_contract;
+pub use plugin_ephemeral_contract::*;
+
 pub mod file_import_contract;
 pub use file_import_contract::*;
 
@@ -84,3 +88,7 @@ pub use file_read_contract::*;
 #[path = "managed_contributions/managed_service_contract.rs"]
 pub mod managed_service_contract;
 pub use managed_service_contract::*;
+
+#[path = "host_services/execution_gate_contract.rs"]
+pub mod execution_gate_contract;
+pub use execution_gate_contract::*;

@@ -1,3 +1,4 @@
+mod custom_blocks;
 pub(crate) mod plugin_components;
 
 use anyhow::Result;
@@ -28,6 +29,7 @@ fn map_catalog_row(row: sqlx::postgres::PgRow) -> Result<domain::FrontendBlockCa
         runtime: row.get("runtime"),
         entry: row.get("entry"),
         ui_registration: row.get("ui_registration"),
+        block_registration: row.get("block_registration"),
         code_template: row.get("code_template"),
         code_template_version: row.get("code_template_version"),
         code_template_language: row.get("code_template_language"),
@@ -83,9 +85,9 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
                     permission_network,
                     permission_storage,
                     permission_secrets,
-                    ui_capabilities, ui_registration
+                    ui_capabilities, ui_registration, block_registration
                 ) values (
-                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
                 )
                 "#,
             )
@@ -109,6 +111,7 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
             .bind(&entry.permissions.secrets)
             .bind(serde_json::to_value(&entry.ui_capabilities)?)
             .bind(&entry.ui_registration)
+            .bind(entry.block_registration)
             .execute(&mut *tx)
             .await?;
         }
@@ -149,7 +152,7 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
                 reg.permission_network,
                 reg.permission_storage,
                 reg.permission_secrets,
-                reg.ui_capabilities, reg.ui_registration
+                reg.ui_capabilities, reg.ui_registration, reg.block_registration
             from frontend_block_catalog reg
             inner join extension_installations installation
                 on installation.id = reg.installation_id
@@ -183,7 +186,7 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
             r#"
             select reg.installation_id, reg.provider_code, reg.plugin_id, reg.plugin_version,
                 reg.contribution_code, reg.title, reg.runtime, reg.entry, reg.code_template,
-                reg.code_template_version, reg.code_template_language, reg.code_modules, reg.ui_registration,
+                reg.code_template_version, reg.code_template_language, reg.code_modules, reg.ui_registration, reg.block_registration,
                 reg.context_contract, reg.permission_network, reg.permission_storage,
                 reg.permission_secrets, reg.ui_capabilities
             from frontend_block_catalog reg

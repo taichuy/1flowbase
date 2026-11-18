@@ -8,6 +8,7 @@ const messages: CommunicationMessage[] = Array.from(
     id: `style-chat-message-${index + 1}`,
     conversation_id: communicationConversationId,
     input_id: `style-chat-input-${index + 1}`,
+    reply_to: null,
     instance_id: 'style-chat-channel',
     instance_display_name: '团队沟通渠道',
     external_identity: 'alice',

@@ -1,0 +1,27 @@
+#[path = "assistant.rs"]
+pub mod assistant;
+#[path = "settings/billing.rs"]
+pub mod billing;
+#[path = "../../contracts/routes/console_interface.rs"]
+pub mod console_interface;
+#[path = "console_route_assembly.rs"]
+pub mod console_route_assembly;
+#[path = "frontstage/mod.rs"]
+pub mod frontstage;
+#[path = "../../contracts/routes/helpers.rs"]
+pub mod helpers;
+#[path = "settings/host_infrastructure/mod.rs"]
+pub mod host_infrastructure;
+#[path = "settings/mcp_management/mod.rs"]
+pub mod mcp_management;
+#[path = "mcp_oauth/mod.rs"]
+pub mod mcp_oauth;
+#[path = "mcp_protocol/mod.rs"]
+pub mod mcp_protocol;
+#[path = "notifications/mod.rs"]
+pub mod notifications;
+#[path = "settings/runtime_status/system.rs"]
+pub mod system;
+
+#[path = "../../contracts/routes/files.rs"]
+pub mod files;

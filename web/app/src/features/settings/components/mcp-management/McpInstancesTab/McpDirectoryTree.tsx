@@ -40,7 +40,7 @@ export function McpDirectoryTree({
   return (
     <Tree<McpDirectoryTreeNode>
       className="mcp-management__directory-tree"
-      draggable={{ icon: false, nodeDraggable: (node) => can(String(node.key).startsWith('group:') ? 'mcp.groups.move' : 'mcp.tool_bindings.update') }}
+      draggable={{ icon: false, nodeDraggable: () => can('mcp.directory.replace') }}
       blockNode
       expandedKeys={expandedKeys}
       showIcon
@@ -53,7 +53,7 @@ export function McpDirectoryTree({
         if (selectedKeys.length > 0) onSelect(String(selectedKeys[0]));
       }}
       onDrop={(info) => {
-        if (can(String(info.dragNode.key).startsWith('group:') ? 'mcp.groups.move' : 'mcp.tool_bindings.update')) onDrop(info);
+        if (can('mcp.directory.replace')) onDrop(info);
       }}
       titleRender={(node) => {
         const [type, ...parts] = node.key.split(':');
@@ -107,7 +107,7 @@ export function McpDirectoryTree({
                 {!isInstance ? (
                   <Tooltip title={i18nText('settings', 'auto.edit')}>
                     <Button
-                      disabled={!can(isGroup ? 'mcp.groups.upsert' : 'mcp.tool_bindings.update')}
+                      disabled={!can('mcp.directory.replace')}
                       type="text"
                       size="small"
                       icon={<EditOutlined />}
@@ -128,9 +128,9 @@ export function McpDirectoryTree({
                             'settingsMcpManagement',
                             'auto.mcp_group_delete_confirm'
                           )
-                        : i18nText('settings', 'auto.mcp_hard_delete_confirm')
+                        : i18nText('settingsMcpManagement', 'auto.remove_tool_mount_confirm')
                     }
-                    disabled={!can(isGroup ? 'mcp.groups.delete' : 'mcp.tool_bindings.delete')}
+                    disabled={!can('mcp.directory.replace')}
                     onConfirm={() =>
                       isGroup
                         ? onDeleteGroup(parts.join(':'))
@@ -139,7 +139,7 @@ export function McpDirectoryTree({
                   >
                     <Button
                       type="text"
-                      disabled={!can(isGroup ? 'mcp.groups.delete' : 'mcp.tool_bindings.delete')}
+                      disabled={!can('mcp.directory.replace')}
                       danger
                       size="small"
                       icon={<DeleteOutlined />}

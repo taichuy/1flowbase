@@ -128,6 +128,23 @@ where
             .ok_or_else(|| ControlPlaneError::NotFound("runtime_record").into())
     }
 
+    pub async fn metadata(
+        &self,
+        actor: domain::ActorContext,
+        file_table_id: Uuid,
+        file_record_id: Uuid,
+    ) -> Result<serde_json::Value> {
+        let record = self
+            .authorized_record(actor, file_table_id, file_record_id)
+            .await?;
+        let preview = self.preview_available(&record).await?;
+        let content = self.open_record(&record, false).await?;
+        let url = domain::file_management::file_content_url(file_table_id, file_record_id);
+        Ok(
+            serde_json::json!({"file_table_id":file_table_id,"file_record_id":file_record_id,"file_name":content.filename,"media_type":content.content_type,"size_bytes":content.content_length,"url":url,"preview_url":preview.then(||format!("{url}?preview=true"))}),
+        )
+    }
+
     pub async fn read(
         &self,
         actor: domain::ActorContext,

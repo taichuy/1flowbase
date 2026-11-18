@@ -430,6 +430,7 @@ async fn complete_llm_tool_callback_resolves_final_llm_debug_refs() {
     service.reset_application_run_detail_read_count();
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            anthropic_continuation: None,
             responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
@@ -578,6 +579,7 @@ async fn callback_resume_persists_final_answer_without_reopening_waiting_stream(
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            anthropic_continuation: None,
             responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
@@ -740,6 +742,7 @@ async fn assistant_llm_tool_callback_keeps_the_preview_stream_open_until_the_fin
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            anthropic_continuation: None,
             responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
@@ -881,6 +884,7 @@ async fn ac_004_answer_node_truth_two_callbacks_create_only_the_executed_final_a
 
     let second_waiting = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            anthropic_continuation: None,
             responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,
@@ -930,6 +934,7 @@ async fn ac_004_answer_node_truth_two_callbacks_create_only_the_executed_final_a
 
     let completed = service
         .complete_callback_task(CompleteCallbackTaskCommand {
+            anthropic_continuation: None,
             responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,

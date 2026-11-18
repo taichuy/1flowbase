@@ -1,3 +1,7 @@
+const path = require('node:path');
+const { apiSourceOwners } = require('../testing/contracts/api-source-owners.js');
+const API_PACKAGES = apiSourceOwners(path.resolve(__dirname, '../../..')).map((owner) => owner.packageName);
+
 const BACKEND_SHARDS = [
   {
     key: 'core-libs',
@@ -5,6 +9,7 @@ const BACKEND_SHARDS = [
       'domain', 'access-control', 'observability', 'runtime-profile', 'plugin-framework',
       'extension-contracts', 'extension-package-runtime', 'interface-runtime',
       'control-plane-contracts', 'control-plane-test-support', 'postgres-test-support',
+      'api-test-selection',
     ],
   },
   {
@@ -23,7 +28,7 @@ const BACKEND_SHARDS = [
   },
   {
     key: 'apps',
-    packages: ['control-plane', 'api-server', 'control-plane-postgres-tests'],
+    packages: ['control-plane', ...API_PACKAGES, 'control-plane-postgres-tests'],
   },
 ];
 const BACKEND_APP_TEST_SHARDS = [
@@ -33,7 +38,7 @@ const BACKEND_APP_TEST_SHARDS = [
   },
   ...Array.from({ length: 4 }, (_, index) => ({
     key: `api-server-${index + 1}-of-4`,
-    packages: ['api-server'],
+    packages: [...API_PACKAGES],
     nextestPartition: `hash:${index + 1}/4`,
   })),
 ];
@@ -154,24 +159,35 @@ const BACKEND_CONSISTENCY_TARGETS = [
     group: 'api',
     label: 'consistency-api-model-definition-routes',
     packageName: 'api-server',
+    testTarget: 'api_application',
     filter: 'model_definition_routes',
   },
   {
     group: 'api',
     label: 'consistency-api-runtime-model-routes',
     packageName: 'api-server',
+    testTarget: 'api_application',
     filter: 'runtime_model_routes',
   },
   {
     group: 'api',
     label: 'consistency-api-workspace-routes',
     packageName: 'api-server',
+    testTarget: 'api_identity',
     filter: 'workspace_routes',
   },
   {
     group: 'api',
     label: 'consistency-api-file-management-routes',
     packageName: 'api-server',
+    testTarget: 'api_system_settings',
+    filter: 'file_management_routes',
+  },
+  {
+    group: 'api',
+    label: 'consistency-api-file-management-documentation',
+    packageName: 'api-server',
+    testTarget: 'api_documentation',
     filter: 'file_management_routes',
   },
 ];

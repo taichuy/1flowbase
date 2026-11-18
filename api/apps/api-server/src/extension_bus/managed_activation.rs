@@ -1,4 +1,7 @@
 //! Workspace-scoped immutable managed graph assembly and fresh execution admission.
+pub use api_host_kernel::extension_bus::managed_activation::{
+    ManagedContributionBinding, ManagedExecutionInput, ManagedWorkspaceSnapshot,
+};
 mod candidate_switch;
 mod communication_commands;
 pub(crate) use communication_commands::ManagedCommunicationCommandProvider;
@@ -6,12 +9,13 @@ mod governance;
 mod lifetime;
 mod publication;
 mod reclamation;
+mod source_observation;
+use self::lifetime::*;
 use anyhow::{bail, Context, Result};
 use control_plane::{
     plugin_management::{ready_current_node_plugin_installation, HostContributionGrantPolicy},
     ports::{ContributionAuthorityLease, PluginContributionAuthorityRepository, PluginRepository},
 };
-use lifetime::*;
 use plugin_framework::{extension_bus::*, ManagedManifest, PluginManifestV1};
 use runtime_core::runtime_backend::RuntimeManagedCapabilityRequest;
 use runtime_core::runtime_backend::{
@@ -21,22 +25,6 @@ use std::{collections::BTreeMap, path::Path, sync::Arc};
 use storage_durable_postgres::MainDurableStore;
 use tokio::sync::Mutex;
 use uuid::Uuid;
-
-#[derive(Clone)]
-pub(crate) struct ManagedContributionBinding {
-    pub(crate) handle: ManagedExecutionHandle,
-    pub(crate) descriptor: ContributionDescriptor,
-    pub(crate) interface_protocol: Option<extension_contracts::ManagedInterfaceProtocol>,
-    installation: domain::PluginInstallationRecord,
-}
-
-pub(crate) struct ManagedWorkspaceSnapshot {
-    lifetime: Arc<SnapshotLifetime>,
-    pub(crate) graph: Arc<EffectiveExtensionGraph>,
-    pub(crate) authority: ManagedGraphAuthority,
-    pub(crate) bindings: BTreeMap<ContributionId, ManagedContributionBinding>,
-    pub(crate) lifecycle_plan: Option<EffectiveLifecycleSubscriberPlan>,
-}
 
 #[derive(Clone, Default)]
 struct ManagedSnapshots {
@@ -56,14 +44,10 @@ struct PreparedPackage {
     authority: domain::PluginContributionAuthoritySnapshot,
 }
 
-pub(crate) struct ManagedExecutionInput {
-    pub(crate) principal: RuntimeExecutionPrincipal,
-    pub(crate) config_payload: serde_json::Value,
-    pub(crate) input_payload: serde_json::Value,
-    pub(crate) duplex: Option<runtime_core::runtime_backend::RuntimeManagedDuplex>,
-}
-
 pub(crate) struct ManagedExtensionComposition {
+    source_observer: std::sync::OnceLock<
+        Arc<control_plane::lifecycle_outbox_dispatcher::LifecycleSourceObserver>,
+    >,
     generation_publisher: std::sync::OnceLock<
         std::sync::Weak<crate::managed_publication::ManagedGenerationPublisher>,
     >,
@@ -91,6 +75,7 @@ impl ManagedExtensionComposition {
     ) -> Self {
         let operations = store.new_managed_operation_lifetime();
         Self {
+            source_observer: Default::default(),
             generation_publisher: Default::default(),
             reclamation: Default::default(),
             store,
@@ -322,6 +307,7 @@ impl ManagedExtensionComposition {
         Ok(lease)
     }
 
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     #[cfg(test)]
     pub(crate) async fn execute(
         &self,
@@ -576,6 +562,22 @@ impl ManagedExtensionComposition {
         snapshot: &Arc<ManagedWorkspaceSnapshot>,
         record: &control_plane_contracts::ports::LifecycleOutboxRecord,
     ) -> Result<bool> {
+        control_plane_contracts::ports::with_lifecycle_workflow_ancestors(
+            record
+                .observation_context
+                .as_ref()
+                .map(|context| context.workflow_ancestor_ids.clone())
+                .unwrap_or_default(),
+            self.deliver_event_record_owned(snapshot, record),
+        )
+        .await
+    }
+
+    async fn deliver_event_record_owned(
+        &self,
+        snapshot: &Arc<ManagedWorkspaceSnapshot>,
+        record: &control_plane_contracts::ports::LifecycleOutboxRecord,
+    ) -> Result<bool> {
         let _execution_reference = snapshot.freeze_reference()?;
         if snapshot.graph.fingerprint().as_str() != record.graph_fingerprint {
             bail!("managed event frozen graph mismatch");
@@ -729,52 +731,6 @@ impl ManagedExtensionComposition {
             }
         }
         Ok(true)
-    }
-}
-
-impl ManagedWorkspaceSnapshot {
-    fn same_execution_snapshot(&self, other: &Self) -> bool {
-        self.graph.fingerprint() == other.graph.fingerprint()
-            && self.bindings.len() == other.bindings.len()
-            && self.bindings.iter().all(|(id, binding)| {
-                other
-                    .bindings
-                    .get(id)
-                    .is_some_and(|old| old.handle == binding.handle)
-            })
-    }
-
-    pub(crate) fn publication_plan(
-        &self,
-        contract_id: &str,
-        contract_version: &str,
-    ) -> Option<control_plane_contracts::ports::LifecyclePublicationPlan> {
-        // Commands require a selected declaration; generic event publication cannot broadcast them.
-        if contract_id == extension_contracts::COMMUNICATION_COMMAND_POINT {
-            return None;
-        }
-        let plan = self.lifecycle_plan.as_ref()?;
-        let subscribers = plan
-            .subscribers()
-            .iter()
-            .filter(|s| {
-                s.fact_contract_id == contract_id && s.fact_contract_version == contract_version
-            })
-            .map(
-                |s| control_plane_contracts::ports::LifecycleSubscriberTarget {
-                    subscriber_id: s.subscriber_id.clone(),
-                    handler_id: s.handler_id.clone(),
-                    handler_version: s.handler_version.clone(),
-                },
-            )
-            .collect::<Vec<_>>();
-        if subscribers.is_empty() {
-            return None;
-        }
-        Some(control_plane_contracts::ports::LifecyclePublicationPlan {
-            graph_fingerprint: self.graph.fingerprint().as_str().into(),
-            subscribers,
-        })
     }
 }
 
@@ -1010,3 +966,8 @@ pub(crate) fn validate_interface_protocol(
 
 #[path = "managed_activation/snapshot_preparation.rs"]
 mod snapshot_preparation;
+
+#[cfg_attr(test, api_test_selection::group(contracts))]
+#[cfg(all(test, feature = "test-support"))]
+#[path = "managed_activation/_tests/source_observation.rs"]
+mod source_observation_tests;

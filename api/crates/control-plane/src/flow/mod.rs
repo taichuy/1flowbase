@@ -24,6 +24,7 @@ use crate::{
 };
 
 mod agentflow_template;
+mod analysis;
 
 pub use agentflow_template::{
     build_agent_flow_template_package, import_application_template_document,
@@ -155,6 +156,13 @@ where
                 ApplicationNonCrudConsoleOperation::OrchestrationVersionRestore,
             )?;
         }
+
+        let document = self
+            .repository
+            .load_flow_version_document(actor.current_workspace_id, application_id, version_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("flow_version"))?;
+        validate_flow_draft_document(&document)?;
 
         self.repository
             .restore_version(
@@ -396,6 +404,9 @@ where
 }
 
 pub(crate) fn validate_flow_draft_document(document: &Value) -> Result<()> {
+    domain::flow::validate_flow_draft_structure(document)
+        .map_err(orchestration_runtime::compiler::FlowValidationError::from)?;
+    orchestration_runtime::compiler::validate_flow_output_contracts(document)?;
     let Some(nodes) = document
         .get("graph")
         .and_then(|graph| graph.get("nodes"))
@@ -671,6 +682,55 @@ impl ApplicationRepository for InMemoryFlowRepository {
 
 #[async_trait]
 impl FlowRepository for InMemoryFlowRepository {
+    async fn load_flow_draft_document(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+    ) -> Result<Option<Value>> {
+        if ApplicationRepository::get_application(&self.applications, workspace_id, application_id)
+            .await?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        let inner = self
+            .inner
+            .lock()
+            .expect("in-memory flow repo mutex poisoned");
+        Ok(inner
+            .editor_state_by_application_id
+            .get(&application_id)
+            .map(|state| state.draft.document.clone()))
+    }
+
+    async fn load_flow_version_document(
+        &self,
+        workspace_id: Uuid,
+        application_id: Uuid,
+        version_id: Uuid,
+    ) -> Result<Option<Value>> {
+        if ApplicationRepository::get_application(&self.applications, workspace_id, application_id)
+            .await?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        let inner = self
+            .inner
+            .lock()
+            .expect("in-memory flow repo mutex poisoned");
+        Ok(inner
+            .editor_state_by_application_id
+            .get(&application_id)
+            .and_then(|state| {
+                state
+                    .versions
+                    .iter()
+                    .find(|version| version.id == version_id)
+            })
+            .map(|version| version.document.clone()))
+    }
+
     async fn get_or_create_editor_state(
         &self,
         workspace_id: Uuid,

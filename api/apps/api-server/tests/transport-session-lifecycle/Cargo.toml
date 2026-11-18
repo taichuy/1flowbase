@@ -6,6 +6,8 @@ publish = false
 
 [workspace]
 [lib]
+# Reuse the core partition owner for verbatim production test attributes.
+name = "api_server"
 path = "lib.rs"
 
 # Compile the exact production host owner and its fixtures without api-server's monolithic lib.
@@ -32,6 +34,9 @@ sha2 = "=0.11.1"
 tokio = { version = "=1.53.3", features = ["full", "test-util"] }
 tracing = "=0.1.44"
 uuid = { version = "=1.28.0", features = ["v7"] }
+
+[dev-dependencies]
+api-test-selection = { path = "../../../../crates/api-test-selection" }
 
 [profile.test]
 debug = 1

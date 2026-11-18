@@ -1,3 +1,4 @@
+import type { FrontendUiRegistrationTarget } from '@1flowbase/api-client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
@@ -25,14 +26,18 @@ function toError(error: unknown): Error {
     : new Error('frontstage block catalog request failed');
 }
 
-function selectFrontstageBlockCatalog({ entries }: FrontstageBlockCatalogSnapshot) {
+function selectFrontstageBlockCatalog({
+  entries
+}: FrontstageBlockCatalogSnapshot) {
   return normalizeFrontstageBlockCatalog(entries);
 }
 
 export function useFrontstageBlockCatalog({
-  workspaceId
+  workspaceId,
+  registrationTarget
 }: {
   workspaceId: string | null | undefined;
+  registrationTarget?: FrontendUiRegistrationTarget;
 }) {
   const queryClient = useQueryClient();
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
@@ -66,9 +71,10 @@ export function useFrontstageBlockCatalog({
     queryKey: frontstageBlockCatalogQueryKey({
       workspaceId: workspaceId ?? 'missing-workspace',
       actorId: actor?.id ?? 'missing-actor',
-      permissionFingerprint: permissionFingerprint ?? 'missing-permissions'
+      permissionFingerprint: permissionFingerprint ?? 'missing-permissions',
+      registrationTarget
     }),
-    queryFn: fetchFrontstageBlockCatalog,
+    queryFn: () => fetchFrontstageBlockCatalog(registrationTarget),
     select: selectFrontstageBlockCatalog,
     enabled: hasCatalogReadContext
   });

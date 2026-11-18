@@ -2,6 +2,7 @@
   "structure_notice": "Import selected page trees, applications, data models, MCP instances, and translations. Other target objects remain. Source business data is excluded.",
   "plugin_notice": "External data sources, MCP upstream credentials, and plugin packages are excluded. Add upstream credentials after import. Required plugins are verified and downloaded by the target system during installation.",
   "export": "Export template",
+  "upload": "Upload template",
   "import": "Import template",
   "preview_failed": "Template preview failed. Clear this file and import it again.",
   "preview": "Installation changes",

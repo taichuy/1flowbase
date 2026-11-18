@@ -17,6 +17,19 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
     store: &PgControlPlaneStore,
     input: &SeedMcpBundleGraphInput,
 ) -> Result<()> {
+    let reset = matches!(input.kind, McpBundleSeedKind::PluginTemplateReset { .. });
+    if reset {
+        let namespace = format!("plugin.{}.", input.source.bundle_id);
+        if input.instances.len() != 1
+            || input.tools.iter().any(|tool| {
+                tool.workspace_id != input.workspace_id
+                    || !tool.tool_id.starts_with(&namespace)
+                    || tool.tool_id.len() == namespace.len()
+            })
+        {
+            return Err(ControlPlaneError::Conflict("mcp_plugin_template_scope").into());
+        }
+    }
     let mut transaction = store.pool().begin().await?;
     // Serialize graph seeders in a workspace, including overlapping namespaces from different
     // families. The unique inserts below also fence concurrent ordinary user creates.
@@ -24,9 +37,13 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
         .bind(format!("mcp-graph-seed:{}", input.workspace_id))
         .execute(&mut *transaction)
         .await?;
-    let plugin_template = matches!(input.kind, McpBundleSeedKind::PluginTemplate { .. });
+    let plugin_template = matches!(
+        input.kind,
+        McpBundleSeedKind::PluginTemplate { .. } | McpBundleSeedKind::PluginTemplateReset { .. }
+    );
     let requested_installation = match input.kind {
-        McpBundleSeedKind::PluginTemplate { installation_id } => Some(installation_id),
+        McpBundleSeedKind::PluginTemplate { installation_id }
+        | McpBundleSeedKind::PluginTemplateReset { installation_id } => Some(installation_id),
         McpBundleSeedKind::BundleVersion => None,
     };
     let extension_installation_id = sqlx::query_scalar::<_, Uuid>(
@@ -63,10 +80,13 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
     .bind(plugin_template)
     .fetch_one(&mut *transaction)
     .await?;
-    if imported_before {
+    if imported_before && !reset {
         transaction.commit().await?;
         return Ok(());
     }
+    // Source metadata alone cannot prove plugin ownership on the first activation: a
+    // preexisting MCP bundle may use the same organization/code. Require our import receipt.
+    let owned_reset = reset && imported_before;
 
     let tool_ids = input
         .tools
@@ -84,13 +104,18 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
             select 1 from mcp_tools
             where workspace_id = $1
               and tool_id = any($2)
-              and (managed_bundle_id is null or $3)
+              and (managed_bundle_id is null or ($3 and
+                (not $4 or managed_bundle_organization is distinct from $5
+                  or managed_bundle_id is distinct from $6)))
         )
         "#,
     )
     .bind(input.workspace_id)
     .bind(&tool_ids)
     .bind(plugin_template)
+    .bind(owned_reset)
+    .bind(&input.source.organization)
+    .bind(&input.source.bundle_id)
     .fetch_one(&mut *transaction)
     .await?;
     let unmanaged_instance_collision = sqlx::query_scalar::<_, bool>(
@@ -99,13 +124,18 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
             select 1 from mcp_instances
             where workspace_id = $1
               and instance_id = any($2)
-              and (managed_bundle_id is null or $3)
+              and (managed_bundle_id is null or ($3 and
+                (not $4 or managed_bundle_organization is distinct from $5
+                  or managed_bundle_id is distinct from $6)))
         )
         "#,
     )
     .bind(input.workspace_id)
     .bind(&instance_ids)
     .bind(plugin_template)
+    .bind(owned_reset)
+    .bind(&input.source.organization)
+    .bind(&input.source.bundle_id)
     .fetch_one(&mut *transaction)
     .await?;
     if unmanaged_tool_collision || unmanaged_instance_collision {
@@ -158,7 +188,7 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
                 revision=mcp_tools.revision + 1,
                 updated_by=excluded.updated_by,
                 updated_at=now()
-            where not $28 and (mcp_tools.managed_bundle_id is null
+            where (not $28 or $29) and ((not $28 and mcp_tools.managed_bundle_id is null)
                or mcp_tools.managed_bundle_organization = excluded.managed_bundle_organization
                   and mcp_tools.managed_bundle_id = excluded.managed_bundle_id)
             "#,
@@ -200,6 +230,7 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
                 .transpose()?,
         )
         .bind(plugin_template)
+        .bind(owned_reset)
         .execute(&mut *transaction)
         .await?;
         if plugin_template && inserted.rows_affected() != 1 {
@@ -225,7 +256,7 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
                 managed_bundle_version=excluded.managed_bundle_version,
                 updated_by=excluded.updated_by,
                 updated_at=now()
-            where not $12 and (mcp_instances.managed_bundle_id is null
+            where (not $12 or $13) and ((not $12 and mcp_instances.managed_bundle_id is null)
                or mcp_instances.managed_bundle_organization = excluded.managed_bundle_organization
                   and mcp_instances.managed_bundle_id = excluded.managed_bundle_id)
             returning id
@@ -243,6 +274,7 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
         .bind(&input.source.bundle_version)
         .bind(input.actor_user_id)
         .bind(plugin_template)
+        .bind(owned_reset)
         .fetch_optional(&mut *transaction)
         .await?
         .ok_or(ControlPlaneError::Conflict(
@@ -339,6 +371,67 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
         .await?;
     }
 
+    if reset {
+        // Legacy channel graphs were created by Host before managed-source tracking existed.
+        // A binding's recorded built-in ID and the verified installation family prove scope.
+        let legacy_ids = sqlx::query_scalar::<_, String>(
+            r#"
+            select distinct b.plugin_mcp_instance_id from communication_bindings b
+            join notification_instances n on n.id=b.instance_id and n.workspace_id=b.scope_id
+            join extension_installations e on e.id=n.installation_id
+            where b.scope_id=$1 and e.organization=$2 and e.artifact_id=$3
+              and b.plugin_mcp_instance_id='communication_' || b.instance_id::text
+        "#,
+        )
+        .bind(input.workspace_id)
+        .bind(&input.source.organization)
+        .bind(&input.source.bundle_id)
+        .fetch_all(&mut *transaction)
+        .await?;
+        let shared_id = &input.instances[0].instance_id;
+        for legacy in legacy_ids {
+            sqlx::query(r#"
+                update communication_bindings set
+                    config_json=jsonb_set(config_json,'{mcp_instance_ids}',coalesce((
+                        select jsonb_agg(case when value=to_jsonb($3::text) then to_jsonb($4::text) else value end order by ordinal)
+                        from jsonb_array_elements(config_json->'mcp_instance_ids') with ordinality as grants(value,ordinal)
+                    ),'[]'::jsonb)), plugin_mcp_instance_id=$4, revision=revision+1
+                where scope_id=$1 and plugin_mcp_instance_id=$3
+                  and instance_id in (select n.id from notification_instances n join extension_installations e on e.id=n.installation_id where n.workspace_id=$1 and e.organization=$2 and e.artifact_id=$5)
+            "#).bind(input.workspace_id).bind(&input.source.organization).bind(&legacy).bind(shared_id).bind(&input.source.bundle_id)
+                .execute(&mut *transaction).await?;
+            // Only the three legacy Host tool IDs, with their expected Host targets.
+            for (name, interface_id) in [
+                ("history_messages", "communications.messages.list"),
+                ("history_files", "communications.files.list"),
+                ("read_file", "communications.files.get"),
+            ] {
+                sqlx::query("delete from mcp_tools where workspace_id=$1 and tool_id=$2 and interface_id in ($3,$4) and managed_bundle_id is null")
+                    .bind(input.workspace_id).bind(format!("{legacy}_{name}")).bind(interface_id).bind(interface_id.replace(".messages.list", "_messages").replace(".files.list", "_files").replace(".files.get", "_file")).execute(&mut *transaction).await?;
+            }
+            sqlx::query("delete from mcp_instances where workspace_id=$1 and instance_id=$2 and managed_bundle_id is null")
+                .bind(input.workspace_id).bind(&legacy).execute(&mut *transaction).await?;
+        }
+    }
+
+    if reset {
+        // Earlier channel provisioners used OpenAPI IDs. Remove only their now-unbound
+        // orphan tools, proven by a migrated binding and the verified plugin family.
+        sqlx::query(r#"
+            delete from mcp_tools t using notification_instances n, extension_installations e, communication_bindings b
+            where n.installation_id=e.id and n.id=b.instance_id and n.workspace_id=b.scope_id
+              and n.workspace_id=$1 and e.organization=$2 and e.artifact_id=$3
+              and b.plugin_mcp_instance_id=$4 and t.workspace_id=$1 and t.managed_bundle_id is null
+              and ((t.tool_id='communication_'||n.id::text||'_history_messages' and t.interface_id in ('communications.messages.list','communications_messages'))
+                or (t.tool_id='communication_'||n.id::text||'_history_files' and t.interface_id in ('communications.files.list','communications_files'))
+                or (t.tool_id='communication_'||n.id::text||'_read_file' and t.interface_id in ('communications.files.get','communications_file')))
+              and not exists(select 1 from mcp_tool_bindings bound where bound.tool_record_id=t.id)
+        "#).bind(input.workspace_id).bind(&input.source.organization).bind(&input.source.bundle_id).bind(&input.instances[0].instance_id)
+            .execute(&mut *transaction).await?;
+    }
+
+    // A plugin reset owns its declared dedicated instance, not every instance
+    // carrying the same bundle provenance. Whole-bundle imports replace that set.
     if !plugin_template {
         sqlx::query(
             r#"
@@ -355,6 +448,8 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
         .bind(&instance_ids)
         .execute(&mut *transaction)
         .await?;
+    }
+    if !plugin_template || owned_reset {
         sqlx::query(
             r#"
         delete from mcp_tools

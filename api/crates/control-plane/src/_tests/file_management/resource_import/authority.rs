@@ -87,11 +87,12 @@ impl ContributionAuthorityLease for Lease {
         self: Box<Self>,
         installation_ids: Vec<Uuid>,
         catalog: Option<control_plane_contracts::CompiledConsolePolicyCatalog>,
+        _event_catalog: Option<domain::event_center::EventCatalogSnapshot>,
     ) -> TestFuture<()> {
         Box::pin(async move {
             drop(self);
             anyhow::ensure!(
-                installation_ids.is_empty() && catalog.is_none(),
+                installation_ids.is_empty() && catalog.is_none() && _event_catalog.is_none(),
                 "settings templates are not supported by this fixture"
             );
             Ok(())

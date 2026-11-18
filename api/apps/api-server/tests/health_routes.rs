@@ -224,9 +224,15 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
         .with_events(notification_events.clone()),
     );
     notification_service.bootstrap().await.unwrap();
+    let event_center = control_plane::event_center::EventCenterRuntime::new(
+        infrastructure.event_bus(),
+        config.event_center_policy,
+    )
+    .expect("health test event center runtime");
 
     app_with_state_and_config(
         std::sync::Arc::new(ApiState {
+        test_resources:None,
             store: store.clone(),
             console_policy_reader: std::sync::Arc::new(store.clone()),
             system_backup,
@@ -237,15 +243,22 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             settings_feature_registry,
             console_operation_registry,
             infrastructure,
+            event_center,
+            event_sources: api_server::test_support::default_event_source_catalog(),
+            event_workflow_changes: std::sync::Arc::default(),
+            event_workflow_statuses: Default::default(),
             console_surface_registry: std::sync::Arc::new(
                 api_server::console_surface_registry::ConsoleSurfaceRegistry::default(),
             ),
             file_storage_registry,
             runtime_engine,
             provider_runtime: provider_runtime.clone(),
+            native_resource_import: std::sync::Arc::new(api_mcp::resource_import::NativeResourceImportAdapter),
+            runtime_event_stream_projection: api_server::test_support::runtime_event_stream_projection(),
+            terminal_jobs: Default::default(),
             process_started_at,
             communication_activity: Default::default(),
-        runtime_activity: std::sync::Arc::new(
+            runtime_activity: std::sync::Arc::new(
                 api_server::runtime_activity::ApplicationRuntimeActivityTracker::default(),
             ),
             notification_service,

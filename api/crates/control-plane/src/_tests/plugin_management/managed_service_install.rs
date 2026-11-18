@@ -22,6 +22,103 @@ impl crate::plugin_management::ManagedPluginActivationPort for PreparedManagedFi
     }
 }
 
+#[tokio::test]
+async fn managed_upgrade_and_enable_replace_the_active_owner_without_preactivating_target() {
+    for upload in [true, false] {
+        let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+            Uuid::now_v7(),
+            &["plugin_config.configure.all"],
+        ));
+        let runtime = MemoryProviderRuntime::default();
+        let install_root =
+            std::env::temp_dir().join(format!("managed-owner-switch-{}", Uuid::now_v7()));
+        let service = PluginManagementService::new(
+            repository.clone(),
+            runtime.clone(),
+            Arc::new(MemoryOfficialPluginSource::default()),
+            &install_root,
+        )
+        .with_managed_activation_preparation(Arc::new(PreparedManagedFixture));
+        let command = |version: &str| InstallExtensionNodePluginCommand {
+            actor_user_id: repository.actor.user_id,
+            category: ExtensionCatalogCategory::RuntimeExtensions,
+            file_name: "managed.1flowbasepkg".into(),
+            package_bytes: package(version),
+            source_kind: "uploaded".into(),
+        };
+        let previous = service
+            .install_extension_node_plugin(command("0.1.0"))
+            .await
+            .unwrap();
+        let target = service
+            .install_extension_node_plugin(command("0.2.0"))
+            .await
+            .unwrap();
+        repository
+            .update_desired_state(&UpdatePluginDesiredStateInput {
+                installation_id: previous.installation.id,
+                actor_user_id: repository.actor.user_id,
+                desired_state: PluginDesiredState::ActiveRequested,
+            })
+            .await
+            .unwrap();
+
+        // An older upload must not silently downgrade an active family.
+        let older = service
+            .install_extension_node_plugin(command("0.0.9"))
+            .await
+            .unwrap();
+        assert_eq!(
+            older.installation.desired_state,
+            PluginDesiredState::Disabled
+        );
+        let error = if upload {
+            service
+                .install_extension_node_plugin(command("0.2.0"))
+                .await
+                .unwrap_err()
+        } else {
+            service
+                .enable_plugin(crate::plugin_management::EnablePluginCommand {
+                    actor_user_id: repository.actor.user_id,
+                    installation_id: target.installation.id,
+                })
+                .await
+                .unwrap_err()
+        };
+        // The inert runtime rejects switching. Both real entry points must reach that port,
+        // preserving the old owner instead of calling ordinary activation for the target.
+        assert!(error
+            .to_string()
+            .contains("managed installation switching is not configured"));
+        assert!(runtime.loaded_installations().await.is_empty());
+        let installations = repository.list_installations().await.unwrap();
+        let active = installations
+            .iter()
+            .filter(|i| i.desired_state == PluginDesiredState::ActiveRequested)
+            .map(|i| i.id)
+            .collect::<Vec<_>>();
+        assert_eq!(active, vec![previous.installation.id]);
+        let task = repository
+            .list_tasks()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|task| task.task_kind == domain::PluginTaskKind::SwitchVersion)
+            .unwrap();
+        assert_eq!(task.workspace_id, None);
+        assert_eq!(
+            task.detail_json["previous_installation_id"],
+            previous.installation.id.to_string()
+        );
+        assert_eq!(
+            task.detail_json["target_installation_id"],
+            target.installation.id.to_string()
+        );
+        std::fs::remove_dir_all(install_root).unwrap();
+    }
+}
+
 fn package(version: &str) -> Vec<u8> {
     let manifest = format!(
         r#"manifest_version: 2
@@ -230,11 +327,18 @@ async fn managed_service_install_and_reupload_preserve_explicit_activation_bound
     let upgrade = service
         .install_extension_node_plugin(command("0.2.0"))
         .await
+        .unwrap_err();
+    assert!(upgrade
+        .to_string()
+        .contains("managed_activation_not_configured"));
+    let upgrade = repository
+        .list_installations()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|installation| installation.plugin_version == "0.2.0")
         .unwrap();
-    assert_eq!(
-        upgrade.installation.desired_state,
-        PluginDesiredState::Disabled
-    );
+    assert_eq!(upgrade.desired_state, PluginDesiredState::Disabled);
     assert_eq!(
         repository
             .get_installation(first.installation.id)
@@ -250,7 +354,10 @@ async fn managed_service_install_and_reupload_preserve_explicit_activation_bound
         .await
         .unwrap()
         .iter()
-        .all(|task| task.task_kind == domain::PluginTaskKind::Install));
+        .any(
+            |task| task.task_kind == domain::PluginTaskKind::SwitchVersion
+                && task.status == domain::PluginTaskStatus::Failed
+        ));
     assert!(repository
         .audit_events()
         .await
@@ -260,7 +367,7 @@ async fn managed_service_install_and_reupload_preserve_explicit_activation_bound
     let error = service
         .enable_plugin(crate::plugin_management::EnablePluginCommand {
             actor_user_id: repository.actor.user_id,
-            installation_id: upgrade.installation.id,
+            installation_id: upgrade.id,
         })
         .await
         .unwrap_err();
@@ -269,7 +376,7 @@ async fn managed_service_install_and_reupload_preserve_explicit_activation_bound
         .contains("managed_activation_not_configured"));
     assert_eq!(
         repository
-            .get_installation(upgrade.installation.id)
+            .get_installation(upgrade.id)
             .await
             .unwrap()
             .unwrap()
@@ -300,10 +407,7 @@ async fn boot_reconciles_enabled_system_service_without_workspace_assignment_onl
     )
     .for_extension_center_console_operation("extension_center.install.upload");
     let mut managed_ids = Vec::new();
-    for (version, desired_state) in [
-        ("0.1.0", PluginDesiredState::ActiveRequested),
-        ("0.2.0", PluginDesiredState::Disabled),
-    ] {
+    for version in ["0.1.0", "0.2.0"] {
         let installed = service
             .install_extension_node_plugin(InstallExtensionNodePluginCommand {
                 actor_user_id: repository.actor.user_id,
@@ -314,16 +418,16 @@ async fn boot_reconciles_enabled_system_service_without_workspace_assignment_onl
             })
             .await
             .unwrap();
-        repository
-            .update_desired_state(&UpdatePluginDesiredStateInput {
-                installation_id: installed.installation.id,
-                actor_user_id: repository.actor.user_id,
-                desired_state,
-            })
-            .await
-            .unwrap();
         managed_ids.push(installed.installation.id);
     }
+    repository
+        .update_desired_state(&UpdatePluginDesiredStateInput {
+            installation_id: managed_ids[0],
+            actor_user_id: repository.actor.user_id,
+            desired_state: PluginDesiredState::ActiveRequested,
+        })
+        .await
+        .unwrap();
     let legacy_id = seed_test_installation(
         &repository,
         &install_root,

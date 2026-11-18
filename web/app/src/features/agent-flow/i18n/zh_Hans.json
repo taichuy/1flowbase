@@ -1,4 +1,8 @@
 {
+  "analysis": {
+    "pending": "正在分析变量与输出…",
+    "unavailable": "暂时无法分析变量与输出。修改草稿后将重新分析。"
+  },
   "trajectory": {
     "range_start": "范围起点",
     "range_end": "范围终点",
@@ -336,6 +340,7 @@
     "description": "描述",
     "basic_information": "基础信息",
     "last_run": "上次运行",
+    "current_run": "本次运行",
     "filter_value": "过滤值 {{value1}}",
     "output_variable_name_configured": "输出变量名未配置",
     "turn_off_variable_caching": "关闭变量缓存",
@@ -755,6 +760,8 @@
     "tracking_nodes": "追踪节点",
     "loading_failed": "加载失败",
     "system_variable_workflow_run_id": "工作流运行 ID",
+    "system_variable_creator_credential": "创建者接口凭证（仅当前运行可用）",
+    "system_variable_executor_credential": "执行者接口凭证（仅当前运行可用）",
     "wait_manual_input_continue_process": "等待人工补充输入后继续流程。",
     "node_any_valid_incoming_edges": "当前节点没有任何有效入边。",
     "no_model_yet": "暂无模型",
@@ -933,5 +940,9 @@
     "invalid_variable": "变量名须非空、唯一且不能以 __ 开头；请选择有效类型。",
     "invalid_variable_value": "变量赋值须对应唯一的已声明变量，且值类型与声明一致。",
     "initial_value_required": "每个循环变量都必须设置初始值。"
+  },
+  "execution": {
+    "flow_status": "整轮状态",
+    "round": "第 {{round}} 轮"
   }
 }

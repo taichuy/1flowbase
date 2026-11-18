@@ -5,9 +5,10 @@ on:
   push:
     branches: [dev, codex/model-pricing-paged-sync, codex/pricing-catalog-recovery]
     paths:
-      - 'api/apps/api-server/src/catalog_sources/model_pricing_catalog*'
-      - 'api/apps/api-server/src/catalog_sources/model_pricing_catalog/**'
-      - 'api/apps/api-server/src/routes/settings/billing*'
+      - 'api/crates/api/kernel/src/catalog_sources/model_pricing_catalog*'
+      - 'api/crates/api/kernel/src/catalog_sources/model_pricing_catalog/**'
+      - 'api/crates/api/console-settings/src/routes/settings/billing*'
+      - 'api/crates/api/console-settings/src/routes/settings/billing*/**'
       - 'api/apps/api-server/src/_tests/system_settings/billing_routes*'
       - 'api/apps/api-server/src/_tests/system_settings/billing_routes/**'
       - 'api/crates/control-plane-contracts/src/ports/billing_core.rs'
@@ -89,7 +90,7 @@ jobs:
           run_evidence contracts cargo test --locked --manifest-path api/Cargo.toml -p control-plane-contracts --lib
           run_evidence consumers cargo check --locked --manifest-path api/Cargo.toml -p control-plane --tests
           run_evidence repository cargo test --locked --manifest-path api/Cargo.toml -p storage-durable-postgres --lib official_pricing_sync -- --test-threads=1
-          run_evidence http cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib _tests::billing_routes -- --test-threads=1
+          run_evidence http cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_private_contracts _tests::billing_routes -- --test-threads=1
       - uses: actions/cache/save@v5
         if: always() && steps.rust-cache.outputs.cache-hit != 'true'
         with:

@@ -1,17 +1,8 @@
+pub use api_host_kernel::console_operation_compilation::*;
 use std::collections::{BTreeMap, BTreeSet};
 
 use access_control::{ConsoleAuthorization, ConsolePolicyGroup, ConsoleRouteBinding};
-use serde::Serialize;
 use thiserror::Error;
-
-pub(crate) const COMPILED_CONSOLE_OPERATION_SNAPSHOT_SCHEMA_V1: &str =
-    "1flowbase.compiled-console-operation-snapshot/v1";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum ConsoleBindingOwnerKind {
-    Family,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ConsoleOperationPolicyContribution {
@@ -36,55 +27,10 @@ pub(crate) struct ConsoleBindingOwnershipContribution {
     pub(crate) route: ConsoleRouteBinding,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub(crate) enum ConsoleMigrationDisposition {
-    LegacyOperations { legacy_grants: Vec<String> },
-    NoProjection { evidence: String },
-    DefaultDisabled { evidence: String },
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ConsoleMigrationDispositionContribution {
     pub(crate) operation_id: String,
     pub(crate) disposition: ConsoleMigrationDisposition,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(crate) struct CompiledConsoleBindingOwnership {
-    pub(crate) contribution_id: String,
-    pub(crate) owner_kind: ConsoleBindingOwnerKind,
-    pub(crate) owner_id: String,
-    pub(crate) interface_id: String,
-    pub(crate) binding_id: String,
-    pub(crate) protocol: String,
-    pub(crate) route: ConsoleRouteBinding,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(crate) struct CompiledConsoleOperationRecord {
-    pub(crate) operation_id: String,
-    pub(crate) authorization_profile_id: String,
-    pub(crate) policy_group: ConsolePolicyGroup,
-    pub(crate) authorization: ConsoleAuthorization,
-    pub(crate) bindings: Vec<CompiledConsoleBindingOwnership>,
-    pub(crate) migration: ConsoleMigrationDisposition,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(crate) struct CompiledConsoleOperationSnapshot {
-    pub(crate) schema_version: &'static str,
-    pub(crate) operations: Vec<CompiledConsoleOperationRecord>,
-}
-
-impl CompiledConsoleOperationSnapshot {
-    #[cfg(test)]
-    pub(crate) fn operation(&self, operation_id: &str) -> Option<&CompiledConsoleOperationRecord> {
-        self.operations
-            .binary_search_by(|operation| operation.operation_id.as_str().cmp(operation_id))
-            .ok()
-            .and_then(|index| self.operations.get(index))
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

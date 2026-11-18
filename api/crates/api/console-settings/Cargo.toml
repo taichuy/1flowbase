@@ -1,0 +1,51 @@
+[package]
+name = "api-console-settings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+test-support = ["api-host-kernel/test-support"]
+
+[dependencies]
+base16ct = { workspace = true }
+anyhow = { workspace = true }
+argon2 = { workspace = true }
+async-trait = { workspace = true }
+axum = { workspace = true, features = ["multipart", "ws"] }
+base64 = { workspace = true }
+futures-util = { workspace = true }
+jsonschema = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+sysinfo = { workspace = true }
+sqlx = { workspace = true }
+time = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+utoipa = { workspace = true }
+uuid = { workspace = true }
+zip = { workspace = true }
+api-host-kernel = { path = "../kernel" }
+domain = { path = "../../domain" }
+control-plane = { path = "../../control-plane" }
+control-plane-contracts = { path = "../../control-plane-contracts" }
+orchestration-runtime = { path = "../../orchestration-runtime" }
+runtime-core = { path = "../../runtime-core" }
+access-control = { path = "../../access-control" }
+interface-runtime = { path = "../../interface-runtime" }
+plugin-framework = { path = "../../plugin-framework" }
+storage-durable-postgres = { path = "../../storage/durable/postgres" }
+storage-ephemeral = { path = "../../storage/ephemeral" }
+storage-object = { path = "../../storage/object" }
+runtime-profile = { path = "../../runtime-profile" }
+
+[dev-dependencies]
+api-host-kernel = { path = "../kernel", features = ["test-support"] }
+ed25519-dalek = { version = "3.0.0", features = ["pem"] }
+postgres-test-support = { path = "../../postgres-test-support" }

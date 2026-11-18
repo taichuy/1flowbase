@@ -14,8 +14,14 @@ pub(super) async fn claim(
     let Some(row) = row else { return Ok(None) };
     let binding = binding(row)?;
     // External sends may have happened before a crash: never repeat an uncertain send.
-    sqlx::query("UPDATE communication_inputs SET send_status='unknown',failure_code='send_interrupted',claim_id=NULL,claim_expires_at=NULL WHERE scope_id=$1 AND instance_id=$2 AND turn_id IS NULL AND send_status='sending' AND claim_expires_at<=now()")
-        .bind(w).bind(i).execute(&mut *tx).await?;
+    let interrupted = sqlx::query("UPDATE communication_inputs SET send_status='unknown',failure_code='send_interrupted',claim_id=NULL,claim_expires_at=NULL WHERE scope_id=$1 AND instance_id=$2 AND turn_id IS NULL AND send_status='sending' AND claim_expires_at<=now() RETURNING id")
+        .bind(w).bind(i).fetch_all(&mut *tx).await?;
+    let mut recovered = Vec::new();
+    if store.communication_lifecycle_observer.is_some() {
+        for row in interrupted {
+            recovered.push((row.get::<Uuid, _>("id"), None));
+        }
+    }
     // Reclaim the observation lease, retaining any reserved run ID. The execution owner
     // inspects that run and must never invoke it a second time after a restart.
     let sql = format!(
@@ -29,6 +35,7 @@ pub(super) async fn claim(
         .await?;
     let Some(row) = row else {
         tx.commit().await?;
+        observe_interrupted(store, w, i, recovered).await;
         return Ok(None);
     };
     let mut message = input(row)?;
@@ -65,6 +72,7 @@ pub(super) async fn claim(
         })
         .collect::<Result<Vec<_>>>()?;
     tx.commit().await?;
+    observe_interrupted(store, w, i, recovered).await;
     Ok(Some(ClaimedCommunicationInput {
         binding,
         conversation,
@@ -72,6 +80,60 @@ pub(super) async fn claim(
         claim_id,
         attachments,
     }))
+}
+
+/// Only called after the existing owner has transitioned a reserved send to unknown.
+pub(super) async fn interrupted_fact(
+    store: &PgControlPlaneStore,
+    workspace_id: Uuid,
+    instance_id: Uuid,
+    input_id: Uuid,
+    turn_id: Option<Uuid>,
+) -> Result<CommunicationSendResultFact> {
+    let row = sqlx::query("SELECT m.conversation_id,m.external_identity,m.external_message_key,c.external_conversation_key,n.type_code,t.id AS message_id,t.content FROM communication_inputs m JOIN communication_conversations c ON c.id=m.conversation_id AND c.scope_id=m.scope_id AND c.instance_id=m.instance_id AND c.external_identity=m.external_identity JOIN notification_instances n ON n.id=m.instance_id AND n.workspace_id=m.scope_id LEFT JOIN communication_messages t ON t.input_id=m.id AND t.scope_id=m.scope_id AND t.instance_id=m.instance_id AND t.external_identity=m.external_identity AND t.conversation_id=m.conversation_id AND t.direction='outbound' AND t.type='text' WHERE m.id=$1 AND m.scope_id=$2 AND m.instance_id=$3")
+        .bind(input_id).bind(workspace_id).bind(instance_id).fetch_one(store.pool()).await?;
+    Ok(CommunicationSendResultFact {
+        workspace_id,
+        instance_id,
+        send_log_id: None,
+        input_id: Some(input_id),
+        turn_id,
+        conversation_id: Some(row.try_get("conversation_id")?),
+        type_code: Some(row.try_get("type_code")?),
+        source: None,
+        result_kind: CommunicationSendResultKind::Unknown,
+        failure_code: Some("send_interrupted".into()),
+        target: Some(extension_contracts::NotificationSendTarget {
+            sender_id: row.try_get("external_identity")?,
+            conversation_id: row.try_get("external_conversation_key")?,
+            provider_message_id: row.try_get("external_message_key")?,
+        }),
+        content: row.try_get::<Option<String>, _>("content")?.map(|content| {
+            CommunicationFactContent::Text {
+                message_id: row.get("message_id"),
+                content,
+            }
+        }),
+        occurred_at_ms: (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64,
+        workflow_ancestor_ids: store.workflow_ancestor_ids(),
+    })
+}
+
+pub(super) async fn observe_interrupted(
+    store: &PgControlPlaneStore,
+    workspace_id: Uuid,
+    instance_id: Uuid,
+    recovered: Vec<(Uuid, Option<Uuid>)>,
+) {
+    if let Some(observer) = &store.communication_lifecycle_observer {
+        for (input_id, turn_id) in recovered {
+            if let Ok(fact) =
+                interrupted_fact(store, workspace_id, instance_id, input_id, turn_id).await
+            {
+                observer.observed(CommunicationLifecycleFact::SendResult(fact));
+            }
+        }
+    }
 }
 pub(super) async fn renew(
     store: &PgControlPlaneStore,

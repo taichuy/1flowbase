@@ -119,3 +119,7 @@ path = "tests/notifications/mod.rs"
 [[test]]
 name = "durable_event_bus"
 path = "tests/event_bus/mod.rs"
+
+[[test]]
+name = "event_center_configuration"
+path = "tests/event_center_configuration/mod.rs"

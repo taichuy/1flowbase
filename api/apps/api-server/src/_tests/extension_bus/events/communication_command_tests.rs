@@ -76,7 +76,7 @@ impl CommandFixture {
             .unwrap();
         let provider = Arc::new(
             crate::extension_bus::ManagedCommunicationCommandProvider::new(
-                base._services.managed_composition().unwrap(),
+                base.composition.clone(),
             ),
         );
         let service = NotificationService::new(base.store.clone(), "fixture-key".into())
@@ -102,7 +102,7 @@ impl CommandFixture {
                     file_table_id: None,
                     mcp_instance_ids: vec![],
                     system_prompt: String::new(),
-                    command_settings: vec![],
+                    commands: vec![],
                 },
                 "fixture-tools".into(),
             )

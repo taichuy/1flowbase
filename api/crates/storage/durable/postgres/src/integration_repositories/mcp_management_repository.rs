@@ -21,6 +21,8 @@ use crate::repositories::PgControlPlaneStore;
 
 #[path = "mcp_management_repository/bundle_graph.rs"]
 mod bundle_graph;
+#[path = "mcp_management_repository/directory.rs"]
+mod directory;
 #[path = "mcp_management_repository/managed_bundle_graph.rs"]
 mod managed_bundle_graph;
 #[path = "mcp_management_repository/mappers.rs"]
@@ -30,6 +32,21 @@ use mappers::*;
 
 #[async_trait]
 impl McpManagementRepository for PgControlPlaneStore {
+    async fn get_mcp_instance_directory(
+        &self,
+        workspace_id: Uuid,
+        instance_id: &str,
+    ) -> Result<domain::mcp_management::McpInstanceDirectory> {
+        self.get_mcp_instance_directory_impl(workspace_id, instance_id)
+            .await
+    }
+    async fn replace_mcp_instance_directory_atomically(
+        &self,
+        input: &control_plane_contracts::ports::ReplaceMcpInstanceDirectoryInput,
+    ) -> Result<domain::mcp_management::McpInstanceDirectory> {
+        self.replace_mcp_instance_directory_impl(input).await
+    }
+
     async fn record_mcp_extension_bundle_import(
         &self,
         workspace_id: Uuid,

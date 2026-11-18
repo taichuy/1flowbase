@@ -496,22 +496,45 @@ where
         .downcast_ref::<sync_js_runtime::ExecutionError>()
         .map(|error| error.console_logs.clone())
         .unwrap_or_default();
-    let runtime_message = match invoker
-        .protect_protocol_context_logs(&mut console_logs)
-        .await
-    {
-        Ok(()) => error.to_string(),
+    // Guest exceptions are runtime evidence too. Protect their text through the
+    // same owner as console evidence before projecting it into the node/flow error.
+    let mut diagnostic: Vec<ConsoleLogEntry> = error
+        .downcast_ref::<sync_js_runtime::ExecutionError>()
+        .and_then(|error| error.exception_message.clone())
+        .map(|message| ConsoleLogEntry {
+            level: "error".into(),
+            message,
+            args: Vec::new(),
+        })
+        .into_iter()
+        .collect();
+    let protected = async {
+        invoker
+            .protect_protocol_context_logs(&mut console_logs)
+            .await?;
+        invoker.protect_protocol_context_logs(&mut diagnostic).await
+    }
+    .await;
+    let runtime_message = match protected {
+        Ok(()) => match diagnostic.first() {
+            Some(detail) => format!("runtime_error: {}", detail.message),
+            None => error.to_string(),
+        },
         Err(protection_error) => {
             console_logs.clear();
+            diagnostic.clear();
             protection_error.to_string()
         }
     };
+    let message = diagnostic
+        .first()
+        .map_or("code execution failed", |detail| detail.message.as_str());
     let raw = RawNodeExecutionResult {
         executor_output: Map::new(),
         metrics_facts: code_runtime_metrics(runtime, true)?,
         error_facts: object_from_value(json!({
             "error_code": "code_runtime_error",
-            "message": "code execution failed",
+            "message": message,
             "runtime_message": runtime_message,
         }))?,
         debug_facts: code_runtime_debug_facts(&console_logs)?,
@@ -600,9 +623,9 @@ fn validate_code_output_contract(
         } else {
             output.selector.clone()
         };
-        if let Some(value) = read_output_selector(&envelope, &selector) {
-            validate_output_value(output, value)?;
-        }
+        let value = read_output_selector(&envelope, &selector)
+            .ok_or_else(|| anyhow!("declared output `{}` is missing", selector.join(".")))?;
+        validate_output_value(output, value)?;
     }
 
     Ok(())

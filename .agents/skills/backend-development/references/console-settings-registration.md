@@ -11,11 +11,13 @@
 
 ## Developer Workflow
 
-1. 使用仓库统一后台设置注册入口与 CLI 创建或修改注册项、API scope 和确定性 fixture；Core / HostExtension 的已有入口不证明受管插件声明链路已实现，也不能作为永久类型限制。CLI 尚未落地时，只能在已批准的 registry foundation Issue 内建立该入口，不新增平行手写映射。
-2. 通过同一注册入口提交 `feature_id`、console surface、API route ownership、owner/version 和 lifecycle metadata；不要分别维护前端页面表、SettingsRouteSpec API scope 表和插件权限表。
+1. 优先复用仓库已有且适用的注册编辑工具；工具缺失或不适用时，对现有 canonical Rust 注册源作最小修改，并用 compiled inventory 验证。Core / HostExtension 的已有入口不证明受管插件声明链路已实现，也不能作为永久类型限制。
+2. 在同一 canonical 注册源维护 `feature_id`、console surface、API route ownership、owner/version 和 lifecycle metadata；不要分别维护前端页面表、SettingsRouteSpec API scope 表和插件权限表。
 3. 新增 API 时注册对应operation并输出inventory diff，分别分析full与custom角色的有效访问变化；不能为独立授权而被迫拆出新的feature。
 4. 插件 disable / uninstall 时让 feature inactive 并拒绝其 API；保留既有角色policy，恢复后按既有group/operation配置裁决，不擅自扩权。
 5. API 复用优先复用 service / repository，不通过共享 HTTP route 制造 `AnyFeature` 隐式授权；确有多 owner 需求时回到 `problem-framing`。
+
+通用注册 CLI / 生成器及其 fixtures 仅在当前用户目标包含工具建设，或已获授权的独立交付需要时新增；工具缺失本身不扩大当前业务交付。
 
 ## Fail-Closed Evidence
 

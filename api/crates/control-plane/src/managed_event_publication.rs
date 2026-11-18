@@ -113,6 +113,14 @@ pub async fn publish_managed_event(
     lease
         .commit_derived_lifecycle_fact(
             RecordLifecycleFactInput {
+                observation_context: Some(
+                    control_plane_contracts::ports::LifecycleObservationContext::trusted(
+                        domain::event_center::EventSourceScope::Workspace {
+                            workspace_id: Uuid::parse_str(identity.workspace_id().as_str())?,
+                        },
+                        identity.contribution_id().as_str(),
+                    ),
+                ),
                 event_id,
                 transaction_id,
                 contract_id: publication.contract_id,

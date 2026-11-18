@@ -234,7 +234,7 @@ async fn openapi_self_describes_application_catalog_trigger_and_publication_cont
     );
     assert_eq!(
         openapi["components"]["schemas"]["WorkflowTriggerTypeDto"]["enum"],
-        json!(["extension", "schedule"])
+        json!(["extension", "schedule", "event"])
     );
     assert_eq!(
         openapi["paths"]["/api/console/applications/catalog"]["get"]["summary"],

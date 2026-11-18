@@ -1,6 +1,13 @@
 import { fetchConsolePluginSettingsPage } from '@1flowbase/api-client';
 
 export {
+  fetchConsoleCustomFrontendBlocks as fetchSettingsCustomBlocks,
+  createConsoleCustomFrontendBlock as createSettingsCustomBlock,
+  updateConsoleCustomFrontendBlock as updateSettingsCustomBlock,
+  deleteConsoleCustomFrontendBlock as deleteSettingsCustomBlock,
+  type ConsoleCustomFrontendBlock,
+  listConsoleFrontendBlocks as fetchSettingsUiBlocks,
+  type ConsoleFrontendBlockCatalogEntry,
   deleteConsoleUiTemplate as deleteSettingsUiTemplate,
   createConsoleUiComponent as createSettingsUiComponent,
   createConsoleUiTemplate as createSettingsUiTemplate,
@@ -36,6 +43,11 @@ export const settingsUiTemplatesQueryKey = [
   'settings',
   'ui-management',
   'templates'
+] as const;
+export const settingsUiBlocksQueryKey = [
+  'settings',
+  'ui-management',
+  'blocks'
 ] as const;
 export const settingsUiComponentsQueryKey = [
   'settings',

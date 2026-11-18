@@ -44,6 +44,7 @@ use super::{
     project_catalog_entry, project_installed_catalog_joins, requested_installation_identity,
     validate_preflight_overrides, verify_trusted_artifact_signature, ExtensionCenterDependencies,
     InstalledCatalogJoin, InstalledCatalogJoinStatus, PreflightDecision, UploadedExtensionArtifact,
+    UploadedExtensionArtifactTestIdentity, UploadedExtensionArtifactTestSignature,
 };
 
 #[test]
@@ -67,13 +68,13 @@ fn root_1545_ac_4_catalog_projection_joins_real_local_version_by_stable_plugin_i
     let entry = runtime_entry();
     let installed = HashMap::from([(
         "runtime-extensions:taichuy/openai".to_string(),
-        InstalledCatalogJoin {
-            installation_id: Uuid::now_v7(),
-            current_version: "0.1.32-dev".to_string(),
-            source: "upload".to_string(),
-            trust: "unknown".to_string(),
-            status: InstalledCatalogJoinStatus::Installed,
-        },
+        InstalledCatalogJoin::test_new(
+            Uuid::now_v7(),
+            "0.1.32-dev".to_string(),
+            "upload".to_string(),
+            "unknown".to_string(),
+            InstalledCatalogJoinStatus::Installed,
+        ),
     )]);
 
     let response = project_catalog_entry(
@@ -96,13 +97,13 @@ fn ac_1785_catalog_projects_missing_runtime_artifact_as_uninstalled() {
     let entry = runtime_entry();
     let installed = HashMap::from([(
         entry.id.clone(),
-        InstalledCatalogJoin {
-            installation_id: Uuid::now_v7(),
-            current_version: "0.2.0".to_string(),
-            source: "official".to_string(),
-            trust: "official".to_string(),
-            status: InstalledCatalogJoinStatus::Uninstalled,
-        },
+        InstalledCatalogJoin::test_new(
+            Uuid::now_v7(),
+            "0.2.0".to_string(),
+            "official".to_string(),
+            "official".to_string(),
+            InstalledCatalogJoinStatus::Uninstalled,
+        ),
     )]);
 
     let response = project_catalog_entry(entry, "official", &installed, &[]);
@@ -188,7 +189,7 @@ fn ac_001_catalog_join_excludes_missing_versions_and_all_missing_families() {
     );
 
     assert_eq!(
-        joins["runtime-extensions:taichuy/openai"].current_version,
+        joins["runtime-extensions:taichuy/openai"].test_current_version(),
         "1.0.0"
     );
     assert!(!joins.contains_key("runtime-extensions:taichuy/missing-only"));
@@ -1081,19 +1082,23 @@ fn root_1545_ac_5_preflight_requires_exact_integrity_and_compatibility_acknowled
 
 #[test]
 fn root_1545_ac_5_uploaded_invalid_signature_remains_overridable() {
-    let challenge = upload_challenge(&UploadedExtensionArtifact {
-        category: super::ExtensionCatalogCategory::I18n,
-        organization: "taichuy".to_string(),
-        artifact_id: "platform".to_string(),
-        version: "2.0.1".to_string(),
-        minimum_host_version: None,
-        node_plugin: false,
-        signature_status: domain::ExtensionSignatureStatus::Invalid,
-        signature_algorithm: Some("ed25519".to_string()),
-        signing_key_id: Some("unknown".to_string()),
-        application_action: domain::ExtensionApplicationAction::ActivateI18n,
-        managed_schema: None,
-    });
+    let challenge = upload_challenge(&UploadedExtensionArtifact::test_new(
+        UploadedExtensionArtifactTestIdentity {
+            category: super::ExtensionCatalogCategory::I18n,
+            organization: "taichuy".to_string(),
+            artifact_id: "platform".to_string(),
+            version: "2.0.1".to_string(),
+        },
+        None,
+        false,
+        UploadedExtensionArtifactTestSignature {
+            signature_status: domain::ExtensionSignatureStatus::Invalid,
+            signature_algorithm: Some("ed25519".to_string()),
+            signing_key_id: Some("unknown".to_string()),
+        },
+        domain::ExtensionApplicationAction::ActivateI18n,
+        None,
+    ));
     assert_eq!(
         challenge
             .warnings

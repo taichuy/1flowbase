@@ -1,3 +1,4 @@
+const { API_SOURCE_OWNERS, apiSourceOwners } = require('../testing/contracts/api-source-owners.js');
 const path = require('node:path');
 const { buildCargoCommandEnv, getRepoRoot, runCommandSequence, runManagedCommandSequence } = require('../testing/warning-capture.js');
 const { loadVerifyRuntimeConfig } = require('../testing/verify-runtime.js');
@@ -48,17 +49,23 @@ function normalizeBackendShard(shard) {
   return shard;
 }
 
-function buildBackendPackageArgs(shard) {
+function buildBackendPackageArgs(shard, repoRoot) {
   const normalizedShard = normalizeBackendShard(shard);
 
   if (!normalizedShard) {
     return ['--workspace'];
   }
 
-  return normalizedShard.packages.flatMap((packageName) => ['--package', packageName]);
+  const apiNames = new Set(API_SOURCE_OWNERS.map((owner) => owner.packageName));
+  const packages = normalizedShard.packages.includes('api-server')
+    ? normalizedShard.packages.filter((name) => name === 'api-server' || !apiNames.has(name))
+      .flatMap((name) => name === 'api-server' ? apiSourceOwners(repoRoot).map((owner) => owner.packageName) : [name])
+    : normalizedShard.packages;
+  return packages.flatMap((packageName) => ['--package', packageName]);
 }
 
 function buildBackendCargoCommand({
+  repoRoot = getRepoRoot(),
   target,
   cargoJobs,
   cargoTestThreads,
@@ -69,8 +76,8 @@ function buildBackendCargoCommand({
   const normalizedShard = normalizeBackendShard(shard);
   const labelSuffix = testSelection ? '-selected' : normalizedShard ? `-${normalizedShard.key}` : '';
   const packageArgs = testSelection
-    ? testSelection.packages.flatMap((packageName) => ['--package', packageName])
-    : buildBackendPackageArgs(normalizedShard);
+    ? testSelection.workspace ? ['--workspace'] : testSelection.packages.flatMap((packageName) => ['--package', packageName])
+    : buildBackendPackageArgs(normalizedShard, repoRoot);
 
   if (target === 'clippy') {
     return {
@@ -100,7 +107,7 @@ function buildBackendCargoCommand({
         ],
         cwd: 'api',
         env: {
-          ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
+          ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: true }),
           CARGO_PROFILE_TEST_DEBUG: '0',
           ...(normalizedShard.key.startsWith('api-server-')
             ? { RUST_MIN_STACK: String(8 * 1024 * 1024) }
@@ -122,7 +129,7 @@ function buildBackendCargoCommand({
       ],
       cwd: 'api',
       env: {
-        ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
+        ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: true }),
         // Keep the monolithic API test harness inside the CI budget without changing test behavior.
         ...(normalizedShard?.key === 'api-server'
           ? { CARGO_PROFILE_TEST_DEBUG: '0' }
@@ -159,7 +166,7 @@ function buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads, incremen
       `--test-threads=${cargoTestThreads}`,
     ],
     cwd: 'api',
-    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
+    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: true }),
   }));
 }
 
@@ -192,15 +199,15 @@ function buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads, increm
       `--test-threads=${cargoTestThreads}`,
     ],
     cwd: 'api',
-    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
+    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental, testProfile: true }),
   }));
 }
 
-function buildBackendFmtCommand({ cargoJobs }) {
+function buildBackendFmtCommand({ cargoJobs, repoRoot }) {
   return {
     label: 'cargo-fmt',
-    command: 'cargo',
-    args: ['fmt', '--all', '--check'],
+    command: process.execPath,
+    args: [path.join(__dirname, '../testing/rustfmt-api.js'), repoRoot],
     cwd: 'api',
     env: buildCargoCommandEnv({ cargoParallelism: cargoJobs }),
   };
@@ -220,7 +227,7 @@ function buildBackendCommands({
   }
 
   if (target === 'fmt') {
-    return [buildBackendFmtCommand({ cargoJobs })];
+    return [buildBackendFmtCommand({ cargoJobs, repoRoot })];
   }
 
   if (target === 'clippy' || target === 'test' || target === 'check') {
@@ -230,7 +237,7 @@ function buildBackendCommands({
     const testShard = target === 'test' && env.QUALITY_GATE_SCOPE === 'ci' && normalizedShard?.coverageOwnedPackages
       ? { ...normalizedShard, packages: normalizedShard.packages.filter((name) => !normalizedShard.coverageOwnedPackages.includes(name)) }
       : normalizedShard;
-    const commands = [buildBackendCargoCommand({ target, cargoJobs, cargoTestThreads, incremental, shard: testShard })];
+    const commands = [buildBackendCargoCommand({ repoRoot, target, cargoJobs, cargoTestThreads, incremental, shard: testShard })];
     // The SQL report needs PostgreSQL, not a private deployed page. Run once in
     // the database-backed batch, and keep it inside the candidate gate receipt.
     if (target === 'test' && normalizedShard?.key === 'storage-postgres-1-of-4') {
@@ -258,7 +265,7 @@ function buildBackendCommands({
 
   return [
     buildRustBackendStaticGateCommand({ repoRoot, env }),
-    buildBackendFmtCommand({ cargoJobs }),
+    buildBackendFmtCommand({ cargoJobs, repoRoot }),
     buildBackendCargoCommand({ target: 'clippy', cargoJobs, cargoTestThreads, incremental }),
     ...buildHistoryMaintenanceCommands({ cargoJobs, cargoTestThreads, incremental }),
     {

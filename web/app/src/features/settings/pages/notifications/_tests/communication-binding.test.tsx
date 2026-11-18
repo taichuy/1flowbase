@@ -33,9 +33,7 @@ function setup(...args: Parameters<typeof setupCommunicationBinding>) {
 }
 const commandSwitch = (name: string) =>
   screen.getByRole('switch', { name: `Enable ${name}` });
-const settle = (
-  state: 'ready' | 'options-error' | 'binding-error' = 'ready'
-) =>
+const settle = (state: 'ready' | 'options-error' | 'binding-error' = 'ready') =>
   waitFor(() => {
     // Query completion precedes the observer's React render. Wait for the
     // command catalogue (or its load error) to reach the form as well.
@@ -82,12 +80,16 @@ test('new binding requires an application and saves backend command defaults wit
       file_table_id: null,
       mcp_instance_ids: ['extra', 'dedicated'],
       system_prompt: 'Edited instructions',
-      command_settings: [
-        { command_id: 'host/new', enabled: true },
-        { command_id: 'host/model', enabled: true },
-        { command_id: 'host/help', enabled: true },
-        { command_id: 'acme/reports/summary', enabled: false },
-        { command_id: 'acme/paused/audit', enabled: false }
+      commands: [
+        { kind: 'registered', command_id: 'host/new', enabled: true },
+        { kind: 'registered', command_id: 'host/model', enabled: true },
+        { kind: 'registered', command_id: 'host/help', enabled: true },
+        {
+          kind: 'registered',
+          command_id: 'acme/reports/summary',
+          enabled: false
+        },
+        { kind: 'registered', command_id: 'acme/paused/audit', enabled: false }
       ]
     }
   ]);
@@ -148,16 +150,20 @@ test('editing switches saves canonical fields and reopening reads the persisted 
     file_table_id: null,
     mcp_instance_ids: ['dedicated', 'extra'],
     system_prompt: 'Saved command instructions',
-    command_settings: expect.arrayContaining([
-      { command_id: 'host/new', enabled: true },
-      { command_id: 'host/model', enabled: true },
-      { command_id: 'host/help', enabled: true },
-      { command_id: 'acme/reports/summary', enabled: false },
-      { command_id: 'acme/paused/audit', enabled: false },
-      { command_id: 'acme/retired/archive', enabled: true }
+    commands: expect.arrayContaining([
+      { kind: 'registered', command_id: 'host/new', enabled: true },
+      { kind: 'registered', command_id: 'host/model', enabled: true },
+      { kind: 'registered', command_id: 'host/help', enabled: true },
+      {
+        kind: 'registered',
+        command_id: 'acme/reports/summary',
+        enabled: false
+      },
+      { kind: 'registered', command_id: 'acme/paused/audit', enabled: false },
+      { kind: 'registered', command_id: 'acme/retired/archive', enabled: true }
     ])
   });
-  expect(writes[0].command_settings).toHaveLength(6);
+  expect(writes[0].commands).toHaveLength(6);
   view.unmount();
   client.clear();
   mount('channel-1');
@@ -199,10 +205,14 @@ test('unavailable enabled commands remain disableable and saved missing declarat
   await act(async () => {
     await ref.current?.save('channel-1');
   });
-  expect(writes[0].command_settings).toEqual(
+  expect(writes[0].commands).toEqual(
     expect.arrayContaining([
-      { command_id: 'acme/retired/archive', enabled: false },
-      { command_id: 'acme/paused/audit', enabled: false }
+      {
+        kind: 'registered',
+        command_id: 'acme/retired/archive',
+        enabled: false
+      },
+      { kind: 'registered', command_id: 'acme/paused/audit', enabled: false }
     ])
   );
 });
@@ -244,11 +254,11 @@ test('changing the application keeps unsaved toggles and requests the saved-chan
     application_id: 'app-2',
     model: null,
     reasoning_effort: null,
-    command_settings: expect.arrayContaining([
-      { command_id: 'host/new', enabled: false },
-      { command_id: 'host/model', enabled: false },
-      { command_id: 'host/help', enabled: true },
-      { command_id: 'acme/retired/archive', enabled: true }
+    commands: expect.arrayContaining([
+      { kind: 'registered', command_id: 'host/new', enabled: false },
+      { kind: 'registered', command_id: 'host/model', enabled: false },
+      { kind: 'registered', command_id: 'host/help', enabled: true },
+      { kind: 'registered', command_id: 'acme/retired/archive', enabled: true }
     ])
   });
 });
@@ -292,10 +302,12 @@ test('conflicting installations remain visible and disabling their shared comman
     await ref.current?.save('channel-1');
   });
   expect(
-    writes[0].command_settings.filter(
+    writes[0].commands.filter(
       (setting) => setting.command_id === 'acme/reports/summary'
     )
-  ).toEqual([{ command_id: 'acme/reports/summary', enabled: false }]);
+  ).toEqual([
+    { kind: 'registered', command_id: 'acme/reports/summary', enabled: false }
+  ]);
 });
 
 test('an unrelated edit does not erase a saved setting omitted from a refreshed catalogue', async () => {
@@ -311,7 +323,8 @@ test('an unrelated edit does not erase a saved setting omitted from a refreshed 
   await act(async () => {
     await ref.current?.save('channel-1');
   });
-  expect(writes[0].command_settings).toContainEqual({
+  expect(writes[0].commands).toContainEqual({
+    kind: 'registered',
     command_id: 'acme/retired/archive',
     enabled: true
   });
@@ -335,8 +348,8 @@ test('failed save rejects without losing command, MCP, prompt or model drafts', 
     reasoning_effort: 'high',
     system_prompt: 'Custom prompt',
     file_table_id: null,
-    command_settings: expect.arrayContaining([
-      { command_id: 'host/help', enabled: true }
+    commands: expect.arrayContaining([
+      { kind: 'registered', command_id: 'host/help', enabled: true }
     ])
   });
 });
@@ -364,24 +377,208 @@ test.each(['options', 'binding'] as const)(
   }
 );
 
-
 test('read binding grants preserve saved configuration but cannot change or persist commands', async () => {
-  const { ref, writes } = setup({ existing: true, permissions: ['communications.binding.get', 'communications.options.get'] });
+  const { ref, writes } = setup({
+    existing: true,
+    permissions: ['communications.binding.get', 'communications.options.get']
+  });
   await screen.findByDisplayValue('Custom prompt');
   expect(screen.getByRole('textbox', { name: 'System prompt' })).toBeDisabled();
   await waitFor(() => {
     expect(commandSwitch('help')).toBeDisabled();
     expect(commandSwitch('summary')).toBeDisabled();
   });
-  await expect(ref.current?.save('channel-1')).rejects.toThrow('operation not permitted');
+  await expect(ref.current?.save('channel-1')).rejects.toThrow(
+    'operation not permitted'
+  );
   expect(writes).toEqual([]);
 });
 
 test('the binding update operation enables saving without instance update permission', async () => {
-  const { ref, writes } = setup({ existing: true, permissions: ['communications.binding.get', 'communications.options.get', 'communications.binding.update'] });
+  const { ref, writes } = setup({
+    existing: true,
+    permissions: [
+      'communications.binding.get',
+      'communications.options.get',
+      'communications.binding.update'
+    ]
+  });
   await settle();
-  fireEvent.change(screen.getByRole('textbox', { name: 'System prompt' }), { target: { value: 'Custom binding only' } });
-  await act(async () => { await ref.current?.save('channel-1'); });
+  fireEvent.change(screen.getByRole('textbox', { name: 'System prompt' }), {
+    target: { value: 'Custom binding only' }
+  });
+  await act(async () => {
+    await ref.current?.save('channel-1');
+  });
   expect(writes).toHaveLength(1);
   expect(writes[0]?.system_prompt).toBe('Custom binding only');
+});
+
+test('E8 adds, persists, reopens, edits and removes a custom event slash command', async () => {
+  const { ref, writes, view, mount } = setup({
+    existing: true,
+    withoutMotion: true
+  });
+  let binding = within(view.container);
+  await waitFor(() => {
+    expect(binding.getByDisplayValue('Custom prompt')).toBeInTheDocument();
+    expect(client.isFetching()).toBe(0);
+    expect(binding.getByLabelText('Enable new')).toBeEnabled();
+    expect(binding.queryByRole('alert')).not.toBeInTheDocument();
+  });
+  fireEvent.click(binding.getByRole('button', { name: 'Add command' }));
+  const dialog = await screen.findByRole('dialog');
+  await waitFor(() =>
+    expect(within(dialog).getByRole('button', { name: 'Submit' })).toBeEnabled()
+  );
+  fireEvent.change(
+    within(dialog).getByRole('textbox', { name: 'Command identity' }),
+    { target: { value: 'user/invoice' } }
+  );
+  fireEvent.change(
+    within(dialog).getByRole('textbox', { name: 'Slash command name' }),
+    { target: { value: 'invoice' } }
+  );
+  fireEvent.change(
+    within(dialog).getByRole('textbox', { name: 'Description' }),
+    { target: { value: 'Request invoice processing' } }
+  );
+  fireEvent.mouseDown(
+    within(dialog).getByRole('combobox', { name: 'Target custom event' })
+  );
+  fireEvent.click(
+    await screen.findByText('Invoice requested', {
+      selector: '.ant-select-item-option-content'
+    })
+  );
+  fireEvent.mouseDown(
+    await waitFor(() =>
+      within(dialog).getByRole('combobox', { name: 'Payload field: invoice' })
+    )
+  );
+  fireEvent.click(
+    await screen.findByText('/arguments', {
+      selector: '.ant-select-item-option-content'
+    })
+  );
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Submit' }));
+  await waitFor(() =>
+    expect(binding.getByLabelText('Enable invoice')).toBeChecked()
+  );
+  await act(async () => {
+    expect(ref.current?.validate()).toBe(true);
+    await ref.current?.save('channel-1');
+  });
+  expect(
+    writes[0].commands.filter((command) => command.kind === 'event')
+  ).toEqual([
+    {
+      kind: 'event',
+      command_id: 'user/invoice',
+      name: 'invoice',
+      description: 'Request invoice processing',
+      enabled: true,
+      contract_id: 'custom.invoice',
+      input_mapping: { invoice: '/arguments' }
+    }
+  ]);
+  expect(
+    writes[0].commands.filter((command) => command.kind === 'event')[0]
+  ).not.toHaveProperty('contract_version');
+  expect(
+    writes[0].commands
+      .filter((command) => command.kind === 'registered')
+      .every((setting) => !setting.command_id.startsWith('user/'))
+  ).toBe(true);
+  view.unmount();
+  client.clear();
+  binding = within(mount('channel-1').container);
+  // The saved row renders before the application-specific catalogue is ready.
+  // Wait on the labelled control without repeatedly computing every table row's
+  // accessible name while the query notification and React commit are pending.
+  await waitFor(() => {
+    expect(binding.getByLabelText('Enable invoice')).toBeEnabled();
+  });
+  expect(
+    binding.getByRole('switch', { name: 'Enable invoice' })
+  ).toBeInTheDocument();
+  const reopenedRow = binding.getByRole('row', { name: /\/invoice/ });
+  const editButton = within(reopenedRow).getByRole('button', { name: 'Edit' });
+  expect(editButton).toBeEnabled();
+  fireEvent.click(editButton);
+  const edit = await waitFor(() => {
+    const dialog = screen.getByRole('dialog');
+    expect(
+      within(dialog).getByRole('button', { name: 'Submit' })
+    ).toBeEnabled();
+    return dialog;
+  });
+  expect(
+    within(edit).getByRole('textbox', { name: 'Command identity' })
+  ).toBeDisabled();
+  fireEvent.change(within(edit).getByRole('textbox', { name: 'Description' }), {
+    target: { value: 'Updated invoice processing' }
+  });
+  fireEvent.click(within(edit).getByRole('button', { name: 'Submit' }));
+  await binding.findByText('Updated invoice processing');
+  expect(
+    binding.getByRole('row', { name: /Updated invoice processing/ })
+  ).toBeInTheDocument();
+  fireEvent.click(binding.getByRole('switch', { name: 'Enable invoice' }));
+  await act(async () => {
+    await ref.current?.save('channel-1');
+  });
+  expect(
+    writes[1].commands.filter((command) => command.kind === 'event')[0]
+  ).toMatchObject({
+    description: 'Updated invoice processing',
+    enabled: false
+  });
+  fireEvent.click(
+    within(binding.getByRole('row', { name: /\/invoice/ })).getByRole(
+      'button',
+      {
+        name: 'Delete'
+      }
+    )
+  );
+  await act(async () => {
+    await ref.current?.save('channel-1');
+  });
+  expect(
+    writes[2].commands.filter((command) => command.kind === 'event')
+  ).toEqual([]);
+});
+
+test('E8 cannot edit event commands with read-only permission', async () => {
+  setup({
+    permissions: ['communications.binding.get', 'communications.options.get']
+  });
+  await waitFor(() => {
+    expect(client.isFetching()).toBe(0);
+    expect(screen.getByRole('button', { name: 'Add command' })).toBeDisabled();
+  });
+});
+
+test('E8 validates reserved slash names before adding a command draft', async () => {
+  setup({ existing: true });
+  await screen.findByDisplayValue('Custom prompt');
+  await settle();
+  fireEvent.click(screen.getByRole('button', { name: 'Add command' }));
+  const dialog = await screen.findByRole('dialog');
+  fireEvent.change(
+    within(dialog).getByRole('textbox', { name: 'Command identity' }),
+    { target: { value: 'user/custom-help' } }
+  );
+  fireEvent.change(
+    within(dialog).getByRole('textbox', { name: 'Slash command name' }),
+    { target: { value: 'help' } }
+  );
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Submit' }));
+  expect(
+    await within(dialog).findByText(
+      'This command identity or name is already in use or reserved.'
+    )
+  ).toBeInTheDocument();
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
 });

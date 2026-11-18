@@ -1,0 +1,1071 @@
+mod document_projection;
+use std::{future::Future, pin::Pin, sync::Arc};
+
+use control_plane::application_public_api::{
+    callback_resume::{
+        ApplicationPublishedCallbackResumeService, PublishedCallbackResumeSource,
+        PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
+    },
+    model_catalog::extract_agent_model_catalog_from_start_node,
+    native::{ApplicationNativeRunService, NativeRunValidationError},
+    publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
+};
+use control_plane::{
+    orchestration_runtime::OrchestrationRuntimeService,
+    ports::{CacheStore, ProviderTransportStore, RuntimeEventStream, TaskQueue},
+};
+use interface_runtime::{
+    ApplicationPrincipal, AuthenticationAdapterReference, AuthorizationAdapterReference,
+    AuthorizationOperation, BindingId, CompiledInterfaceRegistry, ContractIdentity,
+    GraphFingerprint, HandlerReference, InterfaceAccess, InterfaceAuditPolicy,
+    InterfaceAuthenticationPolicy, InterfaceAuthorizationFuture, InterfaceAuthorizationPort,
+    InterfaceAuthorizationRequest, InterfaceContract, InterfaceContracts, InterfaceDefinition,
+    InterfaceErrorPolicy, InterfaceExecution, InterfaceExecutionMode, InterfaceHandler,
+    InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceIdentity,
+    InterfaceLifecycle, InterfaceOwner, InterfaceScope, InterfaceTargetFailure, InterfaceVersion,
+    InvocationAdapterPlan, ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity,
+    TargetReference,
+};
+use orchestration_runtime::execution_engine::RuntimeInternalToolInvoker;
+use runtime_core::runtime_engine::RuntimeEngine;
+use serde_json::Value;
+use storage_durable_postgres::MainDurableStore;
+use uuid::Uuid;
+
+use super::native::{
+    application_actor_from_principal, native_error, NativeApiError, NativeModelListResponse,
+    NativeModelObject, NativeRunResponse,
+};
+use crate::routes::files::UploadedFileResponse;
+use crate::{
+    provider_runtime::ApiProviderRuntime, runtime_activity::ApplicationRuntimeActivityTracker,
+};
+
+test_support_item! { pub(crate), [
+]
+const MODELS_BINDING_ID: &str = "http.application.native.models.list.v1";
+}
+test_support_item! { pub(crate), [
+]
+const GET_RUN_BINDING_ID: &str = "http.application.native.runs.get.v1";
+}
+test_support_item! { pub(crate), [
+]
+const CANCEL_RUN_BINDING_ID: &str = "http.application.native.runs.cancel.v1";
+}
+test_support_item! { pub(crate), [
+]
+const RESUME_RUN_BINDING_ID: &str = "http.application.native.runs.resume.v1";
+}
+test_support_item! { pub(crate), [
+]
+const UPLOAD_FILE_BINDING_ID: &str = "http.application.native.files.upload.v1";
+}
+
+#[derive(serde::Serialize)]
+pub struct NativeModelsInput;
+impl crate::openapi_interface::json_contract::JsonApiInput for NativeModelsInput {}
+
+impl InterfaceContract for NativeModelsInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema([(
+            "kind",
+            mp::tag_schema("NativeModelsInput"),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value([(
+            "kind",
+            serde_json::Value::String("NativeModelsInput".to_owned()),
+        )]))
+    }
+
+    const CONTRACT_ID: &'static str = "application-native-models-list-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+#[derive(serde::Serialize)]
+#[serde(transparent)]
+pub struct NativeModelsOutput(pub(crate) NativeModelListResponse);
+impl crate::openapi_interface::json_contract::JsonApiOutput for NativeModelsOutput {}
+
+impl InterfaceContract for NativeModelsOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema([(
+            "0",
+            mp::object_schema([
+                (
+                    "object",
+                    mp::object_schema([("byte_count", mp::count_schema())]),
+                ),
+                (
+                    "data",
+                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("name",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("context_window",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("max_context_window",serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]})), ("capabilities",mp::object_schema([("reasoning",serde_json::json!({"type":"boolean"})), ("tool_call",serde_json::json!({"type":"boolean"})), ("multimodal",serde_json::json!({"type":"boolean"})), ("structured_output",serde_json::json!({"type":"boolean"}))])), ("reasoning",serde_json::json!({"anyOf": [mp::object_schema([("default_effort",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("supported_efforts",mp::object_schema([("item_count",mp::count_schema())]))]), {"type":"null"}]}))])}),
+                ),
+            ]),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value([(
+            "0",
+            mp::object_value([
+                (
+                    "object",
+                    mp::object_value([("byte_count", serde_json::json!((self).0.object.len()))]),
+                ),
+                ("data", {
+                    if (self).0.data.len() > 32 {
+                        return None;
+                    }
+                    serde_json::Value::Array(
+                        (self)
+                            .0
+                            .data
+                            .iter()
+                            .map(|item| {
+                                Some(mp::object_value([
+                                    ("id", mp::text(&(item).id)?),
+                                    (
+                                        "name",
+                                        match (item).name.as_ref() {
+                                            Some(item) => mp::object_value([(
+                                                "byte_count",
+                                                serde_json::json!((item).len()),
+                                            )]),
+                                            None => serde_json::Value::Null,
+                                        },
+                                    ),
+                                    (
+                                        "context_window",
+                                        match (item).context_window.as_ref() {
+                                            Some(item) => serde_json::json!(*(item)),
+                                            None => serde_json::Value::Null,
+                                        },
+                                    ),
+                                    (
+                                        "max_context_window",
+                                        match (item).max_context_window.as_ref() {
+                                            Some(item) => serde_json::json!(*(item)),
+                                            None => serde_json::Value::Null,
+                                        },
+                                    ),
+                                    (
+                                        "capabilities",
+                                        mp::object_value([
+                                            (
+                                                "reasoning",
+                                                serde_json::Value::Bool(
+                                                    (item).capabilities.reasoning,
+                                                ),
+                                            ),
+                                            (
+                                                "tool_call",
+                                                serde_json::Value::Bool(
+                                                    (item).capabilities.tool_call,
+                                                ),
+                                            ),
+                                            (
+                                                "multimodal",
+                                                serde_json::Value::Bool(
+                                                    (item).capabilities.multimodal,
+                                                ),
+                                            ),
+                                            (
+                                                "structured_output",
+                                                serde_json::Value::Bool(
+                                                    (item).capabilities.structured_output,
+                                                ),
+                                            ),
+                                        ]),
+                                    ),
+                                    (
+                                        "reasoning",
+                                        match (item).reasoning.as_ref() {
+                                            Some(item) => mp::object_value([
+                                                (
+                                                    "default_effort",
+                                                    match (item).default_effort.as_ref() {
+                                                        Some(item) => mp::object_value([(
+                                                            "byte_count",
+                                                            serde_json::json!((item).len()),
+                                                        )]),
+                                                        None => serde_json::Value::Null,
+                                                    },
+                                                ),
+                                                (
+                                                    "supported_efforts",
+                                                    mp::object_value([(
+                                                        "item_count",
+                                                        serde_json::json!((item)
+                                                            .supported_efforts
+                                                            .len()),
+                                                    )]),
+                                                ),
+                                            ]),
+                                            None => serde_json::Value::Null,
+                                        },
+                                    ),
+                                ]))
+                            })
+                            .collect::<Option<Vec<_>>>()?,
+                    )
+                }),
+            ]),
+        )]))
+    }
+
+    const CONTRACT_ID: &'static str = "application-native-models-list-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+#[derive(serde::Serialize)]
+#[serde(transparent)]
+pub struct NativeGetRunInput(pub(crate) Uuid);
+impl crate::openapi_interface::json_contract::JsonApiInput for NativeGetRunInput {
+    const LOCATION: crate::openapi_interface::json_contract::JsonInputLocation =
+        crate::openapi_interface::json_contract::JsonInputLocation::Path;
+}
+
+test_support_item! { pub(crate), [
+]
+struct NativeUploadFileInput {
+    pub(crate) file_table_id: Uuid,
+    pub(crate) original_filename: String,
+    pub(crate) content_type: Option<String>,
+    pub(crate) bytes: Vec<u8>,
+}
+}
+impl InterfaceContract for NativeUploadFileInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema([
+            ("file_table_id", mp::text_schema()),
+            (
+                "content_type",
+                serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+            ),
+            (
+                "bytes",
+                mp::object_schema([("byte_count", mp::count_schema())]),
+            ),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value([
+            (
+                "file_table_id",
+                serde_json::Value::String((self).file_table_id.to_string()),
+            ),
+            (
+                "content_type",
+                match (self).content_type.as_ref() {
+                    Some(item) => mp::text(item)?,
+                    None => serde_json::Value::Null,
+                },
+            ),
+            (
+                "bytes",
+                mp::object_value([("byte_count", serde_json::json!((self).bytes.len()))]),
+            ),
+        ]))
+    }
+
+    const CONTRACT_ID: &'static str = "application-native-file-upload-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+#[derive(serde::Serialize)]
+#[serde(transparent)]
+pub struct NativeUploadFileOutput(pub(crate) UploadedFileResponse);
+impl crate::openapi_interface::json_contract::JsonApiOutput for NativeUploadFileOutput {}
+
+impl InterfaceContract for NativeUploadFileOutput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema([(
+            "0",
+            mp::object_schema([
+                ("file_table_id", mp::text_schema()),
+                ("storage_id", mp::text_schema()),
+                ("record", mp::json_summary_schema()),
+            ]),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value([(
+            "0",
+            mp::object_value([
+                ("file_table_id", mp::text(&(self).0.file_table_id)?),
+                ("storage_id", mp::text(&(self).0.storage_id)?),
+                ("record", mp::json_summary(&(self).0.record)),
+            ]),
+        )]))
+    }
+
+    const CONTRACT_ID: &'static str = "application-native-file-upload-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+pub struct NativeReadTargetError(pub(crate) NativeApiError);
+impl InterfaceContract for NativeReadTargetError {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema([(
+            "0",
+            mp::object_schema([
+                (
+                    "status",
+                    serde_json::json!({"type":"integer","minimum":100,"maximum":599}),
+                ),
+                ("code", mp::text_schema()),
+                (
+                    "message",
+                    mp::object_schema([("byte_count", mp::count_schema())]),
+                ),
+            ]),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value([(
+            "0",
+            mp::object_value([
+                ("status", serde_json::json!((self).0.status.as_u16())),
+                ("code", mp::text((self).0.code)?),
+                (
+                    "message",
+                    mp::object_value([("byte_count", serde_json::json!((self).0.message.len()))]),
+                ),
+            ]),
+        )]))
+    }
+
+    const CONTRACT_ID: &'static str = "application-native-read-error";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+type ReadFuture<'a, T> =
+    Pin<Box<dyn Future<Output = Result<T, NativeReadTargetError>> + Send + 'a>>;
+
+pub trait NativeReadPort: Send + Sync + 'static {
+    fn list_models<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: NativeModelsInput,
+    ) -> ReadFuture<'a, NativeModelsOutput>;
+
+    fn get_run<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: NativeGetRunInput,
+    ) -> ReadFuture<'a, NativeGetRunOutput>;
+
+    fn cancel_run<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: NativeCancelRunInput,
+    ) -> ReadFuture<'a, NativeCancelRunOutput>;
+}
+
+pub type RuntimeInvokerFuture<'a> = Pin<
+    Box<
+        dyn Future<Output = Result<Arc<dyn RuntimeInternalToolInvoker>, NativeApiError>>
+            + Send
+            + 'a,
+    >,
+>;
+
+pub trait NativeRuntimeInvokerFactory: Send + Sync + 'static {
+    /// Bind the credential host to the actual actor and selected generation without loading MCP.
+    fn without_mcp<'a>(&'a self, actor: &'a domain::ActorContext) -> RuntimeInvokerFuture<'a>;
+
+    fn for_actor<'a>(
+        &'a self,
+        actor: &'a control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+    ) -> RuntimeInvokerFuture<'a>;
+}
+
+pub trait NativeResumePort: Send + Sync + 'static {
+    fn resume<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: NativeResumeRunInput,
+    ) -> ReadFuture<'a, NativeResumeRunOutput>;
+}
+
+pub trait NativeFilePort: Send + Sync + 'static {
+    fn upload<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: NativeUploadFileInput,
+    ) -> ReadFuture<'a, NativeUploadFileOutput>;
+}
+
+struct NativeReadAdapter {
+    store: MainDurableStore,
+    cache_store: Arc<dyn CacheStore>,
+    runtime_event_stream: Arc<dyn RuntimeEventStream>,
+}
+
+struct NativeResumeAdapter {
+    store: MainDurableStore,
+    published_plan_cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
+    provider_runtime: ApiProviderRuntime,
+    runtime_engine: Arc<RuntimeEngine>,
+    provider_secret_master_key: String,
+    model_billing_require_provider_usage: bool,
+    api_node_id: String,
+    provider_install_root: String,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    notification_sender: Arc<dyn control_plane::notifications::NotificationSenderPort>,
+    cache_store: Arc<dyn CacheStore>,
+    task_queue: Arc<dyn TaskQueue>,
+    provider_transport_store: Arc<dyn ProviderTransportStore>,
+    runtime_event_stream: Arc<dyn RuntimeEventStream>,
+    runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
+    runtime_invoker_factory: Arc<dyn NativeRuntimeInvokerFactory>,
+}
+
+struct NativeFileAdapter {
+    store: MainDurableStore,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    runtime_engine: Arc<RuntimeEngine>,
+}
+
+impl NativeFilePort for NativeFileAdapter {
+    fn upload<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: NativeUploadFileInput,
+    ) -> ReadFuture<'a, NativeUploadFileOutput> {
+        Box::pin(async move {
+            control_plane::file_management::FileUploadService::new(
+                self.store.clone(),
+                Arc::clone(&self.file_storage_registry),
+                Arc::clone(&self.runtime_engine),
+            )
+            .upload(control_plane::file_management::UploadFileCommand {
+                actor: principal.authorized_actor().clone(),
+                target: control_plane::file_management::FileUploadTarget::Table(
+                    input.file_table_id,
+                ),
+                original_filename: input.original_filename,
+                content_type: input.content_type,
+                bytes: input.bytes,
+            })
+            .await
+            .map(|uploaded| {
+                NativeUploadFileOutput(UploadedFileResponse {
+                    file_table_id: uploaded.file_table_id.to_string(),
+                    storage_id: uploaded.storage_id.to_string(),
+                    record: uploaded.record,
+                })
+            })
+            .map_err(super::native::service_error)
+            .map_err(NativeReadTargetError)
+        })
+    }
+}
+
+pub fn native_file_port(
+    store: MainDurableStore,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    runtime_engine: Arc<RuntimeEngine>,
+) -> Arc<dyn NativeFilePort> {
+    Arc::new(NativeFileAdapter {
+        store,
+        file_storage_registry,
+        runtime_engine,
+    })
+}
+
+impl NativeResumePort for NativeResumeAdapter {
+    fn resume<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: NativeResumeRunInput,
+    ) -> ReadFuture<'a, NativeResumeRunOutput> {
+        Box::pin(async move {
+            let actor = application_actor_from_principal(principal);
+            let runtime_invoker = self
+                .runtime_invoker_factory
+                .for_actor(&actor)
+                .await
+                .map_err(NativeReadTargetError)?;
+            let runtime_service = OrchestrationRuntimeService::new(
+                self.store.clone(),
+                self.provider_runtime.clone(),
+                Arc::clone(&self.runtime_engine),
+                self.provider_secret_master_key.clone(),
+                self.provider_transport_store.clone(),
+                self.model_billing_require_provider_usage,
+            )
+            .with_published_plan_cache(Arc::clone(&self.published_plan_cache))
+            .with_node_artifact_context(
+                self.api_node_id.clone(),
+                self.provider_install_root.clone(),
+            )
+            .with_file_storage_registry(Arc::clone(&self.file_storage_registry))
+            .with_notification_sender(self.notification_sender.clone())
+            .with_runtime_internal_tool_invoker(runtime_invoker)
+            .with_llm_routing_counter_store(Arc::clone(&self.cache_store))
+            .with_provider_request_log_queue(Arc::clone(&self.task_queue))
+            .with_runtime_event_stream(Arc::clone(&self.runtime_event_stream));
+            let _activity = self.runtime_activity.start(
+                actor.application_id,
+                crate::runtime_activity::ApplicationActivityKind::ApplicationExecution,
+            );
+            ApplicationPublishedCallbackResumeService::new(self.store.clone(), runtime_service)
+                .with_last_used_cache(Arc::clone(&self.cache_store))
+                .resume_callback_for_actor(
+                    actor,
+                    ResumePublishedCallbackCommand {
+                        anthropic_continuation: None,
+                        responses_continuation: None,
+                        transport_connection_scope: None,
+                        observation_context: None,
+                        reserved_attempt_id: None,
+                        native_transport: None,
+                        bearer_token: String::new(),
+                        target: PublishedCallbackResumeTarget::FlowRun {
+                            flow_run_id: input.run_id,
+                            callback_task_id: input.callback_task_id,
+                        },
+                        source: PublishedCallbackResumeSource::NativeAgent,
+                        response_payload: input.response_payload,
+                        response_mode: input.response_mode,
+                    },
+                )
+                .await
+                .map(|result| {
+                    NativeResumeRunOutput(super::native::to_native_run_response(result.run))
+                })
+                .map_err(super::native::service_error)
+                .map_err(NativeReadTargetError)
+        })
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn native_resume_port(
+    store: MainDurableStore,
+    published_plan_cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
+    provider_runtime: ApiProviderRuntime,
+    runtime_engine: Arc<RuntimeEngine>,
+    provider_secret_master_key: String,
+    model_billing_require_provider_usage: bool,
+    api_node_id: String,
+    provider_install_root: String,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    notification_sender: Arc<dyn control_plane::notifications::NotificationSenderPort>,
+    cache_store: Arc<dyn CacheStore>,
+    task_queue: Arc<dyn TaskQueue>,
+    provider_transport_store: Arc<dyn ProviderTransportStore>,
+    runtime_event_stream: Arc<dyn RuntimeEventStream>,
+    runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
+    runtime_invoker_factory: Arc<dyn NativeRuntimeInvokerFactory>,
+) -> Arc<dyn NativeResumePort> {
+    Arc::new(NativeResumeAdapter {
+        store,
+        published_plan_cache,
+        provider_runtime,
+        runtime_engine,
+        provider_secret_master_key,
+        model_billing_require_provider_usage,
+        api_node_id,
+        provider_install_root,
+        file_storage_registry,
+        notification_sender,
+        cache_store,
+        task_queue,
+        provider_transport_store,
+        runtime_event_stream,
+        runtime_activity,
+        runtime_invoker_factory,
+    })
+}
+
+impl NativeReadPort for NativeReadAdapter {
+    fn list_models<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        _input: NativeModelsInput,
+    ) -> ReadFuture<'a, NativeModelsOutput> {
+        Box::pin(async move {
+            let publication = ApplicationPublicationService::new(self.store.clone())
+                .load_active_publication(LoadActiveApplicationPublicationCommand {
+                    application_id: principal.application_id(),
+                })
+                .await
+                .map_err(|_| native_error(NativeRunValidationError::ApplicationNotPublished))
+                .map_err(NativeReadTargetError)?;
+            let data = extract_agent_model_catalog_from_start_node(&publication.document_snapshot)
+                .into_iter()
+                .map(NativeModelObject::from)
+                .collect();
+            Ok(NativeModelsOutput(NativeModelListResponse {
+                object: "list",
+                data,
+            }))
+        })
+    }
+
+    fn get_run<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: NativeGetRunInput,
+    ) -> ReadFuture<'a, NativeGetRunOutput> {
+        Box::pin(async move {
+            ApplicationNativeRunService::new(self.store.clone())
+                .with_last_used_cache(Arc::clone(&self.cache_store))
+                .get_native_run_for_actor(application_actor_from_principal(principal), input.0)
+                .await
+                .map(super::native::to_native_run_response)
+                .map(NativeGetRunOutput)
+                .map_err(native_error)
+                .map_err(NativeReadTargetError)
+        })
+    }
+
+    fn cancel_run<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: NativeCancelRunInput,
+    ) -> ReadFuture<'a, NativeCancelRunOutput> {
+        Box::pin(async move {
+            ApplicationNativeRunService::new(self.store.clone())
+                .with_last_used_cache(Arc::clone(&self.cache_store))
+                .with_runtime_event_stream(Arc::clone(&self.runtime_event_stream))
+                .cancel_native_run_for_actor(application_actor_from_principal(principal), input.0)
+                .await
+                .map(super::native::to_native_run_response)
+                .map(NativeCancelRunOutput)
+                .map_err(native_error)
+                .map_err(NativeReadTargetError)
+        })
+    }
+}
+
+pub fn native_read_port(
+    store: MainDurableStore,
+    cache_store: Arc<dyn CacheStore>,
+    runtime_event_stream: Arc<dyn RuntimeEventStream>,
+) -> Arc<dyn NativeReadPort> {
+    Arc::new(NativeReadAdapter {
+        store,
+        cache_store,
+        runtime_event_stream,
+    })
+}
+
+struct NativeReadHandler {
+    port: Arc<dyn NativeReadPort>,
+}
+
+impl
+    InterfaceHandler<
+        NativeModelsInput,
+        NativeModelsOutput,
+        NativeReadTargetError,
+        ApplicationPrincipal,
+    > for NativeReadHandler
+{
+    fn invoke(
+        &self,
+        context: InterfaceHandlerContext<ApplicationPrincipal>,
+        input: NativeModelsInput,
+    ) -> InterfaceHandlerFuture<NativeModelsOutput, NativeReadTargetError> {
+        let port = Arc::clone(&self.port);
+        Box::pin(async move {
+            port.list_models(context.principal(), input)
+                .await
+                .map_err(|error| InterfaceTargetFailure::new("application_native_models", error))
+        })
+    }
+}
+
+struct NativeGetRunHandler {
+    port: Arc<dyn NativeReadPort>,
+}
+
+struct NativeCancelRunHandler {
+    port: Arc<dyn NativeReadPort>,
+}
+
+struct NativeResumeRunHandler {
+    port: Arc<dyn NativeResumePort>,
+}
+
+struct NativeUploadFileHandler {
+    port: Arc<dyn NativeFilePort>,
+}
+
+impl
+    InterfaceHandler<
+        NativeUploadFileInput,
+        NativeUploadFileOutput,
+        NativeReadTargetError,
+        ApplicationPrincipal,
+    > for NativeUploadFileHandler
+{
+    fn invoke(
+        &self,
+        context: InterfaceHandlerContext<ApplicationPrincipal>,
+        input: NativeUploadFileInput,
+    ) -> InterfaceHandlerFuture<NativeUploadFileOutput, NativeReadTargetError> {
+        let port = Arc::clone(&self.port);
+        Box::pin(async move {
+            port.upload(context.principal(), input)
+                .await
+                .map_err(|error| {
+                    InterfaceTargetFailure::new("application_native_upload_file", error)
+                })
+        })
+    }
+}
+
+impl
+    InterfaceHandler<
+        NativeResumeRunInput,
+        NativeResumeRunOutput,
+        NativeReadTargetError,
+        ApplicationPrincipal,
+    > for NativeResumeRunHandler
+{
+    fn invoke(
+        &self,
+        context: InterfaceHandlerContext<ApplicationPrincipal>,
+        input: NativeResumeRunInput,
+    ) -> InterfaceHandlerFuture<NativeResumeRunOutput, NativeReadTargetError> {
+        let port = Arc::clone(&self.port);
+        Box::pin(async move {
+            port.resume(context.principal(), input)
+                .await
+                .map_err(|error| {
+                    InterfaceTargetFailure::new("application_native_resume_run", error)
+                })
+        })
+    }
+}
+
+impl
+    InterfaceHandler<
+        NativeCancelRunInput,
+        NativeCancelRunOutput,
+        NativeReadTargetError,
+        ApplicationPrincipal,
+    > for NativeCancelRunHandler
+{
+    fn invoke(
+        &self,
+        context: InterfaceHandlerContext<ApplicationPrincipal>,
+        input: NativeCancelRunInput,
+    ) -> InterfaceHandlerFuture<NativeCancelRunOutput, NativeReadTargetError> {
+        let port = Arc::clone(&self.port);
+        Box::pin(async move {
+            port.cancel_run(context.principal(), input)
+                .await
+                .map_err(|error| {
+                    InterfaceTargetFailure::new("application_native_cancel_run", error)
+                })
+        })
+    }
+}
+
+impl
+    InterfaceHandler<
+        NativeGetRunInput,
+        NativeGetRunOutput,
+        NativeReadTargetError,
+        ApplicationPrincipal,
+    > for NativeGetRunHandler
+{
+    fn invoke(
+        &self,
+        context: InterfaceHandlerContext<ApplicationPrincipal>,
+        input: NativeGetRunInput,
+    ) -> InterfaceHandlerFuture<NativeGetRunOutput, NativeReadTargetError> {
+        let port = Arc::clone(&self.port);
+        Box::pin(async move {
+            port.get_run(context.principal(), input)
+                .await
+                .map_err(|error| InterfaceTargetFailure::new("application_native_get_run", error))
+        })
+    }
+}
+
+pub(crate) struct NativeReadAuthorization;
+impl InterfaceAuthorizationPort<ApplicationPrincipal> for NativeReadAuthorization {
+    fn adapter_reference(&self) -> AuthorizationAdapterReference {
+        AuthorizationAdapterReference::new("api-server.application-native-read")
+            .expect("static authorization adapter reference is valid")
+    }
+
+    fn authorize(
+        &self,
+        _request: InterfaceAuthorizationRequest<ApplicationPrincipal>,
+    ) -> InterfaceAuthorizationFuture<'_> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+pub fn compile_registry(
+    port: Arc<dyn NativeReadPort>,
+    resume_port: Arc<dyn NativeResumePort>,
+    file_port: Arc<dyn NativeFilePort>,
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
+    let owner = InterfaceOwner::new("api-server.application-public-api")
+        .expect("static interface owner is valid");
+    let operations = [
+        AuthorizationOperation::new("application.native.models.list")
+            .expect("static models authorization operation is valid"),
+        AuthorizationOperation::new("application.native.runs.read")
+            .expect("static run read authorization operation is valid"),
+        AuthorizationOperation::new("application.native.runs.cancel")
+            .expect("static run cancel authorization operation is valid"),
+        AuthorizationOperation::new("application.native.runs.resume")
+            .expect("static run resume authorization operation is valid"),
+        AuthorizationOperation::new("application.native.files.upload")
+            .expect("static file upload authorization operation is valid"),
+    ];
+    let mut compiler = RegistryCompiler::new(
+        GraphFingerprint::new("graph:application-native-read-v1")
+            .expect("static registry graph fingerprint is valid"),
+        operations.clone(),
+        [owner.clone()],
+    );
+    register::<NativeModelsInput, NativeModelsOutput>(
+        &mut compiler,
+        &owner,
+        operations[0].clone(),
+        "application.native.models.list",
+        MODELS_BINDING_ID,
+        "api-server.application-native-models.list",
+        RouteIdentity::new("GET", "/api/agent/v1/models").expect("static models route is valid"),
+        "control-plane.application-publication.load-active",
+        InterfaceAuditPolicy::ReadOnly,
+    )?;
+    register::<NativeGetRunInput, NativeGetRunOutput>(
+        &mut compiler,
+        &owner,
+        operations[1].clone(),
+        "application.native.runs.get",
+        GET_RUN_BINDING_ID,
+        "api-server.application-native-run.get",
+        RouteIdentity::new("GET", "/api/agent/v1/runs/:run_id")
+            .expect("static get run route is valid"),
+        "control-plane.application-native-run.get",
+        InterfaceAuditPolicy::ReadOnly,
+    )?;
+    register::<NativeCancelRunInput, NativeCancelRunOutput>(
+        &mut compiler,
+        &owner,
+        operations[2].clone(),
+        "application.native.runs.cancel",
+        CANCEL_RUN_BINDING_ID,
+        "api-server.application-native-run.cancel",
+        RouteIdentity::new("POST", "/api/agent/v1/runs/:run_id/cancel")
+            .expect("static cancel run route is valid"),
+        "control-plane.application-native-run.cancel",
+        InterfaceAuditPolicy::Mutating,
+    )?;
+    register::<NativeResumeRunInput, NativeResumeRunOutput>(
+        &mut compiler,
+        &owner,
+        operations[3].clone(),
+        "application.native.runs.resume",
+        RESUME_RUN_BINDING_ID,
+        "api-server.application-native-run.resume",
+        RouteIdentity::new("POST", "/api/agent/v1/runs/:run_id/resume")
+            .expect("static resume run route is valid"),
+        "control-plane.application-native-run.resume",
+        InterfaceAuditPolicy::Mutating,
+    )?;
+    register::<NativeUploadFileInput, NativeUploadFileOutput>(
+        &mut compiler,
+        &owner,
+        operations[4].clone(),
+        "application.native.files.upload",
+        UPLOAD_FILE_BINDING_ID,
+        "api-server.application-native-file.upload",
+        RouteIdentity::new("POST", "/api/agent/v1/files")
+            .expect("static file upload route is valid"),
+        "control-plane.file-upload.upload",
+        InterfaceAuditPolicy::Mutating,
+    )?;
+    compiler.bind_handler::<NativeModelsInput, NativeModelsOutput, NativeReadTargetError, ApplicationPrincipal>(
+        &InterfaceId::new("application.native.models.list")
+            .expect("static models interface id is valid"),
+        HandlerReference::new("api-server.application-native-models.list")
+            .expect("static models handler reference is valid"),
+        Arc::new(NativeReadHandler {
+            port: Arc::clone(&port),
+        }),
+    )?;
+    compiler.bind_handler::<NativeGetRunInput, NativeGetRunOutput, NativeReadTargetError, ApplicationPrincipal>(
+        &InterfaceId::new("application.native.runs.get")
+            .expect("static get run interface id is valid"),
+        HandlerReference::new("api-server.application-native-run.get")
+            .expect("static get run handler reference is valid"),
+        Arc::new(NativeGetRunHandler {
+            port: Arc::clone(&port),
+        }),
+    )?;
+    compiler.bind_handler::<NativeCancelRunInput, NativeCancelRunOutput, NativeReadTargetError, ApplicationPrincipal>(
+        &InterfaceId::new("application.native.runs.cancel")
+            .expect("static cancel run interface id is valid"),
+        HandlerReference::new("api-server.application-native-run.cancel")
+            .expect("static cancel run handler reference is valid"),
+        Arc::new(NativeCancelRunHandler { port }),
+    )?;
+    compiler.bind_handler::<NativeResumeRunInput, NativeResumeRunOutput, NativeReadTargetError, ApplicationPrincipal>(
+        &InterfaceId::new("application.native.runs.resume")
+            .expect("static resume run interface id is valid"),
+        HandlerReference::new("api-server.application-native-run.resume")
+            .expect("static resume run handler reference is valid"),
+        Arc::new(NativeResumeRunHandler { port: resume_port }),
+    )?;
+    compiler.bind_handler::<NativeUploadFileInput, NativeUploadFileOutput, NativeReadTargetError, ApplicationPrincipal>(
+        &InterfaceId::new("application.native.files.upload")
+            .expect("static file upload interface id is valid"),
+        HandlerReference::new("api-server.application-native-file.upload")
+            .expect("static file upload handler reference is valid"),
+        Arc::new(NativeUploadFileHandler { port: file_port }),
+    )?;
+    compiler.compile()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn register<
+    I: crate::openapi_interface::contract::ApiInput,
+    O: crate::openapi_interface::contract::ApiOutput,
+>(
+    compiler: &mut RegistryCompiler,
+    owner: &InterfaceOwner,
+    operation: AuthorizationOperation,
+    interface_id: &str,
+    binding_id: &str,
+    handler: &str,
+    route: RouteIdentity,
+    target: &str,
+    audit_policy: InterfaceAuditPolicy,
+) -> Result<(), interface_runtime::RegistryCompilationError> {
+    let id = InterfaceId::new(interface_id).expect("static interface id is valid");
+    let identity = InterfaceIdentity::new(
+        id.clone(),
+        InterfaceVersion::new("1").expect("static interface version is valid"),
+    );
+    let contracts = InterfaceContracts::unary(
+        contract::<I>(),
+        contract::<O>(),
+        contract::<NativeReadTargetError>(),
+    );
+    compiler.register_definition(InterfaceDefinition::new(
+        identity.clone(),
+        contracts.clone(),
+        InterfaceAccess::new(
+            interface_runtime::PrincipalProfile::Application,
+            InterfaceAuthenticationPolicy::Authenticated,
+            operation,
+            InterfaceScope::Workspace,
+        ),
+        InterfaceExecution::new(
+            InterfaceExecutionMode::Unary,
+            HandlerReference::new(handler).expect("static handler reference is valid"),
+            TargetReference::new(target).expect("static target reference is valid"),
+        ),
+        audit_policy,
+        InterfaceErrorPolicy::TypedTarget,
+        InterfaceLifecycle::BootSnapshot,
+        owner.clone(),
+    ))?;
+    compiler.register_authentication_adapter(
+        &id,
+        1,
+        interface_runtime::InterfaceExtensionRegistration::new(
+            interface_runtime::PluginIdentity::new("api-server.application-authentication")
+                .expect("static authentication plugin identity is valid"),
+            interface_runtime::InterfaceExtensionTier::BuiltIn,
+            interface_runtime::InterfaceExtensionPoint::AuthenticationAdapter,
+            interface_runtime::InterfaceExtensionPermission::Authenticate,
+            InterfaceScope::Workspace,
+            interface_runtime::InterfaceExtensionIsolation::TrustedInProcess,
+            [],
+        )
+        .expect("built-in authentication registration is valid"),
+        interface_runtime::ActivatedAuthenticationAdapter::new(
+            interface_runtime::PluginIdentity::new("api-server.application-authentication")
+                .expect("static authentication plugin identity is valid"),
+            interface_runtime::InterfaceExtensionTier::BuiltIn,
+            AuthenticationAdapterReference::new("api-server.application-api-key")
+                .expect("static authentication adapter reference is valid"),
+            interface_runtime::AuthenticationActivationIdentity::new(
+                "api-server.application-api-key.activation.v1",
+            )
+            .expect("static authentication activation identity is valid"),
+            interface_runtime::PrincipalProfile::Application,
+        ),
+    )?;
+    let binding = ProtocolBinding::new(
+        BindingId::new(binding_id).expect("static binding id is valid"),
+        identity,
+        contracts,
+        ProtocolProjection::http(route),
+    );
+    crate::openapi_interface::contract::register_static_api_operation::<I, O>(
+        compiler,
+        &binding,
+        "graph:application-native-read-v1",
+    )?;
+    compiler.register_binding(
+        binding,
+        InvocationAdapterPlan::new(
+            AuthenticationAdapterReference::new("api-server.application-api-key")
+                .expect("static authentication adapter reference is valid"),
+            AuthorizationAdapterReference::new("api-server.application-native-read")
+                .expect("static authorization adapter reference is valid"),
+            None,
+        ),
+    )
+}
+
+fn contract<T: InterfaceContract>() -> ContractIdentity {
+    ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
+        .expect("static interface contract is valid")
+}
+
+#[path = "native_read_interface/run_contracts.rs"]
+mod run_contracts;
+
+pub(crate) use run_contracts::NativeCancelRunInput;
+pub(crate) use run_contracts::NativeCancelRunOutput;
+pub(crate) use run_contracts::NativeGetRunOutput;
+pub(crate) use run_contracts::NativeResumeRunInput;
+pub(crate) use run_contracts::NativeResumeRunOutput;
+
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+impl NativeUploadFileInput {
+    pub fn for_test_support(
+        file_table_id: Uuid,
+        original_filename: String,
+        content_type: Option<String>,
+        bytes: Vec<u8>,
+    ) -> Self {
+        Self {
+            file_table_id,
+            original_filename,
+            content_type,
+            bytes,
+        }
+    }
+    pub fn bytes_for_test_support(&self) -> &[u8] {
+        &self.bytes
+    }
+}

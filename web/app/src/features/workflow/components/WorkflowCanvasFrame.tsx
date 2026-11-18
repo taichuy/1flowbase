@@ -1,3 +1,5 @@
+import { useDocumentAnalysis } from '../../agent-flow/api/analysis/use-document-analysis';
+import { analysisIssues } from '../../agent-flow/api/analysis/presentation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import { App, Typography } from 'antd';
@@ -11,7 +13,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent
 } from 'react';
-import { useNavigate } from '@tanstack/react-router';
 
 import type {
   ConsoleApplicationEnvironmentVariable,
@@ -68,9 +69,10 @@ import {
 } from '../../agent-flow/components/editor/canvas-frame/document';
 import { buildNodePickerOptions } from '../../flow-editor/authoring/plugin-node-picker';
 import type { WorkflowTriggerContext } from '../lib/trigger-context';
-import { validateWorkflowDocument } from '../lib/validate-document';
 import { WorkflowOverlay } from './WorkflowOverlay';
 import { WorkflowTestRunPanel } from './WorkflowTestRunPanel';
+import { useWorkflowTestRun } from '../hooks/use-workflow-test-run';
+import { applicationRunNodeLastRunQueryKey } from '../../agent-flow/api/runtime';
 
 const ENVIRONMENT_DOCK_WIDTH = 520;
 const HISTORY_DOCK_WIDTH = 460;
@@ -120,11 +122,18 @@ function useWorkflowCanvasController({
   restoreVersionOverride
 }: WorkflowCanvasFrameProps) {
   const { message, modal } = App.useApp();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const can = useConsoleOperationAccess();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const workingDocument = useAgentFlowEditorStore(selectWorkingDocument);
+  const clearRunEntryTransientState = useAgentFlowEditorStore(
+    (state) => state.clearRunEntryTransientState
+  );
+  const testRun = useWorkflowTestRun(
+    applicationId,
+    workingDocument,
+    clearRunEntryTransientState
+  );
   const lastSavedDocument = useAgentFlowEditorStore(selectLastSavedDocument);
   const autosaveStatus = useAgentFlowEditorStore(selectAutosaveStatus);
   const versions = useAgentFlowEditorStore(selectVersions);
@@ -159,11 +168,69 @@ function useWorkflowCanvasController({
   documentRef.current = workingDocument;
   lastSavedDocumentRef.current = lastSavedDocument;
 
-  const [environmentVariablesOpen, setEnvironmentVariablesOpen] =
-    useState(false);
-  const [nodeDetailTab, setNodeDetailTab] = useState<'config' | 'lastRun'>(
-    'config'
-  );
+  const [runPanels, setRunPanels] = useState<{
+    active: boolean;
+    environmentVariablesOpen: boolean;
+    dismissedNodeId: string | null;
+  }>(() => ({
+    active: testRun.active,
+    environmentVariablesOpen: false,
+    dismissedNodeId: null
+  }));
+  const enteringRun = testRun.active && !runPanels.active;
+  if (runPanels.active !== testRun.active) {
+    setRunPanels({
+      active: testRun.active,
+      environmentVariablesOpen: testRun.active
+        ? false
+        : runPanels.environmentVariablesOpen,
+      dismissedNodeId: testRun.active ? selectedNodeId : null
+    });
+  } else if (
+    runPanels.dismissedNodeId !== null &&
+    runPanels.dismissedNodeId !== selectedNodeId
+  ) {
+    setRunPanels({ ...runPanels, dismissedNodeId: null });
+  }
+  const environmentVariablesOpen =
+    !testRun.active && runPanels.environmentVariablesOpen;
+  // Keep the first active commit independent of any previously selected detail.
+  const selectedDetailNodeId =
+    enteringRun || runPanels.dismissedNodeId === selectedNodeId
+      ? null
+      : selectedNodeId;
+  function setEnvironmentVariablesOpen(open: boolean) {
+    setRunPanels((current) => ({
+      ...current,
+      environmentVariablesOpen: open
+    }));
+  }
+  const [nodeDetailTabState, setNodeDetailTabState] = useState<{
+    runId: string | null;
+    selectedNodeId: string | null;
+    tab: 'config' | 'lastRun';
+  }>(() => ({
+    runId: testRun.state.runId,
+    selectedNodeId,
+    tab: testRun.state.runId && selectedNodeId ? 'lastRun' : 'config'
+  }));
+  if (
+    nodeDetailTabState.runId !== testRun.state.runId ||
+    nodeDetailTabState.selectedNodeId !== selectedNodeId
+  ) {
+    setNodeDetailTabState({
+      runId: testRun.state.runId,
+      selectedNodeId,
+      tab:
+        testRun.state.runId && selectedNodeId
+          ? 'lastRun'
+          : nodeDetailTabState.tab
+    });
+  }
+  const nodeDetailTab = nodeDetailTabState.tab;
+  function setNodeDetailTab(tab: 'config' | 'lastRun') {
+    setNodeDetailTabState((current) => ({ ...current, tab }));
+  }
   const [isResizingNodeDetail, setIsResizingNodeDetail] = useState(false);
   const [environmentVariables, setEnvironmentVariables] = useState<
     AgentFlowEnvironmentVariable[]
@@ -176,7 +243,24 @@ function useWorkflowCanvasController({
 
   const navigation = useContainerNavigation();
   const detailActions = useNodeDetailActions();
-  useEditorShortcuts();
+  useEditorShortcuts({ disabled: testRun.active });
+  useEffect(() => {
+    if (!testRun.active && testRun.state.runId && selectedNodeId) {
+      void queryClient.invalidateQueries({
+        queryKey: applicationRunNodeLastRunQueryKey(
+          applicationId,
+          testRun.state.runId,
+          selectedNodeId
+        )
+      });
+    }
+  }, [
+    testRun.active,
+    testRun.state.runId,
+    selectedNodeId,
+    applicationId,
+    queryClient
+  ]);
   const draftSync = useDraftSync({
     applicationId,
     saveDraftOverride,
@@ -188,9 +272,16 @@ function useWorkflowCanvasController({
       ),
     getLastSavedDocument: () => lastSavedDocumentRef.current
   });
+  const documentAnalysis = useDocumentAnalysis(
+    applicationId,
+    workingDocument,
+    selectedNodeId,
+    environmentVariables,
+    triggerContext
+  );
   const issues = useMemo(
-    () => validateWorkflowDocument(workingDocument, triggerContext),
-    [triggerContext, workingDocument]
+    () => analysisIssues(documentAnalysis.analysis, workingDocument),
+    [documentAnalysis.analysis, workingDocument]
   );
   const issueCountByNodeId = useMemo(
     () => countIssuesByNodeId(issues),
@@ -378,18 +469,19 @@ function useWorkflowCanvasController({
     });
   }
   return {
+    testRun,
     can,
     applicationName,
     applicationId,
     autosaveIntervalMs,
     autosaveStatus,
     issueErrorCount,
+    documentAnalysis,
     isPublished,
     publishMutation,
     revertToDraftMutation,
     workingDocument,
     triggerContext,
-    navigate,
     setPanelState,
     historyOpen,
     setEnvironmentVariablesOpen,
@@ -402,7 +494,7 @@ function useWorkflowCanvasController({
     nodePickerOptions,
     viewportSnapshotRef,
     viewportGetterRef,
-    selectedNodeId,
+    selectedDetailNodeId,
     nodeDetailLayout,
     isResizingNodeDetail,
     boundedNodeDetailWidth,
@@ -426,18 +518,19 @@ export function WorkflowCanvasFrame(
   props: Parameters<typeof useWorkflowCanvasController>[0]
 ) {
   const {
+    testRun,
     can,
     applicationName,
     applicationId,
     autosaveIntervalMs,
     autosaveStatus,
     issueErrorCount,
+    documentAnalysis,
     isPublished,
     publishMutation,
     revertToDraftMutation,
     workingDocument,
     triggerContext,
-    navigate,
     setPanelState,
     historyOpen,
     setEnvironmentVariablesOpen,
@@ -450,7 +543,7 @@ export function WorkflowCanvasFrame(
     nodePickerOptions,
     viewportSnapshotRef,
     viewportGetterRef,
-    selectedNodeId,
+    selectedDetailNodeId,
     nodeDetailLayout,
     isResizingNodeDetail,
     boundedNodeDetailWidth,
@@ -484,29 +577,29 @@ export function WorkflowCanvasFrame(
         )}
         autosaveStatus={autosaveStatus}
         issueErrorCount={issueErrorCount}
-        saveDisabled={!can('save_draft') || autosaveStatus === 'saving'}
+        saveDisabled={
+          testRun.active || !can('save_draft') || autosaveStatus === 'saving'
+        }
+        interactionLocked={testRun.active}
         saveLoading={autosaveStatus === 'saving'}
         published={isPublished}
         publishDisabled={
+          testRun.active ||
           !can('publish_application_api') ||
           publishMutation.isPending ||
           issueErrorCount > 0
         }
         publishLoading={publishMutation.isPending}
-        revertDisabled={!can('unpublish_application_api')}
+        revertDisabled={testRun.active || !can('unpublish_application_api')}
         revertLoading={revertToDraftMutation.isPending}
         testRunAction={
           <WorkflowTestRunPanel
-            applicationId={applicationId}
             document={workingDocument}
             triggerContext={triggerContext}
-            onOpenTrace={(runId) => {
-              void navigate({
-                to: '/applications/$applicationId/logs',
-                params: { applicationId },
-                search: { run_id: runId, view: 'trace' }
-              });
-            }}
+            running={testRun.active}
+            runState={testRun.state}
+            canRun={testRun.canRun}
+            onRun={testRun.start}
           />
         }
         onOpenEnvironmentVariables={() => {
@@ -527,6 +620,9 @@ export function WorkflowCanvasFrame(
       >
         <AgentFlowCanvas
           issueCountByNodeId={issueCountByNodeId}
+          interactionLocked={testRun.active}
+          nodeRunStatuses={testRun.nodeStatuses}
+          workflowTriggerContext={triggerContext}
           nodePickerOptions={nodePickerOptions}
           onViewportSnapshotChange={(viewport) => {
             viewportSnapshotRef.current = viewport;
@@ -535,7 +631,7 @@ export function WorkflowCanvasFrame(
             viewportGetterRef.current = getter;
           }}
         />
-        {selectedNodeId ? (
+        {selectedDetailNodeId ? (
           <div
             className="agent-flow-editor__detail-dock"
             data-layout={nodeDetailLayout}
@@ -561,7 +657,10 @@ export function WorkflowCanvasFrame(
               }
             >
               <NodeDetailPanel
+                documentAnalysis={documentAnalysis}
                 activeTab={nodeDetailTab}
+                activeRunId={testRun.state.runId}
+                interactionLocked={testRun.active}
                 applicationId={applicationId}
                 environmentVariables={environmentVariables}
                 issues={issues}

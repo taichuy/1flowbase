@@ -1,6 +1,7 @@
 mod branding;
 mod communications;
 mod container_state;
+mod event_configuration;
 mod fixes;
 mod native_storage;
 mod notification_compaction;
@@ -52,6 +53,114 @@ fn reader(bytes: Vec<u8>) -> BackupComponentReader {
 }
 async fn pool(pool: &PgPool, actor: Uuid, id: Uuid, name: &str) {
     sqlx::query("insert into network_egress_pools(id,scope_id,display_name,selection_strategy,created_by,updated_by) values($1,'00000000-0000-0000-0000-000000000000',$2,'healthy_first',$3,$3)").bind(id).bind(name).bind(actor).execute(pool).await.unwrap();
+}
+
+#[test]
+fn selective_inventory_covers_new_configuration_and_execution_owners() {
+    for (table, feature, data) in [
+        ("communication_message_sends", "notifications", true),
+        ("custom_frontend_blocks", "ui-management", false),
+        ("event_catalog", "events", false),
+        ("plugin_record_permission_policies", "roles", false),
+        ("plugin_record_permission_grants", "roles", false),
+        ("plugin_record_permission_scope_revisions", "roles", true),
+        ("workflow_run_identity_snapshots", "applications", true),
+    ] {
+        assert_eq!(
+            inventory::static_owner(table),
+            Some((format!("system.{feature}"), data)),
+            "{table}"
+        );
+        assert!(!inventory::excluded(table), "{table}");
+    }
+}
+
+#[test]
+fn selective_export_orders_real_foreign_keys_before_grants_and_receipt_freshness() {
+    let table = |name: &str, parents: &[&str]| Table {
+        name: name.into(),
+        feature_id: "system.roles".into(),
+        data: false,
+        prerequisite: false,
+        columns: vec![],
+        primary_key: vec!["id".into()],
+        plugin_owners: vec![],
+        prerequisites: parents.iter().map(|name| (*name).into()).collect(),
+    };
+    let ordered = schema::order_for_export(vec![
+        table(
+            "plugin_record_permission_grants",
+            &["plugin_record_permission_policies", "roles"],
+        ),
+        table("plugin_record_permission_scope_revisions", &["workspaces"]),
+        table("plugin_record_permission_policies", &["workspaces"]),
+        table("roles", &["workspaces"]),
+        table("workspaces", &["tenants"]),
+    ]);
+    assert_eq!(
+        ordered
+            .iter()
+            .map(|table| table.name.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "workspaces",
+            "plugin_record_permission_policies",
+            "roles",
+            "plugin_record_permission_grants",
+            "plugin_record_permission_scope_revisions",
+        ]
+    );
+    let cyclic = schema::order_for_export(vec![table("a", &["b"]), table("b", &["a"])]);
+    assert_eq!(
+        cyclic
+            .iter()
+            .map(|table| table.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["a", "b"]
+    );
+}
+
+#[tokio::test]
+async fn selective_custom_frontend_configuration_restores_workspace_and_generated_scope() {
+    let (db, actor) = fixture().await;
+    let block = Uuid::now_v7();
+    let workspace = Uuid::now_v7();
+    sqlx::query("insert into custom_frontend_blocks(id,workspace_id,provider_code,contribution_code,title,source,language,created_by,updated_by) values($1,$2,'fixture','block','Original','export default () => null','tsx',$3,$3)")
+        .bind(block).bind(workspace).bind(actor).execute(&db).await.unwrap();
+    let repo = PgSelectiveBackupRepository::new(db.clone());
+    let bytes = capture(&repo, select("ui-management", true, false)).await;
+    let preview = repo
+        .preflight(reader(bytes.clone()), "source", "target")
+        .await
+        .unwrap();
+    assert!(preview.failures.is_empty(), "{:?}", preview.failures);
+    assert!(preview
+        .selected_tables
+        .contains(&"custom_frontend_blocks".into()));
+    sqlx::query("delete from custom_frontend_blocks where id=$1")
+        .bind(block)
+        .execute(&db)
+        .await
+        .unwrap();
+    repo.restore(reader(bytes), "source", "target", true)
+        .await
+        .unwrap();
+    let row: (Uuid, Uuid, String, String) = sqlx::query_as(
+        "select workspace_id,scope_id,title,source from custom_frontend_blocks where id=$1",
+    )
+    .bind(block)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    assert_eq!(
+        row,
+        (
+            workspace,
+            workspace,
+            "Original".into(),
+            "export default () => null".into()
+        )
+    );
 }
 
 #[tokio::test]
@@ -662,6 +771,7 @@ async fn notification_backup_keeps_channel_configuration_separate_from_inbox_his
             "communication_command_events".to_owned(),
             "communication_conversations".to_owned(),
             "communication_inputs".to_owned(),
+            "communication_message_sends".to_owned(),
             "communication_messages".to_owned(),
             "communication_reply_turns".to_owned(),
             "communication_session_rotations".to_owned(),

@@ -122,6 +122,14 @@
       "package": "api-server",
       "packageRoot": "api/apps/api-server",
       "target": "lib",
+      "regressionFilters": [],
+      "minimum": 1
+    },
+    {
+      "id": "api-server:api_private_contracts",
+      "package": "api-server",
+      "packageRoot": "api/apps/api-server",
+      "target": "api_private_contracts",
       "regressionFilters": [
         "_tests::extension_bus",
         "_tests::interface_lifecycle_acceptance"
@@ -131,7 +139,7 @@
   ],
   "required": [
     {
-      "target": "api-server:lib",
+      "target": "api-server:api_private_contracts",
       "name": "_tests::extension_bus::managed_activation_tests::root_2007_ac_001_002_package_activation",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_activation_tests.rs",
@@ -151,8 +159,8 @@
       ]
     },
     {
-      "target": "api-server:lib",
-      "name": "_tests::extension_bus::managed_candidate_tests::pause_revoke_retire::root_2007_ac_009_pause_revoke_retire_candidate_switch",
+      "target": "api-server:api_private_contracts",
+      "name": "_tests::extension_bus::managed_candidate_tests::root_2007_ac_009_pause_revoke_retire_candidate_switch",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_candidate_tests.rs",
       "ac": [
@@ -171,8 +179,8 @@
       ]
     },
     {
-      "target": "api-server:lib",
-      "name": "_tests::extension_bus::managed_candidate_tests::pause_revoke_retire::root_2007_ac_009_pause_revoke_retire_historical_authority",
+      "target": "api-server:api_private_contracts",
+      "name": "_tests::extension_bus::managed_candidate_tests::root_2007_ac_009_pause_revoke_retire_historical_authority",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_candidate_tests.rs",
       "ac": [
@@ -191,7 +199,7 @@
       ]
     },
     {
-      "target": "api-server:lib",
+      "target": "api-server:api_private_contracts",
       "name": "_tests::extension_bus::managed_event_authority_tests::root_2007_ac_005_event_authority_installed_publisher_and_subscribers",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_event_authority_tests.rs",
@@ -207,7 +215,7 @@
       ]
     },
     {
-      "target": "api-server:lib",
+      "target": "api-server:api_private_contracts",
       "name": "_tests::extension_bus::managed_event_authority_tests::root_2007_ac_005_event_authority_static_namespace_and_contract",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_event_authority_tests.rs",
@@ -223,7 +231,7 @@
       ]
     },
     {
-      "target": "api-server:lib",
+      "target": "api-server:api_private_contracts",
       "name": "_tests::extension_bus::managed_event_effect_tests::root_2007_ac_007_ack_loss_and_claim_fencing",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_event_effect_tests.rs",
@@ -239,7 +247,7 @@
       ]
     },
     {
-      "target": "api-server:lib",
+      "target": "api-server:api_private_contracts",
       "name": "_tests::extension_bus::managed_governance_tests::pause_revoke_retire::root_2007_ac_009_pause_revoke_retire",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_governance_tests/pause_revoke_retire.rs",
@@ -259,7 +267,7 @@
       ]
     },
     {
-      "target": "api-server:lib",
+      "target": "api-server:api_private_contracts",
       "name": "_tests::extension_bus::managed_resource_tests::root_2007_ac_010_lane_budgets_owned_transactions_shutdown",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_resource_tests.rs",
@@ -272,7 +280,7 @@
       ]
     },
     {
-      "target": "api-server:lib",
+      "target": "api-server:api_private_contracts",
       "name": "_tests::extension_bus::managed_snapshot_tests::root_2007_ac_008_snapshot_restart",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_snapshot_tests.rs",
@@ -291,7 +299,7 @@
       ]
     },
     {
-      "target": "api-server:lib",
+      "target": "api-server:api_private_contracts",
       "name": "_tests::interface_lifecycle_acceptance::contribution_authority::root_2007_contribution_authority_routes_are_independent",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/interface_lifecycle_acceptance/contribution_authority.rs",
@@ -309,7 +317,7 @@
       "env": []
     },
     {
-      "target": "api-server:lib",
+      "target": "api-server:api_private_contracts",
       "name": "_tests::interface_lifecycle_acceptance::managed_create_pair::root_2007_ac_003_004_managed_create_pair",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/interface_lifecycle_acceptance/managed_create_pair.rs",
@@ -830,7 +838,7 @@
       "env": []
     },
     {
-      "target": "api-server:lib",
+      "target": "api-server:api_private_contracts",
       "name": "_tests::extension_bus::managed_reinstall_tests::root_2007_ir_f01_changed_reinstall_preserves_history",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_reinstall_tests.rs",
@@ -850,7 +858,7 @@
       ]
     },
     {
-      "target": "api-server:lib",
+      "target": "api-server:api_private_contracts",
       "name": "_tests::extension_bus::managed_reinstall_tests::root_2007_ir_f01_identical_archive_restores_artifact",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_reinstall_tests.rs",
@@ -869,7 +877,7 @@
       ]
     },
     {
-      "target": "api-server:lib",
+      "target": "api-server:api_private_contracts",
       "name": "_tests::extension_bus::managed_reinstall_tests::root_2007_ir_f01_upgrade_and_concurrent_identity",
       "expected": 1,
       "source": "api/apps/api-server/src/_tests/extension_bus/managed/managed_reinstall_tests.rs",

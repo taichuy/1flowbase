@@ -29,6 +29,9 @@ const NEW_SECRET: &str = "private-rotated-log-token";
 const QR_CREDENTIAL: &str = "private-log-qr-challenge";
 const QR_URL: &str = "https://example.invalid/qr/private-log-qr-challenge";
 
+#[path = "log_mapping/_tests/lifecycle.rs"]
+mod lifecycle;
+
 fn descriptor(managed: bool) -> NotificationTypeDescriptor {
     let mut descriptor = system_notification_descriptor();
     descriptor.type_code = "acme/log-fixture/message".into();
@@ -91,6 +94,7 @@ struct ObservingProvider {
     store: PgControlPlaneStore,
     calls: AtomicUsize,
     pending: Mutex<Option<NotificationSendLog>>,
+    target: Mutex<Option<extension_contracts::NotificationSendTarget>>,
     reply: Mutex<Result<Value, String>>,
 }
 
@@ -111,9 +115,14 @@ impl NotificationProviderPort for ObservingProvider {
         _: Uuid,
         _: &NotificationTypeDescriptor,
         _: Value,
-        _: Value,
+        input: Value,
     ) -> anyhow::Result<Value> {
         self.calls.fetch_add(1, Ordering::SeqCst);
+        *self.target.lock().unwrap() = input
+            .pointer("/operation/target")
+            .cloned()
+            .map(serde_json::from_value)
+            .transpose()?;
         let pending = self
             .store
             .list_notification_send_logs(
@@ -192,6 +201,7 @@ impl Fixture {
             store: store.clone(),
             calls: AtomicUsize::new(0),
             pending: Mutex::new(None),
+            target: Mutex::new(None),
             reply: Mutex::new(Ok(json!({"receipt":"receipt-1"}))),
         });
         let service = NotificationService::new(store.clone(), MASTER_KEY.into())

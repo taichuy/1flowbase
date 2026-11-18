@@ -48,11 +48,15 @@ where
         .name("application-public-compat-route".to_owned())
         .stack_size(COMPAT_ROUTE_TEST_STACK_BYTES)
         .spawn(move || {
-            tokio::runtime::Builder::new_current_thread()
+            let runtime = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
-                .expect("compat route test runtime should build")
-                .block_on(test());
+                .expect("compat route test runtime should build");
+            // Keep ownership inside block_on so completion and panic drop the
+            // future while the runtime is entered. One erased type also shares
+            // Tokio's executor code across the different route test futures.
+            let body: std::pin::Pin<Box<dyn Future<Output = ()> + '_>> = Box::pin(test());
+            runtime.block_on(body);
         })
         .expect("compat route test thread should start")
         .join()
@@ -695,11 +699,18 @@ pub(super) async fn test_app_with_runtime_event_stream(
         settings_feature_registry: base_state.settings_feature_registry.clone(),
         console_operation_registry: base_state.console_operation_registry.clone(),
         infrastructure: base_state.infrastructure.clone(),
+        event_center: base_state.event_center.clone(),
+        event_sources: base_state.event_sources.clone(),
+        event_workflow_changes: base_state.event_workflow_changes.clone(),
+        event_workflow_statuses: base_state.event_workflow_statuses.clone(),
         extension_boot_snapshot: base_state.extension_boot_snapshot.clone(),
         console_surface_registry: base_state.console_surface_registry.clone(),
         file_storage_registry: base_state.file_storage_registry.clone(),
         runtime_engine: base_state.runtime_engine.clone(),
         provider_runtime: base_state.provider_runtime.clone(),
+        native_resource_import: base_state.native_resource_import.clone(),
+        runtime_event_stream_projection: base_state.runtime_event_stream_projection.clone(),
+        terminal_jobs: Default::default(),
         process_started_at: base_state.process_started_at,
         runtime_activity: base_state.runtime_activity.clone(),
         assistant_conversation_events: base_state.assistant_conversation_events.clone(),
@@ -838,3 +849,5 @@ mod auth;
 mod compact;
 mod openai;
 mod streaming;
+
+mod runtime_helper_tests;

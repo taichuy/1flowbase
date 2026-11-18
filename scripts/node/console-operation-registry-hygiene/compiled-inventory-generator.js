@@ -28,6 +28,8 @@ function generateCompiledInventorySnapshot({
   const result = spawnSyncImpl('cargo', [
     'run',
     '--quiet',
+    '--profile',
+    'test',
     '-p',
     'api-server',
     '--bin',

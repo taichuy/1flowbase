@@ -12,6 +12,35 @@ where
         + 'static,
     H: ProviderRuntimePort + Clone + Send + Sync,
 {
+    async fn invoke_workflow_internal_http(
+        &self,
+        credential_reference: &str,
+        request: orchestration_runtime::execution_engine::WorkflowInternalHttpRequest,
+    ) -> Result<orchestration_runtime::execution_engine::WorkflowInternalHttpResponse> {
+        let flow_run_id = self
+            .flow_run_id
+            .ok_or_else(|| anyhow!("workflow credential requires an active run"))?;
+        let invoker = self
+            .flow_execution_context
+            .as_ref()
+            .and_then(|context| context.workflow_credential_invoker.as_ref())
+            .ok_or_else(|| anyhow!("workflow credential host is not configured"))?;
+        invoker
+            .invoke_workflow_internal_http(flow_run_id, credential_reference, request)
+            .await
+    }
+
+    async fn materialize_native_continuation(
+        &self,
+        runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
+        route: &orchestration_runtime::execution_engine::ResolvedProviderRoute,
+        input: ProviderInvocationInput,
+    ) -> Result<Option<ProviderInvocationInput>> {
+        self.materialize_owned_native_continuation(runtime, route, input)
+            .await
+            .map(Some)
+    }
+
     async fn provider_distribution_registry_fingerprint(&self) -> Result<String> {
         self.runtime
             .provider_distribution_registry_fingerprint()
@@ -231,6 +260,12 @@ where
     ) -> Result<orchestration_runtime::execution_engine::ai_native_recovery::RecoveryInputMode>
     {
         self.ensure_continuation_route(runtime, &route.runtime_capabilities)?;
+        if native_continuation_recovery::apply_verified_rebuild(
+            self.provider_transport_payload.as_ref(),
+            input,
+        )? {
+            return Ok(orchestration_runtime::execution_engine::ai_native_recovery::RecoveryInputMode::NativeOpaque);
+        }
         self.apply_selected_provider_transport(runtime, &route.runtime_capabilities, input)?;
         Ok(if input.native_transport.is_some() {
             orchestration_runtime::execution_engine::ai_native_recovery::RecoveryInputMode::NativeOpaque
@@ -240,6 +275,12 @@ where
     }
 
     fn permits_selected_native_exact_replay(&self, input: &ProviderInvocationInput) -> bool {
+        if native_continuation_recovery::is_verified_rebuild(
+            self.provider_transport_payload.as_ref(),
+            input,
+        ) {
+            return true;
+        }
         let Some(payload) = self.provider_transport_payload.as_ref() else {
             return false;
         };
@@ -334,6 +375,14 @@ where
             }
         }
 
+        let public_tool_progress_names = input
+            .run_context
+            .remove(orchestration_runtime::execution_engine::CLIENT_TOOL_PROGRESS_NAMES_KEY)
+            .and_then(|value| value.as_array().cloned())
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|value| value.as_str().map(str::to_owned))
+            .collect::<std::collections::BTreeSet<_>>();
         let canonical_tool_registry = input.tools.clone();
         let actual_provider_code = input.provider_code.clone();
         let tool_structure = provider_tool_structure_receipt(&input.tools);
@@ -481,7 +530,7 @@ where
             }
         }
         let presentation_source_node_id = input.trace_context.get("node_id").cloned();
-        let native_capture = native_trajectory::start(
+        let native_capture = native_trajectory::start_with_recovery_context(
             self.repository.clone(),
             self.flow_run_id,
             active_node
@@ -489,6 +538,16 @@ where
                 .map(|node| (node.node_id.clone(), node.node_run_id)),
             &input,
             self.observation_context.as_ref(),
+            selected_native_transport.then(|| {
+                json!({
+                    "workspace_id": self.workspace_id,
+                    "response_round_id": self.response_round_id.or(self.flow_run_id),
+                    "predecessor_source": self.provider_transport_payload.as_ref()
+                        .and_then(|payload| payload.native_recovery_source()),
+                    "predecessor_history": self.native_history,
+                    "provider_binding": native_inference_binding,
+                })
+            }),
         )
         .await;
         let native_observer = native_capture.observer();
@@ -535,8 +594,17 @@ where
             let native_output_items_for_task = native_output_items.clone();
             let capture_native_history = selected_native_transport;
             let response_round_id_for_task = self.response_round_id.or(self.flow_run_id);
+            let progress_source_active = answer_presentation_source_is_active(
+                presentation_source_node_id.as_deref(),
+                &node_id,
+            ) && self.flow_execution_context.is_some();
             required_forward_handle = Some(tokio::spawn(async move {
                 let mut canonical_writer = RuntimeCanonicalStreamWriter::new(node_id.clone());
+                let mut client_progress = client_progress::ClientProgress::new(
+                    public_tool_progress_names,
+                    response_round_id_for_task,
+                    progress_source_active,
+                );
                 let mut ingress_sequence = 0_u64;
                 while let Some(mut event) = required_receiver.recv().await {
                     ingress_sequence += 1;
@@ -576,8 +644,12 @@ where
                             );
                         }
                     }
-                    let tool_delivery =
+                    let progress_event = client_progress.observe(&node_id, node_run_id, &event);
+                    let mut tool_delivery =
                         committed_tool_delivery_candidate(&node_id, node_run_id, &event)?;
+                    if let Some(delivery) = tool_delivery.as_mut() {
+                        client_progress.bind_delivery(delivery);
+                    }
                     if let Some(delivery) = &tool_delivery {
                         let context =
                             flow_execution_context_for_task.as_ref().ok_or_else(|| {
@@ -630,7 +702,7 @@ where
                     .await;
                     if let (Some(stream), Some(flow_run_id)) = (&runtime_event_stream, flow_run_id)
                     {
-                        let runtime_events = match &event {
+                        let mut runtime_events = match &event {
                             ProviderStreamEvent::TextDelta { .. }
                             | ProviderStreamEvent::ReasoningDelta { .. }
                             | ProviderStreamEvent::Finish { .. }
@@ -681,6 +753,9 @@ where
                             }
                             _ => Vec::new(),
                         };
+                        if let Some(progress_event) = progress_event {
+                            runtime_events.insert(0, progress_event);
+                        }
                         for runtime_event in runtime_events {
                             let event_type = runtime_event.event_type.clone();
                             let source = runtime_event.source;

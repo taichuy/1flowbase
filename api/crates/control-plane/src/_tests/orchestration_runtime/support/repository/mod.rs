@@ -71,6 +71,7 @@ struct InMemoryOrchestrationRuntimeState {
     fail_next_terminal_runtime_event_append: bool,
     fail_next_published_stream_terminal_projection: bool,
     application_run_detail_read_count: usize,
+    native_recovery_page_reads: usize,
     model_routing_catalog_read_count: usize,
     model_billing_enabled_at: Option<time::OffsetDateTime>,
     model_billing_credit_releases: Vec<(Uuid, String)>,

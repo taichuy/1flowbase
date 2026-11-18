@@ -713,6 +713,8 @@ pub(super) fn node_run_group_content(
         trace_node_id,
         content_kind: "node_run".to_string(),
         payload: (serde_json::json!({
+            "execution_identity": primary_node_run.execution_identity,
+            "error_payload": primary_node_run.error_payload,
             "payload_index": {
                 "node_run_count": node_runs.len(),
                 "checkpoint_count": checkpoint_count,

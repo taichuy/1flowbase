@@ -291,6 +291,18 @@ impl PgControlPlaneStore {
             usize::try_from(subagent_trace_count)
                 .map_err(|_| anyhow!("subagent_trace_count must fit usize"))?,
         );
+        let states =
+            sqlx::query("select id,status,finished_at from node_runs where flow_run_id=$1")
+                .bind(flow_run_id)
+                .fetch_all(self.pool())
+                .await?
+                .into_iter()
+                .map(|row| (row.get("id"), row.get("status"), row.get("finished_at")))
+                .collect::<Vec<_>>();
+        let base =
+            control_plane_contracts::persistence_projection::trace_projection_node_state_watermark(
+                base, &states,
+            );
         let messages = self
             .application_run_native_trace_messages(application_id, flow_run_id)
             .await?;

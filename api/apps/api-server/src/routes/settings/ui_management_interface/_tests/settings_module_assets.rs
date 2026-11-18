@@ -11,7 +11,7 @@ fn asset_input(version: &str, sha256: &str) -> UiManagementInput {
     }
 }
 fn adapter(state: &crate::app_state::ApiState) -> UiManagementAdapter {
-    UiManagementAdapter(UiManagementDependencies {
+    UiManagementAdapter::for_test(UiManagementDependencies {
         store: state.store.clone(),
         api_node_id: state.api_node_id.clone(),
         surfaces: state.console_surface_registry.clone(),

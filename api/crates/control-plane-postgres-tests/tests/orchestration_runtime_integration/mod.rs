@@ -413,3 +413,6 @@ mod container_deadlines;
 
 #[path = "_tests/container_crash/mod.rs"]
 mod container_crash;
+
+#[path = "_tests/live_http_context.rs"]
+mod live_http_context;

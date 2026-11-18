@@ -1,15 +1,34 @@
 use serde_json::{json, Map, Value};
 
+#[cfg(test)]
+#[path = "_tests/workflow_credentials.rs"]
+mod workflow_credential_tests;
+
+pub(in crate::orchestration_runtime) fn inject_workflow_credentials(
+    variable_pool: &mut Map<String, Value>,
+    flow_run_id: uuid::Uuid,
+) {
+    let references =
+        orchestration_runtime::execution_engine::WorkflowCredentialReferences::for_run(flow_run_id);
+    references.inject_into_pool(variable_pool);
+}
+
 pub(in crate::orchestration_runtime) fn inject_system_variables(
     variable_pool: &mut Map<String, Value>,
     flow_run: &domain::FlowRunRecord,
     application_type: domain::ApplicationType,
     start_node_id: Option<&str>,
 ) {
+    // These are non-secret host selectors. They convey no authority outside
+    // this run's trusted host invoker and never contain a user credential.
+    let credentials =
+        orchestration_runtime::execution_engine::WorkflowCredentialReferences::for_run(flow_run.id);
     let mut sys = json!({
         "application_id": flow_run.application_id.to_string(),
         "workflow_id": flow_run.flow_id.to_string(),
         "workflow_run_id": flow_run.id.to_string(),
+        "creator_credential": credentials.creator_credential,
+        "executor_credential": credentials.executor_credential,
     });
     if application_type == domain::ApplicationType::Workflow {
         variable_pool.insert("sys".to_string(), sys);

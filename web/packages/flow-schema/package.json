@@ -1,8 +1,14 @@
 {
   "name": "@1flowbase/flow-schema",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint src --ext .ts",

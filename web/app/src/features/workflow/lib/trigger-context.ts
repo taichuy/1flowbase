@@ -1,4 +1,5 @@
 import type {
+  ConsoleWorkflowEventTrigger,
   ConsoleApplicationNodeFieldContract,
   ConsoleWorkflowTriggerType
 } from '@1flowbase/api-client';
@@ -12,6 +13,7 @@ export interface WorkflowTriggerContext {
   applicationId: string;
   triggerType: ConsoleWorkflowTriggerType | null;
   mapping: ApplicationApiMapping | null | undefined;
+  event?: ConsoleWorkflowEventTrigger | null;
   schedule: WorkflowScheduleTrigger | null | undefined;
   workflowStartFieldContract: ConsoleApplicationNodeFieldContract | undefined;
 }

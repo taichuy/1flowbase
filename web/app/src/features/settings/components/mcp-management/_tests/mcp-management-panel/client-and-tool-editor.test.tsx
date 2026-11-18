@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 import {
   domEvents,
   mcpManagementApi,
@@ -7,7 +7,48 @@ import {
 } from './client-and-tool-editor.fixtures';
 import { screen, waitFor, within } from '@testing-library/react';
 
+vi.mock('../../../../api/mcp-oauth', () => ({
+  fetchMcpOAuthConfiguration: vi.fn(async () => ({
+    enabled: true,
+    server_url: 'https://public.example/api/mcp/ops_mcp',
+    registration_method: 'dynamic_client_registration',
+    scope: 'mcp:invoke'
+  }))
+}));
+
 describe('McpManagementPanel', () => {
+  test('adds OAuth immediately after ChatGPT and keeps the existing common tab and credential controls', async () => {
+    await renderPanelWithMountedTool();
+    await domEvents.click(screen.getByRole('button', { name: '连接客户端' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog)
+        .getAllByRole('tab')
+        .map((tab) => tab.textContent)
+    ).toEqual(['通用', 'ChatGPT', 'OAuth', 'Codex', 'Claude Code', 'OpenCode']);
+    expect(within(dialog).getByRole('tab', { name: '通用' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    await domEvents.click(within(dialog).getByRole('tab', { name: 'OAuth' }));
+    expect(
+      await within(dialog).findByText('OAuth 配置已启用')
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('button', { name: /保存$/ })
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole('button', { name: /清除认证/ })
+    ).not.toBeInTheDocument();
+    await domEvents.click(within(dialog).getByRole('tab', { name: 'ChatGPT' }));
+    expect(
+      await within(dialog).findByText('ChatGPT OAuth 配置已启用')
+    ).toBeInTheDocument();
+    await domEvents.click(within(dialog).getByRole('tab', { name: '通用' }));
+    expect(
+      within(dialog).getByRole('button', { name: /保存$/ })
+    ).toBeInTheDocument();
+  });
   test('AC-003 AC-004 renders persistent Agent CLI configuration commands with the current endpoint and API key', async () => {
     await renderPanelWithMountedTool();
     await domEvents.click(screen.getByRole('button', { name: '连接客户端' }));

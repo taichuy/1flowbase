@@ -592,11 +592,12 @@ console_locale_catalog:
 "#)).unwrap();
         contribution.settings_features = api.settings_features;
         contribution.console_operations = api.console_operations;
-        let source = crate::host_extensions::console::LinkedHostConsoleRouteSource {
-            extension_id: "northwind.settings-page",
-            version: if version == "1.0.0" { "1.0.0" } else { "2.0.0" },
-            route_assembly: native_probe_route_assembly,
-        };
+        let source =
+            crate::host_extensions::console::LinkedHostConsoleRouteSource::for_test_support(
+                "northwind.settings-page",
+                if version == "1.0.0" { "1.0.0" } else { "2.0.0" },
+                native_probe_route_assembly,
+            );
         let resolved =
             crate::host_extensions::console::resolve_linked_host_extension_console_contribution(
                 contribution.clone(),

@@ -31,6 +31,21 @@ impl std::fmt::Display for FlowValidationError {
 
 impl std::error::Error for FlowValidationError {}
 
+impl From<domain::flow::FlowDocumentValidationError> for FlowValidationError {
+    fn from(error: domain::flow::FlowDocumentValidationError) -> Self {
+        let message = error.to_string();
+        Self {
+            diagnostics: vec![NodeDiagnostic {
+                node_id: error.node_id,
+                code: "invalid_node_configuration".to_owned(),
+                field_path: error.field_path,
+                message,
+                expected: error.expected.map(|value| *value),
+            }],
+        }
+    }
+}
+
 impl FlowValidationError {
     pub fn from_issues<'a>(issues: impl IntoIterator<Item = &'a CompileIssue>) -> Self {
         Self {

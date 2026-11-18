@@ -253,6 +253,8 @@ pub(crate) async fn inspect_selected_host_extensions(
 
 #[cfg(test)]
 static FAIL_AFTER_APPLY: std::sync::Mutex<Option<uuid::Uuid>> = std::sync::Mutex::new(None);
+
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) fn fail_after_template_apply_for(installation_id: uuid::Uuid) {
     *FAIL_AFTER_APPLY.lock().expect("native startup failpoint") = Some(installation_id);
@@ -357,7 +359,7 @@ fn validate_host_extension_installation(
     let manifest_path = install_root.join("manifest.yaml");
     let manifest_raw = fs::read_to_string(&manifest_path)
         .with_context(|| format!("failed to read {}", manifest_path.display()))?;
-    let manifest = plugin_framework::parse_plugin_manifest(&manifest_raw)
+    let mut manifest = plugin_framework::parse_plugin_manifest(&manifest_raw)
         .with_context(|| format!("failed to parse {}", manifest_path.display()))?;
     if manifest.versioned_plugin_id()? != installation.plugin_id
         || manifest.version != installation.plugin_version
@@ -377,7 +379,7 @@ fn validate_host_extension_installation(
     let contribution_path = install_root.join(&manifest.runtime.entry);
     let contribution_raw = fs::read_to_string(&contribution_path)
         .with_context(|| format!("failed to read {}", contribution_path.display()))?;
-    let contribution = parse_host_extension_contribution_manifest(&contribution_raw)
+    let mut contribution = parse_host_extension_contribution_manifest(&contribution_raw)
         .with_context(|| format!("failed to parse {}", contribution_path.display()))?;
     let plugin_code = manifest
         .plugin_code()
@@ -398,6 +400,10 @@ fn validate_host_extension_installation(
     }
     contribution.validate_package_settings_pages(&manifest)?;
     plugin_framework::validate_frontend_module_assets(install_root, &manifest)?;
+    plugin_framework::resolve_plugin_frontend_sources(install_root, &mut manifest)?;
+    for page in &mut contribution.settings_pages {
+        plugin_framework::resolve_frontend_code_modules(install_root, &mut page.code_modules)?;
+    }
     for page in &manifest.settings_pages {
         plugin_framework::read_plugin_settings_page_source(install_root, page)?;
     }

@@ -26,6 +26,7 @@ async fn reservation_fixture() -> (
         .unwrap()
         .unwrap();
     let command = ResumePublishedCallbackCommand {
+        anthropic_continuation: None,
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,
@@ -332,6 +333,7 @@ async fn native_tool_read_plan_excludes_non_tools_other_sources_and_non_pending_
             },
         );
         let command = ResumePublishedCallbackCommand {
+            anthropic_continuation: None,
             responses_continuation: None,
             transport_connection_scope: None,
             observation_context: None,

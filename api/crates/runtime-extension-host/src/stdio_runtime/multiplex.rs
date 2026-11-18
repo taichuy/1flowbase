@@ -89,6 +89,13 @@ struct ReaderContext {
 
 impl Drop for ActiveCall {
     fn drop(&mut self) {
+        if let Some(gate) = self
+            .host_calls
+            .as_ref()
+            .and_then(|context| context.execution_gate.as_ref())
+        {
+            gate.close();
+        }
         for (_, task) in self.callbacks.drain() {
             task.abort();
         }
@@ -809,6 +816,13 @@ fn request_cancel(id: &str, call: &mut ActiveCall, controls: &mpsc::Sender<Contr
     }
     call.cancelling_since = Some(Instant::now());
     call.live.store(false, Ordering::Release);
+    if let Some(gate) = call
+        .host_calls
+        .as_ref()
+        .and_then(|context| context.execution_gate.as_ref())
+    {
+        gate.close();
+    }
     call.host_calls = None;
     for (_, task) in call.callbacks.drain() {
         task.abort();
@@ -848,6 +862,18 @@ async fn execute_callback(
     context: Option<ProviderHostCallContext>,
 ) -> Value {
     match service {
+        MultiplexHostService::PluginExecutionGateV1 => {
+            let result = match context.and_then(|context| context.execution_gate) {
+                Some(gate) => gate.execute(request).await,
+                None => Err(extension_contracts::PluginExecutionGateError::new(
+                    "execution_gate_not_granted",
+                )),
+            };
+            match result {
+                Ok(result) => serde_json::json!({"result":result}),
+                Err(error) => serde_json::json!({"error":error}),
+            }
+        }
         MultiplexHostService::ApplicationLogsV1 => {
             let result = async {
                 let request: extension_contracts::ApplicationLogsRequest =
@@ -1037,6 +1063,35 @@ async fn execute_callback(
                 Err(error) => serde_json::json!({"error":error}),
             }
         }
+        MultiplexHostService::PluginEphemeralV1 => {
+            use extension_contracts::{PluginEphemeralError, PluginEphemeralRequest};
+            let result = async {
+                let request: PluginEphemeralRequest = serde_json::from_value(request)
+                    .map_err(|_| PluginEphemeralError::new("plugin_ephemeral_request_invalid"))?;
+                request.validate()?;
+                let (binding, port) = context
+                    .and_then(|context| context.plugin_ephemeral)
+                    .ok_or_else(|| PluginEphemeralError::new("plugin_ephemeral_not_granted"))?;
+                let remaining = binding.deadline_unix_ms.saturating_sub(now_unix_ms());
+                if remaining <= 0 {
+                    return Err(PluginEphemeralError::new("plugin_ephemeral_deadline"));
+                }
+                if binding.deadline_unix_ms == i64::MAX {
+                    return port.execute(&binding, &request).await;
+                }
+                tokio::time::timeout(
+                    Duration::from_millis(remaining as u64),
+                    port.execute(&binding, &request),
+                )
+                .await
+                .unwrap_or_else(|_| Err(PluginEphemeralError::new("plugin_ephemeral_deadline")))
+            }
+            .await;
+            match result {
+                Ok(value) => serde_json::json!({"result":value}),
+                Err(error) => serde_json::json!({"error":error}),
+            }
+        }
     }
 }
 
@@ -1077,3 +1132,11 @@ async fn wait_explicit_cancel(cancel: &mut Option<tokio::sync::watch::Receiver<b
         None => std::future::pending().await,
     }
 }
+
+#[cfg(test)]
+#[path = "../_tests/host_services/plugin_ephemeral_callbacks.rs"]
+mod ephemeral_tests;
+
+#[cfg(test)]
+#[path = "../_tests/host_services/execution_gate_dispatch.rs"]
+mod execution_gate_dispatch;

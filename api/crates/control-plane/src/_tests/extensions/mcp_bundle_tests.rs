@@ -186,6 +186,20 @@ impl McpBundleFixtureRepository {
 
 #[async_trait]
 impl McpManagementRepository for McpBundleFixtureRepository {
+    async fn get_mcp_instance_directory(
+        &self,
+        _: Uuid,
+        _: &str,
+    ) -> anyhow::Result<domain::mcp_management::McpInstanceDirectory> {
+        unimplemented!("bundle fixture does not read directories")
+    }
+    async fn replace_mcp_instance_directory_atomically(
+        &self,
+        _: &control_plane_contracts::ports::ReplaceMcpInstanceDirectoryInput,
+    ) -> anyhow::Result<domain::mcp_management::McpInstanceDirectory> {
+        unimplemented!("bundle fixture does not replace directories")
+    }
+
     async fn record_mcp_extension_bundle_import(
         &self,
         _workspace_id: Uuid,

@@ -274,7 +274,8 @@ async fn semantic_round_evidence_is_atomic_with_callback_and_checkpoint() {
     .unwrap()
     .unwrap();
     let round_id = Uuid::now_v7();
-    for index in 0..2 {
+    let reserved_callback_ids = [Uuid::now_v7(), Uuid::now_v7()];
+    for (index, reserved_callback_id) in reserved_callback_ids.iter().enumerate() {
         let payload =
             json!({"tool_calls":[{"id":format!("call-{index}"),"name":"read","arguments":{}}]});
         let outcome = FlowDebugExecutionOutcome {
@@ -295,6 +296,14 @@ async fn semantic_round_evidence_is_atomic_with_callback_and_checkpoint() {
             node_traces: vec![trace(&node.node_id, payload, None)],
         };
         let prepared = [(node.node_id.clone(), node.clone())].into_iter().collect();
+        let mut candidate =
+            crate::orchestration_runtime::debug_stream_events::provider_output_item_done(
+                &node.node_id,
+                node.id,
+                0,
+                json!({"type":"function_call","id":format!("item-{index}"),"call_id":format!("call-{index}"),"name":"read","arguments":"{}"}),
+            );
+        candidate.payload["reserved_callback_task_id"] = json!(reserved_callback_id);
         run = super::super::persist_flow_debug_outcome(
             &service.repository,
             super::super::PersistFlowDebugOutcomeInput {
@@ -314,7 +323,7 @@ async fn semantic_round_evidence_is_atomic_with_callback_and_checkpoint() {
                 waiting_node_resume: None,
                 resume_claim_id: None,
                 resume_claim_token: None,
-                tool_delivery_events: Vec::new(),
+                tool_delivery_events: vec![candidate],
             },
         )
         .await
@@ -332,6 +341,11 @@ async fn semantic_round_evidence_is_atomic_with_callback_and_checkpoint() {
         domain::FlowRunStatus::WaitingCallback
     );
     assert_eq!(detail.node_runs.len(), 1);
+    assert_eq!(
+        detail.callback_tasks.iter().map(|task| task.id).collect::<std::collections::HashSet<_>>(),
+        reserved_callback_ids.into_iter().collect(),
+        "both first and resumed rounds must commit the identity exposed in progress, not the input round id",
+    );
     let ids = detail
         .callback_tasks
         .iter()

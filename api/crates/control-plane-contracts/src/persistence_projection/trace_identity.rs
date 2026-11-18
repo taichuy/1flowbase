@@ -62,3 +62,31 @@ pub fn trace_projection_task_watermark(
     }
     format!("{base}/task_rounds:{task_round_count}/child_tasks:{child_task_count}/task_outputs:{task_output_count}")
 }
+
+/// A node can finish while its flow and the number of receipts stay unchanged.
+/// Readers and builders share this metadata-only identity, never hashing full bodies.
+pub fn trace_projection_node_state_watermark(
+    base: String,
+    states: &[(Uuid, String, Option<OffsetDateTime>)],
+) -> String {
+    if states.is_empty() {
+        return base;
+    }
+    let mut ordered = states.iter().collect::<Vec<_>>();
+    ordered.sort_unstable_by_key(|state| state.0);
+    let mut hash = Sha256::new();
+    for (id, status, finished_at) in ordered {
+        hash.update(id.as_bytes());
+        hash.update(status.as_bytes());
+        hash.update(
+            finished_at
+                .map(|at| at.unix_timestamp_nanos())
+                .unwrap_or(-1)
+                .to_be_bytes(),
+        );
+    }
+    format!(
+        "{base}/node_state:{:x}",
+        base16ct::HexDisplay(&hash.finalize())
+    )
+}

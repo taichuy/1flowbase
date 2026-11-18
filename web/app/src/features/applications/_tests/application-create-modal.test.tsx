@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const applicationsApi = vi.hoisted(() => ({
   applicationsQueryKey: ['applications'],
   applicationCatalogQueryKey: ['applications', 'catalog'],
+  saveWorkflowEventTrigger: vi.fn(),
+  fetchWorkflowEventCatalog: vi.fn(),
   createApplication: vi.fn(),
   fetchApplicationCatalog: vi.fn()
 }));
@@ -25,7 +27,7 @@ vi.mock('../api/public-api', async (importOriginal) => ({
 
 import { AppProviders } from '../../../app/AppProviders';
 
-import { ApplicationFormModal } from '../components/ApplicationFormModal';
+import { ApplicationFormDrawer } from '../components/ApplicationFormDrawer';
 
 async function selectApplicationType(label: string) {
   fireEvent.mouseDown(await screen.findByRole('combobox', { name: '类型' }));
@@ -35,9 +37,21 @@ async function selectApplicationType(label: string) {
   fireEvent.click(option);
 }
 
-describe('ApplicationFormModal create intent', () => {
+describe('ApplicationFormDrawer create intent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    applicationsApi.saveWorkflowEventTrigger.mockResolvedValue({});
+    applicationsApi.fetchWorkflowEventCatalog.mockResolvedValue([
+      {
+        contract_id: 'custom.invoice',
+        name: 'Invoice',
+        enabled: true,
+        origin: 'custom',
+        owner_id: null,
+        scope: { kind: 'workspace', workspace_id: 'workspace-1' },
+        supported_phases: ['published', 'consumed']
+      }
+    ]);
     applicationsApi.createApplication.mockResolvedValue({ id: 'app-workflow' });
     applicationsApi.fetchApplicationCatalog.mockResolvedValue({
       types: [
@@ -59,7 +73,8 @@ describe('ApplicationFormModal create intent', () => {
         {
           value: 'schedule',
           label: '定时调度'
-        }
+        },
+        { value: 'event', label: '事件触发' }
       ],
       tags: []
     });
@@ -70,7 +85,7 @@ describe('ApplicationFormModal create intent', () => {
   test('AC-001 renders Application type labels without MCP guidance', async () => {
     render(
       <AppProviders>
-        <ApplicationFormModal
+        <ApplicationFormDrawer
           open
           csrfToken="csrf-123"
           onClose={vi.fn()}
@@ -87,12 +102,13 @@ describe('ApplicationFormModal create intent', () => {
     expect(screen.queryByText('后端 Workflow 描述')).not.toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: '名称' })).toBeInTheDocument();
     const submitButton = screen.getByRole('button', { name: '创建应用' });
-    const scrollBody = screen.getByTestId('fixed-height-modal-scroll-body');
+    const drawer = screen.getByRole('dialog', { name: '新建应用' });
+    const scrollBody = drawer.querySelector('.ant-drawer-body');
     expect(scrollBody).toContainElement(
       screen.getByRole('textbox', { name: '名称' })
     );
     expect(scrollBody).not.toContainElement(submitButton);
-    expect(submitButton.closest('.ant-modal-footer')).toBeInTheDocument();
+    expect(submitButton.closest('.ant-drawer-footer')).toBeInTheDocument();
     expect(submitButton).toHaveAttribute('form', 'application-form');
     expect(
       screen.queryByRole('textbox', { name: '图标' })
@@ -108,7 +124,7 @@ describe('ApplicationFormModal create intent', () => {
   test('creates Agent Logs without orchestration or a workflow trigger', async () => {
     render(
       <AppProviders>
-        <ApplicationFormModal
+        <ApplicationFormDrawer
           open
           csrfToken="csrf-123"
           onClose={vi.fn()}
@@ -140,7 +156,7 @@ describe('ApplicationFormModal create intent', () => {
 
     render(
       <AppProviders>
-        <ApplicationFormModal
+        <ApplicationFormDrawer
           open
           csrfToken="csrf-123"
           onClose={vi.fn()}
@@ -186,7 +202,7 @@ describe('ApplicationFormModal create intent', () => {
   test('creates schedule workflows disabled with cron configuration', async () => {
     render(
       <AppProviders>
-        <ApplicationFormModal
+        <ApplicationFormDrawer
           open
           csrfToken="csrf-123"
           onClose={vi.fn()}
@@ -205,15 +221,17 @@ describe('ApplicationFormModal create intent', () => {
         selector: '.ant-select-item-option-content'
       })
     );
-    const cronInput = await screen.findByRole('textbox', {
-      name: 'Cron 表达式'
-    });
-    fireEvent.change(cronInput, {
-      target: { value: '0 9 * * 1-5' }
-    });
-    fireEvent.change(screen.getByRole('textbox', { name: '时区' }), {
-      target: { value: 'Asia/Shanghai' }
-    });
+    fireEvent.mouseDown(await screen.findByRole('combobox', { name: '重复频率' }));
+    fireEvent.click(await screen.findByText('每周', { selector: '.ant-select-item-option-content' }));
+    const weekdays = screen.getByRole('combobox', { name: '执行星期' });
+    fireEvent.mouseDown(weekdays);
+    for (const day of ['星期二', '星期三', '星期四', '星期五']) {
+      fireEvent.click(await screen.findByText(day, { selector: '.ant-select-item-option-content' }));
+    }
+    const timezone = screen.getByRole('combobox', { name: '时区' });
+    fireEvent.mouseDown(timezone);
+    fireEvent.change(timezone, { target: { value: 'Shanghai' } });
+    fireEvent.click(await screen.findByText('Asia/Shanghai', { selector: '.ant-select-item-option-content' }));
     fireEvent.change(screen.getByRole('textbox', { name: '名称' }), {
       target: { value: 'Daily schedule' }
     });
@@ -225,7 +243,7 @@ describe('ApplicationFormModal create intent', () => {
           application_type: 'workflow',
           workflow_trigger_type: 'schedule',
           workflow_trigger_config: {
-            cron: '0 9 * * 1-5',
+            cron: '0 9 * * 1,2,3,4,5',
             timezone: 'Asia/Shanghai',
             input_payload: {}
           }
@@ -233,5 +251,88 @@ describe('ApplicationFormModal create intent', () => {
         'csrf-123'
       );
     });
+  });
+
+  test('creates a daily schedule with an empty timezone to follow the system', async () => {
+    render(
+      <AppProviders>
+        <ApplicationFormDrawer open csrfToken="csrf-123" onClose={vi.fn()} intent={{ kind: 'create', onCreated: vi.fn() }} />
+      </AppProviders>
+    );
+    await selectApplicationType('Workflow');
+    fireEvent.mouseDown(await screen.findByRole('combobox', { name: '触发方式' }));
+    fireEvent.click(await screen.findByText('定时调度', { selector: '.ant-select-item-option-content' }));
+    expect((await screen.findByRole('combobox', { name: '时区' })).closest('.ant-select')).toHaveTextContent('跟随系统时区');
+    fireEvent.change(screen.getByRole('textbox', { name: '名称' }), { target: { value: 'System schedule' } });
+    fireEvent.click(screen.getByRole('button', { name: '创建应用' }));
+    await waitFor(() => expect(applicationsApi.createApplication).toHaveBeenCalledWith(
+      expect.objectContaining({ workflow_trigger_config: { cron: '0 9 * * *', timezone: '', input_payload: {} } }),
+      'csrf-123'
+    ));
+  });
+
+  test('E7 creates event workflow then saves subscription without extension config', async () => {
+    const onCreated = vi.fn();
+    render(
+      <AppProviders>
+        <ApplicationFormDrawer
+          open
+          csrfToken="csrf-123"
+          onClose={vi.fn()}
+          intent={{ kind: 'create', onCreated }}
+        />
+      </AppProviders>
+    );
+    await selectApplicationType('Workflow');
+    fireEvent.mouseDown(
+      await screen.findByRole('combobox', { name: '触发方式' })
+    );
+    fireEvent.click(
+      await screen.findByText('事件触发', {
+        selector: '.ant-select-item-option-content'
+      })
+    );
+    fireEvent.mouseDown(
+      await screen.findByRole('combobox', { name: '监听事件' })
+    );
+    fireEvent.click(
+      await screen.findByText('Invoice', {
+        selector: '.ant-select-item-option-content'
+      })
+    );
+    fireEvent.mouseDown(
+      await screen.findByRole('combobox', { name: '监听时机' })
+    );
+    fireEvent.click(
+      await screen.findByText('消费', {
+        selector: '.ant-select-item-option-content'
+      })
+    );
+    fireEvent.change(screen.getByRole('textbox', { name: '名称' }), {
+      target: { value: 'Invoice handler' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '创建应用' }));
+    await waitFor(() =>
+      expect(applicationsApi.saveWorkflowEventTrigger).toHaveBeenCalledWith(
+        'app-workflow',
+        expect.objectContaining({
+          contract_id: 'custom.invoice',
+          trigger_phase: 'consumed',
+          input_mapping: {}
+        }),
+        'csrf-123'
+      )
+    );
+    expect(applicationsApi.createApplication).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflow_trigger_type: 'event',
+        workflow_trigger_config: null
+      }),
+      'csrf-123'
+    );
+    expect(
+      applicationsApi.saveWorkflowEventTrigger.mock.calls[0][1]
+    ).not.toHaveProperty('contract_version');
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('app-workflow'));
   });
 });

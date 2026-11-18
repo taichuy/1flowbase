@@ -27,6 +27,8 @@ pub enum PluginDataPermission {
 pub struct PluginDataBinding {
     /// Host-only exact subject; never accepted from a worker request.
     pub managed_subject: Option<crate::extension_bus::ManagedContributionSubject>,
+    /// Host-only admission context; absent for legacy plugins without record resources.
+    pub record_permissions: Option<PluginDataRecordPermissionContext>,
     pub publisher_namespace: String,
     pub plugin_code: String,
     pub plugin_version: String,
@@ -36,6 +38,28 @@ pub struct PluginDataBinding {
     pub provider_instance_id: String,
     pub permissions: BTreeSet<PluginDataPermission>,
     pub deadline_unix_ms: i64,
+}
+
+/// Constructed from authenticated ActorContext and a validated manifest, never deserialized.
+/// caller_workspace_id is independent of PluginDataBinding.workspace_id (physical data scope).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginDataRecordPermissionContext {
+    pub caller_workspace_id: String,
+    pub actor_user_id: String,
+    pub active_role_code: String,
+    pub is_root: bool,
+    pub resources: Vec<PluginDataRecordResource>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginDataRecordResource {
+    pub resource_code: String,
+    pub collection_code: String,
+    pub id_field: String,
+    /// The action authorized by the current operation, reused by all its data callbacks.
+    pub action_code: String,
+    /// If present, callbacks cannot address another record in this resource.
+    pub record_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

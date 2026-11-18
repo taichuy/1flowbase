@@ -4,45 +4,38 @@ pub(super) fn validate_settings_feature_operation_coverage(
     settings_features: &SettingsFeatureRegistry,
     registrations: &[ConsoleOperationRegistration],
 ) -> Result<(), ConsoleOperationRegistryError> {
-    let feature_routes = settings_features
-        .inventory()
-        .features
-        .iter()
-        .map(|feature| {
-            let routes = feature
-                .api_routes
-                .iter()
-                .map(|route| (route.method.to_ascii_uppercase(), route_shape(&route.path)))
-                .collect::<BTreeSet<_>>();
-            (feature.feature_id.as_str(), routes)
-        })
-        .collect::<BTreeMap<_, _>>();
-    let mut claimed_routes = BTreeMap::<&str, BTreeSet<(String, String)>>::new();
-
-    for registration in registrations {
-        let ConsolePolicyGroup::SettingsFeature(feature_id) = &registration.policy_group else {
-            continue;
-        };
-        let expected_routes = feature_routes.get(feature_id.as_str()).ok_or_else(|| {
-            ConsoleOperationRegistryError::new(format!(
-                "operation {} references unknown settings feature {feature_id}",
-                registration.operation_id
-            ))
-        })?;
-        let claims = claimed_routes.entry(feature_id.as_str()).or_default();
-        for route in &registration.routes {
-            let route_key = (route.method.to_ascii_uppercase(), route_shape(&route.path));
-            if expected_routes.contains(&route_key) {
-                claims.insert(route_key);
+    for feature in &settings_features.inventory().features {
+        let expected_routes = feature
+            .api_routes
+            .iter()
+            .map(|route| (route.method.to_ascii_uppercase(), route_shape(&route.path)))
+            .collect::<BTreeSet<_>>();
+        let mut claims = BTreeSet::new();
+        for registration in registrations {
+            let owns_feature = match &registration.policy_group {
+                ConsolePolicyGroup::SettingsFeature(id) => id == &feature.feature_id,
+                ConsolePolicyGroup::Plugin(id) => {
+                    feature.owner.kind == SettingsFeatureOwnerKind::ManagedService
+                        && feature.owner == registration.owner
+                        && id == &feature.owner.owner_id
+                        && id == &registration.owner.owner_id
+                }
+                ConsolePolicyGroup::Other(_) => false,
+            };
+            if owns_feature {
+                claims.extend(
+                    registration
+                        .routes
+                        .iter()
+                        .map(|route| (route.method.to_ascii_uppercase(), route_shape(&route.path)))
+                        .filter(|route| expected_routes.contains(route)),
+                );
             }
         }
-    }
-
-    for (feature_id, expected_routes) in feature_routes {
-        let claims = claimed_routes.get(feature_id).cloned().unwrap_or_default();
         if let Some((method, path)) = expected_routes.difference(&claims).next() {
             return Err(ConsoleOperationRegistryError::new(format!(
-                "settings feature {feature_id} route has no configurable operation: {method} {path}"
+                "settings feature {} route has no configurable operation: {method} {path}",
+                feature.feature_id
             )));
         }
     }
@@ -93,6 +86,23 @@ pub(super) fn validate_operation(
                 registration.operation_id
             )));
         }
+    }
+    if let ConsolePolicyGroup::Plugin(group_id) = &registration.policy_group {
+        validate_non_empty(group_id, "Plugin policy group_id")?;
+        if registration.owner.kind != SettingsFeatureOwnerKind::ManagedService
+            || group_id != &registration.owner.owner_id
+        {
+            return Err(ConsoleOperationRegistryError::new(
+                "Plugin policy group must equal its ManagedService owner_id",
+            ));
+        }
+    }
+    if registration.owner.kind == SettingsFeatureOwnerKind::ManagedService
+        && !matches!(&registration.policy_group, ConsolePolicyGroup::Plugin(_))
+    {
+        return Err(ConsoleOperationRegistryError::new(
+            "ManagedService operations must use their Plugin policy group",
+        ));
     }
     if let ConsolePolicyGroup::Other(group_id) = &registration.policy_group {
         validate_non_empty(group_id, "Other policy group_id")?;

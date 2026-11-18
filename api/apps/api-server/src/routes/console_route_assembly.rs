@@ -1,6 +1,6 @@
+pub use api_host_kernel::routes::console_route_assembly::*;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    convert::Infallible,
     sync::Arc,
 };
 
@@ -14,11 +14,6 @@ use access_control::{
     APPLICATIONS_VIEW_ACTION_CODE, DATA_SOURCES_VIEW_ACTION_CODE,
     DATA_SOURCE_INSTANCES_RESOURCE_CODE,
 };
-use axum::{
-    handler::Handler,
-    routing::{get, patch, post, MethodRouter},
-    Router,
-};
 use plugin_framework::HostExtensionContributionManifest;
 use utoipa::OpenApi;
 
@@ -28,218 +23,6 @@ use super::core_console_operation_specs::{
     CoreConsoleRouteSelector, CORE_CONSOLE_OPERATION_SPECS,
 };
 use crate::app_state::ApiState;
-
-pub struct ConsoleMethodRouter<S> {
-    router: MethodRouter<S, Infallible>,
-    methods: Vec<(
-        &'static str,
-        ConsoleRouteOwnership,
-        Option<crate::middleware::system_maintenance::SystemMaintenanceRequestClass>,
-    )>,
-}
-
-pub fn console_get<H, T, S>(handler: H, ownership: ConsoleRouteOwnership) -> ConsoleMethodRouter<S>
-where
-    H: Handler<T, S>,
-    T: 'static,
-    S: Clone + Send + Sync + 'static,
-{
-    ConsoleMethodRouter {
-        router: get(handler),
-        methods: vec![("GET", ownership, None)],
-    }
-}
-
-pub fn console_delete<H, T, S>(
-    handler: H,
-    ownership: ConsoleRouteOwnership,
-) -> ConsoleMethodRouter<S>
-where
-    H: Handler<T, S>,
-    T: 'static,
-    S: Clone + Send + Sync + 'static,
-{
-    ConsoleMethodRouter {
-        router: axum::routing::delete(handler),
-        methods: vec![("DELETE", ownership, None)],
-    }
-}
-
-pub fn console_patch<H, T, S>(
-    handler: H,
-    ownership: ConsoleRouteOwnership,
-) -> ConsoleMethodRouter<S>
-where
-    H: Handler<T, S>,
-    T: 'static,
-    S: Clone + Send + Sync + 'static,
-{
-    ConsoleMethodRouter {
-        router: patch(handler),
-        methods: vec![("PATCH", ownership, None)],
-    }
-}
-
-pub fn console_post<H, T, S>(handler: H, ownership: ConsoleRouteOwnership) -> ConsoleMethodRouter<S>
-where
-    H: Handler<T, S>,
-    T: 'static,
-    S: Clone + Send + Sync + 'static,
-{
-    ConsoleMethodRouter {
-        router: post(handler),
-        methods: vec![("POST", ownership, None)],
-    }
-}
-
-pub fn console_put<H, T, S>(handler: H, ownership: ConsoleRouteOwnership) -> ConsoleMethodRouter<S>
-where
-    H: Handler<T, S>,
-    T: 'static,
-    S: Clone + Send + Sync + 'static,
-{
-    ConsoleMethodRouter {
-        router: axum::routing::put(handler),
-        methods: vec![("PUT", ownership, None)],
-    }
-}
-
-impl<S> ConsoleMethodRouter<S>
-where
-    S: Clone + Send + Sync + 'static,
-{
-    pub fn delete<H, T>(mut self, handler: H, ownership: ConsoleRouteOwnership) -> Self
-    where
-        H: Handler<T, S>,
-        T: 'static,
-    {
-        self.router = self.router.delete(handler);
-        self.methods.push(("DELETE", ownership, None));
-        self
-    }
-
-    pub fn patch<H, T>(mut self, handler: H, ownership: ConsoleRouteOwnership) -> Self
-    where
-        H: Handler<T, S>,
-        T: 'static,
-    {
-        self.router = self.router.patch(handler);
-        self.methods.push(("PATCH", ownership, None));
-        self
-    }
-
-    pub fn post<H, T>(mut self, handler: H, ownership: ConsoleRouteOwnership) -> Self
-    where
-        H: Handler<T, S>,
-        T: 'static,
-    {
-        self.router = self.router.post(handler);
-        self.methods.push(("POST", ownership, None));
-        self
-    }
-
-    pub fn put<H, T>(mut self, handler: H, ownership: ConsoleRouteOwnership) -> Self
-    where
-        H: Handler<T, S>,
-        T: 'static,
-    {
-        self.router = self.router.put(handler);
-        self.methods.push(("PUT", ownership, None));
-        self
-    }
-
-    pub fn coordinator_control(mut self) -> Self {
-        if let Some((_, _, request_class)) = self.methods.last_mut() {
-            *request_class = Some(
-                crate::middleware::system_maintenance::SystemMaintenanceRequestClass::CoordinatorControl,
-            );
-        }
-        self
-    }
-}
-
-#[derive(Clone)]
-pub struct ConsoleRouteAssembly<S> {
-    router: Router<S>,
-    bindings: Vec<ConsoleRouteAssemblyBinding>,
-    maintenance_control_routes: Vec<ConsoleRouteBinding>,
-}
-
-impl<S> Default for ConsoleRouteAssembly<S>
-where
-    S: Clone + Send + Sync + 'static,
-{
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<S> ConsoleRouteAssembly<S>
-where
-    S: Clone + Send + Sync + 'static,
-{
-    pub fn new() -> Self {
-        Self {
-            router: Router::new(),
-            bindings: Vec::new(),
-            maintenance_control_routes: Vec::new(),
-        }
-    }
-
-    pub fn route(mut self, path: &str, methods: ConsoleMethodRouter<S>) -> Self {
-        let ConsoleMethodRouter { router, methods } = methods;
-        for (method, ownership, request_class) in methods {
-            let route = ConsoleRouteBinding {
-                method: method.to_string(),
-                path: format!("/api/console{path}"),
-            };
-            if request_class.is_some() {
-                self.maintenance_control_routes.push(route.clone());
-            }
-            self.bindings
-                .push(ConsoleRouteAssemblyBinding { route, ownership });
-        }
-        self.router = self.router.route(
-            &crate::external_route_assembly::axum_route_path(path),
-            router,
-        );
-        self
-    }
-
-    pub fn merge(mut self, other: Self) -> Self {
-        self.router = self.router.merge(other.router);
-        self.bindings.extend(other.bindings);
-        self.maintenance_control_routes
-            .extend(other.maintenance_control_routes);
-        self
-    }
-
-    pub fn bindings(&self) -> &[ConsoleRouteAssemblyBinding] {
-        &self.bindings
-    }
-
-    #[cfg(test)]
-    pub(crate) fn external_endpoint_contributions(
-        &self,
-    ) -> impl Iterator<Item = crate::external_endpoint_catalog::ExternalEndpointContribution> + '_
-    {
-        self.bindings.iter().map(|binding| {
-            crate::external_endpoint_catalog::ExternalEndpointContribution::unclassified_http(
-                "console-route-assembly",
-                &binding.route.method,
-                &binding.route.path,
-            )
-        })
-    }
-
-    pub fn maintenance_control_routes(&self) -> &[ConsoleRouteBinding] {
-        &self.maintenance_control_routes
-    }
-
-    pub fn into_router(self) -> Router<S> {
-        self.router
-    }
-}
 
 fn console_health_route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::Authenticated;
@@ -273,6 +56,7 @@ pub(crate) fn migrated_core_console_route_assembly_with_interface_operations_and
         .merge(console_health_route_assembly())
         .merge(super::session::route_assembly())
         .merge(super::local_commands::route_assembly())
+        .merge(super::terminal::route_assembly())
         .merge(super::me::route_assembly())
         .merge(super::external_auth::console_route_assembly())
         .merge(super::me_authentication_methods::route_assembly())
@@ -302,6 +86,7 @@ pub(crate) fn migrated_core_console_route_assembly_with_interface_operations_and
         .merge(super::members::route_assembly())
         .merge(super::notifications::route_assembly())
         .merge(super::communications::route_assembly())
+        .merge(super::events::route_assembly())
         .merge(super::organization::route_assembly())
         .merge(super::billing::route_assembly())
         .merge(super::model_definitions::route_assembly())
@@ -344,17 +129,6 @@ fn routes_owned_by(
             }
         })
         .collect()
-}
-
-pub(crate) fn route_templates_match(left: &str, right: &str) -> bool {
-    let left = left.trim_matches('/').split('/').collect::<Vec<_>>();
-    let right = right.trim_matches('/').split('/').collect::<Vec<_>>();
-    left.len() == right.len()
-        && left.iter().zip(right).all(|(left, right)| {
-            left == &right
-                || ((left.starts_with(':') || left.starts_with('{'))
-                    && (right.starts_with(':') || right.starts_with('{')))
-        })
 }
 
 fn route_identity_shape(path: &str) -> String {
@@ -762,127 +536,9 @@ pub fn validate_migrated_core_console_route_coverage(
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use std::collections::BTreeSet;
-
-    use access_control::ConsoleRouteOwnership;
-
-    use super::{
-        compile_complete_migrated_console_operation_registry, console_health_route_assembly,
-        migrated_core_console_contract_bindings, migrated_core_console_route_assembly,
-        validate_operation_spec_exact_set, ConsoleRouteAssembly,
-    };
-
-    fn route_keys<S>(assembly: &ConsoleRouteAssembly<S>) -> BTreeSet<(String, String, String)>
-    where
-        S: Clone + Send + Sync + 'static,
-    {
-        assembly
-            .bindings()
-            .iter()
-            .map(|binding| {
-                (
-                    binding.route.method.clone(),
-                    binding.route.path.clone(),
-                    match &binding.ownership {
-                        ConsoleRouteOwnership::Authenticated => "authenticated".to_string(),
-                        ConsoleRouteOwnership::ConsoleOperation(operation_id) => {
-                            operation_id.clone()
-                        }
-                    },
-                )
-            })
-            .collect()
-    }
-
-    #[test]
-    fn migrated_assembly_contains_every_console_router_owner_assembly() {
-        let expected = ConsoleRouteAssembly::new()
-            .merge(console_health_route_assembly())
-            .merge(crate::routes::session::route_assembly())
-            .merge(crate::routes::local_commands::route_assembly())
-            .merge(crate::routes::me::route_assembly())
-            .merge(crate::routes::external_auth::console_route_assembly())
-            .merge(crate::routes::me_authentication_methods::route_assembly())
-            .merge(crate::routes::assistant::route_assembly())
-            .merge(crate::routes::navigation::route_assembly())
-            .merge(crate::routes::application_management::route_assembly())
-            .merge(crate::routes::applications::route_assembly())
-            .merge(crate::routes::application_api::route_assembly())
-            .merge(crate::routes::application_orchestration::route_assembly())
-            .merge(crate::routes::application_runtime::route_assembly())
-            .merge(crate::routes::data_models::route_assembly())
-            .merge(crate::routes::docs::route_assembly())
-            .merge(crate::routes::data_sources::route_assembly())
-            .merge(crate::routes::files::route_assembly())
-            .merge(crate::routes::file_storages::route_assembly())
-            .merge(crate::routes::file_tables::route_assembly())
-            .merge(crate::routes::host_infrastructure::route_assembly())
-            .merge(crate::routes::runtime_i18n_catalog::route_assembly())
-            .merge(crate::routes::i18n_catalog::route_assembly())
-            .merge(crate::routes::mcp_management::route_assembly())
-            .merge(crate::routes::user_api_keys::route_assembly())
-            .merge(crate::routes::workspace::route_assembly())
-            .merge(crate::routes::members::route_assembly())
-            .merge(crate::routes::notifications::route_assembly())
-            .merge(crate::routes::communications::route_assembly())
-            .merge(crate::routes::organization::route_assembly())
-            .merge(crate::routes::model_definitions::route_assembly())
-            .merge(crate::routes::model_providers::route_assembly())
-            .merge(crate::routes::network_center::route_assembly())
-            .merge(crate::routes::frontend_block_catalog::route_assembly())
-            .merge(crate::routes::js_dependencies::route_assembly())
-            .merge(crate::routes::node_contributions::route_assembly())
-            .merge(crate::routes::ui_management::route_assembly())
-            .merge(crate::routes::roles::route_assembly())
-            .merge(crate::routes::permissions::route_assembly())
-            .merge(crate::routes::frontstage::route_assembly())
-            .merge(crate::routes::plugins::route_assembly())
-            .merge(crate::routes::auth_center::route_assembly())
-            .merge(crate::routes::billing::route_assembly())
-            .merge(crate::routes::branding::route_assembly())
-            .merge(crate::routes::system::route_assembly())
-            .merge(crate::routes::system_backups::route_assembly())
-            .merge(crate::routes::system_templates::route_assembly())
-            .merge(crate::routes::workspaces::route_assembly());
-
-        assert_eq!(
-            route_keys(&migrated_core_console_route_assembly()),
-            route_keys(&expected)
-        );
-    }
-
-    #[test]
-    fn complete_operation_specifications_match_the_production_route_set() {
-        let settings = crate::app_state::compile_core_settings_feature_registry().unwrap();
-        let bindings = migrated_core_console_contract_bindings();
-
-        compile_complete_migrated_console_operation_registry(&settings, &bindings, &[]).unwrap();
-    }
-
-    #[test]
-    fn operation_specification_exact_set_reports_every_difference() {
-        let error = validate_operation_spec_exact_set(
-            [
-                "operation.present",
-                "operation.missing",
-                "operation.present",
-            ]
-            .into_iter()
-            .map(str::to_string),
-            ["operation.present", "operation.extra", "operation.extra"]
-                .into_iter()
-                .map(str::to_string),
-        )
-        .unwrap_err();
-        let message = error.to_string();
-
-        assert!(message.contains("missing=[operation.missing]"));
-        assert!(message.contains("extra=[operation.extra]"));
-        assert!(message.contains("duplicate=[operation.extra]"));
-    }
-}
+#[cfg(all(feature = "test-support", not(test)))]
+#[path = "console_route_assembly/_tests/assembly.rs"]
+pub(crate) mod test_assertions;
 
 #[path = "console_route_assembly/interface_metadata.rs"]
 mod interface_metadata;

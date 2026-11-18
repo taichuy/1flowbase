@@ -148,7 +148,7 @@ fn issue_1944_inventory_is_finite_frozen_and_source_anchored() {
             assert!(!value.trim().is_empty(), "inventory fields are mandatory");
         }
         let source = std::fs::read_to_string(format!(
-            "{}/src/{}",
+            "{}/../../{}",
             env!("CARGO_MANIFEST_DIR"),
             entry.source_anchor
         ))
@@ -222,7 +222,7 @@ fn issue_1958_inventory_is_finite_source_anchored_and_keeps_internal_workers_on_
             );
         }
         let source = std::fs::read_to_string(format!(
-            "{}/src/{}",
+            "{}/../../{}",
             env!("CARGO_MANIFEST_DIR"),
             entry.source_anchor
         ))

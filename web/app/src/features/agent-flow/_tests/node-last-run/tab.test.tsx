@@ -28,6 +28,23 @@ describe('NodeLastRunTab', () => {
     vi.clearAllMocks();
   });
 
+  test('waits for the submitted run ID instead of showing a previous run', () => {
+    const fetchLastRun = vi.spyOn(runtimeApi, 'fetchNodeLastRun');
+
+    render(
+      <AppProviders>
+        <NodeLastRunTab
+          applicationId="app-1"
+          nodeId="node-llm"
+          runActive
+        />
+      </AppProviders>
+    );
+
+    expect(screen.getByRole('status', { name: 'thinking' })).toBeVisible();
+    expect(fetchLastRun).not.toHaveBeenCalled();
+  });
+
   test('AC-1993-004 uses the shared loading state before the first run value is available', () => {
     vi.spyOn(runtimeApi, 'fetchNodeLastRun').mockImplementation(
       () => new Promise(() => undefined)

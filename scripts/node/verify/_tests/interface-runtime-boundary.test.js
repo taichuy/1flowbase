@@ -19,6 +19,16 @@ const { productionRustSources } = require('../../testing/contracts/rust-sources.
 let metadata;
 function workspaceMetadata() {
   if (!metadata) {
+    if (process.env.ONEFLOWBASE_DEPENDENCY_METADATA_DIR !== undefined) {
+      const result = spawnSync(process.execPath, [
+        path.join(repoRoot, 'scripts/node/compile-memory-audit/metadata-capture.js'),
+        '--read', '--api-dir', path.join(repoRoot, 'api'),
+        '--directory', process.env.ONEFLOWBASE_DEPENDENCY_METADATA_DIR, '--feature', 'default-no-deps',
+      ], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+      assert.equal(result.status, 0, result.stderr || result.error?.message);
+      metadata = JSON.parse(result.stdout);
+      return metadata;
+    }
     const result = spawnSync('cargo', [
       'metadata', '--no-deps', '--offline', '--locked', '--format-version=1',
       '--manifest-path', path.join(repoRoot, 'api/Cargo.toml'),
@@ -120,10 +130,11 @@ test('Delivery 1944 routes cannot inject decision or hook plans and plugin decis
   const kernel = productionRustSources(path.join(runtimeRoot, 'src/invocation.rs'));
   const decision = read('api/crates/interface-runtime/src/decision.rs');
   const routes = [
-    'api/apps/api-server/src/routes/identity/auth.rs',
-    'api/apps/api-server/src/routes/application_public_api/native.rs',
-    'api/apps/api-server/src/routes/mcp_protocol.rs',
-    'api/apps/api-server/src/routes/settings/host_infrastructure/interface_operation.rs',
+    'api/crates/api/console-interaction/src/routes/identity/auth.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/native.rs',
+    'api/crates/api/mcp/src/routes/mcp_protocol.rs',
+    'api/crates/api/console-settings/src/routes/settings/host_infrastructure/interface_operation.rs',
+    'api/crates/api/kernel/src/contracts/interaction_shared/console_invocation.rs',
   ].map(read).join('\n');
 
   assert.doesNotMatch(
@@ -143,20 +154,22 @@ test('Delivery 1944 routes cannot inject decision or hook plans and plugin decis
 
 test('Delivery 1944 protocol adapters authenticate through the frozen factory before constructing envelopes', () => {
   const activation = read(
-    'api/apps/api-server/src/extension_bus/authentication_activation.rs',
+    'api/crates/api/kernel/src/contracts/extension_bus/authentication_activation.rs',
   );
-  const boot = read('api/apps/api-server/src/extension_bus/boot_snapshot.rs');
+  const boot = read('api/apps/api-server/src/extension_bus/boot_snapshot.rs') + '\n'
+    + read('api/crates/api/kernel/src/contracts/extension_bus/boot_snapshot.rs');
   const routes = [
-    'api/apps/api-server/src/routes/identity/auth.rs',
-    'api/apps/api-server/src/routes/application_public_api/native.rs',
-    'api/apps/api-server/src/routes/mcp_protocol.rs',
-    'api/apps/api-server/src/routes/settings/host_infrastructure/interface_operation.rs',
+    'api/crates/api/console-interaction/src/routes/identity/auth.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/native.rs',
+    'api/crates/api/mcp/src/routes/mcp_protocol.rs',
+    'api/crates/api/console-settings/src/routes/settings/host_infrastructure/interface_operation.rs',
+    'api/crates/api/kernel/src/contracts/interaction_shared/console_invocation.rs',
   ].map(read).join('\n');
   const runtime = productionRustSources(path.join(runtimeRoot, 'src'));
 
   assert.match(activation, /factory\.authenticate\(Box::new\(credential\)\)\.await/u);
   assert.match(activation, /HostExtensionAuthenticationFactoryCatalog/u);
-  assert.match(boot, /authentication_factories\s*\.validate_registry\(&candidate\)/u);
+  assert.match(boot, /authentication_factories\(\)\s*\.validate_registry\(&candidate\)/u);
   assert.doesNotMatch(routes, /establish_principal/u);
   assert.match(routes, /\.authenticate_invocation/u);
   assert.doesNotMatch(routes, /\.authenticate\(/u);
@@ -170,17 +183,17 @@ test('Delivery 1944 protocol adapters authenticate through the frozen factory be
 test('Delivery 1944 typed production handlers do not import request or host capabilities', () => {
   const handlers = [
     [
-      'api/apps/api-server/src/routes/identity/login_entries_interface.rs',
+      'api/crates/api/console-interaction/src/routes/identity/login_entries_interface.rs',
       'PublicLoginEntriesHandler',
       'PublicLoginEntriesAuthorization',
     ],
     [
-      'api/apps/api-server/src/routes/application_public_api/native_interface.rs',
+      'api/crates/api/public-gateway/src/routes/application_public_api/native_interface.rs',
       'ApplicationNativeRunHandler',
       'ApplicationNativeRunAuthorization',
     ],
     [
-      'api/apps/api-server/src/routes/mcp_protocol/interface_operation.rs',
+      'api/crates/api/mcp/src/routes/mcp_protocol/interface_operation.rs',
       'McpInvocationHandler',
       'McpInvocationAuthorization',
     ],
@@ -199,10 +212,12 @@ test('Delivery 1944 typed production handlers do not import request or host capa
 });
 
 test('Delivery 1917 binds one graph-frozen hook plan and commits facts through durable outbox', () => {
-  const boot = read('api/apps/api-server/src/extension_bus/boot_snapshot.rs');
-  const operation = read(
-    'api/apps/api-server/src/routes/settings/host_infrastructure/interface_operation.rs',
-  );
+  const boot = read('api/apps/api-server/src/extension_bus/boot_snapshot.rs') + '\n'
+    + read('api/crates/api/kernel/src/contracts/extension_bus/boot_snapshot.rs');
+  const operation = [
+    'api/crates/api/console-settings/src/routes/settings/host_infrastructure/interface_operation.rs',
+    'api/crates/api/kernel/src/contracts/interaction_shared/console_invocation.rs',
+  ].map(read).join('\n');
   const transaction = read(
     'api/crates/storage/durable/postgres/src/model_definition_repository/create.rs',
   );
@@ -213,7 +228,7 @@ test('Delivery 1917 binds one graph-frozen hook plan and commits facts through d
   const kernel = productionRustSources(path.join(runtimeRoot, 'src/invocation.rs'));
 
   assert.match(boot, /compile_complete_console_snapshot/u);
-  assert.match(read('api/apps/api-server/src/routes/console_interface.rs'), /\.invoke::<I, O, ConsoleInterfaceTargetError>/u);
+  assert.match(read('api/crates/api/kernel/src/contracts/routes/console_interface.rs'), /\.invoke::<I, O, ConsoleInterfaceTargetError>/u);
   assert.doesNotMatch(operation, /invoke_with_hook_plan/u);
   assert.doesNotMatch(kernel, /pub async fn invoke_with_hook_plan/u);
   assert.match(transaction, /record_lifecycle_fact_in_transaction\(&mut tx/u);
@@ -228,9 +243,10 @@ test('Delivery 1917 binds one graph-frozen hook plan and commits facts through d
 });
 
 test('retired provider configuration is absent while observation uses the compiled Console kernel', () => {
-  const boot = read('api/apps/api-server/src/extension_bus/boot_snapshot.rs');
-  const http = read('api/apps/api-server/src/routes/settings/host_infrastructure.rs');
-  const consoleInterface = read('api/apps/api-server/src/routes/console_interface.rs');
+  const boot = read('api/apps/api-server/src/extension_bus/boot_snapshot.rs') + '\n'
+    + read('api/crates/api/kernel/src/contracts/extension_bus/boot_snapshot.rs');
+  const http = read('api/crates/api/console-settings/src/routes/settings/host_infrastructure.rs');
+  const consoleInterface = read('api/crates/api/kernel/src/contracts/routes/console_interface.rs');
   const contributions = [
     'api/apps/api-server/src/extension_bus/interface_contributions.rs',
     'api/apps/api-server/src/extension_bus/interface_contributions/provider_operations.rs',

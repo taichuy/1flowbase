@@ -16,6 +16,7 @@ pub struct CommunicationReceiveMessage {
     pub sender_display_name: Option<String>,
     pub received_at_ms: i64,
     pub text: Option<String>,
+    pub reply_to: Option<CommunicationMessageReference>,
     pub attachments: Vec<CommunicationReceiveAttachment>,
 }
 pub struct CommunicationReceiveAttachment {
@@ -285,6 +286,19 @@ pub trait CommunicationRepository: Send + Sync {
         cursor: Option<Uuid>,
         limit: u32,
     ) -> anyhow::Result<CommunicationPage<CommunicationMessage>>;
+    async fn communication_search_messages(
+        &self,
+        _scope: &CommunicationHistoryScope,
+        _conversation_id: Uuid,
+        _cursor: Option<Uuid>,
+        _limit: u32,
+        _keyword: &str,
+    ) -> anyhow::Result<CommunicationPage<CommunicationMessage>> {
+        Err(
+            crate::ControlPlaneContractError::InvalidInput("communication_search_unavailable")
+                .into(),
+        )
+    }
     async fn communication_files(
         &self,
         scope: &CommunicationHistoryScope,

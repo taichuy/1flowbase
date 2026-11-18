@@ -13,6 +13,47 @@ const FRONTEND_BLOCK_CODE_TEMPLATES_MIGRATION_SQL: &str = include_str!(concat!(
     "/migrations/20260710163000_add_frontend_block_code_templates.sql"
 ));
 
+#[tokio::test]
+async fn registration_migration_preserves_builtin_blocks_and_defaults_other_contributions_to_false()
+{
+    let pool = isolated_database().await.connect().await.unwrap();
+    sqlx::raw_sql(
+        "create table extension_installations (id integer primary key, source_kind text not null);
+         create table frontend_block_catalog (id integer primary key, installation_id integer not null);
+         insert into extension_installations values (1, 'builtin'), (2, 'official_registry');
+         insert into frontend_block_catalog values (1, 1), (2, 2);"
+    ).execute(&pool).await.unwrap();
+    sqlx::raw_sql(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/migrations/20261110010000_frontend_block_registration.sql"
+    )))
+    .execute(&pool)
+    .await
+    .unwrap();
+    let flags: Vec<bool> =
+        sqlx::query_scalar("select block_registration from frontend_block_catalog order by id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(flags, [true, false]);
+    sqlx::query("insert into frontend_block_catalog (id, installation_id) values (3, 2)")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let default_flag: bool =
+        sqlx::query_scalar("select block_registration from frontend_block_catalog where id = 3")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(!default_flag);
+    assert!(sqlx::query(
+        "update frontend_block_catalog set block_registration = null where id = 3"
+    )
+    .execute(&pool)
+    .await
+    .is_err());
+}
+
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
@@ -206,6 +247,7 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
                 runtime: "native_react".into(),
                 entry: "blocks/hero/index.html".into(),
                 ui_registration: "code_template".into(),
+                block_registration: true,
                 code_template: Some("export default {}".into()),
                 code_template_version: Some("1.0.0".into()),
                 code_template_language: Some("tsx".into()),
@@ -264,6 +306,7 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
     .unwrap();
     assert_eq!(builtin_entries.len(), 1);
     assert_eq!(builtin_entries[0].contribution_code, "hero_banner");
+    assert!(builtin_entries[0].block_registration);
 
     sqlx::query("update extension_installations set source_kind = 'uploaded' where id = $1")
         .bind(installation.id)

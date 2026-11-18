@@ -3,7 +3,6 @@ import type {
   ConsoleReferencedI18nMessage
 } from '@1flowbase/api-client';
 import type {
-  FlowAuthoringDocument,
   FlowConditionGroupDocument,
   FlowNodeDocument,
   FlowVariableGroupDocument,
@@ -49,7 +48,6 @@ import { getNamedBindingExpression } from '../lib/named-binding-expressions';
 import {
   encodeSelectorValue,
   decodeSelectorValue,
-  listLlmProtocolContextSelectorOptions,
   toCascaderSelectorOptions,
   type FlowSelectorOption
 } from '../lib/selector-options';
@@ -345,14 +343,9 @@ function renderLlmProtocolContextField({
   const reference = getLlmProtocolContextReference({
     protocol_context: adapter.getValue(block.path)
   });
-  const document = adapter.getDerived('document') as
-    | FlowAuthoringDocument
-    | undefined;
-  const node = adapter.getDerived('node') as FlowNodeDocument | undefined;
-  const options =
-    document && node
-      ? listLlmProtocolContextSelectorOptions(document, node.id)
-      : [];
+  const options = getSelectorOptions(adapter, block.path).filter(
+    (option) => option.valueType === 'protocol_context'
+  );
 
   return (
     <div
@@ -360,6 +353,7 @@ function renderLlmProtocolContextField({
       data-testid="agent-flow-llm-protocol-context"
     >
       <Cascader
+        changeOnSelect
         allowClear={false}
         aria-label={`${block.label}变量`}
         className="agent-flow-node-detail__context-select"
@@ -371,7 +365,15 @@ function renderLlmProtocolContextField({
             ? nextValue.map(String)
             : [];
 
-          if (selector.length >= 2) {
+          if (
+            options.some(
+              (option) =>
+                option.value.length === selector.length &&
+                option.value.every(
+                  (segment, index) => segment === selector[index]
+                )
+            )
+          ) {
             adapter.setValue(block.path, {
               kind: 'selector',
               value: selector
@@ -966,9 +968,11 @@ function renderStartInputFieldsField({
   );
   const contractKind: StartInputContractKind =
     node?.type === 'workflow_start'
-      ? triggerType === 'schedule'
-        ? 'workflow_schedule'
-        : 'workflow_http'
+      ? triggerType === 'event'
+        ? 'workflow_event'
+        : triggerType === 'schedule'
+          ? 'workflow_schedule'
+          : 'workflow_http'
       : 'agent';
   const sourceOptions =
     contractKind === 'workflow_http'

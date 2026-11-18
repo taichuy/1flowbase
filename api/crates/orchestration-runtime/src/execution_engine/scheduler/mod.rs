@@ -285,6 +285,8 @@ where
         });
         let node_input_payload = if matches!(node.node_type.as_str(), "start" | "workflow_start") {
             start_node_execution_input(&variable_pool, &node.node_id)
+        } else if node.node_type == "http_request" {
+            http_request::request_input_payload(node, &resolved_inputs, &variable_pool)
         } else if let Some(input_payload) = &llm_input_payload {
             Value::Object(input_payload.clone())
         } else {
@@ -848,7 +850,7 @@ where
                     node_id: node.node_id.clone(),
                     node_type: node.node_type.clone(),
                     node_alias: node.alias.clone(),
-                    input_payload: Value::Object(resolved_inputs),
+                    input_payload: node_input_payload,
                     output_payload: execution.output_payload.clone(),
                     error_payload: execution.error_payload.clone(),
                     metrics_payload: execution.metrics_payload.clone(),

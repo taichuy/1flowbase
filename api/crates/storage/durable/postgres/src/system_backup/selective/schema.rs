@@ -31,9 +31,18 @@ pub(super) async fn prerequisites(
 ) -> Result<Vec<String>> {
     Ok(sqlx::query_scalar("select distinct parent.relname::text from pg_constraint f join pg_class child on child.oid=f.conrelid join pg_class parent on parent.oid=f.confrelid join pg_namespace n on n.oid=child.relnamespace where n.nspname=current_schema() and child.relname=$1 and f.contype='f' order by 1").bind(table).fetch_all(connection).await?)
 }
+pub(super) fn required_json_value(column: &Column) -> bool {
+    !column.nullable && !column.generated && matches!(column.sql_type.as_str(), "json" | "jsonb")
+}
+
 pub(super) fn upsert_sql(table: &Table) -> Result<String> {
     if table.name == "extension_installations" {
         return super::plugin_identity::insert_sql();
+    }
+    if table.name == "plugin_record_permission_scope_revisions" {
+        // This counter is part of PluginData receipt fingerprints, not a replayable
+        // business value. Restoring must invalidate old receipts, never revive one.
+        return Ok("insert into plugin_record_permission_scope_revisions as target (workspace_id,publisher_namespace,plugin_code,revision) select workspace_id,publisher_namespace,plugin_code,revision+1 from jsonb_populate_record(null::plugin_record_permission_scope_revisions,$1) where true on conflict (workspace_id,publisher_namespace,plugin_code) do update set revision=greatest(target.revision+1,excluded.revision)".into());
     }
     let names = table
         .columns
@@ -107,12 +116,61 @@ pub(super) fn upsert_sql(table: &Table) -> Result<String> {
         action
     };
     let name = quote(&table.name)?;
+    let values = table
+        .columns
+        .iter()
+        .filter(|column| !column.generated)
+        .map(|column| {
+            let quoted = quote(&column.name)?;
+            Ok(if required_json_value(column) {
+                // jsonb_populate_record turns JSON null into SQL NULL. For a
+                // required JSON field the source value can only be JSON null;
+                // preflight separately rejects a missing archive key.
+                format!("coalesce({quoted},'null'::{})", column.sql_type)
+            } else {
+                quoted
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
     Ok(format!(
         "insert into {name} as target ({}) overriding system value select {} from jsonb_populate_record(null::{name},$1) where true on conflict ({}) {action}",
         names.join(","),
-        names.join(","),
+        values.join(","),
         pk.join(",")
     ))
+}
+
+pub(super) fn order_for_export(mut tables: Vec<Table>) -> Vec<Table> {
+    let mut ordered = Vec::with_capacity(tables.len());
+    while !tables.is_empty() {
+        let ready = tables.iter().position(|table| {
+            let freshness_dependencies: &[&str] =
+                if table.name == "plugin_record_permission_scope_revisions" {
+                    &[
+                        "plugin_record_permission_policies",
+                        "plugin_record_permission_grants",
+                    ]
+                } else {
+                    &[]
+                };
+            table
+                .prerequisites
+                .iter()
+                .map(String::as_str)
+                .chain(freshness_dependencies.iter().copied())
+                .all(|parent| {
+                    parent == table.name || !tables.iter().any(|pending| pending.name == parent)
+                })
+        });
+        let Some(index) = ready else {
+            // Cycles retain the original deterministic order and the existing
+            // restore savepoint/spool handling; no constraint is disabled.
+            ordered.extend(tables);
+            break;
+        };
+        ordered.push(tables.remove(index));
+    }
+    ordered
 }
 
 /// Definitions are rows, but their referenced physical schema must already exist on the target.

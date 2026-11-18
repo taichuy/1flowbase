@@ -24,7 +24,7 @@ pub(in crate::compiler) fn output_for_selector(
     let output_key = selector_tail.first()?;
     let node = nodes.get(node_id)?;
 
-    if node.node_type == "start" && output_key == "history" {
+    if node.node_type == "start" && output_key == "history" && selector_tail.len() == 1 {
         return Some(CompiledOutput {
             key: "history".to_string(),
             title: "userinput.history".to_string(),
@@ -34,7 +34,7 @@ pub(in crate::compiler) fn output_for_selector(
         });
     }
 
-    if node.node_type == "start" && output_key == "protocol_context" {
+    if node.node_type == "start" && output_key == "protocol_context" && selector_tail.len() == 1 {
         return Some(CompiledOutput {
             key: "protocol_context".to_string(),
             title: "userinput.protocol_context".to_string(),
@@ -45,43 +45,29 @@ pub(in crate::compiler) fn output_for_selector(
         });
     }
 
-    if matches!(node.node_type.as_str(), "start" | "workflow_start") {
-        if let Some(output) = start_input_field_output(node, output_key) {
-            return Some(output);
-        }
+    let contract = super::super::output_contract::selector_contract(node, selector_tail);
+    let declared = super::super::output_contract::source_outputs(node)
+        .into_iter()
+        .filter(|output| selector_tail.starts_with(&output.selector))
+        .max_by_key(|output| output.selector.len())?;
+    if declared.selector == selector_tail {
+        return Some(declared);
     }
-
-    node.outputs
-        .iter()
-        .find(|output| {
-            output.selector == selector_tail
-                || (selector_tail.len() == 1 && output.key == *output_key)
-        })
-        .cloned()
-}
-
-fn start_input_field_output(node: &CompiledNode, output_key: &str) -> Option<CompiledOutput> {
-    let input_fields = node.config.get("input_fields")?.as_array()?;
-
-    input_fields.iter().find_map(|field| {
-        let key = field.get("key")?.as_str()?.trim();
-        if key.is_empty() || key != output_key {
-            return None;
-        }
-
-        let value_type = field
-            .get("valueType")
-            .or_else(|| field.get("value_type"))
-            .and_then(Value::as_str)
-            .filter(|value_type| !value_type.trim().is_empty())
-            .unwrap_or("string");
-
-        Some(CompiledOutput {
-            key: key.to_string(),
-            title: format!("userinput.{key}"),
-            value_type: value_type.to_string(),
-            selector: Vec::new(),
+    match contract {
+        super::super::output_contract::PathContract::Missing => None,
+        super::super::output_contract::PathContract::Dynamic => Some(CompiledOutput {
+            key: selector_tail.last()?.clone(),
+            title: selector_tail.join("."),
+            value_type: "json".into(),
+            selector: selector_tail.to_vec(),
             json_schema: None,
-        })
-    })
+        }),
+        super::super::output_contract::PathContract::Known(schema) => Some(CompiledOutput {
+            key: selector_tail.last()?.clone(),
+            title: selector_tail.join("."),
+            value_type: super::super::output_contract::schema_value_type(&schema),
+            selector: selector_tail.to_vec(),
+            json_schema: Some(schema),
+        }),
+    }
 }

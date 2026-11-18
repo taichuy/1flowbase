@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 
 import { oauthAwareApiProxy } from './vite/oauth-proxy';
@@ -259,6 +260,8 @@ export default defineConfig(({ command, mode }) => {
       fs: {
         allow: [
           searchForWorkspaceRoot(process.cwd()),
+          // Worktrees may reuse installed dependencies through a node_modules symlink.
+          realpathSync(fileURLToPath(new URL('../node_modules', import.meta.url))),
           fileURLToPath(new URL('../../scripts', import.meta.url)),
           // Vite 8 checks both the file path and the full raw-import ID.
           // Permit only this backend-owned public login block and its raw ID.
@@ -381,6 +384,15 @@ export default defineConfig(({ command, mode }) => {
       }
     },
     test: {
+      // Native-template tests verify the actual registered ShadowRoot style assets.
+      // Vitest otherwise stubs even CSS ?inline exports with an empty string.
+      css: {
+        include: [
+          /\/features\/frontstage\/components\/data-blocks\/(?:table\/table-block|form\/form-block)\.css(?:\?|$)/,
+          /\/features\/frontstage\/lib\/native-modules\/block-design\/block-design\.css\?inline(?:&|$)/,
+          /\/features\/frontstage\/components\/frontstage-node-action-button\.css\?inline(?:&|$)/
+        ]
+      },
       // Match browser ESM resolution so leaf providers and barrel consumers share context.
       alias: [
         {

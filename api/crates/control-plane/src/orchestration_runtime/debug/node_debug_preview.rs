@@ -141,6 +141,13 @@ where
                 application.application_type,
                 live_debug_run::compiled_plan_start_node_id(&compiled_plan),
             );
+        } else {
+            live_debug_run::inject_workflow_credentials(
+                preview_input
+                    .as_object_mut()
+                    .expect("preview input is an object"),
+                flow_run.id,
+            );
         }
         let invoker = self
             .runtime_invoker(application.workspace_id)
@@ -148,7 +155,11 @@ where
             .with_provider_session_scope(&flow_run)
             .with_flow_execution_context(flow_execution_context);
         let http_file_persister = self.http_response_file_persister(actor);
-        let preview_result = orchestration_runtime::preview_executor::run_node_preview_with_http_file_persister_and_counter_store_and_lifecycle(
+        let preview_result = async {
+            if let Some(host) = &self.runtime_internal_tool_invoker {
+                host.prepare_workflow_credentials(flow_run.id).await?;
+            }
+            orchestration_runtime::preview_executor::run_node_preview_with_http_file_persister_and_counter_store_and_lifecycle(
             &compiled_plan,
             &command.node_id,
             &preview_input,
@@ -159,7 +170,8 @@ where
             self.llm_routing_counter_store.clone(),
             &lifecycle,
         )
-        .await;
+            .await
+        }.await;
         let preview = match preview_result {
             Ok(preview) => preview,
             Err(error) => {

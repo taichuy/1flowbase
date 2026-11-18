@@ -1,5 +1,12 @@
-import { useCallback, useContext, useMemo, useReducer, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Alert, Button, Empty, Spin, Typography } from 'antd';
 import { ClientTrajectoryWorkspace } from './trajectory/client/ClientTrajectoryWorkspace';
 import { TraceActivityDetailContext } from './trajectory/activities/activity-model';
@@ -7,17 +14,13 @@ import { ProviderTrajectory } from './trajectory/ProviderTrajectory';
 import { DebugWorkflowNodeItem } from './conversation/DebugWorkflowNodeRow';
 import { DebugWorkflowNodeDetailContent } from './conversation/LlmToolTraceTree';
 import { nodeDisplayName } from './conversation/debug-workflow-trace-utils';
-import {
-  appendTraceChildrenPage,
-  createInitialLazyTraceChildrenState,
-  lazyTraceChildrenReducer
-} from './lazy-trace-children-state';
+import { appendTraceChildrenPage } from './lazy-trace-children-state';
 import type { RuntimeDebugArtifactBatchLoader } from '../detail/last-run/runtime-debug-payload';
 import { i18nText } from '../../../../shared/i18n/text';
 import type {
   ConversationLogTraceLoader,
+  ConversationLogTraceTree,
   ConversationLogTraceNodeChildren,
-  ConversationLogTraceNodeChildrenPageInfo,
   ConversationLogTraceNodeSummary,
   ConversationLogTraceProjectionStatus
 } from './conversation-log-trace-model';
@@ -32,11 +35,27 @@ import {
   toolModeFromTraceNodes
 } from './conversation-log-trace-model';
 const CONVERSATION_LOG_QUERY_STALE_TIME_MS = 60_000;
-const initialLazyTraceChildrenState = createInitialLazyTraceChildrenState<
-  ConversationLogTraceNodeSummary,
-  ConversationLogTraceNodeChildrenPageInfo,
-  ConversationLogTraceProjectionStatus
->();
+const RunObservationContext = createContext(false);
+function runIsActive(status?: string) {
+  return (
+    status !== undefined &&
+    !['succeeded', 'failed', 'cancelled', 'incomplete'].includes(status)
+  );
+}
+function TraceReadError({ retry }: { retry: () => unknown }) {
+  return (
+    <Alert
+      type="error"
+      showIcon
+      title={i18nText('agentFlow', 'auto.loading_failed')}
+      action={
+        <Button size="small" onClick={() => void retry()}>
+          {i18nText('agentFlow', 'auto.retry')}
+        </Button>
+      }
+    />
+  );
+}
 
 function traceProjectionStatusMessage(
   status: ConversationLogTraceProjectionStatus
@@ -85,55 +104,47 @@ export function LazyConversationTrace({
   runId: string;
   traceLoader: ConversationLogTraceLoader;
 }) {
-  const [rootPages, setRootPages] = useState<
-    ConversationLogTraceNodeChildren[]
-  >([]);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [loadFailed, setLoadFailed] = useState(false);
-  const traceTreeQuery = useQuery({
+  const traceTreeQuery = useInfiniteQuery({
     queryKey: [
       'conversation-log-trace-tree',
       traceLoader.sourceKind ?? 'native',
-      runId
+      runId,
+      'pages'
     ],
-    queryFn: () => traceLoader.loadTree!(runId),
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({
+      pageParam
+    }): Promise<ConversationLogTraceTree | ConversationLogTraceNodeChildren> =>
+      pageParam
+        ? traceLoader.loadChildren!(runId, 'root', pageParam)
+        : traceLoader.loadTree!(runId),
+    getNextPageParam: (page) =>
+      page.page_info?.has_more
+        ? (page.page_info.next_cursor ?? undefined)
+        : undefined,
     refetchOnWindowFocus: false,
     refetchOnMount: 'always',
     refetchInterval: (query) => {
-      const status = query.state.data?.projection_status?.projection_status;
-      return status === 'pending' || status === 'running' ? 1000 : false;
+      const first = query.state.data?.pages[0];
+      const status = first?.projection_status?.projection_status;
+      return (first &&
+        'flow_run' in first &&
+        runIsActive(first.flow_run?.status)) ||
+        status === 'pending' ||
+        status === 'running'
+        ? 1500
+        : false;
     },
     staleTime: CONVERSATION_LOG_QUERY_STALE_TIME_MS
   });
-  const rootPageInfo =
-    rootPages.at(-1)?.page_info ?? traceTreeQuery.data?.page_info;
-  const loadMoreRoots = async () => {
-    if (!rootPageInfo?.next_cursor || loadingMore) return;
-    setLoadingMore(true);
-    setLoadFailed(false);
-    try {
-      const page = await traceLoader.loadChildren!(
-        runId,
-        'root',
-        rootPageInfo.next_cursor
-      );
-      setRootPages((pages) => [...pages, page]);
-    } catch {
-      setLoadFailed(true);
-    } finally {
-      setLoadingMore(false);
-    }
-  };
+  const pages = traceTreeQuery.data?.pages ?? [];
+  const firstPage = pages[0];
+  const flowRun =
+    firstPage && 'flow_run' in firstPage ? firstPage.flow_run : undefined;
+  const rootPageInfo = pages.at(-1)?.page_info;
 
-  if (traceTreeQuery.isError) {
-    return (
-      <Alert
-        type="error"
-        showIcon
-        title={i18nText('agentFlow', 'auto.loading_failed')}
-      />
-    );
-  }
+  if (traceTreeQuery.isError && !traceTreeQuery.data)
+    return <TraceReadError retry={traceTreeQuery.refetch} />;
 
   if (traceTreeQuery.isLoading) {
     return (
@@ -143,10 +154,11 @@ export function LazyConversationTrace({
     );
   }
 
-  const projectionStatus = traceTreeQuery.data?.projection_status;
-  const nodes = rootPages.reduce(
-    (items, page) => appendTraceChildrenPage(items, page.items),
-    traceTreeQuery.data?.nodes ?? []
+  const projectionStatus = firstPage?.projection_status;
+  const nodes = pages.reduce<ConversationLogTraceNodeSummary[]>(
+    (items, page) =>
+      appendTraceChildrenPage(items, 'nodes' in page ? page.nodes : page.items),
+    []
   );
 
   if (!traceProjectionStatusSucceeded(projectionStatus) && projectionStatus) {
@@ -170,27 +182,31 @@ export function LazyConversationTrace({
 
   return (
     <div className="agent-flow-editor__conversation-log-trace">
-      <LazyTraceNodeList
-        defaultToolsExpanded={defaultToolsExpanded}
-        nodes={nodes}
-        onLoadArtifact={onLoadArtifact}
-        onLoadArtifacts={onLoadArtifacts}
-        runId={runId}
-        traceLoader={traceLoader}
-      />
-      {loadFailed ? (
-        <Alert
-          type="error"
-          showIcon
-          title={i18nText('agentFlow', 'auto.loading_failed')}
+      <RunObservationContext.Provider value={runIsActive(flowRun?.status)}>
+        <LazyTraceNodeList
+          defaultToolsExpanded={defaultToolsExpanded}
+          nodes={nodes}
+          onLoadArtifact={onLoadArtifact}
+          onLoadArtifacts={onLoadArtifacts}
+          runId={runId}
+          traceLoader={traceLoader}
+        />
+      </RunObservationContext.Provider>
+      {traceTreeQuery.isError ? (
+        <TraceReadError
+          retry={
+            traceTreeQuery.isFetchNextPageError
+              ? traceTreeQuery.fetchNextPage
+              : traceTreeQuery.refetch
+          }
         />
       ) : null}
       {rootPageInfo?.has_more ? (
         <Button
           type="link"
           size="small"
-          loading={loadingMore}
-          onClick={() => void loadMoreRoots()}
+          loading={traceTreeQuery.isFetchingNextPage}
+          onClick={() => void traceTreeQuery.fetchNextPage()}
         >
           {i18nText('agentFlow', 'auto.load_more_trace_children')}
         </Button>
@@ -295,6 +311,7 @@ function FlattenedToolModeTraceNodeChild({
     queryFn: () =>
       traceLoader.loadChildren!(runId, node.trace_node_id, undefined),
     refetchOnWindowFocus: false,
+    refetchInterval: !node.finished_at ? 1500 : false,
     staleTime: CONVERSATION_LOG_QUERY_STALE_TIME_MS
   });
   const childProjectionStatus = childrenQuery.data?.projection_status;
@@ -355,10 +372,7 @@ export function LazyTraceNodeItem({
   const isGroupNode = isTraceGroupNode(node);
   const hasTrajectory = node.node_type === 'llm' && Boolean(node.node_run_id);
   const [expanded, setExpanded] = useState(initiallyExpanded);
-  const [childrenState, dispatchChildrenState] = useReducer(
-    lazyTraceChildrenReducer,
-    initialLazyTraceChildrenState
-  );
+  const runActive = useContext(RunObservationContext);
   const fallbackItem = useMemo(() => mapTraceSummaryToTraceItem(node), [node]);
   const contentQuery = useQuery({
     enabled:
@@ -370,10 +384,13 @@ export function LazyTraceNodeItem({
     queryKey: [
       'conversation-log-trace-node-content',
       runId,
-      node.trace_node_id
+      node.trace_node_id,
+      node.status,
+      node.finished_at
     ],
     queryFn: () => traceLoader.loadContent!(runId, node.trace_node_id),
     refetchOnWindowFocus: false,
+    refetchInterval: !node.finished_at ? 1500 : false,
     staleTime: CONVERSATION_LOG_QUERY_STALE_TIME_MS
   });
   const nodeRunDetailRefId = useMemo(
@@ -397,54 +414,54 @@ export function LazyTraceNodeItem({
           return nodeRun?.[section];
         }
       : undefined;
-  const childrenQuery = useQuery({
+  const childrenQuery = useInfiniteQuery({
     enabled: expanded && node.has_children && !detailOnly,
     queryKey: [
       'conversation-log-trace-node-children',
       runId,
-      node.trace_node_id
+      node.trace_node_id,
+      'pages'
     ],
-    queryFn: () =>
-      traceLoader.loadChildren!(runId, node.trace_node_id, undefined),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      traceLoader.loadChildren!(runId, node.trace_node_id, pageParam),
+    getNextPageParam: (page) =>
+      page.page_info.has_more
+        ? (page.page_info.next_cursor ?? undefined)
+        : undefined,
     refetchOnWindowFocus: false,
+    refetchInterval: runActive || !node.finished_at ? 1500 : false,
     staleTime: CONVERSATION_LOG_QUERY_STALE_TIME_MS
   });
+  const { refetch: refetchChildren } = childrenQuery;
+  const signature = `${node.status}:${node.finished_at}:${runActive}`;
+  const previousSignature = useRef(signature);
+  useEffect(() => {
+    const changed = previousSignature.current !== signature;
+    previousSignature.current = signature;
+    if (changed && expanded && node.has_children && !detailOnly)
+      void refetchChildren();
+  }, [
+    signature,
+    expanded,
+    node.has_children,
+    detailOnly,
+    refetchChildren
+  ]);
+  const childPages = useMemo(
+    () => childrenQuery.data?.pages ?? [],
+    [childrenQuery.data]
+  );
   const childNodes = useMemo(
     () =>
-      appendTraceChildrenPage(
-        childrenQuery.data?.items ?? [],
-        childrenState.additionalNodes
+      childPages.reduce<ConversationLogTraceNodeSummary[]>(
+        (nodes, page) => appendTraceChildrenPage(nodes, page.items),
+        []
       ),
-    [childrenState.additionalNodes, childrenQuery.data?.items]
+    [childPages]
   );
-  const childPageInfo =
-    childrenState.pageInfo ?? childrenQuery.data?.page_info ?? null;
-  const childProjectionStatus =
-    childrenState.projectionStatus ?? childrenQuery.data?.projection_status;
-  const loadMoreTraceChildren = useCallback(async () => {
-    const cursor = childPageInfo?.next_cursor;
-    if (!cursor || childrenState.loadingMore) {
-      return;
-    }
-
-    dispatchChildrenState({ type: 'load_more_started' });
-    try {
-      const nextPage = await traceLoader.loadChildren!(
-        runId,
-        node.trace_node_id,
-        cursor
-      );
-      dispatchChildrenState({ type: 'load_more_succeeded', page: nextPage });
-    } catch {
-      dispatchChildrenState({ type: 'load_more_failed' });
-    }
-  }, [
-    childPageInfo?.next_cursor,
-    childrenState.loadingMore,
-    node.trace_node_id,
-    runId,
-    traceLoader
-  ]);
+  const childPageInfo = childPages.at(-1)?.page_info;
+  const childProjectionStatus = childPages[0]?.projection_status;
   const toolModeNodes = useMemo(
     () =>
       node.node_kind === 'tool_callback'
@@ -497,27 +514,29 @@ export function LazyTraceNodeItem({
   const childLoadStatusContent = (
     <>
       {childrenQuery.isLoading ? <Spin /> : null}
+      {childrenQuery.isError ? (
+        <TraceReadError
+          retry={
+            childrenQuery.isFetchNextPageError
+              ? childrenQuery.fetchNextPage
+              : childrenQuery.refetch
+          }
+        />
+      ) : null}
       {childProjectionStatus &&
       !traceProjectionStatusSucceeded(childProjectionStatus) ? (
         <TraceProjectionStatusNotice status={childProjectionStatus} />
-      ) : null}
-      {childrenState.loadMoreFailed ? (
-        <Alert
-          title={i18nText('agentFlow', 'auto.loading_failed')}
-          showIcon
-          type="error"
-        />
       ) : null}
     </>
   );
   const loadMoreChildrenButton = childPageInfo?.has_more ? (
     <Button
       className="agent-flow-editor__conversation-log-load-more"
-      loading={childrenState.loadingMore}
+      loading={childrenQuery.isFetchingNextPage}
       size="small"
       type="link"
       onClick={() => {
-        void loadMoreTraceChildren();
+        void childrenQuery.fetchNextPage();
       }}
     >
       {i18nText('agentFlow', 'auto.load_more_trace_children')}
@@ -533,13 +552,6 @@ export function LazyTraceNodeItem({
         />
       ) : null}
       {childLoadStatusContent}
-      {childrenQuery.isError ? (
-        <Alert
-          type="error"
-          showIcon
-          title={i18nText('agentFlow', 'auto.loading_failed')}
-        />
-      ) : null}
       {childNodesBeforePayload}
       {loadMoreChildrenButton}
     </section>
@@ -558,6 +570,8 @@ export function LazyTraceNodeItem({
     >
       {contentLoading ? (
         <Spin />
+      ) : contentQuery.isError ? (
+        <TraceReadError retry={contentQuery.refetch} />
       ) : contentProjectionStatus &&
         !traceProjectionStatusSucceeded(contentProjectionStatus) ? (
         <TraceProjectionStatusNotice status={contentProjectionStatus} />

@@ -1,0 +1,924 @@
+use std::{future::Future, pin::Pin, sync::Arc};
+
+use interface_runtime::{
+    AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
+    AuthorizationOperation, BindingId, CompiledInterfaceRegistry, ContractIdentity,
+    GraphFingerprint, HandlerReference, InterfaceAccess, InterfaceAuditPolicy,
+    InterfaceAuthenticationPolicy, InterfaceContract, InterfaceContracts, InterfaceDefinition,
+    InterfaceErrorPolicy, InterfaceExecution, InterfaceExecutionMode, InterfaceHandler,
+    InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceIdentity,
+    InterfaceLifecycle, InterfaceOwner, InterfaceProtocol, InterfaceScope, InterfaceStreamHandler,
+    InterfaceStreamHandlerFuture, InterfaceTargetAdmissionError, InterfaceTargetAdmissionFuture,
+    InterfaceTargetAdmissionPort, InterfaceTargetAdmissionRequest, InterfaceTargetFailure,
+    InterfaceVersion, InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage,
+    ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity, TargetReference,
+    UserPrincipal,
+};
+
+use crate::openapi_interface::contract::{register_static_api_operation, ApiInput, ApiOutput};
+use crate::{app_state::ApiState, error_response::ApiError};
+
+#[derive(Clone)]
+pub struct ConsoleLocaleHints {
+    explicit_header_locale: Option<String>,
+    accept_language: Option<String>,
+}
+
+impl ConsoleLocaleHints {
+    pub fn from_headers(headers: &axum::http::HeaderMap) -> Self {
+        Self {
+            explicit_header_locale: headers
+                .get("x-1flowbase-locale")
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string),
+            accept_language: headers
+                .get(axum::http::header::ACCEPT_LANGUAGE)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string),
+        }
+    }
+
+    pub fn resolve(&self, preferred_locale: Option<String>) -> domain::CatalogLocale {
+        self.resolve_with_query(None, preferred_locale)
+    }
+
+    pub fn resolve_with_query(
+        &self,
+        query_locale: Option<String>,
+        preferred_locale: Option<String>,
+    ) -> domain::CatalogLocale {
+        let resolved = runtime_profile::resolve_locale(runtime_profile::LocaleResolutionInput {
+            query_locale,
+            explicit_header_locale: self.explicit_header_locale.clone(),
+            user_preferred_locale: preferred_locale,
+            accept_language: self.accept_language.clone(),
+            fallback_locale: runtime_profile::FALLBACK_LOCALE,
+            supported_locales: runtime_profile::SUPPORTED_LOCALES
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
+        });
+        domain::CatalogLocale::new(resolved.resolved_locale)
+            .expect("runtime profile must resolve a supported catalog locale")
+    }
+
+    pub fn resolve_meta(
+        &self,
+        query_locale: Option<String>,
+        preferred_locale: Option<String>,
+    ) -> crate::routes::system::LocaleMetaResponse {
+        runtime_profile::resolve_locale(runtime_profile::LocaleResolutionInput {
+            query_locale,
+            explicit_header_locale: self.explicit_header_locale.clone(),
+            user_preferred_locale: preferred_locale,
+            accept_language: self.accept_language.clone(),
+            fallback_locale: runtime_profile::FALLBACK_LOCALE,
+            supported_locales: runtime_profile::SUPPORTED_LOCALES
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
+        })
+        .into()
+    }
+}
+
+const AUTHENTICATION_ADAPTER: &str = "api-server.console.require-session";
+const AUTHENTICATION_ACTIVATION: &str = "api-server.console.require-session.activation.v1";
+const AUTHORIZATION_ADAPTER: &str = "api-server.console.compiled-operation";
+const ADMISSION_ADAPTER: &str = "api-server.console.protocol-admission";
+
+pub struct ConsoleInterfaceDeclaration<'a> {
+    pub interface_id: &'a str,
+    pub binding_id: &'a str,
+    pub method: &'a str,
+    pub path: &'a str,
+    pub mutating: bool,
+}
+
+pub struct ConsoleInterfaceTargetError(pub ApiError);
+
+impl InterfaceContract for ConsoleInterfaceTargetError {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema([(
+            "kind",
+            mp::tag_schema("ConsoleInterfaceTargetError"),
+        )]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value([(
+            "kind",
+            serde_json::Value::String("ConsoleInterfaceTargetError".to_owned()),
+        )]))
+    }
+
+    const CONTRACT_ID: &'static str = "console-interface-error";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+pub type ConsoleInterfaceFuture<'a, O> =
+    Pin<Box<dyn Future<Output = Result<O, ConsoleInterfaceTargetError>> + Send + 'a>>;
+
+pub trait ConsoleInterfacePort<I, O>: Send + Sync + 'static {
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: I,
+    ) -> ConsoleInterfaceFuture<'a, O>;
+}
+
+pub type ConsoleServerStreamFuture<S, O> =
+    InterfaceStreamHandlerFuture<S, O, ConsoleInterfaceTargetError>;
+
+pub trait ConsoleServerStreamPort<I, S, O>: Send + Sync + 'static
+where
+    I: InterfaceContract,
+    S: InterfaceContract,
+    O: InterfaceContract,
+{
+    fn execute_stream(
+        &self,
+        principal: &UserPrincipal,
+        input: I,
+    ) -> ConsoleServerStreamFuture<S, O>;
+}
+
+struct ConsoleInterfaceHandler<I, O> {
+    port: Arc<dyn ConsoleInterfacePort<I, O>>,
+}
+
+struct ConsoleServerStreamHandler<I, S, O> {
+    port: Arc<dyn ConsoleServerStreamPort<I, S, O>>,
+}
+
+struct ConsoleProtocolAdmissionPort {
+    result: std::sync::Mutex<Option<Result<(), ApiError>>>,
+}
+
+impl ConsoleProtocolAdmissionPort {
+    fn new(admission: crate::extension_bus::ConsoleProtocolAdmission) -> Self {
+        Self {
+            result: std::sync::Mutex::new(Some(admission.into_result())),
+        }
+    }
+}
+
+impl InterfaceTargetAdmissionPort for ConsoleProtocolAdmissionPort {
+    fn adapter_reference(&self) -> AdmissionAdapterReference {
+        AdmissionAdapterReference::new(ADMISSION_ADAPTER)
+            .expect("static Console admission adapter is valid")
+    }
+
+    fn admit(
+        &self,
+        _request: InterfaceTargetAdmissionRequest,
+    ) -> InterfaceTargetAdmissionFuture<'_> {
+        let result = self
+            .result
+            .lock()
+            .expect("Console admission lock must remain available")
+            .take()
+            .expect("Console admission executes exactly once");
+        Box::pin(async move {
+            result.map_err(|error| {
+                InterfaceTargetAdmissionError::with_source("console_protocol_admission", error)
+            })
+        })
+    }
+}
+
+impl<I, S, O> InterfaceStreamHandler<I, S, O, ConsoleInterfaceTargetError, UserPrincipal>
+    for ConsoleServerStreamHandler<I, S, O>
+where
+    I: InterfaceContract,
+    S: InterfaceContract,
+    O: InterfaceContract,
+{
+    fn invoke_stream(
+        &self,
+        context: InterfaceHandlerContext<UserPrincipal>,
+        input: I,
+    ) -> InterfaceStreamHandlerFuture<S, O, ConsoleInterfaceTargetError> {
+        self.port.execute_stream(context.principal(), input)
+    }
+}
+
+impl<I, O> InterfaceHandler<I, O, ConsoleInterfaceTargetError, UserPrincipal>
+    for ConsoleInterfaceHandler<I, O>
+where
+    I: InterfaceContract,
+    O: InterfaceContract,
+{
+    fn invoke(
+        &self,
+        context: InterfaceHandlerContext<UserPrincipal>,
+        input: I,
+    ) -> InterfaceHandlerFuture<O, ConsoleInterfaceTargetError> {
+        let port = Arc::clone(&self.port);
+        Box::pin(async move {
+            port.execute(context.principal(), input)
+                .await
+                .map_err(|error| InterfaceTargetFailure::new("console_interface", error))
+        })
+    }
+}
+
+pub fn compile_registry<I, O>(
+    owner: &str,
+    graph: &str,
+    declarations: &[ConsoleInterfaceDeclaration],
+    port: Arc<dyn ConsoleInterfacePort<I, O>>,
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
+where
+    I: ApiInput,
+    O: ApiOutput,
+{
+    compile_registry_with_scope(owner, graph, declarations, port, InterfaceScope::Workspace)
+}
+
+pub fn compile_registry_with_event_observation<I, O>(
+    owner: &str,
+    graph: &str,
+    declarations: &[ConsoleInterfaceDeclaration],
+    port: Arc<dyn ConsoleInterfacePort<I, O>>,
+    event_operations: &[&str],
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
+where
+    I: ApiInput,
+    O: ApiOutput,
+{
+    compile_registry_with_scope_and_events(
+        owner,
+        graph,
+        declarations,
+        port,
+        InterfaceScope::Workspace,
+        event_operations,
+    )
+}
+
+pub fn compile_registry_with_scope<I, O>(
+    owner: &str,
+    graph: &str,
+    declarations: &[ConsoleInterfaceDeclaration],
+    port: Arc<dyn ConsoleInterfacePort<I, O>>,
+    scope: InterfaceScope,
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
+where
+    I: ApiInput,
+    O: ApiOutput,
+{
+    compile_registry_with_scope_and_events(owner, graph, declarations, port, scope, &[])
+}
+
+fn compile_registry_with_scope_and_events<I, O>(
+    owner: &str,
+    graph: &str,
+    declarations: &[ConsoleInterfaceDeclaration],
+    port: Arc<dyn ConsoleInterfacePort<I, O>>,
+    scope: InterfaceScope,
+    event_operations: &[&str],
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
+where
+    I: ApiInput,
+    O: ApiOutput,
+{
+    let owner = InterfaceOwner::new(owner).expect("static Console family owner is valid");
+    let declaration_ids = declarations
+        .iter()
+        .map(|declaration| declaration.interface_id)
+        .collect::<std::collections::BTreeSet<_>>();
+    let operations = declaration_ids
+        .iter()
+        .map(AuthorizationOperation::new)
+        .collect::<Result<Vec<_>, _>>()
+        .expect("static Console family operations are valid");
+    let mut compiler = RegistryCompiler::new(
+        GraphFingerprint::new(graph).expect("static Console family graph is valid"),
+        operations.clone(),
+        [owner.clone()],
+    );
+    for (interface_id, operation) in declaration_ids.iter().zip(operations) {
+        let declaration = declarations
+            .iter()
+            .find(|declaration| declaration.interface_id == *interface_id)
+            .expect("collected Console declaration must exist");
+        let interface_id =
+            InterfaceId::new(interface_id).expect("static Console family interface is valid");
+        let identity = InterfaceIdentity::new(
+            interface_id.clone(),
+            InterfaceVersion::new("1").expect("static Console family version is valid"),
+        );
+        let contracts = InterfaceContracts::unary(
+            contract::<I>(),
+            contract::<O>(),
+            contract::<ConsoleInterfaceTargetError>(),
+        );
+        let handler = HandlerReference::new(format!("{}.handler", declaration.interface_id))
+            .expect("static Console family handler is valid");
+        let definition = InterfaceDefinition::new(
+            identity.clone(),
+            contracts.clone(),
+            InterfaceAccess::new(
+                interface_runtime::PrincipalProfile::User,
+                InterfaceAuthenticationPolicy::Authenticated,
+                operation,
+                scope,
+            ),
+            InterfaceExecution::new(
+                InterfaceExecutionMode::Unary,
+                handler.clone(),
+                TargetReference::new(format!("control-plane.{}", declaration.interface_id))
+                    .expect("static Console family target is valid"),
+            ),
+            if declaration.mutating {
+                InterfaceAuditPolicy::Mutating
+            } else {
+                InterfaceAuditPolicy::ReadOnly
+            },
+            InterfaceErrorPolicy::TypedTarget,
+            InterfaceLifecycle::BootSnapshot,
+            owner.clone(),
+        );
+        compiler.register_definition(if event_operations.contains(&declaration.interface_id) {
+            definition.with_event_observation()
+        } else {
+            definition
+        })?;
+        register_authentication(&mut compiler, &interface_id)?;
+        compiler.bind_handler::<I, O, ConsoleInterfaceTargetError, UserPrincipal>(
+            &interface_id,
+            handler,
+            Arc::new(ConsoleInterfaceHandler {
+                port: Arc::clone(&port),
+            }),
+        )?;
+    }
+    for declaration in declarations {
+        let interface_id = InterfaceId::new(declaration.interface_id)
+            .expect("static Console family interface is valid");
+        let identity = InterfaceIdentity::new(
+            interface_id,
+            InterfaceVersion::new("1").expect("static Console family version is valid"),
+        );
+        let contracts = InterfaceContracts::unary(
+            contract::<I>(),
+            contract::<O>(),
+            contract::<ConsoleInterfaceTargetError>(),
+        );
+        let event_binding = ProtocolBinding::new(
+            BindingId::new(declaration.binding_id).expect("static Console family binding is valid"),
+            identity,
+            contracts,
+            ProtocolProjection::http(
+                RouteIdentity::new(declaration.method, declaration.path)
+                    .expect("static Console family route is valid"),
+            ),
+        );
+        register_static_api_operation::<I, O>(&mut compiler, &event_binding, graph)?;
+        compiler.register_binding(
+            event_binding,
+            InvocationAdapterPlan::new(
+                AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
+                    .expect("static Console authentication adapter is valid"),
+                AuthorizationAdapterReference::new(AUTHORIZATION_ADAPTER)
+                    .expect("static Console authorization adapter is valid"),
+                Some(
+                    AdmissionAdapterReference::new(ADMISSION_ADAPTER)
+                        .expect("static Console admission adapter is valid"),
+                ),
+            ),
+        )?;
+    }
+    compiler.compile()
+}
+
+pub fn compile_server_stream_registry<I, S, O>(
+    owner: &'static str,
+    graph: &'static str,
+    declarations: &'static [ConsoleInterfaceDeclaration],
+    port: Arc<dyn ConsoleServerStreamPort<I, S, O>>,
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
+where
+    I: ApiInput,
+    S: InterfaceContract,
+    O: ApiOutput,
+{
+    compile_server_stream_registry_with_scope(
+        owner,
+        graph,
+        declarations,
+        port,
+        InterfaceScope::Workspace,
+    )
+}
+
+pub fn compile_server_stream_registry_with_event_observation<I, S, O>(
+    owner: &str,
+    graph: &str,
+    declarations: &[ConsoleInterfaceDeclaration],
+    port: Arc<dyn ConsoleServerStreamPort<I, S, O>>,
+    event_operations: &[&str],
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
+where
+    I: ApiInput,
+    S: InterfaceContract,
+    O: ApiOutput,
+{
+    compile_server_stream_registry_with_scope_and_events(
+        owner,
+        graph,
+        declarations,
+        port,
+        InterfaceScope::Workspace,
+        event_operations,
+    )
+}
+
+pub fn compile_server_stream_registry_with_scope<I, S, O>(
+    owner: &str,
+    graph: &str,
+    declarations: &[ConsoleInterfaceDeclaration],
+    port: Arc<dyn ConsoleServerStreamPort<I, S, O>>,
+    scope: InterfaceScope,
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
+where
+    I: ApiInput,
+    S: InterfaceContract,
+    O: ApiOutput,
+{
+    compile_server_stream_registry_with_scope_and_events(
+        owner,
+        graph,
+        declarations,
+        port,
+        scope,
+        &[],
+    )
+}
+
+fn compile_server_stream_registry_with_scope_and_events<I, S, O>(
+    owner: &str,
+    graph: &str,
+    declarations: &[ConsoleInterfaceDeclaration],
+    port: Arc<dyn ConsoleServerStreamPort<I, S, O>>,
+    scope: InterfaceScope,
+    event_operations: &[&str],
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError>
+where
+    I: ApiInput,
+    S: InterfaceContract,
+    O: ApiOutput,
+{
+    let owner = InterfaceOwner::new(owner).expect("static Console family owner is valid");
+    let operations = declarations
+        .iter()
+        .map(|declaration| AuthorizationOperation::new(declaration.interface_id))
+        .collect::<Result<Vec<_>, _>>()
+        .expect("static Console family operations are valid");
+    let mut compiler = RegistryCompiler::new(
+        GraphFingerprint::new(graph).expect("static Console family graph is valid"),
+        operations.clone(),
+        [owner.clone()],
+    );
+    for (declaration, operation) in declarations.iter().zip(operations) {
+        let interface_id = InterfaceId::new(declaration.interface_id)
+            .expect("static Console family interface is valid");
+        let identity = InterfaceIdentity::new(
+            interface_id.clone(),
+            InterfaceVersion::new("1").expect("static Console family version is valid"),
+        );
+        let contracts = InterfaceContracts::server_stream(
+            contract::<I>(),
+            contract::<S>(),
+            contract::<O>(),
+            contract::<ConsoleInterfaceTargetError>(),
+        );
+        let handler = HandlerReference::new(format!("{}.handler", declaration.interface_id))
+            .expect("static Console family handler is valid");
+        let definition = InterfaceDefinition::new(
+            identity.clone(),
+            contracts.clone(),
+            InterfaceAccess::new(
+                interface_runtime::PrincipalProfile::User,
+                InterfaceAuthenticationPolicy::Authenticated,
+                operation,
+                scope,
+            ),
+            InterfaceExecution::new(
+                InterfaceExecutionMode::ServerStream,
+                handler.clone(),
+                TargetReference::new(format!("control-plane.{}", declaration.interface_id))
+                    .expect("static Console family target is valid"),
+            ),
+            if declaration.mutating {
+                InterfaceAuditPolicy::Mutating
+            } else {
+                InterfaceAuditPolicy::ReadOnly
+            },
+            InterfaceErrorPolicy::TypedTarget,
+            InterfaceLifecycle::BootSnapshot,
+            owner.clone(),
+        );
+        compiler.register_definition(if event_operations.contains(&declaration.interface_id) {
+            definition.with_event_observation()
+        } else {
+            definition
+        })?;
+        register_authentication(&mut compiler, &interface_id)?;
+        let event_binding = ProtocolBinding::new(
+            BindingId::new(declaration.binding_id).expect("static Console family binding is valid"),
+            identity,
+            contracts,
+            ProtocolProjection::http(
+                RouteIdentity::new(declaration.method, declaration.path)
+                    .expect("static Console family route is valid"),
+            ),
+        );
+        register_static_api_operation::<I, O>(&mut compiler, &event_binding, graph)?;
+        compiler.register_binding(
+            event_binding,
+            InvocationAdapterPlan::new(
+                AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
+                    .expect("static Console authentication adapter is valid"),
+                AuthorizationAdapterReference::new(AUTHORIZATION_ADAPTER)
+                    .expect("static Console authorization adapter is valid"),
+                Some(
+                    AdmissionAdapterReference::new(ADMISSION_ADAPTER)
+                        .expect("static Console admission adapter is valid"),
+                ),
+            ),
+        )?;
+        compiler.bind_stream_handler::<I, S, O, ConsoleInterfaceTargetError, UserPrincipal>(
+            &interface_id,
+            handler,
+            Arc::new(ConsoleServerStreamHandler {
+                port: Arc::clone(&port),
+            }),
+        )?;
+    }
+    compiler.compile()
+}
+
+fn register_authentication(
+    compiler: &mut RegistryCompiler,
+    interface_id: &InterfaceId,
+) -> Result<(), interface_runtime::RegistryCompilationError> {
+    compiler.register_authentication_adapter(
+        interface_id,
+        1,
+        interface_runtime::InterfaceExtensionRegistration::new(
+            interface_runtime::PluginIdentity::new("api-server.console-authentication")
+                .expect("static Console authentication plugin is valid"),
+            interface_runtime::InterfaceExtensionTier::BuiltIn,
+            interface_runtime::InterfaceExtensionPoint::AuthenticationAdapter,
+            interface_runtime::InterfaceExtensionPermission::Authenticate,
+            InterfaceScope::Workspace,
+            interface_runtime::InterfaceExtensionIsolation::TrustedInProcess,
+            [],
+        )
+        .expect("Console authentication registration is valid"),
+        interface_runtime::ActivatedAuthenticationAdapter::new(
+            interface_runtime::PluginIdentity::new("api-server.console-authentication")
+                .expect("static Console authentication plugin is valid"),
+            interface_runtime::InterfaceExtensionTier::BuiltIn,
+            AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
+                .expect("static Console authentication adapter is valid"),
+            interface_runtime::AuthenticationActivationIdentity::new(AUTHENTICATION_ACTIVATION)
+                .expect("static Console authentication activation is valid"),
+            interface_runtime::PrincipalProfile::User,
+        ),
+    )
+}
+
+pub async fn invoke_prepared<I, O, P>(
+    state: Arc<ApiState>,
+    binding_id: &str,
+    credential: crate::extension_bus::ConsoleAuthenticationCredential,
+    input: I,
+    preparation: P,
+) -> Result<O, ApiError>
+where
+    I: InterfaceContract,
+    O: InterfaceContract,
+    P: ConsoleInvocationPreparation<I>,
+{
+    let boot_snapshot = state.extension_boot_snapshot.as_ref().ok_or(
+        control_plane::errors::ControlPlaneError::NotFound("interface_operation"),
+    )?;
+    let snapshot = boot_snapshot
+        .interface_registry()
+        .map(|registry| registry.snapshot())
+        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+            "interface_operation",
+        ))?;
+    let binding_id = BindingId::new(binding_id).expect("static Console binding is valid");
+    let (credential, admission) = credential.defer_protocol_admission();
+    let authenticated = boot_snapshot
+        .authenticate_invocation::<_, UserPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
+            credential,
+        )
+        .await
+        .map_err(ApiError::from)?;
+    let kernel = console_invocation_kernel(&state, admission);
+    let envelope = preparation
+        .prepare(&state, &snapshot, authenticated.into_envelope(input))
+        .await?;
+    match kernel
+        .invoke::<I, O, ConsoleInterfaceTargetError>(snapshot, envelope)
+        .await
+    {
+        Ok(outcome) => {
+            log_observer_receipt(outcome.receipt());
+            let _receipt = outcome.receipt().clone().projected();
+            Ok(outcome.into_value())
+        }
+        Err(failure) => {
+            log_observer_receipt(failure.receipt());
+            Err(console_invocation_error(failure.into_error()))
+        }
+    }
+}
+
+fn log_observer_receipt(receipt: &interface_runtime::InterfaceInvocationReceipt) {
+    for observer in receipt.observer_records() {
+        tracing::debug!(invocation_id = %receipt.invocation_id().value(), interface_id = ?receipt.interface_id(), plugin = ?observer.plugin(), point = ?observer.point(), status = ?observer.status(), reason = observer.reason(), "console interface observer finalization");
+    }
+}
+
+/// Invokes a unary Console interface with an already authenticated principal.
+/// The binding is still resolved from the frozen boot snapshot and dispatched
+/// through the same Console authorization/admission/hook kernel as HTTP.
+pub async fn invoke_with_principal_prepared<I, O, P>(
+    state: Arc<ApiState>,
+    binding_id: &str,
+    principal: UserPrincipal,
+    input: I,
+    preparation: P,
+) -> Result<O, ApiError>
+where
+    I: InterfaceContract,
+    O: InterfaceContract,
+    P: ConsoleInvocationPreparation<I>,
+{
+    let snapshot = frozen_snapshot(&state)?;
+    let binding_id = BindingId::new(binding_id).expect("static Console binding is valid");
+    let kernel = console_invocation_kernel(
+        &state,
+        crate::extension_bus::ConsoleProtocolAdmission::allowed(),
+    );
+    let envelope = established_principal_envelope(&snapshot, binding_id, principal, input)?;
+    let envelope = preparation.prepare(&state, &snapshot, envelope).await?;
+    match kernel
+        .invoke::<I, O, ConsoleInterfaceTargetError>(snapshot, envelope)
+        .await
+    {
+        Ok(outcome) => Ok(outcome.into_value()),
+        Err(failure) => Err(console_invocation_error(failure.into_error())),
+    }
+}
+
+/// Starts an independently owned producer using an established live principal.
+/// Preparation may freeze Host-only context; authorization, admission and hooks
+/// still execute against the frozen Console plan. The caller owns completion.
+/// Each invocation has fresh lineage and controls, independent of any subscriber.
+pub async fn invoke_server_stream_with_principal_prepared<I, S, O, P>(
+    state: Arc<ApiState>,
+    binding_id: &str,
+    principal: UserPrincipal,
+    input: I,
+    preparation: P,
+) -> Result<interface_runtime::InterfaceStreamInvocation<S, O, ConsoleInterfaceTargetError>, ApiError>
+where
+    I: InterfaceContract,
+    S: InterfaceContract,
+    O: InterfaceContract,
+    P: ConsoleInvocationPreparation<I>,
+{
+    let snapshot = frozen_snapshot(&state)?;
+    let binding_id = BindingId::new(binding_id).expect("static Console binding is valid");
+    let envelope = established_principal_envelope(&snapshot, binding_id.clone(), principal, input)?;
+    let envelope = preparation.prepare(&state, &snapshot, envelope).await?;
+    let plan = snapshot
+        .plan(&binding_id)
+        .ok_or_else(|| anyhow::anyhow!("Console binding is unavailable"))?;
+    let target = interface_runtime::ExecutionTargetPin::BuiltIn {
+        handler: plan.definition().handler_reference().clone(),
+        target: plan.definition().target_reference().clone(),
+    };
+    console_invocation_kernel(
+        &state,
+        crate::extension_bus::ConsoleProtocolAdmission::allowed(),
+    )
+    .invoke_server_stream_with_dispatch_target::<I, S, O, ConsoleInterfaceTargetError>(
+        snapshot, envelope, target,
+    )
+    .await
+    .map_err(|failure| console_invocation_error(failure.into_error()))
+}
+
+fn established_principal_envelope<I: InterfaceContract>(
+    snapshot: &CompiledInterfaceRegistry,
+    binding_id: BindingId,
+    principal: UserPrincipal,
+    input: I,
+) -> Result<InvocationEnvelope<I, UserPrincipal>, ApiError> {
+    let activated = activated_authentication(snapshot, &binding_id)?;
+    Ok(InvocationEnvelope::with_principal(
+        InvocationLineage::root(InvocationId::now_v7()),
+        binding_id,
+        InterfaceProtocol::Http,
+        activated.adapter().clone(),
+        activated.activation().clone(),
+        principal,
+        None,
+        input,
+    ))
+}
+
+pub async fn invoke_server_stream<I, S, O>(
+    state: Arc<ApiState>,
+    binding_id: &str,
+    credential: crate::extension_bus::ConsoleAuthenticationCredential,
+    input: I,
+) -> Result<interface_runtime::InterfaceStreamInvocation<S, O, ConsoleInterfaceTargetError>, ApiError>
+where
+    I: InterfaceContract,
+    S: InterfaceContract,
+    O: InterfaceContract,
+{
+    let boot_snapshot = state.extension_boot_snapshot.as_ref().ok_or(
+        control_plane::errors::ControlPlaneError::NotFound("interface_operation"),
+    )?;
+    let snapshot = boot_snapshot
+        .interface_registry()
+        .map(|registry| registry.snapshot())
+        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+            "interface_operation",
+        ))?;
+    let binding_id = BindingId::new(binding_id).expect("static Console binding is valid");
+    let (credential, admission) = credential.defer_protocol_admission();
+    let authenticated = boot_snapshot
+        .authenticate_invocation::<_, UserPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
+            credential,
+        )
+        .await
+        .map_err(ApiError::from)?;
+    let plan = snapshot
+        .plan(&binding_id)
+        .ok_or_else(|| anyhow::anyhow!("Console binding is unavailable"))?;
+    let target = interface_runtime::ExecutionTargetPin::BuiltIn {
+        handler: plan.definition().handler_reference().clone(),
+        target: plan.definition().target_reference().clone(),
+    };
+    console_invocation_kernel(&state, admission)
+        .invoke_server_stream_with_dispatch_target::<I, S, O, ConsoleInterfaceTargetError>(
+            snapshot,
+            authenticated.into_envelope(input),
+            target,
+        )
+        .await
+        .map_err(|failure| console_invocation_error(failure.into_error()))
+}
+
+fn frozen_snapshot(state: &ApiState) -> Result<Arc<CompiledInterfaceRegistry>, ApiError> {
+    state
+        .extension_boot_snapshot
+        .as_ref()
+        .and_then(|boot| boot.interface_registry())
+        .map(|registry| registry.snapshot())
+        .ok_or_else(|| anyhow::anyhow!("Console interface registry is unavailable").into())
+}
+
+fn activated_authentication(
+    snapshot: &CompiledInterfaceRegistry,
+    binding_id: &BindingId,
+) -> Result<interface_runtime::ActivatedAuthenticationAdapter, ApiError> {
+    snapshot
+        .authentication(binding_id)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("Console authentication activation is unavailable").into())
+}
+
+pub fn console_invocation_kernel(
+    state: &ApiState,
+    admission: crate::extension_bus::ConsoleProtocolAdmission,
+) -> Arc<interface_runtime::InterfaceInvocationKernel<UserPrincipal>> {
+    crate::routes::host_infrastructure::interface_operation::invocation_kernel_with_admission(
+        Arc::clone(&state.console_policy_reader),
+        Arc::clone(&state.console_operation_registry),
+        Arc::new(ConsoleProtocolAdmissionPort::new(admission)),
+    )
+}
+
+fn console_invocation_error(error: interface_runtime::InterfaceInvocationError) -> ApiError {
+    match error {
+        interface_runtime::InterfaceInvocationError::AuthorizationContributionRejected(error)
+            if error.classification() == "managed-create-rejected" =>
+        {
+            control_plane::errors::ControlPlaneError::PermissionDenied("managed_create_rejected")
+                .into()
+        }
+        interface_runtime::InterfaceInvocationError::AdmissionContributionRejected(error)
+            if error.classification() == "managed-create-rejected" =>
+        {
+            control_plane::errors::ControlPlaneError::PermissionDenied("managed_create_rejected")
+                .into()
+        }
+        interface_runtime::InterfaceInvocationError::BeforeHookRejected(error)
+            if error.classification() == "managed-create-rejected" =>
+        {
+            control_plane::errors::ControlPlaneError::PermissionDenied("managed_create_rejected")
+                .into()
+        }
+        interface_runtime::InterfaceInvocationError::TargetFailed(error) => error
+            .into_source::<ConsoleInterfaceTargetError>()
+            .map(|error| error.0)
+            .unwrap_or_else(|| anyhow::anyhow!("Console target contract mismatch").into()),
+        interface_runtime::InterfaceInvocationError::AuthorizationRejected(error) => error
+            .into_source::<ApiError>()
+            .unwrap_or_else(|| anyhow::anyhow!("Console authorization failed").into()),
+        interface_runtime::InterfaceInvocationError::AdmissionRejected(error) => error
+            .into_source::<ApiError>()
+            .unwrap_or_else(|| anyhow::anyhow!("Console admission failed").into()),
+        error => {
+            // Fixed kernel classifications identify the failing contract boundary without
+            // logging caller inputs, credentials or arbitrary target error payloads.
+            tracing::warn!(
+                failure_class = error.classification(),
+                "console interface invocation rejected"
+            );
+            anyhow::anyhow!("Console interface invocation failed").into()
+        }
+    }
+}
+
+fn contract<T: InterfaceContract>() -> ContractIdentity {
+    ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
+        .expect("static Console family contract is valid")
+}
+
+#[async_trait::async_trait]
+pub trait ConsoleInvocationPreparation<I: InterfaceContract>: Send + Sync {
+    async fn prepare(
+        &self,
+        state: &ApiState,
+        registry: &Arc<CompiledInterfaceRegistry>,
+        envelope: InvocationEnvelope<I, UserPrincipal>,
+    ) -> Result<InvocationEnvelope<I, UserPrincipal>, ApiError>;
+}
+
+/// Application adapters have no Model Definition Create preparation authority.
+pub async fn invoke_non_create<I: InterfaceContract, O: InterfaceContract>(
+    state: Arc<ApiState>,
+    binding_id: &str,
+    credential: crate::extension_bus::ConsoleAuthenticationCredential,
+    input: I,
+) -> Result<O, ApiError> {
+    invoke_prepared(state, binding_id, credential, input, NonCreatePreparation).await
+}
+struct NonCreatePreparation;
+fn reject_create_plan(
+    registry: &CompiledInterfaceRegistry,
+    binding: &BindingId,
+) -> Result<(), ApiError> {
+    if registry
+        .plan(binding)
+        .is_some_and(|plan| plan.definition().interface_id().as_str() == "model_definitions.create")
+    {
+        return Err(anyhow::anyhow!("Create binding requires its typed Create input").into());
+    }
+    Ok(())
+}
+#[async_trait::async_trait]
+impl<I: InterfaceContract> ConsoleInvocationPreparation<I> for NonCreatePreparation {
+    async fn prepare(
+        &self,
+        _state: &ApiState,
+        registry: &Arc<CompiledInterfaceRegistry>,
+        envelope: InvocationEnvelope<I, UserPrincipal>,
+    ) -> Result<InvocationEnvelope<I, UserPrincipal>, ApiError> {
+        reject_create_plan(registry, envelope.binding_id())?;
+        Ok(envelope)
+    }
+}
+
+#[cfg(test)]
+#[path = "_tests/non_create_preparation.rs"]
+mod non_create_preparation_tests;
+
+pub async fn invoke_with_principal_non_create<I: InterfaceContract, O: InterfaceContract>(
+    state: Arc<ApiState>,
+    binding_id: &str,
+    principal: UserPrincipal,
+    input: I,
+) -> Result<O, ApiError> {
+    invoke_with_principal_prepared(state, binding_id, principal, input, NonCreatePreparation).await
+}

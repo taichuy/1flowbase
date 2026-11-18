@@ -1,5 +1,5 @@
 # 记忆
-命中对应`记忆存储规则`自动更新对应记忆中
+命中对应`记忆存储规则`自动更新对应记忆中；记忆须满足当前范围、授权与新鲜度，不代替当前授权或当前事实。
 @.memory/AGENTS.md
 ## 用户偏好
 `.memory/user-memory.md` 是本地私有文件，不提交；缺失时参考 `.memory/user-memory.template.md` 初始化。
@@ -34,7 +34,7 @@
 3.只有不影响产品 / 设计决策的事实查询、机械精确改动，或用户明确要求直接开始 / 无需确认时，才可跳过需求对齐；“为什么流程不一致 / 能力缺失 / 无法编辑 / 应放在哪个入口”不属于纯查询。
 4.长计划执行必须读取 `.agents/skills/problem-framing/references/long-running-work.md`；默认先用一个只读 Scout，Root agent 汇总路径、现状、目标、AC 与集中 Test Batch，并成为唯一 packetizer、assembly owner 和 Control Ledger owner。
 5.开发只接收边界明确的 Work Packet；同一 Delivery 可连续复用开发上下文，新 Delivery 使用最小 handoff。开发、reviewer、QA agent 不再嵌套调度 agent。
-6.Root 下全部开发与 fixture Work Packet 装配到隔离 assembly 后，只启动一个 fresh QA 做集中测试；不做 per-packet / per-Delivery QA。无依赖、无共享写 / contract / migration / 端口 / 构建冲突的开发 Packet 才可并行，状态与资源检查保持事件驱动。
+6.Root 下全部开发与 fixture Work Packet 装配到隔离 assembly 后，只启动一个 fresh QA 做集中测试；修复后仍使用新的独立 QA，不做 per-packet / per-Delivery QA。QA 同时接收原始用户目标、明确批准的变化与 Root AC；Root 不得按实现边界默默缩小需求。无依赖、无共享写 / contract / migration / 端口 / 构建冲突的开发 Packet 才可并行；整批共享用户 CPU / 内存预算，状态与资源检查保持事件驱动。
 
 # 文件管理约定
 1.理论上来说单个代码文件不应该超过1500行

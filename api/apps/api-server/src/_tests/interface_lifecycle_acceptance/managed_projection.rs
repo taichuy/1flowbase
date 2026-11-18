@@ -168,7 +168,7 @@ fn assert_safe_frame(input: ManagedInterfaceInput) -> Value {
 #[test]
 fn root_2014_ac_004_schema_identity_and_secret_negatives() {
     let id = Uuid::new_v4();
-    let input = PublicSignInInput(LoginCommand {
+    let input = PublicSignInInput::test_new(LoginCommand {
         login_entry_id: id,
         identifier: SECRET.into(),
         password: SECRET.into(),
@@ -179,7 +179,8 @@ fn root_2014_ac_004_schema_identity_and_secret_negatives() {
         input: input_view.clone(),
     });
     assert_eq!(
-        input.0.password, SECRET,
+        input.test_inner().password,
+        SECRET,
         "projection must not alter handler input"
     );
     let mut injected = input_view.clone();
@@ -201,7 +202,7 @@ fn root_2014_ac_004_schema_identity_and_secret_negatives() {
         changed_version.compile().unwrap().fingerprint()
     );
 
-    let output = PublicSignInOutput(LoginResult {
+    let output = PublicSignInOutput::test_new(LoginResult {
         actor: domain::ActorContext {
             user_id: id,
             tenant_id: id,
@@ -228,14 +229,15 @@ fn root_2014_ac_004_schema_identity_and_secret_negatives() {
     assert!(output_frame["input"]["output"]["value"]["0"]
         .get("session")
         .is_none());
-    assert_eq!(output.0.session.session_id, SECRET);
-    assert_eq!(output.0.session.csrf_token, SECRET);
+    assert_eq!(output.test_inner().session.session_id, SECRET);
+    assert_eq!(output.test_inner().session.csrf_token, SECRET);
 
-    let error = PublicSignInTargetError(crate::error_response::ApiError(anyhow::anyhow!(SECRET)));
+    let error =
+        PublicSignInTargetError::test_new(crate::error_response::ApiError(anyhow::anyhow!(SECRET)));
     let error_view = view(&error);
     assert!(!serde_json::to_string(&error_view).unwrap().contains(SECRET));
     assert!(
-        error.0 .0.to_string().contains(SECRET),
+        error.test_inner().0.to_string().contains(SECRET),
         "host error chain remains intact"
     );
 
@@ -260,27 +262,27 @@ fn forwarding_and_bytes() {
         interface_debug::{McpDebugInput, McpDebugOutput},
     };
     let nested = json!({SECRET: {"innocent": SECRET, "url": format!("https://user:{SECRET}@example.invalid")}});
-    let input = McpDebugInput {
-        body: McpDebugExecuteBody {
+    let input = McpDebugInput::for_test(
+        McpDebugExecuteBody {
             interface_id: "target.interface".into(),
             debug_response_mode: McpDebugResponseMode::ToolResult,
             mcp_arguments: nested.clone(),
             input_mapping: nested.clone(),
             output_mapping: nested,
         },
-        forwarding: CallableDispatchForwarding {
+        CallableDispatchForwarding {
             cookie: Some(SECRET.as_bytes().to_vec()),
             authorization: Some(SECRET.as_bytes().to_vec()),
             csrf_token: Some(SECRET.as_bytes().to_vec()),
             ..Default::default()
         },
-    };
+    );
     let projected = view(&input);
     assert!(projected.value.get("forwarding").is_none());
     assert_eq!(projected.value["body"]["mcp_arguments"]["kind"], "object");
     assert_safe_frame(ManagedInterfaceInput::Before { input: projected });
     assert_eq!(
-        input.forwarding.authorization.as_deref(),
+        input.forwarding_for_test().authorization.as_deref(),
         Some(SECRET.as_bytes())
     );
     let body = SECRET.repeat(100_000).into_bytes();
@@ -309,33 +311,37 @@ fn oversized_typed_values() {
         native_interface::ApplicationNativeRunInput, native_read_interface::NativeUploadFileInput,
     };
     use crate::routes::console_identity_interface::ConsoleIdentityInput;
-    let input = NativeUploadFileInput {
-        file_table_id: Uuid::new_v4(),
-        original_filename: SECRET.into(),
-        content_type: Some("application/octet-stream".into()),
-        bytes: SECRET.repeat(100_000).into_bytes(),
-    };
+    let input = NativeUploadFileInput::for_test_support(
+        Uuid::new_v4(),
+        SECRET.into(),
+        Some("application/octet-stream".into()),
+        SECRET.repeat(100_000).into_bytes(),
+    );
     let projected = view(&input);
-    assert_eq!(projected.value["bytes"]["byte_count"], input.bytes.len());
+    assert_eq!(
+        projected.value["bytes"]["byte_count"],
+        input.bytes_for_test_support().len()
+    );
     assert_safe_frame(ManagedInterfaceInput::Before { input: projected });
-    assert!(input.bytes.starts_with(SECRET.as_bytes()));
+    assert!(input
+        .bytes_for_test_support()
+        .starts_with(SECRET.as_bytes()));
     assert!(ConsoleIdentityInput::SwitchWorkspace {
         workspace_id: "x".repeat(257)
     }
     .project_for_managed_hook()
     .is_none());
-    let run = ApplicationNativeRunInput {
-        request: serde_json::from_value(json!({"query":"hello", "system":
+    let run = ApplicationNativeRunInput::for_test_support(
+        serde_json::from_value(json!({"query":"hello", "system":
             vec![json!({"type":"text","text":"hello"});33]}))
         .unwrap(),
-        protocol:
-            control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
-    };
+        control_plane::application_public_api::protocol_translation::TranslationProtocol::Native,
+    );
     assert!(
         run.project_for_managed_hook().is_none(),
         "typed lists have a hard item budget"
     );
-    assert_eq!(run.request.system.len(), 33);
+    assert_eq!(run.request_for_test_support().system.len(), 33);
 }
 
 /// Root #2014 AC-015/016/018: frozen host owner validates real safe projection before transport.
@@ -344,7 +350,7 @@ fn root_2014_r3_probe_reference_binding_and_projection() {
     use crate::extension_bus::{validate_interface_protocol, FrozenManagedProjection};
     use extension_contracts::{ManagedInterfaceProtocol, ManagedInterfaceReferenceInput};
     use runtime_core::runtime_backend::RuntimeManagedHookInput;
-    let input = PublicSignInInput(LoginCommand {
+    let input = PublicSignInInput::test_new(LoginCommand {
         login_entry_id: Uuid::new_v4(),
         identifier: SECRET.into(),
         password: SECRET.into(),

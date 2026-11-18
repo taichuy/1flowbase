@@ -9,6 +9,7 @@ use crate::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
+use control_plane_contracts::ports::{CommunicationLifecycleObserver, CommunicationSendResultKind};
 use domain::{
     ActorContext, NotificationInstanceRecord, NotificationInstanceStatus, NotificationMessagePage,
     SystemNotificationRecord,
@@ -19,11 +20,15 @@ use serde_json::{json, Value};
 use std::{collections::BTreeSet, sync::Arc};
 use uuid::Uuid;
 
+mod activity;
 mod authorization;
 mod command_catalog;
+mod event_commands;
+pub use event_commands::*;
 mod command_events;
 pub use command_catalog::*;
 pub use command_events::{decode_builtin_command, terminate_communication_command_delivery};
+mod lifecycle;
 mod logging;
 mod managed_send;
 mod migration;
@@ -107,20 +112,30 @@ pub struct NotificationInstanceListInput {
 }
 
 pub struct NotificationService<R> {
-    repository: R,
+    repository: Arc<R>,
     master_key: String,
     provider: Option<Arc<dyn NotificationProviderPort>>,
     commands: Option<Arc<dyn CommunicationCommandProviderPort>>,
     events: Option<Arc<dyn NotificationEventPublisher>>,
+    communication_lifecycle_observer: Option<Arc<dyn CommunicationLifecycleObserver>>,
 }
+
+/// Durable send identity and routing/causal correlation shared by dispatch and observation.
+struct SendAttemptContext {
+    log_id: Uuid,
+    target: Option<extension_contracts::NotificationSendTarget>,
+    context: Option<control_plane_contracts::ports::CommunicationSendContext>,
+}
+
 impl<R> NotificationService<R> {
     pub fn new(repository: R, master_key: String) -> Self {
         Self {
-            repository,
+            repository: Arc::new(repository),
             master_key,
             provider: None,
             commands: None,
             events: None,
+            communication_lifecycle_observer: None,
         }
     }
     pub fn with_command_provider(
@@ -136,6 +151,13 @@ impl<R> NotificationService<R> {
     }
     pub fn with_events(mut self, events: Arc<dyn NotificationEventPublisher>) -> Self {
         self.events = Some(events);
+        self
+    }
+    pub fn with_communication_lifecycle_observer(
+        mut self,
+        observer: Arc<dyn CommunicationLifecycleObserver>,
+    ) -> Self {
+        self.communication_lifecycle_observer = Some(observer);
         self
     }
 }
@@ -567,7 +589,7 @@ where
 #[async_trait]
 impl<R> NotificationSenderPort for NotificationService<R>
 where
-    R: NotificationRepository + PluginRepository + RoleConsolePolicyReader,
+    R: NotificationRepository + PluginRepository + RoleConsolePolicyReader + 'static,
 {
     async fn send(
         &self,
@@ -576,13 +598,13 @@ where
         instance_id: Uuid,
         input: Value,
     ) -> Result<NotificationSendResult> {
-        self.send_with_target(actor, source, instance_id, input, None)
+        self.send_with_target(actor, source, instance_id, input, None, None)
             .await
     }
 }
 impl<R> NotificationService<R>
 where
-    R: NotificationRepository + PluginRepository + RoleConsolePolicyReader,
+    R: NotificationRepository + PluginRepository + RoleConsolePolicyReader + 'static,
 {
     /// Host communication reply; the immutable inbound identity is separate from plugin input.
     pub async fn send_to(
@@ -593,8 +615,34 @@ where
         input: Value,
         target: extension_contracts::NotificationSendTarget,
     ) -> Result<NotificationSendResult> {
-        self.send_with_target(actor, source, instance_id, input, Some(target))
+        self.send_with_target(actor, source, instance_id, input, Some(target), None)
             .await
+    }
+    /// A trusted Host event caller supplies causal identity separately from node input.
+    pub async fn send_to_with_context(
+        &self,
+        actor: &ActorContext,
+        source: NotificationSource,
+        instance_id: Uuid,
+        input: Value,
+        target: extension_contracts::NotificationSendTarget,
+        context: control_plane_contracts::ports::CommunicationSendContext,
+    ) -> Result<NotificationSendResult> {
+        anyhow::ensure!(
+            context.scope.workspace_id == actor.current_workspace_id
+                && context.scope.instance_id == instance_id
+                && context.scope.external_identity == target.sender_id,
+            "communication_send_context_mismatch"
+        );
+        self.send_with_target(
+            actor,
+            source,
+            instance_id,
+            input,
+            Some(target),
+            Some(context),
+        )
+        .await
     }
     async fn send_with_target(
         &self,
@@ -603,6 +651,7 @@ where
         instance_id: Uuid,
         input: Value,
         target: Option<extension_contracts::NotificationSendTarget>,
+        context: Option<control_plane_contracts::ports::CommunicationSendContext>,
     ) -> Result<NotificationSendResult> {
         self.ensure_actor(actor).await?;
         let log_id = Uuid::now_v7();
@@ -631,8 +680,21 @@ where
                 completed_at: None,
             })
             .await?;
+        let mut attempt = None;
+        let observed_target = target.clone();
         let outcome = self
-            .send_logged(actor, instance_id, instance, input, log_id, target)
+            .send_logged(
+                actor,
+                instance_id,
+                instance,
+                input,
+                &mut attempt,
+                SendAttemptContext {
+                    log_id,
+                    target,
+                    context: context.clone(),
+                },
+            )
             .await;
         if let Err(error) = &outcome {
             let terminal = error.downcast_ref::<Error>().and_then(|error| match error {
@@ -675,7 +737,9 @@ where
                 }
                 _ => None,
             });
-            if let Some((status, code)) = terminal {
+            if let Some((status, code)) =
+                terminal.filter(|_| !attempt.as_ref().is_some_and(|attempt| attempt.archive))
+            {
                 // Failure to finalize cannot erase a durable pending invocation.
                 let _ = self
                     .repository
@@ -689,12 +753,50 @@ where
                     .await;
             }
         }
+        if let Some(attempt) = attempt {
+            if attempt.archive {
+                self.repository
+                    .record_communication_send_receipt(
+                        control_plane_contracts::ports::RecordCommunicationSendReceipt {
+                            workspace_id: actor.current_workspace_id,
+                            send_log_id: log_id,
+                            send_status: match attempt.result_kind {
+                                CommunicationSendResultKind::Accepted => {
+                                    domain::CommunicationSendStatus::Succeeded
+                                }
+                                CommunicationSendResultKind::Failed => {
+                                    domain::CommunicationSendStatus::Failed
+                                }
+                                CommunicationSendResultKind::Unknown => {
+                                    domain::CommunicationSendStatus::Unknown
+                                }
+                            },
+                            failure_code: attempt.failure_code.clone(),
+                            receipt: attempt.receipt.clone(),
+                            log_extra: None,
+                        },
+                    )
+                    .await?;
+            }
+            self.observe_send_result(
+                actor,
+                instance_id,
+                source,
+                attempt,
+                SendAttemptContext {
+                    log_id,
+                    target: observed_target,
+                    context,
+                },
+            )
+            .await;
+        }
         outcome
     }
 }
 impl<R> NotificationService<R>
 where
-    R: NotificationRepository + PluginRepository + RoleConsolePolicyReader,
+    R: NotificationRepository + PluginRepository + RoleConsolePolicyReader + 'static,
 {
     async fn send_logged(
         &self,
@@ -702,9 +804,14 @@ where
         instance_id: Uuid,
         instance: Option<NotificationInstanceRecord>,
         input: Value,
-        log_id: Uuid,
-        target: Option<extension_contracts::NotificationSendTarget>,
+        attempt: &mut Option<lifecycle::SendAttemptObservation>,
+        send: SendAttemptContext,
     ) -> Result<NotificationSendResult> {
+        let SendAttemptContext {
+            log_id,
+            target,
+            context,
+        } = send;
         let instance = instance.ok_or(Error::NotFound("notification_instance"))?;
         if instance.status != NotificationInstanceStatus::Enabled {
             return Err(Error::Conflict("instance_disabled").into());
@@ -724,7 +831,18 @@ where
         }
         if entry.descriptor.authorization.is_some() || entry.descriptor.receive.is_some() {
             return self
-                .send_managed(actor, &instance, &entry.descriptor, input, log_id, target)
+                .send_managed(
+                    actor,
+                    &instance,
+                    &entry.descriptor,
+                    input,
+                    attempt,
+                    SendAttemptContext {
+                        log_id,
+                        target,
+                        context,
+                    },
+                )
                 .await;
         }
         if target.is_some() {
@@ -806,12 +924,14 @@ where
                 .provider
                 .as_ref()
                 .ok_or(Error::Conflict("plugin_unavailable"))?;
+            let installation_id = instance
+                .installation_id
+                .ok_or(Error::Conflict("type_unavailable"))?;
+            *attempt = Some(lifecycle::SendAttemptObservation::unknown());
             let result = provider
                 .send(
                     actor,
-                    instance
-                        .installation_id
-                        .ok_or(Error::Conflict("type_unavailable"))?,
+                    installation_id,
                     &entry.descriptor,
                     config.clone(),
                     input,
@@ -837,6 +957,12 @@ where
             .validate_output(&result)
             .map_err(|_| Error::Conflict("notification_output_schema"))?;
         if instance.type_code != "system" {
+            *attempt = Some(lifecycle::SendAttemptObservation {
+                result_kind: CommunicationSendResultKind::Accepted,
+                failure_code: None,
+                archive: false,
+                receipt: None,
+            });
             let log_extra = logging::result_extra(
                 &entry.descriptor,
                 &result,

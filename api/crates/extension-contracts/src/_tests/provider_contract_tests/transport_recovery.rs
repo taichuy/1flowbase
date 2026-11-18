@@ -1182,3 +1182,30 @@ fn recovery_attempt_index_and_consumed_count_respect_total_budget() {
         assert!(receipt.validate_against(&directive).is_err());
     }
 }
+
+#[test]
+fn continuation_owner_unavailable_is_a_closed_lifecycle_only_logical_retry() {
+    // Use canonical transport serialization so this assertion also fixes the reason spelling.
+    let receipt = ProviderRecoveryReceipt {
+        attempt: 0,
+        transport: RecoveryTransport::AiNativeWebSocket,
+        transport_epoch: TransportEpoch::new(1).unwrap(),
+        socket_incarnation: None,
+        commit_level: CommitLevel::LifecycleOnly,
+        disposition: RecoveryDisposition::LogicalInvocationRetry,
+        reason: RecoveryReason::ContinuationOwnerUnavailable,
+    };
+    let mut wire = serde_json::to_value(&receipt).unwrap();
+    assert_eq!(wire["reason"], "continuation_owner_unavailable");
+    assert!(receipt.validate().is_ok());
+    for (commit, disposition) in [
+        ("terminal", "semantic_terminal"),
+        ("semantic_committed", "logical_invocation_retry"),
+        ("lifecycle_only", "terminal_interruption"),
+    ] {
+        wire["commit_level"] = json!(commit);
+        wire["disposition"] = json!(disposition);
+        let rejected: ProviderRecoveryReceipt = serde_json::from_value(wire.clone()).unwrap();
+        assert!(rejected.validate().is_err());
+    }
+}

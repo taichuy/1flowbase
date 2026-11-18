@@ -271,17 +271,22 @@ fn push_query_value_selector(value: &Value, selectors: &mut Vec<Vec<String>>) ->
 }
 
 fn selector_path(value: &Value) -> Result<Vec<String>> {
-    value
+    let segments = value
         .as_array()
         .ok_or_else(|| anyhow!("selector path must be an array"))?
         .iter()
         .map(|segment| {
             segment
                 .as_str()
+                .filter(|segment| !segment.trim().is_empty())
                 .map(str::to_string)
                 .ok_or_else(|| anyhow!("selector path segment must be a string"))
         })
-        .collect()
+        .collect::<Result<Vec<_>>>()?;
+    if segments.len() < 2 {
+        bail!("selector path must contain a namespace/node and an output field");
+    }
+    Ok(segments)
 }
 
 fn selector_path_list(value: &Value) -> Result<Vec<Vec<String>>> {

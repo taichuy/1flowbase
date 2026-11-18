@@ -159,7 +159,9 @@ fn capabilities() -> AssistantRunCapabilities {
 
 #[tokio::test]
 async fn communication_command_new_persists_join_failure_reply_and_releases_admission() {
-    use crate::communication_runtime::activity::tests::{provider_request, OwnedProviderFixture};
+    use crate::communication_runtime::activity::test_support::{
+        provider_request, OwnedProviderFixture,
+    };
     let fixture = Fixture::new().await;
     let (scope, _) = fixture.receive("alice", "ordinary", "old answer").await;
     super::super::admission::admit_available(&fixture.state, fixture.key)
@@ -553,10 +555,12 @@ async fn communication_command_help_uses_effective_availability_and_rechecks_dis
         .await
         .unwrap()
         .unwrap();
-    binding.config.command_settings = vec![CommunicationCommandSetting {
-        command_id: "host/new".into(),
-        enabled: false,
-    }];
+    binding.config.commands = vec![domain::CommunicationCommandConfiguration::Registered(
+        CommunicationCommandSetting {
+            command_id: "host/new".into(),
+            enabled: false,
+        },
+    )];
     fixture
         .state
         .notification_service
@@ -592,4 +596,36 @@ async fn communication_command_help_uses_effective_availability_and_rechecks_dis
             .as_deref(),
         Some("command_disabled")
     );
+}
+
+#[test]
+fn event_publication_is_silent_when_admitted_and_actionable_when_unavailable() {
+    use control_plane::event_center::{
+        EventPublishReceipt, EventTargetAdmission, EventTargetAdmissionStatus as Status,
+    };
+    let mut receipt = EventPublishReceipt {
+        event_id: Uuid::now_v7(),
+        workspace_id: Uuid::now_v7(),
+        targets: vec![],
+    };
+    let reply = super::super::effects::event_publication_reply(&receipt);
+    assert!(reply.0.unwrap().contains("No workflow is available"));
+    assert_eq!(reply.1.as_deref(), Some("event_publication_rejected"));
+    receipt.targets = vec![EventTargetAdmission {
+        subscription_id: Uuid::now_v7(),
+        status: Status::Accepted,
+    }];
+    let reply = super::super::effects::event_publication_reply(&receipt);
+    assert_eq!(reply.0, None);
+    assert_eq!(reply.1, None);
+    receipt.targets.push(EventTargetAdmission {
+        subscription_id: Uuid::now_v7(),
+        status: Status::ResourceExhausted,
+    });
+    let reply = super::super::effects::event_publication_reply(&receipt);
+    assert_eq!(reply, (None, None));
+    receipt.targets.remove(0);
+    let reply = super::super::effects::event_publication_reply(&receipt);
+    assert!(reply.0.unwrap().contains("No workflow is available"));
+    assert_eq!(reply.1.as_deref(), Some("event_publication_rejected"));
 }

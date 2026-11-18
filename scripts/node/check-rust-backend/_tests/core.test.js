@@ -57,7 +57,7 @@ test('scanRustSource flags production escape hatches while ignoring cfg test mod
 
 test('scanRustSource ignores a cfg test function outside a test module', () => {
   const findings = scanRustSource({
-    relativePath: 'api/apps/api-server/src/routes/settings/file_storages.rs',
+    relativePath: 'api/crates/api/console-settings/src/routes/settings/file_storages.rs',
     content: [
       '#[cfg(test)]',
       'pub(crate) fn projection_fixture() {',
@@ -114,7 +114,7 @@ test('current auth hash records are not serializable or baseline-suppressed', ()
 
 test('scanRustSource limits sensitive serialization checks to the current struct', () => {
   const findings = scanRustSource({
-    relativePath: 'api/apps/api-server/src/routes/settings/identity_access/members.rs',
+    relativePath: 'api/crates/api/console-settings/src/routes/settings/identity_access/members.rs',
     content: [
       '#[derive(Serialize)]',
       'pub struct MemberResponse {',
@@ -141,7 +141,7 @@ test('scanRustSource does not treat static log message text as sensitive leakage
 
 test('scanRustSource reports async blocking patterns as warnings', () => {
   const findings = scanRustSource({
-    relativePath: 'api/apps/api-server/src/routes/files.rs',
+    relativePath: 'api/crates/api/console-interaction/src/routes/files.rs',
     content: [
       'pub async fn upload() -> Result<(), AppError> {',
       '    let bytes = std::fs::read("upload.bin")?;',
@@ -395,7 +395,8 @@ test('current api routes do not contain active blocking IO warnings', () => {
   const findings = collectRustBackendFindings({ repoRoot }).filter(
     (finding) =>
       finding.rule === 'blocking-in-async-context'
-      && finding.file.startsWith('api/apps/api-server/src/routes/')
+      && (finding.file.startsWith('api/apps/api-server/src/routes/')
+        || /^api\/crates\/api\/[^/]+\/src\/(?:routes|contracts\/routes|slices\/routes)\//u.test(finding.file))
   );
 
   assert.deepEqual(findings, []);

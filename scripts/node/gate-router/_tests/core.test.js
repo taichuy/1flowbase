@@ -57,7 +57,7 @@ test('routeChangedFiles does not route frontend state names to backend consisten
 
 test('routeChangedFiles recommends state protocol gates for Anthropic ACP projection changes', () => {
   const routes = routeChangedFiles([
-    'api/apps/api-server/src/routes/application_public_api/compat_sse/protocol_mappers/anthropic_stream.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/compat_sse/protocol_mappers/anthropic_stream.rs',
     'scripts/node/acp-claude-smoke/core.js',
   ]);
 
@@ -72,7 +72,7 @@ test('routeChangedFiles recommends state protocol gates for Anthropic ACP projec
 
 test('AC-001 gate router exposes foundation-specific evidence instead of generic green', () => {
   const routes = routeChangedFiles([
-    'api/apps/api-server/src/routes/mcp_protocol.rs',
+    'api/crates/api/mcp/src/routes/mcp_protocol.rs',
     'web/packages/page-runtime/src/native-react-compiler/source-contract.ts',
   ]);
 
@@ -87,7 +87,7 @@ test('main reads staged changes from env override and never blocks the commit', 
     env: {
       GATE_ROUTER_CHANGED_FILES: [
         'web/app/src/components/Toolbar.tsx',
-        'api/apps/api-server/src/routes/applications.rs',
+        'api/crates/api/applications/src/routes/applications/applications.rs',
       ].join('\n'),
     },
     writeStdout(text) {
@@ -114,7 +114,7 @@ test('real Git deletions route staged and branch foundation changes while ignori
   git('init', '--quiet');
   git('config', 'user.name', 'Gate fixture');
   git('config', 'user.email', 'fixture@example.invalid');
-  const source = 'api/apps/api-server/src/routes/mcp_protocol.rs';
+  const source = 'api/crates/api/mcp/src/routes/mcp_protocol.rs';
   const artifact = 'tmp/deleted-fixture.log';
   for (const file of [source, artifact]) {
     fs.mkdirSync(path.dirname(path.join(repoRoot, file)), { recursive: true });
@@ -175,4 +175,15 @@ test('state protocol owner and wrapper changes route independently, unrelated ve
     assert(routeChangedFiles([file]).some((route) => route.scope === 'state-protocols'), file);
   }
   assert(!routeChangedFiles(['scripts/node/verify/coverage.js']).some((route) => route.scope === 'state-protocols'));
+});
+
+test('current Kernel, Gateway and Applications changes select the API apps check owner', () => {
+  for (const file of [
+    'api/crates/api/kernel/src/contracts/app_state.rs',
+    'api/crates/api/applications/src/routes/applications/application_runtime.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/native.rs',
+  ]) {
+    assert.deepEqual(routeChangedFiles([file]).filter((route) => route.scope.startsWith('repo-backend-check-'))
+      .map((route) => route.scope), ['repo-backend-check-apps']);
+  }
 });

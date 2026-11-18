@@ -184,7 +184,10 @@ pub struct FrontendBlockCodeModuleManifest {
     pub binding: FrontendModuleBindingManifest,
     #[serde(default)]
     pub assets: Vec<FrontendModuleAssetManifest>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub type_declarations: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub type_declarations_file: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -229,8 +232,13 @@ pub struct FrontendBlockContributionManifest {
     /// Management destination, independent of source used to mount the block.
     #[serde(default = "default_frontend_ui_registration")]
     pub ui_registration: String,
+    /// Explicit opt-in to block management and page creation, independent of reusable UI registration.
+    #[serde(default)]
+    pub block_registration: bool,
     #[serde(default)]
     pub code_template: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code_template_file: Option<String>,
     #[serde(default)]
     pub code_template_version: Option<String>,
     #[serde(default)]
@@ -246,6 +254,9 @@ pub struct FrontendBlockContributionManifest {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PluginManifestV1 {
+    /// Reference to a deployment-owned resource delegation; never defines an owner.
+    #[serde(default)]
+    pub shared_resource_contract: Option<String>,
     #[serde(default)]
     pub managed_service: Option<crate::managed_service::ManagedServiceManifest>,
     #[serde(default)]
@@ -413,6 +424,14 @@ fn validate_plugin_manifest(
         ));
     }
 
+    if let Some(reference) = &manifest.shared_resource_contract {
+        validate_non_empty(reference, "shared_resource_contract")?;
+        if manifest.manifest_version != 2 || manifest.managed_service.is_none() {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "shared_resource_contract requires a managed service",
+            ));
+        }
+    }
     validate_non_empty(&manifest.plugin_id, "plugin_id")?;
     validate_non_empty(&manifest.version, "version")?;
     plugin_code_from_identity(&manifest.plugin_id, &manifest.version)?;
@@ -1159,9 +1178,12 @@ fn validate_required_auth(required_auth: &[String]) -> FrameworkResult<()> {
 }
 
 mod frontend_blocks;
+mod frontend_sources;
 pub(crate) use frontend_blocks::{
     validate_frontend_block_contributions, validate_frontend_code_modules,
 };
+pub(crate) use frontend_sources::read_package_source;
+pub use frontend_sources::{resolve_frontend_code_modules, resolve_plugin_frontend_sources};
 
 #[path = "manifest_v1/capability_validation.rs"]
 mod capability_validation;

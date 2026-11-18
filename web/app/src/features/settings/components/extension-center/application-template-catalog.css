@@ -1,0 +1,131 @@
+.application-template-catalog {
+  height: 100%;
+  min-height: 0;
+}
+
+.application-template-catalog__search {
+  width: 240px;
+}
+
+.application-template-catalog__list,
+.application-template-catalog__table {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.application-template-catalog__header,
+.application-template-catalog__row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.2fr) minmax(
+      180px,
+      2fr
+    ) 80px 120px 100px 120px;
+  align-items: center;
+}
+
+.application-template-catalog__header {
+  min-height: 48px;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  font-weight: 600;
+}
+
+.application-template-catalog__header > div,
+.application-template-catalog__cell,
+.application-template-catalog__action {
+  min-width: 0;
+  padding: 12px 16px;
+}
+
+.application-template-catalog__viewport {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.application-template-catalog__row {
+  min-height: 64px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.application-template-catalog__row:hover {
+  background: var(--bg-hover);
+}
+
+.application-template-catalog__value {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.application-template-catalog__label {
+  display: none;
+}
+
+.application-template-catalog__status {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+
+.application-template-catalog__sentinel {
+  height: 1px;
+}
+
+@media (max-width: 991px) {
+  .application-template-catalog__header {
+    display: none;
+  }
+
+  .application-template-catalog__row {
+    grid-template-columns: 1fr auto;
+    padding: 8px 0;
+  }
+
+  .application-template-catalog__cell {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 12px;
+    padding: 4px 12px;
+  }
+
+  .application-template-catalog__label {
+    display: block;
+    flex-shrink: 0;
+    color: var(--text-secondary);
+  }
+
+  .application-template-catalog__cell--0 {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+    font-weight: 600;
+  }
+
+  .application-template-catalog__cell--0 .application-template-catalog__label,
+  .application-template-catalog__cell--1 .application-template-catalog__label {
+    display: none;
+  }
+
+  .application-template-catalog__cell--1 .application-template-catalog__value {
+    white-space: normal;
+  }
+
+  .application-template-catalog__action {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 4px 12px;
+  }
+
+  .application-template-catalog__search {
+    flex: 1;
+    min-width: 160px;
+  }
+}

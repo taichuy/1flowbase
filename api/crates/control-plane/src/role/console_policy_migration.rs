@@ -56,6 +56,11 @@ pub fn compiled_catalog_from_inventory(
                     ConsolePolicyMigrationError::new("compiled settings feature group is invalid")
                 })?
             }
+            RegisteredConsolePolicyGroup::Plugin(plugin_code) => {
+                ConsolePolicyGroup::plugin(plugin_code).map_err(|_| {
+                    ConsolePolicyMigrationError::new("compiled Plugin group is invalid")
+                })?
+            }
             RegisteredConsolePolicyGroup::Other(group_id) => ConsolePolicyGroup::other(group_id)
                 .map_err(|_| ConsolePolicyMigrationError::new("compiled Other group is invalid"))?,
         };

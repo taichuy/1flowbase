@@ -114,7 +114,7 @@ async fn ac_003_protocol_uses_api_key_actor_workspace_and_rejects_cross_workspac
     let scoped = call_mcp(
         &app,
         &secondary_token,
-        json!({"jsonrpc":"2.0","id":101,"method":"initialize","params":{}}),
+        json!({"jsonrpc":"2.0","id":101,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
     )
     .await;
     assert_eq!(scoped["result"]["serverInfo"]["name"], json!("taichuy"));
@@ -127,7 +127,7 @@ async fn ac_003_protocol_uses_api_key_actor_workspace_and_rejects_cross_workspac
                 .header("authorization", format!("Bearer {secondary_token}"))
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({"jsonrpc":"2.0","id":102,"method":"initialize","params":{}}).to_string(),
+                    json!({"jsonrpc":"2.0","id":102,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}).to_string(),
                 ))
                 .unwrap(),
         )
@@ -226,6 +226,7 @@ async fn call_mcp_instance(
                 .uri(format!("/api/mcp/{instance_id}"))
                 .header("authorization", format!("Bearer {token}"))
                 .header("content-type", "application/json")
+                .header("mcp-protocol-version", "2025-11-25")
                 .body(Body::from(request.to_string()))
                 .unwrap(),
         )

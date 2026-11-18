@@ -38,6 +38,7 @@ async fn store() -> PgControlPlaneStore {
 async fn lcf_005_outbox_claim_retry_delivery_and_idempotency_are_durable() {
     let store = store().await;
     let input = RecordLifecycleFactInput {
+        observation_context: None,
         event_id: Uuid::now_v7(),
         transaction_id: Uuid::now_v7(),
         contract_id: "model_definition.committed".to_string(),
@@ -118,6 +119,7 @@ async fn lcf_005_outbox_claim_retry_delivery_and_idempotency_are_durable() {
 async fn lcf_qaf_stale_claim_is_recovered_by_a_new_worker() {
     let store = store().await;
     let input = RecordLifecycleFactInput {
+        observation_context: None,
         event_id: Uuid::now_v7(),
         transaction_id: Uuid::now_v7(),
         contract_id: "model_definition.committed".to_string(),
@@ -161,6 +163,7 @@ async fn lcf_qaf_stale_claim_is_recovered_by_a_new_worker() {
 async fn lcf_005_same_event_id_with_different_fact_is_rejected() {
     let store = store().await;
     let input = RecordLifecycleFactInput {
+        observation_context: None,
         event_id: Uuid::now_v7(),
         transaction_id: Uuid::now_v7(),
         contract_id: "model_definition.committed".to_string(),
@@ -186,6 +189,7 @@ async fn lcf_005_same_event_id_with_different_fact_is_rejected() {
 async fn lcf_qaf_subscribers_complete_and_retry_independently() {
     let store = store().await;
     let input = RecordLifecycleFactInput {
+        observation_context: None,
         event_id: Uuid::now_v7(),
         transaction_id: Uuid::now_v7(),
         contract_id: "model_definition.committed".to_string(),
@@ -263,6 +267,7 @@ async fn root_2007_ac_007_claim_fencing_and_paused_backlog() {
     use control_plane_contracts::ports::{LifecycleClaimLost, LifecycleDeliveryPauseReason};
     let store = store().await;
     let input = RecordLifecycleFactInput {
+        observation_context: None,
         event_id: Uuid::now_v7(),
         transaction_id: Uuid::now_v7(),
         contract_id: "acme.composition-a.processed".into(),
@@ -531,6 +536,7 @@ async fn root_2007_ac_007_delivery_migration_preserves_old_targets() {
 async fn root_2007_ac_007_concurrent_ack_rollup() {
     let store = store().await;
     let input = RecordLifecycleFactInput {
+        observation_context: None,
         event_id: Uuid::now_v7(),
         transaction_id: Uuid::now_v7(),
         contract_id: "concurrent.fact".into(),
@@ -605,6 +611,7 @@ async fn bounded_governance_history(store: &PgControlPlaneStore) {
     sqlx::query("insert into lifecycle_outbox_deliveries(event_id,subscriber_id,handler_id,handler_version,status,delivered_at) select id,$2,$2,$3,'delivered',now() from unnest($1::uuid[]) id")
         .bind(&ids).bind(&subscriber).bind(&version).execute(store.pool()).await.unwrap();
     let mut input = RecordLifecycleFactInput {
+        observation_context: None,
         event_id: Uuid::now_v7(),
         transaction_id: Uuid::now_v7(),
         contract_id: "model_definition.committed".into(),
@@ -817,6 +824,7 @@ async fn bounded_governance_history(store: &PgControlPlaneStore) {
     })).unwrap();
     store
         .record_lifecycle_fact(&RecordLifecycleFactInput {
+            observation_context: None,
             event_id: processed_event,
             transaction_id: processed_transaction,
             contract_id: processed.contract_id.clone(),
@@ -1094,3 +1102,6 @@ async fn bounded_governance_history(store: &PgControlPlaneStore) {
 }
 #[path = "lifecycle_outbox_repository_tests/governance_history.rs"]
 mod governance_history;
+
+#[path = "lifecycle_outbox_repository_tests/source_observation.rs"]
+mod source_observation;

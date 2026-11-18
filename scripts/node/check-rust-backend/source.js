@@ -92,6 +92,7 @@ module.exports = { maskRustText, isTestOnlyCfg };
 // Mask exactly the attributed item, preserving code after its closing delimiter.
 // Strings/comments have already been masked, so delimiters here are syntax.
 function maskTestOnlyItems(code) {
+  code = unwrapTestSupportItems(code);
   const chars = code.split('');
   const attributeSpans = [...code.matchAll(/#\s*\[/gu)].map(match => ({
     start: match.index,
@@ -170,3 +171,23 @@ function delimitedEnd(code, start) {
 }
 
 module.exports.delimitedEnd = delimitedEnd;
+
+// Gateway's visibility macro forwards its attributes and the same single item.
+// Expose that item to the existing cfg evaluator without treating the macro name
+// as evidence of test-only code. All character offsets/newlines stay unchanged.
+function unwrapTestSupportItems(code) {
+  const chars = code.split('');
+  const mask = (start, end) => {
+    for (let i = start; i < end; i += 1) if (chars[i] !== '\n' && chars[i] !== '\r') chars[i] = ' ';
+  };
+  for (const match of code.matchAll(/\btest_support_item!\s*\{\s*(?:pub(?:\s*\([^)]*\))?\s*)?,\s*\[/gu)) {
+    const attributesStart = match.index + match[0].length - 1;
+    const attributesEnd = delimitedEnd(code, attributesStart);
+    const wrapperEnd = delimitedEnd(code, code.indexOf('{', match.index));
+    if (attributesEnd === null || wrapperEnd === null || attributesEnd >= wrapperEnd) continue;
+    mask(match.index, attributesStart + 1);
+    mask(attributesEnd - 1, attributesEnd);
+    mask(wrapperEnd - 1, wrapperEnd);
+  }
+  return chars.join('');
+}

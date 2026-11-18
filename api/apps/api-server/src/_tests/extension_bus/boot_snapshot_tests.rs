@@ -1,3 +1,4 @@
+use crate::extension_bus::SnapshotAssembly;
 use std::{collections::BTreeSet, sync::Arc};
 
 use plugin_framework::extension_bus::{

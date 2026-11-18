@@ -225,7 +225,7 @@ use projections::{
 };
 
 // The contract and declaration identify a system service; legacy records may also use nil scope.
-fn is_system_managed_service(installation: &domain::PluginInstallationRecord) -> bool {
+pub(super) fn is_system_managed_service(installation: &domain::PluginInstallationRecord) -> bool {
     domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
         == domain::SYSTEM_SCOPE_ID
 }
@@ -250,6 +250,9 @@ fn prepare_installation_commit_blocking(
     manifest: &PluginManifestV1,
     package_catalog: Option<UpsertPluginPackageCatalogProjectionInput>,
 ) -> Result<CommitPluginInstallationInput> {
+    if let Some(reference) = &manifest.shared_resource_contract {
+        installation.metadata_json["shared_resource_contract"] = serde_json::json!(reference);
+    }
     if let Some(service) = &manifest.managed_service {
         installation.metadata_json["managed_service"] = serde_json::to_value(service)?;
         installation.metadata_json["managed_service_permissions"] = serde_json::json!({"secrets": manifest.permissions.secrets, "storage": manifest.permissions.storage});
@@ -271,6 +274,12 @@ fn prepare_installation_commit_blocking(
     }
     let settings_templates =
         plugin_settings_templates::prepare_settings_templates(package_root, manifest)?;
+    // Resolve from the staged package, after comparing the original native declarations.
+    // Projections persist source text; neither the signed YAML nor file paths become UI data.
+    let mut resolved_manifest = manifest.clone();
+    plugin_framework::resolve_plugin_frontend_sources(package_root, &mut resolved_manifest)
+        .map_err(map_framework_error)?;
+    let manifest = &resolved_manifest;
     let package_kind = route_plugin_package(manifest)?;
     let category = match &package_kind {
         RoutedPluginPackageKind::HostExtension => domain::ExtensionCategory::HostExtensions,

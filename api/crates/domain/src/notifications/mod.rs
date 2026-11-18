@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationInstanceStatus {
     Enabled,
@@ -18,23 +19,27 @@ impl NotificationInstanceStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NotificationInstanceRecord {
     pub id: Uuid,
     pub workspace_id: Uuid,
     pub type_code: String,
+    #[schema(required = true)]
     pub installation_id: Option<Uuid>,
     pub display_name: String,
     pub status: NotificationInstanceStatus,
+    /// Public configuration fields governed by the selected notification type config_schema.
     pub config_json: Value,
     pub configured_secret_fields: Vec<String>,
     #[serde(with = "timestamp")]
+    #[schema(value_type = String, format = DateTime)]
     pub created_at: OffsetDateTime,
     #[serde(with = "timestamp")]
+    #[schema(value_type = String, format = DateTime)]
     pub updated_at: OffsetDateTime,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SystemNotificationRecord {
     pub id: Uuid,
     pub workspace_id: Uuid,
@@ -43,22 +48,26 @@ pub struct SystemNotificationRecord {
     pub title: String,
     pub content: String,
     #[serde(with = "optional_timestamp")]
+    #[schema(value_type = Option<String>, format = DateTime, required = true)]
     pub read_at: Option<OffsetDateTime>,
     #[serde(with = "timestamp")]
+    #[schema(value_type = String, format = DateTime)]
     pub created_at: OffsetDateTime,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NotificationMessagePage {
     pub items: Vec<SystemNotificationRecord>,
+    #[schema(required = true)]
     pub next_cursor: Option<String>,
     pub unread_count: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NotificationSendResult {
     pub instance_id: Uuid,
     pub type_code: String,
+    /// Result validated against the selected notification type output_schema.
     pub result: Value,
 }
 
@@ -68,7 +77,7 @@ pub struct NotificationRecipientOption {
     pub display_name: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationSource {
     Api,
@@ -82,34 +91,43 @@ impl NotificationSource {
         }
     }
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NotificationSendLog {
     pub id: Uuid,
     pub workspace_id: Uuid,
     pub actor_user_id: Uuid,
     pub instance_id: Uuid,
+    #[schema(required = true)]
     pub display_name: Option<String>,
+    #[schema(required = true)]
     pub type_code: Option<String>,
     pub source: NotificationSource,
     pub status: String,
+    #[schema(required = true)]
     pub failure_code: Option<String>,
+    #[schema(required = true)]
     pub title: Option<String>,
+    #[schema(required = true)]
     pub content: Option<String>,
+    #[schema(required = true)]
     pub recipient_count: Option<i64>,
+    /// Public send-log fields selected by the notification type log descriptor.
     pub extra: serde_json::Value,
     #[serde(with = "timestamp")]
+    #[schema(value_type = String, format = DateTime)]
     pub created_at: OffsetDateTime,
     #[serde(with = "optional_timestamp")]
+    #[schema(value_type = Option<String>, format = DateTime, required = true)]
     pub completed_at: Option<OffsetDateTime>,
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NotificationSendLogPage {
     pub items: Vec<NotificationSendLog>,
     pub total: i64,
     pub page: u32,
     pub page_size: u32,
 }
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationReadStatus {
     #[default]
@@ -126,7 +144,7 @@ impl NotificationReadStatus {
         }
     }
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NotificationChannel {
     pub instance_id: Uuid,
     pub display_name: String,
@@ -135,12 +153,14 @@ pub struct NotificationChannel {
     pub latest_title: String,
     pub latest_content: String,
     #[serde(with = "timestamp")]
+    #[schema(value_type = String, format = DateTime)]
     pub latest_created_at: OffsetDateTime,
     pub unread_count: i64,
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NotificationChannelPage {
     pub items: Vec<NotificationChannel>,
+    #[schema(required = true)]
     pub next_cursor: Option<String>,
 }
 mod timestamp {

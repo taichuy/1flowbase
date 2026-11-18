@@ -29,6 +29,7 @@ pub struct ConsolePolicyCatalogOption {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsolePolicyCatalogGroup {
+    pub settings_feature_id: Option<String>,
     pub kind: ConsolePolicyGroupKind,
     pub group_id: String,
     pub label: String,

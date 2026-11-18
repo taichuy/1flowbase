@@ -7,13 +7,13 @@ use extension_contracts::{
 use super::*;
 
 fn declaration(target_table: String) -> ManagedSchemaDeclaration {
-    ManagedSchemaDeclaration {
-        owner: PluginSchemaOwner {
+    ManagedSchemaDeclaration::test_new(
+        PluginSchemaOwner {
             publisher_namespace: "fixture".to_string(),
             plugin_code: "managed_schema".to_string(),
             plugin_version: "1.0.0".to_string(),
         },
-        contributions: vec![PluginDataModelContribution {
+        vec![PluginDataModelContribution {
             contribution_version: "1flowbase.plugin-data-model/v1".to_string(),
             storage_binding: PluginStorageBinding::Main,
             owned_collections: vec![PluginOwnedCollection {
@@ -31,7 +31,7 @@ fn declaration(target_table: String) -> ManagedSchemaDeclaration {
                 nullable: true,
             }],
         }],
-    }
+    )
 }
 
 #[tokio::test]
@@ -78,13 +78,13 @@ async fn pdm_003_009_composition_previews_applies_and_retains_the_compiled_plan(
     .await
     .unwrap()
     .unwrap();
-    assert_eq!(prepared.preview.entries.len(), 3);
+    assert_eq!(prepared.test_preview().entries.len(), 3);
     assert!(prepared
-        .preview
+        .test_preview()
         .entries
         .iter()
         .all(|entry| entry.action == "create"));
-    let original_plan = prepared.plan.clone();
+    let original_plan = prepared.test_plan().clone();
     let applied = prepared.apply(&dependencies).await.unwrap();
     assert_eq!(applied.created_objects, 3);
 
@@ -97,7 +97,7 @@ async fn pdm_003_009_composition_previews_applies_and_retains_the_compiled_plan(
     .unwrap()
     .unwrap();
     assert!(replay
-        .preview
+        .test_preview()
         .entries
         .iter()
         .all(|entry| entry.action == "already_present"));

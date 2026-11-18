@@ -1,16 +1,30 @@
 use super::{
     core_authenticated_other, core_row_settings, core_simple_other, core_simple_settings,
-    ExpectedOperationGroup,
+    settings_features::ROLE_RECORD_PERMISSION_NEW_OPERATIONS, ExpectedOperationGroup,
 };
 
 // This is intentionally an immutable audit ledger rather than a policy-group expansion. A new
 // registry operation must be added here with its historic proof or default-disabled reason.
 pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     core_simple_settings(
+        "system.events",
+        &[
+            "events.catalog.list",
+            "events.api_operations.list",
+            "events.api_operations.get",
+            "events.definitions.create",
+            "events.definitions.update",
+            "events.runtime.get",
+        ],
+    ),
+    core_simple_settings(
         "system.branding",
         &["system.branding.get", "system.branding.save"],
     ),
-    core_authenticated_other("core.authenticated", &["core.authenticated"]),
+    core_authenticated_other(
+        "core.authenticated",
+        &["core.authenticated", "roles.record_capabilities.get"],
+    ),
     core_simple_other(
         "other.personal-account",
         &[
@@ -22,7 +36,27 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "notifications.messages.read_all",
         ],
     ),
-    core_simple_other("other.local-commands", &["local_commands.execute"]),
+    core_simple_other(
+        "other.local-commands",
+        &[
+            "local_commands.execute",
+            "terminal.info",
+            "terminal.files.list",
+            "terminal.files.stat",
+            "terminal.files.read_text",
+            "terminal.files.read_range",
+            "terminal.files.search",
+            "terminal.files.read_image",
+            "terminal.files.read_audio",
+            "terminal.files.read_resource",
+            "terminal.files.import_resource",
+            "terminal.files.download_file",
+            "terminal.jobs.start",
+            "terminal.jobs.get",
+            "terminal.jobs.read",
+            "terminal.jobs.cancel",
+        ],
+    ),
     core_authenticated_other(
         "core.authenticated",
         &[
@@ -48,16 +82,6 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         "other.frontstage",
         &[
             "frontstage.actions.dispatch",
-            "frontstage.blocks.code.update",
-            "frontstage.blocks.code.view",
-            "frontstage.blocks.create",
-            "frontstage.blocks.delete",
-            "frontstage.blocks.move",
-            "frontstage.blocks.open",
-            "frontstage.blocks.runtime.view",
-            "frontstage.blocks.search",
-            "frontstage.blocks.update",
-            "frontstage.blocks.view",
             "frontstage.components.view",
             "frontstage.data_capabilities.view",
             "frontstage.pages.view",
@@ -122,6 +146,8 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "communications.messages.list",
             "communications.files.list",
             "communications.files.get",
+            "communications.files.info",
+            "communications.files.image",
             "communications.messages.retry",
         ],
     ),
@@ -269,6 +295,8 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "mcp.debug.execute",
             "mcp.discovery_policy.update",
             "mcp.discovery_policy.view",
+            "mcp.directory.view",
+            "mcp.directory.replace",
             "mcp.groups.delete",
             "mcp.groups.move",
             "mcp.groups.upsert",
@@ -433,6 +461,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "roles.update",
         ],
     ),
+    core_simple_settings("system.roles", ROLE_RECORD_PERMISSION_NEW_OPERATIONS),
     core_simple_settings(
         "system.system-runtime",
         &[
@@ -468,6 +497,16 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     core_simple_settings(
         "system.ui-management",
         &[
+            "frontstage.blocks.code.update",
+            "frontstage.blocks.code.view",
+            "frontstage.blocks.create",
+            "frontstage.blocks.delete",
+            "frontstage.blocks.move",
+            "frontstage.blocks.open",
+            "frontstage.blocks.runtime.view",
+            "frontstage.blocks.search",
+            "frontstage.blocks.update",
+            "frontstage.blocks.view",
             "frontstage.groups.create",
             "frontstage.pages.create",
             "frontstage.pages.delete",
@@ -477,6 +516,10 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "frontstage.tabs.delete",
             "frontstage.tabs.document.save",
             "frontstage.tabs.update",
+            "ui_management.blocks.list",
+            "ui_management.blocks.create",
+            "ui_management.blocks.update",
+            "ui_management.blocks.delete",
             "ui_management.components.create",
             "ui_management.components.delete",
             "ui_management.components.list",
@@ -500,6 +543,26 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
 ];
 
 pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
+    // Block reading and authoring are independently configurable UI operations.
+    "frontstage.blocks.code.update",
+    "frontstage.blocks.code.view",
+    "frontstage.blocks.create",
+    "frontstage.blocks.delete",
+    "frontstage.blocks.move",
+    "frontstage.blocks.open",
+    "frontstage.blocks.runtime.view",
+    "frontstage.blocks.search",
+    "frontstage.blocks.update",
+    "frontstage.blocks.view",
+    "mcp.directory.view",
+    "mcp.directory.replace",
+    // Event Center introduces independent authority; no historical feature grant covers it.
+    "events.catalog.list",
+    "events.api_operations.list",
+    "events.api_operations.get",
+    "events.definitions.create",
+    "events.definitions.update",
+    "events.runtime.get",
     // Bulk and unread changes are configurable; reading an owned message is self-service.
     "notifications.channels.read_all",
     "notifications.messages.unread",
@@ -512,6 +575,22 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "files.access_links.create",
     // Previously root-only; historic role grants must not acquire host command access.
     "local_commands.execute",
+    // Terminal filesystem and retained-job authority is new; no historic role grant covers it.
+    "terminal.info",
+    "terminal.files.list",
+    "terminal.files.stat",
+    "terminal.files.read_text",
+    "terminal.files.read_range",
+    "terminal.files.search",
+    "terminal.files.read_image",
+    "terminal.files.read_audio",
+    "terminal.files.read_resource",
+    "terminal.files.import_resource",
+    "terminal.files.download_file",
+    "terminal.jobs.start",
+    "terminal.jobs.get",
+    "terminal.jobs.read",
+    "terminal.jobs.cancel",
     // Proxy discovery is a new authoring grant, independent of secret-management access.
     "agent_flow.http_node_proxy_options.list",
     // Installation branding did not exist in the audited historic permission baseline.
@@ -550,6 +629,8 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "communications.messages.list",
     "communications.files.list",
     "communications.files.get",
+    "communications.files.info",
+    "communications.files.image",
     "communications.messages.retry",
     // Log deletion is new destructive authority, never inferred from legacy application grants.
     "applications.logs.delete",
@@ -603,6 +684,9 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "roles.console_policy.view",
     "roles.console_policy_catalog.view",
     "roles.console_settings_order.replace",
+    // Existing roles-feature grants must not acquire per-record permission management.
+    "roles.record_permissions.replace",
+    "roles.record_permissions.view",
     "system_backups.catalog",
     "system_templates.catalog",
     "system_templates.export",
@@ -621,6 +705,10 @@ pub(super) const DEFAULT_DISABLED_NEW_OPERATION_IDS: &[&str] = &[
     "system_backups.recovery.reauth",
     "system_backups.recovery.status",
     "system_backups.verify",
+    "ui_management.blocks.list",
+    "ui_management.blocks.create",
+    "ui_management.blocks.update",
+    "ui_management.blocks.delete",
     "ui_management.components.create",
     "ui_management.components.delete",
     "ui_management.components.list",

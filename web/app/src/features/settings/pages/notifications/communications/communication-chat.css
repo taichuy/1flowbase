@@ -11,3 +11,8 @@
 .communication-chat .agent-flow-editor__debug-message-content {
   overflow-wrap: anywhere;
 }
+.communication-chat__quotation {
+  margin: 0 0 8px;
+  padding-inline-start: 12px;
+  border-inline-start: 2px solid var(--border-default);
+}

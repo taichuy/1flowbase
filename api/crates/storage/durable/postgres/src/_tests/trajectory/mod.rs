@@ -6,6 +6,8 @@ use serde_json::json;
 use storage_durable_postgres::PgControlPlaneStore;
 use uuid::Uuid;
 
+mod audit_hash;
+
 #[tokio::test]
 async fn trajectory_pages_are_body_free_and_selected_bodies_are_lossless_and_scoped() {
     let (pool, flow_run_id) = super::provider_protocol_capsule_store_tests::seeded_flow_run().await;

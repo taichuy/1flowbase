@@ -78,6 +78,17 @@ impl PgControlPlaneStore {
         }
 
         if callback_task.status == domain::CallbackTaskStatus::Completed {
+            let submitted_anthropic = input
+                .anthropic_continuation
+                .as_ref()
+                .map(serde_json::to_value)
+                .transpose()?;
+            if !domain::orchestration::callback_resume_payloads_match(
+                &json!({"anthropic_continuation":callback_task.response_payload.as_ref().and_then(|payload| payload.get("anthropic_continuation"))}),
+                &json!({"anthropic_continuation":submitted_anthropic}),
+            ) {
+                return Err(ControlPlaneError::Conflict("anthropic_continuation_conflict").into());
+            }
             let submitted_continuation = input
                 .responses_continuation
                 .as_ref()
@@ -184,7 +195,7 @@ impl PgControlPlaneStore {
         .fetch_one(&mut *tx)
         .await?;
         if remaining != 0 {
-            if input.responses_continuation.is_some() {
+            if input.responses_continuation.is_some() || input.anthropic_continuation.is_some() {
                 return Err(
                     ControlPlaneError::Conflict("responses_tool_output_incomplete_round").into(),
                 );
@@ -204,6 +215,9 @@ impl PgControlPlaneStore {
         .fetch_all(&mut *tx)
         .await?;
         let mut response_payload = json!({ "tool_results": result_payloads });
+        if let Some(continuation) = &input.anthropic_continuation {
+            response_payload["anthropic_continuation"] = serde_json::to_value(continuation)?;
+        }
         if let Some(continuation) = &input.responses_continuation {
             response_payload["responses_continuation"] = serde_json::to_value(continuation)?;
         }

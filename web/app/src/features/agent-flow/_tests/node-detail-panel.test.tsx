@@ -64,6 +64,7 @@ function createInitialState() {
       updated_at: '2026-04-16T10:00:00Z',
       document: createDefaultAgentFlowDocument({ flowId: 'flow-1' })
     },
+    analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
     autosave_interval_seconds: 30,
     user_protection_limit: 10,
     versions: []
@@ -100,6 +101,7 @@ function createWorkflowInitialState() {
       updated_at: '2026-04-16T10:00:00Z',
       document
     },
+    analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
     autosave_interval_seconds: 30,
     user_protection_limit: 10,
     versions: []
@@ -215,6 +217,29 @@ describe('NodeDetailPanel', () => {
       },
       me: null
     });
+  });
+
+  test('opens the current execution read-only while the workflow is active', async () => {
+    await renderWithProviders(
+      <AgentFlowEditorStoreProvider initialState={createInitialState()}>
+        <SelectionSeed nodeId="node-llm" />
+        <NodeDetailPanel
+          activeTab="config"
+          interactionLocked
+          onTabChange={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </AgentFlowEditorStoreProvider>
+    );
+
+    expect(screen.getByRole('tab', { name: '本次运行' })).toHaveAttribute(
+      'aria-selected', 'true'
+    );
+    expect(screen.getByRole('tab', { name: /设置|配置/ })).toHaveAttribute(
+      'aria-disabled', 'true'
+    );
+    expect(screen.getByLabelText('节点别名')).toBeDisabled();
+    expect(screen.getByRole('button', { name: '关闭节点详情' })).toBeEnabled();
   });
 
   test(

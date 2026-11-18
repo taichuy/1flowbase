@@ -114,6 +114,7 @@ async fn notification_switch_preserves_channel_credentials_history_and_scope() {
             audit(actor, command.target_installation_id),
             None,
             vec!["fixture/private".into()],
+            None,
         )
         .await
         .unwrap();
@@ -189,6 +190,7 @@ async fn notification_switch_rejects_incompatible_channels_and_rolls_back_audit_
             audit(actor, command.target_installation_id),
             None,
             vec!["fixture/private".into()],
+            None,
         )
         .await
         .unwrap_err();
@@ -235,6 +237,7 @@ async fn notification_switch_serializes_creation_and_rejects_stale_installation(
             audit(actor, command.target_installation_id),
             None,
             vec!["fixture/private".into()],
+            None,
         )
         .await
         .unwrap();
@@ -244,4 +247,44 @@ async fn notification_switch_serializes_creation_and_rejects_stale_installation(
         .unwrap()
         .unwrap_err();
     assert!(error.to_string().contains("type_unavailable"));
+}
+
+#[tokio::test]
+async fn workspace_notification_switch_excludes_assigned_system_execution() {
+    let (store, actor, command, _) = fixture().await;
+    let mut system = managed_input(actor, "10.0.0");
+    system.installation.provider_code = "system-fixture".into();
+    system.installation.plugin_id = "northwind.system-fixture@10.0.0".into();
+    system.installation.metadata_json = json!({"binding_targets":["system"]});
+    system.settings_templates.clear();
+    let installed = store.commit_plugin_installation(&system).await.unwrap();
+    store
+        .create_assignment(&CreatePluginAssignmentInput {
+            installation_id: installed.id,
+            workspace_id: command.workspace_id,
+            provider_code: installed.provider_code.clone(),
+            actor_user_id: actor,
+        })
+        .await
+        .unwrap();
+    desired(
+        &store,
+        installed.id,
+        actor,
+        PluginDesiredState::ActiveRequested,
+    )
+    .await
+    .unwrap();
+    // Such assignments expose system-package UI; execution is absent from the workspace graph.
+    let lease = store
+        .lock_managed_installation_switch(&command)
+        .await
+        .unwrap();
+    lease.release().await.unwrap();
+    let mut wrong = command;
+    wrong.installation_ids.push(installed.id);
+    let rejected = store.lock_managed_installation_switch(&wrong).await;
+    assert!(
+        matches!(rejected, Err(ref error) if error.to_string().contains("managed_workspace_candidate_changed"))
+    );
 }

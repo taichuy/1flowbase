@@ -19,6 +19,7 @@
 | 目录 / crate | 唯一职责 | 允许的内部直接依赖 |
 | --- | --- | --- |
 | `domain` | 领域对象、不变量、状态与作用域语义 | 无 |
+| `api/` | `api-host-kernel` 与六个协议适配域，共七个库；详细 owner 见 [api/AGENTS.md](api/AGENTS.md) | 只有 `api-server` 直接消费域；域 → Kernel，无域间 Cargo 边，Kernel 不依赖 Root / 域 |
 | `interface-runtime` | 协议无关的 Definition / Binding / compiled Plan、Registry snapshot、认证关联及 Invocation Kernel / Receipt / 有界收尾 | `domain` |
 | `extension-contracts` | Host / Runtime 稳定 wire type、Slot 与协议错误 | 无 |
 | `access-control` | 权限目录、角色与授权规则 | `domain` |
@@ -37,9 +38,16 @@
 | `storage/durable/postgres` (`storage-durable-postgres`) | PostgreSQL repository、SQL、事务、migration 与 mapper | `control-plane-contracts`、`domain`、`extension-contracts`、`storage-durable` |
 | `storage/ephemeral` | session、cache、lease、lock、queue 等短期状态实现 | `control-plane-contracts`、`domain` |
 | `storage/object` | 业务文件对象存储 driver | 无 |
+| `api-test-selection` | API 测试 root 的窄 item 分组选取与 fixture 局部 lint；仅 proc_macro/标准库，不承载生产职责 | 无；仅允许 `api-server` 的 dev-dependency 使用 |
 | `control-plane-test-support` | Control Plane 测试 fixture 与 builder | 仅测试使用 |
 | `postgres-test-support` | PostgreSQL 隔离 schema、migration 与数据库 fixture | 仅测试使用 |
 | `control-plane-postgres-tests` | 真实 Control Plane + PostgreSQL 跨层验收 | 仅测试使用，不承载生产实现；`runtime-core`、`orchestration-runtime` 仅作 dev-dependency 装配真实执行 consumer |
+
+## Test-only Dependencies
+
+- API 域的纯模块测试随域；Root 保留跨域装配 / HTTP / 混合白盒测试，窄 fixture 接缝由 `test-support` 提供。根库和三个私有 include 根仍用 `api-test-selection`，不在域 crate 复制选择器或减少原测试。
+
+- `control-plane` tests may use `storage-ephemeral` as a dev-dependency to exercise Event Center against the real MemoryEventBus. Production dependency rules above remain unchanged.
 
 ## Placement Rules
 

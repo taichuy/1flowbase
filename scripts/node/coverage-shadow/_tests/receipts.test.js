@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const {
   collectNextestTestIds,
   mergeApiServerShadow,
@@ -32,7 +33,7 @@ function inventory(testIds, ignoredIds = []) {
 
 function metadata(index = 1) {
   return {
-    package: 'api-server', partition: `hash:${index}/4`, sha,
+    package: 'api-server', packages: ['api-server'], partition: `hash:${index}/4`, sha,
     testCount: 1, ignoredCount: 1, exitCode: 0, passedCount: 1, failedCount: 0, profileCount: 1,
   };
 }
@@ -112,7 +113,9 @@ test('metadata rejects missing or wrong package, partition, SHA, execution, inve
     assert.throws(() => validateShardMetadata({ ...options, metadata: incomplete }), /coverage shard/u, field);
   }
   for (const patch of [
-    { package: 'control-plane' }, { partition: 'hash:2/4' }, { sha: 'old-sha' },
+    { package: 'control-plane' }, { packages: ['api-server', 'api-host-kernel'] }, { packages: ['api-server', 'api-applications'] },
+    { packages: ['api-server', 'api-console-settings'] }, { packages: ['api-server', 'api-mcp'] },
+    { packages: ['api-server', 'api-plugins-models'] }, { packages: ['api-server', 'api-console-interaction'] }, { partition: 'hash:2/4' }, { sha: 'old-sha' },
     { testCount: 0 }, { testCount: 2 }, { ignoredCount: 0 },
     { exitCode: 1 }, { passedCount: 0 }, { passedCount: 2 }, { failedCount: 1 },
     { profileCount: 0 }, { profileCount: 2 },
@@ -151,6 +154,43 @@ test('successful shard persists raw output and metadata only after exact runnabl
   assert.equal(fs.readFileSync(path.join(directory, 'nextest-1.stderr.log'), 'utf8'), rawStderr);
   assert.equal(echoedStdout, rawStdout);
   assert.equal(echoedStderr, rawStderr);
+});
+
+test('buffered nextest-list failures expose bounded child diagnostics before rejecting the shard', (t) => {
+  const repoRoot = temporaryRepo(t);
+  const directory = path.join(repoRoot, 'tmp/test-governance/coverage-shadow/api-server/shard-1');
+  const stdoutTail = '\nlist stdout evidence\n';
+  const stderrTail = '\nerror[E0425]: compiler diagnostic evidence\n';
+  const childScript = `process.stdout.write('界'.repeat(30000) + ${JSON.stringify(stdoutTail)});`
+    + `process.stderr.write('界'.repeat(30000) + ${JSON.stringify(stderrTail)}); process.exitCode = 101;`;
+  let echoedStdout = '';
+  let echoedStderr = '';
+  let executionStarted = false;
+  assert.throws(() => runApiServerShard({
+    repoRoot, shardIndex: 1, shardCount: 4, cargoTestThreads: 2,
+    env: { QUALITY_GATE_TARGET_SHA: sha },
+    writeStdout(text) { echoedStdout += text; }, writeStderr(text) { echoedStderr += text; },
+    spawnSyncImpl(_command, args, options) {
+      if (args[1] === 'show-env') return { status: 0, stdout: llvmEnvironment };
+      if (args[0] === 'clean') return { status: 0, stdout: '' };
+      if (args[1] === 'list') {
+        // Exercise actual buffered child IO, without invoking Cargo or compiling anything.
+        return spawnSync(process.execPath, ['-e', childScript], options);
+      }
+      executionStarted = true;
+      throw new Error('listing failure must prevent test execution');
+    },
+  }), /nextest list .*failed with exit code 101/u);
+  assert.ok(echoedStdout.endsWith(stdoutTail), 'failed buffered stdout must remain visible');
+  assert.ok(echoedStderr.endsWith(stderrTail), 'failed buffered stderr must remain visible');
+  for (const output of [echoedStdout, echoedStderr]) {
+    assert.ok(Buffer.byteLength(output) <= 64 * 1024 + 128, 'failure diagnostics must be bounded');
+  }
+  assert.equal(executionStarted, false);
+  assert.equal(fs.readFileSync(path.join(directory, 'nextest-list-1.stdout.log'), 'utf8'), '界'.repeat(30000) + stdoutTail);
+  assert.equal(fs.readFileSync(path.join(directory, 'nextest-list-1.stderr.log'), 'utf8'), '界'.repeat(30000) + stderrTail);
+  assert.equal(fs.existsSync(path.join(directory, 'metadata-1.json')), false);
+  assert.equal(fs.existsSync(path.join(directory, 'inventory-1.json')), false);
 });
 
 test('failed, empty or incomplete shard execution cannot leave a successful receipt', (t) => {
@@ -236,3 +276,65 @@ test('API coverage cannot pass with an empty or malformed owned line denominator
     assert.throws(() => validateCoverageSummary(value), /API-owned/u);
   }
 });
+
+test('merge applies the same owner selection and stale-source rejection to every current API owner', (t) => {
+  for (const owner of ['kernel', 'public-gateway', 'applications', 'console-settings', 'mcp', 'plugins-models', 'console-interaction']) {
+    const { repoRoot, directory } = prepareMerge(t);
+    const packageName = owner === 'kernel' ? 'api-host-kernel' : `api-${owner}`;
+    const manifest = path.join(repoRoot, 'api/crates/api', owner, 'Cargo.toml');
+    fs.mkdirSync(path.dirname(manifest), { recursive: true });
+    fs.writeFileSync(manifest, '[package]\n');
+    for (let index = 1; index <= 4; index += 1) {
+      fs.writeFileSync(path.join(directory, `metadata-${index}.json`), JSON.stringify({ ...metadata(index), packages: ['api-server', packageName] }));
+    }
+    const selected = ['--package', 'api-server', '--package', packageName];
+    const stale = `/repo/api/crates/api/${owner}/src/deleted.rs`;
+    assert.throws(() => mergeApiServerShadow({
+      repoRoot, shardCount: 4, env: { QUALITY_GATE_TARGET_SHA: sha },
+      spawnSyncImpl(_command, args) {
+        if (args[1] === 'show-env') return { status: 0, stdout: llvmEnvironment };
+        assert.deepEqual(args.filter((_arg, i) => args[i - 1] === '--package' || _arg === '--package'), selected);
+        if (args[0] === 'clean') return { status: 0, stdout: '' };
+        if (args[1] === 'list') return { status: 0, stdout: JSON.stringify(inventory(['1', '2', '3', '4'], ['later'])) };
+        const value = summary();
+        value.data[0].files[0].filename = stale;
+        fs.writeFileSync(args.at(-1), JSON.stringify(value));
+        return { status: 0 };
+      },
+    }), /sources absent from the candidate/u);
+  }
+});
+
+
+for (const owner of ['applications', 'console-settings', 'mcp', 'plugins-models', 'console-interaction']) {
+  test(`${owner} shard provenance merges only with its exact current package identity and live source`, (t) => {
+    const { repoRoot, root, directory, finalPath } = prepareMerge(t);
+    const sources = ['api/apps/api-server/src/lib.rs', `api/crates/api/${owner}/src/lib.rs`];
+    for (const file of sources) {
+      fs.mkdirSync(path.dirname(path.join(repoRoot, file)), { recursive: true });
+      fs.writeFileSync(path.join(repoRoot, file), 'pub fn live() {}\n');
+    }
+    fs.writeFileSync(path.join(repoRoot, `api/crates/api/${owner}/Cargo.toml`), '[package]\n');
+    for (let index = 1; index <= 4; index += 1) {
+      fs.writeFileSync(path.join(directory, `metadata-${index}.json`), JSON.stringify({ ...metadata(index), packages: ['api-server', `api-${owner}`] }));
+    }
+    const value = summary();
+    value.data[0].files.push({ filename: `/repo/api/crates/api/${owner}/src/lib.rs`, summary: { lines: { count: 10, covered: 8 } } });
+    mergeApiServerShadow({
+      repoRoot, shardCount: 4, env: { QUALITY_GATE_TARGET_SHA: sha },
+      spawnSyncImpl(_command, args) {
+        if (args[1] === 'show-env') return { status: 0, stdout: llvmEnvironment };
+        assert.deepEqual(args.filter((_arg, index) => args[index - 1] === '--package' || _arg === '--package'), ['--package', 'api-server', '--package', `api-${owner}`]);
+        if (args[0] === 'clean') return { status: 0, stdout: '' };
+        if (args[1] === 'list') return { status: 0, stdout: JSON.stringify(inventory(['1', '2', '3', '4'], ['later'])) };
+        fs.writeFileSync(args.at(-1), JSON.stringify(value));
+        return { status: 0 };
+      },
+    });
+    const evidence = JSON.parse(fs.readFileSync(path.join(root, 'equivalence.json'), 'utf8'));
+    assert.equal(evidence.sha, sha);
+    assert.equal(evidence.coverage.lineCoveragePercent, 80);
+    assert.equal(evidence.shards.every((shard) => JSON.stringify(shard.packages) === JSON.stringify(['api-server', `api-${owner}`])), true);
+    assert.deepEqual(JSON.parse(fs.readFileSync(finalPath, 'utf8')), value);
+  });
+}

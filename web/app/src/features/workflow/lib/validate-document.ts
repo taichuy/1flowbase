@@ -23,6 +23,21 @@ export function validateWorkflowDocument(
     (node) => node.type === 'start' || node.type === 'answer'
   );
 
+  for (const node of startNodes) {
+    if (node.outputs.length > 0) {
+      issues.push({
+        id: `${node.id}-start-outputs`,
+        scope: 'node',
+        level: 'error',
+        nodeId: node.id,
+        sectionKey: 'outputs',
+        fieldKey: 'outputs',
+        title: '开始节点配置错误',
+        message: '输入变量由输入参数生成，请移除重复声明的输出字段。'
+      });
+    }
+  }
+
   if (startNodes.length !== 1) {
     issues.push({
       id: 'workflow-start-count',

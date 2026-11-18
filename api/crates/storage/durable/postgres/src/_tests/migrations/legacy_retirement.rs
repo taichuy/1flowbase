@@ -150,7 +150,16 @@ async fn legacy_retirement_refuses_nonempty_ledger_then_preserves_thirteen_sourc
             .bind(index as i64 + 1).bind(id).execute(&pool).await.unwrap();
     }
     let before = old_transport(&pool).await;
-    let retained = retained_transport(&pool).await;
+    let mut retained = retained_transport(&pool).await;
+    for source in retained["sources"].as_array_mut().unwrap() {
+        // A later migration adds nullable observation metadata to each retained
+        // publication; its original fact, delivery receipt and money stay exact.
+        assert!(source.get("observation_context").is_none());
+        source
+            .as_object_mut()
+            .unwrap()
+            .insert("observation_context".into(), Value::Null);
+    }
     let monetary = money(&pool).await;
     for key in ["accounts", "ledger", "sessions"] {
         assert!(
@@ -203,7 +212,14 @@ async fn legacy_retirement_refuses_pending_source_or_unfinished_sibling_receipt(
     }
     sqlx::query("update lifecycle_outbox_deliveries set status='delivered',delivered_at=now() where event_id=$1")
         .bind(event).execute(&pool).await.unwrap();
-    let before = retained_transport(&pool).await;
+    let mut before = retained_transport(&pool).await;
+    for source in before["sources"].as_array_mut().unwrap() {
+        assert!(source.get("observation_context").is_none());
+        source
+            .as_object_mut()
+            .unwrap()
+            .insert("observation_context".into(), Value::Null);
+    }
     crate::run_migrations(&pool).await.unwrap();
     assert_eq!(retained_transport(&pool).await, before);
 }

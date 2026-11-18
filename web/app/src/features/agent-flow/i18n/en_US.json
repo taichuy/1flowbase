@@ -1,4 +1,8 @@
 {
+  "analysis": {
+    "pending": "Analyzing variables and outputs…",
+    "unavailable": "Variable and output analysis is unavailable. Editing the draft will retry."
+  },
   "trajectory": {
     "range_start": "Range start",
     "range_end": "Range end",
@@ -336,6 +340,7 @@
     "description": "Description",
     "basic_information": "Basic information",
     "last_run": "last run",
+    "current_run": "Current run",
     "filter_value": "Filter value {{value1}}",
     "output_variable_name_configured": "Output variable name is not configured",
     "turn_off_variable_caching": "Turn off variable caching",
@@ -755,6 +760,8 @@
     "tracking_nodes": "Tracking nodes",
     "loading_failed": "Loading failed",
     "system_variable_workflow_run_id": "Workflow run ID",
+    "system_variable_creator_credential": "Creator API credential (current run only)",
+    "system_variable_executor_credential": "Executor API credential (current run only)",
     "wait_manual_input_continue_process": "Wait for manual input to continue the process.",
     "node_any_valid_incoming_edges": "The current node does not have any valid incoming edges.",
     "no_model_yet": "No model yet",
@@ -933,5 +940,9 @@
     "invalid_variable": "Variable names must be nonempty, unique, and not start with __. Select a supported type.",
     "invalid_variable_value": "Assignments must name unique declared variables and match their declared types.",
     "initial_value_required": "Every loop variable requires an initial value."
+  },
+  "execution": {
+    "flow_status": "Workflow status",
+    "round": "Round {{round}}"
   }
 }

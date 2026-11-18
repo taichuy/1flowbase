@@ -155,3 +155,81 @@ test('formal repository reviews all bind source and distinct evidence without hi
     }
   }
 });
+
+
+test('model-provider JSON reviews retain exact source evidence after the Plugins owner move', (t) => {
+  const repoRoot = path.resolve(__dirname, '../../../..');
+  const baseline = JSON.parse(fs.readFileSync(path.join(repoRoot, 'scripts/node/check-rust-backend/baseline.json'), 'utf8'));
+  const entries = baseline.allowedFindings.filter(entry => ['json-model-provider-catalog', 'json-model-provider-options'].includes(entry.id));
+  assert.equal(entries.length, 2);
+  const file = 'api/crates/api/plugins-models/src/routes/plugins_and_models/model_providers/response_mapping.rs';
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-json-reviews-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  function write(relative, bytes) {
+    fs.mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
+    fs.writeFileSync(path.join(root, relative), bytes);
+  }
+  for (const entry of entries) {
+    assert.equal(entry.file, file);
+    for (const [source, hash] of [[entry.file, entry.source_sha256], ...entry.evidence.map(item => [item.file, item.sha256])]) {
+      const bytes = fs.readFileSync(path.join(repoRoot, source));
+      assert.equal(sha256(bytes), hash, source);
+      write(source, bytes);
+    }
+  }
+  write('scripts/node/check-rust-backend/baseline.json', JSON.stringify({ ...baseline, allowedFindings: entries }));
+  const current = collectRustBackendFindings({ repoRoot: root, includeSuppressed: true });
+  assert.deepEqual(current.filter(item => item.suppressed).map(item => item.reviewId).sort(), entries.map(entry => entry.id).sort());
+  assert.deepEqual(current.filter(item => /^(?:invalid|retired)-baseline-review$/u.test(item.rule)), []);
+  const former = 'api/apps/api-server/src/routes/plugins_and_models/model_providers/response_mapping.rs';
+  write(former, fs.readFileSync(path.join(root, file)));
+  const formerFindings = collectRustBackendFindings({ repoRoot: root, includeSuppressed: true }).filter(item => item.file === former && item.rule === 'no-production-escape');
+  assert.equal(formerFindings.length, 2);
+  assert.equal(formerFindings.every(item => !item.suppressed), true);
+});
+
+test('host construction and managed hashing reviews reject changed runtime boundaries', (t) => {
+  const repoRoot = path.resolve(__dirname, '../../../..');
+  const baseline = JSON.parse(fs.readFileSync(path.join(repoRoot, 'scripts/node/check-rust-backend/baseline.json'), 'utf8'));
+  const entries = baseline.allowedFindings.filter(entry =>
+    ['host-fingerprint-construction', 'managed-executable-blocking-pool'].includes(entry.id));
+  assert.equal(entries.length, 2);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'host-boundary-reviews-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  function write(file, bytes) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.writeFileSync(path.join(root, file), bytes);
+  }
+  for (const entry of entries) {
+    for (const [file, hash] of [[entry.file, entry.source_sha256],
+      ...entry.evidence.map(item => [item.file, item.sha256])]) {
+      const bytes = fs.readFileSync(path.join(repoRoot, file));
+      assert.equal(sha256(bytes), hash, file);
+      write(file, bytes);
+    }
+  }
+  write('scripts/node/check-rust-backend/baseline.json', JSON.stringify({ ...baseline, allowedFindings: entries }));
+  const findings = () => collectRustBackendFindings({ repoRoot: root, includeSuppressed: true });
+  const reviewed = (report, entry) => report.find(item => item.file === entry.file
+    && item.rule === entry.rule && item.snippet.trim() === entry.snippet.trim());
+  const current = findings();
+  assert.deepEqual(current.filter(item => item.suppressed).map(item => item.reviewId).sort(),
+    entries.map(entry => entry.id).sort());
+  assert.deepEqual(current.filter(item => /^(?:invalid|retired)-baseline-review$/u.test(item.rule)), []);
+  for (const [file, before, after, reviewId] of [
+    ['api/crates/runtime-profile/src/profile.rs', 'host_fingerprint: self.host_fingerprint.clone()',
+      'host_fingerprint: detect_host_fingerprint()?', 'host-fingerprint-construction'],
+    ['api/crates/runtime-extension-host/src/runtime_host.rs',
+      'tokio::task::spawn_blocking(move || {\n            let _permit = hash_permit;\n            binding.verify_executable()\n        })',
+      'binding.verify_executable()', 'managed-executable-blocking-pool'],
+  ]) {
+    const original = fs.readFileSync(path.join(root, file), 'utf8');
+    assert.ok(original.includes(before), `${reviewId}: current reviewed boundary`);
+    write(file, original.replace(before, after));
+    const changed = findings();
+    assert.equal(reviewed(changed, entries.find(entry => entry.id === reviewId)).suppressed, false);
+    assert.ok(changed.some(item => item.rule === 'invalid-baseline-review' && item.reviewId === reviewId
+      && item.reviewProblems.some(problem => problem.includes(`SHA256 changed: ${file}`))));
+    write(file, original);
+  }
+});

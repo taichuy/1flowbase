@@ -40,10 +40,11 @@ fn external_auth_entry_action_comes_from_active_definition_and_safe_public_proje
     let json = serde_json::to_value(&public).unwrap();
     assert_eq!(json["entry_action"], "external_login");
     assert!(!json.to_string().contains("credential-canary"));
-    let output = login_entries_interface::PublicLoginEntriesOutput(PublicLoginEntriesResponse {
-        default_login_entry_id: Uuid::nil(),
-        login_entries: vec![public],
-    });
+    let output =
+        login_entries_interface::PublicLoginEntriesOutput::test_new(PublicLoginEntriesResponse {
+            default_login_entry_id: Uuid::nil(),
+            login_entries: vec![public],
+        });
     let schema =
         login_entries_interface::PublicLoginEntriesOutput::managed_projection_schema().unwrap();
     let projection = crate::extension_bus::FrozenManagedProjection::compile(

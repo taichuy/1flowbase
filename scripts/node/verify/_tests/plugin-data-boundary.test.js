@@ -72,7 +72,7 @@ test('Delivery 1919 preserves additive provider wire and trusted internal princi
     'api/crates/runtime-extension-host/src/stdio_runtime.rs',
     'api/crates/runtime-extension-host/src/_tests/stdio_runtime/tests.rs',
   ].map(read).join('\n');
-  const apiRuntime = read('api/apps/api-server/src/provider_runtime/mod.rs');
+  const apiRuntime = read('api/crates/api/kernel/src/host/provider_runtime/mod.rs');
   assert.match(provider, /current_provider_wire_input\(&loaded, &input\)/u);
   assert.match(stdio, /RuntimeHostWorkerFrame/u);
   assert.match(stdio, /ProviderRuntimeLine/u);

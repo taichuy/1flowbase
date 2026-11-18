@@ -17,7 +17,7 @@ export interface ConsoleRolePermissions {
   permission_codes: string[];
 }
 
-export type ConsolePolicyGroupKind = 'settings_feature' | 'other';
+export type ConsolePolicyGroupKind = 'settings_feature' | 'plugin' | 'other';
 export type ConsolePolicyStrategy = 'full' | 'custom';
 export type ConsolePolicyRowScope = 'disabled' | 'own' | 'scope_all';
 export type ConsolePolicyCatalogLocale = 'zh_Hans' | 'en_US';
@@ -75,6 +75,7 @@ export interface ConsolePolicyCatalogOperation {
 export interface ConsolePolicyCatalogGroup {
   kind: ConsolePolicyGroupKind;
   group_id: string;
+  settings_feature_id: string | null;
   label: string;
   description: string;
   operations: ConsolePolicyCatalogOperation[];

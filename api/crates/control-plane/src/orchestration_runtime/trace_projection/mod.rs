@@ -17,7 +17,7 @@ pub use watermark::{
     trace_projection_source_watermark, trace_projection_source_watermark_from_source,
 };
 
-pub const APPLICATION_RUN_TRACE_PROJECTION_VERSION: i32 = 15;
+pub const APPLICATION_RUN_TRACE_PROJECTION_VERSION: i32 = 16;
 
 pub fn legacy_locator_component(
     source_path: &str,
@@ -65,6 +65,7 @@ pub fn build_application_run_trace_projection_from_source(
         builder.push_stitched_context_group(current_node_groups.len(), &detail.stitched_trace)?;
     }
 
+    builder.nest_container_nodes(&detail.node_runs);
     builder.apply_native_messages(detail)?;
     Ok(builder.finish())
 }
@@ -1020,6 +1021,7 @@ impl TraceProjectionBuilder {
 }
 
 mod aggregation;
+mod container_nodes;
 use aggregation::*;
 
 mod tool_callbacks;

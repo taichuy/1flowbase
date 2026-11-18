@@ -84,6 +84,13 @@ impl EventBus for FakeInfrastructure {
     fn event_bus_snapshot(&self) -> EventBusSnapshot {
         EventBusSnapshot::default()
     }
+    fn try_reserve(
+        &self,
+        _topic: &str,
+        _bytes: u64,
+    ) -> Result<Box<dyn EventPermit>, EventBusError> {
+        Err(EventBusError::NoConsumer)
+    }
     async fn reserve(
         &self,
         _topic: &str,

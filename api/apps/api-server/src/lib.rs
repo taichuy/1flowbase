@@ -1,13 +1,23 @@
-#![recursion_limit = "256"]
-
-extern crate self as api_server;
+#[path = "boot_composition/applications_assembly/mod.rs"]
+mod applications_assembly;
+#[path = "boot_composition/managed_runtime_assembly/mod.rs"]
+mod managed_runtime_assembly;
+#[path = "boot_composition/public_gateway_assembly/mod.rs"]
+mod public_gateway_assembly;
+use extension_bus::SnapshotAssembly;
 #[path = "boot_composition/generation_dispatch.rs"]
 mod generation_dispatch;
+#[path = "boot_composition/interaction_assembly.rs"]
+mod interaction_assembly;
 #[path = "boot_composition/managed_publication.rs"]
 mod managed_publication;
 mod managed_service_mcp;
 mod managed_services;
+#[path = "boot_composition/mcp_assembly.rs"]
+mod mcp_assembly;
 mod resource_import;
+#[path = "boot_composition/settings_assembly/mod.rs"]
+mod settings_assembly;
 
 pub mod agent_logs_protocol;
 pub mod app_state;
@@ -22,6 +32,7 @@ pub mod console_policy_migration;
 #[path = "console_contracts/console_surface_registry.rs"]
 pub mod console_surface_registry;
 pub mod error_response;
+mod event_center;
 pub mod extension_bus;
 #[path = "console_contracts/external_endpoint_catalog.rs"]
 pub(crate) mod external_endpoint_catalog;
@@ -38,10 +49,13 @@ pub mod host_route_registry;
 #[path = "boot_composition/host_worker_registry.rs"]
 pub mod host_worker_registry;
 mod local_command;
+pub mod local_terminal;
 pub mod middleware;
 #[path = "catalog_sources/model_pricing_catalog.rs"]
 pub(crate) mod model_pricing_catalog;
+#[path = "network/network_egress_client.rs"]
 pub mod network_egress_client;
+#[path = "network/network_egress_probe.rs"]
 pub mod network_egress_probe;
 mod notification_runtime;
 #[path = "catalog_sources/official_extension_catalog.rs"]
@@ -59,12 +73,17 @@ pub mod provider_runtime;
 pub mod recovery_authorization;
 pub mod response;
 pub mod routes;
+#[path = "internal/runtime_activity.rs"]
 pub mod runtime_activity;
 pub mod runtime_data_model_docs;
 pub mod runtime_profile_client;
 pub mod runtime_registry_sync;
 pub mod system_backup;
 pub mod system_recovery;
+/// Shared fixtures for the native API integration targets.
+#[doc(hidden)]
+#[cfg(feature = "test-support")]
+pub mod test_support;
 #[path = "catalog_sources/ui_component_catalog_source.rs"]
 pub mod ui_component_catalog_source;
 pub mod workers;
@@ -266,6 +285,7 @@ fn base_router(include_docs_ui: bool, static_openapi: bool) -> Router {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(test)]
 pub(crate) fn root_external_endpoint_contributions(
     include_docs: bool,
@@ -373,6 +393,7 @@ pub fn app_with_state(state: Arc<ApiState>) -> Router {
         .layer(TraceLayer::new_for_http().make_span_with(safe_http_trace_span))
 }
 
+#[cfg_attr(test, api_test_selection::group(core, contracts))]
 #[cfg(test)]
 fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
     let interface_snapshot = state
@@ -579,6 +600,7 @@ pub fn init_tracing() {
         .try_init();
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::{
@@ -627,10 +649,12 @@ mod tests {
     }
 }
 
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(all(test, feature = "root-1805-consumer-fixture"))]
 #[path = "_tests/root_1805_consumer_fixture.rs"]
 mod _tests;
 
+#[cfg_attr(test, api_test_selection::group(contracts))]
 #[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
 mod _tests;
 
@@ -641,9 +665,15 @@ pub struct ApiRuntimeShutdown {
     operations: Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime>,
     lifecycle_worker: control_plane::lifecycle_outbox_dispatcher::LifecycleOutboxWorker,
     communication_worker: communication_runtime::CommunicationWorker,
+    event_workflow_worker:
+        tokio::sync::Mutex<Option<workers::event_workflow::EventWorkflowLoopHandle>>,
 }
 impl ApiRuntimeShutdown {
     pub async fn stop(&self) -> Result<()> {
+        let event_worker = self.event_workflow_worker.lock().await.take();
+        if let Some(worker) = event_worker {
+            worker.shutdown().await;
+        }
         self.communication_worker.stop().await;
         crate::managed_services::stream::revoke_all();
         self.services
@@ -675,3 +705,18 @@ impl ApiRuntimeShutdown {
 mod startup_assembly;
 
 use startup_assembly::*;
+
+#[cfg_attr(test, api_test_selection::group(contracts, routes))]
+#[cfg(test)]
+#[path = "_tests/support/native_settings_fixture.rs"]
+mod native_settings_fixture;
+
+#[cfg_attr(test, api_test_selection::group(core))]
+#[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
+#[path = "_tests/private_root_support.rs"]
+mod _tests;
+
+#[cfg_attr(test, api_test_selection::group(contracts))]
+#[cfg(all(test, feature = "root-1805-consumer-fixture"))]
+#[path = "_tests/private_root_support.rs"]
+mod _tests;

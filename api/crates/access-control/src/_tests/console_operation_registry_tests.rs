@@ -145,6 +145,7 @@ fn complete_locale_catalog() -> ConsoleLocaleCatalogContribution {
                 "允许当前工作区中的记录",
             ),
         ],
+        plugin_groups: vec![],
         policy_groups: vec![],
     }
 }
@@ -828,4 +829,131 @@ fn ac_003_interface_metadata_rejects_missing_duplicate_blank_and_non_english_ent
             .expect_err("invalid interface metadata must fail closed");
         assert!(error.to_string().contains(expected), "{error}");
     }
+}
+
+#[test]
+fn plugin_groups_cover_only_their_managed_service_settings_routes() {
+    let mut feature = settings_feature(
+        "acme.calendar.settings",
+        "GET",
+        "/api/console/acme/calendar",
+    );
+    feature.owner = owner(SettingsFeatureOwnerKind::ManagedService, "acme.calendar");
+    let settings = SettingsFeatureRegistry::compile([feature]).unwrap();
+    let mut op = operation(
+        "acme.calendar.list",
+        ConsolePolicyGroup::Plugin("acme.calendar".into()),
+        ConsoleAuthorization::Simple,
+        vec![route("GET", "/api/console/acme/calendar")],
+    );
+    op.owner = owner(SettingsFeatureOwnerKind::ManagedService, "acme.calendar");
+    assert!(ConsoleOperationRegistry::compile(&settings, [op.clone()], []).is_ok());
+
+    let mut wrong_owner = op.clone();
+    wrong_owner.policy_group = ConsolePolicyGroup::Plugin("other.calendar".into());
+    assert!(ConsoleOperationRegistry::compile(&settings, [wrong_owner], []).is_err());
+    let mut cross_owner = op.clone();
+    cross_owner.owner.owner_id = "other.calendar".into();
+    cross_owner.operation_id = "other.calendar.list".into();
+    cross_owner.policy_group = ConsolePolicyGroup::Plugin("other.calendar".into());
+    assert!(ConsoleOperationRegistry::compile(&settings, [cross_owner], []).is_err());
+    let mut wrong_version = op.clone();
+    wrong_version.owner.version = "2.0.0".into();
+    assert!(ConsoleOperationRegistry::compile(&settings, [wrong_version], []).is_err());
+    let mut wrong_kind = op.clone();
+    wrong_kind.owner.kind = SettingsFeatureOwnerKind::Core;
+    assert!(ConsoleOperationRegistry::compile(&settings, [wrong_kind], []).is_err());
+    let mut legacy_group = op.clone();
+    legacy_group.policy_group =
+        ConsolePolicyGroup::SettingsFeature("acme.calendar.settings".into());
+    assert!(ConsoleOperationRegistry::compile(&settings, [legacy_group], []).is_err());
+    let mut multi_route = op;
+    multi_route
+        .routes
+        .push(route("POST", "/api/console/acme/calendar"));
+    assert!(ConsoleOperationRegistry::compile(&settings, [multi_route], []).is_err());
+}
+
+#[test]
+fn plugin_group_without_settings_page_is_configurable() {
+    let settings = SettingsFeatureRegistry::compile([]).unwrap();
+    let mut op = operation(
+        "acme.calendar.list",
+        ConsolePolicyGroup::Plugin("acme.calendar".into()),
+        ConsoleAuthorization::Simple,
+        vec![route("GET", "/api/console/acme/calendar")],
+    );
+    op.owner = owner(SettingsFeatureOwnerKind::ManagedService, "acme.calendar");
+    assert!(ConsoleOperationRegistry::compile(&settings, [op], []).is_ok());
+}
+
+#[test]
+fn plugin_locale_display_requires_the_matching_managed_service_owner() {
+    let settings = SettingsFeatureRegistry::compile([]).unwrap();
+    let plugin_owner = owner(SettingsFeatureOwnerKind::ManagedService, "acme.calendar");
+    let mut op = operation(
+        "acme.calendar.list",
+        ConsolePolicyGroup::Plugin("acme.calendar".into()),
+        ConsoleAuthorization::Simple,
+        vec![route("GET", "/api/console/acme/calendar")],
+    );
+    op.owner = plugin_owner.clone();
+    let mut common = complete_locale_catalog();
+    common
+        .texts
+        .retain(|text| !text.reference.starts_with("settings."));
+    let contribution = ConsoleLocaleCatalogContribution {
+        owner: plugin_owner,
+        lifecycle: SettingsFeatureLifecycle::Active,
+        texts: vec![
+            locale_text("acme.calendar.label", "Calendar", "日历"),
+            locale_text(
+                "acme.calendar.description",
+                "Calendar operations",
+                "日历操作",
+            ),
+        ],
+        policy_groups: vec![],
+        plugin_groups: vec![crate::ConsoleOtherPolicyGroupDisplay {
+            group_id: "acme.calendar".into(),
+            label_ref: "acme.calendar.label".into(),
+            description_ref: "acme.calendar.description".into(),
+        }],
+    };
+    let registry = ConsoleOperationRegistry::compile_with_locale_catalog(
+        &settings,
+        [op.clone()],
+        [],
+        [common.clone(), contribution.clone()],
+    )
+    .unwrap();
+    assert_eq!(
+        registry
+            .inventory()
+            .locale_catalog
+            .as_ref()
+            .unwrap()
+            .policy_group_display(&op.policy_group, "en_US")
+            .unwrap()
+            .label,
+        "Calendar"
+    );
+    let mut wrong_owner = contribution.clone();
+    wrong_owner.owner.owner_id = "other.calendar".into();
+    assert!(ConsoleOperationRegistry::compile_with_locale_catalog(
+        &settings,
+        [op.clone()],
+        [],
+        [common.clone(), wrong_owner]
+    )
+    .is_err());
+    let mut wrong_kind = contribution;
+    wrong_kind.owner.kind = SettingsFeatureOwnerKind::Core;
+    assert!(ConsoleOperationRegistry::compile_with_locale_catalog(
+        &settings,
+        [op],
+        [],
+        [common, wrong_kind]
+    )
+    .is_err());
 }

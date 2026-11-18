@@ -1,0 +1,1363 @@
+use control_plane::client_trajectory::ClientTrajectoryRecorder;
+pub(crate) mod document_projection;
+pub(crate) mod http_result;
+mod managed_projection;
+pub(crate) use http_result::{CompatibilityProtocolOutput, CompatibilityProtocolTargetError};
+
+use std::{future::Future, pin::Pin, sync::Arc};
+
+use axum::response::{
+    sse::{KeepAlive, Sse},
+    IntoResponse, Response,
+};
+use control_plane::{
+    application_public_api::{
+        api_keys::ApplicationApiKeyActor,
+        native::{ApplicationNativeRunService, NativeRunRequest, NativeRunResult},
+        protocol_translation::TranslationProtocol,
+    },
+    ports::{
+        ProviderTransportPayload, ProviderTransportSlotId, ProviderTransportStore,
+        RuntimeEventEnvelope,
+    },
+};
+use control_plane_contracts::application_public_runtime::ApplicationPublishedFlowRunRepository;
+use domain::AiNativeOperation;
+
+use crate::routes::application_public_api::delivery_receipt::RuntimeEventDeliveryReceipt;
+use interface_runtime::{
+    ApplicationPrincipal, AuthenticationAdapterReference, AuthorizationAdapterReference,
+    AuthorizationOperation, BindingId, CompiledInterfaceRegistry, ContractIdentity,
+    GraphFingerprint, HandlerReference, InterfaceAccess, InterfaceAuditPolicy,
+    InterfaceAuthenticationPolicy, InterfaceAuthorizationFuture, InterfaceAuthorizationPort,
+    InterfaceAuthorizationRequest, InterfaceContract, InterfaceContracts, InterfaceDefinition,
+    InterfaceErrorPolicy, InterfaceEventStream, InterfaceExecution, InterfaceExecutionMode,
+    InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId,
+    InterfaceIdentity, InterfaceLifecycle, InterfaceOwner, InterfaceProtocol, InterfaceScope,
+    InterfaceStreamHandler, InterfaceStreamHandlerFuture, InterfaceTargetFailure, InterfaceVersion,
+    InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage, ProtocolBinding,
+    ProtocolProjection, RegistryCompiler, RouteIdentity, TargetReference,
+};
+use tracing::warn;
+
+mod models;
+pub use models::{compatibility_models_port, invoke_models, CompatibilityModelsPort};
+
+use crate::{
+    app_state::ApiState,
+    extension_bus::ApplicationApiKeyAuthenticationCredential,
+    routes::application_public_api::native::{
+        self, ApplicationNativeRunDependencies, NativeApiError,
+    },
+};
+
+test_support_item! { pub(crate), [
+]
+const OPENAI_CHAT_BINDING_ID: &str = "http.compat.openai.chat-completions.blocking.v1";
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_CHAT_ROOT_BINDING_ID: &str =
+    "http.compat.openai.chat-completions-root.blocking.v1";
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_RESPONSES_BINDING_ID: &str = "http.compat.openai.responses.blocking.v1";
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_RESPONSES_ROOT_BINDING_ID: &str =
+    "http.compat.openai.responses-root.blocking.v1";
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_RESPONSES_COMPACT_BINDING_ID: &str =
+    "http.compat.openai.responses-compact.blocking.v1";
+}
+test_support_item! { pub(crate), [
+]
+const ANTHROPIC_MESSAGES_BINDING_ID: &str = "http.compat.anthropic.messages.blocking.v1";
+}
+test_support_item! { pub(crate), [
+]
+const ANTHROPIC_COUNT_TOKENS_BINDING_ID: &str =
+    "http.compat.anthropic.messages.count-tokens.v1";
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_MODELS_ROOT_BINDING_ID: &str = "http.compat.openai.models-root.list.v1";
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_MODELS_BINDING_ID: &str = "http.compat.openai.models.list.v1";
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_CHAT_MODELS_BINDING_ID: &str =
+    "http.compat.openai.chat-completions.models.list.v1";
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_CHAT_STREAM_BINDING_ID: &str =
+    "http.compat.openai.chat-completions.stream.v1";
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_CHAT_ROOT_STREAM_BINDING_ID: &str =
+    "http.compat.openai.chat-completions-root.stream.v1";
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_RESPONSES_STREAM_BINDING_ID: &str =
+    "http.compat.openai.responses.stream.v1";
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_RESPONSES_ROOT_STREAM_BINDING_ID: &str =
+    "http.compat.openai.responses-root.stream.v1";
+}
+test_support_item! { pub(crate), [
+]
+const ANTHROPIC_MESSAGES_STREAM_BINDING_ID: &str =
+    "http.compat.anthropic.messages.stream.v1";
+}
+test_support_item! { pub(crate), [
+]
+const NATIVE_WEBSOCKET_STREAM_BINDING_ID: &str =
+    "http.application.native.runs.websocket.stream.v1";
+}
+test_support_item! { pub(crate), [
+]
+const OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID: &str =
+    "http.compat.openai.responses.websocket.stream.v1";
+}
+
+const OWNER: &str = "api-server.application-public-api";
+const OPERATION: &str = "application.native.runs.create";
+const TARGET: &str = "control-plane.application-native-run.create";
+const AUTHENTICATION_ADAPTER: &str = "api-server.application-api-key";
+const AUTHORIZATION_ADAPTER: &str = "api-server.application-compatibility-run";
+
+test_support_item! { pub(crate), [
+]
+struct CompatibilityBlockingInput {
+    pub(crate) response_projection: Option<http_result::Projection>,
+    pub(crate) document: Result<document_projection::ProtocolRequestDocument, Arc<str>>,
+    pub(crate) command: CompatibilityInvocationCommand,
+}
+}
+
+test_support_item! { pub(crate), [
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the protocol command is consumed once by the typed compatibility adapter"
+)]
+]
+enum CompatibilityInvocationCommand {
+    Start {
+        request: NativeRunRequest,
+        protocol: TranslationProtocol,
+        provider_transport: Option<CompatibilityProviderTransport>,
+    },
+    Resume {
+        initial_run: NativeRunResult,
+        command:
+            control_plane::application_public_api::callback_resume::ResumePublishedCallbackCommand,
+        reservation: Option<super::compat_sse::CompatibleCallbackReservation>,
+    },
+}
+}
+
+test_support_item! { pub(crate), []
+struct CompatibilityProviderTransport {
+    pub(crate) operation: AiNativeOperation,
+    pub(crate) payload: Option<ProviderTransportPayload>,
+}
+}
+
+test_support_item! { pub(crate), [
+]
+struct CompatibilityBlockingOutput(pub(crate) NativeRunResult);
+}
+
+test_support_item! { pub(crate), [
+]
+struct CompatibilityBlockingTargetError(pub(crate) NativeApiError);
+}
+
+test_support_item! { pub(crate), [
+]
+struct CompatibilityStreamEvent {
+    run: Arc<NativeRunResult>,
+    envelope: RuntimeEventEnvelope,
+    delivery: Option<RuntimeEventDeliveryReceipt>,
+}
+}
+
+pub(crate) struct CompatibilityTypedStreamInvocation {
+    events: tokio::sync::mpsc::Receiver<CompatibilityStreamEvent>,
+    completion: interface_runtime::InterfaceStreamCompletion<
+        CompatibilityBlockingOutput,
+        CompatibilityBlockingTargetError,
+    >,
+}
+
+impl CompatibilityTypedStreamInvocation {
+    test_support_item! { pub(crate), [
+    ]
+    fn into_parts(
+        self,
+    ) -> (
+        tokio::sync::mpsc::Receiver<CompatibilityStreamEvent>,
+        interface_runtime::InterfaceStreamCompletion<
+            CompatibilityBlockingOutput,
+            CompatibilityBlockingTargetError,
+        >,
+    ) {
+        (self.events, self.completion)
+    }
+    }
+}
+
+impl CompatibilityStreamEvent {
+    test_support_item! { pub(crate), [
+        #[cfg(any(test,feature="test-support"))]
+    ]
+    fn new(run: NativeRunResult, envelope: RuntimeEventEnvelope) -> Self {
+        Self {
+            run: Arc::new(run),
+            envelope,
+            delivery: None,
+        }
+    }
+    }
+
+    test_support_item! { pub(crate), [
+    ]
+    fn with_delivery(
+        run: impl Into<Arc<NativeRunResult>>,
+        envelope: RuntimeEventEnvelope,
+        delivery: Option<RuntimeEventDeliveryReceipt>,
+    ) -> Self {
+        Self {
+            run: run.into(),
+            envelope,
+            delivery,
+        }
+    }
+    }
+
+    test_support_item! { pub(crate), [
+    ]
+    fn into_parts(
+        self,
+    ) -> (
+        Arc<NativeRunResult>,
+        RuntimeEventEnvelope,
+        Option<RuntimeEventDeliveryReceipt>,
+    ) {
+        (self.run, self.envelope, self.delivery)
+    }
+    }
+}
+
+type CompatibilityBlockingFuture<'a> = Pin<
+    Box<
+        dyn Future<Output = Result<CompatibilityBlockingOutput, CompatibilityBlockingTargetError>>
+            + Send
+            + 'a,
+    >,
+>;
+
+pub trait CompatibilityBlockingPort: Send + Sync + 'static {
+    fn execute<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: CompatibilityBlockingInput,
+        consumer: super::compat_sse::CompatibleResumeConsumer,
+    ) -> CompatibilityBlockingFuture<'a>;
+
+    fn execute_stream<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: CompatibilityBlockingInput,
+        consumer: super::compat_sse::CompatibleResumeConsumer,
+    ) -> CompatibilityBlockingStreamFuture<'a>;
+}
+
+type CompatibilityBlockingStreamFuture<'a> = Pin<
+    Box<
+        dyn Future<
+                Output = Result<
+                    InterfaceEventStream<
+                        CompatibilityStreamEvent,
+                        CompatibilityBlockingOutput,
+                        CompatibilityBlockingTargetError,
+                    >,
+                    CompatibilityBlockingTargetError,
+                >,
+            > + Send
+            + 'a,
+    >,
+>;
+
+#[derive(Clone)]
+pub struct CompatibilityExecutionDependencies {
+    pub native: ApplicationNativeRunDependencies,
+    pub provider_transport_store: Arc<dyn ProviderTransportStore>,
+}
+
+struct CompatibilityExecutionAdapter(CompatibilityExecutionDependencies);
+
+pub fn compatibility_execution_port(
+    dependencies: CompatibilityExecutionDependencies,
+) -> Arc<dyn CompatibilityBlockingPort> {
+    Arc::new(CompatibilityExecutionAdapter(dependencies))
+}
+
+struct CompatibilityBlockingHandler {
+    port: Arc<dyn CompatibilityBlockingPort>,
+    consumer: super::compat_sse::CompatibleResumeConsumer,
+}
+
+impl
+    InterfaceHandler<
+        CompatibilityBlockingInput,
+        CompatibilityProtocolOutput,
+        CompatibilityProtocolTargetError,
+        ApplicationPrincipal,
+    > for CompatibilityBlockingHandler
+{
+    fn invoke(
+        &self,
+        context: InterfaceHandlerContext<ApplicationPrincipal>,
+        mut input: CompatibilityBlockingInput,
+    ) -> InterfaceHandlerFuture<CompatibilityProtocolOutput, CompatibilityProtocolTargetError> {
+        let port = Arc::clone(&self.port);
+        let consumer = self.consumer;
+        let projection = input.response_projection.take();
+        Box::pin(async move {
+            let output = port
+                .execute(context.principal(), input, consumer)
+                .await
+                .map_err(|error| {
+                    InterfaceTargetFailure::new(
+                        "compatibility_blocking",
+                        CompatibilityProtocolTargetError::from(error.0),
+                    )
+                })?;
+            CompatibilityProtocolOutput::project(output.0, projection).map_err(|error| {
+                InterfaceTargetFailure::new("compatibility_protocol_projection", error)
+            })
+        })
+    }
+}
+
+struct CompatibilityStreamHandler {
+    port: Arc<dyn CompatibilityBlockingPort>,
+    consumer: super::compat_sse::CompatibleResumeConsumer,
+}
+
+impl
+    InterfaceStreamHandler<
+        CompatibilityBlockingInput,
+        CompatibilityStreamEvent,
+        CompatibilityBlockingOutput,
+        CompatibilityBlockingTargetError,
+        ApplicationPrincipal,
+    > for CompatibilityStreamHandler
+{
+    fn invoke_stream(
+        &self,
+        context: InterfaceHandlerContext<ApplicationPrincipal>,
+        input: CompatibilityBlockingInput,
+    ) -> InterfaceStreamHandlerFuture<
+        CompatibilityStreamEvent,
+        CompatibilityBlockingOutput,
+        CompatibilityBlockingTargetError,
+    > {
+        let port = Arc::clone(&self.port);
+        let consumer = self.consumer;
+        Box::pin(async move {
+            port.execute_stream(context.principal(), input, consumer)
+                .await
+                .map_err(|error| InterfaceTargetFailure::new("compatibility_stream", error))
+        })
+    }
+}
+
+impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
+    fn execute<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: CompatibilityBlockingInput,
+        consumer: super::compat_sse::CompatibleResumeConsumer,
+    ) -> CompatibilityBlockingFuture<'a> {
+        let dependencies = self.0.clone();
+        let actor = application_actor(principal);
+        Box::pin(async move {
+            let (mut request, protocol, provider_transport) = match input.command {
+                CompatibilityInvocationCommand::Start {
+                    request,
+                    protocol,
+                    provider_transport,
+                } => (request, protocol, provider_transport),
+                CompatibilityInvocationCommand::Resume {
+                    command,
+                    reservation,
+                    ..
+                } => {
+                    return crate::routes::application_public_api::compat_sse::execute_compatible_resume_for_actor(
+                        dependencies,
+                        actor,
+                        command,
+                        reservation,
+                        consumer,
+                    )
+                    .await
+                    .map(CompatibilityBlockingOutput)
+                    .map_err(CompatibilityBlockingTargetError);
+                }
+            };
+            let transport_connection_scope = request.metadata.take_transport_connection_scope();
+            let observation_context = request.metadata.take_observation_context();
+            let protocol_context = request.client_protocol_envelope.clone();
+            let operation = provider_transport
+                .as_ref()
+                .map(|transport| transport.operation);
+            let run = ApplicationNativeRunService::new(dependencies.native.store.clone())
+                .with_last_used_cache(dependencies.native.cache_store.clone())
+                .create_native_run_for_actor(actor.clone(), request, protocol)
+                .await
+                .map_err(native::native_error)
+                .map_err(CompatibilityBlockingTargetError)?;
+            clear_local_summary_predecessor_provider_state(&dependencies, run.id, operation).await;
+            native::stage_client_protocol_context(
+                dependencies.provider_transport_store.as_ref(),
+                &run,
+                protocol_context,
+            )
+            .await
+            .map_err(CompatibilityBlockingTargetError)?;
+            let provider_transport_slot = match provider_transport {
+                Some(transport) => stage_provider_transport(
+                    dependencies.provider_transport_store.as_ref(),
+                    run.id,
+                    transport.operation,
+                    transport.payload,
+                )
+                .await
+                .map_err(CompatibilityBlockingTargetError)?,
+                None => None,
+            };
+            native::execute_blocking_native_run_for_actor_with_dependencies(
+                dependencies.native,
+                actor,
+                run,
+                provider_transport_slot,
+                transport_connection_scope,
+                observation_context,
+            )
+            .await
+            .map(CompatibilityBlockingOutput)
+            .map_err(CompatibilityBlockingTargetError)
+        })
+    }
+
+    fn execute_stream<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: CompatibilityBlockingInput,
+        consumer: super::compat_sse::CompatibleResumeConsumer,
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<
+                        InterfaceEventStream<
+                            CompatibilityStreamEvent,
+                            CompatibilityBlockingOutput,
+                            CompatibilityBlockingTargetError,
+                        >,
+                        CompatibilityBlockingTargetError,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        let dependencies = self.0.clone();
+        let actor = application_actor(principal);
+        Box::pin(async move {
+            let typed = match input.command {
+                CompatibilityInvocationCommand::Start {
+                    mut request,
+                    protocol,
+                    provider_transport,
+                } => {
+                    let transport_connection_scope = request.metadata.take_transport_connection_scope();
+                    let observation_context = request.metadata.take_observation_context();
+                    let protocol_context = request.client_protocol_envelope.clone();
+                    let operation = provider_transport
+                        .as_ref()
+                        .map(|transport| transport.operation);
+                    let run = ApplicationNativeRunService::new(dependencies.native.store.clone())
+                        .with_last_used_cache(dependencies.native.cache_store.clone())
+                        .create_native_run_for_actor(actor.clone(), request, protocol)
+                        .await
+                        .map_err(native::native_error)
+                        .map_err(CompatibilityBlockingTargetError)?;
+                    clear_local_summary_predecessor_provider_state(
+                        &dependencies,
+                        run.id,
+                        operation,
+                    )
+                    .await;
+                    native::stage_client_protocol_context(
+                        dependencies.provider_transport_store.as_ref(),
+                        &run,
+                        protocol_context,
+                    )
+                    .await
+                    .map_err(CompatibilityBlockingTargetError)?;
+                    let provider_transport_slot = match provider_transport {
+                        Some(transport) => stage_provider_transport(
+                            dependencies.provider_transport_store.as_ref(),
+                            run.id,
+                            transport.operation,
+                            transport.payload,
+                        )
+                        .await
+                        .map_err(CompatibilityBlockingTargetError)?,
+                        None => None,
+                    };
+                    crate::routes::application_public_api::compat_sse::start_compatible_typed_start_stream_for_actor(
+                        dependencies,
+                        run,
+                        provider_transport_slot,
+                        transport_connection_scope,
+                        observation_context,
+                        actor,
+                    )
+                    .await
+                    .map_err(CompatibilityBlockingTargetError)?
+                }
+                CompatibilityInvocationCommand::Resume {
+                    initial_run,
+                    command,
+                    reservation,
+                } => crate::routes::application_public_api::compat_sse::start_compatible_typed_resume_stream_for_consumer(
+                    dependencies,
+                    initial_run,
+                    command,
+                    actor,
+                    reservation,
+                    consumer,
+                )
+                .await
+                .map_err(CompatibilityBlockingTargetError)?,
+            };
+            let (initial_run, mut events) = typed.into_parts();
+            let (publisher, stream) = interface_runtime::interface_stream_channel(32);
+            tokio::spawn(async move {
+                let mut terminal_run = Arc::new(initial_run);
+                while let Some(event) = events.recv().await {
+                    let (run, envelope, delivery) = event.into_parts();
+                    terminal_run = run.clone();
+                    if publisher
+                        .emit(CompatibilityStreamEvent::with_delivery(
+                            run, envelope, delivery,
+                        ))
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+                let _ = publisher
+                    .finish(interface_runtime::InterfaceStreamTerminal::Completed(
+                        CompatibilityBlockingOutput(Arc::unwrap_or_clone(terminal_run)),
+                    ))
+                    .await;
+            });
+            Ok(stream)
+        })
+    }
+}
+
+test_support_item! { pub(crate), [
+]
+struct CompatibilityBlockingAuthorization;
+}
+
+impl InterfaceAuthorizationPort<ApplicationPrincipal> for CompatibilityBlockingAuthorization {
+    fn adapter_reference(&self) -> AuthorizationAdapterReference {
+        AuthorizationAdapterReference::new(AUTHORIZATION_ADAPTER)
+            .expect("static compatibility authorization adapter is valid")
+    }
+
+    fn authorize(
+        &self,
+        _request: InterfaceAuthorizationRequest<ApplicationPrincipal>,
+    ) -> InterfaceAuthorizationFuture<'_> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+pub fn compile_registry(
+    port: Arc<dyn CompatibilityBlockingPort>,
+    models_port: Arc<dyn CompatibilityModelsPort>,
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
+    let owner = InterfaceOwner::new(OWNER).expect("static compatibility owner is valid");
+    let operation =
+        AuthorizationOperation::new(OPERATION).expect("static compatibility operation is valid");
+    let models_operation = AuthorizationOperation::new("application.compatibility.models.list")
+        .expect("static compatibility models operation is valid");
+    let mut compiler = RegistryCompiler::new(
+        GraphFingerprint::new("graph:application-compatibility-blocking-v1")
+            .expect("static compatibility graph fingerprint is valid"),
+        [operation.clone(), models_operation.clone()],
+        [owner.clone()],
+    );
+    for (interface_id, binding_id, handler, method, path) in bindings() {
+        register_binding(
+            &mut compiler,
+            &owner,
+            &operation,
+            Arc::clone(&port),
+            interface_id,
+            binding_id,
+            handler,
+            method,
+            path,
+        )?;
+    }
+    for (interface_id, binding_id, handler, method, path) in stream_bindings() {
+        register_stream_binding(
+            &mut compiler,
+            &owner,
+            &operation,
+            Arc::clone(&port),
+            interface_id,
+            binding_id,
+            handler,
+            method,
+            path,
+        )?;
+    }
+    models::register_bindings(&mut compiler, &owner, &models_operation, models_port)?;
+    compiler.compile()
+}
+
+test_support_item! { pub(crate), [
+#[cfg(any(test,feature="test-support"))]
+]
+fn compile_registry_for_test(
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
+    compile_registry(
+        Arc::new(UnavailableCompatibilityBlockingPort),
+        models::unavailable_port(),
+    )
+}
+}
+
+test_support_item! { , [
+#[cfg(any(test,feature="test-support"))]
+]
+struct UnavailableCompatibilityBlockingPort;
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl CompatibilityBlockingPort for UnavailableCompatibilityBlockingPort {
+    fn execute<'a>(
+        &'a self,
+        _principal: &'a ApplicationPrincipal,
+        _input: CompatibilityBlockingInput,
+        _consumer: super::compat_sse::CompatibleResumeConsumer,
+    ) -> CompatibilityBlockingFuture<'a> {
+        Box::pin(async {
+            Err(CompatibilityBlockingTargetError(NativeApiError::new(
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "test_port_unavailable",
+                "test compatibility port is unavailable",
+            )))
+        })
+    }
+
+    fn execute_stream<'a>(
+        &'a self,
+        _principal: &'a ApplicationPrincipal,
+        _input: CompatibilityBlockingInput,
+        _consumer: super::compat_sse::CompatibleResumeConsumer,
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<
+                        InterfaceEventStream<
+                            CompatibilityStreamEvent,
+                            CompatibilityBlockingOutput,
+                            CompatibilityBlockingTargetError,
+                        >,
+                        CompatibilityBlockingTargetError,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async {
+            Err(CompatibilityBlockingTargetError(NativeApiError::new(
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "test_port_unavailable",
+                "test compatibility port is unavailable",
+            )))
+        })
+    }
+}
+
+test_support_item! { pub(crate), [
+/// HTTP retains the authentication attempt; established WebSocket turns get fresh invocation IDs.
+]
+enum ApplicationInvocationAuthentication {
+    Authenticated {
+        snapshot: Arc<interface_runtime::CompiledInterfaceRegistry>,
+        authenticated: Box<crate::extension_bus::AuthenticatedInvocation<ApplicationPrincipal>>,
+    },
+    Established(ApplicationPrincipal),
+}
+}
+impl From<ApplicationPrincipal> for ApplicationInvocationAuthentication {
+    fn from(principal: ApplicationPrincipal) -> Self {
+        Self::Established(principal)
+    }
+}
+impl ApplicationInvocationAuthentication {
+    pub(crate) fn principal(&self) -> &ApplicationPrincipal {
+        match self {
+            Self::Authenticated { authenticated, .. } => authenticated.principal(),
+            Self::Established(principal) => principal,
+        }
+    }
+    fn snapshot(&self) -> Option<Arc<interface_runtime::CompiledInterfaceRegistry>> {
+        match self {
+            Self::Authenticated { snapshot, .. } => Some(snapshot.clone()),
+            Self::Established(_) => None,
+        }
+    }
+    pub(crate) fn into_principal(self) -> ApplicationPrincipal {
+        match self {
+            Self::Authenticated { authenticated, .. } => authenticated.principal().clone(),
+            Self::Established(principal) => principal,
+        }
+    }
+    fn into_envelope(
+        self,
+        binding: BindingId,
+        activation: interface_runtime::AuthenticationActivationIdentity,
+        input: CompatibilityBlockingInput,
+    ) -> Result<InvocationEnvelope<CompatibilityBlockingInput, ApplicationPrincipal>, NativeApiError>
+    {
+        match self {
+            Self::Authenticated { authenticated, .. } => (*authenticated)
+                .into_same_http_carrier_envelope(&binding, input)
+                .map_err(|error| {
+                    NativeApiError::new(
+                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                        "authentication_variant_mismatch",
+                        error.to_string(),
+                    )
+                }),
+            Self::Established(principal) => Ok(InvocationEnvelope::with_principal(
+                InvocationLineage::root(InvocationId::now_v7()),
+                binding,
+                InterfaceProtocol::Http,
+                AuthenticationAdapterReference::new(AUTHENTICATION_ADAPTER)
+                    .expect("static adapter is valid"),
+                activation,
+                principal,
+                None,
+                input,
+            )),
+        }
+    }
+}
+
+test_support_item! { pub(crate), [
+]
+async fn authenticate_application_principal(
+    state: Arc<ApiState>,
+    binding_id: &'static str,
+    bearer_token: String,
+) -> Result<ApplicationInvocationAuthentication, NativeApiError> {
+    let boot_snapshot = state.extension_boot_snapshot.as_ref().ok_or_else(|| {
+        NativeApiError::new(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "interface_registry_unavailable",
+            "compatibility interface is unavailable",
+        )
+    })?;
+    let snapshot = boot_snapshot
+        .interface_registry()
+        .map(|registry| registry.snapshot())
+        .ok_or_else(|| {
+            NativeApiError::new(
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "interface_registry_unavailable",
+                "compatibility interface is unavailable",
+            )
+        })?;
+    let binding_id = BindingId::new(binding_id).expect("static binding id is valid");
+    let _activated = snapshot.authentication(&binding_id).ok_or_else(|| {
+        NativeApiError::new(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "authentication_activation_unavailable",
+            "compatibility authentication activation is unavailable",
+        )
+    })?;
+    boot_snapshot
+        .authenticate_invocation::<_, ApplicationPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
+            ApplicationApiKeyAuthenticationCredential {
+                state: Arc::clone(&state),
+                bearer_token,
+            },
+        )
+        .await
+        .map(
+            |authenticated| ApplicationInvocationAuthentication::Authenticated {
+                snapshot,
+                authenticated: Box::new(authenticated),
+            },
+        )
+        .map_err(native::service_error)
+}
+}
+
+pub(crate) async fn invoke_typed_stream_with_principal(
+    state: Arc<ApiState>,
+    binding_id: &'static str,
+    principal: impl Into<ApplicationInvocationAuthentication>,
+    input: CompatibilityBlockingInput,
+) -> Result<CompatibilityTypedStreamInvocation, NativeApiError> {
+    let release = match &input.command {
+        CompatibilityInvocationCommand::Resume {
+            reservation: Some(reservation),
+            ..
+        } => reservation.release_ticket(),
+        _ => None,
+    };
+    let result =
+        invoke_typed_stream_with_principal_inner(state, binding_id, principal, input).await;
+    if result.is_err() {
+        if let Some(release) = release {
+            release.release().await;
+        }
+    }
+    result
+}
+
+async fn invoke_typed_stream_with_principal_inner(
+    state: Arc<ApiState>,
+    binding_id: &'static str,
+    principal: impl Into<ApplicationInvocationAuthentication>,
+    input: CompatibilityBlockingInput,
+) -> Result<CompatibilityTypedStreamInvocation, NativeApiError> {
+    let principal = principal.into();
+    let snapshot = match principal.snapshot() {
+        Some(snapshot) => snapshot,
+        None => state
+            .extension_boot_snapshot
+            .as_ref()
+            .and_then(|boot| boot.interface_registry())
+            .map(|registry| registry.snapshot())
+            .ok_or_else(|| {
+                NativeApiError::new(
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "interface_registry_unavailable",
+                    "compatibility interface is unavailable",
+                )
+            })?,
+    };
+    let binding_id = BindingId::new(binding_id).expect("static binding id is valid");
+    let authentication_activation = snapshot
+        .authentication(&binding_id)
+        .ok_or_else(|| {
+            NativeApiError::new(
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "authentication_activation_unavailable",
+                "compatibility authentication activation is unavailable",
+            )
+        })?
+        .activation()
+        .clone();
+    let application_id = principal.principal().application_id();
+    let dispatch_target = native::application_runtime_target(
+        state.as_ref(),
+        snapshot.as_ref(),
+        &binding_id,
+        application_id,
+    );
+    let invocation = interface_runtime::InterfaceInvocationKernel::new(Arc::new(
+        CompatibilityBlockingAuthorization,
+    ))
+    .invoke_server_stream_with_dispatch_target::<
+        CompatibilityBlockingInput,
+        CompatibilityStreamEvent,
+        CompatibilityBlockingOutput,
+        CompatibilityBlockingTargetError,
+    >(
+        snapshot,
+        principal.into_envelope(binding_id, authentication_activation, input)?,
+        dispatch_target,
+    )
+    .await
+    .map_err(|failure| invocation_error(failure.into_error()))?;
+    let (events, completion) = invocation.into_parts();
+    Ok(CompatibilityTypedStreamInvocation { events, completion })
+}
+
+/// Responses client evidence is correlated here; content is captured at the HTTP body.
+pub(crate) async fn invoke_client_stream_with_principal(
+    state: Arc<ApiState>,
+    binding_id: &'static str,
+    principal: impl Into<ApplicationInvocationAuthentication>,
+    input: CompatibilityBlockingInput,
+    recorder: Option<ClientTrajectoryRecorder>,
+    projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
+) -> Result<Response, NativeApiError> {
+    let principal = principal.into();
+    let application_id = principal.principal().application_id();
+    let invocation =
+        invoke_typed_stream_with_principal(Arc::clone(&state), binding_id, principal, input)
+            .await?;
+    project_stream_invocation(state, application_id, invocation, projection, recorder)
+}
+
+fn project_stream_invocation(
+    state: Arc<ApiState>,
+    application_id: uuid::Uuid,
+    invocation: CompatibilityTypedStreamInvocation,
+    projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
+    recorder: Option<ClientTrajectoryRecorder>,
+) -> Result<Response, NativeApiError> {
+    let owner = crate::generation_dispatch::GenerationDispatch::acquire(&state)
+        .map_err(|error| native::service_error(error.0))?;
+    let (sender, receiver) = tokio::sync::mpsc::channel(32);
+    let sse_activity = state.runtime_activity.start(
+        application_id,
+        crate::runtime_activity::ApplicationActivityKind::SseConnection,
+    );
+    let (events, completion) = invocation.into_parts();
+    let projection = project_observed_compatibility_stream(
+        events, completion, projection, sender, recorder, owner,
+    );
+    tokio::spawn(async move {
+        let _sse_activity = sse_activity;
+        projection.await;
+    });
+    Ok(
+        Sse::new(tokio_stream::wrappers::ReceiverStream::new(receiver))
+            .keep_alive(KeepAlive::default())
+            .into_response(),
+    )
+}
+
+test_support_item! { pub(super), [
+/// The protocol terminal ends delivery; the independent Kernel owner still
+/// settles the invocation even when the client has stopped reading.
+#[cfg(any(test,feature="test-support"))]
+]
+fn project_compatibility_stream(
+    events: tokio::sync::mpsc::Receiver<CompatibilityStreamEvent>,
+    completion: interface_runtime::InterfaceStreamCompletion<
+        CompatibilityBlockingOutput,
+        CompatibilityBlockingTargetError,
+    >,
+    projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
+    sender: tokio::sync::mpsc::Sender<Result<axum::response::sse::Event, std::convert::Infallible>>,
+    owner: Arc<crate::generation_dispatch::GenerationDispatch>,
+) -> impl std::future::Future<Output = ()> + Send + 'static {
+    project_observed_compatibility_stream(events, completion, projection, sender, None, owner)
+}
+}
+
+fn project_observed_compatibility_stream(
+    mut events: tokio::sync::mpsc::Receiver<CompatibilityStreamEvent>,
+    completion: interface_runtime::InterfaceStreamCompletion<
+        CompatibilityBlockingOutput,
+        CompatibilityBlockingTargetError,
+    >,
+    mut projection: crate::routes::application_public_api::compat_sse::CompatibleProtocolProjection,
+    sender: tokio::sync::mpsc::Sender<Result<axum::response::sse::Event, std::convert::Infallible>>,
+    recorder: Option<ClientTrajectoryRecorder>,
+    owner: Arc<crate::generation_dispatch::GenerationDispatch>,
+) -> impl std::future::Future<Output = ()> + Send + 'static {
+    // Transfer finalization and its generation lease before returning a
+    // cancellable projection future. Even an unpolled consumer can be aborted.
+    let completion =
+        crate::generation_dispatch::spawn_with_lease(owner.clone(), completion.complete());
+    async move {
+        let _projection_owner = owner;
+        let mut projection_open = true;
+        while let Some(event) = events.recv().await {
+            let (run, envelope, mut delivery) = event.into_parts();
+            if let Some(recorder) = recorder.as_ref() {
+                recorder.bind_run(run.id, None);
+                if envelope.source == control_plane::ports::RuntimeEventSource::Provider {
+                    if let Some(node_run_id) = envelope.node_run_id {
+                        recorder.link_llm_node(run.id, node_run_id);
+                    }
+                }
+            }
+            let terminal = super::sse::is_public_terminal_runtime_event(&envelope.event_type);
+            let frames = projection.runtime_event_to_sse(&run, envelope);
+            if projection_open {
+                if let Some(delivery) = delivery.as_mut() {
+                    delivery.begin_write();
+                }
+                for frame in frames {
+                    if sender.send(frame).await.is_err() {
+                        projection_open = false;
+                        break;
+                    }
+                }
+            }
+            if projection_open {
+                if let Some(delivery) = delivery.take() {
+                    delivery.projected();
+                }
+            }
+            // A closed projection drops the receipt: released when no write
+            // started, uncertain when the transport failed mid-write.
+            drop(delivery);
+            if terminal {
+                break;
+            }
+        }
+        if let Ok(Ok(terminal)) = completion.await {
+            let _receipt = terminal.receipt().clone().projected();
+        }
+    }
+}
+
+pub(crate) async fn invoke_blocking(
+    state: Arc<ApiState>,
+    binding_id: &'static str,
+    bearer_token: String,
+    input: CompatibilityBlockingInput,
+) -> Result<CompatibilityProtocolOutput, CompatibilityProtocolTargetError> {
+    let boot_snapshot = state.extension_boot_snapshot.as_ref().ok_or_else(|| {
+        NativeApiError::new(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "interface_registry_unavailable",
+            "compatibility interface is unavailable",
+        )
+    })?;
+    let snapshot = boot_snapshot
+        .interface_registry()
+        .map(|registry| registry.snapshot())
+        .ok_or_else(|| {
+            NativeApiError::new(
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "interface_registry_unavailable",
+                "compatibility interface is unavailable",
+            )
+        })?;
+    let binding_id = BindingId::new(binding_id).expect("static binding id is valid");
+    let _activated = snapshot.authentication(&binding_id).ok_or_else(|| {
+        NativeApiError::new(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "authentication_activation_unavailable",
+            "compatibility authentication activation is unavailable",
+        )
+    })?;
+    let authenticated = boot_snapshot
+        .authenticate_invocation::<_, ApplicationPrincipal>(
+            Arc::clone(&snapshot),
+            &binding_id,
+            InterfaceProtocol::Http,
+            ApplicationApiKeyAuthenticationCredential {
+                state: Arc::clone(&state),
+                bearer_token,
+            },
+        )
+        .await
+        .map_err(native::service_error)?;
+    let application_id = authenticated.principal().application_id();
+    let dispatch_target = native::application_runtime_target(
+        state.as_ref(),
+        snapshot.as_ref(),
+        &binding_id,
+        application_id,
+    );
+    let outcome = interface_runtime::InterfaceInvocationKernel::new(Arc::new(
+        CompatibilityBlockingAuthorization,
+    ))
+    .invoke_with_dispatch_target::<
+        CompatibilityBlockingInput,
+        CompatibilityProtocolOutput,
+        CompatibilityProtocolTargetError,
+    >(
+        snapshot,
+        authenticated.into_envelope(input),
+        dispatch_target,
+    )
+    .await
+    .map_err(|failure| protocol_invocation_error(failure.into_error()))?;
+    let _receipt = outcome.receipt().clone().projected();
+    Ok(outcome.into_value())
+}
+
+pub(crate) async fn invoke_blocking_with_principal(
+    state: Arc<ApiState>,
+    binding_id: &'static str,
+    principal: impl Into<ApplicationInvocationAuthentication>,
+    input: CompatibilityBlockingInput,
+) -> Result<CompatibilityProtocolOutput, CompatibilityProtocolTargetError> {
+    let release = match &input.command {
+        CompatibilityInvocationCommand::Resume {
+            reservation: Some(reservation),
+            ..
+        } => reservation.release_ticket(),
+        _ => None,
+    };
+    let result = invoke_blocking_with_principal_inner(state, binding_id, principal, input).await;
+    if result
+        .as_ref()
+        .err()
+        .is_some_and(|error| error.run().is_none())
+    {
+        if let Some(release) = release {
+            release.release().await;
+        }
+    }
+    result
+}
+
+async fn invoke_blocking_with_principal_inner(
+    state: Arc<ApiState>,
+    binding_id: &'static str,
+    principal: impl Into<ApplicationInvocationAuthentication>,
+    input: CompatibilityBlockingInput,
+) -> Result<CompatibilityProtocolOutput, CompatibilityProtocolTargetError> {
+    let principal = principal.into();
+    let snapshot = match principal.snapshot() {
+        Some(snapshot) => snapshot,
+        None => state
+            .extension_boot_snapshot
+            .as_ref()
+            .and_then(|boot| boot.interface_registry())
+            .map(|registry| registry.snapshot())
+            .ok_or_else(|| {
+                NativeApiError::new(
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "interface_registry_unavailable",
+                    "compatibility interface is unavailable",
+                )
+            })?,
+    };
+    let binding_id = BindingId::new(binding_id).expect("static binding id is valid");
+    let authentication_activation = snapshot
+        .authentication(&binding_id)
+        .ok_or_else(|| {
+            NativeApiError::new(
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "authentication_activation_unavailable",
+                "compatibility authentication activation is unavailable",
+            )
+        })?
+        .activation()
+        .clone();
+    let dispatch_target = native::application_runtime_target(
+        state.as_ref(),
+        snapshot.as_ref(),
+        &binding_id,
+        principal.principal().application_id(),
+    );
+    let outcome = interface_runtime::InterfaceInvocationKernel::new(Arc::new(
+        CompatibilityBlockingAuthorization,
+    ))
+    .invoke_with_dispatch_target::<
+        CompatibilityBlockingInput,
+        CompatibilityProtocolOutput,
+        CompatibilityProtocolTargetError,
+    >(
+        snapshot,
+        principal.into_envelope(binding_id, authentication_activation, input)?,
+        dispatch_target,
+    )
+    .await
+    .map_err(|failure| protocol_invocation_error(failure.into_error()))?;
+    let _receipt = outcome.receipt().clone().projected();
+    Ok(outcome.into_value())
+}
+
+fn protocol_invocation_error(
+    error: interface_runtime::InterfaceInvocationError,
+) -> CompatibilityProtocolTargetError {
+    match error {
+        interface_runtime::InterfaceInvocationError::TargetFailed(error) => error
+            .into_source::<CompatibilityProtocolTargetError>()
+            .unwrap_or_else(|| {
+                NativeApiError::new(
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "compatibility_target_failed",
+                    "compatibility target failed",
+                )
+                .into()
+            }),
+        error => invocation_error(error).into(),
+    }
+}
+
+fn invocation_error(error: interface_runtime::InterfaceInvocationError) -> NativeApiError {
+    match error {
+        interface_runtime::InterfaceInvocationError::TargetFailed(error) => error
+            .into_source::<CompatibilityBlockingTargetError>()
+            .map(|error| error.0)
+            .unwrap_or_else(|| {
+                NativeApiError::new(
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "compatibility_target_failed",
+                    "compatibility target failed",
+                )
+            }),
+        error => NativeApiError::new(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "compatibility_invocation_failed",
+            error.to_string(),
+        ),
+    }
+}
+
+async fn stage_provider_transport(
+    store: &dyn ProviderTransportStore,
+    flow_run_id: uuid::Uuid,
+    operation: AiNativeOperation,
+    payload: Option<ProviderTransportPayload>,
+) -> Result<Option<ProviderTransportSlotId>, NativeApiError> {
+    if matches!(operation, AiNativeOperation::CountTokens) {
+        return Ok(None);
+    }
+    let Some(payload) = payload else {
+        return Ok(None);
+    };
+    let payload_bytes = payload.size_bytes();
+    let slot = ProviderTransportSlotId::for_flow_run(flow_run_id);
+    store.put(slot, payload).await.map_err(|error| {
+        warn!(%flow_run_id, payload_bytes, %error, "provider transport staging failed");
+        NativeApiError::new(
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "provider_transport_staging_failed",
+            "provider transport is temporarily unavailable",
+        )
+    })?;
+    Ok(Some(slot))
+}
+
+async fn clear_local_summary_predecessor_provider_state(
+    dependencies: &CompatibilityExecutionDependencies,
+    successor_flow_run_id: uuid::Uuid,
+    operation: Option<AiNativeOperation>,
+) {
+    if !matches!(
+        operation,
+        Some(AiNativeOperation::Generate(
+            domain::AiNativeGenerateProfile::LocalSummary
+        ))
+    ) {
+        return;
+    }
+    let predecessor_ids =
+        match ApplicationPublishedFlowRunRepository::list_local_summary_superseded_flow_run_ids(
+            &dependencies.native.store,
+            successor_flow_run_id,
+        )
+        .await
+        {
+            Ok(ids) => ids,
+            Err(error) => {
+                warn!(
+                    %successor_flow_run_id,
+                    %error,
+                    "local summary predecessor provider cleanup lookup failed after durable supersession"
+                );
+                return;
+            }
+        };
+    for predecessor_flow_run_id in predecessor_ids {
+        if let Err(error) = dependencies
+            .provider_transport_store
+            .clear_flow_run(predecessor_flow_run_id)
+            .await
+        {
+            warn!(
+                %successor_flow_run_id,
+                %predecessor_flow_run_id,
+                %error,
+                "local summary predecessor provider cleanup failed after durable supersession"
+            );
+        }
+    }
+}
+
+pub(crate) fn application_actor(principal: &ApplicationPrincipal) -> ApplicationApiKeyActor {
+    let actor = principal.authorized_actor().clone();
+    ApplicationApiKeyActor {
+        api_key_id: principal.api_key_id(),
+        application_id: principal.application_id(),
+        creator_user_id: actor.user_id,
+        tenant_id: actor.tenant_id,
+        workspace_id: principal.workspace_id(),
+        actor,
+    }
+}
+
+type BindingDeclaration = (
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+);
+
+fn contract<T: InterfaceContract>() -> ContractIdentity {
+    ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
+        .expect("static compatibility contract is valid")
+}
+
+#[path = "compatibility_interface/registry_bindings.rs"]
+mod registry_bindings;
+
+#[path = "compatibility_interface/binding_declarations.rs"]
+mod binding_declarations;
+
+use registry_bindings::*;
+
+use binding_declarations::*;
+
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+impl CompatibilityBlockingOutput {
+    pub fn for_test_support(run: NativeRunResult) -> Self {
+        Self(run)
+    }
+    pub fn inner_for_test_support(&self) -> &NativeRunResult {
+        &self.0
+    }
+}
+
+#[doc(hidden)]
+#[cfg(any(test, feature = "test-support"))]
+impl CompatibilityBlockingInput {
+    pub fn for_test_support(
+        response_projection: Option<http_result::Projection>,
+        document: Result<document_projection::ProtocolRequestDocument, Arc<str>>,
+        command: CompatibilityInvocationCommand,
+    ) -> Self {
+        Self {
+            response_projection,
+            document,
+            command,
+        }
+    }
+}

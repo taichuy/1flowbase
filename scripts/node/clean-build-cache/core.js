@@ -149,7 +149,7 @@ async function stopBackendServices({ repoRoot = getRepoRoot(), writeStdout = (te
     getRuntimePaths,
     getServiceDefinitions,
   } = require('../dev-up/services.js');
-  const { stopService } = require('../dev-up/process.js');
+  const { stopOwnedBackend } = require('./owned-backend.js');
 
   ensureRuntimeDirs(getRuntimePaths(repoRoot));
 
@@ -159,7 +159,7 @@ async function stopBackendServices({ repoRoot = getRepoRoot(), writeStdout = (te
   };
 
   for (const key of ['api-server']) {
-    await stopService(serviceDefinitions[key], { logImpl });
+    await stopOwnedBackend(serviceDefinitions[key], { logImpl });
   }
 }
 

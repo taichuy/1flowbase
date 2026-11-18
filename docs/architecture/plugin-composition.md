@@ -37,8 +37,9 @@ Root 的明确启用/切换会批准该版本声明且宿主支持的能力，�
 
 **当前入口与实现边界：**
 
+- 系统级受管插件首次安装保持未启用；同一发布者、类别和插件已有唯一激活版本时，安装更高版本自动复用候选版本切换，启用另一已安装版本也走同一替换流程。成功后仅目标版本激活；候选失败保留原发布代际。已停用的插件、同版本重装和上传旧版不触发自动切换；宿主扩展仍遵循重启生效契约。
 - 旧 `RuntimeExtension` workspace/model 分配继续沿用 [`PluginAssignment::new`](../../api/crates/plugin-framework/src/assignment/mod.rs)。显式 v2 `managed_service.scope: system` 包走独立系统激活，不创建业务工作区分配；两条路径不能互相推导权限。
-- `managed_service` 声明 settings feature 与 method/path/JSON Schema 操作，`settings_pages` 引用包内 TSX。宿主将其编译到同一 console operation、路由、Canonical Interface、导航、OpenAPI 与 MCP 投影。受管插件安装、升级或切换版本先构建并校验候选代际，再提交版本选择并发布完整代际，不依赖宿主重启；候选失败保留原发布代际。每个新 HTTP 请求只选择一次代际，已由 runtime 准入的调用持有原注册表与执行快照，不能在执行中混用新版本的 schema 或 handler。仍在认证或等待 runtime 准入的请求，切换后可能被当前授权拒绝。停用和贡献撤权在新调用时按当前持久化状态拒绝，不等待重启。受管插件卸载不要求宿主重启：底座先停用，自动退役无在途引用、无未完成持久投递的旧执行快照，再清理安装制品；真实引用或事件积压会明确拒绝删除，保留数据并允许重试。系统级插件的执行治理沿用系统作用域和现有角色 operation 授权，不要求工作区分配。
+- `managed_service` 声明 method/path/JSON Schema 操作，独立注册到以稳定插件 ID 为身份的 `plugin` 权限组；`feature` 与 `settings_pages` 为可选设置入口声明，`settings_pages` 引用包内 TSX。没有设置页的服务不生成设置导航；有设置页时，权限管理的「后台设置」与「插件」投影编辑同一份插件组策略，不重复授权。宿主将其编译到同一 console operation、路由、Canonical Interface、导航、OpenAPI 与 MCP 投影。受管插件安装、升级或切换版本先构建并校验候选代际，再提交版本选择并发布完整代际，不依赖宿主重启；候选失败保留原发布代际。每个新 HTTP 请求只选择一次代际，已由 runtime 准入的调用持有原注册表与执行快照，不能在执行中混用新版本的 schema 或 handler。仍在认证或等待 runtime 准入的请求，切换后可能被当前授权拒绝。停用和贡献撤权在新调用时按当前持久化状态拒绝，不等待重启。受管插件卸载不要求宿主重启：底座先停用，自动退役无在途引用、无未完成持久投递的旧执行快照，再清理安装制品；真实引用或事件积压会明确拒绝删除，保留数据并允许重试。系统级插件的执行治理沿用系统作用域和现有角色 operation 授权，不要求工作区分配。
 - 扩展操作成功后，前端刷新导航、页面版本、模板列表、权限目录、API 文档和 MCP 接口缓存；已打开的模板编辑器保留其起始版本与未保存草稿。服务端发布代际与前端缓存刷新分别拥有自己的完成边界，页面卸载或请求取消不能推导为业务回滚。
 - 操作的可选 `mcp` 声明投影为 `/plugins/{plugin_code}` 下固定工具，复用现有 MCP 目录和 Interface 调用。它属于包声明，不覆盖用户配置；浏览器专用实例不注入这些系统工具。具体可见性继续受所选实例、discovery policy 与角色 API 权限约束。所有普通 JSON 操作也进入接口目录，不依赖 `mcp` 字段；需要可编辑工具时，从接口创建持久化 `InterfaceWrapper`，配置描述、输入/输出映射及分组。其身份不得与固定工具冲突，插件升级不覆写用户配置。
 - 物理 schema 归属与版本字段投影分开：宿主持久化每个版本实际声明的对象集合，安装新版不会撤销旧版字段，也不会把新字段开放给旧版。成员集合在同版本内不可变；回退复用原集合。移除字段仅保留物理数据，不授予新版访问权。没有默认值契约时，增加必填列或从仍可写的集合移除必填列会破坏共存写入，因此拒绝该 schema 变更。卸载停用整个家族的数据入口并保留表和版本映射；运行调用仍受当前贡献授权约束。
@@ -48,6 +49,9 @@ Root 的明确启用/切换会批准该版本声明且宿主支持的能力，�
 - `managed_service.worker_lifetime` 默认 `per_call`。显式 `actor_scope` 保留 `process_per_call` 的单调用预算与 `stdio_json_multiplex_v1` 协议，但由宿主复用 carrier：安装、作用域、冻结制品及可执行文件一致的贡献按可信 actor 隔离进程，同 actor 的操作共享进程内业务会话。所有操作必须声明同一 runtime entry 与 limits；每次调用仍独立注入贡献权限、凭据与 deadline。`worker_idle_timeout_ms` 为正整数，默认 1,800,000；仅无在途调用且无资源租约的 worker 可因空闲回收。取消仅针对相关调用，卸载、重载与 shutdown 先 fence 已准入未执行调用，再实际终止并回收子进程后完成 dispose。短 HTTP pull 可复用此契约，worker 生命周期不等于业务会话的闲置策略。
 - 同一 actor worker 的所有执行绑定可显式声明 `runtime_worker_retention/v1`。宿主先通告支持，SDK `MultiplexEmitter::retain_resource().await` 再取得可跨调用持有的 RAII 租约；取得前刷新控制帧，释放后合并发送资源计数。序号阻止旧计数覆盖新状态。插件在业务资源关闭、到期或断连时释放租约，宿主只管理 worker 回收，不推测 SSH 等业务的会话期限。失败、卸载、升级和显式重置优先于租约；旧宿主未通告时获取租约明确失败。
 - 操作默认 `execution_concurrency: serialized`，写调用持有安装级变更锁；显式 `parallel` 仅跳过该串行锁，不改变 method 对应的授权与写语义。成功的 `invalidates_workers: true` 操作由底座重置同一挂载的共享 actor 池：拒绝旧代准入，等待旧进程退出，再允许新 worker。变更期间已准入操作可能被取消，返回成功后旧连接不再可用；`invalidates_streams` 仍独立撤销流入口。
+- 流操作可用 `shared_source` 声明同包、同记录授权的 revision resolver 与采样周期 JSON pointer；聚合流通过 `aggregate_source_interface_id` 引用该源，单个 socket 使用 `set` 替换订阅集合。进程内唯一 Host 按安装、代际、源操作、资源与规范记录 ID 合并生产者，逐订阅者重新检查真实 session、操作和记录权限。取最快订阅周期；负责人离开、权限撤销、配置 revision 或周期变化时，先取消并等待旧调用收尾，再启动新源。最后一个订阅者离开也等待收尾；慢订阅者通过合并最新事件隔离。此契约不提供多个 API 进程间的分布式 fencing。
+- `shared_snapshot` 声明 ready 条件和事件到 unary 输出的投影；Host ephemeral 仅存最新 ready 值，TTL 为采样周期的三倍，并隔离安装、代际与 revision。同一源先串行检查：每位排队调用者都须按当前身份通过操作和记录授权，源准入返回 `Completed` 后才解析 revision 和查缓存。共享锁不传递前一位调用者的权限。存在生产者时等待其样本，无生产者时在同一源的串行锁内执行原 unary 并回填缓存，排队请求再次查缓存。错误或非 ready 事件使健康缓存失效；不持久化监控样本。
+- `execution.gate` 是 typed Host Service。SDK permit 按可信安装、workspace 与插件声明的业务 key 排队，身份不来自插件 payload；请求等待前后重验权限。permit 只覆盖插件指定的临界区，显式 release 或调用取消、期限到达及 worker 退出时由宿主回收。插件负责自己的 SSH 握手和指标采样，通用排队、调用关联和取消协议由 Host/SDK 维护。
 - 插件出站凭据属于 Extension Center 配置备份；备份与恢复复用凭据存储的身份绑定 AAD，校验源密钥并按目标密钥重加密。归属或凭据 ID 被改写时拒绝恢复，不能把原密文直接搬到另一主密钥环境。
 - 系统作用域、启动时注册恢复与按需 worker 启动是独立维度。当前系统服务仍为受管子进程，不因此成为原生 HostExtension。共享表格通过 `@1flowbase/data-table` 暴露，页面请求通过 `@1flowbase/plugin-settings` 复用会话和 CSRF；后端是唯一授权真值。
 
@@ -55,7 +59,7 @@ Root 的明确启用/切换会批准该版本声明且宿主支持的能力，�
 
 日志来源适配层读取 Agent Flow 原生完整事实和 Agent Logs 采集事实；来源中立语义通过标准 OTLP/GenAI 输出。供应商 API、元数据转换和分页归官方插件仓库，Langfuse 页面为 `/settings/langfuse`；导入只生成 Agent Logs 历史事实。原生 ZIP 和标准 OTLP 仍由底座提供。旧内置 `/logs/langfuse/export`、`/logs/langfuse/import` 入口由已安装插件的 `/api/console/managed-services/langfuse/export`、`/import` 工作流替代，不存在前端静默回退。统一协议不表示原生执行状态与外部采集日志共用持久化执行表。
 
-实现入口为 `extension-package-runtime/src/managed_service.rs`、`api-server/src/managed_services/` 与共享 `runtime-extension-sdk`。本文描述契约，实际通过范围以集中 QA 与发布产物证据为准。
+实现按职责定位：[包声明校验](../../api/crates/extension-package-runtime/src/managed_service/shared_streams.rs) → [受管服务协议域](../../api/crates/api/plugins-models/src/managed_services/mod.rs) → [快照准入、缓存与回退](../../api/crates/api/plugins-models/src/managed_services/shared_stream/snapshot.rs)。执行许可由 [Control Plane](../../api/crates/control-plane/src/plugin_management/managed_execution_gate.rs) 核验当前授权，[Runtime Host](../../api/crates/runtime-extension-host/src/execution_gate_host.rs) 持有进程内队列和调用许可。这里共享的是采样；跨插件共享持久数据或出站凭据是另一套[部署批准的资源归属规则](plugin-managed-data-model.md#deployment-approved-shared-resources)。
 
 历史验收报告保留其当时事实，不作为当前插件选型规则；遇到旧整包限制，以本节治理边界判断，并单独记录实际代码缺口。
 

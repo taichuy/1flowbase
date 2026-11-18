@@ -173,10 +173,15 @@ test('formal Code/Template-only Workflow trace selects the backend 1/1/0 receipt
     }))
   });
   openWorkflowTrace();
+  await screen.findByRole('button', { name: /Parse items.*code/ });
+  expect(trajectoryApi.fetchWorkflowTrajectory).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByText('总轨迹', { selector: '.ant-segmented-item-label' })
+  );
   const filter = await screen.findByRole('combobox', {
     name: '按循环轮次筛选'
   });
-  expect(runtimeApi.fetchApplicationRunTraceTree).not.toHaveBeenCalled();
+  expect(runtimeApi.fetchApplicationRunTraceTree).toHaveBeenCalled();
   expect(
     runtimeApi.fetchApplicationRunConversationMessages
   ).not.toHaveBeenCalled();
@@ -286,18 +291,16 @@ test.each(['code', 'llm'])(
   }
 );
 
-test('a failed workflow index is visible and retryable without removing legacy trace access', async () => {
+test('unavailable total trajectory does not block default node groups', async () => {
   trajectoryApi.fetchWorkflowTrajectory.mockRejectedValue(
     new Error('index unavailable')
   );
   openWorkflowTrace();
-  expect(await screen.findByRole('alert')).toHaveTextContent('加载失败');
   expect(
     await screen.findByRole('button', { name: /LLM.*llm/ })
   ).toBeInTheDocument();
-  trajectoryApi.fetchWorkflowTrajectory.mockResolvedValue(page());
-  fireEvent.click(screen.getByRole('button', { name: /^重\s*试$/ }));
-  expect(
-    await screen.findByRole('combobox', { name: '按循环轮次筛选' })
-  ).toBeInTheDocument();
+  expect(trajectoryApi.fetchWorkflowTrajectory).not.toHaveBeenCalled();
+  expect(screen.getByText('追踪节点').closest('label')).toHaveClass(
+    'ant-segmented-item-selected'
+  );
 });

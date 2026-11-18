@@ -20,6 +20,17 @@ pub(crate) async fn record_lifecycle_fact_in_transaction(
     transaction: &mut Transaction<'_, Postgres>,
     input: &RecordLifecycleFactInput,
 ) -> Result<LifecycleOutboxRecord> {
+    Ok(
+        record_lifecycle_fact_in_transaction_with_outcome(transaction, input)
+            .await?
+            .0,
+    )
+}
+
+pub(crate) async fn record_lifecycle_fact_in_transaction_with_outcome(
+    transaction: &mut Transaction<'_, Postgres>,
+    input: &RecordLifecycleFactInput,
+) -> Result<(LifecycleOutboxRecord, bool)> {
     validate_input(input)?;
     let occurred_at = postgres_timestamp_precision(input.occurred_at)?;
     let notification_digest = notification_digest(input);
@@ -28,8 +39,8 @@ pub(crate) async fn record_lifecycle_fact_in_transaction(
         insert into lifecycle_outbox (
             event_id, transaction_id, contract_id, contract_version,
             canonical_payload, occurred_at, graph_fingerprint,
-            notification_payload_digest
-        ) values ($1, $2, $3, $4, $5, $6, $7, $8)
+            notification_payload_digest, observation_context
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         on conflict (event_id) do nothing
         "#,
     )
@@ -41,6 +52,13 @@ pub(crate) async fn record_lifecycle_fact_in_transaction(
     .bind(occurred_at)
     .bind(&input.publication.graph_fingerprint)
     .bind(&notification_digest)
+    .bind(
+        input
+            .observation_context
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()?,
+    )
     .execute(&mut **transaction)
     .await?
     .rows_affected()
@@ -121,11 +139,13 @@ pub(crate) async fn record_lifecycle_fact_in_transaction(
         || record.contract_version != input.contract_version
         || (record.canonical_payload != input.canonical_payload && !compacted_match)
         || record.occurred_at != occurred_at
+        || (record.observation_context.is_some()
+            && record.observation_context != input.observation_context)
         || record.graph_fingerprint != input.publication.graph_fingerprint
     {
         bail!("lifecycle outbox event ID conflicts with a different fact");
     }
-    Ok(record)
+    Ok((record, inserted))
 }
 
 fn is_optional_notification(input: &RecordLifecycleFactInput) -> bool {
@@ -148,13 +168,64 @@ fn postgres_timestamp_precision(value: OffsetDateTime) -> Result<OffsetDateTime>
 
 #[async_trait]
 impl LifecycleOutboxRepository for PgControlPlaneStore {
+    async fn lifecycle_source_queue_snapshots(
+        &self,
+    ) -> Result<Vec<control_plane_contracts::ports::LifecycleSourceQueueFacts>> {
+        use domain::event_center::{EventSourceQueueSnapshot, EventSourceScope};
+        use std::collections::BTreeMap;
+        let rows = sqlx::query(r#"
+            select coalesce(fact.observation_context->'scope', '{"kind":"unbound"}'::jsonb) as source_scope,
+                   fact.contract_id, fact.contract_version, delivery.subscriber_id,
+                   array_agg(distinct delivery.handler_id) as consumer_ids,
+                   count(*) filter (where delivery.status in ('pending','paused')) as buffered,
+                   count(*) filter (where delivery.status = 'claimed') as in_flight
+            from lifecycle_outbox fact
+            join lifecycle_outbox_deliveries delivery using(event_id)
+            group by coalesce(fact.observation_context->'scope', '{"kind":"unbound"}'::jsonb), fact.contract_id, fact.contract_version, delivery.subscriber_id
+        "#).fetch_all(self.pool()).await?;
+        let mut sources = BTreeMap::new();
+        let now = (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64;
+        for row in rows {
+            let scope: EventSourceScope = serde_json::from_value(row.try_get("source_scope")?)?;
+            let contract_id: String = row.try_get("contract_id")?;
+            let contract_version: String = row.try_get("contract_version")?;
+            let subscriber_id: String = row.try_get("subscriber_id")?;
+            let source = sources
+                .entry((scope.clone(), contract_id.clone(), contract_version.clone()))
+                .or_insert_with(
+                    || control_plane_contracts::ports::LifecycleSourceQueueFacts {
+                        scope,
+                        contract_id,
+                        contract_version,
+                        queues: Vec::new(),
+                    },
+                );
+            source.queues.push(EventSourceQueueSnapshot {
+                queue_id: format!("lifecycle-outbox/{subscriber_id}"),
+                subscriber_id,
+                consumer_ids: row.try_get("consumer_ids")?,
+                buffered: Some(u64::try_from(row.try_get::<i64, _>("buffered")?)?),
+                in_flight: Some(u64::try_from(row.try_get::<i64, _>("in_flight")?)?),
+                accepted: None,
+                dequeued: None,
+                dropped: None,
+                observed_at_unix_ms: now,
+            });
+        }
+        Ok(sources.into_values().collect())
+    }
+
     async fn record_lifecycle_fact(
         &self,
         input: &RecordLifecycleFactInput,
     ) -> Result<LifecycleOutboxRecord> {
         let mut transaction = self.pool().begin().await?;
-        let record = record_lifecycle_fact_in_transaction(&mut transaction, input).await?;
+        let (record, inserted) =
+            record_lifecycle_fact_in_transaction_with_outcome(&mut transaction, input).await?;
         transaction.commit().await?;
+        if inserted {
+            self.observe_lifecycle_commit(input);
+        }
         Ok(record)
     }
 
@@ -202,7 +273,7 @@ impl LifecycleOutboxRepository for PgControlPlaneStore {
             )
             select outbox.event_id, outbox.transaction_id, outbox.contract_id,
                    outbox.contract_version, outbox.canonical_payload, outbox.occurred_at,
-                   outbox.graph_fingerprint, delivery.subscriber_id, delivery.handler_id,
+                   outbox.graph_fingerprint, outbox.observation_context, delivery.subscriber_id, delivery.handler_id,
                    delivery.handler_version, delivery.status, delivery.attempt_count,
                    delivery.available_at, delivery.claimed_by, delivery.claimed_at,
                    delivery.delivered_at, delivery.claim_id, delivery.claim_expires_at,
@@ -377,7 +448,7 @@ where
         r#"
         select outbox.event_id, outbox.transaction_id, outbox.contract_id,
                outbox.contract_version, outbox.canonical_payload, outbox.occurred_at,
-               outbox.graph_fingerprint, delivery.subscriber_id, delivery.handler_id,
+               outbox.graph_fingerprint, outbox.observation_context, delivery.subscriber_id, delivery.handler_id,
                delivery.handler_version, delivery.status, delivery.attempt_count,
                delivery.available_at, delivery.claimed_by, delivery.claimed_at,
                delivery.delivered_at, delivery.claim_id, delivery.claim_expires_at, delivery.pause_reason, delivery.paused_at
@@ -437,6 +508,10 @@ fn map_record(row: sqlx::postgres::PgRow) -> Result<LifecycleOutboxRecord> {
         other => bail!("invalid lifecycle outbox status {other}"),
     };
     Ok(LifecycleOutboxRecord {
+        observation_context: row
+            .try_get::<Option<serde_json::Value>, _>("observation_context")?
+            .map(serde_json::from_value)
+            .transpose()?,
         event_id: row.try_get("event_id")?,
         transaction_id: row.try_get("transaction_id")?,
         contract_id: row.try_get("contract_id")?,
@@ -481,16 +556,21 @@ impl control_plane_contracts::ports::DerivedLifecyclePublicationRepository for P
         input: &RecordLifecycleFactInput,
     ) -> Result<LifecycleOutboxRecord> {
         let mut transaction = self.pool().begin().await?;
-        let record = record_derived_lifecycle_fact_in_transaction(&mut transaction, input).await?;
+        let (record, inserted) =
+            record_derived_lifecycle_fact_in_transaction_with_outcome(&mut transaction, input)
+                .await?;
         transaction.commit().await?;
+        if inserted {
+            self.observe_lifecycle_commit(input);
+        }
         Ok(record)
     }
 }
 
-pub(crate) async fn record_derived_lifecycle_fact_in_transaction(
+pub(crate) async fn record_derived_lifecycle_fact_in_transaction_with_outcome(
     transaction: &mut Transaction<'_, Postgres>,
     input: &RecordLifecycleFactInput,
-) -> Result<LifecycleOutboxRecord> {
+) -> Result<(LifecycleOutboxRecord, bool)> {
     // The same stable source/subscriber/output cannot race two first-publication snapshots.
     // A transaction advisory lock complements the existing event_id primary key, without
     // allocating another idempotency table or changing native Create's transaction owner.
@@ -521,8 +601,7 @@ pub(crate) async fn record_derived_lifecycle_fact_in_transaction(
             })
             .collect::<Result<Vec<_>>>()?;
     }
-    let record = record_lifecycle_fact_in_transaction(transaction, &frozen).await?;
-    Ok(record)
+    record_lifecycle_fact_in_transaction_with_outcome(transaction, &frozen).await
 }
 
 // Subscriber scope and the frozen handler version are durable history. Current manifest

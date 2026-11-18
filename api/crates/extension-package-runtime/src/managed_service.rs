@@ -4,6 +4,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeSet;
 
+mod record_permissions;
+pub use record_permissions::*;
+mod shared_streams;
+pub use shared_streams::*;
+
 pub const MANAGED_SERVICE_POINT: &str = "1flowbase.managed-service.operation";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -42,6 +47,22 @@ pub struct ManagedMcpMediaMapping {
     pub structured_content_path: String,
     #[serde(default)]
     pub resource_read: bool,
+    /// Public replay parameters only; authorization identity is always host derived.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_read_arguments: Option<serde_json::Map<String, Value>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resources: Vec<ManagedMcpResourceDeclaration>,
+}
+
+/// Static discovery entries; listing never executes the source operation.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedMcpResourceDeclaration {
+    pub name: String,
+    pub uri: String,
+    pub arguments: serde_json::Map<String, Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
 }
 
 /// Canonical typed content declaration; the historical name remains reexported.
@@ -77,6 +98,9 @@ pub enum ManagedMcpImageMapping {
     },
     Resource {
         uri_path: String,
+        /// Skip only an explicitly null text/blob value; missing/malformed data is an error.
+        #[serde(default)]
+        skip_if_null: bool,
         #[serde(default)]
         mime_type_path: Option<String>,
         #[serde(default)]
@@ -152,6 +176,7 @@ impl ManagedMcpMediaMapping {
                     text_path,
                     blob_path,
                     annotations_path,
+                    ..
                 } => {
                     if text_path.is_some() == blob_path.is_some() {
                         return Err("resource requires exactly one text or blob path");
@@ -172,7 +197,7 @@ impl ManagedMcpMediaMapping {
                 return Err("invalid media mapping paths or content type");
             }
             if mapping.resource_read && !matches!(item, Resource { .. } | ResourceLink { .. }) {
-                return Err("resource_read requires embedded resource content");
+                return Err("resource_read requires resource or resource_link content");
             }
         }
         if mapping.resource_read
@@ -181,7 +206,21 @@ impl ManagedMcpMediaMapping {
                 .iter()
                 .any(|item| matches!(item, ManagedMcpImageMapping::Resource { .. }))
         {
-            return Err("resource_read requires embedded resource content");
+            return Err("resource_read requires an embedded resource declaration");
+        }
+        if !mapping.resource_read
+            && (mapping.resource_read_arguments.is_some() || !mapping.resources.is_empty())
+        {
+            return Err("resource declarations require resource_read");
+        }
+        let mut resource_uris = BTreeSet::new();
+        for resource in &mapping.resources {
+            if resource.name.trim().is_empty()
+                || resource.uri.trim().is_empty()
+                || !resource_uris.insert(&resource.uri)
+            {
+                return Err("resource declarations require unique URI and nonempty name");
+            }
         }
         Ok(mapping)
     }
@@ -192,11 +231,17 @@ impl ManagedMcpMediaMapping {
 pub struct ManagedServiceStream {
     pub input_schema: Value,
     pub event_schema: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared_source: Option<ManagedServiceSharedSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aggregate_source_interface_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManagedServiceOperation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record_permission: Option<ManagedServiceRecordPermission>,
     pub interface_id: String,
     pub contribution_id: String,
     pub method: String,
@@ -207,6 +252,8 @@ pub struct ManagedServiceOperation {
     pub output_schema: Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stream: Option<ManagedServiceStream>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared_snapshot: Option<ManagedServiceSharedSnapshot>,
     #[serde(default)]
     pub invalidates_streams: bool,
     /// Successful execution retires shared actor workers without unmounting contributions.
@@ -254,15 +301,30 @@ impl ManagedServiceWorkerLifetime {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct ManagedServiceMcpTemplate {
+    /// Package-relative native bundle manifest, bound into the signed plugin manifest.
+    pub path: String,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ManagedServiceMcpInstance {
     pub instance_id: String,
     pub name: String,
     pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<ManagedServiceMcpTemplate>,
+    /// Explicit activation restores package defaults; legacy packages seed only once.
+    #[serde(default)]
+    pub reset_on_activation: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManagedServiceManifest {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub record_resources: Vec<ManagedServiceRecordResource>,
     pub scope: ManagedServiceScope,
     #[serde(
         default,
@@ -273,7 +335,8 @@ pub struct ManagedServiceManifest {
     pub worker_idle_timeout_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp_instance: Option<ManagedServiceMcpInstance>,
-    pub feature: ManagedServiceFeature,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature: Option<ManagedServiceFeature>,
     pub operations: Vec<ManagedServiceOperation>,
 }
 
@@ -285,6 +348,7 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
     let Some(service) = &manifest.managed_service else {
         return Ok(());
     };
+    record_permissions::validate_record_permissions(manifest, service)?;
     if service.worker_idle_timeout_ms == Some(0)
         || (service.worker_lifetime == ManagedServiceWorkerLifetime::PerCall
             && service.worker_idle_timeout_ms.is_some())
@@ -315,13 +379,32 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
                 .instance_id
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
-            || !service
-                .operations
-                .iter()
-                .any(|operation| operation.mcp.is_some())
+            || (instance.template.is_none()
+                && !service
+                    .operations
+                    .iter()
+                    .any(|operation| operation.mcp.is_some()))
         {
             return Err(invalid(
-                "managed MCP instance requires an owned instance_id, name, description and MCP operation",
+                "managed MCP instance requires an owned instance_id, name, description and MCP operation or template",
+            ));
+        }
+        if let Some(template) = &instance.template {
+            if !valid_managed_mcp_asset_path(&template.path)
+                || !template.sha256.strip_prefix("sha256:").is_some_and(|hash| {
+                    hash.len() == 64
+                        && hash
+                            .bytes()
+                            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                })
+            {
+                return Err(invalid(
+                    "managed MCP template requires a safe relative path and sha256 digest",
+                ));
+            }
+        } else if instance.reset_on_activation {
+            return Err(invalid(
+                "managed MCP reset_on_activation requires a packaged template",
             ));
         }
     }
@@ -348,29 +431,34 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
             }
         })
     };
-    let feature = &service.feature;
-    if !owned_id(&feature.feature_id)
-        || feature.route_id.is_empty()
-        || !feature
-            .route_id
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
-        || feature.path != format!("/settings/{}", feature.route_id)
-        || feature.label.trim().is_empty()
-        || feature.description.trim().is_empty()
-    {
+    if let Some(feature) = &service.feature {
+        if !owned_id(&feature.feature_id)
+            || feature.route_id.is_empty()
+            || !feature
+                .route_id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+            || feature.path != format!("/settings/{}", feature.route_id)
+            || feature.label.trim().is_empty()
+            || feature.description.trim().is_empty()
+        {
+            return Err(invalid(
+                "managed service feature must have an owned identity and concrete settings route",
+            ));
+        }
+        if manifest.settings_pages.len() > 1
+            || manifest
+                .settings_pages
+                .iter()
+                .any(|p| p.feature_id != feature.feature_id)
+        {
+            return Err(invalid(
+                "managed service settings page must belong to its feature",
+            ));
+        }
+    } else if !manifest.settings_pages.is_empty() {
         return Err(invalid(
-            "managed service feature must have an owned identity and concrete settings route",
-        ));
-    }
-    if manifest.settings_pages.len() > 1
-        || manifest
-            .settings_pages
-            .iter()
-            .any(|p| p.feature_id != feature.feature_id)
-    {
-        return Err(invalid(
-            "managed service settings page must belong to its feature",
+            "managed service settings page requires a settings feature",
         ));
     }
     let mut ids = BTreeSet::new();
@@ -518,5 +606,15 @@ pub(crate) fn validate_managed_service(manifest: &PluginManifestV1) -> Framework
                 .map_err(|_| invalid("managed service schema is invalid"))?;
         }
     }
-    Ok(())
+    shared_streams::validate_shared_streams(service)
+}
+
+/// Paths use portable package separators and contain only ordinary nonempty components.
+pub fn valid_managed_mcp_asset_path(path: &str) -> bool {
+    !path.is_empty()
+        && !path.contains('\\')
+        && !path.contains(':')
+        && path.split('/').all(|part| {
+            !part.is_empty() && part != "." && part != ".." && !part.chars().any(char::is_control)
+        })
 }

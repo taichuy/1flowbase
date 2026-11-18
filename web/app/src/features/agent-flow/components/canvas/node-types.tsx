@@ -12,6 +12,7 @@ import { AgentFlowCustomEdge, type AgentFlowCanvasEdge } from './custom-edge';
 
 export interface AgentFlowCanvasNodeData extends Record<string, unknown> {
   readOnly?: boolean;
+  runStatus?: 'running' | 'succeeded' | 'failed';
   nodeId: string;
   nodeType: FlowNodeType;
   nodeSchema: CanvasNodeSchema;

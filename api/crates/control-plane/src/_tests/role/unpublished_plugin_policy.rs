@@ -5,9 +5,8 @@ async fn stopped_plugin_policy_remains_durable_without_blocking_role_editor() {
     let repository = MemoryRoleRepository::default();
     let service = RoleService::new(repository.clone());
     editable_role(&service, &repository, "policy-editor").await;
-    let stopped = domain::RoleConsoleGroupPolicy::full(
-        domain::ConsolePolicyGroup::settings_feature("ssh.management").unwrap(),
-    );
+    let stopped =
+        domain::RoleConsoleGroupPolicy::full(domain::ConsolePolicyGroup::plugin("ssh").unwrap());
     repository
         .replace_role_console_policy(&ReplaceRoleConsolePolicyInput {
             actor_user_id: repository.root_user_id(),

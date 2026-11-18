@@ -20,6 +20,56 @@ pub(super) fn project_protocol_context_envelope(
     true
 }
 
+// Dynamic tool discovery changes which tools are visible. Unlike transport hints,
+// it cannot degrade to the canonical tool list when the source profile is absent.
+pub(super) fn validate_source_tool_projection(
+    envelope: Option<&ProtocolContextEnvelope>,
+    declared_capabilities: &BTreeSet<&str>,
+) -> Result<(), String> {
+    let Some(envelope) =
+        envelope.filter(|envelope| envelope.source_protocol == "anthropic_messages")
+    else {
+        return Ok(());
+    };
+    let Some(body) = envelope
+        .source_request
+        .as_ref()
+        .and_then(|source| source.body.as_ref())
+    else {
+        return Ok(());
+    };
+    let deferred = body
+        .get("tools")
+        .and_then(Value::as_array)
+        .is_some_and(|tools| {
+            tools
+                .iter()
+                .any(|tool| tool.get("defer_loading").and_then(Value::as_bool) == Some(true))
+        });
+    let additions = body
+        .get("messages")
+        .and_then(Value::as_array)
+        .is_some_and(|messages| {
+            messages.iter().any(|message| {
+                message
+                    .get("content")
+                    .and_then(Value::as_array)
+                    .is_some_and(|blocks| {
+                        blocks.iter().any(|block| {
+                            block.get("type").and_then(Value::as_str) == Some("tool_addition")
+                        })
+                    })
+            })
+        });
+    if (deferred || additions)
+        && !declared_capabilities
+            .contains(PROVIDER_PROTOCOL_CONTEXT_RESTORE_ANTHROPIC_MESSAGES_V2_CAPABILITY)
+    {
+        return Err("Anthropic dynamic tool semantics require protocol_context.restore.anthropic_messages.v2; source tool_addition/defer_loading cannot be omitted".to_string());
+    }
+    Ok(())
+}
+
 fn protocol_context_profile_is_declared(
     envelope: &ProtocolContextEnvelope,
     declared_capabilities: &BTreeSet<&str>,

@@ -59,6 +59,7 @@ pub(in super::super) async fn resume_waiting_callback(
         let resumed = state
             .store
             .commit_tool_callback_results(&control_plane::ports::CommitToolCallbackResultsInput {
+                anthropic_continuation: None,
                 responses_continuation: None,
                 scope_id,
                 application_id: run.application_id,
@@ -357,7 +358,7 @@ async fn closed_proof_reads_385_facts_once_across_four_real_pg_forwarder_batches
     .await;
     let samples = Arc::new(std::sync::Mutex::new(Vec::new()));
     let mut dependencies = terminal_dependencies(&state);
-    dependencies.delivery_read_samples = Some(samples.clone());
+    dependencies.set_delivery_read_samples_for_test_support(Some(samples.clone()));
     let (tx, live) = mpsc::unbounded_channel();
     for (index, event) in own.tool_delivery_events.iter().enumerate() {
         tx.send(committed_delivery_envelope(
@@ -375,19 +376,21 @@ async fn closed_proof_reads_385_facts_once_across_four_real_pg_forwarder_batches
     let mut subscription = empty_subscription();
     subscription.live_events = control_plane::ports::RuntimeEventReceiver::from_unbounded(live);
     let task = tokio::spawn(send_subscribed_compatible_typed_event_stream(
-        SubscribedCompatibleTypedEventStream {
-            terminal_dependencies: dependencies,
-            initial_run: run.clone(),
-            delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
-            delivery_scope: RuntimeEventDeliveryScope::Resume {
+        SubscribedCompatibleTypedEventStream::for_test_support(
+            dependencies,
+            run.clone(),
+            CompatibleDeliveryPolicy::ScopedResponses,
+            RuntimeEventDeliveryScope::Resume {
                 callback_task_id: callback,
             },
-            from_sequence: None,
-            durable_round_replay: Vec::new(),
-            ignored_waiting_callback_task_id: Some(callback),
+            CompatibleReplayTestSupport {
+                from_sequence: None,
+                durable_round_replay: Vec::new(),
+                ignored_waiting_callback_task_id: Some(callback),
+            },
             subscription,
             sender,
-        },
+        ),
     ));
     let (events, claims) = collect_projection(receiver).await;
     task.await.unwrap();
@@ -469,17 +472,19 @@ async fn text_only_open_scope_preserves_durable_final_terminal() {
     ));
     let (sender, receiver) = mpsc::channel(8);
     let task = tokio::spawn(send_subscribed_compatible_typed_event_stream(
-        SubscribedCompatibleTypedEventStream {
-            terminal_dependencies: terminal_dependencies(&state),
-            initial_run: run,
-            delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
-            delivery_scope: RuntimeEventDeliveryScope::Start,
-            from_sequence: None,
-            durable_round_replay: Vec::new(),
-            ignored_waiting_callback_task_id: None,
+        SubscribedCompatibleTypedEventStream::for_test_support(
+            terminal_dependencies(&state),
+            run,
+            CompatibleDeliveryPolicy::ScopedResponses,
+            RuntimeEventDeliveryScope::Start,
+            CompatibleReplayTestSupport {
+                from_sequence: None,
+                durable_round_replay: Vec::new(),
+                ignored_waiting_callback_task_id: None,
+            },
             subscription,
             sender,
-        },
+        ),
     ));
     let (events, claims) = collect_projection(receiver).await;
     task.await.unwrap();
@@ -515,7 +520,7 @@ async fn closed_terminal_only_385_completes_durable_subscription_and_live_lanes(
         let before = delivery_snapshot(&state, &foreign_ids).await;
         let samples = Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut dependencies = terminal_dependencies(&state);
-        dependencies.delivery_read_samples = Some(samples.clone());
+        dependencies.set_delivery_read_samples_for_test_support(Some(samples.clone()));
         let mut terminal = durable_record_to_runtime_event_envelope(own.waiting_event);
         terminal.sequence = 90000;
         let (tx, live) = mpsc::unbounded_channel();
@@ -547,29 +552,31 @@ async fn closed_terminal_only_385_completes_durable_subscription_and_live_lanes(
         drop(tx);
         let (sender, mut receiver) = mpsc::channel(8);
         let task = tokio::spawn(send_subscribed_compatible_typed_event_stream(
-            SubscribedCompatibleTypedEventStream {
-                terminal_dependencies: dependencies,
-                initial_run: run.clone(),
-                delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
-                delivery_scope: RuntimeEventDeliveryScope::Resume {
+            SubscribedCompatibleTypedEventStream::for_test_support(
+                dependencies,
+                run.clone(),
+                CompatibleDeliveryPolicy::ScopedResponses,
+                RuntimeEventDeliveryScope::Resume {
                     callback_task_id: callback,
                 },
-                from_sequence: Some(50000),
-                durable_round_replay: durable,
-                ignored_waiting_callback_task_id: Some(callback),
+                CompatibleReplayTestSupport {
+                    from_sequence: Some(50000),
+                    durable_round_replay: durable,
+                    ignored_waiting_callback_task_id: Some(callback),
+                },
                 subscription,
                 sender,
-            },
+            ),
         ));
         let selection = tokio::time::timeout(Duration::from_secs(10), receiver.recv())
             .await
             .expect("selection before tools")
             .expect("host selection input");
         assert_eq!(
-            selection.envelope.event_type,
+            selection.envelope_for_test_support().event_type,
             control_plane::ports::LlmInputSelection::EVENT_TYPE
         );
-        assert!(selection.delivery.is_none());
+        assert!(selection.delivery_for_test_support().is_none());
         let (events, claims) = collect_projection(receiver).await;
         task.await.unwrap();
         assert_exact_response(&events, &payloads, callback);
@@ -688,8 +695,8 @@ async fn closed_mixed_status_prefix_preserves_peer_authority_and_exact_terminal(
             .await
             .expect("Closed prefix must progress")
             .expect("prefix input");
-        assert_eq!(input.envelope.payload, *payload);
-        assert_eq!(input.delivery.is_some(), index == 3);
+        assert_eq!(input.envelope_for_test_support().payload, *payload);
+        assert_eq!(input.delivery_for_test_support().is_some(), index == 3);
         prefix.push(input);
     }
     let mut terminal = durable_record_to_runtime_event_envelope(own.waiting_event);
@@ -735,26 +742,28 @@ async fn assert_closed_no_progress(read_fault: bool) {
     let samples = Arc::new(std::sync::Mutex::new(Vec::new()));
     let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut dependencies = terminal_dependencies(&state);
-    dependencies.delivery_read_samples = Some(samples.clone());
-    dependencies.delivery_read_attempts = Some(attempts.clone());
+    dependencies.set_delivery_read_samples_for_test_support(Some(samples.clone()));
+    dependencies.set_delivery_read_attempts_for_test_support(Some(attempts.clone()));
     let (tx, live) = mpsc::unbounded_channel();
     let (sender, mut receiver) = mpsc::channel(1);
     let mut subscription = empty_subscription();
     subscription.live_events = control_plane::ports::RuntimeEventReceiver::from_unbounded(live);
     let task = tokio::spawn(send_subscribed_compatible_typed_event_stream(
-        SubscribedCompatibleTypedEventStream {
-            terminal_dependencies: dependencies,
-            initial_run: run.clone(),
-            delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
-            delivery_scope: RuntimeEventDeliveryScope::Resume {
+        SubscribedCompatibleTypedEventStream::for_test_support(
+            dependencies,
+            run.clone(),
+            CompatibleDeliveryPolicy::ScopedResponses,
+            RuntimeEventDeliveryScope::Resume {
                 callback_task_id: callback,
             },
-            from_sequence: Some(50000),
-            durable_round_replay: Vec::new(),
-            ignored_waiting_callback_task_id: Some(callback),
+            CompatibleReplayTestSupport {
+                from_sequence: Some(50000),
+                durable_round_replay: Vec::new(),
+                ignored_waiting_callback_task_id: Some(callback),
+            },
             subscription,
             sender,
-        },
+        ),
     ));
     let mut prefix = Vec::new();
     for payload in &payloads[..128] {
@@ -762,8 +771,8 @@ async fn assert_closed_no_progress(read_fault: bool) {
             .await
             .expect("initial batch must progress")
             .expect("initial claimed input");
-        assert_eq!(input.envelope.payload, *payload);
-        assert!(input.delivery.is_some());
+        assert_eq!(input.envelope_for_test_support().payload, *payload);
+        assert!(input.delivery_for_test_support().is_some());
         prefix.push(input); // Deliberately hold receipts; no ACK is needed for termination.
     }
     if read_fault {
@@ -809,8 +818,8 @@ async fn assert_closed_no_progress(read_fault: bool) {
         .await
         .expect("finite exact replay after failed/no-progress claim")
         .expect("first remainder input");
-    assert_eq!(next.envelope.payload, payloads[128]);
-    assert!(next.delivery.is_none());
+    assert_eq!(next.envelope_for_test_support().payload, payloads[128]);
+    assert!(next.delivery_for_test_support().is_none());
     prefix.push(next);
     let (events, claims) = collect_projection_with_prefix(prefix, receiver).await;
     task.await.unwrap();
@@ -908,19 +917,21 @@ async fn initial_proof_read_failure_with_acked_uncertain_exact_replay_is_explici
         .map(crate::routes::application_public_api::stream_terminal_fallback::durable_record_to_runtime_event_envelope).collect();
     let (sender, receiver) = mpsc::channel(8);
     let task = tokio::spawn(send_subscribed_compatible_typed_event_stream(
-        SubscribedCompatibleTypedEventStream {
-            terminal_dependencies: terminal_dependencies(&state),
-            initial_run: run.clone(),
-            delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
-            delivery_scope: RuntimeEventDeliveryScope::Resume {
+        SubscribedCompatibleTypedEventStream::for_test_support(
+            terminal_dependencies(&state),
+            run.clone(),
+            CompatibleDeliveryPolicy::ScopedResponses,
+            RuntimeEventDeliveryScope::Resume {
                 callback_task_id: callback,
             },
-            from_sequence: None,
-            durable_round_replay: replay,
-            ignored_waiting_callback_task_id: Some(callback),
-            subscription: empty_subscription(),
+            CompatibleReplayTestSupport {
+                from_sequence: None,
+                durable_round_replay: replay,
+                ignored_waiting_callback_task_id: Some(callback),
+            },
+            empty_subscription(),
             sender,
-        },
+        ),
     ));
     let (events, claims) = collect_projection(receiver).await;
     task.await.unwrap();
@@ -1131,7 +1142,7 @@ async fn assert_canonical_cold_and_follower(with_marker: bool) {
     )
     .await
     .unwrap();
-    let (events, claims) = collect_projection(cold.events).await;
+    let (events, claims) = collect_projection(cold.into_events_for_test_support()).await;
     assert_exact_response(&events, &payloads, callback);
     assert_eq!(claims, 0, "acked/uncertain exact recovery must not reclaim");
     // Actual production follower probes canonical boundary then invokes the same
@@ -1153,7 +1164,7 @@ async fn assert_canonical_cold_and_follower(with_marker: bool) {
         },
         subscription,
     );
-    let (events, claims) = collect_projection(follower.events).await;
+    let (events, claims) = collect_projection(follower.into_events_for_test_support()).await;
     assert_exact_response(&events, &payloads, callback);
     assert_eq!(claims, 0);
     let ids = vec![
@@ -1208,6 +1219,7 @@ async fn inference_successor_selected_run_is_start_even_when_prior_callback_auth
         response_payload: json!({"tool_results":[]}),
         response_mode: Some("streaming".into()),
         native_transport: None,
+        anthropic_continuation: None,
         responses_continuation: None,
         transport_connection_scope: None,
         observation_context: None,
@@ -1226,7 +1238,7 @@ async fn inference_successor_selected_run_is_start_even_when_prior_callback_auth
     )
     .await
     .unwrap();
-    let (events, claims) = collect_projection(attached.events).await;
+    let (events, claims) = collect_projection(attached.into_events_for_test_support()).await;
     assert_exact_response(&events, &payloads, successor.id);
     assert_eq!(claims, 1);
     assert_eq!(

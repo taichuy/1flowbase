@@ -102,7 +102,8 @@ function principalKindLabel(
 
 export function getApplicationRunsTableColumns(
   t: TFunction<'applications'>,
-  includeApplicationId = false
+  includeApplicationId = false,
+  applicationType?: string
 ): Array<DataTableColumn<ApplicationRunSummary>> {
   return [
     {
@@ -147,9 +148,12 @@ export function getApplicationRunsTableColumns(
           {record.outcome === 'in_progress' && (
             <Tag color="processing">{t('auto.task_outcome_in_progress')}</Tag>
           )}
-          {record.outcome === 'no_final_answer' && (
-            <Tag color="warning">{t('auto.task_outcome_no_final_answer')}</Tag>
-          )}
+          {applicationType !== 'workflow' &&
+            record.outcome === 'no_final_answer' && (
+              <Tag color="warning">
+                {t('auto.task_outcome_no_final_answer')}
+              </Tag>
+            )}
           {record.parent_run_id && (
             <a
               href={`?run_id=${encodeURIComponent(record.parent_run_id)}${includeApplicationId ? `&application_id=${encodeURIComponent(record.application_id)}` : ''}`}

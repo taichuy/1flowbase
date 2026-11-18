@@ -10,7 +10,8 @@
     "provider_protocol_capsules": "flow_run_owned_table",
     "flow_container_checkpoints": "flow_run_owned_table",
     "flow_container_executions": "flow_run_owned_table",
-    "flow_container_rounds": "flow_run_owned_table"
+    "flow_container_rounds": "flow_run_owned_table",
+    "workflow_run_identity_snapshots": "flow_run_owned_table"
   },
   "dynamicModelTablePatterns": [],
   "registeredSystemTables": [
@@ -854,6 +855,13 @@
       "backfillSource": "20261026160000 projects original text, file and reply history into typed timeline rows",
       "writePathSource": "communications history and file repositories read typed timeline facts; communication_timeline_updated_at maintains file recovery updates"
     },
+    "communication_message_sends": {
+      "category": "join_or_child",
+      "scopeGenerationSource": "authenticated notification send workspace and channel are retained with the owner send log",
+      "backfillSource": "new send receipt relation; existing timeline rows remain unchanged",
+      "writePathSource": "communications send history repository correlates notification_send_logs identity with optional timeline history and updates the typed send status and delivery receipt",
+      "idGeneration": "send_log_id is the sole notification send owner identity; no independent row id"
+    },
     "communication_sessions": {
       "category": "managed_table",
       "scopeGenerationSource": "authenticated workspace and persisted external conversation scope are checked together by the communication repository",
@@ -903,6 +911,50 @@
       "category": "flow_run_owned_container_observations",
       "scopeGenerationSource": "flow_run_id + execution_id -> flow_container_executions -> flow_runs.id",
       "writePathSource": "Pending observation receipts inherit run ownership through the exact execution composite foreign key and are drained by sequence before completion clears their payloads."
+    },
+    "custom_frontend_blocks": {
+      "category": "workspace_owned_resource",
+      "scopeGenerationSource": "generated stored scope_id mirrors non-null workspace_id",
+      "backfillSource": "workspace_id",
+      "writePathSource": "custom block repository supplies UUIDv7 and actor audit fields; schema preserves scope on every write"
+    },
+    "event_definitions": {
+      "category": "workspace_owned_resource",
+      "scopeGenerationSource": "generated stored scope_id mirrors non-null workspace_id",
+      "backfillSource": "workspace_id",
+      "writePathSource": "event center repository supplies UUIDv7, creator and explicit timestamps; generated scope follows workspace"
+    },
+    "plugin_record_permission_policies": {
+      "category": "workspace_owned_resource",
+      "scopeGenerationSource": "generated stored scope_id mirrors non-null workspace_id",
+      "backfillSource": "workspace_id",
+      "writePathSource": "record permission repository atomically upserts workspace-scoped policy identity and revision with actor audit fields"
+    },
+    "workflow_event_triggers": {
+      "category": "workspace_owned_resource",
+      "scopeGenerationSource": "generated stored scope_id mirrors non-null workspace_id",
+      "backfillSource": "workspace_id",
+      "writePathSource": "event center and application repositories validate application workspace; created_at defaults on insert and preserves existing creation time on updates"
+    },
+    "event_catalog": {
+      "category": "join_or_child",
+      "scopeGenerationSource": "generated scope_id derives from metadata workspace or SYSTEM_SCOPE_ID for system/unbound entries",
+      "writePathSource": "catalog synchronization and event definition projection retain JSON identity, availability and created/updated lifecycle"
+    },
+    "plugin_record_permission_grants": {
+      "category": "join_or_child",
+      "scopeGenerationSource": "policy_id -> plugin_record_permission_policies.workspace_id; role scope trigger rejects cross-workspace roles",
+      "writePathSource": "record permission repository replaces the bounded policy/role action set atomically; cascade ownership and revision triggers maintain lifecycle"
+    },
+    "plugin_record_permission_scope_revisions": {
+      "category": "join_or_child",
+      "scopeGenerationSource": "workspace_id is part of the workspace/publisher/plugin primary key",
+      "writePathSource": "policy/grant lifecycle triggers bump monotonic revision; plugin data receipt validation reads the exact composite owner key"
+    },
+    "workflow_run_identity_snapshots": {
+      "category": "join_or_child",
+      "scopeGenerationSource": "flow_run_id -> flow_runs.scope_id",
+      "writePathSource": "workflow identity repository inserts once with ON CONFLICT DO NOTHING and reads by owning flow_run_id; run deletion cascades snapshot"
     }
   },
   "needsOwnerReviewTables": {},

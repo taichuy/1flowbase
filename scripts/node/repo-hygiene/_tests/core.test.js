@@ -33,7 +33,7 @@ test("outbound HTTP client owner exceptions are narrow and documented", () => {
     true,
   );
   const findings = scanSourceFile({
-    relativePath: "api/apps/api-server/src/network_egress_client.rs",
+    relativePath: "api/crates/api/kernel/src/host/network/network_egress_client.rs",
     content: "let client = Client::builder().build()?;\n",
   });
   assert.equal(
@@ -748,5 +748,37 @@ test("structure hard limits preserve early warnings and exact vendor ownership",
       .map(({ file, severity }) => [file, severity]), [["web/app/src/over_limit", "error"]]);
   } finally {
     fs.rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
+test('moved API owners cannot construct outbound clients outside the exact Host allowlist', () => {
+  for (const relativePath of [
+    'api/crates/api/kernel/src/contracts/unowned.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/unowned.rs',
+    'api/crates/api/applications/src/routes/applications/unowned.rs',
+    'api/crates/api/console-settings/src/routes/settings/unowned.rs',
+    'api/crates/api/mcp/src/routes/mcp_protocol/unowned.rs',
+    'api/crates/api/plugins-models/src/routes/plugins_and_models/unowned.rs',
+    'api/crates/api/console-interaction/src/routes/terminal/unowned.rs',
+  ]) {
+    const findings = scanSourceFile({ relativePath, content: 'let client = reqwest::Client::new();\n' });
+    assert.equal(findings.some((item) => item.rule === 'unowned-outbound-http-client'), true);
+  }
+});
+
+
+test('MCP outbound exception follows the exact implementation without retaining its Root facade', () => {
+  const current = 'api/crates/api/mcp/src/routes/settings/mcp_management/upstream_client.rs';
+  assert.equal(OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST.size, 3);
+  assert.equal(OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST.get(current),
+    'Third-party MCP endpoints require DNS pinning and SSRF enforcement before connection');
+  assert.equal(fs.existsSync(path.resolve(__dirname, '../../../..', current)), true);
+  for (const [relativePath, rejected] of [
+    [current, false],
+    ['api/apps/api-server/src/routes/settings/mcp_management/upstream_client.rs', true],
+    ['api/crates/api/mcp/src/routes/settings/mcp_management/other_client.rs', true],
+  ]) {
+    const findings = scanSourceFile({ relativePath, content: 'let client = reqwest::Client::new();\n' });
+    assert.equal(findings.some(item => item.rule === 'unowned-outbound-http-client'), rejected, relativePath);
   }
 });

@@ -21,6 +21,7 @@ function createInitialState(
       updated_at: '2026-04-16T10:00:00Z',
       document
     },
+    analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
     autosave_interval_seconds: 30,
     user_protection_limit: 10,
     versions: []

@@ -383,6 +383,16 @@ pub(super) fn normalize_anthropic_tool(
                 TranslationSafeRepresentation::Present,
             ));
         };
+        if field == "defer_loading" {
+            report.record(
+                &format!("{path}.{field}"),
+                Some("$.client_protocol_envelope.source_request.body.tools"),
+                TranslationDecisionKind::Exact,
+                Some("deferred tool loading is preserved only by matching Anthropic source projection"),
+                TranslationSafeRepresentation::Present,
+            );
+            continue;
+        }
         if enabled {
             report.record(
                 &format!("{path}.{field}"),
@@ -473,7 +483,7 @@ pub(super) fn normalize_anthropic_tool_choice(
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .map(|name| json!({ "name": name }))
+            .map(|name| json!({ "type": "function", "name": name }))
             .ok_or_else(|| {
                 reject_anthropic_nested_field(
                     report,

@@ -92,12 +92,13 @@ where
                 }),
             )
             .await?;
-        // Managed services need schema application and explicit permission grants before enable.
-        // Re-upload retains the repository's deliberate desired state; installation never activates it.
-        if is_host_extension_installation(&install.installation)
-            || is_system_managed_service(&install.installation)
-        {
+        if is_host_extension_installation(&install.installation) {
             return Ok(install);
+        }
+        if is_system_managed_service(&install.installation) {
+            return self
+                .upgrade_active_managed_service(command.actor_user_id, install)
+                .await;
         }
         self.ensure_initial_managed_assignment(command.actor_user_id, &install.installation)
             .await?;
@@ -314,10 +315,13 @@ where
                 detail_json,
             )
             .await?;
-        if is_host_extension_installation(&install.installation)
-            || is_system_managed_service(&install.installation)
-        {
+        if is_host_extension_installation(&install.installation) {
             return Ok(install);
+        }
+        if is_system_managed_service(&install.installation) {
+            return self
+                .upgrade_active_managed_service(command.actor_user_id, install)
+                .await;
         }
         if self.is_network_egress_provider_console_operation() {
             Ok(install)
@@ -328,5 +332,45 @@ where
             )
             .await
         }
+    }
+
+    async fn upgrade_active_managed_service(
+        &self,
+        actor_user_id: Uuid,
+        mut install: InstallPluginResult,
+    ) -> Result<InstallPluginResult> {
+        let Some(current) = self
+            .active_system_managed_family_installation(&install.installation)
+            .await?
+        else {
+            // First install and deliberately disabled families still require explicit enable.
+            return Ok(install);
+        };
+        if current.id == install.installation.id
+            || !matches!(
+                (parse_semver(&install.installation.plugin_version), parse_semver(&current.plugin_version)),
+                (Some(target), Some(previous)) if target > previous
+            )
+        {
+            return Ok(install);
+        }
+        let actor = load_actor_context_for_user(&self.repository, actor_user_id).await?;
+        let task = self
+            .switch_family_installation(
+                &actor,
+                &install.installation.provider_code,
+                &current,
+                &install.installation,
+                actor_user_id,
+                None,
+            )
+            .await?;
+        let local = self
+            .ready_current_node_installation(install.installation.id)
+            .await?;
+        install.installation = local.installation;
+        install.local_artifact = local.artifact;
+        install.task = task;
+        Ok(install)
     }
 }

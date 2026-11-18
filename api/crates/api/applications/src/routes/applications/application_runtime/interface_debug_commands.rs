@@ -1,0 +1,1253 @@
+mod managed_projection;
+
+use std::{convert::Infallible, future::Future, pin::Pin, sync::Arc};
+
+use axum::http::HeaderMap;
+use axum::response::sse::Event;
+use control_plane::{
+    application::ApplicationService,
+    errors::ControlPlaneError,
+    orchestration_runtime::{
+        debug_stream_events, project_runtime_event_stream_terminal,
+        start_runtime_debug_event_persister, wait_for_runtime_debug_event_persister,
+        CancelFlowRunCommand, CompleteCallbackTaskCommand, ContinueFlowDebugRunCommand,
+        OrchestrationRuntimeService, PrepareFlowDebugRunCommand, ResumeFlowRunCommand,
+        StartFlowDebugRunCommand, StartNodeDebugPreviewCommand,
+    },
+    ports::{
+        ApplicationRepository, CommunicationRepository, OrchestrationRuntimeRepository,
+        RuntimeEventStreamPolicy,
+    },
+};
+use futures_util::FutureExt;
+use interface_runtime::{InterfaceContract, UserPrincipal};
+use storage_durable_postgres::MainDurableStore;
+use uuid::Uuid;
+
+use super::{
+    offload_application_run_detail_artifacts_with_dependencies, scope_application_activity,
+    to_application_run_detail_response, to_node_last_run_response,
+    to_trace_projection_statistics_response, ApplicationActivityKind, ApplicationRunDetailResponse,
+    CompleteCallbackTaskBody, NodeLastRunResponse, ResumeFlowRunBody, StartFlowDebugRunBody,
+    StartNodeDebugPreviewBody,
+};
+use crate::{
+    app_state::ApiState,
+    error_response::ApiError,
+    routes::{
+        console_interface::{
+            self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
+            ConsoleInterfaceTargetError, ConsoleServerStreamFuture, ConsoleServerStreamPort,
+        },
+        debug_run_stream,
+    },
+    runtime_activity::ApplicationRuntimeActivityTracker,
+};
+
+pub(crate) enum ApplicationRuntimeDebugCommandsInput {
+    Start {
+        application_id: Uuid,
+        body: StartFlowDebugRunBody,
+        headers: HeaderMap,
+    },
+    Resume {
+        application_id: Uuid,
+        run_id: Uuid,
+        body: ResumeFlowRunBody,
+        headers: HeaderMap,
+    },
+    Cancel {
+        application_id: Uuid,
+        run_id: Uuid,
+    },
+    CompleteCallback {
+        application_id: Uuid,
+        callback_task_id: Uuid,
+        body: CompleteCallbackTaskBody,
+        headers: HeaderMap,
+    },
+    StartNode {
+        application_id: Uuid,
+        node_id: String,
+        body: StartNodeDebugPreviewBody,
+        headers: HeaderMap,
+    },
+}
+
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed debug output is projected immediately into the console response"
+)]
+pub(crate) enum ApplicationRuntimeDebugCommandsOutput {
+    Run(ApplicationRunDetailResponse),
+    Node(NodeLastRunResponse),
+}
+
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the stream command is consumed once by the typed debug adapter"
+)]
+pub(crate) enum ApplicationRuntimeDebugStreamInput {
+    Start {
+        application_id: Uuid,
+        body: StartFlowDebugRunBody,
+        headers: HeaderMap,
+        stream_query: super::DebugRunStreamQuery,
+    },
+    Subscribe {
+        application_id: Uuid,
+        run_id: Uuid,
+        from_sequence: Option<i64>,
+    },
+}
+
+pub(crate) struct ApplicationRuntimeDebugStreamEvent(pub(crate) Result<Event, Infallible>);
+
+pub(crate) struct ApplicationRuntimeDebugStreamOutput {
+    pub(crate) application_id: Uuid,
+    pub(crate) run_id: Uuid,
+}
+
+type RuntimeDebugMcpFactoryFuture<'a> = Pin<
+    Box<
+        dyn Future<
+                Output = Result<
+                    Arc<dyn crate::runtime_ports::RuntimeToolInvokerFactoryHandle>,
+                    ApiError,
+                >,
+            > + Send
+            + 'a,
+    >,
+>;
+
+test_support_item! { pub(crate), []
+trait RuntimeDebugMcpFactory: Send + Sync + 'static {
+    fn for_actor<'a>(
+        &'a self,
+        actor: &'a domain::ActorContext,
+    ) -> RuntimeDebugMcpFactoryFuture<'a>;
+}
+}
+
+struct StateRuntimeDebugMcpFactory {
+    state: std::sync::Weak<ApiState>,
+}
+
+impl RuntimeDebugMcpFactory for StateRuntimeDebugMcpFactory {
+    fn for_actor<'a>(
+        &'a self,
+        actor: &'a domain::ActorContext,
+    ) -> RuntimeDebugMcpFactoryFuture<'a> {
+        Box::pin(async move {
+            let state = self
+                .state
+                .upgrade()
+                .ok_or_else(crate::generation_dispatch::unavailable)?;
+            crate::generation_dispatch::GenerationDispatch::acquire(&state)?
+                .runtime_debug_mcp_factory(&state, actor)
+                .await
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct RuntimeDebugCommandDependencies {
+    store: MainDurableStore,
+    provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
+    runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
+    communication_activity: Arc<crate::communication_runtime::CommunicationActivity>,
+    runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
+    provider_secret_master_key: String,
+    model_billing_require_provider_usage: bool,
+    provider_transport_store: Arc<dyn control_plane::ports::ProviderTransportStore>,
+    api_node_id: String,
+    provider_install_root: String,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    notification_sender: Arc<dyn control_plane::notifications::NotificationSenderPort>,
+    cache_store: Arc<dyn crate::host_infrastructure::CacheStore>,
+    published_plan_cache: Arc<dyn control_plane::ports::PublishedPlanCache>,
+    task_queue: Arc<dyn crate::host_infrastructure::TaskQueue>,
+    runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
+    assistant_executions:
+        Arc<std::sync::Mutex<std::collections::HashMap<Uuid, tokio::task::AbortHandle>>>,
+    mcp_factory: Arc<dyn RuntimeDebugMcpFactory>,
+    binding_validator: Arc<dyn crate::runtime_ports::CommunicationBindingValidator>,
+}
+
+pub fn dependencies(
+    state: Arc<ApiState>,
+    binding_validator: Arc<dyn crate::runtime_ports::CommunicationBindingValidator>,
+) -> RuntimeDebugCommandDependencies {
+    RuntimeDebugCommandDependencies {
+        binding_validator,
+        store: state.store.clone(),
+        provider_runtime: state.provider_runtime.clone(),
+        runtime_activity: state.runtime_activity.clone(),
+        communication_activity: state.communication_activity.clone(),
+        runtime_engine: state.runtime_engine.clone(),
+        provider_secret_master_key: state.provider_secret_master_key.clone(),
+        model_billing_require_provider_usage: state.model_billing_require_provider_usage,
+        provider_transport_store: state.infrastructure.provider_transport_store(),
+        api_node_id: state.api_node_id.clone(),
+        provider_install_root: state.provider_install_root.clone(),
+        file_storage_registry: state.file_storage_registry.clone(),
+        notification_sender: state.notification_service.clone(),
+        cache_store: state.infrastructure.cache_store(),
+        published_plan_cache: state.infrastructure.published_plan_cache(),
+        task_queue: state.infrastructure.task_queue(),
+        runtime_event_stream: state.runtime_event_stream.clone(),
+        assistant_executions: state.assistant_executions.clone(),
+        mcp_factory: Arc::new(StateRuntimeDebugMcpFactory {
+            state: Arc::downgrade(&state),
+        }),
+    }
+}
+
+struct ApplicationRuntimeDebugCommandsAdapter {
+    dependencies: RuntimeDebugCommandDependencies,
+}
+
+pub(crate) fn port(
+    dependencies: RuntimeDebugCommandDependencies,
+) -> Arc<
+    dyn ConsoleInterfacePort<
+        ApplicationRuntimeDebugCommandsInput,
+        ApplicationRuntimeDebugCommandsOutput,
+    >,
+> {
+    Arc::new(ApplicationRuntimeDebugCommandsAdapter { dependencies })
+}
+
+pub(crate) fn stream_port(
+    dependencies: RuntimeDebugCommandDependencies,
+) -> Arc<
+    dyn ConsoleServerStreamPort<
+        ApplicationRuntimeDebugStreamInput,
+        ApplicationRuntimeDebugStreamEvent,
+        ApplicationRuntimeDebugStreamOutput,
+    >,
+> {
+    Arc::new(ApplicationRuntimeDebugCommandsAdapter { dependencies })
+}
+
+impl ApplicationRuntimeDebugCommandsAdapter {
+    fn runtime(
+        &self,
+    ) -> OrchestrationRuntimeService<MainDurableStore, crate::provider_runtime::ApiProviderRuntime>
+    {
+        self.runtime_in_store(self.dependencies.store.clone())
+    }
+    fn runtime_for_actor(
+        &self,
+        actor: &domain::ActorContext,
+    ) -> OrchestrationRuntimeService<MainDurableStore, crate::provider_runtime::ApiProviderRuntime>
+    {
+        self.runtime_in_store(self.dependencies.store.for_actor(actor.clone()))
+    }
+    fn runtime_in_store(
+        &self,
+        store: MainDurableStore,
+    ) -> OrchestrationRuntimeService<MainDurableStore, crate::provider_runtime::ApiProviderRuntime>
+    {
+        OrchestrationRuntimeService::new(
+            store,
+            crate::provider_runtime::ApiProviderRuntime::new_with_activity(
+                self.dependencies.provider_runtime.clone(),
+                self.dependencies.runtime_activity.clone(),
+            )
+            .with_communication_activity(self.dependencies.communication_activity.clone()),
+            self.dependencies.runtime_engine.clone(),
+            self.dependencies.provider_secret_master_key.clone(),
+            self.dependencies.provider_transport_store.clone(),
+            self.dependencies.model_billing_require_provider_usage,
+        )
+        .with_published_plan_cache(self.dependencies.published_plan_cache.clone())
+        .with_node_artifact_context(
+            self.dependencies.api_node_id.clone(),
+            self.dependencies.provider_install_root.clone(),
+        )
+        .with_file_storage_registry(self.dependencies.file_storage_registry.clone())
+        .with_notification_sender(self.dependencies.notification_sender.clone())
+        .with_communication_execution_resolver(self.dependencies.communication_activity.clone())
+        .with_llm_routing_counter_store(self.dependencies.cache_store.clone())
+        .with_provider_request_log_queue(self.dependencies.task_queue.clone())
+    }
+
+    async fn mcp_invoker(
+        &self,
+        actor: &domain::ActorContext,
+        headers: HeaderMap,
+        mcp_instance_ids: Vec<String>,
+    ) -> Result<
+        Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>,
+        ApiError,
+    > {
+        self.dependencies
+            .mcp_factory
+            .for_actor(actor)
+            .await?
+            .create_server_delegated(headers, actor.clone(), mcp_instance_ids)
+            .await
+    }
+
+    async fn mcp_invoker_for_run(
+        &self,
+        actor: &domain::ActorContext,
+        headers: HeaderMap,
+        application_id: Uuid,
+        run_id: Uuid,
+    ) -> Result<
+        (
+            Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>,
+            domain::ActorContext,
+            bool,
+        ),
+        ApiError,
+    > {
+        self.application(actor, application_id).await?;
+        let run = self
+            .dependencies
+            .store
+            .get_flow_run(application_id, run_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("flow_run"))?;
+        if let Some((scope, binding)) = self
+            .dependencies
+            .store
+            .communication_context_for_run(actor.current_workspace_id, run_id)
+            .await?
+        {
+            // The durable run association alone grants communication scope. Neither model
+            // prompt markers nor the callback operator can replace the original actor/sender.
+            if binding.config.application_id != application_id
+                || binding.actor_user_id != run.created_by
+            {
+                return Err(ControlPlaneError::PermissionDenied("communication_run_scope").into());
+            }
+            // The Console kernel has authorized this operator for the exact resume/callback
+            // route. Do not require the retired aggregate applications.run grant as well.
+            // Execution retains the independently validated configuring actor below.
+            let execution_actor = self
+                .dependencies
+                .binding_validator
+                .validate_binding(&self.dependencies.store, &binding)
+                .await
+                .map_err(|_| {
+                    ControlPlaneError::PermissionDenied("communication_execution_denied")
+                })?;
+            let inner = self
+                .dependencies
+                .mcp_factory
+                .for_actor(&execution_actor)
+                .await?
+                .create_server_delegated(
+                    HeaderMap::new(),
+                    execution_actor.clone(),
+                    binding.config.mcp_instance_ids,
+                )
+                .await?;
+            return Ok((
+                Arc::new(crate::scoped_tools::ScopedTools { inner, scope }),
+                execution_actor,
+                true,
+            ));
+        }
+        if run.compatibility_mode.as_deref() == Some("communication") {
+            return Err(
+                ControlPlaneError::PermissionDenied("communication_run_scope_missing").into(),
+            );
+        }
+        let ids = run
+            .input_payload
+            .pointer("/sys/mcp_instance_ids")
+            .map(|value| serde_json::from_value::<Vec<String>>(value.clone()))
+            .transpose()
+            .map_err(|_| ControlPlaneError::InvalidInput("mcp_instance_ids"))?
+            .unwrap_or_default();
+        Ok((
+            self.mcp_invoker(actor, headers, ids).await?,
+            actor.clone(),
+            false,
+        ))
+    }
+
+    async fn application(
+        &self,
+        actor: &domain::ActorContext,
+        application_id: Uuid,
+    ) -> Result<domain::ApplicationRecord, ApiError> {
+        self.dependencies
+            .store
+            .get_application(actor.current_workspace_id, application_id)
+            .await?
+            .ok_or_else(|| ControlPlaneError::NotFound("application").into())
+    }
+
+    async fn offload(
+        &self,
+        actor: &domain::ActorContext,
+        application_id: Uuid,
+        detail: domain::ApplicationRunDetail,
+    ) -> Result<domain::ApplicationRunDetail, ApiError> {
+        offload_application_run_detail_artifacts_with_dependencies(
+            self.dependencies.store.clone(),
+            self.dependencies.file_storage_registry.clone(),
+            actor.current_workspace_id,
+            application_id,
+            detail,
+        )
+        .await
+    }
+
+    async fn start(
+        &self,
+        principal: &UserPrincipal,
+        application_id: Uuid,
+        mut body: StartFlowDebugRunBody,
+        headers: HeaderMap,
+    ) -> Result<ApplicationRunDetailResponse, ApiError> {
+        let actor = principal.actor();
+        let _http_activity = self
+            .dependencies
+            .runtime_activity
+            .start(application_id, ApplicationActivityKind::HttpRequest);
+        let mcp = self
+            .mcp_invoker(actor, headers, body.mcp_instance_ids.clone())
+            .await?;
+        body.freeze_mcp_selection()?;
+        let detail = api_host_kernel::runtime_execution::start_flow_debug_run(
+            &self
+                .runtime()
+                .with_runtime_internal_tool_invoker(mcp.clone()),
+            StartFlowDebugRunCommand {
+                actor_user_id: actor.user_id,
+                application_id,
+                input_payload: body.input_payload,
+                document_snapshot: body.document,
+                debug_session_id: body.debug_session_id,
+            },
+        )
+        .await?;
+        let application = self.application(actor, application_id).await?;
+        let dependencies = self.dependencies.clone();
+        let workspace_id = actor.current_workspace_id;
+        let flow_run_id = detail.flow_run.id;
+        tokio::spawn(async move {
+            let _execution_activity = dependencies.runtime_activity.start(
+                application_id,
+                ApplicationActivityKind::ApplicationExecution,
+            );
+            let service = OrchestrationRuntimeService::new(
+                dependencies.store.clone(),
+                crate::provider_runtime::ApiProviderRuntime::new_with_activity(
+                    dependencies.provider_runtime.clone(),
+                    dependencies.runtime_activity.clone(),
+                ),
+                dependencies.runtime_engine.clone(),
+                dependencies.provider_secret_master_key.clone(),
+                dependencies.provider_transport_store.clone(),
+                dependencies.model_billing_require_provider_usage,
+            )
+            .with_published_plan_cache(dependencies.published_plan_cache.clone())
+            .with_node_artifact_context(
+                dependencies.api_node_id.clone(),
+                dependencies.provider_install_root.clone(),
+            )
+            .with_file_storage_registry(dependencies.file_storage_registry.clone())
+            .with_notification_sender(dependencies.notification_sender.clone())
+            .with_runtime_internal_tool_invoker(mcp)
+            .with_llm_routing_counter_store(dependencies.cache_store.clone())
+            .with_provider_request_log_queue(dependencies.task_queue.clone());
+            match scope_application_activity(
+                application_id,
+                api_host_kernel::runtime_execution::continue_flow_debug_run(
+                    &service,
+                    ContinueFlowDebugRunCommand {
+                        application_id,
+                        flow_run_id,
+                        workspace_id,
+                    },
+                ),
+            )
+            .await
+            {
+                Ok(detail) => {
+                    if let Err(error) = offload_application_run_detail_artifacts_with_dependencies(
+                        dependencies.store.clone(),
+                        dependencies.file_storage_registry.clone(),
+                        workspace_id,
+                        application_id,
+                        detail,
+                    )
+                    .await
+                    {
+                        tracing::error!(application_id = %application_id, flow_run_id = %flow_run_id, error = %error.0, "failed to offload flow debug artifacts");
+                    }
+                }
+                Err(error) => {
+                    tracing::error!(application_id = %application_id, flow_run_id = %flow_run_id, error = %error, "failed to continue flow debug run")
+                }
+            }
+        });
+        self.detail_response(&application, detail).await
+    }
+
+    async fn resume(
+        &self,
+        principal: &UserPrincipal,
+        application_id: Uuid,
+        run_id: Uuid,
+        body: ResumeFlowRunBody,
+        headers: HeaderMap,
+    ) -> Result<ApplicationRunDetailResponse, ApiError> {
+        let actor = principal.actor();
+        let _http_activity = self
+            .dependencies
+            .runtime_activity
+            .start(application_id, ApplicationActivityKind::HttpRequest);
+        let checkpoint_id = Uuid::parse_str(&body.checkpoint_id)
+            .map_err(|_| ControlPlaneError::InvalidInput("checkpoint_id"))?;
+        let (mcp, execution_actor, communication_run) = self
+            .mcp_invoker_for_run(actor, headers, application_id, run_id)
+            .await?;
+        let mut runtime = self
+            .runtime_for_actor(&execution_actor)
+            .with_runtime_internal_tool_invoker(mcp);
+        if communication_run {
+            runtime =
+                runtime.with_runtime_event_stream(self.dependencies.runtime_event_stream.clone());
+        }
+        let detail = scope_application_activity(
+            application_id,
+            api_host_kernel::runtime_execution::resume_flow_run(
+                &runtime,
+                ResumeFlowRunCommand {
+                    actor_user_id: execution_actor.user_id,
+                    application_id,
+                    flow_run_id: run_id,
+                    checkpoint_id,
+                    input_payload: body.input_payload,
+                },
+            ),
+        )
+        .await?;
+        let application = self.application(actor, application_id).await?;
+        self.detail_response(
+            &application,
+            self.offload(actor, application_id, detail).await?,
+        )
+        .await
+    }
+
+    async fn detail_response(
+        &self,
+        application: &domain::ApplicationRecord,
+        detail: domain::ApplicationRunDetail,
+    ) -> Result<ApplicationRunDetailResponse, ApiError> {
+        let statistics = self
+            .dependencies
+            .store
+            .get_application_run_trace_statistics(detail.flow_run.id)
+            .await?;
+        let mut response = to_application_run_detail_response(application, detail);
+        response.statistics = to_trace_projection_statistics_response(statistics);
+        Ok(response)
+    }
+
+    async fn cancel(
+        &self,
+        principal: &UserPrincipal,
+        application_id: Uuid,
+        run_id: Uuid,
+    ) -> Result<ApplicationRunDetailResponse, ApiError> {
+        let actor = principal.actor();
+        let application = self.application(actor, application_id).await?;
+        self.dependencies
+            .store
+            .get_flow_run(application_id, run_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("flow_run"))?;
+        crate::assistant_execution::abort_assistant_execution_in(
+            &self.dependencies.assistant_executions,
+            run_id,
+        );
+        let detail = self
+            .runtime()
+            .with_runtime_event_stream(self.dependencies.runtime_event_stream.clone())
+            .cancel_flow_run(CancelFlowRunCommand {
+                actor_user_id: actor.user_id,
+                application_id,
+                flow_run_id: run_id,
+            })
+            .await?;
+        self.detail_response(
+            &application,
+            self.offload(actor, application_id, detail).await?,
+        )
+        .await
+    }
+
+    async fn complete_callback(
+        &self,
+        principal: &UserPrincipal,
+        application_id: Uuid,
+        callback_task_id: Uuid,
+        body: CompleteCallbackTaskBody,
+        headers: HeaderMap,
+    ) -> Result<ApplicationRunDetailResponse, ApiError> {
+        let actor = principal.actor();
+        let _http_activity = self
+            .dependencies
+            .runtime_activity
+            .start(application_id, ApplicationActivityKind::HttpRequest);
+        self.application(actor, application_id).await?;
+        let callback = self
+            .dependencies
+            .store
+            .get_callback_task(callback_task_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("callback_task"))?;
+        let (mcp, execution_actor, communication_run) = self
+            .mcp_invoker_for_run(actor, headers, application_id, callback.flow_run_id)
+            .await?;
+        let mut runtime = self
+            .runtime_for_actor(&execution_actor)
+            .with_runtime_internal_tool_invoker(mcp);
+        if communication_run {
+            runtime =
+                runtime.with_runtime_event_stream(self.dependencies.runtime_event_stream.clone());
+        }
+        let detail = scope_application_activity(
+            application_id,
+            api_host_kernel::runtime_execution::complete_callback_task(
+                &runtime,
+                CompleteCallbackTaskCommand {
+                    anthropic_continuation: None,
+                    responses_continuation: None,
+                    transport_connection_scope: None,
+                    observation_context: None,
+                    native_transport: None,
+                    actor_user_id: execution_actor.user_id,
+                    application_id,
+                    callback_task_id,
+                    response_payload: body.response_payload,
+                },
+            ),
+        )
+        .await?;
+        let application = self.application(actor, application_id).await?;
+        self.detail_response(
+            &application,
+            self.offload(actor, application_id, detail).await?,
+        )
+        .await
+    }
+
+    async fn start_node(
+        &self,
+        principal: &UserPrincipal,
+        application_id: Uuid,
+        node_id: String,
+        body: StartNodeDebugPreviewBody,
+        headers: HeaderMap,
+    ) -> Result<NodeLastRunResponse, ApiError> {
+        let actor = principal.actor();
+        let _http_activity = self
+            .dependencies
+            .runtime_activity
+            .start(application_id, ApplicationActivityKind::HttpRequest);
+        let outcome = scope_application_activity(
+            application_id,
+            api_host_kernel::runtime_execution::start_node_debug_preview(
+                &self.runtime().with_runtime_internal_tool_invoker(
+                    self.mcp_invoker(actor, headers, Vec::new()).await?,
+                ),
+                StartNodeDebugPreviewCommand {
+                    actor_user_id: actor.user_id,
+                    application_id,
+                    node_id,
+                    input_payload: body.input_payload,
+                    document_snapshot: body.document,
+                    debug_session_id: body.debug_session_id,
+                },
+            ),
+        )
+        .await?;
+        let detail = self
+            .offload(
+                actor,
+                application_id,
+                domain::ApplicationRunDetail {
+                    native_messages: Vec::new(),
+                    flow_run: outcome.flow_run,
+                    node_runs: vec![outcome.node_run],
+                    checkpoints: Vec::new(),
+                    callback_tasks: Vec::new(),
+                    events: outcome.events,
+                    stitched_trace: Vec::new(),
+                    subagent_traces: Vec::new(),
+
+                    task_rounds: Vec::new(),
+
+                    child_task_traces: Vec::new(),
+                },
+            )
+            .await?;
+        let node_run = detail
+            .node_runs
+            .into_iter()
+            .next()
+            .ok_or(ControlPlaneError::NotFound("node_run"))?;
+        Ok(to_node_last_run_response(domain::NodeLastRun {
+            flow_run: detail.flow_run,
+            node_run,
+            checkpoints: Vec::new(),
+            events: detail.events,
+        }))
+    }
+
+    async fn subscribe_stream(
+        &self,
+        principal: &UserPrincipal,
+        application_id: Uuid,
+        run_id: Uuid,
+        from_sequence: Option<i64>,
+    ) -> Result<
+        interface_runtime::InterfaceEventStream<
+            ApplicationRuntimeDebugStreamEvent,
+            ApplicationRuntimeDebugStreamOutput,
+            ConsoleInterfaceTargetError,
+        >,
+        interface_runtime::InterfaceTargetFailure<ConsoleInterfaceTargetError>,
+    > {
+        let actor = principal.actor();
+        ApplicationService::new(self.dependencies.store.for_actor(actor.clone()))
+            .get_application(actor.user_id, application_id)
+            .await
+            .map_err(ApiError::from)
+            .map_err(ConsoleInterfaceTargetError)
+            .map_err(|error| {
+                interface_runtime::InterfaceTargetFailure::new("console_interface", error)
+            })?;
+        let flow_run = self
+            .dependencies
+            .store
+            .get_flow_run(application_id, run_id)
+            .await
+            .map_err(ApiError::from)
+            .map_err(ConsoleInterfaceTargetError)
+            .map_err(|error| {
+                interface_runtime::InterfaceTargetFailure::new("console_interface", error)
+            })?
+            .ok_or(ControlPlaneError::NotFound("flow_run"))
+            .map_err(ApiError::from)
+            .map_err(ConsoleInterfaceTargetError)
+            .map_err(|error| {
+                interface_runtime::InterfaceTargetFailure::new("console_interface", error)
+            })?;
+        if flow_run.created_by != actor.user_id {
+            return Err(interface_runtime::InterfaceTargetFailure::new(
+                "console_interface",
+                ConsoleInterfaceTargetError(ControlPlaneError::NotFound("flow_run").into()),
+            ));
+        }
+
+        Ok(self.forward_runtime_stream(application_id, run_id, from_sequence))
+    }
+
+    fn forward_runtime_stream(
+        &self,
+        application_id: Uuid,
+        run_id: Uuid,
+        from_sequence: Option<i64>,
+    ) -> interface_runtime::InterfaceEventStream<
+        ApplicationRuntimeDebugStreamEvent,
+        ApplicationRuntimeDebugStreamOutput,
+        ConsoleInterfaceTargetError,
+    > {
+        let (publisher, stream) = interface_runtime::interface_stream_channel(32);
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(32);
+        tokio::spawn(debug_run_stream::send_runtime_event_stream(
+            self.dependencies.runtime_event_stream.clone(),
+            Arc::new(self.dependencies.store.clone()),
+            run_id,
+            from_sequence,
+            sender,
+        ));
+        let activity = self
+            .dependencies
+            .runtime_activity
+            .start(application_id, ApplicationActivityKind::SseConnection);
+        tokio::spawn(async move {
+            let _activity = activity;
+            while let Some(event) = receiver.recv().await {
+                if publisher
+                    .emit(ApplicationRuntimeDebugStreamEvent(event))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            let _ = publisher
+                .finish(interface_runtime::InterfaceStreamTerminal::Completed(
+                    ApplicationRuntimeDebugStreamOutput {
+                        application_id,
+                        run_id,
+                    },
+                ))
+                .await;
+        });
+        stream
+    }
+
+    async fn start_stream(
+        &self,
+        principal: &UserPrincipal,
+        application_id: Uuid,
+        mut body: StartFlowDebugRunBody,
+        headers: HeaderMap,
+        stream_query: super::DebugRunStreamQuery,
+    ) -> Result<
+        interface_runtime::InterfaceEventStream<
+            ApplicationRuntimeDebugStreamEvent,
+            ApplicationRuntimeDebugStreamOutput,
+            ConsoleInterfaceTargetError,
+        >,
+        interface_runtime::InterfaceTargetFailure<ConsoleInterfaceTargetError>,
+    > {
+        let actor = principal.actor().clone();
+        let _http_activity = self
+            .dependencies
+            .runtime_activity
+            .start(application_id, ApplicationActivityKind::HttpRequest);
+        let request_received_at = std::time::Instant::now();
+        let mcp = self
+            .mcp_invoker(&actor, headers.clone(), body.mcp_instance_ids.clone())
+            .await
+            .map_err(ConsoleInterfaceTargetError)
+            .map_err(|error| {
+                interface_runtime::InterfaceTargetFailure::new("console_interface", error)
+            })?;
+        body.freeze_mcp_selection()
+            .map_err(ConsoleInterfaceTargetError)
+            .map_err(|error| {
+                interface_runtime::InterfaceTargetFailure::new("console_interface", error)
+            })?;
+        let runtime = self
+            .runtime()
+            .with_runtime_internal_tool_invoker(mcp.clone());
+        let shell = runtime
+            .open_flow_debug_run_shell(StartFlowDebugRunCommand {
+                actor_user_id: actor.user_id,
+                application_id,
+                input_payload: body.input_payload.clone(),
+                document_snapshot: body.document.clone(),
+                debug_session_id: body.debug_session_id.clone(),
+            })
+            .await
+            .map_err(ApiError::from)
+            .map_err(ConsoleInterfaceTargetError)
+            .map_err(|error| {
+                interface_runtime::InterfaceTargetFailure::new("console_interface", error)
+            })?;
+        let run_id = shell.id;
+        let workspace_id = actor.current_workspace_id;
+        let from_sequence = super::debug_run_stream_from_sequence(run_id, &stream_query, &headers);
+
+        self.dependencies
+            .runtime_event_stream
+            .open_run_scoped(
+                run_id,
+                RuntimeEventStreamPolicy::debug_default(),
+                control_plane::ports::RuntimeEventSourceBinding::workspace(workspace_id),
+            )
+            .await
+            .map_err(ApiError::from)
+            .map_err(ConsoleInterfaceTargetError)
+            .map_err(|error| {
+                interface_runtime::InterfaceTargetFailure::new("console_interface", error)
+            })?;
+        let persister_handle = start_runtime_debug_event_persister(
+            self.dependencies.store.clone(),
+            self.dependencies.runtime_event_stream.clone(),
+            run_id,
+        )
+        .await;
+        self.dependencies
+            .runtime_event_stream
+            .append(run_id, debug_stream_events::flow_accepted(run_id))
+            .await
+            .map_err(ApiError::from)
+            .map_err(ConsoleInterfaceTargetError)
+            .map_err(|error| {
+                interface_runtime::InterfaceTargetFailure::new("console_interface", error)
+            })?;
+        self.dependencies
+            .runtime_event_stream
+            .append(run_id, debug_stream_events::heartbeat())
+            .await
+            .map_err(ApiError::from)
+            .map_err(ConsoleInterfaceTargetError)
+            .map_err(|error| {
+                interface_runtime::InterfaceTargetFailure::new("console_interface", error)
+            })?;
+
+        let dependencies = self.dependencies.clone();
+        tokio::spawn(async move {
+            let _execution_activity = dependencies.runtime_activity.start(
+                application_id,
+                ApplicationActivityKind::ApplicationExecution,
+            );
+            let service = OrchestrationRuntimeService::new(
+                dependencies.store.clone(),
+                crate::provider_runtime::ApiProviderRuntime::new_with_activity(
+                    dependencies.provider_runtime.clone(),
+                    dependencies.runtime_activity.clone(),
+                ),
+                dependencies.runtime_engine.clone(),
+                dependencies.provider_secret_master_key.clone(),
+                dependencies.provider_transport_store.clone(),
+                dependencies.model_billing_require_provider_usage,
+            )
+            .with_published_plan_cache(dependencies.published_plan_cache.clone())
+            .with_node_artifact_context(
+                dependencies.api_node_id.clone(),
+                dependencies.provider_install_root.clone(),
+            )
+            .with_file_storage_registry(dependencies.file_storage_registry.clone())
+            .with_notification_sender(dependencies.notification_sender.clone())
+            .with_runtime_internal_tool_invoker(mcp)
+            .with_llm_routing_counter_store(dependencies.cache_store.clone())
+            .with_provider_request_log_queue(dependencies.task_queue.clone())
+            .with_runtime_event_stream(dependencies.runtime_event_stream.clone());
+            let prepare_result = scope_application_activity(
+                application_id,
+                service.prepare_flow_debug_run_from_shell(PrepareFlowDebugRunCommand {
+                    actor_user_id: actor.user_id,
+                    application_id,
+                    flow_run_id: run_id,
+                    input_payload: body.input_payload,
+                    document_snapshot: body.document,
+                    debug_session_id: body.debug_session_id.unwrap_or_default(),
+                }),
+            )
+            .await;
+            let result = match prepare_result {
+                Ok(_) => {
+                    scope_application_activity(
+                        application_id,
+                        api_host_kernel::runtime_execution::continue_flow_debug_run(
+                            &service,
+                            ContinueFlowDebugRunCommand {
+                                application_id,
+                                flow_run_id: run_id,
+                                workspace_id,
+                            },
+                        ),
+                    )
+                    .await
+                }
+                Err(error) => Err(error),
+            };
+            match result {
+                Ok(detail) => {
+                    if matches!(
+                        detail.flow_run.status,
+                        domain::FlowRunStatus::Succeeded
+                            | domain::FlowRunStatus::Incomplete
+                            | domain::FlowRunStatus::Failed
+                            | domain::FlowRunStatus::Cancelled
+                    ) {
+                        project_runtime_event_stream_terminal(
+                            dependencies.runtime_event_stream.clone(),
+                            &detail.flow_run,
+                        )
+                        .await;
+                    }
+                    if let Err(error) = offload_application_run_detail_artifacts_with_dependencies(
+                        dependencies.store.clone(),
+                        dependencies.file_storage_registry.clone(),
+                        workspace_id,
+                        application_id,
+                        detail,
+                    )
+                    .await
+                    {
+                        tracing::error!(application_id = %application_id, flow_run_id = %run_id, error = %error.0, "failed to offload streamed flow debug artifacts");
+                    }
+                }
+                Err(error) => {
+                    match dependencies
+                        .store
+                        .get_flow_run(application_id, run_id)
+                        .await
+                    {
+                        Ok(Some(winner)) => {
+                            project_runtime_event_stream_terminal(
+                                dependencies.runtime_event_stream.clone(),
+                                &winner,
+                            )
+                            .await;
+                        }
+                        Ok(None) => {
+                            tracing::error!(application_id = %application_id, flow_run_id = %run_id, "failed streamed flow debug run has no durable winner to project")
+                        }
+                        Err(load_error) => {
+                            tracing::error!(application_id = %application_id, flow_run_id = %run_id, error = %load_error, "failed to load durable winner for runtime stream projection")
+                        }
+                    }
+                    tracing::error!(application_id = %application_id, flow_run_id = %run_id, error = %error, "failed to prepare and continue streamed flow debug run");
+                }
+            }
+            wait_for_runtime_debug_event_persister(persister_handle, application_id, run_id).await;
+        });
+        tracing::info!(application_id = %application_id, flow_run_id = %run_id, http_to_sse_open_ms = request_received_at.elapsed().as_millis() as u64, "flow debug stream opened");
+        Ok(self.forward_runtime_stream(application_id, run_id, from_sequence))
+    }
+}
+
+impl
+    ConsoleInterfacePort<
+        ApplicationRuntimeDebugCommandsInput,
+        ApplicationRuntimeDebugCommandsOutput,
+    > for ApplicationRuntimeDebugCommandsAdapter
+{
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: ApplicationRuntimeDebugCommandsInput,
+    ) -> ConsoleInterfaceFuture<'a, ApplicationRuntimeDebugCommandsOutput> {
+        // Select and construct only this operation before polling it. An async enum
+        // dispatcher would keep its largest branch's construction frame on nested MCP calls.
+        match input {
+            ApplicationRuntimeDebugCommandsInput::Start {
+                application_id,
+                body,
+                headers,
+            } => Box::pin(
+                self.start(principal, application_id, body, headers)
+                    .map(|result| {
+                        result
+                            .map(ApplicationRuntimeDebugCommandsOutput::Run)
+                            .map_err(ConsoleInterfaceTargetError)
+                    }),
+            ),
+            ApplicationRuntimeDebugCommandsInput::Resume {
+                application_id,
+                run_id,
+                body,
+                headers,
+            } => Box::pin(
+                self.resume(principal, application_id, run_id, body, headers)
+                    .map(|result| {
+                        result
+                            .map(ApplicationRuntimeDebugCommandsOutput::Run)
+                            .map_err(ConsoleInterfaceTargetError)
+                    }),
+            ),
+            ApplicationRuntimeDebugCommandsInput::Cancel {
+                application_id,
+                run_id,
+            } => Box::pin(
+                self.cancel(principal, application_id, run_id)
+                    .map(|result| {
+                        result
+                            .map(ApplicationRuntimeDebugCommandsOutput::Run)
+                            .map_err(ConsoleInterfaceTargetError)
+                    }),
+            ),
+            ApplicationRuntimeDebugCommandsInput::CompleteCallback {
+                application_id,
+                callback_task_id,
+                body,
+                headers,
+            } => Box::pin(
+                self.complete_callback(principal, application_id, callback_task_id, body, headers)
+                    .map(|result| {
+                        result
+                            .map(ApplicationRuntimeDebugCommandsOutput::Run)
+                            .map_err(ConsoleInterfaceTargetError)
+                    }),
+            ),
+            ApplicationRuntimeDebugCommandsInput::StartNode {
+                application_id,
+                node_id,
+                body,
+                headers,
+            } => Box::pin(
+                self.start_node(principal, application_id, node_id, body, headers)
+                    .map(|result| {
+                        result
+                            .map(ApplicationRuntimeDebugCommandsOutput::Node)
+                            .map_err(ConsoleInterfaceTargetError)
+                    }),
+            ),
+        }
+    }
+}
+
+impl
+    ConsoleServerStreamPort<
+        ApplicationRuntimeDebugStreamInput,
+        ApplicationRuntimeDebugStreamEvent,
+        ApplicationRuntimeDebugStreamOutput,
+    > for ApplicationRuntimeDebugCommandsAdapter
+{
+    fn execute_stream(
+        &self,
+        principal: &UserPrincipal,
+        input: ApplicationRuntimeDebugStreamInput,
+    ) -> ConsoleServerStreamFuture<
+        ApplicationRuntimeDebugStreamEvent,
+        ApplicationRuntimeDebugStreamOutput,
+    > {
+        let dependencies = self.dependencies.clone();
+        let principal = principal.clone();
+        Box::pin(async move {
+            let adapter = ApplicationRuntimeDebugCommandsAdapter { dependencies };
+            match input {
+                ApplicationRuntimeDebugStreamInput::Start {
+                    application_id,
+                    body,
+                    headers,
+                    stream_query,
+                } => {
+                    adapter
+                        .start_stream(&principal, application_id, body, headers, stream_query)
+                        .await
+                }
+                ApplicationRuntimeDebugStreamInput::Subscribe {
+                    application_id,
+                    run_id,
+                    from_sequence,
+                } => {
+                    adapter
+                        .subscribe_stream(&principal, application_id, run_id, from_sequence)
+                        .await
+                }
+            }
+        })
+    }
+}
+
+pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "applications.runtime.debug-runs.create",
+        binding_id: "http.console.applications.runtime.debug-runs.create.v1",
+        method: "POST",
+        path: "/api/console/applications/:id/orchestration/debug-runs",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "applications.runtime.runs.resume",
+        binding_id: "http.console.applications.runtime.runs.resume.v1",
+        method: "POST",
+        path: "/api/console/applications/:id/orchestration/runs/:run_id/resume",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "applications.runtime.runs.cancel",
+        binding_id: "http.console.applications.runtime.runs.cancel.v1",
+        method: "POST",
+        path: "/api/console/applications/:id/orchestration/runs/:run_id/cancel",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "applications.runtime.callback-tasks.complete",
+        binding_id: "http.console.applications.runtime.callback-tasks.complete.v1",
+        method: "POST",
+        path:
+            "/api/console/applications/:id/orchestration/callback-tasks/:callback_task_id/complete",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "applications.runtime.nodes.debug-runs.create",
+        binding_id: "http.console.applications.runtime.nodes.debug-runs.create.v1",
+        method: "POST",
+        path: "/api/console/applications/:id/orchestration/nodes/:node_id/debug-runs",
+        mutating: true,
+    },
+];
+
+pub(crate) const STREAM_DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "applications.runtime.debug-runs.stream.create",
+        binding_id: "http.console.applications.runtime.debug-runs.stream.create.v1",
+        method: "POST",
+        path: "/api/console/applications/:id/orchestration/debug-runs/stream",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "applications.runtime.debug-runs.stream.subscribe",
+        binding_id: "http.console.applications.runtime.debug-runs.stream.subscribe.v1",
+        method: "GET",
+        path: "/api/console/applications/:id/orchestration/runs/:run_id/debug-stream",
+        mutating: false,
+    },
+];
+
+pub fn compile_registry(
+    dependencies: RuntimeDebugCommandDependencies,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    console_interface::compile_registry_with_event_observation(
+        "api-server.console-application-runtime-debug-commands",
+        "graph:console-application-runtime-debug-commands-v1",
+        DECLARATIONS,
+        port(dependencies),
+        &[
+            "applications.runtime.debug-runs.create",
+            "applications.runtime.runs.resume",
+            "applications.runtime.runs.cancel",
+            "applications.runtime.callback-tasks.complete",
+            "applications.runtime.nodes.debug-runs.create",
+        ],
+    )
+}
+
+pub fn compile_stream_registry(
+    dependencies: RuntimeDebugCommandDependencies,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    console_interface::compile_server_stream_registry_with_event_observation(
+        "api-server.console-application-runtime-debug-streams",
+        "graph:console-application-runtime-debug-streams-v1",
+        STREAM_DECLARATIONS,
+        stream_port(dependencies),
+        &[
+            "applications.runtime.debug-runs.stream.create",
+            "applications.runtime.debug-runs.stream.subscribe",
+        ],
+    )
+}
+
+impl StartFlowDebugRunBody {
+    fn freeze_mcp_selection(&mut self) -> Result<(), ApiError> {
+        let input = self
+            .input_payload
+            .as_object_mut()
+            .ok_or(ControlPlaneError::InvalidInput("input_payload"))?;
+        let sys = input.entry("sys").or_insert_with(|| serde_json::json!({}));
+        let sys = sys
+            .as_object_mut()
+            .ok_or(ControlPlaneError::InvalidInput("sys"))?;
+        sys.insert(
+            "mcp_instance_ids".to_string(),
+            serde_json::json!(self.mcp_instance_ids),
+        );
+        Ok(())
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub fn state_runtime_debug_mcp_factory_for_test(
+    state: std::sync::Weak<ApiState>,
+) -> Arc<dyn RuntimeDebugMcpFactory> {
+    Arc::new(StateRuntimeDebugMcpFactory { state })
+}

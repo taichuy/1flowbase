@@ -45,6 +45,7 @@ done
     let now_ms =
         i64::try_from(OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000).unwrap();
     let principal = runtime_core::runtime_backend::RuntimeExecutionPrincipal {
+        record_permissions: None,
         caller: None,
         workspace_id: "fixture-workspace".into(),
         actor_id: None,

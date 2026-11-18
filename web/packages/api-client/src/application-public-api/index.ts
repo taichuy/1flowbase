@@ -65,6 +65,7 @@ export interface ConsoleWorkflowExtensionApiConfig {
   slug: string;
   method: ConsoleWorkflowExtensionHttpMethod;
   response_mode: ConsoleWorkflowExtensionResponseMode;
+  invoke_role_codes?: string[];
 }
 
 export interface ConsolePublishedWorkflowOperation {
@@ -124,7 +125,7 @@ export interface ConsoleWorkflowScheduleTrigger {
 export interface ReplaceConsoleWorkflowScheduleTriggerInput {
   enabled: boolean;
   cron: string;
-  timezone: string;
+  timezone?: string;
   input_payload: unknown;
 }
 

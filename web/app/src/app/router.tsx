@@ -607,8 +607,15 @@ const settingsUiManagementRoute = createRoute({
   path: '/settings/ui-management',
   notFoundComponent: NotFoundPage,
   component: () => (
-    <Navigate to="/settings/ui-management/code-templates" replace />
+    <Navigate to="/settings/ui-management/blocks" replace />
   )
+});
+
+const settingsUiManagementBlocksRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/ui-management/blocks',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('ui-management')
 });
 
 const settingsUiManagementTemplatesRoute = createRoute({
@@ -682,6 +689,13 @@ const settingsRolesConsolePolicyRoute = createRoute({
   path: '/settings/roles/console-policy',
   notFoundComponent: NotFoundPage,
   component: () => renderSettingsRoute('roles', undefined, 'console-policy')
+});
+
+const settingsRolesPluginPolicyRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/roles/plugin-policy',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('roles', undefined, 'plugin-policy')
 });
 
 const settingsRolesOtherPolicyRoute = createRoute({
@@ -856,6 +870,7 @@ const routeTree = rootRoute.addChildren([
     settingsNetworkCenterRoutingRulesRoute,
     settingsMcpManagementRoute,
     settingsUiManagementRoute,
+    settingsUiManagementBlocksRoute,
     settingsUiManagementTemplatesRoute,
     settingsUiManagementComponentsRoute,
     settingsUiManagementRoutesRoute,
@@ -865,6 +880,7 @@ const routeTree = rootRoute.addChildren([
     settingsRolesTableGeneralPolicyRoute,
     settingsRolesTableSinglePolicyRoute,
     settingsRolesConsolePolicyRoute,
+    settingsRolesPluginPolicyRoute,
     settingsRolesOtherPolicyRoute,
     settingsDynamicRoute,
     meIndexRoute,

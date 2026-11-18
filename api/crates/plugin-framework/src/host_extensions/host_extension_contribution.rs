@@ -351,6 +351,7 @@ impl HostExtensionContributionManifest {
             operations: self.console_operations.clone(),
             resources: self.console_resources.clone(),
             locale_catalog: ConsoleLocaleCatalogContribution {
+                plugin_groups: Vec::new(),
                 owner: access_control::ConsoleOperationOwner {
                     kind: SettingsFeatureOwnerKind::HostExtension,
                     owner_id: self.extension_id.clone(),

@@ -72,6 +72,7 @@ export interface FlowEditorState
     workingDocument?: FlowAuthoringDocument
   ) => void;
   replaceFromServerState: (state: ConsoleApplicationOrchestrationState) => void;
+  clearRunEntryTransientState: () => void;
   resetTransientInteractionState: () => void;
 }
 
@@ -245,8 +246,42 @@ export function createFlowEditorStore(
       }),
     setSelection: (payload) =>
       set((current) => ({
-        ...current,
-        ...payload
+        selectedNodeId: Object.prototype.hasOwnProperty.call(
+          payload,
+          'selectedNodeId'
+        )
+          ? payload.selectedNodeId
+          : current.selectedNodeId,
+        selectedEdgeId: Object.prototype.hasOwnProperty.call(
+          payload,
+          'selectedEdgeId'
+        )
+          ? payload.selectedEdgeId
+          : current.selectedEdgeId,
+        selectedNodeIds: Object.prototype.hasOwnProperty.call(
+          payload,
+          'selectedNodeIds'
+        )
+          ? payload.selectedNodeIds
+          : current.selectedNodeIds,
+        selectionMode: Object.prototype.hasOwnProperty.call(
+          payload,
+          'selectionMode'
+        )
+          ? payload.selectionMode
+          : current.selectionMode,
+        focusedFieldKey: Object.prototype.hasOwnProperty.call(
+          payload,
+          'focusedFieldKey'
+        )
+          ? payload.focusedFieldKey
+          : current.focusedFieldKey,
+        openInspectorSectionKey: Object.prototype.hasOwnProperty.call(
+          payload,
+          'openInspectorSectionKey'
+        )
+          ? payload.openInspectorSectionKey
+          : current.openInspectorSectionKey
       })),
     setViewportState: (payload) =>
       set((current) => ({
@@ -386,6 +421,28 @@ export function createFlowEditorStore(
         messages: nextState.messages
       }));
     },
+    clearRunEntryTransientState: () =>
+      set((current) => ({
+        selectedNodeId: null,
+        selectedNodeIds: [],
+        selectedEdgeId: null,
+        historyOpen: false,
+        issuesOpen: false,
+        nodePickerState: {
+          ...current.nodePickerState,
+          open: false,
+          anchorNodeId: null,
+          anchorEdgeId: null,
+          anchorCanvasPosition: null
+        },
+        pendingLocateNodeId: null,
+        connectingPayload: {
+          ...current.connectingPayload,
+          sourceNodeId: null,
+          sourceHandleId: null,
+          sourceNodeType: null
+        }
+      })),
     resetTransientInteractionState: () =>
       set((current) => ({
         selectedEdgeId: null,

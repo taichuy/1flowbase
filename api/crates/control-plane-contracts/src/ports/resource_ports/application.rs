@@ -58,6 +58,9 @@ pub struct ApplicationManagementPage {
 
 #[derive(Debug, Clone)]
 pub enum CreateWorkflowTriggerConfig {
+    Event {
+        configuration: domain::event_center::WorkflowEventTriggerInput,
+    },
     Schedule {
         cron: String,
         timezone: String,

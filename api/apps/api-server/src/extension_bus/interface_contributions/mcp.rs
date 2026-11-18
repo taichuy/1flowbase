@@ -5,6 +5,14 @@ pub(super) fn contributions(
 ) -> Result<Vec<InterfaceRegistryContribution>, RegistryCompilationError> {
     Ok(vec![
         InterfaceRegistryContribution::new(
+            "api-server.console-mcp-directory",
+            &["mcp.directory.view", "mcp.directory.replace"],
+            &["api-server.console-mcp-directory"],
+            crate::routes::mcp_management::directory::compile_registry(
+                crate::routes::mcp_management::directory::McpDirectoryDependencies { store: state.store.clone() }
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-mcp-core",
             &[
                 "mcp.client_credential.reveal",

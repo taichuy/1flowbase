@@ -90,6 +90,9 @@ impl ManagedExtensionComposition {
             let prepared_host = self
                 .prepare_host_generation(services, generation_snapshots)
                 .await?;
+            let event_catalog = prepared_host
+                .as_ref()
+                .map(|(_, prepared)| prepared.event_catalog.clone());
             let permission_catalog = prepared_host
                 .as_ref()
                 .map(|(_, prepared)| prepared.permission_catalog.clone());
@@ -115,7 +118,7 @@ impl ManagedExtensionComposition {
             let mut visible = self.snapshots.lock().await;
 
             lease
-                .commit_managed_settings_templates(template_ids, permission_catalog)
+                .commit_managed_settings_templates(template_ids, permission_catalog, event_catalog)
                 .await?;
             for old in previous.values() {
                 if candidates
@@ -135,11 +138,15 @@ impl ManagedExtensionComposition {
                     retained.push(old.clone());
                 }
             }
+            for (workspace, snapshot) in &published {
+                self.register_candidate_lifecycle_sources(*workspace, snapshot);
+            }
             visible.current = published.clone();
             if let Some((publisher, prepared)) = prepared_host {
                 publisher.publish(prepared);
             }
             drop(visible);
+            self.refresh_lifecycle_source_observations().await;
             self.notify_reclamation();
             Ok::<_, anyhow::Error>(previous)
         }

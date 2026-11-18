@@ -183,6 +183,59 @@ export interface ConsoleUiCatalogUpdateStatus {
 }
 
 const root = '/api/console/settings/ui-management';
+export interface ConsoleCustomFrontendBlock {
+  id: string;
+  workspace_id: string;
+  provider_code: string;
+  contribution_code: string;
+  title: string;
+  source: string;
+  language: UiCodeTemplateLanguage;
+  revision: number;
+}
+export type ConsoleCustomFrontendBlockInput = Pick<
+  ConsoleCustomFrontendBlock,
+  'provider_code' | 'contribution_code' | 'title' | 'source' | 'language'
+>;
+export const fetchConsoleCustomFrontendBlocks = (baseUrl?: string) =>
+  apiFetch<ConsoleCustomFrontendBlock[]>({ path: `${root}/blocks`, baseUrl });
+export const createConsoleCustomFrontendBlock = (
+  input: ConsoleCustomFrontendBlockInput,
+  csrfToken: string,
+  baseUrl?: string
+) =>
+  apiFetch<ConsoleCustomFrontendBlock>({
+    path: `${root}/blocks`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+export const updateConsoleCustomFrontendBlock = (
+  id: string,
+  input: Pick<ConsoleCustomFrontendBlockInput, 'title' | 'source' | 'language'>,
+  csrfToken: string,
+  baseUrl?: string
+) =>
+  apiFetch<ConsoleCustomFrontendBlock>({
+    path: `${root}/blocks/${encodeURIComponent(id)}`,
+    method: 'PUT',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+export const deleteConsoleCustomFrontendBlock = (
+  id: string,
+  csrfToken: string,
+  baseUrl?: string
+) =>
+  apiFetch<void>({
+    path: `${root}/blocks/${encodeURIComponent(id)}`,
+    method: 'DELETE',
+    csrfToken,
+    baseUrl
+  });
+
 export async function fetchConsolePluginSettingsModuleAsset(
   route_id: string,
   applied_plugin_version: string,

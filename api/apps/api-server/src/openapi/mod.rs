@@ -1,23 +1,19 @@
+pub use api_host_kernel::openapi::*;
+#[cfg_attr(test, api_test_selection::group(core))]
+#[cfg(test)]
+use control_plane::application_public_api::mapping::WorkflowExtensionResponseMode;
 use std::sync::Arc;
 
 use anyhow::anyhow;
 use axum::{extract::State, Json};
 use control_plane::{
-    application_public_api::{
-        mapping::WorkflowExtensionResponseMode,
-        published_workflow_operation::{
-            build_published_workflow_operations, PublishedWorkflowOperation,
-        },
+    application_public_api::published_workflow_operation::{
+        build_published_workflow_operations, PublishedWorkflowOperation,
     },
     ports::ApplicationPublicationRepository,
 };
 use serde_json::{json, Map, Value};
 use utoipa::OpenApi;
-
-#[derive(utoipa::ToSchema)]
-#[schema(value_type = String, format = Binary)]
-#[allow(dead_code)]
-pub(crate) struct OpenApiBinaryBody(pub Vec<u8>);
 
 use crate::{app_state::ApiState, error_response::ApiError};
 
@@ -42,6 +38,35 @@ impl OpenApi for ApiDoc {
         }
         document
     }
+}
+
+// utoipa derives apply explicit schemas first, then handler schema references;
+// both use last-write-wins within a category. OpenApi::merge is first-write-wins,
+// so merge category contributions explicitly before the existing outer merge.
+fn compose_category(
+    mut document: utoipa::openapi::OpenApi,
+    mut paths: Vec<(usize, utoipa::openapi::OpenApi)>,
+    mut schemas: Vec<(usize, utoipa::openapi::OpenApi)>,
+) -> utoipa::openapi::OpenApi {
+    paths.sort_by_key(|(ordinal, _)| *ordinal);
+    schemas.sort_by_key(|(ordinal, _)| *ordinal);
+    let mut handler_schemas = Vec::new();
+    for (_, fragment) in paths {
+        document.paths.merge(fragment.paths);
+        if let Some(components) = fragment.components {
+            handler_schemas.push(components.schemas);
+        }
+    }
+    let components = document.components.get_or_insert_with(Default::default);
+    for (_, fragment) in schemas {
+        if let Some(explicit) = fragment.components {
+            components.schemas.extend(explicit.schemas);
+        }
+    }
+    for schemas in handler_schemas {
+        components.schemas.extend(schemas);
+    }
+    document
 }
 
 pub(crate) async fn dynamic_openapi_document(state: &ApiState) -> Result<Value, ApiError> {
@@ -123,119 +148,7 @@ fn append_workflow_extension_paths(
     }
 }
 
-pub(crate) fn workflow_extension_operation(operation: &PublishedWorkflowOperation) -> Value {
-    let mut projected = json!({
-        "tags": ["Workflow Extensions"],
-        "operationId": operation.interface_id,
-        "summary": format!("Invoke published workflow {}", operation.application_id),
-        "parameters": openapi_parameters(&operation.parameter_schema),
-        "security": [
-            { "sessionCookie": [], "csrfHeader": [] },
-            { "UserApiKey": [] }
-        ],
-        "responses": {
-            "202": {
-                "description": "Workflow run accepted",
-                "content": {
-                    "application/json": {
-                        "schema": accepted_run_schema()
-                    }
-                }
-            },
-            "400": native_error_response(),
-            "401": native_error_response(),
-            "403": native_error_response(),
-            "404": native_error_response(),
-            "405": native_error_response(),
-            "409": native_error_response()
-        }
-    });
-    if operation.response_mode == WorkflowExtensionResponseMode::Sync {
-        projected["responses"]["200"] = json!({
-            "description": "Workflow end output",
-            "content": {
-                "application/json": {
-                    "schema": operation.result_schema
-                }
-            }
-        });
-    }
-    if let Some(request_body) = openapi_request_body(&operation.parameter_schema) {
-        projected["requestBody"] = request_body;
-    }
-    projected
-}
-
-fn openapi_parameters(schema: &Value) -> Vec<Value> {
-    ["path", "query"]
-        .into_iter()
-        .flat_map(|location| {
-            let object = schema.pointer(&format!("/properties/{location}"));
-            let required = object
-                .and_then(|value| value.get("required"))
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            object
-                .and_then(|value| value.get("properties"))
-                .and_then(Value::as_object)
-                .into_iter()
-                .flatten()
-                .map(move |(name, field_schema)| json!({
-                    "name": name,
-                    "in": location,
-                    "required": location == "path" || required.contains(&Value::String(name.clone())),
-                    "schema": field_schema,
-                }))
-        })
-        .collect()
-}
-
-fn openapi_request_body(schema: &Value) -> Option<Value> {
-    let body_schema = schema.pointer("/properties/body").cloned();
-    let form_schema = schema.pointer("/properties/form").cloned();
-    if body_schema.is_none() && form_schema.is_none() {
-        return None;
-    }
-
-    let mut content = Map::new();
-    if let Some(schema) = body_schema {
-        content.insert("application/json".to_string(), json!({ "schema": schema }));
-    }
-    if let Some(schema) = form_schema {
-        content.insert(
-            "application/x-www-form-urlencoded".to_string(),
-            json!({ "schema": schema }),
-        );
-    }
-    Some(json!({
-        "required": true,
-        "content": Value::Object(content)
-    }))
-}
-
-fn accepted_run_schema() -> Value {
-    json!({
-        "type": "object",
-        "required": ["run_id", "status"],
-        "properties": {
-            "run_id": { "type": "string", "format": "uuid" },
-            "status": { "type": "string" }
-        }
-    })
-}
-
-fn native_error_response() -> Value {
-    json!({
-        "description": "Workflow extension API error",
-        "content": {
-            "application/json": {
-                "schema": { "$ref": "#/components/schemas/NativeErrorBody" }
-            }
-        }
-    })
-}
-
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod workflow_operation_tests {
     use super::*;
@@ -347,6 +260,7 @@ mod workflow_operation_tests {
                 },
                 output: ApplicationApiMappingOutput::default(),
                 extension: Some(WorkflowExtensionApiConfig {
+                    invoke_role_codes: Vec::new(),
                     slug: "orders/{order_id}".into(),
                     method: WorkflowExtensionHttpMethod::Post,
                     response_mode: WorkflowExtensionResponseMode::Sync,
@@ -376,6 +290,58 @@ mod workflow_operation_tests {
             created_at: OffsetDateTime::UNIX_EPOCH,
         })
         .unwrap()
+    }
+
+    #[test]
+    fn category_composition_preserves_path_and_schema_collision_precedence() {
+        fn fragment(label: &str) -> utoipa::openapi::OpenApi {
+            serde_json::from_value(json!({
+                "openapi": "3.1.0",
+                "info": {"title": "collision fixture", "version": "1"},
+                "paths": {"/collision": {"get": {
+                    "operationId": label, "responses": {"200": {"description": "ok"}}
+                }}},
+                "components": {"schemas": {
+                    "Shared": {"type": "string", "description": label}
+                }}
+            }))
+            .unwrap()
+        }
+        let mut explicit_early = fragment("explicit-early");
+        explicit_early.components.as_mut().unwrap().schemas.insert(
+            "ExplicitOnly".into(),
+            serde_json::from_value(json!({"type": "string", "description": "early"})).unwrap(),
+        );
+        let mut explicit_late = fragment("explicit-late");
+        explicit_late.components.as_mut().unwrap().schemas.insert(
+            "ExplicitOnly".into(),
+            serde_json::from_value(json!({"type": "string", "description": "late"})).unwrap(),
+        );
+        let document = compose_category(
+            serde_json::from_value(json!({
+                "openapi": "3.1.0", "info": {"title": "root", "version": "1"}, "paths": {}
+            }))
+            .unwrap(),
+            vec![
+                (7, fragment("handler-late")),
+                (2, fragment("handler-early")),
+            ],
+            vec![(9, explicit_late), (1, explicit_early)],
+        );
+        let document = serde_json::to_value(document).unwrap();
+        assert_eq!(
+            document["paths"]["/collision"]["get"]["operationId"],
+            "handler-early"
+        );
+        assert_eq!(
+            document["components"]["schemas"]["ExplicitOnly"]["description"],
+            "late"
+        );
+        assert_eq!(
+            document["components"]["schemas"]["Shared"]["description"],
+            "handler-late"
+        );
+        assert_eq!(document["info"]["title"], "root");
     }
 
     #[test]

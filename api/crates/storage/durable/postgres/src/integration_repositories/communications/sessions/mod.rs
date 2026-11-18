@@ -147,6 +147,10 @@ async fn snapshot(
             external_message_key: row.try_get("external_message_key")?,
             received_at_ms: row.try_get("received_at_ms")?,
             content: row.try_get("content")?,
+            reply_to: row
+                .try_get::<Option<Value>, _>("reply_to_json")?
+                .map(serde_json::from_value)
+                .transpose()?,
             attachments,
         });
     }

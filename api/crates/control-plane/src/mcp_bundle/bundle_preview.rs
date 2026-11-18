@@ -337,7 +337,7 @@ pub(super) fn summarize_bundle_effects(
     summary
 }
 
-pub(super) fn validate_package(package: &domain::McpBundlePackage) -> Result<()> {
+pub(crate) fn validate_package(package: &domain::McpBundlePackage) -> Result<()> {
     if package.manifest.schema_version != domain::MCP_BUNDLE_SCHEMA_VERSION {
         return Err(ControlPlaneError::InvalidInput("schema_version").into());
     }

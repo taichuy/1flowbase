@@ -206,7 +206,7 @@ export function DebugWorkflowNodeRow({ item }: { item: AgentFlowTraceItem }) {
       <NodeTypeIcon nodeType={item.nodeType} />
       <span className="agent-flow-editor__debug-workflow-node-main">
         <span className="agent-flow-editor__debug-workflow-node-title">
-          <Typography.Text strong>{nodeDisplayName(item)}</Typography.Text>
+          <Typography.Text className="agent-flow-editor__debug-workflow-node-label" strong>{nodeDisplayName(item)}</Typography.Text>
           {toolMode ? (
             <span
               className="agent-flow-editor__debug-workflow-node-mode"

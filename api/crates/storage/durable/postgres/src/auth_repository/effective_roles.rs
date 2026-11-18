@@ -1,21 +1,8 @@
 use anyhow::Result;
+use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
-use crate::repositories::PgControlPlaneStore;
-
-impl PgControlPlaneStore {
-    /// The selected directly assigned role remains the session / credential identity.
-    /// Department grants add permissions, never selectable roles or root authority.
-    /// Resolve from durable relations on every authorization read so removal revokes
-    /// only that source, without copying or deleting direct role bindings.
-    pub(crate) async fn effective_role_ids(
-        &self,
-        user_id: Uuid,
-        workspace_id: Uuid,
-        active_role_code: &str,
-    ) -> Result<Vec<Uuid>> {
-        Ok(sqlx::query_scalar(
-            r#"
+const EFFECTIVE_ROLE_IDS_SQL: &str = r#"
             select r.id from roles r
             where exists (
                 select 1 from user_role_bindings active_binding
@@ -40,12 +27,41 @@ impl PgControlPlaneStore {
                  ))
             )
             order by r.id
-            "#,
-        )
+            "#;
+
+use crate::repositories::PgControlPlaneStore;
+
+impl PgControlPlaneStore {
+    /// The selected directly assigned role remains the session / credential identity.
+    /// Department grants add permissions, never selectable roles or root authority.
+    /// Resolve from durable relations on every authorization read so removal revokes
+    /// only that source, without copying or deleting direct role bindings.
+    pub(crate) async fn effective_role_ids(
+        &self,
+        user_id: Uuid,
+        workspace_id: Uuid,
+        active_role_code: &str,
+    ) -> Result<Vec<Uuid>> {
+        Ok(sqlx::query_scalar(EFFECTIVE_ROLE_IDS_SQL)
+            .bind(user_id)
+            .bind(workspace_id)
+            .bind(active_role_code)
+            .fetch_all(self.pool())
+            .await?)
+    }
+}
+
+/// Same durable relation query as effective_role_ids, inside the caller's data transaction.
+pub(crate) async fn effective_role_ids_in_transaction(
+    transaction: &mut Transaction<'_, Postgres>,
+    user_id: Uuid,
+    workspace_id: Uuid,
+    active_role_code: &str,
+) -> Result<Vec<Uuid>> {
+    Ok(sqlx::query_scalar(EFFECTIVE_ROLE_IDS_SQL)
         .bind(user_id)
         .bind(workspace_id)
         .bind(active_role_code)
-        .fetch_all(self.pool())
+        .fetch_all(&mut **transaction)
         .await?)
-    }
 }

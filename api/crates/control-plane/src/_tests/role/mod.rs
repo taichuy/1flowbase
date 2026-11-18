@@ -1,3 +1,4 @@
+mod plugin_policy_catalog;
 mod unpublished_plugin_policy;
 use std::collections::BTreeSet;
 
@@ -284,6 +285,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
             },
             lifecycle: SettingsFeatureLifecycle::Active,
             texts,
+            plugin_groups: vec![],
             policy_groups: vec![ConsoleOtherPolicyGroupDisplay {
                 group_id: "other.files".to_string(),
                 label_ref: "console.policy_groups.other.other.files.label".to_string(),

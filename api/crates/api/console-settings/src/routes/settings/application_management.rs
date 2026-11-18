@@ -1,0 +1,466 @@
+use crate::openapi_interface::json_contract::{JsonApiInput, JsonApiOutput};
+use std::sync::Arc;
+
+use axum::{extract::Query, extract::State, http::HeaderMap, Json, Router};
+use control_plane::{
+    application::ApplicationService,
+    errors::ControlPlaneError,
+    ports::{
+        ApplicationManagementPage, ApplicationManagementQuery, ApplicationManagementRecord,
+        ApplicationManagementSortDirection, ApplicationManagementSortField,
+    },
+    resource_crud::parse_resource_filter,
+};
+use interface_runtime::{InterfaceContract, UserPrincipal};
+use serde::{Deserialize, Serialize};
+use time::format_description::well_known::Rfc3339;
+use utoipa::ToSchema;
+
+use crate::{
+    app_state::ApiState,
+    error_response::ApiError,
+    response::ApiSuccess,
+    routes::console_interface::{
+        self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
+        ConsoleInterfaceTargetError,
+    },
+    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
+};
+
+#[derive(Debug, Deserialize, Serialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ApplicationManagementQueryParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<i64>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationManagementTagResponse {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationManagementItemResponse {
+    pub id: String,
+    pub application_type: String,
+    pub workflow_trigger_type: Option<String>,
+    pub name: String,
+    pub description: String,
+    pub icon: Option<String>,
+    pub icon_type: Option<String>,
+    pub icon_background: Option<String>,
+    pub created_by: String,
+    pub created_by_display_name: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub tags: Vec<ApplicationManagementTagResponse>,
+    pub publication_status: String,
+    pub api_enabled: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationManagementPageResponse {
+    pub items: Vec<ApplicationManagementItemResponse>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+impl InterfaceContract for ApplicationManagementQueryParams {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema([
+            (
+                "filter",
+                serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
+            ),
+            (
+                "sort",
+                serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
+            ),
+            (
+                "page",
+                serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
+            ),
+            (
+                "page_size",
+                serde_json::json!({"anyOf": [serde_json::json!({"type":"integer"}), {"type":"null"}]}),
+            ),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value([
+            (
+                "filter",
+                match (self).filter.as_ref() {
+                    Some(item) => {
+                        mp::object_value([("byte_count", serde_json::json!((item).len()))])
+                    }
+                    None => serde_json::Value::Null,
+                },
+            ),
+            (
+                "sort",
+                match (self).sort.as_ref() {
+                    Some(item) => {
+                        mp::object_value([("byte_count", serde_json::json!((item).len()))])
+                    }
+                    None => serde_json::Value::Null,
+                },
+            ),
+            (
+                "page",
+                match (self).page.as_ref() {
+                    Some(item) => serde_json::json!(*(item)),
+                    None => serde_json::Value::Null,
+                },
+            ),
+            (
+                "page_size",
+                match (self).page_size.as_ref() {
+                    Some(item) => serde_json::json!(*(item)),
+                    None => serde_json::Value::Null,
+                },
+            ),
+        ]))
+    }
+
+    const CONTRACT_ID: &'static str = "console-application-management-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+impl InterfaceContract for ApplicationManagementPageResponse {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_schema([
+            (
+                "items",
+                serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("application_type",mp::text_schema()), ("workflow_trigger_type",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("description",mp::object_schema([("byte_count",mp::count_schema())])), ("icon",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("icon_type",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("icon_background",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("created_by",mp::object_schema([("byte_count",mp::count_schema())])), ("created_by_display_name",mp::object_schema([("byte_count",mp::count_schema())])), ("created_at",mp::text_schema()), ("updated_at",mp::text_schema()), ("tags",serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())]))])})), ("publication_status",mp::object_schema([("byte_count",mp::count_schema())])), ("api_enabled",serde_json::json!({"type":"boolean"}))])}),
+            ),
+            ("total", serde_json::json!({"type":"integer"})),
+            ("page", serde_json::json!({"type":"integer"})),
+            ("page_size", serde_json::json!({"type":"integer"})),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::object_value([
+            ("items", {
+                if (self).items.len() > 32 {
+                    return None;
+                }
+                serde_json::Value::Array(
+                    (self)
+                        .items
+                        .iter()
+                        .map(|item| {
+                            Some(mp::object_value([
+                                ("id", mp::text(&(item).id)?),
+                                ("application_type", mp::text(&(item).application_type)?),
+                                (
+                                    "workflow_trigger_type",
+                                    match (item).workflow_trigger_type.as_ref() {
+                                        Some(item) => mp::text(item)?,
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                                (
+                                    "name",
+                                    mp::object_value([(
+                                        "byte_count",
+                                        serde_json::json!((item).name.len()),
+                                    )]),
+                                ),
+                                (
+                                    "description",
+                                    mp::object_value([(
+                                        "byte_count",
+                                        serde_json::json!((item).description.len()),
+                                    )]),
+                                ),
+                                (
+                                    "icon",
+                                    match (item).icon.as_ref() {
+                                        Some(item) => mp::object_value([(
+                                            "byte_count",
+                                            serde_json::json!((item).len()),
+                                        )]),
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                                (
+                                    "icon_type",
+                                    match (item).icon_type.as_ref() {
+                                        Some(item) => mp::text(item)?,
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                                (
+                                    "icon_background",
+                                    match (item).icon_background.as_ref() {
+                                        Some(item) => mp::object_value([(
+                                            "byte_count",
+                                            serde_json::json!((item).len()),
+                                        )]),
+                                        None => serde_json::Value::Null,
+                                    },
+                                ),
+                                (
+                                    "created_by",
+                                    mp::object_value([(
+                                        "byte_count",
+                                        serde_json::json!((item).created_by.len()),
+                                    )]),
+                                ),
+                                (
+                                    "created_by_display_name",
+                                    mp::object_value([(
+                                        "byte_count",
+                                        serde_json::json!((item).created_by_display_name.len()),
+                                    )]),
+                                ),
+                                ("created_at", mp::text(&(item).created_at)?),
+                                ("updated_at", mp::text(&(item).updated_at)?),
+                                ("tags", {
+                                    if (item).tags.len() > 32 {
+                                        return None;
+                                    }
+                                    serde_json::Value::Array(
+                                        (item)
+                                            .tags
+                                            .iter()
+                                            .map(|item| {
+                                                Some(mp::object_value([
+                                                    ("id", mp::text(&(item).id)?),
+                                                    (
+                                                        "name",
+                                                        mp::object_value([(
+                                                            "byte_count",
+                                                            serde_json::json!((item).name.len()),
+                                                        )]),
+                                                    ),
+                                                ]))
+                                            })
+                                            .collect::<Option<Vec<_>>>()?,
+                                    )
+                                }),
+                                ("api_enabled", serde_json::json!(item.api_enabled)),
+                                (
+                                    "publication_status",
+                                    mp::object_value([(
+                                        "byte_count",
+                                        serde_json::json!((item).publication_status.len()),
+                                    )]),
+                                ),
+                            ]))
+                        })
+                        .collect::<Option<Vec<_>>>()?,
+                )
+            }),
+            ("total", serde_json::json!((self).total)),
+            ("page", serde_json::json!((self).page)),
+            ("page_size", serde_json::json!((self).page_size)),
+        ]))
+    }
+
+    const CONTRACT_ID: &'static str = "console-application-management-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+struct ApplicationManagementAdapter(storage_durable_postgres::MainDurableStore);
+impl ConsoleInterfacePort<ApplicationManagementQueryParams, ApplicationManagementPageResponse>
+    for ApplicationManagementAdapter
+{
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        query: ApplicationManagementQueryParams,
+    ) -> ConsoleInterfaceFuture<'a, ApplicationManagementPageResponse> {
+        Box::pin(async move {
+            let filter = parse_resource_filter(query.filter.as_deref())
+                .map_err(ApiError::from)
+                .map_err(ConsoleInterfaceTargetError)?
+                .unwrap_or_else(|| domain::ResourceFilterExpr::All(Vec::new()));
+            let (sort_field, sort_direction) =
+                parse_application_management_sort(query.sort.as_deref())
+                    .map_err(ConsoleInterfaceTargetError)?;
+            let page = ApplicationService::new(self.0.for_actor(principal.actor().clone()))
+                .list_application_management(
+                    principal.actor().user_id,
+                    ApplicationManagementQuery {
+                        filter,
+                        sort_field,
+                        sort_direction,
+                        page: query.page.unwrap_or(1).max(1),
+                        page_size: query.page_size.unwrap_or(20).clamp(1, 100),
+                    },
+                )
+                .await
+                .map_err(ApiError::from)
+                .map_err(ConsoleInterfaceTargetError)?;
+            page.try_into()
+                .map_err(ApiError::from)
+                .map_err(ConsoleInterfaceTargetError)
+        })
+    }
+}
+
+pub fn compile_registry(
+    store: storage_durable_postgres::MainDurableStore,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[ConsoleInterfaceDeclaration {
+        interface_id: access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION,
+        binding_id: "http.console.settings.applications.get.v1",
+        method: "GET",
+        path: "/api/console/settings/applications",
+        mutating: false,
+    }];
+    console_interface::compile_registry(
+        "api-server.console-application-management",
+        "graph:console-application-management-v1",
+        DECLARATIONS,
+        Arc::new(ApplicationManagementAdapter(store)),
+    )
+}
+
+pub fn router() -> Router<Arc<ApiState>> {
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    ConsoleRouteAssembly::new().route(
+        "/settings/applications",
+        console_get(
+            list_application_management,
+            access_control::ConsoleRouteOwnership::ConsoleOperation(
+                access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION.to_string(),
+            ),
+        ),
+    )
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/settings/applications",
+    params(ApplicationManagementQueryParams),
+    responses(
+        (status = 200, body = ApplicationManagementPageResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn list_application_management(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Query(query): Query<ApplicationManagementQueryParams>,
+) -> Result<Json<ApiSuccess<ApplicationManagementPageResponse>>, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    let value = console_interface::invoke_non_create(
+        snapshot_state,
+        "http.console.settings.applications.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        query,
+    )
+    .await?;
+    Ok(Json(ApiSuccess::new(value)))
+}
+
+fn parse_application_management_sort(
+    sort: Option<&str>,
+) -> Result<
+    (
+        ApplicationManagementSortField,
+        ApplicationManagementSortDirection,
+    ),
+    ApiError,
+> {
+    let Some(sort) = sort.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok((
+            ApplicationManagementSortField::UpdatedAt,
+            ApplicationManagementSortDirection::Desc,
+        ));
+    };
+    let (field, direction) = sort
+        .split_once(':')
+        .ok_or(ControlPlaneError::InvalidInput("sort"))?;
+    let field = match field {
+        "updated_at" => ApplicationManagementSortField::UpdatedAt,
+        "created_at" => ApplicationManagementSortField::CreatedAt,
+        "name" => ApplicationManagementSortField::Name,
+        "application_type" => ApplicationManagementSortField::ApplicationType,
+        _ => return Err(ControlPlaneError::InvalidInput("sort").into()),
+    };
+    let direction = match direction {
+        "asc" => ApplicationManagementSortDirection::Asc,
+        "desc" => ApplicationManagementSortDirection::Desc,
+        _ => return Err(ControlPlaneError::InvalidInput("sort").into()),
+    };
+
+    Ok((field, direction))
+}
+
+impl TryFrom<ApplicationManagementRecord> for ApplicationManagementItemResponse {
+    type Error = time::error::Format;
+
+    fn try_from(record: ApplicationManagementRecord) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: record.id.to_string(),
+            application_type: record.application_type.as_str().to_string(),
+            workflow_trigger_type: record
+                .workflow_trigger_type
+                .map(|value| value.as_str().to_string()),
+            name: record.name,
+            description: record.description,
+            icon: record.icon,
+            icon_type: record.icon_type,
+            icon_background: record.icon_background,
+            created_by: record.created_by.to_string(),
+            created_by_display_name: record.created_by_display_name,
+            created_at: record.created_at.format(&Rfc3339)?,
+            updated_at: record.updated_at.format(&Rfc3339)?,
+            tags: record
+                .tags
+                .into_iter()
+                .map(|tag| ApplicationManagementTagResponse {
+                    id: tag.id.to_string(),
+                    name: tag.name,
+                })
+                .collect(),
+            publication_status: record.publication_status.as_str().to_string(),
+            api_enabled: record.api_enabled,
+        })
+    }
+}
+
+impl TryFrom<ApplicationManagementPage> for ApplicationManagementPageResponse {
+    type Error = time::error::Format;
+
+    fn try_from(page: ApplicationManagementPage) -> Result<Self, Self::Error> {
+        Ok(Self {
+            items: page
+                .items
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<_>, _>>()?,
+            total: page.total,
+            page: page.page,
+            page_size: page.page_size,
+        })
+    }
+}
+
+impl JsonApiInput for ApplicationManagementQueryParams {
+    const LOCATION: crate::openapi_interface::json_contract::JsonInputLocation =
+        crate::openapi_interface::json_contract::JsonInputLocation::Query;
+}
+impl JsonApiOutput for ApplicationManagementPageResponse {}

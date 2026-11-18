@@ -4,17 +4,17 @@
   "supportedPlatform": "linux",
   "targets": [
     {
-      "id": "api-server:lib",
+      "id": "api-server:api_private_contracts",
       "package": "api-server",
       "packageRoot": "api/apps/api-server",
-      "target": "lib",
+      "target": "api_private_contracts",
       "regressionFilters": [],
       "minimum": 1
     }
   ],
   "required": [
     {
-      "target": "api-server:lib",
+      "target": "api-server:api_private_contracts",
       "source": "api/apps/api-server/src/_tests/interface_lifecycle_acceptance/managed_interfaces.rs",
       "name": "_tests::interface_lifecycle_acceptance::managed_interfaces::root_2014_ac_002_installed_two_interface_plugin",
       "expected": 1,

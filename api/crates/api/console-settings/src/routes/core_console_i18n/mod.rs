@@ -1,0 +1,196 @@
+use access_control::{
+    ConsoleLocaleCatalogContribution, ConsoleLocaleText, ConsoleOperationOwner,
+    ConsoleOtherPolicyGroupDisplay, SettingsFeatureLifecycle, SettingsFeatureOwnerKind,
+};
+use domain::CatalogLocale;
+
+use crate::error_response::ApiError;
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct CoreConsoleDisplayText {
+    pub(super) locale_catalog_ref: &'static str,
+    pub(super) key: &'static str,
+}
+
+impl CoreConsoleDisplayText {
+    pub(super) const fn new(key: &'static str) -> Self {
+        Self {
+            locale_catalog_ref: key,
+            key,
+        }
+    }
+
+    pub(super) const fn referenced(locale_catalog_ref: &'static str, key: &'static str) -> Self {
+        Self {
+            locale_catalog_ref,
+            key,
+        }
+    }
+}
+
+mod catalog;
+
+pub fn core_console_locale_catalog_contribution() -> ConsoleLocaleCatalogContribution {
+    let texts = [catalog::TEXTS]
+        .into_iter()
+        .flat_map(|texts| texts.iter())
+        .map(|text| ConsoleLocaleText {
+            reference: text.locale_catalog_ref.to_string(),
+            en_us: text.key.to_string(),
+            zh_hans: text.key.to_string(),
+        })
+        .collect();
+
+    ConsoleLocaleCatalogContribution {
+        plugin_groups: Vec::new(),
+        owner: ConsoleOperationOwner {
+            kind: SettingsFeatureOwnerKind::Core,
+            owner_id: "boot-core".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+        lifecycle: SettingsFeatureLifecycle::Active,
+        texts,
+        policy_groups: other_policy_group_displays(),
+    }
+}
+
+fn other_policy_group_displays() -> Vec<ConsoleOtherPolicyGroupDisplay> {
+    [
+        "core.authenticated",
+        "other.agent-flow",
+        "other.data-sources",
+        "other.frontend-blocks",
+        "other.frontstage",
+        "other.i18n-catalog",
+        "other.js-dependencies",
+        "other.local-commands",
+        "other.model-providers",
+        "other.node-contributions",
+        "other.personal-account",
+        "other.plugins",
+        "other.workspace",
+    ]
+    .into_iter()
+    .map(|group_id| ConsoleOtherPolicyGroupDisplay {
+        group_id: group_id.to_string(),
+        label_ref: other_policy_group_keys(group_id).0.to_string(),
+        description_ref: other_policy_group_keys(group_id).1.to_string(),
+    })
+    .collect()
+}
+
+fn other_policy_group_keys(group_id: &str) -> (&'static str, &'static str) {
+    match group_id {
+        "core.authenticated" => (
+            "Signed-in console",
+            "Console routes available to every signed-in user",
+        ),
+        "other.agent-flow" => (
+            "Agent Flow",
+            "Registered Agent Flow operations outside system settings",
+        ),
+        "other.data-sources" => (
+            "Data source utilities",
+            "Registered data source operations outside system settings",
+        ),
+        "other.frontend-blocks" => (
+            "Frontend blocks",
+            "Registered frontend block catalog operations",
+        ),
+        "other.frontstage" => (
+            "Frontstage",
+            "Registered Frontstage operations available to signed-in users",
+        ),
+        "other.i18n-catalog" => (
+            "Runtime localization catalog",
+            "Registered runtime localization catalog operations available to signed-in users",
+        ),
+        "other.js-dependencies" => (
+            "JavaScript dependencies",
+            "Registered JavaScript dependency operations",
+        ),
+        "other.local-commands" => (
+            "Local commands",
+            "Run one-shot commands on the backend host",
+        ),
+        "other.model-providers" => (
+            "Model provider utilities",
+            "Registered model provider operations outside system settings",
+        ),
+        "other.node-contributions" => (
+            "Node contributions",
+            "Registered node contribution catalog operations",
+        ),
+        "other.personal-account" => (
+            "Personal account",
+            "Profile and preference changes; password and sign-in security remain available",
+        ),
+        "other.plugins" => (
+            "Plugins",
+            "Registered plugin catalog and lifecycle operations",
+        ),
+        "other.workspace" => (
+            "Current workspace",
+            "Registered operations for the current workspace",
+        ),
+        _ => unreachable!("compiled Core policy group id must be known"),
+    }
+}
+
+test_support_item! { pub(crate), [
+#[cfg(any(test, feature = "test-support"))]
+]
+fn core_console_display_inventory() -> Vec<&'static str> {
+    catalog::TEXTS.iter().map(|text| text.key).collect()
+}
+}
+
+test_support_item! { pub(crate), [
+#[cfg(any(test, feature = "test-support"))]
+]
+fn core_console_static_reference_inventory() -> Vec<&'static str> {
+    catalog::TEXTS
+        .iter()
+        .filter(|text| text.locale_catalog_ref != text.key)
+        .map(|text| text.locale_catalog_ref)
+        .collect()
+}
+}
+
+fn dynamic_display_key(key: &str) -> Option<&'static str> {
+    catalog::TEXTS
+        .iter()
+        .find(|text| text.key == key)
+        .map(|text| text.key)
+}
+
+pub(crate) async fn resolve_core_console_display_with(
+    store: &storage_durable_postgres::MainDurableStore,
+    bootstrap_workspace_id: uuid::Uuid,
+    locale: &CatalogLocale,
+    key: &str,
+) -> Result<String, ApiError> {
+    let Some(resolved_key) = dynamic_display_key(key) else {
+        return Ok(key.to_string());
+    };
+    crate::app_state::resolve_request_text_with(store, bootstrap_workspace_id, locale, resolved_key)
+        .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dynamic_display_key;
+
+    #[test]
+    fn dynamic_display_lookup_accepts_only_english_keys() {
+        assert_eq!(
+            dynamic_display_key("Language catalog"),
+            Some("Language catalog")
+        );
+        assert_eq!(dynamic_display_key("auto.translation_catalog_title"), None);
+        assert_eq!(
+            dynamic_display_key("console.policy_groups.settings.system.docs.description"),
+            None
+        );
+    }
+}

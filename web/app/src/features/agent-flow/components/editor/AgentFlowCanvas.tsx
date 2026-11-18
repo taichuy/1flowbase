@@ -18,34 +18,26 @@ import {
   type Edge
 } from '@xyflow/react';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
-import { memo, useEffect, useMemo } from 'react';
+import { memo, useEffect } from 'react';
 import { useRef } from 'react';
 
-import { useCanvasInteractions } from '../../hooks/interactions/use-canvas-interactions';
-import { useEdgeInteractions } from '../../hooks/interactions/use-edge-interactions';
-import { useNodeInteractions } from '../../hooks/interactions/use-node-interactions';
-import { useSelectionInteractions } from '../../hooks/interactions/use-selection-interactions';
-import { toCanvasEdges } from '../../lib/adapters/to-canvas-edges';
-import { toCanvasNodes } from '../../lib/adapters/to-canvas-nodes';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
-import {
-  selectActiveContainerId,
-  selectSelectedNodeId,
-  selectWorkingDocument
-} from '../../store/editor/selectors';
 import { AgentFlowCustomConnectionLine } from '../canvas/custom-connection-line';
 import { NodePickerPopover } from '../node-picker/NodePickerPopover';
 import {
   agentFlowEdgeTypes,
   agentFlowNodeTypes,
-  type AgentFlowCanvasEdge,
   type AgentFlowCanvasNode
 } from '../canvas/node-types';
 import type { NodePickerOption } from '../../lib/plugin-node-definitions';
+import { useAgentFlowCanvasElements } from '../../hooks/use-agent-flow-canvas-elements';
 import { i18nText } from '../../../../shared/i18n/text';
 
 interface AgentFlowCanvasProps {
   issueCountByNodeId: Record<string, number>;
+  interactionLocked?: boolean;
+  nodeRunStatuses?: Record<string, 'running' | 'succeeded' | 'failed'>;
+  workflowTriggerContext?: AgentFlowCanvasNode['data']['workflowTriggerContext'];
   nodePickerOptions?: NodePickerOption[];
   onRunNode?: (nodeId: string) => void;
   onViewportSnapshotChange?: (
@@ -193,100 +185,47 @@ function PendingLocateNodeEffect() {
 
 function AgentFlowCanvasInner({
   issueCountByNodeId,
+  interactionLocked = false,
+  nodeRunStatuses,
+  workflowTriggerContext,
   nodePickerOptions = EMPTY_NODE_PICKER_OPTIONS,
   onRunNode,
   onViewportSnapshotChange,
   onViewportGetterReady
 }: AgentFlowCanvasProps) {
   const can = useConsoleOperationAccess();
-  const readOnly = !can('save_draft');
+  const readOnly = interactionLocked || !can('save_draft');
   const canvasRef = useRef<HTMLDivElement>(null);
-  const reactFlow = useReactFlow<AgentFlowCanvasNode, AgentFlowCanvasEdge>();
-  const document = useAgentFlowEditorStore(selectWorkingDocument);
-  const activeContainerId = useAgentFlowEditorStore(selectActiveContainerId);
-  const selectedEdgeId = useAgentFlowEditorStore(
-    (state) => state.selectedEdgeId
-  );
-  const selectedNodeId = useAgentFlowEditorStore(selectSelectedNodeId);
-  const nodePickerState = useAgentFlowEditorStore(
-    (state) => state.nodePickerState
-  );
-  const connectingPayload = useAgentFlowEditorStore(
-    (state) => state.connectingPayload
-  );
-  const canvasInteractions = useCanvasInteractions();
-  const nodeInteractions = useNodeInteractions();
-  const edgeInteractions = useEdgeInteractions();
-  const selectionInteractions = useSelectionInteractions();
-  const baseNodes = useMemo(
-    () =>
-      toCanvasNodes(
-        document,
-        activeContainerId,
-        selectedNodeId,
-        nodePickerState.open && !nodePickerState.anchorCanvasPosition
-          ? nodePickerState.anchorNodeId
-          : null,
-        connectingPayload.sourceHandleId,
-        issueCountByNodeId,
-        {
-          readOnly,
-          onOpenPicker: readOnly ? () => {} : nodeInteractions.openNodePicker,
-          onClosePicker: nodeInteractions.closeNodePicker,
-          onOpenContainer: nodeInteractions.openContainer,
-          onSelectNode: nodeInteractions.selectNode,
-          onInsertNode: readOnly ? () => {} : nodeInteractions.insertAfterNode,
-          onRunNode,
-          onReplaceNode: readOnly ? () => {} : nodeInteractions.replaceNode,
-          onDeleteNode: readOnly ? () => {} : nodeInteractions.deleteNode,
-          onResizeContainer: readOnly
-            ? undefined
-            : canvasInteractions.commitContainerResize,
-          nodePickerOptions
-        }
-      ),
-    [
-      readOnly,
-      activeContainerId,
-      canvasInteractions.commitContainerResize,
-      document,
-      issueCountByNodeId,
-      nodeInteractions,
-      nodePickerOptions,
-      onRunNode,
-      nodePickerState.anchorCanvasPosition,
-      nodePickerState.anchorNodeId,
-      nodePickerState.open,
-      connectingPayload.sourceHandleId,
-      selectedNodeId
-    ]
-  );
-  const edges = useMemo(
-    () =>
-      toCanvasEdges(document, activeContainerId, selectedEdgeId, {
-        nodePickerOptions,
-        onInsertNode: readOnly ? undefined : edgeInteractions.insertOnEdge
-      }),
-    [
-      readOnly,
-      activeContainerId,
-      document,
-      edgeInteractions.insertOnEdge,
-      nodePickerOptions,
-      selectedEdgeId
-    ]
-  );
-
-  useEffect(() => {
-    reactFlow.setNodes(baseNodes);
-  }, [baseNodes, reactFlow]);
-
-  useEffect(() => {
-    reactFlow.setEdges(edges);
-  }, [edges, reactFlow]);
+  const connectionGestureRef = useRef(false);
+  const {
+    document,
+    nodePickerState,
+    connectingPayload,
+    canvasInteractions,
+    nodeInteractions,
+    edgeInteractions,
+    selectionInteractions,
+    baseNodes,
+    edges
+  } = useAgentFlowCanvasElements({
+    issueCountByNodeId,
+    interactionLocked,
+    readOnly,
+    nodeRunStatuses,
+    workflowTriggerContext,
+    nodePickerOptions,
+    onRunNode
+  });
 
   return (
-    <div className="agent-flow-canvas" ref={canvasRef}>
+    <div
+      className="agent-flow-canvas"
+      data-interaction-locked={interactionLocked}
+      ref={canvasRef}
+      onPointerDownCapture={() => {
+        connectionGestureRef.current = false;
+      }}
+    >
       <ReactFlow
         defaultEdges={edges}
         defaultNodes={baseNodes}
@@ -298,14 +237,30 @@ function AgentFlowCanvasInner({
         multiSelectionKeyCode={null}
         selectionOnDrag={false}
         selectionKeyCode={null}
-        onPaneClick={selectionInteractions.clearSelection}
+        onPaneClick={() => {
+          // Mouseup after a connection drag can also produce a pane click.
+          // Keep its picker open; the next pointer gesture clears this flag.
+          if (connectionGestureRef.current) return;
+          selectionInteractions.clearSelection();
+        }}
         onNodeClick={(_, node) => nodeInteractions.selectNode(node.id)}
+        panOnDrag
+        panOnScroll={false}
+        zoomOnScroll
+        zoomOnPinch
+        zoomOnDoubleClick
+        autoPanOnNodeDrag={!interactionLocked}
+        autoPanOnConnect={!interactionLocked}
+        nodesFocusable
+        edgesFocusable
+        elementsSelectable
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
         edgesReconnectable={!readOnly}
         onConnect={readOnly ? undefined : edgeInteractions.connect}
         onConnectStart={(_, payload) => {
           if (readOnly) return;
+          connectionGestureRef.current = true;
           edgeInteractions.startConnection(payload);
         }}
         onConnectEnd={(event) => {

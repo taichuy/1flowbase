@@ -1,4 +1,5 @@
 import type {
+  NodeExecutionIdentity,
   ConversationTrajectoryQuery,
   ConversationClientTrajectoryQueryPage,
   WorkflowTrajectoryPage,
@@ -64,6 +65,7 @@ export interface ConversationLogTraceProjectionStatus {
 }
 
 export interface ConversationLogTraceTree {
+  flow_run?: { id: string; status: string };
   projection_status?: ConversationLogTraceProjectionStatus;
   nodes: ConversationLogTraceNodeSummary[];
   page_info?: ConversationLogTraceNodeChildrenPageInfo;
@@ -474,6 +476,10 @@ function mapPayloadContentToTraceItem(
     ...fallback,
     inputPayload,
     outputPayload,
+    execution_identity: payload.execution_identity as
+      | NodeExecutionIdentity
+      | null
+      | undefined,
     errorPayload: Object.keys(errorPayload).length > 0 ? errorPayload : null,
     metricsPayload:
       Object.keys(metricsPayload).length > 0
@@ -525,6 +531,10 @@ function mapNodeRunRecordToTraceItem(
 
   return {
     ...fallback,
+    execution_identity: nodeRun.execution_identity as
+      | NodeExecutionIdentity
+      | null
+      | undefined,
     inputPayload,
     outputPayload,
     errorPayload: Object.keys(errorPayload).length > 0 ? errorPayload : null,

@@ -37,3 +37,40 @@ fn ac_002_disabled_group_retains_custom_operations_for_reactivation() {
         &operation_id
     ));
 }
+
+#[test]
+fn canonical_plugin_group_preserves_full_custom_and_disabled_authorization() {
+    let group = ConsolePolicyGroup::plugin("acme.calendar").unwrap();
+    assert_eq!(group.kind().as_str(), "plugin");
+    assert_eq!(
+        crate::ConsolePolicyGroupKind::parse("plugin"),
+        Some(group.kind())
+    );
+    let allowed = ConsoleOperationId::try_from("acme.calendar.list").unwrap();
+    let denied = ConsoleOperationId::try_from("acme.calendar.delete").unwrap();
+    let custom = RoleConsoleGroupPolicy::custom(
+        group.clone(),
+        vec![
+            ConsoleOperationPolicy::simple(allowed.clone(), true),
+            ConsoleOperationPolicy::simple(denied.clone(), false),
+        ],
+    );
+    let check = |selection, op: &ConsoleOperationId| {
+        effective_console_simple_operation(
+            &[RoleConsolePolicy::new(Uuid::nil(), vec![selection])],
+            &group,
+            op,
+        )
+    };
+    assert!(check(RoleConsoleGroupPolicy::full(group.clone()), &denied));
+    assert!(check(custom.clone(), &allowed));
+    assert!(!check(custom.clone(), &denied));
+    assert!(!check(custom.with_enabled(false), &allowed));
+    let foreign =
+        RoleConsoleGroupPolicy::full(ConsolePolicyGroup::plugin("other.calendar").unwrap());
+    assert!(!check(foreign, &allowed));
+    let legacy = RoleConsoleGroupPolicy::full(
+        ConsolePolicyGroup::settings_feature("acme.calendar").unwrap(),
+    );
+    assert!(!check(legacy, &allowed));
+}

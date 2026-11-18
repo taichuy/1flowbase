@@ -27,6 +27,7 @@ interface AgentFlowOverlayProps {
   onOpenSystemVariables: () => void;
   onOpenPublish: () => void;
   issueErrorCount: number;
+  analysisStatus?: 'pending' | 'ready' | 'error';
   exportLoading: boolean;
   publishDisabled: boolean;
   showConversationDebug?: boolean;
@@ -52,6 +53,7 @@ export function AgentFlowOverlay({
   onOpenSystemVariables,
   onOpenPublish,
   issueErrorCount,
+  analysisStatus = 'ready',
   exportLoading,
   publishDisabled,
   showConversationDebug = true,
@@ -66,10 +68,9 @@ export function AgentFlowOverlay({
   }[autosaveStatus];
 
   return (
-    <div
+    <section
       aria-label={i18nText('agentFlow', 'auto.agent_flow_action_bar')}
       className="agent-flow-editor__overlay"
-      role="region"
     >
       <Space className="agent-flow-editor__overlay-status" size="small">
         <Typography.Text strong>{applicationName}</Typography.Text>
@@ -93,9 +94,14 @@ export function AgentFlowOverlay({
         <Badge count={issueErrorCount} size="small">
           <Button
             aria-label="Issues"
+            aria-busy={analysisStatus === 'pending'}
             icon={<IssuesCloseOutlined />}
             onClick={onOpenIssues}
-            title="Issues"
+            title={analysisStatus === 'pending'
+              ? i18nText('agentFlow', 'analysis.pending')
+              : analysisStatus === 'error'
+                ? i18nText('agentFlow', 'analysis.unavailable')
+                : 'Issues'}
           />
         </Badge>
         <Button
@@ -157,6 +163,6 @@ export function AgentFlowOverlay({
           title={i18nText('agentFlow', 'auto.historical_version')}
         />
       </Space>
-    </div>
+    </section>
   );
 }

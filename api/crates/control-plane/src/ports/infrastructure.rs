@@ -4,8 +4,10 @@ use tokio::sync::{mpsc, watch};
 use uuid::Uuid;
 
 mod runtime_event_delivery;
+mod runtime_event_source;
 mod runtime_events;
 
 pub use control_plane_contracts::ports::infrastructure::*;
 pub use runtime_event_delivery::*;
+pub use runtime_event_source::*;
 pub use runtime_events::*;

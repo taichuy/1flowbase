@@ -476,12 +476,16 @@ impl PgControlPlaneStore {
         input: &ModelBillingAdmissionInput,
     ) -> Result<ModelBillingAdmission> {
         let mut tx = self.pool().begin().await?;
-        let mut notifications = Vec::new();
+        let mut notifications: Vec<control_plane_contracts::ports::FrozenLifecyclePublication> =
+            Vec::new();
         // This statement is the workspace-switch snapshot for this invocation.
         let enabled_at: Option<OffsetDateTime> = sqlx::query_scalar("select billing_enabled_at from workspace_billing_settings where workspace_id=$1 for share")
             .bind(input.workspace_id).fetch_optional(&mut *tx).await?;
         if !enabled_at.is_some_and(|at| input.started_at >= at) {
             tx.commit().await?;
+            for notification in notifications.drain(..) {
+                notification.committed();
+            }
             return Ok(ModelBillingAdmission::Disabled);
         }
         let prepared = input
@@ -501,6 +505,9 @@ impl PgControlPlaneStore {
             Some(row) => account_record(&row)?,
             None if !prepared.charge_enabled_default => {
                 tx.commit().await?;
+                for notification in notifications.drain(..) {
+                    notification.committed();
+                }
                 return Ok(ModelBillingAdmission::ObserveOnly);
             }
             None => ensure_account(&mut tx, input.workspace_id, prepared.user_id, true).await?,
@@ -512,12 +519,18 @@ impl PgControlPlaneStore {
             .fetch_one(&mut *tx).await?;
         if !account.charge_enabled && !has_session {
             tx.commit().await?;
+            for notification in notifications.drain(..) {
+                notification.committed();
+            }
             return Ok(ModelBillingAdmission::ObserveOnly);
         }
         let reservation =
             reserve_credit_in_transaction(&mut tx, self, &mut notifications, prepared, &account)
                 .await?;
         tx.commit().await?;
+        for notification in notifications.drain(..) {
+            notification.committed();
+        }
         Ok(ModelBillingAdmission::Reserved(reservation))
     }
 }
@@ -840,7 +853,8 @@ impl BillingRepository for PgControlPlaneStore {
         let charge_enabled_default =
             !crate::repositories::is_root_user(self.pool(), input.user_id).await?;
         let mut tx = self.pool().begin().await?;
-        let mut notifications = Vec::new();
+        let mut notifications: Vec<control_plane_contracts::ports::FrozenLifecyclePublication> =
+            Vec::new();
         let account = ensure_account(
             &mut tx,
             input.workspace_id,
@@ -872,6 +886,9 @@ impl BillingRepository for PgControlPlaneStore {
                 );
             }
             tx.commit().await?;
+            for notification in notifications.drain(..) {
+                notification.committed();
+            }
             return Ok(existing);
         }
         let charge_enabled = match input.command.as_str() {
@@ -904,6 +921,9 @@ impl BillingRepository for PgControlPlaneStore {
         }, serde_json::json!({"ledger_id": ledger_id, "transaction_id": transaction_id, "user_id": input.user_id,
             "amount": signed.to_string(), "balance_after": balance, "credit_unit": "USD"})).await?;
         tx.commit().await?;
+        for notification in notifications.drain(..) {
+            notification.committed();
+        }
         transaction_record(&ledger)
     }
 
@@ -916,18 +936,23 @@ impl BillingRepository for PgControlPlaneStore {
         idempotency_key: &str,
     ) -> Result<()> {
         let mut tx = self.pool().begin().await?;
-        let mut notifications = Vec::new();
+        let mut notifications: Vec<control_plane_contracts::ports::FrozenLifecyclePublication> =
+            Vec::new();
         crate::notification_publication::record_credit_notification_in_transaction(
             self, &mut tx, &mut notifications, workspace_id, None, "CreditCommandRejected",
             serde_json::json!({"actor_plugin_id":actor_plugin_id,"command":command,"reason":reason,"idempotency_key":idempotency_key}),
         ).await?;
         tx.commit().await?;
+        for notification in notifications.drain(..) {
+            notification.committed();
+        }
         Ok(())
     }
 
     async fn reserve_credit(&self, input: &ReserveCreditInput) -> Result<CreditReservation> {
         let mut tx = self.pool().begin().await?;
-        let mut notifications = Vec::new();
+        let mut notifications: Vec<control_plane_contracts::ports::FrozenLifecyclePublication> =
+            Vec::new();
         let account = ensure_account(
             &mut tx,
             input.workspace_id,
@@ -939,14 +964,21 @@ impl BillingRepository for PgControlPlaneStore {
             reserve_credit_in_transaction(&mut tx, self, &mut notifications, input, &account)
                 .await?;
         tx.commit().await?;
+        for notification in notifications.drain(..) {
+            notification.committed();
+        }
         Ok(reservation)
     }
 
     async fn settle_credit(&self, input: &SettleCreditInput) -> Result<CreditTransactionRecord> {
         let mut tx = self.pool().begin().await?;
-        let mut notifications = Vec::new();
+        let mut notifications: Vec<control_plane_contracts::ports::FrozenLifecyclePublication> =
+            Vec::new();
         let record = settle_credit_in_transaction(&mut tx, self, &mut notifications, input).await?;
         tx.commit().await?;
+        for notification in notifications.drain(..) {
+            notification.committed();
+        }
         Ok(record)
     }
 
@@ -956,11 +988,15 @@ impl BillingRepository for PgControlPlaneStore {
         reason: &str,
     ) -> Result<Option<CreditTransactionRecord>> {
         let mut tx = self.pool().begin().await?;
-        let mut notifications = Vec::new();
+        let mut notifications: Vec<control_plane_contracts::ports::FrozenLifecyclePublication> =
+            Vec::new();
         let Some(session)=sqlx::query("select workspace_id,user_id,account_id,reserved_amount::text as reserved_amount,status from billing_sessions where id=$1 for update")
             .bind(billing_session_id).fetch_optional(&mut *tx).await? else { return Ok(None); };
         if session.try_get::<String, _>("status")? != "reserved" {
             tx.commit().await?;
+            for notification in notifications.drain(..) {
+                notification.committed();
+            }
             return Ok(None);
         }
         let account_id: Uuid = session.try_get("account_id")?;
@@ -991,6 +1027,9 @@ impl BillingRepository for PgControlPlaneStore {
         )
         .await?;
         tx.commit().await?;
+        for notification in notifications.drain(..) {
+            notification.committed();
+        }
         Ok(Some(transaction_record(&ledger)?))
     }
 

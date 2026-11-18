@@ -60,7 +60,14 @@ mod trajectory;
 mod client_trajectory;
 mod storage_compaction_replay;
 
+#[path = "migrations/communication_commands.rs"]
+mod communication_commands;
 #[path = "migrations/communication_sessions.rs"]
 mod communication_sessions;
 #[path = "migrations/communication_timeline.rs"]
 mod communication_timeline;
+
+#[path = "migrations/event_center/current_identity.rs"]
+mod event_center_current_identity;
+#[path = "migrations/workspace_schema_readiness.rs"]
+mod workspace_schema_readiness;

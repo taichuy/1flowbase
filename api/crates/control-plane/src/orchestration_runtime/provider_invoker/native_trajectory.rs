@@ -20,6 +20,7 @@ struct Identity {
     attempt: u64,
     observation_context: Option<control_plane_contracts::ports::WorkflowObservationContext>,
     purpose: &'static str,
+    recovery_context: Option<Value>,
     duration_ms: Arc<AtomicU64>,
 }
 impl Identity {
@@ -113,9 +114,11 @@ struct SafeInput<'a> {
     model_parameters: &'a BTreeMap<String, Value>,
     // Already sealed Native request body; no network headers or authentication envelope.
     native_request: &'a Option<plugin_framework::provider_contract::ProviderNativeTransport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    native_context: Option<&'a Value>,
     previous_response_id: &'a Option<String>,
 }
-fn safe_input(input: &ProviderInvocationInput) -> Option<Value> {
+fn safe_input(input: &ProviderInvocationInput, native_context: Option<&Value>) -> Option<Value> {
     snapshot_value(&SafeInput {
         operation: &input.operation,
         model: &input.model,
@@ -127,6 +130,7 @@ fn safe_input(input: &ProviderInvocationInput) -> Option<Value> {
         response_format: &input.response_format,
         model_parameters: &input.model_parameters,
         native_request: &input.native_transport,
+        native_context,
         previous_response_id: &input.previous_response_id,
     })
 }
@@ -149,7 +153,7 @@ fn redact_metadata(value: &mut Value) {
     }
 }
 async fn record_input(sink: &Sink, input: &ProviderInvocationInput) -> bool {
-    let Some(detail) = safe_input(input) else {
+    let Some(detail) = safe_input(input, sink.id.recovery_context.as_ref()) else {
         sink.step(
             "model_call",
             &Uuid::now_v7().to_string(),
@@ -853,6 +857,19 @@ pub(super) async fn start<
     input: &ProviderInvocationInput,
     observation_context: Option<&control_plane_contracts::ports::WorkflowObservationContext>,
 ) -> Capture {
+    start_with_recovery_context(repository, run, node, input, observation_context, None).await
+}
+
+pub(super) async fn start_with_recovery_context<
+    R: crate::ports::OrchestrationRuntimeRepository + Clone + Send + Sync + 'static,
+>(
+    repository: R,
+    run: Option<Uuid>,
+    node: Option<(String, Uuid)>,
+    input: &ProviderInvocationInput,
+    observation_context: Option<&control_plane_contracts::ports::WorkflowObservationContext>,
+    recovery_context: Option<Value>,
+) -> Capture {
     let (Some(run), Some((node, node_run))) = (run, node) else {
         return Capture::default();
     };
@@ -860,6 +877,7 @@ pub(super) async fn start<
         return Capture::default();
     };
     let id = Identity {
+        recovery_context,
         observation_context: observation_context.cloned(),
         purpose: invocation_purpose(input, observation_context),
         duration_ms: Arc::new(AtomicU64::new(u64::MAX)),

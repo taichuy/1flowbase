@@ -44,17 +44,18 @@ pub trait ManagedInstallationSwitchLease: Send {
         self: Box<Self>,
         audit_log: AuditLogRecord,
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> {
-        let commit = self.commit_with_catalog(audit_log, None, Vec::new());
+        let commit = self.commit_with_catalog(audit_log, None, Vec::new(), None);
         Box::pin(async move { commit.await.map(|_| ()) })
     }
     /// Atomically migrate channels accepted by the business owner, select the version and
-    /// publish permissions. Reject existing channels outside the compatible type set.
+    /// publish permissions and event definitions. Reject channels outside the compatible type set.
     /// Returns the number of migrated notification instances.
     fn commit_with_catalog(
         self: Box<Self>,
         audit_log: AuditLogRecord,
         catalog: Option<crate::CompiledConsolePolicyCatalog>,
         compatible_notification_types: Vec<String>,
+        event_catalog: Option<domain::event_center::EventCatalogSnapshot>,
     ) -> Pin<Box<dyn Future<Output = Result<u64>> + Send>>;
     fn release(self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 }
@@ -105,12 +106,13 @@ pub trait ContributionAuthorityLease: Send {
         input: super::ResumeManagedLifecycleDelivery,
     ) -> Pin<Box<dyn Future<Output = Result<super::LifecycleOutboxRecord>> + Send>>;
     /// Apply settings defaults for the locked, enabled system installations and commit this
-    /// authority lease atomically, including the optional permission catalog. An empty list skips
+    /// authority lease atomically, including optional permission and event catalogs. An empty list skips
     /// template application; any failure rolls back defaults and grants.
     fn commit_managed_settings_templates(
         self: Box<Self>,
         installation_ids: Vec<Uuid>,
         catalog: Option<crate::CompiledConsolePolicyCatalog>,
+        event_catalog: Option<domain::event_center::EventCatalogSnapshot>,
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>;
     fn release(self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 }

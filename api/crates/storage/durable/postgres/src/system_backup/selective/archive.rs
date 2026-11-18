@@ -222,13 +222,23 @@ pub(super) async fn header(reader: &mut BufReader<tokio::fs::File>) -> Result<He
                 .any(|c| c.name == "notification_payload_digest");
             if !digest {
                 header.legacy_notification_digest = true;
-                table.columns.push(Column {
-                    name: "notification_payload_digest".into(),
-                    sql_type: "bytea".into(),
-                    nullable: true,
-                    generated: false,
-                    generated_expression: None,
-                });
+                // The digest migration precedes observation_context in the
+                // formal schema. Keep that exact order when upgrading metadata.
+                let position = table
+                    .columns
+                    .iter()
+                    .position(|column| column.name == "observation_context")
+                    .unwrap_or(table.columns.len());
+                table.columns.insert(
+                    position,
+                    Column {
+                        name: "notification_payload_digest".into(),
+                        sql_type: "bytea".into(),
+                        nullable: true,
+                        generated: false,
+                        generated_expression: None,
+                    },
+                );
             }
         }
     }

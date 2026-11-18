@@ -158,16 +158,15 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
         .unwrap(),
     );
     host.mark_ready().unwrap();
-    let services = Arc::new(
-        ApiRuntimeServices::new_with_runtime_backend(host, graph)
-            .unwrap()
-            .with_managed_composition(
-                store.clone(),
-                state.api_node_id.clone(),
-                assembly.module_descriptors().to_vec(),
-            ),
+    let (services, composition) = crate::managed_runtime_assembly::bind_managed_runtime(
+        crate::provider_runtime::services_for_current_cfg(
+            ApiRuntimeServices::new_with_runtime_backend(host, graph).unwrap(),
+        ),
+        store.clone(),
+        state.api_node_id.clone(),
+        assembly.module_descriptors().to_vec(),
     );
-    let composition = services.managed_composition().unwrap();
+    let services = Arc::new(services);
     composition
         .attach_native_lifecycle_plan(native_plan.clone())
         .unwrap();
@@ -175,7 +174,9 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
         Arc::downgrade(&composition),
     ));
     catalog.attach_workspace_source(source.clone()).unwrap();
-    let delivery = delivery.with_managed(&composition);
+    let delivery = delivery.with_managed(
+        &(composition.clone() as Arc<dyn crate::extension_bus::ManagedCompositionPort>),
+    );
     let management = PluginManagementService::new(
         store.clone(),
         ApiProviderRuntime::new(services.clone()),
@@ -371,6 +372,7 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
     }
     // The Outbox keeps the first frozen targets/time across replay; changed content fails closed.
     let mut replay = control_plane_contracts::ports::RecordLifecycleFactInput {
+        observation_context: processed[0].observation_context.clone(),
         event_id: processed[0].event_id,
         transaction_id: processed[0].transaction_id,
         contract_id: processed[0].contract_id.clone(),
@@ -531,6 +533,7 @@ async fn root_2007_ac_005_event_authority_installed_publisher_and_subscribers() 
     let unavailable_id = Uuid::now_v7();
     store
         .record_lifecycle_fact(&control_plane_contracts::ports::RecordLifecycleFactInput {
+            observation_context: None,
             event_id: unavailable_id,
             transaction_id: Uuid::now_v7(),
             contract_id: MANAGED_PROCESSED_EVENT_ID.into(),

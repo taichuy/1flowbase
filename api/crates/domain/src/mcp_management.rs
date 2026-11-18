@@ -1,3 +1,5 @@
+mod directory;
+pub use directory::*;
 mod call_controls;
 pub use call_controls::{
     mcp_call_parameter_is_open, mcp_des_id_required, mcp_description_tool_id,

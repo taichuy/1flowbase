@@ -86,6 +86,32 @@ async fn container_trajectory_preserves_round_facts_identity_and_application_sco
         .await
         .unwrap()
         .unwrap();
+    let live = store
+        .get_run_node_last_run(seeded.application_id, run.id, "leaf")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(live.node_run.status, NodeRunStatus::Running);
+    assert!(live.node_run.finished_at.is_none());
+    assert_eq!(
+        live.node_run.execution_identity.as_ref(),
+        Some(&child.execution_identity)
+    );
+    assert!(store
+        .get_run_node_last_run(Uuid::now_v7(), run.id, "leaf")
+        .await
+        .unwrap()
+        .is_none());
+    assert!(store
+        .get_run_node_last_run(seeded.application_id, Uuid::now_v7(), "leaf")
+        .await
+        .unwrap()
+        .is_none());
+    let live_watermark = store
+        .get_application_run_trace_projection_source_watermark(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
     child.node = Some(ContainerNodeFact::Updated {
         status: NodeRunStatus::Succeeded,
         output_payload: json!({"text":"value"}),
@@ -98,6 +124,21 @@ async fn container_trajectory_preserves_round_facts_identity_and_application_sco
     child.rounds[0].output_payload = Some(json!("value"));
     child.rounds[0].variables = Some(json!({"total":1}));
     store.commit_container_transition(&child).await.unwrap();
+    let finished_watermark = store
+        .get_application_run_trace_projection_source_watermark(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(
+        live_watermark, finished_watermark,
+        "finishing a node without adding a new receipt must invalidate the trace"
+    );
+    let live_source = store
+        .get_application_run_trace_projection_source(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(finished_watermark, control_plane::orchestration_runtime::trace_projection::trace_projection_source_watermark_from_source(&live_source));
     let mut frame_terminal = frame_input.clone();
     frame_terminal.node = Some(ContainerNodeFact::Updated {
         status: NodeRunStatus::Succeeded,
@@ -115,6 +156,36 @@ async fn container_trajectory_preserves_round_facts_identity_and_application_sco
         .commit_container_transition(&frame_terminal)
         .await
         .unwrap();
+    let source = store
+        .get_application_run_trace_projection_source(seeded.application_id, run.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let projection = control_plane::orchestration_runtime::trace_projection::build_application_run_trace_projection_from_source(&source).unwrap();
+    let frame_node = projection
+        .nodes
+        .iter()
+        .find(|n| n.owner_id.as_deref() == Some(frame_record.id.to_string().as_str()))
+        .unwrap();
+    let round_node = projection
+        .nodes
+        .iter()
+        .find(|n| n.owner_kind.as_deref() == Some("container_round"))
+        .unwrap();
+    let leaf_node = projection
+        .nodes
+        .iter()
+        .find(|n| n.owner_id.as_deref() == Some(child_record.id.to_string().as_str()))
+        .unwrap();
+    assert_eq!(
+        round_node.parent_trace_node_id,
+        Some(frame_node.trace_node_id)
+    );
+    assert_eq!(
+        leaf_node.parent_trace_node_id,
+        Some(round_node.trace_node_id)
+    );
+    assert_eq!(round_node.node_alias, "#1");
     let page = store
         .workflow_trajectory_page(
             seeded.application_id,

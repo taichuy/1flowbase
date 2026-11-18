@@ -50,7 +50,7 @@ fn observed_dependencies(
         state.infrastructure.provider_transport_store(),
         stream,
     );
-    deps.delivery_read_attempts = Some(attempts);
+    deps.set_delivery_read_attempts_for_test_support(Some(attempts));
     deps
 }
 
@@ -339,27 +339,29 @@ async fn assert_open_empty_terminal_only(count: usize) {
     let (sender, mut receiver) = mpsc::channel(8);
     let samples = Arc::new(std::sync::Mutex::new(Vec::new()));
     let mut dependencies = super::delivery_proof::terminal_dependencies(&state);
-    dependencies.delivery_read_samples = Some(samples.clone());
+    dependencies.set_delivery_read_samples_for_test_support(Some(samples.clone()));
     let (_closure_sender, closure) = tokio::sync::watch::channel(None);
     let task = tokio::spawn(send_subscribed_compatible_typed_event_stream(
-        SubscribedCompatibleTypedEventStream {
-            terminal_dependencies: dependencies,
-            initial_run: run.clone(),
-            delivery_policy: CompatibleDeliveryPolicy::ScopedResponses,
-            delivery_scope: RuntimeEventDeliveryScope::Resume {
+        SubscribedCompatibleTypedEventStream::for_test_support(
+            dependencies,
+            run.clone(),
+            CompatibleDeliveryPolicy::ScopedResponses,
+            RuntimeEventDeliveryScope::Resume {
                 callback_task_id: callback,
             },
-            from_sequence: Some(50000),
-            durable_round_replay: Vec::new(),
-            ignored_waiting_callback_task_id: Some(callback),
-            subscription: control_plane::ports::RuntimeEventSubscription {
+            CompatibleReplayTestSupport {
+                from_sequence: Some(50000),
+                durable_round_replay: Vec::new(),
+                ignored_waiting_callback_task_id: Some(callback),
+            },
+            control_plane::ports::RuntimeEventSubscription {
                 terminal_writer: Arc::new(UnusedTerminalWriter),
                 replay: Vec::new(),
                 live_events: control_plane::ports::RuntimeEventReceiver::from_unbounded(live),
                 closure,
             },
             sender,
-        },
+        ),
     ));
     tx.send(RuntimeEventEnvelope::new(
         run.id,
@@ -368,7 +370,12 @@ async fn assert_open_empty_terminal_only(count: usize) {
     ))
     .unwrap();
     assert_eq!(
-        receiver.recv().await.unwrap().envelope.event_type,
+        receiver
+            .recv()
+            .await
+            .unwrap()
+            .envelope_for_test_support()
+            .event_type,
         "flow_started",
         "initial successful Open-empty query barrier"
     );

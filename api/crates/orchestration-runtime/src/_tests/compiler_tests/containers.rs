@@ -6,6 +6,8 @@ fn node(id: &str, kind: &str, parent: Option<&str>) -> Value {
 }
 
 fn document() -> Value {
+    let mut start = node("start", "start", None);
+    start["config"] = json!({"input_fields":[{"key":"input","label":"Input","valueType":"string"},{"key":"items","label":"Items","valueType":"array"}]});
     let mut container = node("loop", "loop", None);
     container["config"] = json!({"max_rounds":3,"round_timeout_ms":5000,"loop_variables":[{"key":"total","value_type":"number"}]});
     container["bindings"] = json!({
@@ -25,7 +27,7 @@ fn document() -> Value {
     after["bindings"] = json!({"template":{"kind":"templated_text","value":"{{loop.result}}"}});
     after["outputs"] = json!([{"key":"result","title":"Result","valueType":"string"}]);
     json!({"schemaVersion":"1flowbase.flow/v2","graph":{
-        "nodes":[node("start","start",None),container,node("entry","container_start",Some("loop")),body,after],
+        "nodes":[start,container,node("entry","container_start",Some("loop")),body,after],
         "edges":[{"id":"a","source":"start","target":"loop"},{"id":"b","source":"entry","target":"body","containerId":"loop"},{"id":"c","source":"loop","target":"after"}]
     }})
 }
@@ -44,6 +46,37 @@ fn container_compiler_accepts_lexical_inputs_and_delayed_body_bindings() {
     let plan = compile(&document()).unwrap();
     assert!(plan.compile_issues.is_empty(), "{:?}", plan.compile_issues);
     ensure_plan_execution_contract(&plan).unwrap();
+    let analysis = orchestration_runtime::compiler::analyze_flow_document_for_node(
+        &document(),
+        &FlowCompileContext::default(),
+        domain::ApplicationType::AgentFlow,
+        "body",
+    );
+    let catalog = analysis
+        .variable_catalogs
+        .iter()
+        .find(|catalog| catalog.node_id == "body" && catalog.field_path.is_empty())
+        .unwrap();
+    assert!(catalog.variables.iter().any(|option| option.selector
+        == vec!["loop", "variables", "total"]
+        && option.value_type == "number"));
+    let mut private = document();
+    private["graph"]["nodes"][1]["outputs"] = json!([]);
+    let analysis = orchestration_runtime::compiler::analyze_flow_document_for_node(
+        &private,
+        &FlowCompileContext::default(),
+        domain::ApplicationType::AgentFlow,
+        "after",
+    );
+    let outer = analysis
+        .variable_catalogs
+        .iter()
+        .find(|catalog| catalog.node_id == "after" && catalog.field_path.is_empty())
+        .unwrap();
+    assert!(!outer
+        .variables
+        .iter()
+        .any(|option| option.selector == vec!["loop", "variables", "total"]));
 }
 
 #[test]

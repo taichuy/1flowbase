@@ -51,12 +51,7 @@ export function McpManagementPanel({
   return (
     <Tabs
       activeKey={activeTab}
-      className={[
-        'mcp-management',
-        activeTab === 'tools' ? 'mcp-management--tools' : null
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      className="mcp-management"
       tabBarExtraContent={<McpBundleActions />}
       items={[
         {

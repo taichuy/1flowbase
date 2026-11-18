@@ -79,6 +79,7 @@ pub type ConsoleOperationOwner = SettingsFeatureOwner;
 #[serde(rename_all = "snake_case")]
 pub enum ConsolePolicyGroup {
     SettingsFeature(String),
+    Plugin(String),
     Other(String),
 }
 
@@ -104,6 +105,7 @@ pub struct ConsoleLocaleCatalogContribution {
     pub lifecycle: SettingsFeatureLifecycle,
     pub texts: Vec<ConsoleLocaleText>,
     pub policy_groups: Vec<ConsoleOtherPolicyGroupDisplay>,
+    pub plugin_groups: Vec<ConsoleOtherPolicyGroupDisplay>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -853,14 +855,33 @@ fn compile_console_locale_catalog(
             }
             texts.insert(text.reference.clone(), text);
         }
-        for group in contribution.policy_groups {
+        for group in &contribution.plugin_groups {
+            if contribution.owner.kind != SettingsFeatureOwnerKind::ManagedService
+                || group.group_id != contribution.owner.owner_id
+            {
+                return Err(ConsoleOperationRegistryError::new(
+                    "Plugin policy group display must use its ManagedService owner_id",
+                ));
+            }
+        }
+        for (kind, group) in contribution
+            .policy_groups
+            .into_iter()
+            .map(|group| ("other", group))
+            .chain(
+                contribution
+                    .plugin_groups
+                    .into_iter()
+                    .map(|group| ("plugin", group)),
+            )
+        {
             validate_non_empty(&group.group_id, "Other policy group display group_id")?;
             validate_non_empty(&group.label_ref, "Other policy group display label_ref")?;
             validate_non_empty(
                 &group.description_ref,
                 "Other policy group display description_ref",
             )?;
-            let key = ("other".to_string(), group.group_id.clone());
+            let key = (kind.to_string(), group.group_id.clone());
             let display = ConsoleCatalogTextReferences {
                 label_ref: group.label_ref,
                 description_ref: group.description_ref,
@@ -892,8 +913,11 @@ fn compile_console_locale_catalog(
 
     let mut referenced_other_groups = BTreeSet::new();
     for operation in &inventory.operations {
-        if let ConsolePolicyGroup::Other(group_id) = &operation.policy_group {
-            let key = ("other".to_string(), group_id.clone());
+        if matches!(
+            operation.policy_group,
+            ConsolePolicyGroup::Other(_) | ConsolePolicyGroup::Plugin(_)
+        ) {
+            let key = console_policy_group_key(&operation.policy_group);
             let (owner, display) = declared_other_groups.get(&key).ok_or_else(|| {
                 ConsoleOperationRegistryError::new(format!(
                     "missing Other policy group display {}.{}",
@@ -1051,6 +1075,7 @@ fn console_policy_group_key(policy_group: &ConsolePolicyGroup) -> (String, Strin
             ("settings_feature".to_string(), group_id.clone())
         }
         ConsolePolicyGroup::Other(group_id) => ("other".to_string(), group_id.clone()),
+        ConsolePolicyGroup::Plugin(group_id) => ("plugin".to_string(), group_id.clone()),
     }
 }
 

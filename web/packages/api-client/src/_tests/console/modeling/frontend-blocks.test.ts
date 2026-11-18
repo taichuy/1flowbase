@@ -18,6 +18,18 @@ describe('console-frontend-blocks client', () => {
     });
   });
 
+  test.each(['block', 'component', 'code_template'] as const)(
+    'requests the explicit %s registration target without changing the runtime endpoint',
+    async (registration_target) => {
+      await expect(listConsoleFrontendBlocks('https://example.com/api', { registration_target }))
+        .resolves.toMatchObject({
+          path: `/api/console/frontend-blocks?registration_target=${registration_target}`,
+          method: 'GET',
+          baseUrl: 'https://example.com/api'
+        });
+    }
+  );
+
   test('exposes the optional code_template contract for runtime agents', () => {
     const entry = {
       installation_id: 'installation-id',

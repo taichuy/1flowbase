@@ -1,0 +1,731 @@
+use super::*;
+use axum::body::Bytes;
+use control_plane::application_public_api::callback_tool_ids::decode_anthropic_callback_tool_use_id;
+use control_plane::application_public_api::native::AnswerProjectionSegment;
+use control_plane::application_public_api::native::{NativeRequiredAction, NativeRunStatus};
+use control_plane::application_public_api::protocol_translation::{
+    TranslationDecisionKind, TranslationProtocol, TranslationSafeRepresentation,
+};
+use time::OffsetDateTime;
+use uuid::Uuid;
+
+fn blocking_run(status: NativeRunStatus) -> NativeRunResult {
+    NativeRunResult {
+        id: Uuid::nil(),
+        application_id: Uuid::nil(),
+        api_key_id: Uuid::nil(),
+        publication_version_id: Uuid::nil(),
+        status,
+        node_input_payload: json!({}),
+        metadata: json!({}),
+        answer: Some("must-not-successify".to_string()),
+        answer_segments: None,
+        required_action: None,
+        tool_calls: None,
+        usage: None,
+        error: None,
+        operation_terminal: None,
+        created_at: OffsetDateTime::UNIX_EPOCH,
+    }
+}
+
+#[test]
+fn d2_ac_001_anthropic_malformed_json_has_one_safe_adapter_receipt() {
+    let sentinel = "D2-ANTHROPIC-MALFORMED-JSON-MUST-NOT-REACH-RECEIPT";
+    let error = parse_anthropic_json_body(Bytes::from(format!("{{\"raw\":\"{sentinel}\"")))
+        .expect_err("malformed Anthropic JSON must be rejected by the adapter boundary");
+    let AnthropicRouteError::Compat(error) = error else {
+        panic!("malformed JSON must remain an Anthropic adapter error");
+    };
+
+    assert_eq!(
+        error.report.protocol,
+        TranslationProtocol::AnthropicMessages
+    );
+    assert_eq!(error.report.decisions.len(), 1);
+    let decision = &error.report.decisions[0];
+    assert_eq!(decision.source_path, "$.body");
+    assert_eq!(decision.kind, TranslationDecisionKind::Rejected);
+    assert_eq!(
+        decision.effective_value,
+        TranslationSafeRepresentation::Present
+    );
+    assert!(
+        !serde_json::to_string(&error.report)
+            .expect("receipt should serialize")
+            .contains(sentinel),
+        "malformed JSON must not be retained in the receipt"
+    );
+}
+
+#[test]
+fn anthropic_response_projects_native_tool_calls() {
+    let run = NativeRunResult {
+        id: Uuid::nil(),
+        application_id: Uuid::nil(),
+        api_key_id: Uuid::nil(),
+        publication_version_id: Uuid::nil(),
+        status: NativeRunStatus::Succeeded,
+        node_input_payload: json!({}),
+        metadata: json!({}),
+        answer: None,
+        answer_segments: None,
+        required_action: None,
+        tool_calls: Some(json!([
+            {
+                "id": "toolu_123",
+                "name": "lookup_order",
+                "arguments": {"order_id": "order_123"}
+            }
+        ])),
+        usage: None,
+        error: None,
+        operation_terminal: None,
+        created_at: OffsetDateTime::UNIX_EPOCH,
+    };
+
+    let payload = serde_json::to_value(
+        to_anthropic_response(run, "provider/model".into()).expect("succeeded run should project"),
+    )
+    .expect("anthropic response serializes");
+
+    assert_eq!(payload["stop_reason"], json!("tool_use"));
+    assert_eq!(payload["content"][0]["type"], json!("tool_use"));
+    assert_eq!(payload["content"][0]["name"], json!("lookup_order"));
+    assert_eq!(
+        payload["content"][0]["input"]["order_id"],
+        json!("order_123")
+    );
+}
+
+#[test]
+fn issue_1743_non_streaming_projects_canonical_reasoning_and_visible_text() {
+    let mut run = blocking_run(NativeRunStatus::Succeeded);
+    run.answer = Some("<think>display-only legacy text</think>stale answer".to_string());
+    run.answer_segments = Some(vec![
+        AnswerProjectionSegment::reasoning("canonical reasoning"),
+        AnswerProjectionSegment::message("canonical visible answer"),
+    ]);
+
+    let payload = serde_json::to_value(
+        to_anthropic_response(run, "provider/model".into())
+            .expect("canonical answer segments should project"),
+    )
+    .expect("Anthropic response serializes");
+
+    assert_eq!(
+        payload["content"],
+        json!([
+            {"type": "thinking", "thinking": "canonical reasoning"},
+            {"type": "text", "text": "canonical visible answer"}
+        ])
+    );
+    assert!(!payload.to_string().contains("display-only legacy text"));
+    assert!(!payload.to_string().contains("stale answer"));
+}
+
+#[test]
+fn issue_1743_non_streaming_without_reasoning_keeps_text_and_tool_blocks() {
+    let callback_task_id = Uuid::from_u128(0x17430000000000000000000000000001);
+    let mut run = blocking_run(NativeRunStatus::Waiting);
+    run.answer = Some("stale answer".to_string());
+    run.answer_segments = Some(vec![AnswerProjectionSegment::message("visible answer")]);
+    run.required_action = Some(NativeRequiredAction {
+        action_type: "submit_tool_outputs".to_string(),
+        payload: json!({
+            "callback_task_id": callback_task_id,
+            "callback_kind": "llm_tool_calls"
+        }),
+    });
+    run.tool_calls = Some(json!([{
+        "id": "toolu_lookup",
+        "name": "lookup",
+        "arguments": {"query": "order"}
+    }]));
+
+    let payload = serde_json::to_value(
+        to_anthropic_response(run, "provider/model".into())
+            .expect("text and tool blocks should project without reasoning"),
+    )
+    .expect("Anthropic response serializes");
+
+    assert_eq!(payload["stop_reason"], json!("tool_use"));
+    assert_eq!(
+        payload["content"][0],
+        json!({"type": "text", "text": "visible answer"})
+    );
+    assert_eq!(payload["content"][1]["type"], json!("tool_use"));
+    assert!(payload["content"]
+        .as_array()
+        .expect("content blocks")
+        .iter()
+        .all(|block| block["type"] != json!("thinking")));
+}
+
+#[test]
+fn anthropic_response_message_id_is_unique_per_external_response() {
+    let first = to_anthropic_response(
+        blocking_run(NativeRunStatus::Succeeded),
+        "provider/model".into(),
+    )
+    .expect("first response should project");
+    let second = to_anthropic_response(
+        blocking_run(NativeRunStatus::Succeeded),
+        "provider/model".into(),
+    )
+    .expect("second response should project");
+
+    assert!(first.id.starts_with("msg_"));
+    assert!(second.id.starts_with("msg_"));
+    assert_ne!(first.id, second.id);
+}
+
+#[test]
+fn anthropic_resume_rejects_mixed_callback_groups() {
+    let first_callback = Uuid::from_u128(0x11111111111111111111111111111111);
+    let latest_callback = Uuid::from_u128(0x22222222222222222222222222222222);
+    let request = json!({
+        "messages": [
+            {
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_use",
+                    "id": encode_anthropic_callback_tool_use_id(latest_callback, "toolu_latest"),
+                    "name": "lookup_latest",
+                    "input": {}
+                }]
+            },
+            {
+                "role": "user",
+                "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": encode_anthropic_callback_tool_use_id(first_callback, "toolu_first"),
+                    "content": "FIRST"
+                },
+                {
+                    "type": "tool_result",
+                    "tool_use_id": encode_anthropic_callback_tool_use_id(latest_callback, "toolu_latest"),
+                    "content": "LATEST",
+                    "is_error": true
+                }
+                ]
+            }
+        ]
+    });
+
+    assert!(correlate_anthropic_callback(&request).is_err());
+}
+
+#[test]
+fn ac_001_anthropic_tool_result_mixed_with_new_text_resumes_same_callback() {
+    let callback_task_id = Uuid::from_u128(0x33333333333333333333333333333333);
+    let tool_use_id = encode_anthropic_callback_tool_use_id(callback_task_id, "toolu_read");
+    let request = json!({
+        "model":"claude-fixture",
+        "max_tokens":64,
+        "messages": [
+            {
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_use",
+                    "id": tool_use_id,
+                    "name": "Read",
+                    "input": {}
+                }]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": "old result"
+                    },
+                    {
+                        "type": "text",
+                        "text": "please answer the new question"
+                    }
+                ]
+            }
+        ]
+    });
+
+    let resume = correlate_anthropic_callback(&request)
+        .expect("request should parse")
+        .expect("mixed context belongs to the current callback turn");
+    assert_eq!(resume.callback_task_id, callback_task_id);
+    assert_eq!(
+        resume.tool_results,
+        json!([{"tool_call_id":"toolu_read","content":"old result"}])
+    );
+    // The continuation consumes the whole translated request in addition to
+    // its tool receipts; the caller's new text remains model input.
+    let translated = translate_messages_request_with_context_window(request.clone(), None).unwrap();
+    assert_eq!(translated.request.query, "please answer the new question");
+    assert_eq!(
+        request["messages"][1]["content"][1]["text"],
+        "please answer the new question"
+    );
+}
+
+#[test]
+fn ac_002_anthropic_orphan_tool_result_is_invalid() {
+    let callback_task_id = Uuid::from_u128(0x44444444444444444444444444444444);
+    let request = json!({
+        "messages": [{
+            "role": "user",
+            "content": [{
+                "type": "tool_result",
+                "tool_use_id": encode_anthropic_callback_tool_use_id(callback_task_id, "toolu_stale"),
+                "content": "stale result"
+            }]
+        }]
+    });
+
+    assert!(correlate_anthropic_callback(&request).is_err());
+}
+
+#[test]
+fn anthropic_response_filters_internal_visible_llm_tool_calls() {
+    let callback_task_id = Uuid::from_u128(0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd);
+    let run = NativeRunResult {
+        id: Uuid::nil(),
+        application_id: Uuid::nil(),
+        api_key_id: Uuid::nil(),
+        publication_version_id: Uuid::nil(),
+        status: NativeRunStatus::Succeeded,
+        node_input_payload: json!({}),
+        metadata: json!({}),
+        answer: Some("visible internal LLM output".to_string()),
+        answer_segments: None,
+        required_action: Some(NativeRequiredAction {
+            action_type: "submit_tool_outputs".to_string(),
+            payload: json!({
+                "callback_task_id": callback_task_id,
+                "callback_kind": "llm_tool_calls"
+            }),
+        }),
+        tool_calls: Some(json!([
+            {
+                "id": "toolu_internal",
+                "type": "visible_internal_llm_tool",
+                "name": "inspect_visible_context",
+                "arguments": {"query": "visible"}
+            }
+        ])),
+        usage: None,
+        error: None,
+        operation_terminal: None,
+        created_at: OffsetDateTime::UNIX_EPOCH,
+    };
+
+    let payload = serde_json::to_value(
+        to_anthropic_response(run, "provider/model".into()).expect("succeeded run should project"),
+    )
+    .expect("anthropic response serializes");
+
+    assert_eq!(payload["stop_reason"], json!("end_turn"));
+    assert_eq!(payload["content"][0]["type"], json!("text"));
+    assert_eq!(
+        payload["content"][0]["text"],
+        json!("visible internal LLM output")
+    );
+    assert!(payload["content"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|block| block["type"] != json!("tool_use")));
+}
+
+#[test]
+fn anthropic_response_preserves_canonical_answer_with_marker_like_text() {
+    let run = NativeRunResult {
+            id: Uuid::nil(),
+            application_id: Uuid::nil(),
+            api_key_id: Uuid::nil(),
+            publication_version_id: Uuid::nil(),
+            status: NativeRunStatus::Succeeded,
+            node_input_payload: json!({}),
+            metadata: json!({}),
+            answer: Some(
+                "<think>private reasoning</think>raw draft<tool_call>{}</tool_call>\n\n---\n\n下面是美化后内容\n\nVisible answer"
+                    .to_string(),
+            ),
+            answer_segments: None,
+            required_action: None,
+            tool_calls: None,
+            usage: None,
+            error: None,
+            operation_terminal: None,
+            created_at: OffsetDateTime::UNIX_EPOCH,
+        };
+
+    let payload = serde_json::to_value(
+        to_anthropic_response(run, "provider/model".into()).expect("succeeded run should project"),
+    )
+    .expect("anthropic response serializes");
+
+    assert_eq!(
+        payload["content"][0]["text"],
+        json!("<think>private reasoning</think>raw draft<tool_call>{}</tool_call>\n\n---\n\n下面是美化后内容\n\nVisible answer")
+    );
+}
+
+#[test]
+fn claude_code_session_header_fills_missing_metadata_session_id() {
+    let mut request = json!({
+        "model": "1flowbase",
+        "messages": [{"role": "user", "content": "hi"}]
+    });
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-claude-code-session-id",
+        "header-session-123".parse().unwrap(),
+    );
+
+    merge_claude_code_session_header(&mut request, &headers);
+
+    assert_eq!(
+        request["metadata"]["session_id"],
+        json!("header-session-123")
+    );
+    let mut translated = translate_messages_request_with_context_window(request, None)
+        .unwrap()
+        .request;
+    let workspace = Uuid::now_v7();
+    let principal = interface_runtime::ApplicationPrincipal::new(
+        Uuid::now_v7(),
+        Uuid::now_v7(),
+        workspace,
+        domain::ActorContext::scoped(Uuid::now_v7(), workspace, "member", []),
+    )
+    .unwrap();
+    super::super::provider_session::bind_messages(&mut translated, &principal);
+    let mapped = control_plane::application_public_api::native::NativeInputMapper::map(
+        &translated, &control_plane::application_public_api::mapping::ApplicationApiMappingConfig::default_native()).unwrap();
+    assert!(mapped
+        .node_input_payload
+        .pointer("/sys/provider_session_identity")
+        .and_then(Value::as_str)
+        .is_some());
+}
+
+#[test]
+fn anthropic_ingress_builds_one_safe_query_header_and_body_protocol_context() {
+    let mut headers = HeaderMap::new();
+    headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
+    headers.insert(
+        "anthropic-beta",
+        "prompt-caching, context-1m-2025-08-07".parse().unwrap(),
+    );
+    headers.append("anthropic-beta", "private-beta".parse().unwrap());
+    headers.insert(
+        "x-claude-code-session-id",
+        "header-session-123".parse().unwrap(),
+    );
+    headers.insert("authorization", "Bearer platform-key".parse().unwrap());
+    headers.insert("cookie", "session=secret".parse().unwrap());
+    headers.insert("host", "api.example.test".parse().unwrap());
+    headers.insert("content-length", "42".parse().unwrap());
+    headers.insert("connection", "keep-alive, x-hop-secret".parse().unwrap());
+    headers.insert("x-hop-secret", "hop-secret".parse().unwrap());
+    let source_body = json!({
+        "model": "claude-compatible",
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "hello"},
+                {
+                    "type": "text",
+                    "text": " world",
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ]
+        }],
+        "context_management": {"edits": [{"type": "clear_thinking_20251015"}]},
+        "future_anthropic_option": {"shape": "opaque"},
+        "authorization": "body-secret",
+        "__native_transport": {"must_not_cross": true}
+    });
+    let translated = translate_messages_request_with_context_window(
+        source_body.clone(),
+        anthropic_context_window_request(&headers),
+    )
+    .expect("safe Anthropic residual fixture should translate");
+    assert_eq!(
+        serde_json::to_value(&translated.request)
+            .expect("typed Anthropic request should serialize")["execution"]["model_parameters"]
+            ["requested_context_window"],
+        json!(1_000_000)
+    );
+
+    let envelope = anthropic_protocol_context_from_ingress(
+        Some("preview=one&preview=two&authorization=query-secret&__native_transport=internal"),
+        &headers,
+        &source_body,
+        translated.request.client_protocol_envelope,
+    )
+    .expect("safe Anthropic ingress context should produce one envelope");
+
+    assert_eq!(envelope.source_protocol, "anthropic_messages");
+    assert_eq!(
+        envelope
+            .source_request
+            .as_ref()
+            .and_then(|request| request.authentication),
+        Some(
+            plugin_framework::provider_contract::ProtocolAuthenticationPresentation::AuthorizationBearer
+        )
+    );
+    let source_body = envelope
+        .source_request
+        .as_ref()
+        .and_then(|request| request.body.as_ref())
+        .expect("accepted Anthropic source body must remain ephemeral protocol context");
+    assert_eq!(
+        source_body["messages"][0]["content"][1]["cache_control"]["type"],
+        "ephemeral"
+    );
+    assert!(source_body.get("authorization").is_none());
+    assert!(source_body.get("__native_transport").is_none());
+    assert_eq!(envelope.headers["anthropic-version"], vec!["2023-06-01"]);
+    assert_eq!(
+        envelope.headers["anthropic-beta"],
+        vec!["prompt-caching", "private-beta"]
+    );
+    assert_eq!(envelope.query["preview"], vec!["one", "two"]);
+    assert_eq!(
+        envelope.body["context_management"]["edits"][0]["type"],
+        "clear_thinking_20251015"
+    );
+    assert_eq!(envelope.body["future_anthropic_option"]["shape"], "opaque");
+    for stripped in [
+        "authorization",
+        "cookie",
+        "host",
+        "content-length",
+        "connection",
+        "x-hop-secret",
+    ] {
+        assert!(!envelope.headers.contains_key(stripped), "{stripped}");
+    }
+    assert_eq!(
+        envelope.headers["x-claude-code-session-id"],
+        vec!["header-session-123"]
+    );
+    assert!(!serde_json::to_string(&envelope)
+        .unwrap()
+        .contains("platform-key"));
+    for stripped in ["authorization", "__native_transport"] {
+        assert!(!envelope.query.contains_key(stripped), "{stripped}");
+        assert!(!envelope.body.contains_key(stripped), "{stripped}");
+    }
+    for typed in ["model", "messages"] {
+        assert!(!envelope.body.contains_key(typed), "{typed}");
+    }
+}
+
+#[test]
+fn anthropic_response_encodes_callback_task_id_into_tool_use_ids() {
+    let callback_task_id = Uuid::from_u128(0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee);
+    let run = NativeRunResult {
+        id: Uuid::nil(),
+        application_id: Uuid::nil(),
+        api_key_id: Uuid::nil(),
+        publication_version_id: Uuid::nil(),
+        status: NativeRunStatus::Succeeded,
+        node_input_payload: json!({}),
+        metadata: json!({}),
+        answer: None,
+        answer_segments: None,
+        required_action: Some(NativeRequiredAction {
+            action_type: "submit_tool_outputs".to_string(),
+            payload: json!({ "callback_task_id": callback_task_id, "callback_kind": "llm_tool_calls" }),
+        }),
+        tool_calls: Some(json!([
+            {
+                "id": "toolu_123",
+                "name": "lookup_order",
+                "arguments": {"order_id": "order_123"}
+            }
+        ])),
+        usage: None,
+        error: None,
+        operation_terminal: None,
+        created_at: OffsetDateTime::UNIX_EPOCH,
+    };
+
+    let payload = serde_json::to_value(
+        to_anthropic_response(run, "provider/model".into()).expect("succeeded run should project"),
+    )
+    .expect("anthropic response serializes");
+
+    let tool_use_id = payload["content"][0]["id"]
+        .as_str()
+        .expect("tool_use id should be encoded");
+    assert_eq!(
+        decode_anthropic_callback_tool_use_id(tool_use_id),
+        Some((callback_task_id, "toolu_123".to_string()))
+    );
+}
+
+#[test]
+fn d2_ac_004_anthropic_blocking_terminal_status_matrix() {
+    let incomplete = serde_json::to_value(
+        to_anthropic_response(
+            blocking_run(NativeRunStatus::Incomplete),
+            "provider/model".into(),
+        )
+        .expect("incomplete Anthropic run should project"),
+    )
+    .expect("Anthropic response serializes");
+    assert_eq!(incomplete["stop_reason"], json!("max_tokens"));
+    assert_eq!(
+        incomplete["content"][0]["text"],
+        json!("must-not-successify")
+    );
+
+    for status in [NativeRunStatus::Failed, NativeRunStatus::Cancelled] {
+        assert!(matches!(
+            to_anthropic_response(blocking_run(status), "provider/model".into()),
+            Err(AnthropicRouteError::Native(_))
+        ));
+    }
+    let callback_task_id = Uuid::from_u128(0xdddddddddddddddddddddddddddddddd);
+    let mut waiting = blocking_run(NativeRunStatus::Waiting);
+    waiting.required_action = Some(NativeRequiredAction {
+        action_type: "submit_tool_outputs".to_string(),
+        payload: json!({
+            "callback_task_id": callback_task_id,
+            "callback_kind": "llm_tool_calls"
+        }),
+    });
+    waiting.tool_calls = Some(json!([{
+        "id": "toolu_lookup",
+        "name": "lookup",
+        "arguments": {"query": "order"}
+    }]));
+    let waiting = serde_json::to_value(
+        to_anthropic_response(waiting, "provider/model".into())
+            .expect("AC-003 waiting tool callbacks should project"),
+    )
+    .expect("Anthropic response serializes");
+    assert_eq!(waiting["stop_reason"], json!("tool_use"));
+    assert!(waiting["content"].as_array().is_some_and(|blocks| blocks
+        .iter()
+        .any(|block| block["type"] == json!("tool_use"))));
+}
+
+#[test]
+fn anthropic_title_prompt_is_regular_protocol_content() {
+    let translated = control_plane::application_public_api::compat::anthropic::translate_messages_request(
+        json!({
+            "model": "1flowbase",
+            "system": "Generate a concise, sentence-case title. Return JSON with a single \"title\" field",
+            "messages": [{"role": "user", "content": "continue"}]
+        }),
+    )
+    .expect("client title prompts are ordinary Anthropic content");
+    assert_eq!(translated.request.query, "continue");
+    assert_eq!(translated.request.system.len(), 1);
+}
+
+#[test]
+fn anthropic_blocking_callback_usage_does_not_recount_prior_round() {
+    use crate::routes::application_public_api::openai::usage::ResponseUsageBaseline;
+    use control_plane::application_public_api::native::NativeUsage;
+    let mut run = blocking_run(NativeRunStatus::Succeeded);
+    run.usage = Some(NativeUsage {
+        prompt_tokens: Some(30606),
+        completion_tokens: Some(684),
+        cache_write_tokens: Some(6129),
+        cache_read_tokens: Some(1500),
+        ..Default::default()
+    });
+    let baseline = ResponseUsageBaseline::from_callback_payload(&json!({
+        "native_usage_baseline_source":"usage_ledger", "native_usage_baseline":{
+            "prompt_tokens":15187, "completion_tokens":604,
+            "cache_write_tokens":6129, "cache_read_tokens":500
+        }
+    }));
+    for _ in 0..2 {
+        let response =
+            to_anthropic_response_for_round(&run, "claude-fable-5-2".into(), &baseline).unwrap();
+        assert_eq!(response.usage.input_tokens, 15419);
+        assert_eq!(response.usage.output_tokens, 80);
+        assert_eq!(response.usage.cache_creation_input_tokens, 0);
+        assert_eq!(response.usage.cache_read_input_tokens, 1000);
+    }
+    assert_eq!(run.usage.unwrap().prompt_tokens, Some(30606));
+}
+
+#[test]
+fn anthropic_normal_ingress_projects_historical_callback_ids_without_rewriting_opaque_values() {
+    let first = encode_anthropic_callback_tool_use_id(Uuid::from_u128(91), "toolu_first");
+    let second = encode_anthropic_callback_tool_use_id(Uuid::from_u128(92), "toolu_second");
+    let source = json!({
+        "model":"claude-fixture","max_tokens":128,
+        "system":[{"type":"text","text":"source system","cache_control":{"type":"ephemeral"}}],
+        "messages":[
+            {"role":"user","content":"first question"},
+            {"role":"assistant","content":[{"type":"tool_use","id":first,"name":"Read","input":{"id":first,"tool_use_id":second,"opaque":{"type":"tool_use","id":second}}}]},
+            {"role":"user","content":[{"type":"tool_result","tool_use_id":first,"content":first}]},
+            {"role":"assistant","content":[{"type":"tool_use","id":second,"name":"Read","input":{"id":second}}]},
+            {"role":"user","content":[{"type":"tool_result","tool_use_id":second,"content":[{"type":"text","text":second}]}]},
+            {"role":"assistant","content":"prior rounds complete"},
+            {"role":"user","content":"new ordinary turn"}
+        ]
+    });
+    let original_ingress = source.clone();
+    assert!(
+        correlate_anthropic_callback(&source).unwrap().is_none(),
+        "historical receipts must remain a normal new-turn request"
+    );
+    let translated = translate_messages_request_with_context_window(source.clone(), None).unwrap();
+    let report_before_projection = serde_json::to_value(&translated.report).unwrap();
+    let envelope = anthropic_protocol_context_from_ingress(
+        None,
+        &HeaderMap::new(),
+        &source,
+        translated.request.client_protocol_envelope.clone(),
+    )
+    .unwrap();
+    let projected = envelope
+        .source_request
+        .as_ref()
+        .unwrap()
+        .body
+        .as_ref()
+        .unwrap();
+    let mut expected = source.clone();
+    expected["messages"][1]["content"][0]["id"] = json!("toolu_first");
+    expected["messages"][2]["content"][0]["tool_use_id"] = json!("toolu_first");
+    expected["messages"][3]["content"][0]["id"] = json!("toolu_second");
+    expected["messages"][4]["content"][0]["tool_use_id"] = json!("toolu_second");
+    assert_eq!(projected,&expected, "only protocol tool identity fields may change; opaque input/result text and all other source fields stay exact");
+    assert_eq!(
+        source, original_ingress,
+        "observation retains the original request body"
+    );
+    assert_eq!(
+        serde_json::to_value(&translated.report).unwrap(),
+        report_before_projection,
+        "source projection must not rewrite the translation receipt"
+    );
+    let repeated =
+        anthropic_protocol_context_from_ingress(None, &HeaderMap::new(), projected, None).unwrap();
+    assert_eq!(
+        repeated.source_request.as_ref().unwrap().body.as_ref(),
+        Some(projected),
+        "callback-resume and new-turn source projection share an idempotent codec"
+    );
+    assert_eq!(
+        translated.request.history[1]["tool_calls"][0]["id"],
+        "toolu_first"
+    );
+    assert_eq!(
+        translated.request.history[4]["tool_call_id"],
+        "toolu_second"
+    );
+}

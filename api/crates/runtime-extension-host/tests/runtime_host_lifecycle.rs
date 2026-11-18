@@ -404,6 +404,7 @@ async fn root_2007_ac_002_contribution_execution_identity() {
         RuntimeManagedCapabilityRequest {
             handle,
             principal: RuntimeExecutionPrincipal {
+                record_permissions: None,
                 caller: None,
                 workspace_id: workspace.to_string(),
                 actor_id: Some("host-actor".into()),

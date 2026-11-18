@@ -962,3 +962,75 @@ fn assert_model_error(error: anyhow::Error, expected: RuntimeModelError) {
 }
 #[path = "runtime_engine_tests/external_source.rs"]
 mod external_source;
+
+#[tokio::test]
+async fn runtime_model_execution_snapshot_keeps_selected_target_when_live_registry_is_replaced() {
+    let engine = RuntimeEngine::for_tests();
+    let actor = ActorContext::root(Uuid::nil(), Uuid::nil(), "root");
+    let frozen = engine
+        .freeze_model("orders", actor.current_workspace_id)
+        .unwrap();
+    let original = frozen
+        .load_available_metadata("orders", actor.current_workspace_id)
+        .unwrap();
+    let mut replacement = original.clone();
+    replacement.model_id = Uuid::now_v7();
+    replacement.physical_table_name = "different_target".into();
+    engine.registry().upsert(replacement.clone());
+    assert_eq!(
+        engine
+            .load_available_metadata("orders", actor.current_workspace_id)
+            .unwrap()
+            .model_id,
+        replacement.model_id
+    );
+    assert_eq!(
+        frozen
+            .load_available_metadata("orders", actor.current_workspace_id)
+            .unwrap(),
+        original
+    );
+    let grant = scope_grant(original.model_id, original.scope_id);
+    let value = frozen
+        .create_record(RuntimeCreateInput {
+            actor: actor.clone(),
+            model_code: "orders".into(),
+            payload: json!({"title":"frozen-target","status":"draft"}),
+            scope_grant: Some(grant),
+        })
+        .await
+        .unwrap();
+    assert_eq!(value["title"], "frozen-target");
+    engine
+        .registry()
+        .remove(original.scope_kind, original.scope_id, "orders");
+    assert!(engine
+        .freeze_model("orders", actor.current_workspace_id)
+        .is_err());
+    assert_eq!(
+        frozen
+            .load_available_metadata("orders", actor.current_workspace_id)
+            .unwrap()
+            .model_id,
+        original.model_id
+    );
+}
+
+#[test]
+fn runtime_model_snapshot_cannot_authorize_a_different_models_grant() {
+    let engine = RuntimeEngine::for_tests();
+    let mut actor = ActorContext::root(Uuid::nil(), Uuid::nil(), "root");
+    actor.is_root = false;
+    let frozen = engine
+        .freeze_model("orders", actor.current_workspace_id)
+        .unwrap();
+    let grant = scope_grant(Uuid::now_v7(), actor.current_workspace_id);
+    assert!(frozen
+        .authorize_model_action(
+            &actor,
+            "orders",
+            runtime_core::runtime_acl::RuntimeDataAction::View,
+            Some(&grant)
+        )
+        .is_err());
+}

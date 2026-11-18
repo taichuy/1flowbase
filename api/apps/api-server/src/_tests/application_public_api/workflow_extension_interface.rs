@@ -9,13 +9,22 @@ use crate::routes::application_public_api::workflow_extension_interface::{
 struct UnavailableWorkflowExtension;
 
 impl WorkflowExtensionPort for UnavailableWorkflowExtension {
-    fn invoke<'a>(
+    fn authorize<'a>(
         &'a self,
         _actor: &'a domain::ActorContext,
-        _principal: control_plane::application_public_api::workflow_extension::WorkflowHttpPrincipal,
+        _input: &'a WorkflowExtensionInput,
+    ) -> workflow_extension_interface::WorkflowExtensionAuthorizeFuture<'a> {
+        Box::pin(async { panic!("catalog fixture must not authorize a workflow") })
+    }
+    fn invoke_authorized<'a>(
+        &'a self,
+        _authorized:control_plane::application_public_api::workflow_extension::AuthorizedPublishedWorkflowOperation,
+        _actor: domain::ActorContext,
+        _principal:control_plane::application_public_api::workflow_extension::WorkflowHttpPrincipal,
         _input: WorkflowExtensionInput,
+        _observation: Option<interface_runtime::DocumentOperationSession>,
     ) -> WorkflowExtensionFuture<'a> {
-        Box::pin(async { panic!("catalog fixture must not execute the workflow extension") })
+        Box::pin(async { panic!("catalog fixture must not execute a workflow") })
     }
 }
 
@@ -31,6 +40,12 @@ fn workflow_extension_publishes_one_typed_user_plan() {
         .expect("workflow extension binding must resolve a plan");
 
     assert_eq!(registry.bindings().len(), 1);
+    let metadata = registry
+        .document_operation(&binding_id)
+        .expect("published Workflow must own a compiled typed observation registration");
+    assert!(metadata.dynamic);
+    assert!(metadata.static_descriptor.is_none());
+
     assert_eq!(
         plan.definition().execution_mode(),
         InterfaceExecutionMode::Unary
@@ -56,7 +71,10 @@ fn workflow_extension_publishes_one_typed_user_plan() {
 
 #[test]
 fn workflow_extension_route_has_one_frozen_authentication_and_execution_owner() {
-    let source = include_str!("../../routes/application_public_api/ex.rs");
+    let source = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../crates/api/public-gateway/src/routes/application_public_api/ex.rs"
+    ));
 
     assert_eq!(source.matches(".authenticate_invocation").count(), 1);
     assert!(!source.contains("require_session(&state"));
@@ -76,7 +94,10 @@ fn workflow_extension_route_has_one_frozen_authentication_and_execution_owner() 
 
 #[test]
 fn workflow_extension_projects_only_after_terminal_receipt() {
-    let source = include_str!("../../routes/application_public_api/ex.rs");
+    let source = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../crates/api/public-gateway/src/routes/application_public_api/ex.rs"
+    ));
     let receipt = source
         .find("outcome.receipt().clone().projected()")
         .expect("terminal receipt must be projected");

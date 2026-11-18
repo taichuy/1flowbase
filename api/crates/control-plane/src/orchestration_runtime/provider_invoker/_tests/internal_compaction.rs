@@ -136,6 +136,7 @@ impl Fixture {
             api_node_id: Some("local:test".into()),
             provider_install_root: Some(std::env::temp_dir()),
             flow_execution_context: Some(Arc::new(RuntimeFlowExecutionContext {
+                workflow_credential_invoker: None,
                 notification_sender: None,
                 user_account: None,
                 require_provider_usage_for_billing: false,

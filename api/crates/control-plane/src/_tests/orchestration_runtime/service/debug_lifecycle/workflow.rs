@@ -167,7 +167,9 @@ async fn workflow_debug_run_persists_workflow_end_projection_as_flow_output() {
         json!({
             "application_id": seeded.application_id.to_string(),
             "workflow_id": seeded.flow_id.to_string(),
-            "workflow_run_id": completed.flow_run.id.to_string()
+            "workflow_run_id": completed.flow_run.id.to_string(),
+            "creator_credential": format!("wfcred:{}:creator", completed.flow_run.id),
+            "executor_credential": format!("wfcred:{}:executor", completed.flow_run.id),
         })
     );
     assert_eq!(
@@ -189,7 +191,11 @@ async fn workflow_node_preview_compiles_and_materializes_start_globals() {
             node_id: "node-workflow-start".to_string(),
             input_payload: json!({
                 "node-workflow-start": {"customer_id": "C-42"},
-                "sys": {"workflow_run_id": "untrusted"}, "trigger": {"type": "untrusted"},
+                "sys": {
+                    "workflow_run_id": "untrusted",
+                    "creator_credential": "untrusted-creator",
+                    "executor_credential": "untrusted-executor"
+                }, "trigger": {"type": "untrusted"},
                 "env": {"untrusted": "discard"}
             }),
             document_snapshot: Some(workflow_document(seeded.flow_id)),
@@ -205,6 +211,8 @@ async fn workflow_node_preview_compiles_and_materializes_start_globals() {
             "application_id": seeded.application_id.to_string(),
             "workflow_id": seeded.flow_id.to_string(),
             "workflow_run_id": preview.flow_run.id.to_string(),
+            "creator_credential": format!("wfcred:{}:creator", preview.flow_run.id),
+            "executor_credential": format!("wfcred:{}:executor", preview.flow_run.id),
         })
     );
     assert_eq!(

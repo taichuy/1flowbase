@@ -219,6 +219,9 @@ pub struct ResumeFlowRunCommand {
 pub const HOST_TRANSPORT_CONNECTION_SCOPE_HEADER: &str = "x-1flowbase-transport-connection-scope";
 
 pub struct CompleteCallbackTaskCommand {
+    pub anthropic_continuation: Option<
+        crate::application_public_api::anthropic_continuation::VerifiedAnthropicContinuation,
+    >,
     pub responses_continuation:
         Option<crate::application_public_api::native_tool_resume::VerifiedResponsesContinuation>,
     pub transport_connection_scope: Option<String>,
@@ -354,6 +357,8 @@ struct RuntimeProviderInvoker<R, H> {
 }
 
 struct RuntimeFlowExecutionContext {
+    workflow_credential_invoker:
+        Option<Arc<dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker>>,
     notification_sender: Option<Arc<dyn crate::notifications::NotificationSenderPort>>,
     user_account: Option<String>,
     require_provider_usage_for_billing: bool,
@@ -435,6 +440,7 @@ pub struct OrchestrationRuntimeService<R, H> {
     provider_secret_master_key: String,
     require_provider_usage_for_billing: bool,
     runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
+    runtime_event_source_binding: Option<crate::ports::RuntimeEventSourceBinding>,
     pub(super) provider_request_log_queue: Option<Arc<dyn TaskQueue>>,
     provider_transport_store: Arc<dyn crate::ports::ProviderTransportStore>,
     api_node_id: Option<String>,
@@ -485,6 +491,7 @@ where
             provider_secret_master_key: provider_secret_master_key.into(),
             require_provider_usage_for_billing,
             runtime_event_stream: None,
+            runtime_event_source_binding: None,
             provider_request_log_queue: None,
             provider_transport_store,
             api_node_id: None,
@@ -534,6 +541,15 @@ where
         self
     }
 
+    /// Trusted execution-owner binding, including event-workflow causal ancestors.
+    pub fn with_runtime_event_source_binding(
+        mut self,
+        binding: crate::ports::RuntimeEventSourceBinding,
+    ) -> Self {
+        self.runtime_event_source_binding = Some(binding);
+        self
+    }
+
     pub fn with_runtime_event_stream(mut self, stream: Arc<dyn RuntimeEventStream>) -> Self {
         self.runtime_event_stream = Some(stream);
         self
@@ -574,6 +590,7 @@ where
         active_node: Option<RuntimeActiveNode>,
     ) -> Arc<RuntimeFlowExecutionContext> {
         Arc::new(RuntimeFlowExecutionContext {
+            workflow_credential_invoker: self.runtime_internal_tool_invoker.clone(),
             notification_sender: self.notification_sender.clone(),
             user_account,
             require_provider_usage_for_billing: self.require_provider_usage_for_billing,
@@ -664,6 +681,33 @@ where
             input.waiting_node_run_id,
         )
         .await?;
+        let continuation_snapshot = if let Some(value) =
+            input.resume_payload.get("anthropic_continuation")
+        {
+            let continuation: domain::orchestration::AnthropicContinuation =
+                serde_json::from_value(value.clone())?;
+            let mut snapshot = input.snapshot.clone();
+            let start_node_ids = input
+                .compiled_plan
+                .nodes
+                .values()
+                .filter(|node| node.node_type == "start")
+                .map(|node| node.node_id.clone())
+                .collect::<Vec<_>>();
+            crate::application_public_api::anthropic_continuation::refresh_owned_anthropic_context(
+                &mut snapshot,
+                &start_node_ids,
+                scoped_execution_id,
+                &continuation,
+            )?;
+            Some(snapshot)
+        } else {
+            None
+        };
+        let input = ResumeExecutionSegmentInput {
+            snapshot: continuation_snapshot.as_ref().unwrap_or(input.snapshot),
+            ..input
+        };
         let waiting_variable_pool =
             live_debug_run::container::waiting_variable_pool(input.snapshot, scoped_execution_id)?;
         let flow_execution_context = self.runtime_flow_execution_context(
@@ -720,7 +764,24 @@ where
             .map(|callback| callback_predecessor_receipt(input.native_transport.as_ref(), callback))
             .transpose()?
             .flatten();
-        let transport = match (input.native_transport, provider_continuation.as_ref()) {
+        let native_transport = input.native_transport.map(|payload| {
+            let round_id = payload
+                .wire_body()
+                .get("previous_response_id")
+                .and_then(Value::as_str)
+                .and_then(|id| id.strip_prefix("resp_"))
+                .and_then(|id| Uuid::parse_str(id).ok());
+            match round_id {
+                Some(response_round_id) => payload.with_native_recovery_source(
+                    crate::ports::NativeContinuationRecoverySource {
+                        flow_run_id: input.flow_run.id,
+                        response_round_id,
+                    },
+                ),
+                None => payload,
+            }
+        });
+        let transport = match (native_transport, provider_continuation.as_ref()) {
             (Some(payload), Some(continuation))
                 if payload.wire_body().get("previous_response_id").is_some() =>
             {
@@ -804,6 +865,13 @@ where
                 runtime_context,
             )
             .await;
+        if let Some(value) = input.resume_payload.get("anthropic_continuation") {
+            let continuation: domain::orchestration::AnthropicContinuation =
+                serde_json::from_value(value.clone())?;
+            let envelope: extension_contracts::provider_contract::ProtocolContextEnvelope =
+                serde_json::from_value(continuation.client_protocol_envelope)?;
+            runtime_context = runtime_context.with_protocol_context(envelope);
+        }
         if requires_native_transport {
             runtime_context = runtime_context.with_provider_invocation_capability(
                 extension_contracts::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
@@ -1080,6 +1148,7 @@ where
                 | domain::FlowRunMode::AssistantExecution
                 | domain::FlowRunMode::WorkflowHttpRun
                 | domain::FlowRunMode::WorkflowScheduleRun
+                | domain::FlowRunMode::WorkflowEventRun
         ) {
             return;
         }

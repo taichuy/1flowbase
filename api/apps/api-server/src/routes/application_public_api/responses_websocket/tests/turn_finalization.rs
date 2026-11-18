@@ -322,7 +322,7 @@ async fn root_1998_bridge_abort_preserves_kernel_completion() {
     assert!(bridge.await.unwrap_err().is_cancelled());
     publisher
         .finish(InterfaceStreamTerminal::Completed(
-            CompatibilityBlockingOutput(run),
+            CompatibilityBlockingOutput::for_test_support(run),
         ))
         .await
         .expect("abort must retain Kernel terminal receiver");
@@ -356,7 +356,7 @@ async fn root_1998_closed_writer_preserves_kernel_completion() {
     ));
     publisher
         .finish(InterfaceStreamTerminal::Completed(
-            CompatibilityBlockingOutput(run),
+            CompatibilityBlockingOutput::for_test_support(run),
         ))
         .await
         .expect("writer error must retain Kernel terminal receiver");
@@ -403,7 +403,7 @@ async fn root_1998_normal_bridge_delivers_terminal_and_finalizes_once() {
         .unwrap();
     publisher
         .finish(InterfaceStreamTerminal::Completed(
-            CompatibilityBlockingOutput(run),
+            CompatibilityBlockingOutput::for_test_support(run),
         ))
         .await
         .unwrap();
@@ -516,7 +516,7 @@ async fn issue_2079_websocket_writer_acks_tool_delivery_only_after_frames_are_wr
         .unwrap();
     publisher
         .finish(InterfaceStreamTerminal::Completed(
-            CompatibilityBlockingOutput(run),
+            CompatibilityBlockingOutput::for_test_support(run),
         ))
         .await
         .unwrap();
@@ -572,7 +572,7 @@ async fn issue_2079_closed_websocket_writer_marks_tool_delivery_uncertain() {
     );
     publisher
         .finish(InterfaceStreamTerminal::Completed(
-            CompatibilityBlockingOutput(run),
+            CompatibilityBlockingOutput::for_test_support(run),
         ))
         .await
         .unwrap();
@@ -666,7 +666,7 @@ async fn issue_2028_socket_queues_next_turn_after_terminal_until_kernel_completi
         );
         first
             .finish(InterfaceStreamTerminal::Completed(
-                CompatibilityBlockingOutput(first_run),
+                CompatibilityBlockingOutput::for_test_support(first_run),
             ))
             .await
             .unwrap();
@@ -687,7 +687,7 @@ async fn issue_2028_socket_queues_next_turn_after_terminal_until_kernel_completi
             .unwrap();
         second
             .finish(InterfaceStreamTerminal::Completed(
-                CompatibilityBlockingOutput(second_run),
+                CompatibilityBlockingOutput::for_test_support(second_run),
             ))
             .await
             .unwrap();
@@ -806,7 +806,7 @@ async fn issue_2028_sse_terminal_closes_delivery_without_waiting_for_producer_dr
             .unwrap();
         publisher
             .finish(InterfaceStreamTerminal::Completed(
-                CompatibilityBlockingOutput(run),
+                CompatibilityBlockingOutput::for_test_support(run),
             ))
             .await
             .unwrap();
@@ -910,7 +910,7 @@ async fn sse_independent_completion_keeps_g2_through_hook_after_publish_body_dro
         };
         publisher
             .finish(InterfaceStreamTerminal::Completed(
-                CompatibilityBlockingOutput(run()),
+                CompatibilityBlockingOutput::for_test_support(run()),
             ))
             .await
             .unwrap();
@@ -1030,7 +1030,7 @@ async fn sse_completion_keeps_generation_when_projection_aborts_before_first_pol
     );
     publisher
         .finish(InterfaceStreamTerminal::Completed(
-            CompatibilityBlockingOutput(run()),
+            CompatibilityBlockingOutput::for_test_support(run()),
         ))
         .await
         .expect("aborting an unpolled consumer must preserve the Kernel terminal receiver");
@@ -1092,7 +1092,7 @@ async fn issue_2079_sse_writer_settles_tool_delivery_from_the_real_write() {
             .unwrap();
         publisher
             .finish(InterfaceStreamTerminal::Completed(
-                CompatibilityBlockingOutput(run),
+                CompatibilityBlockingOutput::for_test_support(run),
             ))
             .await
             .unwrap();

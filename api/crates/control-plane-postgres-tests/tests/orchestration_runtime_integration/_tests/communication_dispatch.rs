@@ -7,8 +7,12 @@ use control_plane::{
 use control_plane_contracts::ports::AuthRepository;
 use plugin_framework::provider_contract::{ProviderInvocationInput, ProviderModelDescriptor};
 
+#[path = "communication_dispatch/_tests/cleanup_error.rs"]
+mod cleanup_error;
 #[path = "communication_dispatch/retained.rs"]
 mod retained;
+#[path = "communication_dispatch/_tests/startup_audit.rs"]
+mod startup_audit;
 
 // The real service and PostgreSQL adapter execute a start->answer graph.
 // Provider calls are forbidden in this focused initial-ownership fixture.
@@ -617,7 +621,7 @@ async fn communication_management_links_original_run_application_after_binding_c
         .await
         .unwrap();
     let config = domain::CommunicationBindingInput {
-        command_settings: vec![],
+        commands: vec![],
         application_id: run.application_id,
         model: None,
         reasoning_effort: None,
@@ -643,7 +647,7 @@ async fn communication_management_links_original_run_application_after_binding_c
             &actor,
             channel,
             domain::CommunicationBindingInput {
-                command_settings: vec![],
+                commands: vec![],
                 application_id: replacement,
                 ..config
             },

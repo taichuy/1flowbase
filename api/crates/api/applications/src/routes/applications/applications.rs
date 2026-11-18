@@ -1,0 +1,991 @@
+use std::sync::Arc;
+
+use access_control::{
+    APPLICATIONS_CREATE_OPERATION_ID, APPLICATIONS_DELETE_OPERATION_ID,
+    APPLICATIONS_UPDATE_OPERATION_ID, APPLICATIONS_VIEW_OPERATION_ID,
+};
+use axum::{
+    extract::{Path, State},
+    http::{HeaderMap, StatusCode},
+    Json, Router,
+};
+use serde::{Deserialize, Serialize};
+use time::format_description::well_known::Rfc3339;
+use utoipa::ToSchema;
+use uuid::Uuid;
+
+use super::application_api::{WorkflowExtensionHttpMethodBody, WorkflowExtensionResponseModeBody};
+use crate::{
+    app_state::ApiState,
+    error_response::ApiError,
+    response::ApiSuccess,
+    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+};
+
+pub mod interface;
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplicationTypeDto {
+    AgentLogs,
+    /// Conversational Agent Flow exposed through native runs and AI Gateway-compatible APIs.
+    AgentFlow,
+    /// Workflow invoked by an extension endpoint or schedule trigger.
+    Workflow,
+}
+
+impl From<domain::ApplicationType> for ApplicationTypeDto {
+    fn from(value: domain::ApplicationType) -> Self {
+        match value {
+            domain::ApplicationType::AgentLogs => Self::AgentLogs,
+            domain::ApplicationType::AgentFlow => Self::AgentFlow,
+            domain::ApplicationType::Workflow => Self::Workflow,
+        }
+    }
+}
+
+impl ApplicationTypeDto {
+    fn into_domain(self) -> domain::ApplicationType {
+        match self {
+            Self::AgentLogs => domain::ApplicationType::AgentLogs,
+            Self::AgentFlow => domain::ApplicationType::AgentFlow,
+            Self::Workflow => domain::ApplicationType::Workflow,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowTriggerTypeDto {
+    /// Normal HTTP interface published under /api/ex/{slug}.
+    Extension,
+    /// Cron schedule controlled by the Workflow schedule GET/PUT resource.
+    Schedule,
+    /// Lifecycle event subscription controlled by the event trigger resource.
+    Event,
+}
+
+impl From<domain::WorkflowTriggerType> for WorkflowTriggerTypeDto {
+    fn from(value: domain::WorkflowTriggerType) -> Self {
+        match value {
+            domain::WorkflowTriggerType::Extension => Self::Extension,
+            domain::WorkflowTriggerType::Schedule => Self::Schedule,
+            domain::WorkflowTriggerType::Event => Self::Event,
+        }
+    }
+}
+
+impl WorkflowTriggerTypeDto {
+    fn into_domain(self) -> domain::WorkflowTriggerType {
+        match self {
+            Self::Extension => domain::WorkflowTriggerType::Extension,
+            Self::Schedule => domain::WorkflowTriggerType::Schedule,
+            Self::Event => domain::WorkflowTriggerType::Event,
+        }
+    }
+}
+
+/// Creates exactly one Agent Flow or Workflow Application.
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct CreateApplicationBody {
+    /// Closed Application family. Agent Flow and Workflow have different boundary nodes and API
+    /// publication semantics.
+    pub application_type: ApplicationTypeDto,
+    /// Applies only to workflow. Defaults to extension when omitted; Agent Flow ignores no trigger
+    /// value and rejects trigger configuration.
+    pub workflow_trigger_type: Option<WorkflowTriggerTypeDto>,
+    /// Optional initial config for the selected Workflow trigger. Schedule creation is always
+    /// disabled until its schedule resource is enabled with PUT.
+    pub workflow_trigger_config: Option<CreateWorkflowTriggerConfigBody>,
+    pub name: String,
+    pub description: String,
+    pub icon: Option<String>,
+    pub icon_type: Option<String>,
+    pub icon_background: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateWorkflowTriggerConfigBody {
+    /// Required for schedule triggers; standard cron expression.
+    pub cron: Option<String>,
+    /// Optional IANA timezone name. Omitted or empty follows the server system timezone.
+    pub timezone: Option<String>,
+    /// Optional schedule defaults keyed by Workflow Start input field key.
+    pub input_payload: Option<serde_json::Value>,
+    /// Required for extension triggers; route template below /api/ex/ without leading slash.
+    pub subpath: Option<String>,
+    /// Extension HTTP method. Defaults to POST.
+    pub http_method: Option<WorkflowExtensionHttpMethodBody>,
+    /// Extension response mode: sync or async. Defaults to sync.
+    pub response_mode: Option<WorkflowExtensionResponseModeBody>,
+}
+
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct PatchApplicationBody {
+    pub name: String,
+    pub description: String,
+    #[serde(default)]
+    pub tag_ids: Vec<String>,
+    pub icon: Option<String>,
+    pub icon_type: Option<String>,
+    pub icon_background: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct CreateApplicationTagBody {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ApplicationEnvironmentVariableBody {
+    pub name: String,
+    pub value_type: String,
+    pub value: serde_json::Value,
+    pub description: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ReplaceApplicationEnvironmentVariablesBody {
+    pub variables: Vec<ApplicationEnvironmentVariableBody>,
+}
+
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+pub struct ReplaceApplicationJsDependencySelectionBody {
+    pub installation_id: String,
+    pub alias: String,
+    pub target: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationTagResponse {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationEnvironmentVariableResponse {
+    pub name: String,
+    pub value_type: String,
+    pub value: serde_json::Value,
+    pub description: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationJsDependencyPermissionsResponse {
+    pub network: String,
+    pub filesystem: String,
+    pub env: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationJsDependencySelectionResponse {
+    pub application_id: String,
+    pub installation_id: String,
+    pub provider_code: String,
+    pub plugin_id: String,
+    pub plugin_version: String,
+    pub alias: String,
+    pub package: String,
+    pub version: String,
+    pub target: String,
+    pub artifact_path: String,
+    pub artifact_hash: String,
+    pub integrity: String,
+    pub permissions: ApplicationJsDependencyPermissionsResponse,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationTagCatalogResponse {
+    pub id: String,
+    pub name: String,
+    pub application_count: i64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationTypeOptionResponse {
+    pub value: ApplicationTypeDto,
+    pub label: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WorkflowTriggerTypeOptionResponse {
+    pub value: WorkflowTriggerTypeDto,
+    pub label: String,
+}
+
+/// Curated client-side collectors compatible with the application log ingestion API.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationCollectorResponse {
+    pub collector_code: String,
+    pub source_client: String,
+    pub display_name: String,
+    pub icon: Option<String>,
+    pub description: String,
+    pub version: String,
+    pub execution_target: String,
+    pub catalog_id: String,
+    pub category: String,
+    pub installation_status: String,
+    pub installed_version: Option<String>,
+    pub extension_installation_id: Option<String>,
+    pub installable: bool,
+    pub can_install: bool,
+    pub can_update: bool,
+    pub asset_base_url: Option<String>,
+    pub documentation_url: Option<String>,
+    pub shell_installer_url: Option<String>,
+    pub powershell_installer_url: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationCatalogResponse {
+    pub collectors: Vec<ApplicationCollectorResponse>,
+    pub types: Vec<ApplicationTypeOptionResponse>,
+    /// Closed Workflow trigger set: extension and schedule only.
+    pub workflow_triggers: Vec<WorkflowTriggerTypeOptionResponse>,
+    pub tags: Vec<ApplicationTagCatalogResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationSummaryResponse {
+    pub id: String,
+    pub application_type: ApplicationTypeDto,
+    pub name: String,
+    pub description: String,
+    pub icon: Option<String>,
+    pub icon_type: Option<String>,
+    pub icon_background: Option<String>,
+    pub created_by: String,
+    pub updated_at: String,
+    pub tags: Vec<ApplicationTagResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationOrchestrationSectionResponse {
+    pub status: String,
+    pub subject_kind: String,
+    pub subject_status: String,
+    pub current_subject_id: Option<String>,
+    pub current_draft_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplicationApiSectionStatusResponse {
+    Active,
+    Planned,
+    Available,
+    Unavailable,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplicationApiCredentialKindResponse {
+    ApplicationApiKey,
+    UserOrPublic,
+    NotApplicable,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplicationApiInvokeRoutingModeResponse {
+    ApiKeyBoundApplication,
+    PublishedWorkflowOperation,
+    NotAvailable,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplicationApiCapabilityStatusResponse {
+    Enabled,
+    Disabled,
+    NotPublished,
+    Available,
+    Unavailable,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ApplicationApiCredentialsStatusResponse {
+    Configured,
+    Missing,
+    NotRequired,
+    NotApplicable,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationApiSectionResponse {
+    #[schema(inline)]
+    pub status: ApplicationApiSectionStatusResponse,
+    #[schema(inline)]
+    pub credential_kind: ApplicationApiCredentialKindResponse,
+    #[schema(inline)]
+    pub invoke_routing_mode: ApplicationApiInvokeRoutingModeResponse,
+    pub invoke_path_template: Option<String>,
+    #[schema(inline)]
+    pub api_capability_status: ApplicationApiCapabilityStatusResponse,
+    #[schema(inline)]
+    pub credentials_status: ApplicationApiCredentialsStatusResponse,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationLogsSectionResponse {
+    pub status: String,
+    pub runs_capability_status: String,
+    pub run_object_kind: String,
+    pub log_retention_status: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationMonitoringSectionResponse {
+    pub status: String,
+    pub metrics_capability_status: String,
+    pub metrics_object_kind: String,
+    pub tracing_config_status: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationSectionsResponse {
+    pub orchestration: ApplicationOrchestrationSectionResponse,
+    pub api: ApplicationApiSectionResponse,
+    pub logs: ApplicationLogsSectionResponse,
+    pub monitoring: ApplicationMonitoringSectionResponse,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ApplicationDetailResponse {
+    pub id: String,
+    pub application_type: ApplicationTypeDto,
+    pub workflow_trigger_type: Option<WorkflowTriggerTypeDto>,
+    pub name: String,
+    pub description: String,
+    pub icon: Option<String>,
+    pub icon_type: Option<String>,
+    pub icon_background: Option<String>,
+    pub created_by: String,
+    pub updated_at: String,
+    pub tags: Vec<ApplicationTagResponse>,
+    pub sections: ApplicationSectionsResponse,
+}
+
+pub fn router() -> Router<Arc<ApiState>> {
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new()
+        .route(
+            "/applications",
+            console_get(
+                list_applications,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            )
+            .post(
+                create_application,
+                ConsoleOperation(APPLICATIONS_CREATE_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
+            "/applications/:id",
+            console_get(
+                get_application,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            )
+            .patch(
+                patch_application,
+                ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
+            )
+            .delete(
+                delete_application,
+                ConsoleOperation(APPLICATIONS_DELETE_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
+            "/applications/catalog",
+            console_get(
+                get_application_catalog,
+                ConsoleOperation(APPLICATIONS_CREATE_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
+            "/applications/tags",
+            console_post(
+                create_application_tag,
+                ConsoleOperation(APPLICATIONS_CREATE_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
+            "/applications/:id/environment-variables",
+            console_get(
+                list_application_environment_variables,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            )
+            .put(
+                replace_application_environment_variables,
+                ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
+            ),
+        )
+        .route(
+            "/applications/:id/js-dependencies",
+            console_get(
+                list_application_js_dependency_selections,
+                ConsoleOperation(APPLICATIONS_VIEW_OPERATION_ID.to_string()),
+            )
+            .put(
+                replace_application_js_dependency_selection,
+                ConsoleOperation(APPLICATIONS_UPDATE_OPERATION_ID.to_string()),
+            ),
+        )
+}
+
+fn to_application_tag(tag: domain::ApplicationTag) -> ApplicationTagResponse {
+    ApplicationTagResponse {
+        id: tag.id.to_string(),
+        name: tag.name,
+    }
+}
+
+fn to_application_tag_catalog_entry(
+    tag: domain::ApplicationTagCatalogEntry,
+) -> ApplicationTagCatalogResponse {
+    ApplicationTagCatalogResponse {
+        id: tag.id.to_string(),
+        name: tag.name,
+        application_count: tag.application_count,
+    }
+}
+
+fn to_application_environment_variable(
+    variable: domain::ApplicationEnvironmentVariable,
+) -> Result<ApplicationEnvironmentVariableResponse, ApiError> {
+    Ok(ApplicationEnvironmentVariableResponse {
+        name: variable.name,
+        value_type: variable.value_type,
+        value: variable.value,
+        description: variable.description,
+        updated_at: variable.updated_at.format(&Rfc3339)?,
+    })
+}
+
+fn to_application_js_dependency_selection(
+    selection: domain::ApplicationJsDependencySelection,
+) -> ApplicationJsDependencySelectionResponse {
+    ApplicationJsDependencySelectionResponse {
+        application_id: selection.application_id.to_string(),
+        installation_id: selection.installation_id.to_string(),
+        provider_code: selection.provider_code,
+        plugin_id: selection.plugin_id,
+        plugin_version: selection.plugin_version,
+        alias: selection.alias,
+        package: selection.package,
+        version: selection.version,
+        target: selection.target,
+        artifact_path: selection.artifact_path,
+        artifact_hash: selection.artifact_hash,
+        integrity: selection.integrity,
+        permissions: ApplicationJsDependencyPermissionsResponse {
+            network: selection.permissions.network,
+            filesystem: selection.permissions.filesystem,
+            env: selection.permissions.env,
+        },
+    }
+}
+
+fn to_application_summary(
+    application: domain::ApplicationRecord,
+) -> Result<ApplicationSummaryResponse, ApiError> {
+    Ok(ApplicationSummaryResponse {
+        id: application.id.to_string(),
+        application_type: application.application_type.into(),
+        name: application.name,
+        description: application.description,
+        icon: application.icon,
+        icon_type: application.icon_type,
+        icon_background: application.icon_background,
+        created_by: application.created_by.to_string(),
+        updated_at: application.updated_at.format(&Rfc3339)?,
+        tags: application
+            .tags
+            .into_iter()
+            .map(to_application_tag)
+            .collect(),
+    })
+}
+
+fn to_sections_response(sections: domain::ApplicationSections) -> ApplicationSectionsResponse {
+    ApplicationSectionsResponse {
+        orchestration: ApplicationOrchestrationSectionResponse {
+            status: sections.orchestration.status,
+            subject_kind: sections.orchestration.subject_kind,
+            subject_status: sections.orchestration.subject_status,
+            current_subject_id: sections
+                .orchestration
+                .current_subject_id
+                .map(|value| value.to_string()),
+            current_draft_id: sections
+                .orchestration
+                .current_draft_id
+                .map(|value| value.to_string()),
+        },
+        api: ApplicationApiSectionResponse {
+            status: api_section_status(&sections.api.status),
+            credential_kind: api_credential_kind(&sections.api.credential_kind),
+            invoke_routing_mode: api_invoke_routing_mode(&sections.api.invoke_routing_mode),
+            invoke_path_template: sections.api.invoke_path_template,
+            api_capability_status: api_capability_status(&sections.api.api_capability_status),
+            credentials_status: api_credentials_status(&sections.api.credentials_status),
+        },
+        logs: ApplicationLogsSectionResponse {
+            status: sections.logs.status,
+            runs_capability_status: sections.logs.runs_capability_status,
+            run_object_kind: sections.logs.run_object_kind,
+            log_retention_status: sections.logs.log_retention_status,
+        },
+        monitoring: ApplicationMonitoringSectionResponse {
+            status: sections.monitoring.status,
+            metrics_capability_status: sections.monitoring.metrics_capability_status,
+            metrics_object_kind: sections.monitoring.metrics_object_kind,
+            tracing_config_status: sections.monitoring.tracing_config_status,
+        },
+    }
+}
+
+fn api_section_status(value: &str) -> ApplicationApiSectionStatusResponse {
+    match value {
+        "active" => ApplicationApiSectionStatusResponse::Active,
+        "planned" => ApplicationApiSectionStatusResponse::Planned,
+        "available" => ApplicationApiSectionStatusResponse::Available,
+        _ => ApplicationApiSectionStatusResponse::Unavailable,
+    }
+}
+
+fn api_credential_kind(value: &str) -> ApplicationApiCredentialKindResponse {
+    match value {
+        "application_api_key" => ApplicationApiCredentialKindResponse::ApplicationApiKey,
+        "user_or_public" => ApplicationApiCredentialKindResponse::UserOrPublic,
+        _ => ApplicationApiCredentialKindResponse::NotApplicable,
+    }
+}
+
+fn api_invoke_routing_mode(value: &str) -> ApplicationApiInvokeRoutingModeResponse {
+    match value {
+        "api_key_bound_application" => {
+            ApplicationApiInvokeRoutingModeResponse::ApiKeyBoundApplication
+        }
+        "published_workflow_operation" => {
+            ApplicationApiInvokeRoutingModeResponse::PublishedWorkflowOperation
+        }
+        _ => ApplicationApiInvokeRoutingModeResponse::NotAvailable,
+    }
+}
+
+fn api_capability_status(value: &str) -> ApplicationApiCapabilityStatusResponse {
+    match value {
+        "enabled" => ApplicationApiCapabilityStatusResponse::Enabled,
+        "disabled" => ApplicationApiCapabilityStatusResponse::Disabled,
+        "not_published" => ApplicationApiCapabilityStatusResponse::NotPublished,
+        "available" => ApplicationApiCapabilityStatusResponse::Available,
+        _ => ApplicationApiCapabilityStatusResponse::Unavailable,
+    }
+}
+
+fn api_credentials_status(value: &str) -> ApplicationApiCredentialsStatusResponse {
+    match value {
+        "configured" => ApplicationApiCredentialsStatusResponse::Configured,
+        "missing" => ApplicationApiCredentialsStatusResponse::Missing,
+        "not_required" => ApplicationApiCredentialsStatusResponse::NotRequired,
+        _ => ApplicationApiCredentialsStatusResponse::NotApplicable,
+    }
+}
+
+fn to_application_detail(
+    application: domain::ApplicationRecord,
+) -> Result<ApplicationDetailResponse, ApiError> {
+    Ok(ApplicationDetailResponse {
+        id: application.id.to_string(),
+        application_type: application.application_type.into(),
+        workflow_trigger_type: application
+            .workflow_trigger_type
+            .map(WorkflowTriggerTypeDto::from),
+        name: application.name,
+        description: application.description,
+        icon: application.icon,
+        icon_type: application.icon_type,
+        icon_background: application.icon_background,
+        created_by: application.created_by.to_string(),
+        updated_at: application.updated_at.format(&Rfc3339)?,
+        tags: application
+            .tags
+            .into_iter()
+            .map(to_application_tag)
+            .collect(),
+        sections: to_sections_response(application.sections),
+    })
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/applications",
+    responses(
+        (status = 200, body = [ApplicationSummaryResponse]),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn list_applications(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<Vec<ApplicationSummaryResponse>>>, ApiError> {
+    let output = crate::routes::console_interface::invoke_non_create(
+        Arc::clone(&state),
+        "http.console.applications.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::ApplicationsInput::List,
+    )
+    .await?;
+    let interface::ApplicationsOutput::Applications(applications) = output else {
+        return Err(anyhow::anyhow!("applications list output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(applications)))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/applications/catalog",
+    summary = "Get Application type and Workflow trigger catalogs",
+    description = "Returns the closed Agent Flow/Workflow type set, the closed extension/schedule Workflow trigger set, and Application tags.",
+    responses(
+        (status = 200, body = ApplicationCatalogResponse),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn get_application_catalog(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<ApplicationCatalogResponse>>, ApiError> {
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke_non_create(
+        Arc::clone(&state),
+        "http.console.applications.catalog.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::ApplicationsInput::Catalog { locale },
+    )
+    .await?;
+    let interface::ApplicationsOutput::Catalog(catalog) = output else {
+        return Err(anyhow::anyhow!("applications catalog output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(catalog)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/applications",
+    summary = "Create an Application",
+    description = "Creates one Agent Flow or Workflow. Workflow triggers are extension or schedule only; an initial schedule configuration is persisted disabled.",
+    request_body = CreateApplicationBody,
+    responses(
+        (status = 201, body = ApplicationDetailResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn create_application(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<CreateApplicationBody>,
+) -> Result<(StatusCode, Json<ApiSuccess<ApplicationDetailResponse>>), ApiError> {
+    let output = crate::routes::console_interface::invoke_non_create(
+        Arc::clone(&state),
+        "http.console.applications.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ApplicationsInput::Create(body),
+    )
+    .await?;
+    let interface::ApplicationsOutput::Application(application) = output else {
+        return Err(anyhow::anyhow!("applications create output contract mismatch").into());
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(application))))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/applications/tags",
+    request_body = CreateApplicationTagBody,
+    responses(
+        (status = 201, body = ApplicationTagCatalogResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn create_application_tag(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<CreateApplicationTagBody>,
+) -> Result<(StatusCode, Json<ApiSuccess<ApplicationTagCatalogResponse>>), ApiError> {
+    let output = crate::routes::console_interface::invoke_non_create(
+        Arc::clone(&state),
+        "http.console.applications.tags.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ApplicationsInput::CreateTag(body),
+    )
+    .await?;
+    let interface::ApplicationsOutput::Tag(tag) = output else {
+        return Err(anyhow::anyhow!("applications tag create output contract mismatch").into());
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(tag))))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/applications/{id}",
+    params(
+        ("id" = String, Path, description = "Application id")
+    ),
+    responses(
+        (status = 200, body = ApplicationDetailResponse),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn get_application(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiSuccess<ApplicationDetailResponse>>, ApiError> {
+    let output = crate::routes::console_interface::invoke_non_create(
+        Arc::clone(&state),
+        "http.console.applications.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::ApplicationsInput::Get { application_id: id },
+    )
+    .await?;
+    let interface::ApplicationsOutput::Application(application) = output else {
+        return Err(anyhow::anyhow!("applications get output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(application)))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/applications/{id}/environment-variables",
+    params(
+        ("id" = String, Path, description = "Application id")
+    ),
+    responses(
+        (status = 200, body = [ApplicationEnvironmentVariableResponse]),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn list_application_environment_variables(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiSuccess<Vec<ApplicationEnvironmentVariableResponse>>>, ApiError> {
+    let output = crate::routes::console_interface::invoke_non_create(
+        Arc::clone(&state),
+        "http.console.applications.environment-variables.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::ApplicationsInput::ListEnvironmentVariables { application_id: id },
+    )
+    .await?;
+    let interface::ApplicationsOutput::EnvironmentVariables(variables) = output else {
+        return Err(anyhow::anyhow!(
+            "applications environment variables list output contract mismatch"
+        )
+        .into());
+    };
+    Ok(Json(ApiSuccess::new(variables)))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/console/applications/{id}/environment-variables",
+    params(
+        ("id" = String, Path, description = "Application id")
+    ),
+    request_body = ReplaceApplicationEnvironmentVariablesBody,
+    responses(
+        (status = 200, body = [ApplicationEnvironmentVariableResponse]),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn replace_application_environment_variables(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(body): Json<ReplaceApplicationEnvironmentVariablesBody>,
+) -> Result<Json<ApiSuccess<Vec<ApplicationEnvironmentVariableResponse>>>, ApiError> {
+    let output = crate::routes::console_interface::invoke_non_create(
+        Arc::clone(&state),
+        "http.console.applications.environment-variables.replace.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ApplicationsInput::ReplaceEnvironmentVariables {
+            application_id: id,
+            body,
+        },
+    )
+    .await?;
+    let interface::ApplicationsOutput::EnvironmentVariables(variables) = output else {
+        return Err(anyhow::anyhow!(
+            "applications environment variables replace output contract mismatch"
+        )
+        .into());
+    };
+    Ok(Json(ApiSuccess::new(variables)))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/applications/{id}/js-dependencies",
+    params(
+        ("id" = String, Path, description = "Application id")
+    ),
+    responses(
+        (status = 200, body = [ApplicationJsDependencySelectionResponse]),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn list_application_js_dependency_selections(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiSuccess<Vec<ApplicationJsDependencySelectionResponse>>>, ApiError> {
+    let output = crate::routes::console_interface::invoke_non_create(
+        Arc::clone(&state),
+        "http.console.applications.js-dependencies.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::ApplicationsInput::ListJsDependencies { application_id: id },
+    )
+    .await?;
+    let interface::ApplicationsOutput::JsDependencies(selections) = output else {
+        return Err(
+            anyhow::anyhow!("applications js dependencies list output contract mismatch").into(),
+        );
+    };
+    Ok(Json(ApiSuccess::new(selections)))
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/console/applications/{id}/js-dependencies",
+    params(
+        ("id" = String, Path, description = "Application id")
+    ),
+    request_body = ReplaceApplicationJsDependencySelectionBody,
+    responses(
+        (status = 200, body = ApplicationJsDependencySelectionResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn replace_application_js_dependency_selection(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(body): Json<ReplaceApplicationJsDependencySelectionBody>,
+) -> Result<Json<ApiSuccess<ApplicationJsDependencySelectionResponse>>, ApiError> {
+    let output = crate::routes::console_interface::invoke_non_create(
+        Arc::clone(&state),
+        "http.console.applications.js-dependencies.replace.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ApplicationsInput::ReplaceJsDependency {
+            application_id: id,
+            body,
+        },
+    )
+    .await?;
+    let interface::ApplicationsOutput::JsDependency(selection) = output else {
+        return Err(
+            anyhow::anyhow!("applications js dependency replace output contract mismatch").into(),
+        );
+    };
+    Ok(Json(ApiSuccess::new(selection)))
+}
+
+#[utoipa::path(
+    patch,
+    path = "/api/console/applications/{id}",
+    params(
+        ("id" = String, Path, description = "Application id")
+    ),
+    request_body = PatchApplicationBody,
+    responses(
+        (status = 200, body = ApplicationDetailResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn patch_application(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(body): Json<PatchApplicationBody>,
+) -> Result<Json<ApiSuccess<ApplicationDetailResponse>>, ApiError> {
+    let output = crate::routes::console_interface::invoke_non_create(
+        Arc::clone(&state),
+        "http.console.applications.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ApplicationsInput::Patch {
+            application_id: id,
+            body,
+        },
+    )
+    .await?;
+    let interface::ApplicationsOutput::Application(application) = output else {
+        return Err(anyhow::anyhow!("applications update output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(application)))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/console/applications/{id}",
+    params(
+        ("id" = String, Path, description = "Application id")
+    ),
+    responses(
+        (status = 204),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn delete_application(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    crate::routes::console_interface::invoke_non_create::<_, interface::ApplicationsOutput>(
+        Arc::clone(&state),
+        "http.console.applications.delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ApplicationsInput::Delete { application_id: id },
+    )
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub mod collectors;
+
+#[cfg(test)]
+#[path = "applications/_tests/time_response.rs"]
+mod time_response_tests;

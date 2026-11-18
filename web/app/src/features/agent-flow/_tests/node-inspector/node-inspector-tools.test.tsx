@@ -1,6 +1,6 @@
 import { describe, test, expect, vi } from 'vitest';
 import { domEvents } from './node-inspector.fixtures';
-import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
+import { AgentFlowEditorStoreProvider } from './fixtures/analysis-provider';
 import {
   DocumentObserver,
   SelectionSeed,

@@ -1,3 +1,5 @@
+import type { DocumentAnalysisState } from '../../api/analysis/use-document-analysis';
+import { useCurrentDocumentAnalysis } from '../../api/analysis/context';
 import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { Tabs } from 'antd';
 import { useMemo } from 'react';
@@ -25,10 +27,12 @@ const EMPTY_ISSUES: AgentFlowIssue[] = [];
 
 export function NodeDetailPanel({
   onClose,
+  documentAnalysis,
   onDebugNode,
   onRunNode,
   applicationId,
   activeRunId,
+  interactionLocked = false,
   debugLoading = false,
   environmentVariables = EMPTY_ENVIRONMENT_VARIABLES,
   issues = EMPTY_ISSUES,
@@ -40,10 +44,12 @@ export function NodeDetailPanel({
   onTabChange
 }: {
   onClose: () => void;
+  documentAnalysis?: DocumentAnalysisState;
   onDebugNode?: (() => void) | undefined;
   onRunNode?: (() => void) | undefined;
   applicationId?: string;
   activeRunId?: string | null;
+  interactionLocked?: boolean;
   debugLoading?: boolean;
   environmentVariables?: AgentFlowEnvironmentVariable[];
   issues?: AgentFlowIssue[];
@@ -54,8 +60,11 @@ export function NodeDetailPanel({
   activeTab: 'config' | 'lastRun';
   onTabChange: (tab: 'config' | 'lastRun') => void;
 }) {
+  const contextAnalysis = useCurrentDocumentAnalysis();
+  const { analysis, status: analysisStatus } =
+    documentAnalysis ?? contextAnalysis;
   const can = useConsoleOperationAccess();
-  const readOnly = !can('save_draft');
+  const readOnly = interactionLocked || !can('save_draft');
   const document = useAgentFlowEditorStore((state) => state.workingDocument);
   const selectedNodeId = useAgentFlowEditorStore(
     (state) => state.selectedNodeId
@@ -81,6 +90,7 @@ export function NodeDetailPanel({
     const schema = resolveAgentFlowNodeSchema(selectedNode.type);
     const adapter = createAgentFlowNodeSchemaAdapter({
       document,
+      analysis,
       nodeId: selectedNodeId,
       environmentVariables,
       issues,
@@ -104,6 +114,7 @@ export function NodeDetailPanel({
       adapter
     };
   }, [
+    analysis,
     readOnly,
     document,
     environmentVariables,
@@ -141,28 +152,40 @@ export function NodeDetailPanel({
           runLoading={runLoading}
           schema={runtime.schema}
         />
+        {analysisStatus !== 'ready' ? (
+          <output aria-live="polite" style={{ display: 'block' }}>
+            {analysisStatus === 'pending'
+              ? i18nText('agentFlow', 'analysis.pending')
+              : i18nText('agentFlow', 'analysis.unavailable')}
+          </output>
+        ) : null}
         <Tabs
-          activeKey={activeTab}
+          activeKey={interactionLocked ? 'lastRun' : activeTab}
           onChange={(key) => onTabChange(key as 'config' | 'lastRun')}
           items={[
             {
               key: 'config',
               label: i18nText('agentFlow', 'auto.settings'),
-              children: (
+              disabled: interactionLocked,
+              children: !interactionLocked ? (
                 <NodeConfigTab
                   readOnly={readOnly}
                   adapter={runtime.adapter}
                   schema={runtime.schema}
                 />
-              )
+              ) : null
             },
             {
               key: 'lastRun',
-              label: i18nText('agentFlow', 'auto.last_run'),
+              label:
+                activeRunId || interactionLocked
+                  ? i18nText('agentFlow', 'auto.current_run')
+                  : i18nText('agentFlow', 'auto.last_run'),
               forceRender: true,
               children: (
                 <NodeLastRunTab
                   activeRunId={activeRunId}
+                  runActive={interactionLocked}
                   adapter={runtime.adapter}
                   applicationId={applicationId}
                   nodeId={runtime.selectedNodeId}

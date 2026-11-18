@@ -77,10 +77,12 @@ export function toCanvasNodes(
   const nodesById = new Map(
     sizedDocument.graph.nodes.map((node) => [node.id, node])
   );
-  const populatedContainers = new Set(
-    sizedDocument.graph.nodes
-      .filter((node) => node.containerId && node.type !== 'container_start')
-      .map((node) => node.containerId)
+  const populatedContainers = new Set<string | null>(
+    sizedDocument.graph.nodes.flatMap((node) =>
+      node.containerId && node.type !== 'container_start'
+        ? [node.containerId]
+        : []
+    )
   );
   return parentFirstNodes(sizedDocument.graph.nodes).map((node) => {
     const flowRole = getNodeFlowRole(node.type);

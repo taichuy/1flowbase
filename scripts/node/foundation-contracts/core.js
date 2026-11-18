@@ -28,11 +28,11 @@ const FOUNDATION_DEFINITIONS = {
       return isSharedBackendContract(filePath)
         || /^scripts\/node\/(?:ai-gateway-concurrency|provider-conformance|verify-state-protocols)(?:\/|\.js$)/u.test(filePath)
         || /^scripts\/node\/cli\/(?:ai-gateway|acp-claude-smoke)/u.test(filePath)
-        || /^api\/apps\/api-server\/src\/routes\/application_public_api\/(?:anthropic(?:\/|\.rs$)|client_observer\.rs$|openai(?:\/|\.rs$)|compatibility_interface(?:\/|\.rs$)|compat_sse(?:\/|\.rs$))/u.test(filePath)
-        || /^api\/apps\/api-server\/src\/routes\/application_public_api\/(?:native|native_interface|native_read_interface|native_websocket|sse|stream_terminal_fallback)(?:\/.*\.rs|\.rs)$/u.test(filePath)
-        || /^api\/apps\/api-server\/src\/routes\/applications\/debug_run_stream(?:\/.*\.rs|\.rs)$/u.test(filePath)
-        || /^api\/apps\/api-server\/src\/host_infrastructure\/local_runtime_event_stream\.rs$/u.test(filePath)
-        || /^api\/apps\/api-server\/src\/provider_runtime\/(?:_tests\/)?transport_session_lifecycle(?:\/.*\.rs|\.rs)$/u.test(filePath)
+        || /^api\/(?:apps\/api-server|crates\/api\/public-gateway)\/src\/routes\/application_public_api\/(?:anthropic(?:\/|\.rs$)|client_observer\.rs$|openai(?:\/|\.rs$)|compatibility_interface(?:\/|\.rs$)|compat_sse(?:\/|\.rs$))/u.test(filePath)
+        || /^api\/(?:apps\/api-server|crates\/api\/public-gateway)\/src\/routes\/application_public_api\/(?:native|native_interface|native_read_interface|native_websocket|sse|stream_terminal_fallback)(?:\/.*\.rs|\.rs)$/u.test(filePath)
+        || /^api\/(?:apps\/api-server|crates\/api\/applications)\/src\/routes\/applications\/debug_run_stream(?:\/.*\.rs|\.rs)$/u.test(filePath)
+        || /^api\/crates\/api\/kernel\/src\/host\/host_infrastructure\/local_runtime_event_stream\.rs$/u.test(filePath)
+        || /^api\/crates\/api\/kernel\/src\/host\/provider_runtime\/(?:_tests\/)?transport_session_lifecycle(?:\/.*\.rs|\.rs)$/u.test(filePath)
         || /^api\/apps\/api-server\/src\/_tests\/runtime_event_stream\/.*\.rs$/u.test(filePath)
         || /^api\/crates\/control-plane\/src\/(?:application_public_api|client_trajectory)(?:\/|\.rs$)/u.test(filePath)
         || /^api\/crates\/control-plane\/src\/orchestration_runtime\/provider_invoker(?:\/|\.rs$)/u.test(filePath)
@@ -86,6 +86,7 @@ const FOUNDATION_DEFINITIONS = {
         || /^api\/crates\/control-plane\/src\/(?:model_definition|_tests\/model_definition)/u.test(filePath)
         || /^api\/crates\/storage\/durable\/postgres\/(?:migrations\/.*model_definition|src\/(?:model_definition_repository|mappers\/model_definition_mapper)|src\/_tests\/model_definition)/u.test(filePath)
         || /^api\/apps\/api-server\/src\/(?:_tests\/application\/model_definition_routes|routes\/plugins_and_models\/(?:model_definitions|runtime_models|data_sources)|openapi(?:_interface)?\/)/u.test(filePath)
+        || /^api\/crates\/api\/kernel\/src\/slices\/openapi\/binary_body\.rs$/u.test(filePath)
         || /^api\/crates\/runtime-core\/src\/(?:runtime_model_registry|runtime_record_repository|runtime_acl|model_metadata|_tests\/(?:runtime_model_registry_tests|runtime_acl_tests))\.rs$/u.test(filePath);
     },
     fast: [

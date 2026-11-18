@@ -60,6 +60,7 @@ export interface ConsoleApplicationNodeCatalogEntry {
   runtime_status: ConsoleApplicationNodeRuntimeStatus;
   dependency_status: ConsoleApplicationNodeDependencyStatus;
   field_contract: ConsoleApplicationNodeFieldContract;
+  document_schema?: Record<string, unknown> | null;
   plugin: ConsolePluginNodeIdentity | null;
 }
 

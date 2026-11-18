@@ -41,6 +41,7 @@ pub(super) fn context(port: Arc<Credentials>) -> ProviderHostCallContext {
     };
     ProviderHostCallContext {
         binding: PluginDataBinding {
+            record_permissions: None,
             managed_subject: None,
             publisher_namespace: "trusted".into(),
             plugin_code: "ssh".into(),
@@ -58,6 +59,8 @@ pub(super) fn context(port: Arc<Credentials>) -> ProviderHostCallContext {
         http_egress: None,
         file_import: None,
         plugin_credentials: Some((binding, port)),
+        execution_gate: None,
+        plugin_ephemeral: None,
     }
 }
 #[tokio::test]

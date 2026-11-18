@@ -1,9 +1,9 @@
 use super::*;
 
-pub(super) const JOINS: &str = "LEFT JOIN communication_inputs m ON m.id=t.input_id AND m.scope_id=t.scope_id AND m.instance_id=t.instance_id AND m.external_identity=t.external_identity AND m.conversation_id=t.conversation_id LEFT JOIN communication_conversations c ON c.id=t.conversation_id AND c.scope_id=t.scope_id AND c.instance_id=t.instance_id AND c.external_identity=t.external_identity LEFT JOIN notification_instances n ON n.id=t.instance_id AND n.workspace_id=t.scope_id LEFT JOIN communication_reply_turns rt ON rt.id=m.turn_id AND rt.scope_id=m.scope_id AND rt.instance_id=m.instance_id AND rt.external_identity=m.external_identity AND rt.conversation_id=m.conversation_id LEFT JOIN flow_runs r ON r.id=COALESCE(rt.run_id,m.run_id) AND r.scope_id=t.scope_id";
+pub(super) const JOINS: &str = "LEFT JOIN communication_inputs m ON m.id=t.input_id AND m.scope_id=t.scope_id AND m.instance_id=t.instance_id AND m.external_identity=t.external_identity AND m.conversation_id=t.conversation_id LEFT JOIN communication_conversations c ON c.id=t.conversation_id AND c.scope_id=t.scope_id AND c.instance_id=t.instance_id AND c.external_identity=t.external_identity LEFT JOIN notification_instances n ON n.id=t.instance_id AND n.workspace_id=t.scope_id LEFT JOIN communication_reply_turns rt ON rt.id=m.turn_id AND rt.scope_id=m.scope_id AND rt.instance_id=m.instance_id AND rt.external_identity=m.external_identity AND rt.conversation_id=m.conversation_id LEFT JOIN LATERAL (SELECT CASE WHEN x.send_status='sending' AND ((x.run_id IS NOT NULL AND xr.status IN ('succeeded','incomplete','failed','cancelled')) OR (x.run_id IS NULL AND COALESCE(rt.send_status,m.send_status) IN ('unknown','failed'))) THEN 'unknown' ELSE x.send_status END AS send_status,CASE WHEN x.send_status='sending' AND ((x.run_id IS NOT NULL AND xr.status IN ('succeeded','incomplete','failed','cancelled')) OR (x.run_id IS NULL AND COALESCE(rt.send_status,m.send_status) IN ('unknown','failed'))) THEN COALESCE(rt.failure_code,m.failure_code,'send_interrupted') ELSE x.failure_code END AS failure_code,x.run_id FROM communication_message_sends x LEFT JOIN flow_runs xr ON xr.id=x.run_id AND xr.scope_id=x.scope_id WHERE x.scope_id=t.scope_id AND x.instance_id=t.instance_id AND x.conversation_id=t.conversation_id AND ((t.direction='outbound' AND x.message_id=t.id) OR (t.direction='inbound' AND x.input_id=t.input_id)) ORDER BY x.created_at DESC,x.send_log_id DESC LIMIT 1) ns ON true LEFT JOIN flow_runs r ON r.id=COALESCE(ns.run_id,rt.run_id,m.run_id) AND r.scope_id=t.scope_id";
 pub(super) fn columns() -> String {
     format!(
-        "t.*,n.display_name AS instance_display_name,c.sender_display_name,COALESCE(rt.run_id,m.run_id) AS run_id,r.application_id,m.processing_status,m.send_status,m.failure_code AS input_failure_code,COALESCE(({RETRY_ELIGIBILITY}),false) AS can_retry"
+        "t.*,CASE WHEN t.direction='inbound' THEN m.reply_to_json END AS reply_to_json,n.display_name AS instance_display_name,c.sender_display_name,COALESCE(ns.run_id,rt.run_id,m.run_id) AS run_id,r.application_id,COALESCE(CASE WHEN t.direction='outbound' THEN CASE ns.send_status WHEN 'succeeded' THEN 'succeeded' WHEN 'failed' THEN 'failed' WHEN 'unknown' THEN 'failed' WHEN 'sending' THEN 'processing' END END,m.processing_status) AS processing_status,COALESCE(ns.send_status,m.send_status) AS send_status,COALESCE(ns.failure_code,m.failure_code) AS input_failure_code,(COALESCE(({RETRY_ELIGIBILITY}),false) AND COALESCE(ns.send_status NOT IN ('succeeded','unknown','sending'),true)) AS can_retry"
     )
 }
 pub(super) fn message(row: PgRow) -> Result<CommunicationMessage> {
@@ -36,6 +36,10 @@ pub(super) fn message(row: PgRow) -> Result<CommunicationMessage> {
         direction: serde_json::from_value(Value::String(row.try_get("direction")?))?,
         occurred_at_ms: row.try_get("occurred_at_ms")?,
         content: row.try_get("content")?,
+        reply_to: row
+            .try_get::<Option<Value>, _>("reply_to_json")?
+            .map(serde_json::from_value)
+            .transpose()?,
         file,
         run_id: row.try_get("run_id")?,
         application_id: row.try_get("application_id")?,
@@ -78,6 +82,7 @@ pub(super) async fn timeline(
     p: Option<Uuid>,
     l: u32,
     files: bool,
+    keyword: Option<&str>,
 ) -> Result<CommunicationPage<CommunicationMessage>> {
     let TimelineScope {
         workspace_id: w,
@@ -92,7 +97,7 @@ pub(super) async fn timeline(
         None
     };
     let sql = format!(
-        "SELECT {} FROM communication_messages t {JOINS} WHERE t.scope_id=$1 AND ($2::uuid IS NULL OR t.instance_id=$2) AND ($3::text IS NULL OR t.external_identity=$3) AND t.conversation_id=$4 AND ($5::uuid IS NULL OR (t.occurred_at_ms,t.id)<($6,$5)) AND (NOT $7 OR t.type='file') ORDER BY t.occurred_at_ms DESC,t.id DESC LIMIT $8",
+        "SELECT {} FROM communication_messages t {JOINS} WHERE t.scope_id=$1 AND ($2::uuid IS NULL OR t.instance_id=$2) AND ($3::text IS NULL OR t.external_identity=$3) AND t.conversation_id=$4 AND ($5::uuid IS NULL OR (t.occurred_at_ms,t.id)<($6,$5)) AND (NOT $7 OR t.type='file') AND ($9::text IS NULL OR strpos(lower(coalesce(t.content,'') || ' ' || coalesce(t.file_name,'')), lower($9)) > 0) ORDER BY t.occurred_at_ms DESC,t.id DESC LIMIT $8",
         columns()
     );
     let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
@@ -104,6 +109,7 @@ pub(super) async fn timeline(
         .bind(anchor)
         .bind(files)
         .bind(i64::from(limit) + 1)
+        .bind(keyword)
         .fetch_all(store.pool())
         .await?;
     let mut result = page(
@@ -132,6 +138,7 @@ pub(super) async fn messages(
         p,
         l,
         false,
+        None,
     )
     .await
 }
@@ -153,6 +160,7 @@ pub(super) async fn files(
         p,
         l,
         true,
+        None,
     )
     .await
 }

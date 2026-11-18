@@ -123,7 +123,10 @@ async fn otlp_route_json_protobuf_gzip_full_ack_and_duplicate_replay_keep_scope_
     let mut request = protocol::decode(
         "application/json",
         None,
-        include_bytes!("../../../agent_logs_protocol/_tests/fixtures/openlit.json"),
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../crates/api/kernel/src/contracts/application_runtime_shared/agent_logs_protocol/_tests/fixtures/openlit.json"
+        )),
     )
     .unwrap();
     // Payload/resource claims cannot override the authenticated application's scope.

@@ -163,6 +163,9 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
                                     && run.api_key_id == record.api_key_id
                                     && run.run_mode == domain::FlowRunMode::PublishedApiRun
                             }
+                            domain::FlowRunMode::WorkflowEventRun => {
+                                run.run_mode == domain::FlowRunMode::WorkflowEventRun
+                            }
                             domain::FlowRunMode::WorkflowScheduleRun => {
                                 run.run_mode == domain::FlowRunMode::WorkflowScheduleRun
                             }
@@ -329,6 +332,7 @@ impl run_service::ApplicationPublishedFlowRunRepository for ApplicationPublicApi
                         run.run_mode,
                         domain::FlowRunMode::PublishedApiRun
                             | domain::FlowRunMode::WorkflowScheduleRun
+                            | domain::FlowRunMode::WorkflowEventRun
                     )
             })
             .cloned())
@@ -982,6 +986,44 @@ impl callback_resume::ApplicationPublishedCallbackAttemptRepository
         if active {
             return Ok(None);
         }
+        let qualified = inner
+            .callback_resume_attempts
+            .values()
+            .find(|attempt| attempt.id == attempt_id)
+            .is_some_and(|attempt| {
+                let callback = inner.callback_tasks.get(&attempt.callback_task_id);
+                match attempt.source.as_str() {
+                    "openai_responses" => {
+                        attempt
+                            .response_payload
+                            .get("responses_continuation")
+                            .is_some()
+                            || callback.is_some_and(|callback| {
+                                callback.callback_kind == "llm_tool_calls"
+                                    && callback.status == domain::CallbackTaskStatus::Completed
+                            })
+                    }
+                    "anthropic_messages" => {
+                        attempt
+                            .response_payload
+                            .get("anthropic_continuation")
+                            .is_some_and(Value::is_object)
+                            && callback.is_some_and(|callback| {
+                                callback.flow_run_id == attempt.flow_run_id
+                                    && callback.callback_kind == "llm_tool_calls"
+                                    && matches!(
+                                        callback.status,
+                                        domain::CallbackTaskStatus::Pending
+                                            | domain::CallbackTaskStatus::Completed
+                                    )
+                            })
+                    }
+                    _ => false,
+                }
+            });
+        if !qualified {
+            return Ok(None);
+        }
         let Some(attempt) = inner
             .callback_resume_attempts
             .values_mut()
@@ -989,11 +1031,12 @@ impl callback_resume::ApplicationPublishedCallbackAttemptRepository
         else {
             return Ok(None);
         };
-        if attempt.response_payload != response_payload
-            || !(attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Received
-                || (attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Processing
-                    && attempt.updated_at + time::Duration::minutes(5)
-                        <= OffsetDateTime::now_utc()))
+        if !domain::orchestration::callback_resume_payloads_match(
+            &attempt.response_payload,
+            &response_payload,
+        ) || !(attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Received
+            || (attempt.status == domain::FlowRunCallbackResumeAttemptStatus::Processing
+                && attempt.updated_at + time::Duration::minutes(5) <= OffsetDateTime::now_utc()))
         {
             return Ok(None);
         }

@@ -329,6 +329,15 @@ struct Consumer {
 #[async_trait]
 impl EventConsumer for Consumer {
     async fn recv(&self) -> Result<Option<EventDelivery>, EventBusError> {
+        while self.ready().await? {
+            if let Some(delivery) = self.try_recv()? {
+                return Ok(Some(delivery));
+            }
+        }
+        Ok(None)
+    }
+
+    async fn ready(&self) -> Result<bool, EventBusError> {
         let mut ticket = None;
         loop {
             let notified = self.inner.changed.notified();
@@ -337,41 +346,52 @@ impl EventConsumer for Consumer {
                 let mut state = self.inner.lock();
                 let topic = state
                     .topics
-                    .get_mut(&self.generation)
+                    .get(&self.generation)
                     .ok_or(EventBusError::Closed)?;
-                if let Some(id) = topic.buffered.pop_front() {
-                    if topic.buffered.is_empty() {
-                        topic.buffered = VecDeque::new();
-                    }
-                    let entry = state.entries.get_mut(&id).ok_or(EventBusError::Closed)?;
-                    entry.phase = Phase::InFlight;
-                    entry.phase_started = Instant::now();
-                    let body = entry
-                        .body
-                        .as_ref()
-                        .ok_or(EventBusError::InvalidBody)?
-                        .clone();
-                    state.received = state.received.saturating_add(1);
-                    return Ok(Some(EventDelivery::new(
-                        body,
-                        Box::new(DeliveryLease {
-                            inner: self.inner.clone(),
-                            id,
-                        }),
-                    )));
+                if !topic.buffered.is_empty() {
+                    return Ok(true);
                 }
                 if topic.closed {
-                    return Ok(None);
+                    return Ok(false);
                 }
                 if ticket.is_none() {
                     ticket = Some(WaitTicket::acquire(&self.inner, &mut state)?);
                 }
-                // Register with Notify only after the bounded ticket is acquired,
-                // under the state lock so a sender/close cannot race past registration.
+                // Register under the state lock, before a sender/close can wake us.
                 notified.as_mut().enable();
             }
             notified.await;
         }
+    }
+
+    fn try_recv(&self) -> Result<Option<EventDelivery>, EventBusError> {
+        let mut state = self.inner.lock();
+        let topic = state
+            .topics
+            .get_mut(&self.generation)
+            .ok_or(EventBusError::Closed)?;
+        let Some(id) = topic.buffered.pop_front() else {
+            return Ok(None);
+        };
+        if topic.buffered.is_empty() {
+            topic.buffered = VecDeque::new();
+        }
+        let entry = state.entries.get_mut(&id).ok_or(EventBusError::Closed)?;
+        entry.phase = Phase::InFlight;
+        entry.phase_started = Instant::now();
+        let body = entry
+            .body
+            .as_ref()
+            .ok_or(EventBusError::InvalidBody)?
+            .clone();
+        state.received = state.received.saturating_add(1);
+        Ok(Some(EventDelivery::new(
+            body,
+            Box::new(DeliveryLease {
+                inner: self.inner.clone(),
+                id,
+            }),
+        )))
     }
     fn close(&self) {
         self.inner.lock().close(self.generation);
@@ -631,6 +651,42 @@ impl EventBus for MemoryEventBus {
     }
     fn event_bus_snapshot(&self) -> EventBusSnapshot {
         self.inner.lock().snapshot()
+    }
+
+    fn try_reserve(&self, topic: &str, upper: u64) -> Result<Box<dyn EventPermit>, EventBusError> {
+        let mut state = self.inner.lock();
+        let result = (|| {
+            let limits = state.limits.ok_or(EventBusError::Unconfigured)?;
+            let generation = state.generation(topic)?;
+            if state.entries.len() >= limits.max_items
+                || upper
+                    > limits
+                        .max_json_bytes
+                        .saturating_sub(state.charged_json_bytes)
+            {
+                return Err(EventBusError::ResourceExhausted("event admission"));
+            }
+            let id = state.next_id()?;
+            state.entries.insert(
+                id,
+                Entry {
+                    generation,
+                    bytes: upper,
+                    body: None,
+                    phase: Phase::Reserved,
+                    phase_started: Instant::now(),
+                },
+            );
+            state.charged_json_bytes += upper;
+            Ok(Box::new(Permit {
+                inner: self.inner.clone(),
+                id,
+            }) as Box<dyn EventPermit>)
+        })();
+        if result.is_err() {
+            state.admission_rejected = state.admission_rejected.saturating_add(1);
+        }
+        result
     }
 
     async fn reserve(

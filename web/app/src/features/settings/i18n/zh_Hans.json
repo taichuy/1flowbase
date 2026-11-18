@@ -1,4 +1,7 @@
 {
+  "events": {
+    "title": "事件中心"
+  },
   "auto": {
     "ui_management": "UI 管理",
     "translation_catalog_title": "多语言",
@@ -102,6 +105,7 @@
     "incomplete_installation": "安装不完整",
     "multiple_selection_drop_down": "多选下拉",
     "memory_watch_connection_failed": "内存观察连接失败。",
+    "plugin_permissions": "插件",
     "backend_setting": "后台设置",
     "authorization_policy": "授权策略",
     "permission_policy_details": "详细配置 {{value1}}",
@@ -737,6 +741,7 @@
     "mcp_export_ready": "MCP 配置导出已生成",
     "mcp_get_interface_parameters": "获取接口参数",
     "mcp_get_interface_result": "获取返回结构",
+    "mcp_debug_no_arguments": "无需填写业务参数，可直接运行。",
     "mcp_mapping_overwrite_confirm_title": "覆盖当前 mapping？",
     "mcp_mapping_overwrite_confirm_content": "当前 mapping 已有内容，继续会用接口 schema 覆盖现有编辑内容。",
     "mcp_input_interface_layer": "接口层",
@@ -1073,7 +1078,8 @@
     "extension_upload_clear": "清空列表",
     "extension_upload_ready": "待上传",
     "extension_upload_remove": "移除",
-    "authentication_secret_kept": "已配置，留空保留原密钥"
+    "authentication_secret_kept": "已配置，留空保留原密钥",
+    "workflow_trigger_event": "事件触发"
   },
   "organization": {
     "title": "组织",

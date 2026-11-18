@@ -252,10 +252,7 @@ async fn live_debug_run_code_runtime_error_fails_without_host_stack() {
         flow_error_payload["error_code"],
         json!("code_runtime_error")
     );
-    assert_eq!(
-        flow_error_payload["message"],
-        json!("code execution failed")
-    );
+    assert_eq!(flow_error_payload["message"], json!("user failure"));
     assert!(!flow_error_payload
         .to_string()
         .to_ascii_lowercase()
@@ -275,10 +272,7 @@ async fn live_debug_run_code_runtime_error_fails_without_host_stack() {
         node_error_payload["error_code"],
         json!("code_runtime_error")
     );
-    assert_eq!(
-        node_error_payload["message"],
-        json!("code execution failed")
-    );
+    assert_eq!(node_error_payload["message"], json!("user failure"));
     assert!(!node_error_payload
         .to_string()
         .to_ascii_lowercase()

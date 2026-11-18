@@ -1,4 +1,5 @@
 use super::*;
+use crate::extension_bus::SnapshotAssembly;
 use crate::{
     _tests::support::{default_test_config, test_api_state_with_database_url},
     generation_dispatch::{GenerationDispatch, WeakGenerationDispatch},
@@ -417,7 +418,8 @@ async fn failed_candidate_catalog_releases_partial_assembly_and_preserves_servin
             .fork_generation(BTreeMap::new())
             .unwrap(),
     );
-    let service = crate::managed_services::ManagedServiceRegistration {
+    let service = crate::managed_services::ManagedServiceRegistration { shared_resource: None, publisher_namespace: "test".into(), data_models: Vec::new(),
+        display_name: "Fixture plugin".into(), description: "Fixture plugin operations".into(),
         installation_id: Uuid::now_v7(), plugin_code: "invalid-candidate".into(), plugin_version: "1.0.0".into(), pages: vec![],
         declaration: serde_json::from_value(json!({
             "scope":"system", "feature":{"feature_id":"invalid-candidate.settings","label":"Invalid candidate","description":"Reject candidate","route_id":"invalid-candidate","path":"/settings/invalid-candidate"},

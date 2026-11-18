@@ -5,8 +5,11 @@ on:
     branches: [beta, main, latest]
     paths:
       - api/apps/api-server/src/authentication_runtime/**
+      - api/crates/api/kernel/src/host/authentication_runtime/**
       - api/apps/api-server/src/extension_bus/authentication_activation*
+      - api/crates/api/kernel/src/contracts/extension_bus/authentication_activation*
       - api/apps/api-server/src/routes/identity/**
+      - api/crates/api/console-interaction/src/routes/identity/**
       - api/apps/api-server/src/_tests/identity_routes/**
       - api/crates/extension-contracts/src/authentication*
       - api/crates/extension-contracts/src/_tests/authentication*
@@ -24,8 +27,11 @@ on:
   pull_request:
     paths:
       - api/apps/api-server/src/authentication_runtime/**
+      - api/crates/api/kernel/src/host/authentication_runtime/**
       - api/apps/api-server/src/extension_bus/authentication_activation*
+      - api/crates/api/kernel/src/contracts/extension_bus/authentication_activation*
       - api/apps/api-server/src/routes/identity/**
+      - api/crates/api/console-interaction/src/routes/identity/**
       - api/apps/api-server/src/_tests/identity_routes/**
       - api/crates/extension-contracts/src/authentication*
       - api/crates/extension-contracts/src/_tests/authentication*
@@ -124,12 +130,14 @@ jobs:
       - name: Verify callback factory, browser transactions, revocation and safe projections
         run: |
           set -euo pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib --features tikv-jemallocator/stats external_auth 2>&1 | tee tmp/test-governance/github-authentication/ci/api-auth.log
+          cargo test --locked --manifest-path api/Cargo.toml -p api-console-interaction --lib external_auth 2>&1 | tee tmp/test-governance/github-authentication/ci/interaction-auth.log
+          node scripts/node/verify/cargo-test-results.js tmp/test-governance/github-authentication/ci/interaction-auth.log
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib --test api_private_contracts --test api_private_routes --features tikv-jemallocator/stats external_auth 2>&1 | tee tmp/test-governance/github-authentication/ci/api-auth.log
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/github-authentication/ci/api-auth.log
       - name: Verify personal methods and password verification boundaries
         run: |
           set -euo pipefail
-          cargo test --locked --manifest-path api/Cargo.toml -p api-server --lib --features tikv-jemallocator/stats me_authentication_methods 2>&1 | tee tmp/test-governance/github-authentication/ci/api-methods.log
+          cargo test --locked --manifest-path api/Cargo.toml -p api-server --test api_private_routes --features tikv-jemallocator/stats me_authentication_methods 2>&1 | tee tmp/test-governance/github-authentication/ci/api-methods.log
           node scripts/node/verify/cargo-test-results.js tmp/test-governance/github-authentication/ci/api-methods.log
       - name: Preserve candidate-bound evidence
         if: always()

@@ -10,6 +10,9 @@ import { FlowEditorKernel } from '../../../flow-editor';
 import { AgentFlowCanvasFrame } from './AgentFlowCanvasFrame';
 import './styles/index.css';
 
+const EMPTY_ENVIRONMENT_VARIABLES: ConsoleApplicationEnvironmentVariable[] = [];
+const EMPTY_NODE_CATALOG: ConsoleApplicationNodeCatalog = { nodes: [] };
+
 export interface AgentFlowEditorAssemblyProps {
   applicationId: string;
   applicationName: string;
@@ -29,8 +32,8 @@ export function AgentFlowEditorAssembly({
   applicationId,
   applicationName,
   initialState,
-  initialEnvironmentVariables = [],
-  nodeCatalog = { nodes: [] },
+  initialEnvironmentVariables = EMPTY_ENVIRONMENT_VARIABLES,
+  nodeCatalog = EMPTY_NODE_CATALOG,
   saveDraftOverride,
   restoreVersionOverride,
   topSlot
@@ -38,6 +41,7 @@ export function AgentFlowEditorAssembly({
   return (
     <div data-testid="agent-flow-editor-assembly">
       <FlowEditorKernel
+        key={applicationId}
         initialState={initialState}
         slots={{
           toolbar: topSlot,

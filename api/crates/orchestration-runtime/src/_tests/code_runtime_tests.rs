@@ -29,6 +29,77 @@ struct RealCodeFixtureInvoker {
     code: QuickJsCodeInvoker,
 }
 
+struct DiagnosticProtectionInvoker {
+    fail: bool,
+}
+
+#[async_trait]
+impl CodeInvoker for DiagnosticProtectionInvoker {
+    async fn invoke_code_node(
+        &self,
+        runtime: &CompiledCodeRuntime,
+        config: Value,
+        input: Value,
+    ) -> Result<CodeInvocationOutput> {
+        QuickJsCodeInvoker::default()
+            .invoke_code_node(runtime, config, input)
+            .await
+    }
+
+    async fn protect_protocol_context_logs(
+        &self,
+        logs: &mut Vec<crate::code_runtime::ConsoleLogEntry>,
+    ) -> Result<()> {
+        if self.fail {
+            return Err(anyhow!("protocol_context_protection_unavailable"));
+        }
+        for log in logs {
+            log.message = log.message.replace("raw-context-secret", "[protected]");
+            for arg in &mut log.args {
+                if let Some(text) = arg.as_str() {
+                    *arg = json!(text.replace("raw-context-secret", "[protected]"));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn code_runtime_exception_diagnostic_is_protected_before_persistence() {
+    let node = code_node_with_runtime(quickjs_runtime(
+        "function main(){console.warn('raw-context-secret');throw Error('HTTP 409 raw-context-secret')}",
+    ));
+    for fail in [false, true] {
+        let execution = execute_code_node(
+            &code_runtime_plan(),
+            &node,
+            &Map::new(),
+            &DiagnosticProtectionInvoker { fail },
+        )
+        .await
+        .unwrap();
+        let error = execution.error_payload.unwrap();
+        assert!(!error.to_string().contains("raw-context-secret"));
+        assert!(!execution
+            .debug_payload
+            .to_string()
+            .contains("raw-context-secret"));
+        assert!(!execution
+            .output_payload
+            .to_string()
+            .contains("raw-context-secret"));
+        assert_eq!(
+            error["message"],
+            json!(if fail {
+                "code execution failed"
+            } else {
+                "HTTP 409 [protected]"
+            })
+        );
+    }
+}
+
 #[async_trait]
 impl ProviderInvoker for CodeFixtureInvoker {
     async fn invoke_llm(
@@ -668,12 +739,12 @@ function main(inputs) {
 }
 
 #[tokio::test]
-async fn code_runtime_quickjs_console_logs_survive_sanitized_runtime_error() {
+async fn code_runtime_quickjs_console_logs_survive_descriptive_runtime_error() {
     let runtime = quickjs_runtime(
         r#"
 function main() {
   console.error("before throw", { detail: "visible debug fact" });
-  throw new Error("secret host stack should not leak");
+  throw new Error("Create deletion job HTTP 409: agent_logs_delete_job_active");
 }
 "#,
     );
@@ -689,15 +760,18 @@ function main() {
         .expect("runtime throw should produce an error payload");
     assert_eq!(error_payload["error_code"], json!("code_runtime_error"));
     assert!(error_payload.get("error_kind").is_none());
-    assert_eq!(error_payload["message"], json!("code execution failed"));
+    assert_eq!(
+        error_payload["message"],
+        json!("Create deletion job HTTP 409: agent_logs_delete_job_active")
+    );
     assert_eq!(
         error_payload["runtime_message"],
-        json!("runtime_error: code execution failed")
+        json!("runtime_error: Create deletion job HTTP 409: agent_logs_delete_job_active")
     );
     assert!(!error_payload["runtime_message"]
         .as_str()
         .unwrap()
-        .contains("secret host stack"));
+        .contains(" at main"));
     assert_eq!(
         execution.debug_payload["console_logs"],
         json!([
@@ -928,7 +1002,7 @@ async fn code_runtime_invoker_error_yields_stable_failed_stop_reason_and_trace_p
 }
 
 #[tokio::test]
-async fn code_runtime_missing_declared_output_projects_empty_variable_payload() {
+async fn code_runtime_missing_declared_output_fails_at_its_source_before_downstream_execution() {
     let outcome = start_flow_debug_run(
         &code_runtime_plan(),
         &json!({ "node-start": { "query": "hello" } }),
@@ -942,18 +1016,20 @@ async fn code_runtime_missing_declared_output_projects_empty_variable_payload() 
 
     match outcome.stop_reason {
         ExecutionStopReason::Failed(failure) => {
-            assert_eq!(failure.node_id, "node-answer");
-            assert!(failure.error_payload["message"]
+            assert_eq!(failure.node_id, "node-code");
+            assert_eq!(
+                failure.error_payload["error_code"],
+                json!("code_output_contract_error")
+            );
+            assert!(failure.error_payload["runtime_message"]
                 .as_str()
                 .unwrap()
-                .contains("selector path not found: node-code.result"));
+                .contains("declared output `result.result` is missing"));
         }
-        other => panic!("expected downstream binding failure, got {other:?}"),
+        other => panic!("expected source output contract failure, got {other:?}"),
     }
-    assert_eq!(
-        outcome.node_traces[1].output_payload,
-        json!({ "result": { "unexpected": true }, "error": null })
-    );
+    assert_eq!(outcome.node_traces.len(), 2);
+    assert_eq!(outcome.node_traces[1].output_payload["result"], Value::Null);
 }
 
 #[tokio::test]
@@ -1007,6 +1083,49 @@ async fn code_runtime_rejects_declared_output_schema_mismatch() {
             );
         }
         other => panic!("expected code output contract failure, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn code_runtime_whole_object_schema_distinguishes_required_optional_and_null() {
+    for payload in [json!({"present":null}), json!({"present":"ok"}), json!({})] {
+        let mut plan = code_runtime_plan();
+        plan.nodes.get_mut("node-code").unwrap().outputs = vec![CompiledOutput {
+            key: "result".into(),
+            title: "Result".into(),
+            value_type: "object".into(),
+            selector: vec!["result".into()],
+            json_schema: Some(
+                json!({"type":"object","required":["present"],"properties":{"present":{"type":["string","null"]},"optional":{"type":"string"}}}),
+            ),
+        }];
+        let answer = plan.nodes.get_mut("node-answer").unwrap();
+        answer.bindings.clear();
+        let outcome = start_flow_debug_run(
+            &plan,
+            &json!({"node-start":{"query":"hello"}}),
+            &CodeFixtureInvoker {
+                output_payload: payload.clone(),
+                fail_message: None,
+            },
+        )
+        .await
+        .unwrap();
+        if payload.get("present").is_some() {
+            assert_eq!(outcome.stop_reason, ExecutionStopReason::Completed);
+            assert_eq!(outcome.variable_pool["node-code"]["result"], payload);
+        } else {
+            match outcome.stop_reason {
+                ExecutionStopReason::Failed(failure) => {
+                    assert_eq!(failure.node_id, "node-code");
+                    assert_eq!(
+                        failure.error_payload["error_code"],
+                        "code_output_contract_error"
+                    );
+                }
+                other => panic!("expected required field failure, got {other:?}"),
+            }
+        }
     }
 }
 

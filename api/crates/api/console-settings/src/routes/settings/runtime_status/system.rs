@@ -1,0 +1,592 @@
+#[path = "system/event_projection.rs"]
+mod event_projection;
+#[path = "system/runtime_dto.rs"]
+mod runtime_dto;
+pub use runtime_dto::*;
+
+use std::sync::Arc;
+
+use axum::{
+    extract::{Path, Query, State},
+    http::{header::ACCEPT_LANGUAGE, HeaderMap},
+    Json, Router,
+};
+use control_plane::system_runtime::SystemRuntimeService;
+use interface_runtime::{InterfaceContract, UserPrincipal};
+use runtime_profile::{LocaleResolution, LocaleResolutionInput, RuntimeProfile};
+use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
+
+use crate::{
+    app_state::ApiState,
+    error_response::ApiError,
+    response::ApiSuccess,
+    routes::console_interface::{
+        self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
+        ConsoleInterfaceTargetError,
+    },
+    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+    runtime_profile_client::RuntimeProfileSnapshotCache,
+};
+
+pub use super::release_status::{
+    ConsoleReleaseInfoResponse, ConsoleReleaseStatusResponse, ConsoleReleaseUpgradeCommandsResponse,
+};
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct SystemRuntimeProfileQuery {
+    pub locale: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(untagged)]
+pub enum SystemInterfaceInput {
+    ReleaseStatus,
+    RuntimeProfile {
+        #[serde(rename = "query", serialize_with = "serialize_locale_query")]
+        query_locale: Option<String>,
+        #[serde(skip)]
+        explicit_header_locale: Option<String>,
+        #[serde(skip)]
+        accept_language: Option<String>,
+    },
+    ProcessList,
+    TerminateProcess {
+        pid: u32,
+    },
+}
+impl crate::openapi_interface::json_contract::JsonApiInput for SystemInterfaceInput {}
+
+// The input stores the query locale separately from opaque header resolution.
+fn serialize_locale_query<S: serde::Serializer>(
+    locale: &Option<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    #[derive(serde::Serialize)]
+    struct Query<'a> {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        locale: &'a Option<String>,
+    }
+    serde::Serialize::serialize(&Query { locale }, serializer)
+}
+
+impl InterfaceContract for SystemInterfaceInput {
+    fn managed_projection_schema() -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(mp::union_schema(vec![
+            mp::object_schema([("variant", mp::tag_schema("ReleaseStatus"))]),
+            mp::object_schema([
+                ("variant", mp::tag_schema("RuntimeProfile")),
+                (
+                    "query_locale",
+                    serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
+                ),
+                (
+                    "explicit_header_locale",
+                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                ),
+                (
+                    "accept_language",
+                    serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
+                ),
+            ]),
+            mp::object_schema([("variant", mp::tag_schema("ProcessList"))]),
+            mp::object_schema([
+                ("variant", mp::tag_schema("TerminateProcess")),
+                ("pid", serde_json::json!({"type":"integer"})),
+            ]),
+        ]))
+    }
+    fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
+        use crate::extension_bus::managed_projection as mp;
+        Some(match self {
+            Self::ReleaseStatus => mp::object_value([(
+                "variant",
+                serde_json::Value::String("ReleaseStatus".to_owned()),
+            )]),
+            Self::RuntimeProfile {
+                query_locale: _field_query_locale,
+                explicit_header_locale: _field_explicit_header_locale,
+                accept_language: _field_accept_language,
+                ..
+            } => mp::object_value([
+                (
+                    "variant",
+                    serde_json::Value::String("RuntimeProfile".to_owned()),
+                ),
+                (
+                    "query_locale",
+                    match (_field_query_locale).as_ref() {
+                        Some(item) => mp::text(item)?,
+                        None => serde_json::Value::Null,
+                    },
+                ),
+                (
+                    "explicit_header_locale",
+                    match (_field_explicit_header_locale).as_ref() {
+                        Some(item) => {
+                            mp::object_value([("byte_count", serde_json::json!((item).len()))])
+                        }
+                        None => serde_json::Value::Null,
+                    },
+                ),
+                (
+                    "accept_language",
+                    match (_field_accept_language).as_ref() {
+                        Some(item) => {
+                            mp::object_value([("byte_count", serde_json::json!((item).len()))])
+                        }
+                        None => serde_json::Value::Null,
+                    },
+                ),
+            ]),
+            Self::ProcessList => mp::object_value([(
+                "variant",
+                serde_json::Value::String("ProcessList".to_owned()),
+            )]),
+            Self::TerminateProcess { pid: _field_pid } => mp::object_value([
+                (
+                    "variant",
+                    serde_json::Value::String("TerminateProcess".to_owned()),
+                ),
+                ("pid", serde_json::json!(_field_pid)),
+            ]),
+        })
+    }
+
+    const CONTRACT_ID: &'static str = "console-system-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+pub enum SystemInterfaceOutput {
+    ReleaseStatus(ConsoleReleaseStatusResponse),
+    RuntimeProfile(SystemRuntimeProfileResponse),
+    ProcessList(SystemRuntimeProcessListResponse),
+    ProcessTermination(SystemProcessTerminationResponse),
+}
+
+pub struct SystemInterfaceDependencies {
+    pub store: storage_durable_postgres::MainDurableStore,
+    pub profiles: RuntimeProfileSnapshotCache,
+    pub api_node_id: String,
+    pub provider_install_root: String,
+    pub host_extension_dropin_root: String,
+    pub process_sampler: Arc<runtime_profile::RuntimeProcessSampler>,
+    pub network_egress: crate::network_egress_client::NetworkEgressHttpClientResolver,
+}
+struct SystemInterfaceAdapter(SystemInterfaceDependencies);
+impl ConsoleInterfacePort<SystemInterfaceInput, SystemInterfaceOutput> for SystemInterfaceAdapter {
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: SystemInterfaceInput,
+    ) -> ConsoleInterfaceFuture<'a, SystemInterfaceOutput> {
+        Box::pin(async move {
+            match input {
+                SystemInterfaceInput::ReleaseStatus => Ok(SystemInterfaceOutput::ReleaseStatus(
+                    super::release_status::fetch_console_release_status(
+                        &self.0.network_egress,
+                        principal.actor().current_workspace_id,
+                    )
+                    .await,
+                )),
+                SystemInterfaceInput::RuntimeProfile {
+                    query_locale,
+                    explicit_header_locale,
+                    accept_language,
+                } => {
+                    let access = SystemRuntimeService::new(
+                        self.0.store.for_actor(principal.actor().clone()),
+                    )
+                    .authorize_view(principal.actor().user_id)
+                    .await
+                    .map_err(ApiError::from)
+                    .map_err(ConsoleInterfaceTargetError)?;
+                    let locale = runtime_profile::resolve_locale(LocaleResolutionInput {
+                        query_locale,
+                        explicit_header_locale,
+                        user_preferred_locale: access.preferred_locale,
+                        accept_language,
+                        fallback_locale: runtime_profile::FALLBACK_LOCALE,
+                        supported_locales: runtime_profile::SUPPORTED_LOCALES
+                            .iter()
+                            .map(|value| value.to_string())
+                            .collect(),
+                    });
+                    let profiles = self
+                        .0
+                        .profiles
+                        .get_or_refresh()
+                        .await
+                        .map_err(ApiError::from)
+                        .map_err(ConsoleInterfaceTargetError)?;
+                    Ok(SystemInterfaceOutput::RuntimeProfile(
+                        merge_runtime_profiles(
+                            locale,
+                            profiles.api_profile,
+                            profiles.host_profile,
+                            self.0.api_node_id.clone(),
+                            self.0.provider_install_root.clone(),
+                            self.0.host_extension_dropin_root.clone(),
+                        ),
+                    ))
+                }
+                SystemInterfaceInput::ProcessList => {
+                    let process_sampler = Arc::clone(&self.0.process_sampler);
+                    let process_snapshot =
+                        tokio::task::spawn_blocking(move || process_sampler.collect())
+                            .await
+                            .map_err(ApiError::from)
+                            .map_err(ConsoleInterfaceTargetError)?;
+                    Ok(SystemInterfaceOutput::ProcessList(
+                        SystemRuntimeProcessListResponse {
+                            process_total: process_snapshot.total,
+                            processes: process_snapshot
+                                .processes
+                                .into_iter()
+                                .map(SystemProcessResponse::from)
+                                .collect(),
+                        },
+                    ))
+                }
+                SystemInterfaceInput::TerminateProcess { pid } => {
+                    let process_sampler = Arc::clone(&self.0.process_sampler);
+                    let outcome =
+                        tokio::task::spawn_blocking(move || process_sampler.terminate(pid))
+                            .await
+                            .map_err(ApiError::from)
+                            .map_err(ConsoleInterfaceTargetError)?;
+                    Ok(SystemInterfaceOutput::ProcessTermination(
+                        SystemProcessTerminationResponse {
+                            pid,
+                            outcome: termination_outcome_label(outcome).to_owned(),
+                        },
+                    ))
+                }
+            }
+        })
+    }
+}
+
+pub fn compile_registry(
+    dependencies: SystemInterfaceDependencies,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+        ConsoleInterfaceDeclaration {
+            interface_id: "system.runtime_profile.view",
+            binding_id: "http.console.system.runtime-profile.get.v1",
+            method: "GET",
+            path: "/api/console/system/runtime-profile",
+            mutating: false,
+        },
+        ConsoleInterfaceDeclaration {
+            interface_id: "system.release_status.view",
+            binding_id: "http.console.system.release-status.get.v1",
+            method: "GET",
+            path: "/api/console/system/release-status",
+            mutating: false,
+        },
+        ConsoleInterfaceDeclaration {
+            interface_id: "system.runtime_processes.view",
+            binding_id: "http.console.system.runtime-processes.get.v1",
+            method: "GET",
+            path: "/api/console/system/runtime-processes",
+            mutating: false,
+        },
+        ConsoleInterfaceDeclaration {
+            interface_id: "system.runtime_process.terminate",
+            binding_id: "http.console.system.runtime-profile.process-terminate.post.v1",
+            method: "POST",
+            path: "/api/console/system/runtime-profile/processes/{pid}/terminate",
+            mutating: true,
+        },
+    ];
+    console_interface::compile_registry(
+        "api-server.console-system",
+        "graph:console-system-v1",
+        DECLARATIONS,
+        Arc::new(SystemInterfaceAdapter(dependencies)),
+    )
+}
+
+pub fn router() -> Router<Arc<ApiState>> {
+    route_assembly().into_router()
+}
+
+pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
+
+    ConsoleRouteAssembly::new()
+        .route(
+            "/system/runtime-profile",
+            console_get(
+                get_runtime_profile,
+                ConsoleOperation("system.runtime_profile.view".to_string()),
+            ),
+        )
+        .route(
+            "/system/runtime-processes",
+            console_get(
+                get_runtime_processes,
+                ConsoleOperation("system.runtime_processes.view".to_string()),
+            ),
+        )
+        .route(
+            "/system/release-status",
+            console_get(
+                get_release_status,
+                ConsoleOperation("system.release_status.view".to_string()),
+            ),
+        )
+        .route(
+            "/system/runtime-profile/processes/:pid/terminate",
+            console_post(
+                terminate_runtime_process,
+                ConsoleOperation("system.runtime_process.terminate".to_string()),
+            ),
+        )
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/system/release-status",
+    responses(
+        (status = 200, body = ConsoleReleaseStatusResponse),
+        (status = 401, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn get_release_status(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<ConsoleReleaseStatusResponse>>, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    let SystemInterfaceOutput::ReleaseStatus(value) = console_interface::invoke_non_create(
+        snapshot_state,
+        "http.console.system.release-status.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        SystemInterfaceInput::ReleaseStatus,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/system/runtime-profile",
+    params(SystemRuntimeProfileQuery),
+    responses(
+        (status = 200, body = SystemRuntimeProfileResponse),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn get_runtime_profile(
+    State(state): State<Arc<ApiState>>,
+    Query(query): Query<SystemRuntimeProfileQuery>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<SystemRuntimeProfileResponse>>, ApiError> {
+    let input = SystemInterfaceInput::RuntimeProfile {
+        query_locale: query.locale,
+        explicit_header_locale: header_locale(&headers),
+        accept_language: header_accept_language(&headers),
+    };
+    let snapshot_state = Arc::clone(&state);
+    let SystemInterfaceOutput::RuntimeProfile(value) = console_interface::invoke_non_create(
+        snapshot_state,
+        "http.console.system.runtime-profile.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        input,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
+}
+
+#[utoipa::path(
+    operation_id = "system.runtime_processes.view",
+    get,
+    path = "/api/console/system/runtime-processes",
+    responses(
+        (status = 200, body = SystemRuntimeProcessListResponse),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn get_runtime_processes(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<SystemRuntimeProcessListResponse>>, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    let SystemInterfaceOutput::ProcessList(value) = console_interface::invoke_non_create(
+        snapshot_state,
+        "http.console.system.runtime-processes.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        SystemInterfaceInput::ProcessList,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
+}
+
+#[utoipa::path(
+    operation_id = "system.runtime_process.terminate",
+    post,
+    path = "/api/console/system/runtime-profile/processes/{pid}/terminate",
+    params(("pid" = u32, Path, description = "Process id to terminate")),
+    responses(
+        (status = 200, body = SystemProcessTerminationResponse),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn terminate_runtime_process(
+    State(state): State<Arc<ApiState>>,
+    Path(pid): Path<u32>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<SystemProcessTerminationResponse>>, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    let SystemInterfaceOutput::ProcessTermination(value) = console_interface::invoke_non_create(
+        snapshot_state,
+        "http.console.system.runtime-profile.process-terminate.post.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        SystemInterfaceInput::TerminateProcess { pid },
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
+}
+
+fn header_locale(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("x-1flowbase-locale")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string)
+}
+
+fn header_accept_language(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(ACCEPT_LANGUAGE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string)
+}
+
+fn termination_outcome_label(
+    outcome: runtime_profile::RuntimeProcessTerminationOutcome,
+) -> &'static str {
+    use runtime_profile::RuntimeProcessTerminationOutcome as Outcome;
+    match outcome {
+        Outcome::Signalled => "signalled",
+        Outcome::NotObservable => "not_observable",
+        Outcome::Forbidden => "forbidden",
+        Outcome::Failed => "failed",
+    }
+}
+
+fn merge_runtime_profiles(
+    locale_meta: LocaleResolution,
+    api_profile: RuntimeProfile,
+    host_profile: RuntimeProfile,
+    api_node_id: String,
+    provider_install_root: String,
+    host_extension_dropin_root: String,
+) -> SystemRuntimeProfileResponse {
+    let hosts = vec![host_from_profiles(
+        &api_profile,
+        &[&api_profile],
+        vec!["api-server", "runtime-extension-host"],
+    )];
+    let runtime_targets = vec![
+        runtime_target_from_profile(&api_profile),
+        runtime_target_from_profile(&host_profile),
+    ];
+
+    SystemRuntimeProfileResponse {
+        api_node_id,
+        provider_install_root,
+        host_extension_dropin_root,
+        related_process_memory_complete: true,
+        locale_meta: locale_meta.into(),
+        topology: SystemRuntimeTopologyResponse {
+            relationship: SystemRuntimeRelationship::SameHost,
+        },
+        services: SystemRuntimeServicesResponse {
+            api_server: service_from_profile(&api_profile),
+            // Keep the established response key while projecting the real in-process service.
+            plugin_runner: service_from_profile(&host_profile),
+        },
+        hosts,
+        runtime_targets,
+    }
+}
+
+fn runtime_target_from_profile(profile: &RuntimeProfile) -> SystemRuntimeTargetResponse {
+    SystemRuntimeTargetResponse {
+        target_id: profile.service.clone(),
+        reachable: true,
+        host_fingerprint: Some(profile.host_fingerprint.clone()),
+        metrics: Some(SystemRuntimeMetricsResponse::from(&profile.metrics)),
+    }
+}
+
+fn host_from_profiles(
+    profile: &RuntimeProfile,
+    related_profiles: &[&RuntimeProfile],
+    services: Vec<&str>,
+) -> SystemRuntimeHostResponse {
+    let (related_process_bytes, related_process_count) =
+        related_profiles
+            .iter()
+            .fold((0_u64, 0_u64), |(bytes, count), related_profile| {
+                (
+                    bytes.saturating_add(related_profile.metrics.memory.related_process_bytes),
+                    count.saturating_add(related_profile.metrics.memory.related_process_count),
+                )
+            });
+    SystemRuntimeHostResponse {
+        host_fingerprint: profile.host_fingerprint.clone(),
+        platform: SystemRuntimePlatformResponse {
+            os: profile.platform.os.clone(),
+            arch: profile.platform.arch.clone(),
+            libc: profile.platform.libc.clone(),
+            rust_target_triple: profile.platform.rust_target.clone(),
+        },
+        cpu: SystemRuntimeCpuResponse {
+            logical_count: profile.cpu.logical_count,
+        },
+        memory: SystemRuntimeMemoryResponse {
+            total_bytes: profile.memory.total_bytes,
+            total_gb: profile.memory.total_gb,
+            available_bytes: profile.memory.available_bytes,
+            available_gb: profile.memory.available_gb,
+            process_bytes: profile.memory.process_bytes,
+            process_gb: profile.memory.process_gb,
+        },
+        related_process_bytes,
+        related_process_count,
+        services: services.into_iter().map(str::to_string).collect(),
+    }
+}
+
+fn service_from_profile(profile: &RuntimeProfile) -> SystemRuntimeServiceResponse {
+    SystemRuntimeServiceResponse {
+        reachable: true,
+        service: profile.service.clone(),
+        status: Some(profile.service_status.clone()),
+        version: Some(profile.service_version.clone()),
+        host_fingerprint: Some(profile.host_fingerprint.clone()),
+    }
+}
+
+#[path = "system/output_projection.rs"]
+mod output_projection;

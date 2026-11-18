@@ -238,7 +238,7 @@ async fn project_round(
         )
         .await
         .unwrap();
-        (attached.events, None)
+        (attached.into_events_for_test_support(), None)
     } else {
         let (sender, receiver) = mpsc::channel(8);
         let forwarding =
@@ -289,7 +289,7 @@ async fn failed_projected_ack_cannot_inject_old_or_future_tools_into_selected_re
     let (sender, mut receiver) = mpsc::channel(8);
     let forward = spawn_typed_stream(&state, &run, Vec::new(), live, sender);
     let input = receiver.recv().await.unwrap();
-    assert_eq!(input.envelope.payload, old_payload);
+    assert_eq!(input.envelope_for_test_support().payload, old_payload);
     input.into_parts().2.unwrap().projected();
     while receiver.recv().await.is_some() {}
     forward.await.unwrap();

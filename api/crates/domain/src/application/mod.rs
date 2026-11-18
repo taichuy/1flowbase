@@ -27,6 +27,7 @@ impl ApplicationType {
 pub enum WorkflowTriggerType {
     Extension,
     Schedule,
+    Event,
 }
 
 impl WorkflowTriggerType {
@@ -34,6 +35,7 @@ impl WorkflowTriggerType {
         match self {
             Self::Extension => "extension",
             Self::Schedule => "schedule",
+            Self::Event => "event",
         }
     }
 
@@ -41,6 +43,7 @@ impl WorkflowTriggerType {
         match value {
             "extension" => Some(Self::Extension),
             "schedule" => Some(Self::Schedule),
+            "event" => Some(Self::Event),
             _ => None,
         }
     }

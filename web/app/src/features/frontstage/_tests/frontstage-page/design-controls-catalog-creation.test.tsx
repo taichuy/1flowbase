@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { beforeEach, describe, test, expect, vi } from 'vitest';
 import {
   FrontStagePageHarness,
   SLOW_FRONTSTAGE_TEST_TIMEOUT,
@@ -15,7 +15,6 @@ import {
 } from './design-controls.fixtures';
 import { AppProviders } from '../../../../app/AppProviders';
 import { FrontStagePage } from '../../pages/FrontStagePage';
-import { type NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import {
   act,
   fireEvent,
@@ -23,6 +22,27 @@ import {
   screen,
   waitFor
 } from '@testing-library/react';
+
+const modelingApi = vi.hoisted(() => ({
+  fetchConsoleDataModels: vi.fn(),
+  fetchConsoleDataSources: vi.fn()
+}));
+
+vi.mock('@1flowbase/api-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@1flowbase/api-client')>()),
+  ...modelingApi
+}));
+
+beforeEach(() => {
+  modelingApi.fetchConsoleDataModels.mockResolvedValue([]);
+  modelingApi.fetchConsoleDataSources.mockResolvedValue([]);
+});
+
+async function chooseCatalogEntry(title = 'JS 区块') {
+  fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+  expect(blockTreeApi.createFrontstageBlockNode).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByRole('menuitem', { name: title }));
+}
 
 describe('FrontStagePage - design controls', () => {
   test('shows real page tree operation states without local draft wording', () => {
@@ -82,7 +102,7 @@ describe('FrontStagePage - design controls', () => {
     expect(screen.getByText('保存中')).toBeInTheDocument();
   });
 
-  test('R8-AC-001/005 directly creates the sole Catalog entry atomically', async () => {
+  test('R8-AC-001/005 atomically creates the explicitly selected Catalog entry', async () => {
     authenticate(['frontstage.page.design']);
     const selectedTemplate = `export default function ReportBlock() {
   return <p>Selected report template</p>;
@@ -117,7 +137,7 @@ describe('FrontStagePage - design controls', () => {
     );
 
     activateDesignMode();
-    fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+    await chooseCatalogEntry('Third-party report');
 
     await waitFor(() =>
       expect(blockTreeApi.createFrontstageBlockNode).toHaveBeenCalledOnce()
@@ -180,7 +200,7 @@ describe('FrontStagePage - design controls', () => {
     );
 
     activateDesignMode();
-    fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+    await chooseCatalogEntry();
 
     expect(
       await screen.findByText('Catalog entry 缺少代码模板')
@@ -213,44 +233,65 @@ describe('FrontStagePage - design controls', () => {
     expect(blockTreeApi.createFrontstageBlockNode).not.toHaveBeenCalled();
   });
 
-  test.each([
-    {
-      label: 'no entry',
-      entries: [] as NormalizedFrontstageBlockCatalogEntry[],
-      message: '当前没有可用区块目录项，暂时无法新增区块。'
-    },
-    {
-      label: 'multiple entries',
-      entries: [createCatalogEntry(), createCatalogEntry({ id: 'second' })],
-      message: '区块目录加载失败'
-    }
-  ])(
-    'R8-AC-004 rejects $label without choosing a fallback',
-    async ({ entries, message }) => {
-      authenticate(['frontstage.page.design']);
-      mockFrontstageBlockCatalog(entries);
+  test('R8-AC-004 shows an empty catalog without choosing a fallback', async () => {
+    authenticate(['frontstage.page.design']);
+    mockFrontstageBlockCatalog([]);
+    render(
+      <AppProviders>
+        <FrontStagePageHarness
+          pageId="page-1"
+          tabId="tab-1"
+          initialPageTree={[createBackendPage('page-1')]}
+          pageContent={createPageContent()}
+        />
+      </AppProviders>
+    );
+    activateDesignMode();
+    fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+    expect(
+      await screen.findByText('当前没有可用区块目录项，暂时无法新增区块。')
+    ).toBeInTheDocument();
+    expect(blockTreeApi.createFrontstageBlockNode).not.toHaveBeenCalled();
+  });
 
-      render(
-        <AppProviders>
-          <FrontStagePageHarness
-            pageId="page-1"
-            tabId="tab-1"
-            initialPageTree={[createBackendPage('page-1')]}
-            pageContent={createPageContent()}
-          />
-        </AppProviders>
-      );
-
-      activateDesignMode();
-      fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
-
-      expect(await screen.findByText(message)).toBeInTheDocument();
-      expect(blockTreeApi.createFrontstageBlockNode).not.toHaveBeenCalled();
-      expect(
-        screen.queryByRole('dialog', { name: '新增区块' })
-      ).not.toBeInTheDocument();
-    }
-  );
+  test('creates the chosen entry when multiple catalog entries are available', async () => {
+    authenticate(['frontstage.page.design']);
+    mockFrontstageBlockCatalog([
+      createCatalogEntry(),
+      createCatalogEntry({
+        id: 'reports:report',
+        providerCode: 'reports',
+        contributionCode: 'report',
+        title: 'Report block'
+      })
+    ]);
+    render(
+      <AppProviders>
+        <FrontStagePageHarness
+          pageId="page-1"
+          tabId="tab-1"
+          initialPageTree={[createBackendPage('page-1')]}
+          pageContent={createPageContent()}
+        />
+      </AppProviders>
+    );
+    activateDesignMode();
+    await chooseCatalogEntry('Report block');
+    await waitFor(() =>
+      expect(blockTreeApi.createFrontstageBlockNode).toHaveBeenCalledOnce()
+    );
+    expect(blockTreeApi.createFrontstageBlockNode).toHaveBeenCalledWith(
+      'workspace-1',
+      'page-1',
+      expect.objectContaining({
+        runtime_descriptor: expect.objectContaining({
+          catalog: expect.objectContaining({ providerCode: 'reports' }),
+          contribution: expect.objectContaining({ code: 'report' })
+        })
+      }),
+      'csrf-123'
+    );
+  });
 
   test('disables Add Block while page content is saving', () => {
     authenticate(['frontstage.page.design']);
@@ -273,7 +314,7 @@ describe('FrontStagePage - design controls', () => {
     expect(screen.getByText('区块保存中')).toBeInTheDocument();
   });
 
-  test('R8-AC-003 disables direct creation while the Catalog is loading', () => {
+  test('R8-AC-003 disables the creation menu while the Catalog is loading', () => {
     authenticate(['frontstage.page.design']);
     mockFrontstageBlockCatalog([createCatalogEntry()], { loading: true });
 
@@ -292,7 +333,7 @@ describe('FrontStagePage - design controls', () => {
     expect(screen.getByRole('button', { name: '创建区块' })).toBeDisabled();
   });
 
-  test('R8-AC-003 prevents duplicate direct creation while the first request is pending', async () => {
+  test('R8-AC-003 prevents duplicate creation while the selected entry is pending', async () => {
     authenticate(['frontstage.page.design']);
     mockFrontstageBlockCatalog([createCatalogEntry()]);
     let completeCreation: (() => void) | undefined;
@@ -323,7 +364,9 @@ describe('FrontStagePage - design controls', () => {
     activateDesignMode();
     const createButton = screen.getByRole('button', { name: '创建区块' });
     fireEvent.click(createButton);
-    fireEvent.click(createButton);
+    const entry = await screen.findByRole('menuitem', { name: 'JS 区块' });
+    fireEvent.click(entry);
+    fireEvent.click(entry);
 
     await waitFor(() =>
       expect(blockTreeApi.createFrontstageBlockNode).toHaveBeenCalledOnce()
@@ -352,7 +395,7 @@ describe('FrontStagePage - design controls', () => {
     );
 
     activateDesignMode();
-    fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+    await chooseCatalogEntry();
 
     expect(await screen.findByText('区块保存失败')).toBeInTheDocument();
     expect(screen.getByText('request failed')).toBeInTheDocument();
@@ -378,7 +421,7 @@ describe('FrontStagePage - design controls', () => {
     );
 
     activateDesignMode();
-    fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+    await chooseCatalogEntry();
 
     expect(await screen.findByText('区块保存失败')).toBeInTheDocument();
     expect(screen.getByText('create failed')).toBeInTheDocument();
@@ -435,7 +478,7 @@ describe('FrontStagePage - design controls', () => {
       );
 
       activateDesignMode();
-      fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+      await chooseCatalogEntry();
 
       await waitFor(() =>
         expect(blockTreeApi.createFrontstageBlockNode).toHaveBeenCalledTimes(1)

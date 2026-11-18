@@ -1,0 +1,21 @@
+#[path = "communication_runtime/mod.rs"]
+pub mod communication_runtime;
+#[path = "event_center/mod.rs"]
+pub mod event_center;
+#[path = "local_command/mod.rs"]
+pub mod local_command;
+#[path = "managed_services/mod.rs"]
+pub mod managed_services;
+#[path = "openapi/mod.rs"]
+pub mod openapi;
+#[path = "routes/mod.rs"]
+pub mod routes;
+#[path = "runtime_data_model_docs.rs"]
+pub mod runtime_data_model_docs;
+#[path = "system_backup/mod.rs"]
+pub mod system_backup;
+#[cfg(any(test, feature = "test-support"))]
+#[path = "test_support/mod.rs"]
+pub mod test_support;
+#[path = "workers/mod.rs"]
+pub mod workers;

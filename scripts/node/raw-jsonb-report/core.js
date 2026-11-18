@@ -1,3 +1,4 @@
+const { API_SOURCE_OWNERS } = require('../testing/contracts/api-source-owners.js');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -17,7 +18,7 @@ const DEFAULT_MIGRATIONS_DIR = path.join(
   'migrations'
 );
 const DEFAULT_SOURCE_SEARCH_DIRS = [
-  path.join('api', 'apps', 'api-server', 'src'),
+  ...API_SOURCE_OWNERS.map((owner) => `${owner.directory}/src`),
   path.join('api', 'crates', 'storage', 'durable', 'postgres', 'src'),
   path.join('api', 'crates', 'control-plane', 'src'),
   path.join('api', 'crates', 'orchestration-runtime', 'src'),

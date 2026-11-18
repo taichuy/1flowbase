@@ -19,9 +19,18 @@ pub const NOTIFICATION_MAX_ATTACHMENT_CHUNK_BYTES: u32 = 48 * 1024;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NotificationReceiveDescriptor {
+    /// Correlates provider-accepted sends with the Host-owned request and external destination.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub supports_send_receipts: bool,
+    /// Ephemeral provider status; never an outbound message or delivery acknowledgement.
+    #[serde(default)]
+    pub supports_activity: bool,
     pub contribution_id: ContributionId,
     /// Plugin-owned default copied into editable channel configuration by Host.
     pub default_system_prompt: String,
+    /// Plugin-owned shared instance, forcibly reconciled on every activation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_instance_id: Option<String>,
     pub mcp_tools: Vec<NotificationMcpToolDescriptor>,
 }
 
@@ -42,6 +51,9 @@ pub enum NotificationMcpOperation {
     HistoryMessages,
     HistoryFiles,
     ReadFile,
+    SearchMessages,
+    FileInfo,
+    ViewImage,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -63,8 +75,46 @@ pub struct NotificationReceivedMessage {
     pub received_at_ms: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
+    /// Supplier-provided quotation; content is user data, never an instruction or credential.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_to: Option<NotificationMessageReference>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<NotificationReceivedAttachment>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NotificationMessageReference {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_message_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+impl NotificationMessageReference {
+    pub fn validate(&self) -> ContractResult {
+        if self
+            .provider_message_id
+            .as_ref()
+            .is_some_and(|id| !bounded_id(id))
+            || self
+                .title
+                .as_ref()
+                .is_some_and(|v| v.trim().is_empty() || v.len() > 1024)
+            || self
+                .text
+                .as_ref()
+                .is_some_and(|v| v.trim().is_empty() || v.len() > 65_536)
+            || (self.provider_message_id.is_none() && self.title.is_none() && self.text.is_none())
+        {
+            return Err(invalid(
+                "reply reference requires bounded identity or quoted content",
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -126,6 +176,13 @@ impl NotificationReceiveDescriptor {
         {
             return Err(invalid("receive requires a bounded default system prompt"));
         }
+        if self
+            .mcp_instance_id
+            .as_ref()
+            .is_some_and(|id| !identity(id) || id.contains('/') || id.len() > 64)
+        {
+            return Err(invalid("receive MCP instance requires a bounded identity"));
+        }
         let mut names = BTreeSet::new();
         let mut operations = BTreeSet::new();
         for tool in &self.mcp_tools {
@@ -143,14 +200,13 @@ impl NotificationReceiveDescriptor {
             }
             compile_schema("receive.mcp_tools.input_schema", &tool.input_schema)?;
         }
-        if operations
-            != [
-                NotificationMcpOperation::HistoryMessages,
-                NotificationMcpOperation::HistoryFiles,
-                NotificationMcpOperation::ReadFile,
-            ]
-            .into_iter()
-            .collect()
+        if ![
+            NotificationMcpOperation::HistoryMessages,
+            NotificationMcpOperation::HistoryFiles,
+            NotificationMcpOperation::ReadFile,
+        ]
+        .into_iter()
+        .all(|operation| operations.contains(&operation))
         {
             return Err(invalid(
                 "receive requires history messages, history files and read file MCP tools",
@@ -160,7 +216,7 @@ impl NotificationReceiveDescriptor {
     }
 }
 
-fn bounded_id(value: &str) -> bool {
+pub(super) fn bounded_id(value: &str) -> bool {
     !value.trim().is_empty() && value.len() <= 1024 && !value.chars().any(char::is_control)
 }
 
@@ -193,6 +249,9 @@ impl NotificationReceiveBatch {
         }
         let mut messages = BTreeSet::new();
         for message in &self.messages {
+            if let Some(reference) = &message.reply_to {
+                reference.validate()?;
+            }
             if !bounded_id(&message.provider_message_id)
                 || !bounded_id(&message.conversation_id)
                 || !bounded_id(&message.sender.id)

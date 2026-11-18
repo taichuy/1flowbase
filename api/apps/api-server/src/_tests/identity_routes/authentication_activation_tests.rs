@@ -1,3 +1,4 @@
+use crate::extension_bus::authentication_activation::AuthenticationFactoryAssembly;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,

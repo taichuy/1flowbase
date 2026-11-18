@@ -4,6 +4,27 @@ use uuid::Uuid;
 
 pub const ANSWER_PRESENTATION_KIND: &str = "answer";
 
+/// A live projection only. In particular a tool start/argument fragment does
+/// not assert that callback admission or an executable tool delivery committed.
+pub fn provider_content_progress(
+    event_type: &str,
+    node_id: &str,
+    node_run_id: Uuid,
+    mut payload: Value,
+) -> RuntimeEventPayload {
+    payload["type"] = json!(event_type);
+    payload["node_id"] = json!(node_id);
+    payload["node_run_id"] = json!(node_run_id);
+    RuntimeEventPayload {
+        event_type: event_type.to_string(),
+        source: RuntimeEventSource::Provider,
+        durability: RuntimeEventDurability::Ephemeral,
+        persist_required: false,
+        trace_visible: false,
+        payload,
+    }
+}
+
 pub fn flow_accepted(run_id: Uuid) -> RuntimeEventPayload {
     RuntimeEventPayload {
         event_type: "flow_accepted".to_string(),

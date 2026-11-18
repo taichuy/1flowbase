@@ -744,6 +744,15 @@ async fn next_agent_log_pricing_record(
         .await
     }
 
+    async fn get_run_node_last_run(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_id: &str,
+    ) -> Result<Option<domain::NodeLastRun>> {
+        PgControlPlaneStore::get_run_node_last_run(self, application_id, flow_run_id, node_id).await
+    }
+
     async fn get_latest_node_run(
         &self,
         application_id: Uuid,

@@ -146,3 +146,11 @@ describe('task call kind tag', () => {
     expect(screen.getByText('high')).toBeInTheDocument();
   });
 });
+
+
+test('workflow execution does not advertise a missing assistant answer as its outcome', () => {
+  const record = summary({ outcome: 'no_final_answer', status: 'failed' });
+  const column = getApplicationRunsTableColumns(t, false, 'workflow').find((c) => c.key === 'task_summary');
+  render(<>{column?.render?.(record.title, record, 0)}</>);
+  expect(screen.queryByText('auto.task_outcome_no_final_answer')).not.toBeInTheDocument();
+});

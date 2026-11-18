@@ -524,6 +524,14 @@ async fn node_contribution_route_returns_type_specific_unified_application_node_
         .iter()
         .find(|entry| entry["node_type"] == "workflow_start")
         .unwrap();
+    assert_eq!(
+        workflow_start["document_schema"]["properties"]["outputs"]["maxItems"],
+        json!(0)
+    );
+    assert_eq!(
+        workflow_start["document_schema"]["required"],
+        json!(["outputs"])
+    );
     let fields = workflow_start["field_contract"]["config_fields"]
         .as_array()
         .unwrap();

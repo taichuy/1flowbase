@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn anthropic_history_entries(
+pub(crate) fn anthropic_history_entries(
     role: &str,
     content: &Value,
 ) -> Result<Vec<Value>, AnthropicCompatError> {
@@ -173,7 +173,7 @@ pub(super) fn anthropic_text_content(content: &Value) -> Result<String, Anthropi
             "computer_use" => {
                 return Err(AnthropicCompatError::unsupported("computer_use"));
             }
-            "thinking" | "redacted_thinking" => {}
+            "thinking" | "redacted_thinking" | "tool_addition" => {}
             "image" | "document" => {}
             _ => return Err(AnthropicCompatError::unsupported("messages")),
         }
@@ -222,7 +222,7 @@ pub(super) fn anthropic_current_user_text_content(
             "computer_use" => {
                 return Err(AnthropicCompatError::unsupported("computer_use"));
             }
-            "thinking" | "redacted_thinking" => {}
+            "thinking" | "redacted_thinking" | "tool_addition" => {}
             "image" | "document" => {}
             _ => return Err(AnthropicCompatError::unsupported("messages")),
         }

@@ -1,0 +1,718 @@
+use super::*;
+
+#[test]
+fn runtime_event_cursor_accepts_numeric_and_run_scoped_event_ids() {
+    let run_id = Uuid::now_v7();
+
+    assert_eq!(parse_runtime_event_cursor(run_id, "7"), Some(7));
+    assert_eq!(
+        parse_runtime_event_cursor(run_id, &format!("{run_id}:8")),
+        Some(8)
+    );
+    assert_eq!(
+        parse_runtime_event_cursor(Uuid::now_v7(), &format!("{run_id}:8")),
+        None
+    );
+    assert_eq!(parse_runtime_event_cursor(run_id, "not-a-cursor"), None);
+}
+
+#[test]
+fn metrics_payload_cache_hit_tokens_accepts_cache_read_tokens() {
+    assert_eq!(
+        metrics_payload_cache_hit_tokens(&serde_json::json!({
+            "usage": {
+                "input_cache_hit_tokens": null,
+                "cache_read_tokens": 29_504
+            }
+        })),
+        Some(29_504)
+    );
+    assert_eq!(
+        metrics_payload_cache_hit_tokens(&serde_json::json!({
+            "usage": {
+                "input_cache_hit_tokens": 11,
+                "cache_read_tokens": 29_504
+            }
+        })),
+        Some(11)
+    );
+}
+
+#[test]
+fn debug_run_stream_cursor_prefers_query_before_last_event_id_header() {
+    let run_id = Uuid::now_v7();
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "last-event-id",
+        HeaderValue::from_str(&format!("{run_id}:11")).unwrap(),
+    );
+
+    assert_eq!(
+        debug_run_stream_from_sequence(
+            run_id,
+            &DebugRunStreamQuery {
+                from_sequence: Some(9),
+                last_event_id: Some(format!("{run_id}:10")),
+            },
+            &headers,
+        ),
+        Some(9)
+    );
+    assert_eq!(
+        debug_run_stream_from_sequence(
+            run_id,
+            &DebugRunStreamQuery {
+                from_sequence: None,
+                last_event_id: Some(format!("{run_id}:10")),
+            },
+            &headers,
+        ),
+        Some(10)
+    );
+    assert_eq!(
+        debug_run_stream_from_sequence(
+            run_id,
+            &DebugRunStreamQuery {
+                from_sequence: None,
+                last_event_id: None,
+            },
+            &headers,
+        ),
+        Some(11)
+    );
+}
+
+#[test]
+fn usage_total_tokens_uses_total_or_known_segments() {
+    assert_eq!(
+        usage_total_tokens(&serde_json::json!({
+            "total_tokens": 128,
+            "input_tokens": 40,
+            "output_tokens": 12
+        })),
+        Some(128)
+    );
+    assert_eq!(
+        usage_total_tokens(&serde_json::json!({
+            "input_tokens": 40,
+            "output_tokens": 12,
+            "reasoning_tokens": 6
+        })),
+        Some(58)
+    );
+    assert_eq!(usage_total_tokens(&serde_json::json!({})), None);
+}
+
+#[test]
+fn callback_task_tool_callback_count_reads_offloaded_tool_call_count() {
+    let base_task = domain::CallbackTaskRecord {
+        id: Uuid::now_v7(),
+        flow_run_id: Uuid::now_v7(),
+        node_run_id: Uuid::now_v7(),
+        callback_kind: "llm_tool_calls".to_string(),
+        status: domain::CallbackTaskStatus::Completed,
+        request_payload: serde_json::json!({
+            "tool_calls": [
+                { "id": "call-1" },
+                { "id": "call-2" }
+            ]
+        }),
+        response_payload: None,
+        external_ref_payload: None,
+        created_at: OffsetDateTime::UNIX_EPOCH,
+        completed_at: Some(OffsetDateTime::UNIX_EPOCH),
+    };
+    assert_eq!(callback_task_tool_callback_count(&base_task), 2);
+
+    let offloaded_task = domain::CallbackTaskRecord {
+        request_payload: serde_json::json!({
+            "tool_calls": {
+                "__runtime_debug_artifact": true,
+                "artifact_ref": Uuid::now_v7().to_string(),
+                "tool_call_count": 3
+            }
+        }),
+        ..base_task
+    };
+    assert_eq!(callback_task_tool_callback_count(&offloaded_task), 3);
+}
+
+#[test]
+fn application_run_statistics_counts_indexed_llm_tool_callbacks() {
+    let application = test_application_record();
+    let flow_run_id = Uuid::now_v7();
+    let node_run_id = Uuid::now_v7();
+    let callback_task = domain::CallbackTaskRecord {
+        id: Uuid::now_v7(),
+        flow_run_id,
+        node_run_id,
+        callback_kind: "llm_tool_calls".to_string(),
+        status: domain::CallbackTaskStatus::Completed,
+        request_payload: serde_json::json!({
+            "tool_calls": [
+                { "id": "call-1", "name": "Read" }
+            ]
+        }),
+        response_payload: None,
+        external_ref_payload: None,
+        created_at: OffsetDateTime::UNIX_EPOCH,
+        completed_at: Some(OffsetDateTime::UNIX_EPOCH),
+    };
+    let mut detail = domain::ApplicationRunDetail {
+        native_messages: Vec::new(),
+        flow_run: test_flow_run_record(
+            application.id,
+            flow_run_id,
+            domain::FlowRunStatus::Succeeded,
+            serde_json::json!({}),
+        ),
+        node_runs: vec![domain::NodeRunRecord {
+            execution_identity: None,
+            id: node_run_id,
+            flow_run_id,
+            node_id: "node-llm".to_string(),
+            node_type: "llm".to_string(),
+            node_alias: "LLM".to_string(),
+            status: domain::NodeRunStatus::Succeeded,
+            input_payload: serde_json::json!({}),
+            output_payload: serde_json::json!({}),
+            error_payload: None,
+            metrics_payload: serde_json::json!({}),
+            debug_payload: serde_json::json!({
+                "llm_rounds": [
+                    {
+                        "round_index": 0,
+                        "assistant": {
+                            "tool_calls": [
+                                { "id": "call-1", "name": "Read" },
+                                { "id": "call-2", "name": "problem_review" }
+                            ]
+                        }
+                    }
+                ]
+            }),
+            started_at: OffsetDateTime::UNIX_EPOCH,
+            finished_at: Some(OffsetDateTime::UNIX_EPOCH),
+        }],
+        checkpoints: Vec::new(),
+        callback_tasks: vec![callback_task],
+        events: Vec::new(),
+        stitched_trace: Vec::new(),
+        subagent_traces: Vec::new(),
+
+        task_rounds: Vec::new(),
+
+        child_task_traces: Vec::new(),
+    };
+
+    let statistics = application_run_statistics(&detail);
+
+    assert_eq!(statistics.tool_callback_count, 2);
+    // AC-009: canonical native and host tools share the original metric, by call ID.
+    detail.native_messages = vec![
+        serde_json::json!({"_source_item":{"type":"function_call","call_id":"call-1"}}),
+        serde_json::json!({"_source_item":{"type":"custom_tool_call","call_id":"call-3","input":"raw()"}}),
+    ];
+    assert_eq!(application_run_statistics(&detail).tool_callback_count, 3);
+    detail
+        .native_messages
+        .push(detail.native_messages[1].clone());
+    assert_eq!(application_run_statistics(&detail).tool_callback_count, 3);
+
+    detail.callback_tasks[0].request_payload = serde_json::json!({
+        "tool_calls": {
+            "__runtime_debug_artifact": true,
+            "artifact_ref": Uuid::now_v7().to_string(),
+            "tool_call_count": 7
+        }
+    });
+    assert_eq!(application_run_statistics(&detail).tool_callback_count, 7);
+    detail.callback_tasks[0].request_payload["tool_calls"]["tool_call_count"] =
+        serde_json::json!(1);
+    assert_eq!(application_run_statistics(&detail).tool_callback_count, 3);
+}
+
+#[test]
+fn trace_tree_endpoints_read_projection_without_full_detail_fallback() {
+    let reads = include_str!("../interface_runtime_reads/run_read_queries.rs");
+    let payloads = include_str!("../interface_trace_payloads.rs");
+    let trace_tree = application_runtime_method_source(reads, "trace_tree");
+    let trace_children = application_runtime_method_source(reads, "trace_children");
+    let node_content = application_runtime_method_source(payloads, "node_content");
+    let tool_callback_content =
+        application_runtime_method_source(payloads, "tool_callback_content");
+
+    for (method_name, method_source, projection_status_call) in [
+        ("trace_tree", trace_tree, "self.trace_projection_status"),
+        (
+            "trace_children",
+            trace_children,
+            "self.trace_projection_status",
+        ),
+        ("node_content", node_content, "self.projection_status"),
+        (
+            "tool_callback_content",
+            tool_callback_content,
+            "self.projection_status",
+        ),
+    ] {
+        assert!(
+            method_source.contains(projection_status_call),
+            "{method_name} must enter through projection status"
+        );
+        assert!(
+            !method_source.contains("get_application_run_detail"),
+            "{method_name} must not fallback to full run detail reads"
+        );
+    }
+
+    assert!(trace_tree.contains("list_application_run_trace_children_page"));
+    assert!(trace_tree.contains("parent_trace_node_id: Uuid::nil()"));
+    assert!(trace_tree.contains("get_flow_run_metadata"));
+    assert!(!trace_tree.contains("::get_flow_run("));
+    assert!(!trace_tree.contains("to_flow_run_response("));
+    assert!(trace_tree.contains("get_application_run_trace_statistics"));
+    assert!(!trace_tree.contains("list_application_run_trace_nodes_for_statistics"));
+    assert!(trace_children.contains("list_application_run_trace_children_page"));
+    assert!(node_content
+        .contains("<_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_content"));
+    assert!(tool_callback_content
+        .contains("<_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_content"));
+}
+
+#[test]
+fn run_conversation_messages_endpoint_reads_projection_without_full_detail_fallback() {
+    let function_source = application_runtime_method_source(
+        include_str!("../interface_runtime_reads/run_read_queries.rs"),
+        "run_conversation_messages",
+    );
+
+    assert!(
+        function_source.contains("list_application_run_conversation_message_items_page"),
+        "run conversation endpoint must read the run-specific projection page"
+    );
+    assert!(
+        function_source.contains("get_application_run_conversation_current_item"),
+        "run conversation endpoint must use bounded current-item fallback for non-terminal or missing projection"
+    );
+    assert!(
+        !function_source.contains("get_application_run_detail"),
+        "run conversation endpoint must not materialize full run detail"
+    );
+    assert!(
+        !function_source.contains("conversation_messages_from_run_detail"),
+        "run conversation endpoint fallback must not scan node runs or debug detail fragments"
+    );
+}
+
+#[test]
+fn trace_projection_status_read_never_rebuilds_or_reads_source() {
+    let source = application_runtime_function_source(
+        include_str!("../handlers/log_handlers.rs"),
+        "async fn read_application_run_trace_projection_status",
+    );
+    assert!(source.contains("get_application_run_trace_read_status"));
+    for forbidden in [
+        "get_application_run_trace_projection_source",
+        "rebuild",
+        "get_flow_run(",
+    ] {
+        assert!(
+            !source.contains(forbidden),
+            "read path contains {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn d1_lightweight_endpoint_inventory_keeps_detail_export_and_archive_contract_boundaries() {
+    let runtime_reads = include_str!("../interface_runtime_reads.rs");
+    let trace_payloads = include_str!("../interface_trace_payloads.rs");
+    let overview_loader = application_runtime_method_source(
+        include_str!("../interface_runtime_reads/run_read_queries.rs"),
+        "run_overview",
+    );
+    assert!(overview_loader.contains("get_application_run_overview"));
+    assert!(!overview_loader.contains("get_application_run_detail"));
+
+    let resume_timeline = application_runtime_method_source(runtime_reads, "resume_timeline");
+    assert!(resume_timeline.contains("get_application_run_resume_timeline"));
+    assert!(!resume_timeline.contains("get_application_run_detail"));
+    let resume_timeline_summary =
+        application_runtime_method_source(runtime_reads, "resume_timeline_summary");
+    assert!(resume_timeline_summary.contains("get_application_run_resume_timeline_summary"));
+    assert!(!resume_timeline_summary.contains("get_application_run_resume_timeline("));
+
+    let trace_detail = application_runtime_method_source(trace_payloads, "node_detail");
+    assert!(trace_detail.contains("list_application_run_trace_checkpoints"));
+    assert!(trace_detail.contains("list_application_run_trace_events"));
+    assert!(!trace_detail.contains("get_application_run_detail"));
+
+    assert!(include_str!("../interface_trace_exports.rs").contains("get_application_run_detail"));
+    assert!(
+        include_str!("../../../../application_runtime_archive/document.rs")
+            .contains("get_application_run_detail")
+    );
+}
+
+#[test]
+fn resume_timeline_contract_fixture_preserves_callback_payloads_and_event_order() {
+    let application_id = Uuid::from_u128(1);
+    let flow_run_id = Uuid::from_u128(2);
+    let node_run_id = Uuid::from_u128(3);
+    let callback_id = Uuid::from_u128(4);
+    let first_event_id = Uuid::from_u128(5);
+    let second_event_id = Uuid::from_u128(6);
+    let flow_run = test_flow_run_record(
+        application_id,
+        flow_run_id,
+        domain::FlowRunStatus::WaitingCallback,
+        serde_json::json!({ "answer": "partial" }),
+    );
+    let response = ApplicationRunResumeTimelineResponse {
+        flow_run: to_flow_run_response(flow_run),
+        callback_tasks: vec![to_callback_task_response(domain::CallbackTaskRecord {
+            id: callback_id,
+            flow_run_id,
+            node_run_id,
+            callback_kind: "llm_tool_calls".to_string(),
+            status: domain::CallbackTaskStatus::Pending,
+            request_payload: serde_json::json!({ "tool_calls": [{ "id": "call-1" }] }),
+            response_payload: None,
+            external_ref_payload: Some(serde_json::json!({ "callback": "external" })),
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            completed_at: None,
+        })],
+        events: vec![
+            to_run_event_response(domain::RunEventRecord {
+                id: first_event_id,
+                flow_run_id,
+                node_run_id: Some(node_run_id),
+                sequence: 7,
+                event_type: "public_run_resume_requested".to_string(),
+                payload: serde_json::json!({ "attempt": 1 }),
+                created_at: OffsetDateTime::UNIX_EPOCH,
+            }),
+            to_run_event_response(domain::RunEventRecord {
+                id: second_event_id,
+                flow_run_id,
+                node_run_id: Some(node_run_id),
+                sequence: 8,
+                event_type: "flow_run_resumed".to_string(),
+                payload: serde_json::json!({ "attempt": 1 }),
+                created_at: OffsetDateTime::UNIX_EPOCH,
+            }),
+        ],
+    };
+    let value = serde_json::to_value(response).unwrap();
+
+    assert_eq!(
+        value["callback_tasks"][0],
+        serde_json::json!({
+            "id": callback_id.to_string(),
+            "flow_run_id": flow_run_id.to_string(),
+            "node_run_id": node_run_id.to_string(),
+            "callback_kind": "llm_tool_calls",
+            "status": "pending",
+            "request_payload": { "tool_calls": [{ "id": "call-1" }] },
+            "response_payload": null,
+            "external_ref_payload": { "callback": "external" },
+            "created_at": "1970-01-01T00:00:00Z",
+            "completed_at": null
+        })
+    );
+    assert_eq!(
+        value["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|event| event["event_type"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["public_run_resume_requested", "flow_run_resumed"]
+    );
+    assert_eq!(value["events"][0]["sequence"], 7);
+    assert_eq!(value["events"][1]["sequence"], 8);
+}
+
+#[test]
+fn overview_contract_fixture_contains_metadata_without_body_or_answer_claims() {
+    let application = test_application_record();
+    let flow_run = test_flow_run_record(
+        application.id,
+        Uuid::from_u128(20),
+        domain::FlowRunStatus::WaitingCallback,
+        serde_json::json!({"answer":"not loaded by overview"}),
+    );
+    let overview = control_plane::ports::ApplicationRunOverviewReadModel {
+        log_conversation_id: Some(Uuid::from_u128(22)),
+        flow_run: (&flow_run).into(),
+        tool_callback_count: 3,
+        waiting_node_id: Some("node-tool".into()),
+        waiting_node_run_id: Some(Uuid::from_u128(21)),
+    };
+    let statistics = to_trace_projection_statistics_response(
+        control_plane::ports::ApplicationRunTraceProjectionStatistics {
+            total_tokens: Some(154),
+            tool_callback_count: 3,
+            ..Default::default()
+        },
+    );
+    let response = to_application_run_overview_response(&application, overview, statistics);
+    let value = serde_json::to_value(&response).unwrap();
+    assert_eq!(
+        value["log_conversation_id"],
+        Uuid::from_u128(22).to_string()
+    );
+    let managed = interface_runtime::InterfaceContract::project_for_managed_hook(
+        &interface_runtime_reads::ApplicationRuntimeReadsOutput::RunOverview(response),
+    )
+    .expect("metadata has a registered safe projection");
+    assert!(managed["0"]["flow_run"].get("input_payload").is_none());
+    assert!(managed["0"].get("answer_snapshot").is_none());
+    let schema = <interface_runtime_reads::ApplicationRuntimeReadsOutput as interface_runtime::InterfaceContract>::managed_projection_schema().unwrap();
+    for variant in ["RunOverview", "TraceTree"] {
+        let shape = schema["oneOf"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|shape| shape["properties"]["variant"]["const"] == variant)
+            .unwrap();
+        let properties = &shape["properties"]["0"]["properties"];
+        assert!(properties.get("answer_snapshot").is_none());
+        for field in [
+            "input_payload",
+            "output_payload",
+            "error_payload",
+            "query",
+            "model",
+        ] {
+            assert!(properties["flow_run"]["properties"].get(field).is_none());
+        }
+    }
+    let mut fields = value
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    fields.sort_unstable();
+    assert_eq!(
+        fields,
+        ["flow_run", "log_conversation_id", "run", "statistics"]
+    );
+    assert_eq!(value["flow_run"]["id"], flow_run.id.to_string());
+    assert_eq!(value["flow_run"]["status"], "waiting_callback");
+    assert_eq!(value["statistics"]["total_tokens"], 154);
+    assert!(!value.as_object().unwrap().contains_key("answer_snapshot"));
+    for body in [
+        "input_payload",
+        "output_payload",
+        "error_payload",
+        "query",
+        "model",
+    ] {
+        assert!(!value["flow_run"].as_object().unwrap().contains_key(body));
+    }
+    let adapter = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../storage/durable/postgres/src/orchestration_runtime_repository/read_methods.rs"
+    ));
+    let metadata = application_runtime_method_source(adapter, "get_flow_run_metadata");
+    for body in [
+        "input_payload",
+        "output_payload",
+        "error_payload",
+        "raw_json_payloads",
+        "node_runs",
+    ] {
+        assert!(
+            !metadata.contains(body),
+            "metadata query must not select {body}"
+        );
+    }
+    let overview = application_runtime_method_source(adapter, "get_application_run_overview");
+    assert!(overview.contains("get_flow_run_metadata"));
+    assert!(!overview.contains("list_node_runs_for_flow_run"));
+}
+
+#[test]
+fn trace_node_content_response_serializes_refs_without_heavy_containers() {
+    let trace_node_id = Uuid::now_v7();
+    let flow_run_id = Uuid::now_v7();
+    let now = OffsetDateTime::UNIX_EPOCH;
+    let response = trace_projection_node_content_response(
+        domain::ApplicationRunTraceNodeRecord {
+            trace_node_id,
+            flow_run_id,
+            parent_trace_node_id: None,
+            stable_locator: format!("run:{flow_run_id}/node:{}", Uuid::now_v7()),
+            node_kind: "node_run".to_string(),
+            owner_kind: Some("node_run".to_string()),
+            owner_id: Some(Uuid::now_v7().to_string()),
+            order_key: "000001".to_string(),
+            node_id: Some("node-llm".to_string()),
+            node_type: Some("llm".to_string()),
+            node_mode: None,
+            node_alias: "LLM".to_string(),
+            status: "succeeded".to_string(),
+            started_at: now,
+            finished_at: Some(now),
+            duration_ms: Some(0),
+            metrics_payload: serde_json::json!({}),
+            has_children: false,
+            child_count: 0,
+            has_content: true,
+            content_ref: None,
+            source_flow_run_id: None,
+            source_trace_node_id: None,
+            parent_callback_task_id: None,
+            parent_tool_call_id: None,
+            trace_relation_kind: None,
+            projection_version: APPLICATION_RUN_TRACE_PROJECTION_VERSION,
+            source_watermark: "source:1".to_string(),
+            created_at: now,
+            updated_at: now,
+        },
+        domain::ApplicationRunTraceNodeContentRecord {
+            trace_node_id,
+            content_kind: "node_run".to_string(),
+            payload: serde_json::json!({
+                "payload_index": {
+                    "node_run_count": 1,
+                    "checkpoint_count": 1,
+                    "event_count": 1
+                },
+                "detail_refs": [
+                    {
+                        "detail_kind": "node_run",
+                        "source_kind": "node_run",
+                        "source_locator": "node-run-1",
+                        "count": 1
+                    }
+                ]
+            }),
+            source_refs: serde_json::json!([
+                {
+                    "source_kind": "node_run",
+                    "source_locator": "node-run-1"
+                }
+            ]),
+            created_at: now,
+            updated_at: now,
+        },
+        ApplicationRunTraceProjectionStatusResponse {
+            projection_status: "succeeded".to_string(),
+            projection_version: APPLICATION_RUN_TRACE_PROJECTION_VERSION,
+            source_watermark: "source:1".to_string(),
+            attempt_count: 1,
+            last_attempt_at: Some(format_time(now)),
+            last_success_at: Some(format_time(now)),
+            last_error_code: None,
+            last_error_stage: None,
+            last_error_source_kind: None,
+            last_error_source_locator: None,
+            last_error_ref: None,
+            retriable: false,
+        },
+    )
+    .expect("trace node content response should serialize");
+    let serialized = serde_json::to_value(response).expect("response should be JSON");
+    let data = serialized
+        .as_object()
+        .expect("trace node content response should be an object");
+
+    assert!(!data.contains_key("node_run"));
+    assert!(!data.contains_key("checkpoints"));
+    assert!(!data.contains_key("events"));
+    assert_eq!(serialized["content_kind"], serde_json::json!("node_run"));
+    assert_eq!(
+        serialized["payload"]["payload_index"]["node_run_count"],
+        serde_json::json!(1)
+    );
+    assert_eq!(
+        serialized["detail_refs"][0]["detail_kind"],
+        serde_json::json!("node_run")
+    );
+    assert_eq!(
+        serialized["source_refs"][0]["source_kind"],
+        serde_json::json!("node_run")
+    );
+}
+
+#[test]
+fn trace_node_content_raw_payload_keeps_empty_payload_as_object() {
+    let payload = trace_node_content_raw_payload_response(serde_json::json!({
+        "node_run": {
+            "id": "node-run-1"
+        },
+        "checkpoints": [],
+        "events": [],
+        "detail_refs": [],
+        "source_refs": []
+    }));
+
+    assert_eq!(payload, serde_json::json!({}));
+}
+
+#[test]
+fn cache_usage_detail_aggregates_inclusive_input_across_provider_conventions() {
+    let flow_run_id = Uuid::now_v7();
+    for output in [10, 50_000] {
+        let nodes = [
+            serde_json::json!({"input_tokens": 10, "input_cache_miss_tokens": 10,
+                "cache_read_tokens": 80, "cache_write_tokens": 10, "output_tokens": output}),
+            serde_json::json!({"input_tokens": 900, "input_cache_hit_tokens": 0, "output_tokens": output}),
+        ].into_iter().map(|usage| domain::NodeRunRecord {
+            execution_identity: None,
+            id: Uuid::now_v7(), flow_run_id,
+            node_id: "llm".into(), node_type: "llm".into(), node_alias: "LLM".into(),
+            status: domain::NodeRunStatus::Succeeded,
+            input_payload: serde_json::json!({}), output_payload: serde_json::json!({}),
+            error_payload: None, debug_payload: serde_json::json!({}),
+            metrics_payload: serde_json::json!({"usage": usage}),
+            started_at: OffsetDateTime::UNIX_EPOCH, finished_at: Some(OffsetDateTime::UNIX_EPOCH),
+        }).collect::<Vec<_>>();
+        let statistics = application_run_statistics_for_records(&nodes, 0);
+        assert_eq!(statistics.input_tokens, Some(1000));
+        assert_eq!(statistics.input_cache_hit_tokens, Some(80));
+        assert_eq!(statistics.input_cache_hit_rate, Some(0.08));
+    }
+}
+
+#[test]
+fn cache_usage_detail_preserves_unknown_input_and_counts_zero_misses() {
+    assert_eq!(
+        metrics_payload_input_tokens(&serde_json::json!({"usage": {"cache_read_tokens": 50}})),
+        None
+    );
+    assert_eq!(
+        metrics_payload_input_tokens(&serde_json::json!({"usage": {
+            "input_tokens": 0, "input_cache_miss_tokens": 0, "cache_read_tokens": 50
+        }})),
+        Some(50)
+    );
+    assert_eq!(
+        metrics_payload_input_tokens(&serde_json::json!({"usage": {
+            "input_tokens": 100, "cached_input_tokens": 80
+        }})),
+        Some(100)
+    );
+}
+
+#[test]
+fn cache_usage_trace_projection_uses_input_instead_of_legacy_total() {
+    for (input, hit, total, expected) in [
+        (827_119, 494_000, 286_532, 0.5973),
+        (803_199, 444_600, 361_256, 0.5535),
+        (280_611, 148_200, 135_040, 0.5281),
+    ] {
+        let statistics =
+            to_trace_projection_statistics_response(ApplicationRunTraceProjectionStatistics {
+                input_tokens: Some(input),
+                input_cache_hit_tokens: Some(hit),
+                total_tokens: Some(total),
+                ..Default::default()
+            });
+        assert_eq!(statistics.input_cache_hit_rate, Some(expected));
+    }
+}

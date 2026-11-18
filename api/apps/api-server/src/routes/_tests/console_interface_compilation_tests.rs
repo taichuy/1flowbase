@@ -70,3 +70,20 @@ fn one_console_operation_can_publish_multiple_static_bindings() {
         "fixture.operation.read"
     );
 }
+
+impl crate::openapi_interface::contract::ApiInput for Input {
+    fn project_document_input(
+        &self,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, Arc<str>> {
+        Ok(serde_json::json!({}))
+    }
+}
+impl crate::openapi_interface::contract::ApiOutput for Output {
+    fn project_document_output(
+        &self,
+        _: &crate::openapi_interface::contract::ApiOperationContext,
+    ) -> Result<serde_json::Value, Arc<str>> {
+        Ok(serde_json::json!({}))
+    }
+}

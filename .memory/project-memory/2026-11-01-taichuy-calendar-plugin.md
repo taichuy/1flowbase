@@ -1,9 +1,9 @@
 ---
 memory_type: project
 topic: taichuy-calendar-plugin
-summary: 日历插件迁移已在本地验收；后续修正明确组件注册与代码模板互斥，滚动交互归底座，插件0.1.5本地验收通过。源码推送、正式插件发布、云端部署须分别核验。
+summary: 日历插件0.1.19本地已注册完整可编辑区块模板并同步最新引语；六组件保持独立注册，旧手工模板4修订备份后删除；正式发布与云端部署分别核验。
 created_at: 2026-11-01 09
-updated_at: 2026-11-01 15
+updated_at: 2026-11-04 22
 decision_policy: verify_before_decision
 scope: [runtime-extensions, frontstage, ui-management]
 ---
@@ -44,3 +44,21 @@ QA8有限候选PASS已关闭，Root主环境smoke9checks通过：实际3100双�
 
 ## 2026-11-01 15 Follow-up decision (supersedes registration ambiguity above)
 用户明确数据问题先归插件注册规范，列表滚动归底座；日历插件只注册到组件管理，不能用两个旧投影合理化重复入口。此修正保留代码模板独立用途、已有人工模板和组件；不合并或删除管理页签，不新增第三方依赖。本地实际入口已完成接口、桌面/手机及短视口滚轮验收；注册契约见 `api/plugins/frontend-ui-registration.md`。正式签名包发布与云端部署仍不等同于源码推送，无承诺完成日期。旧阶段进度只作历史，不作为继续执行状态。
+
+## 2026-11-03 23 Plugin policy registration decision
+用户已批准 Root #2776 / Delivery #2777：托管插件后端接口可独立注册，不强制后台设置页。权限管理增加「插件」页签，按稳定插件标识分组、显示插件名。用户特别确认：若同时声明后台设置，两处编辑必须等效，共用同一权限策略，不能形成两套授权；设置声明只增加可进入编辑的位置。授权迁移保留 enabled/full/custom/operation 明细，日历移除虚假设置入口。Root负责隔离assembly与集中QA；无承诺完成日期。当前正在验收，source integration、push、正式插件包发布与部署分别核验；后续只以Root及当前Git/证据判断完成状态。
+
+### Plugin policy source integration
+同一冻结候选 c018ef981 已通过集中Dev Acceptance：本地72前端、176Rust、7日历业务、8SQL场景；CI run 41667062386追加36次宿主用例执行（35唯一），含无页面boot和导航/接口同源权限。源码已本地FF合dev；插件候选6fd8bd2保留remote价格/OpenAI更新后合main为fa6cf913。完整导入业务E2E、部署态HTTP矩阵、浏览器视觉与正式插件发布不在已完成证据中；未重启服务/发布安装包。最终push状态见Root #2776与实时Git，不从本条推断部署。
+
+## 2026-11-04 18 Editable assistant completed
+用户确认整个 AI 解读助手应由 MCP 可编辑页面源码承载，并保留实时排盘数据，动机是后续可直接修改助手而不受插件内部硬编码限制。Root 已实现 renderAIHelper(data)、可编辑页面助手及复制同一数据快照；插件 0.1.15 本地标准 family switch 成功，目标 block 01a19524-013a-75d7-aacb-e76cb666d2bc 已通过 MCP 更新。3 契约检查、6 双端 factory 场景、实际 3100 桌面/手机交互/剪贴板/刷新、7800 月历/八字/紫微接口通过。插件源码提交 6fae2b6 已合 main 并 push，最终 main 595e3eb5aec0c628d390f0500a912dcb623551a3 含远端无关 pricing 更新；主宿主 dev 未改产品代码。正式签名发布、完整 CI 与云端部署未验收，无承诺日期；证据 tmp/test-governance/calendar-editable-helper/QA_REPORT.md。页面 render 数据不自动持久化；外部 MCP 查询须用明确输入调用现有后端计算接口，不能把浏览器状态当作服务端记录。
+
+## 2026-11-04 20 Migration actions corrected
+用户明确旧站签到没有当前业务支撑、黄历跳转在当前页面重复，要求只保留返回今天。Root 删除按钮及签到内存状态/标记，清理公开 onAlmanac 和页面滚动回调；此前自定义引语保留。插件 0.1.16 本地标准版本切换、6 个双端组件场景、3 契约检查及实际 3100 桌面/手机/刷新均通过。源码 bbd5183 已合插件 main 并 push；证据 tmp/test-governance/calendar-today-only/QA_REPORT.md。无新增依赖，后端算法不变；正式云端发布与完整 CI 未验收，无承诺日期。此决策覆盖早期“完整保留旧站签到”的迁移范围。
+
+## 2026-11-04 21 Complete block template registered
+用户要求完整区块在代码模板管理中可复用，并由插件安装/升级自动有则更新、无则新增；明确选择旧手工模板备份后移除，只保留官方模板。此决定新增独立 CalendarComposition code_template，保留六个组件的 component 注册，覆盖早期“仅组件入口”对本次完整区块模板的限制，不重复注册每个组件。Root 在本地3100/7800安装0.1.18并验收：4契约、6双端factory场景（前端字节和源码一致可复用）、正常向前升级与重复启用各恰好一条官方模板，真实模板运行预览通过。旧模板全部4修订已备份并删除，备份及QA_REPORT位于 tmp/test-governance/calendar-code-template/；无承诺日期。源码272ab4e已合插件main，保留远端catalog更新后0288f6e已push且确认为远端后续ac30b3c祖先；宿主dev产品代码未改，临时worktree已回收。额外验证发现同版本重传导致artifact/模板不可见、旧0.1.16回退409 managed_execution_retired_or_closing；已用0.1.18正常升级恢复，以上宿主限制未修复，不能宣称重传/回滚通过。正式签名发布、全CI、云端部署仍未验证。
+
+## 2026-11-04 22 Quote revision
+用户再次指定中文引语顺序与标点，Root已通过MCP同步当前页面，并更新官方/便携模板。0.1.19本地升级及重复启用、实际页面两处助手和官方模板预览均通过；前后端JS字节未变。源码8268c7c已合插件main，最终push状态与HEAD见 tmp/test-governance/calendar-quote-update/integration.json；完整证据QA_REPORT.md。无承诺日期，正式发布与云端部署仍单独核验。

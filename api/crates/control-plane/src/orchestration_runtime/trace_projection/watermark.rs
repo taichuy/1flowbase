@@ -15,6 +15,15 @@ pub fn trace_projection_source_watermark_from_source(
         detail.stitched_trace.len(),
         detail.subagent_traces.len(),
     );
+    let states = detail
+        .node_runs
+        .iter()
+        .map(|node| (node.id, node.status.as_str().to_owned(), node.finished_at))
+        .collect::<Vec<_>>();
+    let base =
+        control_plane_contracts::persistence_projection::trace_projection_node_state_watermark(
+            base, &states,
+        );
     let base =
         control_plane_contracts::persistence_projection::trace_projection_native_message_watermark(
             base,

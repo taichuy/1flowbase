@@ -3,6 +3,7 @@
     reason = "public API translation and provider errors intentionally retain complete typed diagnostics"
 )]
 
+pub mod anthropic_continuation;
 pub mod api_keys;
 pub mod callback_resume;
 pub mod callback_tool_ids;
@@ -15,11 +16,15 @@ pub mod native;
 pub mod native_tool_resume;
 pub mod protocol_translation;
 pub mod publications;
+#[path = "publication_cache/published_plan.rs"]
 mod published_plan;
+#[path = "publication_cache/published_publication.rs"]
 mod published_publication;
 #[path = "workflow/published_workflow_operation.rs"]
 pub mod published_workflow_operation;
 pub mod run_service;
+#[path = "workflow/workflow_event.rs"]
+pub mod workflow_event;
 #[path = "workflow/workflow_extension.rs"]
 pub mod workflow_extension;
 #[path = "workflow/workflow_invocation.rs"]

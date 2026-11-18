@@ -1,4 +1,6 @@
+import { historicalAnalysisFixture } from '../fixtures/analysis-fixture';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -96,6 +98,7 @@ function createInitialState(
       document
     },
     versions: [],
+    analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
     autosave_interval_seconds: 30,
     user_protection_limit: 10
   };
@@ -178,6 +181,7 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.spyOn(orchestrationApi, 'analyzeDocument').mockImplementation(async (_applicationId, document) => historicalAnalysisFixture(document));
   schemaRuntimeSpies.resolveAgentFlowNodeSchema.mockClear();
   resetAuthStore();
   useAuthStore.getState().setAuthenticated({
@@ -426,7 +430,9 @@ describe('AgentFlowEditorShell', () => {
       />
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: '发布' }));
+    const publishButton = await screen.findByRole('button', { name: '发布' });
+    await waitFor(() => expect(publishButton).toBeEnabled());
+    fireEvent.click(publishButton);
 
     await waitFor(() => {
       expect(publicApi.publishApplicationApiVersion).toHaveBeenCalledWith(
@@ -456,8 +462,10 @@ describe('AgentFlowEditorShell', () => {
       name: '发布'
     });
 
-    expect(publishButton).toBeDisabled();
-    expect(within(toolbar).getByText('1')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(toolbar).getByText('1')).toBeInTheDocument();
+      expect(publishButton).toBeDisabled();
+    });
 
     fireEvent.click(within(toolbar).getByRole('button', { name: 'Issues' }));
 
@@ -691,7 +699,7 @@ describe('AgentFlowEditorShell', () => {
     });
   }, 20_000);
 
-  test('AC-011 disables manual save for an incompatible Variable Aggregator candidate', () => {
+  test('saves a semantically incomplete Variable Aggregator draft through the editor toolbar', async () => {
     const document = createIncompatibleVariableAggregatorDocument();
     const saveDraftOverride = vi.fn(async (input) =>
       createInitialState(input.document)
@@ -706,38 +714,47 @@ describe('AgentFlowEditorShell', () => {
       />
     );
 
-    expect(
-      screen.getByRole('button', {
-        name: i18nText('agentFlow', 'auto.save')
-      })
-    ).toBeDisabled();
-    expect(saveDraftOverride).not.toHaveBeenCalled();
+    const saveButton = screen.getByRole('button', { name: i18nText('agentFlow', 'auto.save') });
+    expect(saveButton).toBeEnabled();
+    fireEvent.click(saveButton);
+    await waitFor(() => expect(saveDraftOverride).toHaveBeenCalledWith(expect.objectContaining({ document })));
+
   });
 
   test('opens the selected issue target and focuses the node field', async () => {
-    renderShell(
-      <AgentFlowEditorShell
-        applicationId="app-1"
-        applicationName="Support Agent"
-        initialState={{
-          ...createInitialState(),
-          versions: [
-            {
-              id: 'version-1',
-              sequence: 1,
-              trigger: 'autosave',
-              change_kind: 'logical',
-              summary: '初始化默认草稿',
-              summary_is_custom: false,
-              is_user_protected: false,
-              is_current_publication: false,
-              created_at: '2026-04-15T09:00:00Z'
-            }
-          ]
-        }}
-        saveDraftOverride={vi.fn().mockResolvedValue(createInitialState())}
-      />
-    );
+    // Run the real analysis debounce deterministically before searching for
+    // the issue; keep the mock backend analysis and focus assertions intact.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+        renderShell(
+          <AgentFlowEditorShell
+            applicationId="app-1"
+            applicationName="Support Agent"
+            initialState={{
+              ...createInitialState(),
+              versions: [
+                {
+                  id: 'version-1',
+                  sequence: 1,
+                  trigger: 'autosave',
+                  change_kind: 'logical',
+                  summary: '初始化默认草稿',
+                  summary_is_custom: false,
+                  is_user_protected: false,
+                  is_current_publication: false,
+                  created_at: '2026-04-15T09:00:00Z'
+                }
+              ]
+            }}
+            saveDraftOverride={vi.fn().mockResolvedValue(createInitialState())}
+          />
+        );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
 
     fireEvent.click(screen.getByRole('button', { name: 'Issues' }));
     fireEvent.click(
@@ -773,6 +790,7 @@ describe('AgentFlowEditorShell', () => {
         document: createDefaultAgentFlowDocument({ flowId: 'flow-1' })
       },
       versions,
+      analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
       autosave_interval_seconds: 30,
       user_protection_limit: 10
     });

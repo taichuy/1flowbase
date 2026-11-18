@@ -56,6 +56,12 @@ const mcpManagementApi = vi.hoisted(() => ({
   exportSettingsMcpBundle: vi.fn(),
   exportSettingsMcpInstanceBundle: vi.fn(),
   exportSettingsMcpCatalog: vi.fn(),
+  fetchSettingsMcpInstanceDirectory: vi.fn(async () => ({
+    instance_record_id: 'instance-record-1',
+    groups: [],
+    bindings: []
+  })),
+  replaceSettingsMcpInstanceDirectory: vi.fn(),
   fetchSettingsMcpBundleExportDefaults: vi.fn(),
   fetchSettingsMcpTemplateLibrary: vi.fn(),
   fetchSettingsMcpClientCredential: vi.fn(

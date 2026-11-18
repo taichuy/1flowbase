@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const { apiSourceOwners } = require('../testing/contracts/api-source-owners.js');
 const path = require('node:path');
 const { maskRustText, maskTestOnlyItems, delimitedEnd } = require('../check-rust-backend/source.js');
 const { productionRustSources, bootRustSources } = require('../testing/contracts/rust-sources.js');
@@ -98,18 +99,19 @@ function retainsGlobalAdapterState(source) {
 }
 
 function inspectInterfaceLifecycleBoundary(repoRoot) {
-  const stream = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/compat_sse.rs');
-  const openai = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/openai.rs');
-  const anthropic = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/anthropic.rs');
-  const workflowExtension = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/ex.rs');
+  const stream = read(repoRoot, 'api/crates/api/public-gateway/src/routes/application_public_api/compat_sse.rs');
+  const openai = read(repoRoot, 'api/crates/api/public-gateway/src/routes/application_public_api/openai.rs');
+  const anthropic = read(repoRoot, 'api/crates/api/public-gateway/src/routes/application_public_api/anthropic.rs');
+  const workflowExtension = read(repoRoot, 'api/crates/api/public-gateway/src/routes/application_public_api/ex.rs');
   const contributions = read(repoRoot, 'api/apps/api-server/src/extension_bus/interface_contributions.rs');
-  const publicAuth = read(repoRoot, 'api/apps/api-server/src/routes/identity/auth.rs');
-  const publicSignIn = read(repoRoot, 'api/apps/api-server/src/routes/identity/sign_in_interface.rs');
-  const native = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/native.rs');
-  const compatibility = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/compatibility_interface.rs');
-  const mcp = read(repoRoot, 'api/apps/api-server/src/routes/mcp_protocol.rs');
+  const publicAuth = read(repoRoot, 'api/crates/api/console-interaction/src/routes/identity/auth.rs');
+  const publicSignIn = read(repoRoot, 'api/crates/api/console-interaction/src/routes/identity/sign_in_interface.rs');
+  const native = read(repoRoot, 'api/crates/api/public-gateway/src/routes/application_public_api/native.rs');
+  const compatibility = read(repoRoot, 'api/crates/api/public-gateway/src/routes/application_public_api/compatibility_interface.rs');
+  const mcp = read(repoRoot, 'api/crates/api/mcp/src/routes/mcp_protocol.rs');
   const apiServer = bootRustSources(repoRoot);
-  const endpointCatalog = read(repoRoot, 'api/apps/api-server/src/console_contracts/external_endpoint_catalog.rs');
+  const endpointCatalog = read(repoRoot, 'api/crates/api/kernel/src/slices/console_contracts/external_endpoint_catalog.rs');
+  const endpointCompiler = read(repoRoot, 'api/apps/api-server/src/console_contracts/external_endpoint_catalog.rs');
   const protocolSources = `${stream}\n${openai}\n${anthropic}`;
   const violations = inspectExternalRouteAssemblyBoundary(apiServer);
 
@@ -182,7 +184,10 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
   if (/(?:Arc::clone\(state\)|state\.clone\(\))\s+as\s+Arc<dyn\s+\w*Port>/u.test(contributions)) {
     violations.push('Composition Root casts the global ApiState directly to a family Port');
   }
-  for (const [relativePath, source] of rustSourcesUnder(repoRoot, 'api/apps/api-server/src/routes')) {
+  for (const [relativePath, source] of apiSourceOwners(repoRoot).flatMap((owner) => [
+    `${owner.directory}/src/routes`,
+    ...(owner.packageName === 'api-host-kernel' ? [`${owner.directory}/src/contracts/routes`, `${owner.directory}/src/slices/routes`] : []),
+  ]).flatMap((root) => rustSourcesUnder(repoRoot, root))) {
     violations.push(...inspectAuthenticationInvocationBoundary(relativePath, source));
     if (retainsGlobalAdapterState(source)) {
       violations.push(`${relativePath} Interface adapter retains the global ApiState container`);
@@ -200,19 +205,19 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
     // This signal-only transport is a declared Protocol Control, not a business
     // invocation. The exact catalog declaration must remain present; a pathname
     // or comment alone never exempts direct authentication in ordinary routes.
-    const notificationProtocolControl = relativePath === 'api/apps/api-server/src/routes/notifications/events.rs'
+    const notificationProtocolControl = relativePath === 'api/crates/api/console-interaction/src/routes/notifications/events.rs'
       && /Self::NotificationEvents\s*=>\s*ExternalEndpointContribution::protocol_control_http\(\s*"notification-refresh-signal",\s*"GET",\s*"\/api\/console\/notifications\/events",\s*\)/u.test(endpointCatalog);
     if ((source.includes('require_session(&state') || source.includes('require_csrf(&headers'))
-      && relativePath !== 'api/apps/api-server/src/routes/assistant/websocket.rs'
-      && relativePath !== 'api/apps/api-server/src/routes/settings/system_backups/mod.rs'
+      && relativePath !== 'api/crates/api/console-interaction/src/routes/assistant/websocket.rs'
+      && relativePath !== 'api/crates/api/console-settings/src/routes/settings/system_backups/mod.rs'
       && !notificationProtocolControl) {
       violations.push(`${relativePath} retains a direct route authentication owner`);
     }
   }
   if (!apiServer.includes('publish_external_endpoint_catalog(')
       || !apiServer.includes('contribute_openapi_document(')
-      || !endpointCatalog.includes('compile_complete(')
-      || !endpointCatalog.includes('UnclassifiedRows')) {
+      || !endpointCompiler.includes('compile_complete(')
+      || !endpointCompiler.includes('UnclassifiedRows')) {
     violations.push('Composition Root does not fail closed on the complete external endpoint catalog');
   }
   return violations;

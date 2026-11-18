@@ -18,6 +18,7 @@ import { appI18n } from '../../../../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../../../../state/auth-store';
 import { NotificationsPage } from '../NotificationsPage';
 import { CommunicationHistory } from '../communications/CommunicationHistory';
+import { CommunicationFile } from '../communications/communication-presentation';
 
 const conversation: CommunicationConversationListItem = {
   id: 'conversation-1',
@@ -41,6 +42,7 @@ function message(index: number): CommunicationMessage {
     direction: index % 2 ? 'inbound' : 'outbound',
     occurred_at_ms: 1792960000000 + index * 1000,
     content: `Chat message ${index}`,
+    reply_to: null,
     file: null,
     processing_status: 'succeeded',
     send_status: 'failed',
@@ -105,18 +107,19 @@ beforeEach(async () => {
           binding: { model: 'deepseek-flash', reasoning_effort: 'high' }
         };
       else if (url.pathname.endsWith('/retry')) data = messages[9];
-      else if (url.pathname.endsWith('/files/message-8'))
+      else if (url.pathname.endsWith('/files/message-8/info'))
         data = {
           message: messages[7],
-          file_name: 'answer.pdf',
-          content_type: 'application/pdf',
-          content_length: 100,
-          offset: 0,
-          next_offset: null,
-          eof: true,
-          data_base64: '',
+          file_table_id: 'files',
+          file_record_id: 'file-8',
+          file_name: messages[7]!.file!.file_name,
+          media_type: messages[7]!.file!.media_type,
+          size_bytes: 100,
           url: 'https://files.example.test/answer.pdf',
-          preview_url: null
+          preview_url:
+            messages[7]!.file!.media_type === 'image/png'
+              ? '/api/console/files/files/records/file-8/content?preview=true'
+              : null
         };
       else if (/\/conversations\/[^/]+\/messages$/.test(url.pathname)) {
         data = url.searchParams.has('cursor')
@@ -233,12 +236,6 @@ test('Chat opens the modeless run-detail floating shell and reused conversation 
   expect(chatRequests()).toHaveLength(1);
   expect(chatRequests()[0]!.searchParams.toString()).toBe('limit=5');
   expect(within(pane).getByText('answer.pdf')).toBeInTheDocument();
-  expect(calls.some((url) => url.pathname.includes('/files/'))).toBe(false);
-  await click(
-    within(drawer).getByRole('button', {
-      name: appI18n.t('notifications:file_access')
-    })
-  );
   expect(
     await within(drawer).findByRole('link', {
       name: appI18n.t('notifications:download_file')
@@ -246,7 +243,7 @@ test('Chat opens the modeless run-detail floating shell and reused conversation 
   ).toHaveAttribute('href', 'https://files.example.test/answer.pdf');
   expect(
     calls.filter((url) =>
-      url.pathname.endsWith('/instances/channel-1/files/message-8')
+      url.pathname.endsWith('/instances/channel-1/files/message-8/info')
     )
   ).toHaveLength(1);
   expect(pane).toHaveTextContent(
@@ -410,4 +407,27 @@ test('received page two Chat preserves tabs, filters and pagination without open
   expect(
     calls.some((url) => /\/messages\/message-\d+$/.test(url.pathname))
   ).toBe(false);
+});
+
+test('received images request metadata and display the authorized preview without a get-link action', async () => {
+  messages[7]!.file = {
+    ...messages[7]!.file!,
+    file_name: 'image.png',
+    media_type: 'image/png'
+  };
+  render(
+    <QueryClientProvider client={client}>
+      <CommunicationFile message={messages[7]!} />
+    </QueryClientProvider>
+  );
+  expect(await screen.findByRole('img', { name: 'image.png' })).toHaveAttribute(
+    'src',
+    '/api/console/files/files/records/file-8/content?preview=true'
+  );
+  expect(
+    screen.queryByRole('button', { name: /Get file link/ })
+  ).not.toBeInTheDocument();
+  expect(
+    calls.filter((url) => url.pathname.endsWith('/files/message-8/info'))
+  ).toHaveLength(1);
 });

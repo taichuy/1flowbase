@@ -32,104 +32,147 @@ const PROVIDERS: [&str; 7] = [
     "openai_compatible",
 ];
 
-const PROCESS_PER_CALL_MANIFEST_BUILD_ONLY: [&str; 2] = ["langfuse", "wechat-chat-channels"];
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OfficialEvidenceScope {
+    StatefulExecution,
+    ManifestAndBinary,
+}
 
-// This inventory is deliberately closed: a newly added stateful package needs a
-// real-host execution case before it can become compatibility evidence.
+// Stateful compatibility evidence stays closed over actual real-host cases.
+// Process-per-call managed extensions share a manifest/build evidence class;
+// new package names do not imply a stateful execution case or behavior coverage.
 fn official_evidence_scope(
     plugin_id: &str,
     mode: PluginExecutionMode,
     contract: &str,
     protocol: &str,
-) -> Result<bool, &'static str> {
-    let (expected_mode, expected_contract, expected_protocol, executed) =
-        if PROVIDERS.contains(&plugin_id) {
-            (
-                PluginExecutionMode::StatefulProviderWorker,
-                "1flowbase.provider/v2",
-                if plugin_id == "chatgpt-codex" {
-                    "stdio_json_worker"
-                } else {
-                    "stdio_json_multiplex_v1"
-                },
-                true,
-            )
-        } else {
-            match plugin_id {
-                "clash-proxy" => (
-                    PluginExecutionMode::StatefulRuntimeWorker,
-                    "1flowbase.network_egress_provider/v1",
-                    "stdio_json_worker",
-                    true,
-                ),
-                "session_retry_distribution" => (
-                    PluginExecutionMode::StatefulRuntimeWorker,
-                    extension_contracts::PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1,
-                    "stdio_json_worker",
-                    true,
-                ),
-                "langfuse" | "wechat-chat-channels" => (
-                    PluginExecutionMode::ProcessPerCall,
-                    "1flowbase.extension-bus/v1",
-                    "stdio_json_multiplex_v1",
-                    false,
-                ),
-                _ => {
-                    return Err(
+) -> Result<OfficialEvidenceScope, &'static str> {
+    let (expected_mode, expected_contract, expected_protocol) = if PROVIDERS.contains(&plugin_id) {
+        (
+            PluginExecutionMode::StatefulProviderWorker,
+            "1flowbase.provider/v2",
+            if plugin_id == "chatgpt-codex" {
+                "stdio_json_worker"
+            } else {
+                "stdio_json_multiplex_v1"
+            },
+        )
+    } else {
+        match plugin_id {
+            "clash-proxy" => (
+                PluginExecutionMode::StatefulRuntimeWorker,
+                "1flowbase.network_egress_provider/v1",
+                "stdio_json_worker",
+            ),
+            "session_retry_distribution" => (
+                PluginExecutionMode::StatefulRuntimeWorker,
+                extension_contracts::PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1,
+                "stdio_json_worker",
+            ),
+            _ => {
+                return match (mode, contract, protocol) {
+                    (
+                        PluginExecutionMode::ProcessPerCall,
+                        "1flowbase.extension-bus/v1",
+                        "stdio_json" | "stdio_json_multiplex_v1",
+                    ) => Ok(OfficialEvidenceScope::ManifestAndBinary),
+                    _ => Err(
                         "unclassified official package requires explicit compatibility coverage",
-                    )
-                }
+                    ),
+                };
             }
-        };
+        }
+    };
     if mode != expected_mode || contract != expected_contract || protocol != expected_protocol {
         return Err("official package mode/contract/protocol differs from its evidence scope");
     }
-    Ok(executed)
+    Ok(OfficialEvidenceScope::StatefulExecution)
 }
 
 #[test]
 fn official_evidence_inventory_rejects_new_stateful_and_misclassified_packages() {
-    for id in PROCESS_PER_CALL_MANIFEST_BUILD_ONLY {
+    for protocol in ["stdio_json", "stdio_json_multiplex_v1"] {
+        // A future valid managed package has the same evidence scope as the
+        // original connectors. The former ID whitelist rejected both carriers.
         assert_eq!(
             official_evidence_scope(
-                id,
+                "future-managed-extension",
                 PluginExecutionMode::ProcessPerCall,
                 "1flowbase.extension-bus/v1",
-                "stdio_json_multiplex_v1"
+                protocol,
             ),
-            Ok(false)
+            Ok(OfficialEvidenceScope::ManifestAndBinary)
         );
-        assert!(official_evidence_scope(
-            id,
+        for mode in [
+            PluginExecutionMode::StatefulProviderWorker,
             PluginExecutionMode::StatefulRuntimeWorker,
-            "1flowbase.extension-bus/v1",
-            "stdio_json_multiplex_v1"
-        )
-        .is_err());
+            PluginExecutionMode::InProcess,
+            PluginExecutionMode::DeclarativeOnly,
+        ] {
+            assert!(official_evidence_scope(
+                "future-managed-extension",
+                mode,
+                "1flowbase.extension-bus/v1",
+                protocol,
+            )
+            .is_err());
+        }
         assert!(official_evidence_scope(
-            id,
+            "future-managed-extension",
             PluginExecutionMode::ProcessPerCall,
             "1flowbase.provider/v2",
-            "stdio_json_multiplex_v1"
-        )
-        .is_err());
-        assert!(official_evidence_scope(
-            id,
-            PluginExecutionMode::ProcessPerCall,
-            "1flowbase.extension-bus/v1",
-            "stdio_json"
+            protocol,
         )
         .is_err());
     }
-    assert_eq!(
-        official_evidence_scope(
-            "openai",
-            PluginExecutionMode::StatefulProviderWorker,
-            "1flowbase.provider/v2",
-            "stdio_json_multiplex_v1"
-        ),
-        Ok(true)
-    );
+    for protocol in ["stdio_json_worker", "unknown_carrier"] {
+        assert!(official_evidence_scope(
+            "future-managed-extension",
+            PluginExecutionMode::ProcessPerCall,
+            "1flowbase.extension-bus/v1",
+            protocol,
+        )
+        .is_err());
+    }
+    for id in PROVIDERS
+        .into_iter()
+        .chain(["clash-proxy", "session_retry_distribution"])
+    {
+        let (mode, contract, protocol) = match id {
+            "clash-proxy" => (
+                PluginExecutionMode::StatefulRuntimeWorker,
+                "1flowbase.network_egress_provider/v1",
+                "stdio_json_worker",
+            ),
+            "session_retry_distribution" => (
+                PluginExecutionMode::StatefulRuntimeWorker,
+                extension_contracts::PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1,
+                "stdio_json_worker",
+            ),
+            _ => (
+                PluginExecutionMode::StatefulProviderWorker,
+                "1flowbase.provider/v2",
+                if id == "chatgpt-codex" {
+                    "stdio_json_worker"
+                } else {
+                    "stdio_json_multiplex_v1"
+                },
+            ),
+        };
+        assert_eq!(
+            official_evidence_scope(id, mode, contract, protocol),
+            Ok(OfficialEvidenceScope::StatefulExecution)
+        );
+        assert!(official_evidence_scope(id, mode, contract, "unknown_carrier").is_err());
+        assert!(official_evidence_scope(id, mode, "1flowbase.extension-bus/v1", protocol).is_err());
+        assert!(official_evidence_scope(
+            id,
+            PluginExecutionMode::ProcessPerCall,
+            "1flowbase.extension-bus/v1",
+            "stdio_json_multiplex_v1",
+        )
+        .is_err());
+    }
     for mode in [
         PluginExecutionMode::StatefulProviderWorker,
         PluginExecutionMode::StatefulRuntimeWorker,
@@ -139,17 +182,10 @@ fn official_evidence_inventory_rejects_new_stateful_and_misclassified_packages()
             "new-package",
             mode,
             "1flowbase.provider/v2",
-            "stdio_json_multiplex_v1"
+            "stdio_json_multiplex_v1",
         )
         .is_err());
     }
-    assert!(official_evidence_scope(
-        "openai",
-        PluginExecutionMode::ProcessPerCall,
-        "1flowbase.extension-bus/v1",
-        "stdio_json_multiplex_v1"
-    )
-    .is_err());
 }
 
 struct StagedPackages(PathBuf);
@@ -272,7 +308,7 @@ fn versioned_plugin_id(extension_root: &Path, plugin_id: &str) -> String {
 }
 
 #[tokio::test]
-#[ignore = "requires all 11 built official packages; executes 9 stateful packages, 2 process-per-call manifest/build-only"]
+#[ignore = "requires every official runtime package built; executes 9 stateful packages, process-per-call manifest/build-only"]
 async fn d_008_eight_official_runtime_extensions_execute_through_the_real_host() {
     let official_root = official_root();
     let staged = stage_built_packages(&official_root);
@@ -305,16 +341,16 @@ async fn d_008_eight_official_runtime_extensions_execute_through_the_real_host()
             manifest.consumption_kind,
             PluginConsumptionKind::RuntimeExtension
         );
-        let executed = official_evidence_scope(
+        let scope = official_evidence_scope(
             &manifest.plugin_id,
             manifest.execution_mode,
             &manifest.contract_version,
             &manifest.runtime.protocol,
         )
         .unwrap_or_else(|error| panic!("{}: {error}", manifest_path.display()));
-        // CI builds every official package. Both process-per-call packages are
-        // parsed and have their binary checked here, but are not activated or
-        // executed by this stateful-host test. Do not claim behavioral coverage.
+        // CI builds every official package. Process-per-call managed extensions
+        // are parsed and have their binary checked here, but are not activated
+        // or executed by this stateful-host test. Do not claim behavior coverage.
         let built_binary = entry.path().join("target/debug").join(
             Path::new(&manifest.runtime.entry)
                 .file_name()
@@ -325,7 +361,7 @@ async fn d_008_eight_official_runtime_extensions_execute_through_the_real_host()
             "{} must be built before compatibility evidence",
             built_binary.display()
         );
-        if !executed {
+        if scope == OfficialEvidenceScope::ManifestAndBinary {
             assert!(
                 manifest_build_only.insert(manifest.plugin_id.clone()),
                 "duplicate official package identity"
@@ -339,11 +375,13 @@ async fn d_008_eight_official_runtime_extensions_execute_through_the_real_host()
         modes.insert(manifest.execution_mode.as_str());
         protocols.insert(manifest.runtime.protocol.clone());
     }
-    assert_eq!(
+    eprintln!(
+        "official compatibility: {} manifests and built binaries; {} stateful real-host targets; {} process-per-call manifest/build-only (not executed): {:?}",
+        actual.len() + manifest_build_only.len(),
+        actual.len(),
+        manifest_build_only.len(),
         manifest_build_only,
-        BTreeSet::from(PROCESS_PER_CALL_MANIFEST_BUILD_ONLY.map(str::to_string))
     );
-    eprintln!("official compatibility: 11 manifests and built binaries; 9 stateful real-host targets; langfuse and wechat-chat-channels manifest/build-only (not executed)");
     assert_eq!(actual, expected);
     assert_eq!(
         modes,
@@ -563,6 +601,7 @@ async fn drs_008_013_session_retry_executes_through_real_host_and_plugin_data() 
             target: RuntimeTargetId::new(plugin_id).unwrap(),
             invocation,
             principal: RuntimeExecutionPrincipal {
+                record_permissions: None,
                 caller: None,
                 workspace_id: "workspace-1".into(),
                 actor_id: None,

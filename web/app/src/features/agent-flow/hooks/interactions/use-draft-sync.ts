@@ -9,10 +9,6 @@ import { useConsoleOperationAccess } from '../../../../state/console-operation-a
 import { useAuthStore } from '../../../../state/auth-store';
 import { restoreVersion, saveDraft } from '../../api/orchestration';
 import { buildDraftSaveInput } from '../../lib/draft-save';
-import {
-  isVariableAggregatorCandidateTypeMismatchIssue,
-  validateDocument
-} from '../../lib/validate-document';
 import type { AgentFlowEnvironmentVariable } from '../../lib/variables/application-environment-variables';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import {
@@ -38,8 +34,7 @@ export function useDraftSync({
   saveDraftOverride,
   restoreVersionOverride,
   getCurrentDocument,
-  getLastSavedDocument,
-  environmentVariables = []
+  getLastSavedDocument
 }: UseDraftSyncOptions) {
   const can = useConsoleOperationAccess();
   const canSave = can('save_draft');
@@ -79,16 +74,6 @@ export function useDraftSync({
     const currentDocument = getCurrentDocument
       ? getCurrentDocument()
       : workingDocument;
-    const blocksVariableAggregatorSave = validateDocument(
-      currentDocument,
-      null,
-      environmentVariables
-    ).some(isVariableAggregatorCandidateTypeMismatchIssue);
-
-    if (blocksVariableAggregatorSave) {
-      return false;
-    }
-
     saveInFlightRef.current = true;
     setAutosaveStatus('saving');
 

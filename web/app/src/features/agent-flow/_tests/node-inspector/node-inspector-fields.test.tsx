@@ -1,3 +1,4 @@
+import { i18nText } from '../../../../shared/i18n/text';
 import { describe, test, expect, vi } from 'vitest';
 import {
   NamedBindingsFocusHarness,
@@ -6,7 +7,7 @@ import {
   nodeSchemaAdapterApi,
   nodeSchemaRegistry
 } from './node-inspector.fixtures';
-import { AgentFlowEditorStoreProvider } from '../../store/editor/AgentFlowEditorStoreProvider';
+import { AgentFlowEditorStoreProvider } from './fixtures/analysis-provider';
 import {
   DocumentObserver,
   SLOW_NODE_INSPECTOR_TEST_TIMEOUT,
@@ -87,6 +88,62 @@ describe('NodeInspector core', () => {
         '当前 binding 引用了已删除节点 node-llm-1 的输出。'
       )
     ).toBeInTheDocument();
+  });
+
+  test('shows no HTTP outputs when the document and backend catalog declare none', async () => {
+    const state = createInitialStateWithHttpRequestNode();
+    const http = state.draft.document.graph.nodes.find(
+      (node) => node.id === 'node-http-request'
+    );
+    if (!http) throw new Error('expected HTTP Request node');
+    expect(http.outputs.map((output) => output.key)).toEqual([
+      'body',
+      'status_code',
+      'headers',
+      'files'
+    ]);
+    http.outputs = [];
+    const schema =
+      nodeSchemaRegistry.resolveAgentFlowNodeSchema('http_request');
+    const adapter = nodeSchemaAdapterApi.createAgentFlowNodeSchemaAdapter({
+      document: state.draft.document,
+      nodeId: http.id,
+      analysis: {
+        diagnostics: [],
+        node_outputs: [{ node_id: http.id, outputs: [] }],
+        variable_catalogs: [{ node_id: http.id, field_path: '', variables: [] }]
+      },
+      setWorkingDocument: vi.fn(),
+      dispatch: vi.fn()
+    });
+    expect(adapter.getDerived('selectorOptions')).toEqual([]);
+    expect(adapter.getDerived('outputContract')).toEqual([]);
+    expect(adapter.getDerived('rootValues')).toMatchObject({
+      config: { output_contract: [] }
+    });
+
+    await renderWithProviders(
+      <AgentFlowEditorStoreProvider initialState={state}>
+        <NodeInspector schema={schema} adapter={adapter} />
+      </AgentFlowEditorStoreProvider>
+    );
+    const toggle = screen.getByRole('button', {
+      name: i18nText('agentFlow', 'auto.output_variable')
+    });
+    await domEvents.click(toggle);
+    const section = toggle.closest('.agent-flow-node-detail__section');
+    if (!section) throw new Error('expected output section');
+    expect(
+      within(section as HTMLElement).getByText(
+        i18nText('agentFlow', 'auto.no_fields_yet')
+      )
+    ).toBeInTheDocument();
+    for (const key of ['body', 'status_code', 'headers', 'files']) {
+      expect(
+        within(section as HTMLElement).queryByText(key)
+      ).not.toBeInTheDocument();
+    }
+    expect(http.outputs).toEqual([]);
   });
 
   test(

@@ -329,7 +329,10 @@ fn compatible_stream_stats_count_only_emitted_answer_deltas() {
     stats.record_sent_runtime_event(&run, &terminal_event, true);
 
     assert!(stats.emitted_content());
-    assert_eq!(stats.emitted_content_bytes, "已输出".len());
+    assert_eq!(
+        stats.emitted_content_bytes_for_test_support(),
+        "已输出".len()
+    );
 }
 
 #[test]

@@ -15,6 +15,7 @@ async fn forwarded(
         .header("host", "127.0.0.1")
         .header("x-forwarded-proto", "http")
         .header("origin", ISSUER)
+        .header("mcp-protocol-version", "2025-11-25")
         .header("content-type", content_type);
     if let Some(cookie) = cookie {
         request = request.header("cookie", cookie);
@@ -101,7 +102,7 @@ async fn oauth_explicit_origin_survives_host_rewriting_through_the_complete_flow
     let discovery = forwarded(
         &app,
         "GET",
-        &format!("{issuer}/.well-known/openid-configuration"),
+        &format!("{issuer}/.well-known/oauth-authorization-server"),
         "application/json",
         String::new(),
         None,
@@ -115,6 +116,7 @@ async fn oauth_explicit_origin_survives_host_rewriting_through_the_complete_flow
         "authorization_endpoint",
         "token_endpoint",
         "registration_endpoint",
+        "revocation_endpoint",
     ] {
         assert!(discovery[field]
             .as_str()

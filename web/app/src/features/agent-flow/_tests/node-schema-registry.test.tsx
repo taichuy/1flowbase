@@ -1087,7 +1087,7 @@ describe('agent-flow node schema registry', () => {
     });
   });
 
-  test('fills missing fixed HTTP Request output variables for legacy nodes', () => {
+  test('projects declared HTTP Request outputs without synthesizing legacy fields', () => {
     const document = createDefaultAgentFlowDocument({ flowId: 'flow-1' });
     const httpNode = createNodeDocument('http_request', 'node-http-request');
     const legacyHttpNode: FlowNodeDocument = {
@@ -1101,18 +1101,23 @@ describe('agent-flow node schema registry', () => {
         nodes: [legacyHttpNode]
       }
     };
+    const setWorkingDocument = vi.fn();
     const adapter = createAgentFlowNodeSchemaAdapter({
       document: legacyDocument,
       nodeId: 'node-http-request',
-      setWorkingDocument: vi.fn(),
+      setWorkingDocument,
       dispatch: vi.fn()
     });
 
     expect(adapter.getValue('config.output_contract')).toEqual([
-      { key: 'body', title: '响应内容', valueType: 'json' },
-      { key: 'status_code', title: '响应状态码', valueType: 'number' },
-      { key: 'headers', title: '响应头列表 JSON', valueType: 'object' },
-      { key: 'files', title: 'HTTP 响应文件', valueType: 'Array[File]' }
+      { key: 'body', title: '响应内容', valueType: 'json' }
     ]);
+    expect(adapter.getValue('outputs')).toBe(legacyHttpNode.outputs);
+    expect(adapter.getDerived('rootValues')).toEqual(
+      expect.objectContaining({
+        config: expect.objectContaining({ output_contract: legacyHttpNode.outputs })
+      })
+    );
+    expect(setWorkingDocument).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,6 @@
-use crate::_tests::{
-    create_ready_provider_instance,
-    support::{login_and_capture_cookie, test_api_state_with_database_url, test_app, test_config},
+use crate::_tests::support::{
+    configure_runnable_agent_flow, login_and_capture_cookie, test_api_state_with_database_url,
+    test_app, test_config,
 };
 use crate::routes::application_public_api::native::{
     parse_native_run_request, service_error, to_native_run_response,
@@ -84,8 +84,11 @@ fn ac_007_callback_payload_conflict_maps_to_http_409() {
             .into(),
     );
 
-    assert_eq!(error.status, StatusCode::CONFLICT);
-    assert_eq!(error.code, "callback_resume_payload_conflict");
+    assert_eq!(error.status_for_test_support(), StatusCode::CONFLICT);
+    assert_eq!(
+        error.code_for_test_support(),
+        "callback_resume_payload_conflict"
+    );
 }
 
 #[test]
@@ -94,9 +97,12 @@ fn d2_ac_001_native_malformed_json_has_one_safe_adapter_receipt() {
     let error = parse_native_run_request(Bytes::from(format!("{{\"raw\":\"{sentinel}\"")))
         .expect_err("malformed Native JSON must be rejected by the adapter boundary");
 
-    assert_eq!(error.report.protocol, TranslationProtocol::Native);
-    assert_eq!(error.report.decisions.len(), 1);
-    let decision = &error.report.decisions[0];
+    assert_eq!(
+        error.report_for_test_support().protocol,
+        TranslationProtocol::Native
+    );
+    assert_eq!(error.report_for_test_support().decisions.len(), 1);
+    let decision = &error.report_for_test_support().decisions[0];
     assert_eq!(decision.source_path, "$.body");
     assert_eq!(decision.kind, TranslationDecisionKind::Rejected);
     assert_eq!(
@@ -104,7 +110,7 @@ fn d2_ac_001_native_malformed_json_has_one_safe_adapter_receipt() {
         TranslationSafeRepresentation::Present
     );
     assert!(
-        !serde_json::to_string(&error.report)
+        !serde_json::to_string(&error.report_for_test_support())
             .expect("receipt should serialize")
             .contains(sentinel),
         "malformed JSON must not be retained in the receipt"
@@ -210,8 +216,9 @@ async fn publish_native_application(
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::CREATED);
+    let status = response.status();
     let payload = response_json(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{payload}");
     assert!(payload["data"].get("operation_bindings").is_none());
 }
 
@@ -289,6 +296,7 @@ async fn issue_1601_native_websocket_handshake_uses_application_key_and_versione
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let application_id = create_application(&app, &cookie, &csrf, "Native WebSocket").await;
+    configure_runnable_native_generate_target(&app, &cookie, &csrf, &application_id).await;
     publish_native_application(
         &app,
         &cookie,
@@ -337,59 +345,7 @@ pub(super) async fn configure_runnable_native_generate_target(
     csrf: &str,
     application_id: &str,
 ) {
-    let provider_instance_id = create_ready_provider_instance(app, cookie, csrf).await;
-    let state = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri(format!(
-                    "/api/console/applications/{application_id}/orchestration"
-                ))
-                .header("cookie", cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(state.status(), StatusCode::OK);
-    let mut document = response_json(state).await["data"]["draft"]["document"].clone();
-    let llm_node = document["graph"]["nodes"]
-        .as_array_mut()
-        .expect("default draft should include graph nodes")
-        .iter_mut()
-        .find(|node| node["type"] == "llm")
-        .expect("default draft should include an LLM node");
-    assert_eq!(llm_node["id"], json!("node-llm"));
-    llm_node["config"]["model_provider"] = json!({
-        "provider_code": "fixture_provider",
-        "source_instance_id": provider_instance_id,
-        "model_id": "fixture_chat"
-    });
-
-    let save = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("PUT")
-                .uri(format!(
-                    "/api/console/applications/{application_id}/orchestration/draft"
-                ))
-                .header("cookie", cookie)
-                .header("x-csrf-token", csrf)
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "document": document,
-                        "change_kind": "logical",
-                        "summary": "configure native Generate provider route"
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(save.status(), StatusCode::OK);
+    configure_runnable_agent_flow(app, cookie, csrf, application_id).await;
 }
 
 /// Root #1453: publication freezes the workflow; it does not create a second Provider route.
@@ -1068,8 +1024,8 @@ fn increment_model_admission_errors_project_as_client_or_configuration_errors() 
         ),
     ] {
         let projected = native_error(error);
-        assert_eq!(projected.status, status);
-        assert_eq!(projected.code, code);
+        assert_eq!(projected.status_for_test_support(), status);
+        assert_eq!(projected.code_for_test_support(), code);
     }
 }
 
@@ -1082,6 +1038,7 @@ async fn generation_native_and_responses_ws_connection_and_first_turn_keep_froze
     let app = crate::app_with_state(state.clone());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let application_id = create_application(&app, &cookie, &csrf, "Generation WS").await;
+    configure_runnable_agent_flow(&app, &cookie, &csrf, &application_id).await;
     publish_native_application(
         &app,
         &cookie,
@@ -1216,3 +1173,6 @@ async fn generation_native_and_responses_ws_connection_and_first_turn_keep_froze
     server.abort();
     let _ = server.await;
 }
+
+#[path = "native_routes/workflow_credentials.rs"]
+mod workflow_credentials;

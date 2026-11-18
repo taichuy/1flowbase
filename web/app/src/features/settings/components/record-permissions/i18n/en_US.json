@@ -1,0 +1,21 @@
+{
+  "title": "Permissions",
+  "mode": "Permission mode",
+  "inherit": "Use existing API permissions",
+  "restricted": "Restrict this record",
+  "inherited": "This record uses the roles’ existing API permissions.",
+  "restriction": "Roles still need the corresponding API permission. Unchecked actions are denied. With no roles selected, only root can access this record.",
+  "roles": "Roles",
+  "role": "Role",
+  "save": "Save",
+  "cancel": "Cancel",
+  "reload": "Reload",
+  "failed": "Unable to load or save permissions. Check access and retry.",
+  "conflict": "Permissions have changed. Reload before saving.",
+  "actions": {
+    "view": "View",
+    "update": "Edit",
+    "open": "Open",
+    "delete": "Delete"
+  }
+}

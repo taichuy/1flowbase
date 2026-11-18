@@ -14,10 +14,12 @@ use super::canonical_stream::{
 };
 use crate::installed_provider_package::load_installed_provider_package;
 
+mod client_progress;
 mod failover_queue;
 mod fee_lifecycle;
 mod internal_compaction;
 mod main_instance_routing;
+mod native_continuation_recovery;
 mod native_trajectory;
 mod protocol_context;
 mod protocol_observation;
@@ -385,10 +387,12 @@ impl RuntimeCanonicalStreamWriter {
 }
 
 fn tool_argument_delta(delta: &Value) -> Option<&str> {
-    delta
-        .pointer("/function/arguments")
-        .or_else(|| delta.get("arguments"))
-        .and_then(Value::as_str)
+    delta.as_str().or_else(|| {
+        delta
+            .pointer("/function/arguments")
+            .or_else(|| delta.get("arguments"))
+            .and_then(Value::as_str)
+    })
 }
 
 fn record_first_token_timing(

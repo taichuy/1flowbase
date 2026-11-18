@@ -1,240 +1,26 @@
-use control_plane_contracts::ports::{LifecycleDeliveryBlocked, LifecycleDeliveryPauseReason};
-use std::{collections::BTreeMap, sync::Arc};
-
+#[cfg(test)]
 use anyhow::Result;
+pub use api_host_kernel::host_extensions::lifecycle::*;
+#[cfg(test)]
 use async_trait::async_trait;
+#[cfg(test)]
+use control_plane_contracts::ports::{LifecycleDeliveryBlocked, LifecycleDeliveryPauseReason};
+#[cfg(test)]
 use control_plane_contracts::ports::{LifecycleOutboxRecord, LifecycleSubscriberTarget};
+#[cfg(test)]
 use control_plane_contracts::ports::{
     ModelDefinitionIntegrationNotification, OptionalNotificationContract,
     OptionalNotificationPublicationPort, PublishOptionalNotificationInput,
 };
+#[cfg(test)]
 use plugin_framework::extension_bus::{
     compile_lifecycle_handler_registry, EffectiveLifecycleHandlerRegistry,
     EffectiveLifecycleSubscriber, EffectiveLifecycleSubscriberPlan, LifecycleHandlerBinding,
     LifecycleHandlerError, LifecycleHandlerFuture, TypedLifecycleSubscriberHandler,
 };
-
-use super::lifecycle_activation::HostExtensionLifecycleFactoryCatalog;
-
-pub(crate) const MODEL_DEFINITION_COMMITTED_HANDLER_ID: &str =
-    "official.plugin-host.model-definition-committed";
-pub(crate) const MODEL_DEFINITION_COMMITTED_HANDLER_VERSION: &str = "v1";
-struct ModelDefinitionCommittedHandler {
-    publication: Arc<dyn OptionalNotificationPublicationPort>,
-}
-
-impl TypedLifecycleSubscriberHandler<control_plane_contracts::ports::ModelDefinitionCommittedFact>
-    for ModelDefinitionCommittedHandler
-{
-    fn handle<'a>(
-        &'a self,
-        fact: &'a extension_contracts::AfterCommitFact<
-            control_plane_contracts::ports::ModelDefinitionCommittedFact,
-        >,
-    ) -> LifecycleHandlerFuture<'a> {
-        Box::pin(async move {
-            let publish = async {
-                // Preserve the source's timestamp; retry must not create a new fact body.
-                let source = serde_json::to_value(fact)?;
-                let occurred_at_unix_ms = source["occurred_at_unix_ms"]
-                    .as_i64()
-                    .ok_or_else(|| anyhow::anyhow!("source fact timestamp is missing"))?;
-                let payload = fact.payload();
-                let notification = extension_contracts::AfterCommitFact::new(
-                    fact.fact_id().clone(),
-                    fact.transaction_id().clone(),
-                    occurred_at_unix_ms,
-                    ModelDefinitionIntegrationNotification {
-                        model_definition_id: payload.model_definition_id,
-                        scope_kind: payload.scope_kind,
-                        scope_id: payload.scope_id,
-                    },
-                );
-                self.publication
-                    .publish_optional_notification(&PublishOptionalNotificationInput {
-                        source_event_id: uuid::Uuid::parse_str(fact.fact_id().as_str())?,
-                        transaction_id: uuid::Uuid::parse_str(fact.transaction_id().as_str())?,
-                        workspace_id: (payload.scope_kind == domain::DataModelScopeKind::Workspace)
-                            .then_some(payload.scope_id),
-                        occurred_at: time::OffsetDateTime::from_unix_timestamp_nanos(
-                            i128::from(occurred_at_unix_ms) * 1_000_000,
-                        )?,
-                        contract: OptionalNotificationContract::ModelDefinition,
-                        canonical_payload: serde_json::to_vec(&notification)?,
-                    })
-                    .await?;
-                // Completion here means optional publication adjudication or durable
-                // stage handoff, never completion of downstream target effects.
-                Ok::<(), anyhow::Error>(())
-            }
-            .await;
-            publish.map_err(|error| LifecycleHandlerError::new(error.to_string()))
-        })
-    }
-}
-
-fn official_plugin_host_lifecycle_bindings(
-    publication: Arc<dyn OptionalNotificationPublicationPort>,
-) -> Vec<LifecycleHandlerBinding> {
-    vec![LifecycleHandlerBinding::typed::<
-        control_plane_contracts::ports::ModelDefinitionCommittedFact,
-        _,
-    >(
-        MODEL_DEFINITION_COMMITTED_HANDLER_ID,
-        MODEL_DEFINITION_COMMITTED_HANDLER_VERSION,
-        Arc::new(ModelDefinitionCommittedHandler { publication }),
-    )]
-}
-
-pub(crate) fn production_lifecycle_handler_factories(
-    publication: Arc<dyn OptionalNotificationPublicationPort>,
-) -> Result<HostExtensionLifecycleFactoryCatalog> {
-    let mut factories = HostExtensionLifecycleFactoryCatalog::default();
-    factories.register(
-        "builtin://official.plugin-host",
-        "builtin_plugin_host",
-        Arc::new(move || {
-            Ok(official_plugin_host_lifecycle_bindings(Arc::clone(
-                &publication,
-            )))
-        }),
-    )?;
-    Ok(factories)
-}
-
-pub(crate) struct ApiLifecycleFactDelivery {
-    registry: EffectiveLifecycleHandlerRegistry,
-    native_targets: Vec<EffectiveLifecycleSubscriber>,
-    managed: Option<std::sync::Weak<crate::extension_bus::ManagedExtensionComposition>>,
-}
-
-impl ApiLifecycleFactDelivery {
-    pub(crate) fn with_managed(
-        mut self,
-        composition: &Arc<crate::extension_bus::ManagedExtensionComposition>,
-    ) -> Self {
-        self.managed = Some(Arc::downgrade(composition));
-        self
-    }
-
-    pub(crate) fn bind(
-        plan: &EffectiveLifecycleSubscriberPlan,
-        handler_bindings: Vec<LifecycleHandlerBinding>,
-    ) -> Result<(
-        Self,
-        control_plane_contracts::ports::LifecyclePublicationCatalog,
-    )> {
-        let mut publications: BTreeMap<(String, String), Vec<LifecycleSubscriberTarget>> =
-            BTreeMap::new();
-        for subscriber in plan.subscribers() {
-            publications
-                .entry((
-                    subscriber.fact_contract_id.clone(),
-                    subscriber.fact_contract_version.clone(),
-                ))
-                .or_default()
-                .push(LifecycleSubscriberTarget {
-                    subscriber_id: subscriber.subscriber_id.clone(),
-                    handler_id: subscriber.handler_id.clone(),
-                    handler_version: subscriber.handler_version.clone(),
-                });
-        }
-        let catalog = control_plane_contracts::ports::LifecyclePublicationCatalog::new(
-            publications.into_iter().map(|(contract, subscribers)| {
-                (
-                    contract,
-                    control_plane_contracts::ports::LifecyclePublicationPlan {
-                        graph_fingerprint: plan.graph_fingerprint().to_string(),
-                        subscribers,
-                    },
-                )
-            }),
-        )?;
-        let native_targets = plan.subscribers().to_vec();
-        let registry = compile_lifecycle_handler_registry(plan, handler_bindings)?;
-        Ok((
-            Self {
-                registry,
-                native_targets,
-                managed: None,
-            },
-            catalog,
-        ))
-    }
-}
-
-#[async_trait]
-impl control_plane::lifecycle_outbox_dispatcher::LifecycleFactDeliveryPort
-    for ApiLifecycleFactDelivery
-{
-    async fn terminate_command(
-        &self,
-        fact: &LifecycleOutboxRecord,
-        termination: control_plane_contracts::ports::CommunicationCommandTermination,
-    ) -> Result<()> {
-        let owner = self
-            .managed
-            .as_ref()
-            .and_then(std::sync::Weak::upgrade)
-            .ok_or_else(|| anyhow::anyhow!("command termination composition unavailable"))?;
-        owner.terminate_command_delivery(fact, termination).await
-    }
-    async fn deliver(&self, fact: &LifecycleOutboxRecord) -> Result<()> {
-        if let Some(owner) = &self.managed {
-            let owner = owner.upgrade().ok_or({
-                LifecycleDeliveryBlocked(LifecycleDeliveryPauseReason::FrozenGraphUnavailable)
-            })?;
-            if let Some(snapshot) = owner.event_snapshot_for_graph(fact).await? {
-                if owner.deliver_event_record(&snapshot, fact).await? {
-                    return Ok(());
-                }
-                // Exact native target was validated against the combined frozen plan above.
-                return self
-                    .registry
-                    .deliver(
-                        self.registry.graph_fingerprint(),
-                        &fact.handler_id,
-                        &fact.handler_version,
-                        &fact.contract_id,
-                        &fact.contract_version,
-                        &fact.canonical_payload,
-                    )
-                    .await
-                    .map_err(anyhow::Error::from);
-            }
-        }
-        if fact.graph_fingerprint != self.registry.graph_fingerprint() {
-            return Err(LifecycleDeliveryBlocked(
-                LifecycleDeliveryPauseReason::FrozenGraphUnavailable,
-            )
-            .into());
-        }
-        if !self.native_targets.iter().any(|target| {
-            target.subscriber_id == fact.subscriber_id
-                && target.handler_id == fact.handler_id
-                && target.handler_version == fact.handler_version
-                && target.fact_contract_id == fact.contract_id
-                && target.fact_contract_version == fact.contract_version
-        }) {
-            return Err(LifecycleDeliveryBlocked(
-                LifecycleDeliveryPauseReason::FrozenHandlerUnavailable,
-            )
-            .into());
-        }
-        self.registry
-            .deliver(
-                &fact.graph_fingerprint,
-                &fact.handler_id,
-                &fact.handler_version,
-                &fact.contract_id,
-                &fact.contract_version,
-                &fact.canonical_payload,
-            )
-            .await
-            .map_err(anyhow::Error::from)
-    }
-}
-
+#[cfg(test)]
+use std::{collections::BTreeMap, sync::Arc};
+#[cfg_attr(test, api_test_selection::group(core))]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -329,6 +115,7 @@ mod tests {
         );
         let subscriber = &plan.subscribers()[0];
         let record = LifecycleOutboxRecord {
+            observation_context: None,
             event_id,
             transaction_id,
             contract_id: subscriber.fact_contract_id.clone(),
@@ -572,5 +359,70 @@ mod tests {
             .extend_active_host_extensions(&[(manifest, contribution)])
             .unwrap();
         assembly
+    }
+    #[test]
+    fn native_definition_projection_has_no_unbound_phases_or_system_credit_source() {
+        use domain::event_center::*;
+        use extension_contracts::LifecycleContract;
+        let assembly = independent_plugin_fixture_assembly();
+        let graph = assembly.compile_graph().unwrap();
+        let plan = assembly.compile_lifecycle_subscriber_plan(&graph).unwrap();
+        let declarations = native_lifecycle_source_descriptors(&plan, EventSourceScope::Unbound);
+        assert_eq!(declarations.len(), 3);
+        assert!(declarations
+            .iter()
+            .all(|d| d.binding == EventSourceBinding::Declaration
+                && d.coverage == EventSourceCoverage::Unavailable
+                && d.supported_phases.is_empty()));
+        let system = native_lifecycle_source_descriptors(&plan, EventSourceScope::System);
+        assert_eq!(system.len(), 2);
+        assert!(system.iter().all(|d| d.contract_id
+            != control_plane_contracts::ports::CreditNotificationFact::CONTRACT_ID));
+    }
+    #[test]
+    fn credit_catalog_leaves_select_the_same_original_source_without_extra_publication() {
+        use control_plane_contracts::ports::{CreditNotificationEventType, CreditNotificationFact};
+        use domain::event_center::*;
+        use extension_contracts::LifecycleContract;
+        let assembly = independent_plugin_fixture_assembly();
+        let graph = assembly.compile_graph().unwrap();
+        let plan = assembly.compile_lifecycle_subscriber_plan(&graph).unwrap();
+        let scope = EventSourceScope::Workspace {
+            workspace_id: uuid::Uuid::now_v7(),
+        };
+        let entries = native_lifecycle_catalog_entries(&plan, scope);
+        let credit = entries
+            .iter()
+            .filter(|e| e.contract_id == CreditNotificationFact::CONTRACT_ID)
+            .collect::<Vec<_>>();
+        assert_eq!(credit.len(), 10);
+        let parent = credit
+            .iter()
+            .find(|e| e.source.as_ref().unwrap().selection.filters.is_empty())
+            .unwrap();
+        for kind in CreditNotificationEventType::ALL {
+            let leaf = credit.iter().find(|e| e.name == kind.wire_name()).unwrap();
+            let selection = &leaf.source.as_ref().unwrap().selection;
+            assert_eq!(
+                selection.scope,
+                parent.source.as_ref().unwrap().selection.scope
+            );
+            assert_eq!(
+                selection.source_id,
+                parent.source.as_ref().unwrap().selection.source_id
+            );
+            assert_eq!(selection.filters.len(), 1);
+            assert_eq!(selection.filters["/payload/event_type"], kind.wire_name());
+            assert_eq!(
+                leaf.payload_schema["properties"]["payload"]["properties"]["event_type"]["const"],
+                kind.wire_name()
+            );
+            assert_eq!(leaf.supported_phases, parent.supported_phases);
+        }
+        assert!(
+            native_lifecycle_catalog_entries(&plan, EventSourceScope::System)
+                .iter()
+                .all(|e| e.contract_id != CreditNotificationFact::CONTRACT_ID)
+        );
     }
 }

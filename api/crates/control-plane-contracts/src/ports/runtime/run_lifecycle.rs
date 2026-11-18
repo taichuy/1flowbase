@@ -144,6 +144,12 @@ pub enum CommitFlowRunTerminalResult {
         output_payload: serde_json::Value,
         error_payload: serde_json::Value,
     },
+    /// The admitted business root was lost before a terminal or waiting handoff.
+    /// Its winning terminal transaction also closes unfinished persisted nodes.
+    InterruptedExecution {
+        output_payload: serde_json::Value,
+        error_payload: serde_json::Value,
+    },
     Cancelled {
         output_payload: serde_json::Value,
         error_payload: Option<serde_json::Value>,
@@ -155,7 +161,9 @@ impl CommitFlowRunTerminalResult {
         match self {
             Self::Succeeded { .. } => domain::FlowRunStatus::Succeeded,
             Self::Incomplete { .. } => domain::FlowRunStatus::Incomplete,
-            Self::Failed { .. } => domain::FlowRunStatus::Failed,
+            Self::Failed { .. } | Self::InterruptedExecution { .. } => {
+                domain::FlowRunStatus::Failed
+            }
             Self::Cancelled { .. } => domain::FlowRunStatus::Cancelled,
         }
     }
@@ -165,13 +173,15 @@ impl CommitFlowRunTerminalResult {
             Self::Succeeded { output_payload }
             | Self::Incomplete { output_payload }
             | Self::Failed { output_payload, .. }
+            | Self::InterruptedExecution { output_payload, .. }
             | Self::Cancelled { output_payload, .. } => output_payload,
         }
     }
 
     pub fn error_payload(&self) -> Option<&serde_json::Value> {
         match self {
-            Self::Failed { error_payload, .. } => Some(error_payload),
+            Self::Failed { error_payload, .. }
+            | Self::InterruptedExecution { error_payload, .. } => Some(error_payload),
             Self::Cancelled { error_payload, .. } => error_payload.as_ref(),
             Self::Succeeded { .. } | Self::Incomplete { .. } => None,
         }
@@ -181,7 +191,7 @@ impl CommitFlowRunTerminalResult {
         match self {
             Self::Succeeded { .. } => "flow_run_completed",
             Self::Incomplete { .. } => "flow_run_incomplete",
-            Self::Failed { .. } => "flow_run_failed",
+            Self::Failed { .. } | Self::InterruptedExecution { .. } => "flow_run_failed",
             Self::Cancelled { .. } => "flow_run_cancelled",
         }
     }
@@ -190,7 +200,7 @@ impl CommitFlowRunTerminalResult {
         match self {
             Self::Succeeded { .. } => "flow_finished",
             Self::Incomplete { .. } => "flow_incomplete",
-            Self::Failed { .. } => "flow_failed",
+            Self::Failed { .. } | Self::InterruptedExecution { .. } => "flow_failed",
             Self::Cancelled { .. } => "flow_cancelled",
         }
     }

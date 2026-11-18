@@ -6,7 +6,7 @@ use std::{
 
 use async_trait::async_trait;
 use extension_contracts::provider_contract::ProtocolContextEnvelope;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -518,6 +518,14 @@ pub enum ProviderTransportPolicy {
     Preferred,
 }
 
+/// Host-owned location of one predecessor Responses round. It carries no history body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeContinuationRecoverySource {
+    pub flow_run_id: Uuid,
+    pub response_round_id: Uuid,
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct ProviderTransportPayload {
     policy: ProviderTransportPolicy,
@@ -527,6 +535,7 @@ pub struct ProviderTransportPayload {
     size_bytes: usize,
     affinity: Option<ProviderTransportAffinity>,
     native_history: Option<Value>,
+    native_recovery_source: Option<NativeContinuationRecoverySource>,
     // Invocation-only copy of the owned predecessor receipt; never part of wire_body.
     predecessor_recovery_receipt:
         Option<extension_contracts::provider_contract::ProviderRecoveryReceipt>,
@@ -547,8 +556,31 @@ impl ProviderTransportPayload {
             size_bytes,
             affinity: None,
             native_history: None,
+            native_recovery_source: None,
             predecessor_recovery_receipt: None,
         })
+    }
+
+    /// Reseal the wire body while retaining all host-owned continuation evidence.
+    pub fn with_wire_body(mut self, wire_body: Value) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            wire_body.is_object(),
+            "provider_transport_payload_must_be_object"
+        );
+        let (digest, size_bytes) = canonical_digest_and_size(&wire_body)?;
+        self.wire_body = Arc::new(wire_body);
+        self.digest = digest;
+        self.size_bytes = size_bytes;
+        Ok(self)
+    }
+
+    pub fn with_native_recovery_source(mut self, source: NativeContinuationRecoverySource) -> Self {
+        self.native_recovery_source = Some(source);
+        self
+    }
+
+    pub fn native_recovery_source(&self) -> Option<NativeContinuationRecoverySource> {
+        self.native_recovery_source
     }
 
     /// Host-only evidence read from an already owned callback, not client metadata.

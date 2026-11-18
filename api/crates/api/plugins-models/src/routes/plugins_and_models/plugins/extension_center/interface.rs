@@ -1,0 +1,797 @@
+mod managed_projection;
+
+use std::sync::Arc;
+
+use control_plane::plugin_management::{
+    DeletePluginFamilyCommand, DisablePluginCommand, EnablePluginCommand, ExtensionCatalogCategory,
+};
+use interface_runtime::{InterfaceContract, UserPrincipal};
+use uuid::Uuid;
+
+use super::*;
+use crate::routes::console_interface::{
+    self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
+    ConsoleInterfaceTargetError,
+};
+
+pub(crate) enum ExtensionCenterInput {
+    QueryManagedExecution(Uuid, Option<String>),
+    ResumeManagedDelivery(Uuid, ResumeManagedDeliveryBody),
+    RetireManagedExecution(Uuid, ManagedExecutionTargetBody),
+    GrantContributionPermission(Uuid, GrantContributionPermissionRequest),
+    RevokeContributionPermission(Uuid, RevokeContributionPermissionRequest),
+    QueryContributionAuthorizations(Uuid),
+    ListInstalled(LocalExtensionInventoryQuery),
+    Select(Uuid),
+    Enable(Uuid),
+    Disable(Uuid),
+    Delete(Uuid),
+    ListCatalog {
+        category: String,
+        query: ExtensionCatalogGatewayQuery,
+    },
+    GetCatalog {
+        category: String,
+        catalog_id: String,
+    },
+    CheckUpdates(ExtensionUpdateCheckBody),
+    InstallOfficial(InstallOfficialExtensionBody),
+    UpdateOfficial(InstallOfficialExtensionBody),
+    InstallUploaded(ExtensionUploadFields),
+}
+
+pub(crate) enum ExtensionCenterOutput {
+    ManagedExecution(control_plane_contracts::ports::ManagedExecutionState),
+    ContributionAuthorizations(ContributionAuthorizationResponse),
+    Installed(LocalExtensionInventoryPageResponse),
+    Installation(LocalExtensionInventoryEntryResponse),
+    Task(PluginTaskResponse),
+    Catalog(ExtensionCatalogGatewayPageResponse),
+    CatalogEntry(ExtensionCatalogGatewayEntryResponse),
+    Updates(ExtensionUpdateCheckResponse),
+    Install(ExtensionInstallOutcome),
+}
+
+struct ExtensionCenterAdapter(ExtensionCenterDependencies);
+
+impl ExtensionCenterAdapter {
+    async fn execute_inner(
+        &self,
+        principal: &UserPrincipal,
+        input: ExtensionCenterInput,
+    ) -> Result<ExtensionCenterOutput, ApiError> {
+        let actor = principal.actor();
+        match input {
+            ExtensionCenterInput::QueryManagedExecution(installation_id, cursor) => {
+                let service = control_plane::plugin_management::ManagedExecutionService::new(
+                    self.0.store.for_actor(actor.clone()),
+                    self.0.provider_runtime.managed_composition()?.governance(),
+                );
+                Ok(ExtensionCenterOutput::ManagedExecution(
+                    service.query(actor, installation_id, cursor).await?,
+                ))
+            }
+            ExtensionCenterInput::ResumeManagedDelivery(installation_id, body) => {
+                let service = control_plane::plugin_management::ManagedExecutionService::new(
+                    self.0.store.for_actor(actor.clone()),
+                    self.0.provider_runtime.managed_composition()?.governance(),
+                );
+                Ok(ExtensionCenterOutput::ManagedExecution(
+                    service.resume(actor, installation_id, body.into()).await?,
+                ))
+            }
+            ExtensionCenterInput::RetireManagedExecution(installation_id, body) => {
+                let service = control_plane::plugin_management::ManagedExecutionService::new(
+                    self.0.store.for_actor(actor.clone()),
+                    self.0.provider_runtime.managed_composition()?.governance(),
+                );
+                Ok(ExtensionCenterOutput::ManagedExecution(
+                    service.retire(actor, installation_id, body.into()).await?,
+                ))
+            }
+            ExtensionCenterInput::GrantContributionPermission(installation_id, request) => {
+                let service = control_plane::plugin_management::PluginContributionAuthorityService::new(
+                    self.0.store.for_actor(actor.clone()),
+                    control_plane::plugin_management::HostContributionGrantPolicy::root_composition(),
+                ).with_node_id(self.0.api_node_id.clone());
+                let snapshot = service
+                    .grant(
+                        actor,
+                        installation_id,
+                        control_plane::plugin_management::GrantContributionPermission {
+                            contribution_id: request.contribution_id,
+                            permission: request.permission,
+                            resource_scope: request.resource_scope.into(),
+                            permission_contract_id: request.permission_contract_id,
+                            permission_contract_version: request.permission_contract_version,
+                        },
+                    )
+                    .await?;
+                Ok(ExtensionCenterOutput::ContributionAuthorizations(
+                    snapshot.try_into()?,
+                ))
+            }
+            ExtensionCenterInput::RevokeContributionPermission(installation_id, request) => {
+                let service = control_plane::plugin_management::PluginContributionAuthorityService::new(
+                    self.0.store.for_actor(actor.clone()),
+                    control_plane::plugin_management::HostContributionGrantPolicy::root_composition(),
+                ).with_node_id(self.0.api_node_id.clone());
+                let snapshot = service
+                    .revoke(
+                        actor,
+                        installation_id,
+                        control_plane::plugin_management::RevokeContributionPermission {
+                            authorization_id: request.authorization_id,
+                            expected_revision: request.expected_revision,
+                        },
+                    )
+                    .await?;
+                Ok(ExtensionCenterOutput::ContributionAuthorizations(
+                    snapshot.try_into()?,
+                ))
+            }
+            ExtensionCenterInput::QueryContributionAuthorizations(installation_id) => {
+                let service = control_plane::plugin_management::PluginContributionAuthorityService::new(
+                    self.0.store.for_actor(actor.clone()),
+                    control_plane::plugin_management::HostContributionGrantPolicy::root_composition(),
+                ).with_node_id(self.0.api_node_id.clone());
+                let snapshot = service.query(actor, installation_id).await?;
+                Ok(ExtensionCenterOutput::ContributionAuthorizations(
+                    snapshot.try_into()?,
+                ))
+            }
+            ExtensionCenterInput::ListInstalled(query) => {
+                let category = query
+                    .category
+                    .as_deref()
+                    .map(|value| {
+                        domain::ExtensionCategory::parse(value).ok_or(
+                            control_plane::errors::ControlPlaneError::InvalidInput(
+                                "extension_catalog_category",
+                            ),
+                        )
+                    })
+                    .transpose()?;
+                let limit = query.limit.unwrap_or(20).clamp(1, 50);
+                let mut families = extension_installation_service(&self.0)
+                    .list_installed_families_for_node(&self.0.api_node_id)
+                    .await?;
+                let native_targets =
+                    control_plane::ports::PluginRepository::list_native_plugin_targets(
+                        &self.0.store,
+                    )
+                    .await?;
+                for family in &mut families {
+                    if family.current.identity.category != domain::ExtensionCategory::HostExtensions
+                    {
+                        continue;
+                    }
+                    let target = native_targets.iter().find(|t| {
+                        t.category == family.current.identity.category
+                            && t.organization == family.current.identity.organization
+                            && t.artifact_id == family.current.identity.artifact_id
+                    });
+                    for version in &mut family.installed_versions {
+                        version.is_current =
+                            target.is_some_and(|t| t.enabled && t.installation_id == version.id);
+                    }
+                    if let Some(selected) = target.and_then(|t| {
+                        family
+                            .installed_versions
+                            .iter()
+                            .find(|v| v.id == t.installation_id)
+                    }) {
+                        family.current = selected.clone();
+                    } else {
+                        family.current.is_current = false;
+                    }
+                }
+                if let Some(category) = category {
+                    families.retain(|family| family.current.identity.category == category);
+                }
+                let (total_entries, next_cursor, page_entries) =
+                    paginate_installed_families(families, query.cursor.as_deref(), limit);
+                let mut entries = Vec::with_capacity(page_entries.len());
+                for family in page_entries {
+                    let status = workspace_application_status(
+                        &self.0,
+                        actor.current_workspace_id,
+                        &family.current,
+                    )
+                    .await?;
+                    let collector_states =
+                        if domain::is_client_collector_receipt(&family.current.receipt) {
+                            let install_service = extension_installation_service(&self.0);
+                            let mut states = std::collections::HashMap::new();
+                            for version in &family.installed_versions {
+                                states.insert(
+                                    version.id.to_string(),
+                                    install_service
+                                        .client_collector_manifest(version)
+                                        .await
+                                        .is_ok(),
+                                );
+                            }
+                            Some(states)
+                        } else {
+                            None
+                        };
+                    let mut response = to_local_inventory_family_entry(family)?;
+                    if let Some(states) = collector_states {
+                        if !states.get(&response.id).copied().unwrap_or(false) {
+                            response.status = "missing".into();
+                        }
+                        for version in &mut response.installed_versions {
+                            if !states.get(&version.id).copied().unwrap_or(false) {
+                                version.status = "missing".into();
+                            }
+                        }
+                    }
+                    if let Some(installation) =
+                        control_plane::ports::PluginRepository::get_installation(
+                            &self.0.store,
+                            Uuid::parse_str(&response.id).map_err(|_| {
+                                control_plane::errors::ControlPlaneError::InvalidInput(
+                                    "extension_installation_id",
+                                )
+                            })?,
+                        )
+                        .await?
+                    {
+                        let has_target = installation.category
+                            != domain::ExtensionCategory::HostExtensions
+                            || native_targets
+                                .iter()
+                                .any(|t| t.installation_id == installation.id);
+                        response.desired_state =
+                            has_target.then(|| installation.desired_state.as_str().to_string());
+                        if let Some(artifact) =
+                            control_plane::ports::PluginRepository::get_artifact_instance(
+                                &self.0.store,
+                                &self.0.api_node_id,
+                                installation.id,
+                            )
+                            .await?
+                        {
+                            let availability_status = if has_target
+                                && installation.category
+                                    == domain::ExtensionCategory::HostExtensions
+                                // Native startup owns the recorded failure; it is not a missing artifact.
+                                && artifact.artifact_status
+                                    != domain::PluginArtifactInstanceStatus::LoadFailed
+                            {
+                                control_plane::plugin_lifecycle::derive_availability_status(
+                                    installation.desired_state,
+                                    if artifact.artifact_status.is_ready() {
+                                        domain::PluginArtifactStatus::Ready
+                                    } else {
+                                        domain::PluginArtifactStatus::Missing
+                                    },
+                                    artifact.runtime_status,
+                                )
+                            } else {
+                                artifact.availability_status
+                            };
+                            response.availability_status =
+                                Some(availability_status.as_str().to_string());
+                            response.runtime_status =
+                                has_target.then(|| artifact.runtime_status.as_str().to_string());
+                            if is_runtime_uninstall_category(installation.category)
+                                && artifact.artifact_status
+                                    == domain::PluginArtifactInstanceStatus::Missing
+                            {
+                                response.status = "uninstalled".to_string();
+                            }
+                        }
+                    }
+                    let managed_ids = response
+                        .installed_versions
+                        .iter()
+                        .filter(|version| {
+                            version.contract_version.as_deref()
+                                == Some("1flowbase.extension-bus/v1")
+                        })
+                        .map(|version| Uuid::parse_str(&version.id))
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|_| {
+                            control_plane::errors::ControlPlaneError::InvalidInput(
+                                "extension_installation_id",
+                            )
+                        })?;
+                    let managed_removal_blocked = if managed_ids.is_empty() {
+                        false
+                    } else {
+                        match self.0.provider_runtime.managed_composition() {
+                            Ok(composition) => control_plane_contracts::ports::ManagedArtifactRemovalGuard::guard_managed_artifact_removal(composition.as_ref(),&managed_ids).await.is_err(),
+                            Err(_) => true,
+                        }
+                    };
+                    for version in &mut response.installed_versions {
+                        if let Some(decision) = control_plane::ports::ExtensionInstallationRepository::extension_deletion_decision(&self.0.store, &self.0.api_node_id, Uuid::parse_str(&version.id).map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("extension_installation_id"))?).await? {
+                            version.deletable = decision.deletable;
+                            version.delete_reasons = decision.reasons;
+                        }
+                        if managed_removal_blocked
+                            && version.contract_version.as_deref()
+                                == Some("1flowbase.extension-bus/v1")
+                        {
+                            version.deletable = false;
+                            version
+                                .delete_reasons
+                                .push("managed_execution_references_or_backlog".into());
+                        }
+                    }
+                    response.application_status = status.to_string();
+                    entries.push(response);
+                }
+                Ok(ExtensionCenterOutput::Installed(
+                    LocalExtensionInventoryPageResponse {
+                        limit,
+                        total_entries,
+                        next_cursor,
+                        entries,
+                    },
+                ))
+            }
+            ExtensionCenterInput::Select(installation_id) => {
+                if let Some(target) = control_plane::ports::PluginRepository::get_installation(
+                    &self.0.store,
+                    installation_id,
+                )
+                .await?
+                {
+                    if target.category == domain::ExtensionCategory::HostExtensions {
+                        api_host_kernel::plugin_execution::switch_version(
+                            &service(&self.0, actor, "extension_center.installed.select"),
+                            control_plane::plugin_management::SwitchPluginVersionCommand {
+                                actor_user_id: actor.user_id,
+                                provider_code: target.provider_code,
+                                target_installation_id: installation_id,
+                            },
+                        )
+                        .await?;
+                        let selected = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(&self.0.store,&self.0.api_node_id,installation_id).await?
+                            .ok_or(control_plane::errors::ControlPlaneError::NotFound("extension_installation"))?;
+                        let mut response = to_local_inventory_entry(selected)?;
+                        response.is_current = true;
+                        response.desired_state = Some("pending_restart".into());
+                        if let Some(artifact) =
+                            control_plane::ports::PluginRepository::get_artifact_instance(
+                                &self.0.store,
+                                &self.0.api_node_id,
+                                installation_id,
+                            )
+                            .await?
+                        {
+                            response.runtime_status = Some(artifact.runtime_status.as_str().into());
+                            response.availability_status =
+                                Some(artifact.availability_status.as_str().into());
+                        }
+                        return Ok(ExtensionCenterOutput::Installation(response));
+                    }
+                    if target.contract_version == "1flowbase.extension-bus/v1" {
+                        let assigned = control_plane::ports::PluginRepository::list_assignments(
+                            &self.0.store,
+                            actor.current_workspace_id,
+                        )
+                        .await?;
+                        if !assigned
+                            .iter()
+                            .any(|assignment| assignment.installation_id == installation_id)
+                        {
+                            api_host_kernel::plugin_execution::switch_version(
+                                &service(&self.0, actor, "extension_center.installed.select"),
+                                control_plane::plugin_management::SwitchPluginVersionCommand {
+                                    actor_user_id: actor.user_id,
+                                    provider_code: target.provider_code,
+                                    target_installation_id: installation_id,
+                                },
+                            )
+                            .await?;
+                        }
+                        let selected = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(&self.0.store, &self.0.api_node_id, installation_id).await?
+                            .ok_or(control_plane::errors::ControlPlaneError::NotFound("extension_installation"))?;
+                        return Ok(ExtensionCenterOutput::Installation(
+                            to_local_inventory_entry(selected)?,
+                        ));
+                    }
+                }
+                let installation = extension_installation_service(&self.0)
+                    .select_current_installation(&self.0.api_node_id, installation_id)
+                    .await?
+                    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                        "extension_installation",
+                    ))?;
+                Ok(ExtensionCenterOutput::Installation(
+                    to_local_inventory_entry(installation)?,
+                ))
+            }
+            ExtensionCenterInput::Enable(installation_id) => {
+                // This owner spans the desired-state write, runtime publication, failure CAS
+                // and task finalization. Losing the HTTP/MCP waiter cannot skip restoration.
+                let operation = self
+                    .0
+                    .store
+                    .managed_operation_lifetime()
+                    .admit(control_plane_contracts::ports::ManagedOwnedOperation::Candidate)?;
+                let dependencies = self.0.clone();
+                let actor = actor.clone();
+                let task = tokio::spawn(async move {
+                    let _operation = operation;
+                    api_host_kernel::plugin_execution::enable_plugin(
+                        &service(&dependencies, &actor, "extension_center.installed.enable"),
+                        EnablePluginCommand {
+                            actor_user_id: actor.user_id,
+                            installation_id,
+                        },
+                    )
+                    .await
+                })
+                .await
+                .map_err(anyhow::Error::from)??;
+                Ok(ExtensionCenterOutput::Task(to_task_response(task)?))
+            }
+            ExtensionCenterInput::Disable(installation_id) => {
+                let installation = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(&self.0.store, &self.0.api_node_id, installation_id).await?
+                    .ok_or(control_plane::errors::ControlPlaneError::NotFound("extension_installation"))?;
+                let task = api_host_kernel::plugin_execution::disable_plugin(
+                    &service(&self.0, actor, "extension_center.installed.disable"),
+                    DisablePluginCommand {
+                        actor_user_id: actor.user_id,
+                        installation_id,
+                    },
+                )
+                .await?;
+                retain_managed_schema(&self.0, actor.current_workspace_id, &installation.identity)
+                    .await?;
+                Ok(ExtensionCenterOutput::Task(to_task_response(task)?))
+            }
+            ExtensionCenterInput::Delete(installation_id) => {
+                let existing = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(&self.0.store, &self.0.api_node_id, installation_id).await?
+                    .ok_or(control_plane::errors::ControlPlaneError::NotFound("extension_installation"))?;
+                let managed_schema_identity = existing.identity.clone();
+                let installation = if is_runtime_uninstall_category(existing.identity.category)
+                    && !domain::is_client_collector_receipt(&existing.receipt)
+                {
+                    let plugin = control_plane::ports::PluginRepository::get_installation(
+                        &self.0.store,
+                        installation_id,
+                    )
+                    .await?
+                    .ok_or(
+                        control_plane::errors::ControlPlaneError::NotFound("plugin_installation"),
+                    )?;
+                    service(&self.0, actor, "extension_center.installed.delete")
+                        .delete_family(DeletePluginFamilyCommand {
+                            actor_user_id: actor.user_id,
+                            provider_code: plugin.provider_code,
+                        })
+                        .await?;
+                    domain::ExtensionInstallationRecord {
+                        local_path: None,
+                        status: domain::ExtensionInstallationStatus::Missing,
+                        is_current: false,
+                        ..existing
+                    }
+                } else if existing.identity.category == domain::ExtensionCategory::Mcp {
+                    self.0
+                        .official_mcp_bundle_source
+                        .delete_local_version(
+                            &existing.identity.organization,
+                            &existing.identity.artifact_id,
+                            &existing.identity.version,
+                        )
+                        .await?;
+                    domain::ExtensionInstallationRecord {
+                        status: domain::ExtensionInstallationStatus::Missing,
+                        is_current: false,
+                        ..existing
+                    }
+                } else {
+                    extension_installation_service(&self.0)
+                        .delete_local_installation(&self.0.api_node_id, installation_id)
+                        .await?
+                        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                            "extension_installation",
+                        ))?
+                };
+                retain_managed_schema(
+                    &self.0,
+                    actor.current_workspace_id,
+                    &managed_schema_identity,
+                )
+                .await?;
+                Ok(ExtensionCenterOutput::Installation(
+                    to_local_inventory_entry(installation)?,
+                ))
+            }
+            ExtensionCenterInput::ListCatalog { category, query } => {
+                let category = ExtensionCatalogCategory::parse(&category)?;
+                Ok(ExtensionCenterOutput::Catalog(
+                    load_catalog_page(&self.0, actor.current_workspace_id, category, query).await?,
+                ))
+            }
+            ExtensionCenterInput::GetCatalog {
+                category,
+                catalog_id,
+            } => {
+                let category = ExtensionCatalogCategory::parse(&category)?;
+                let identity = catalog_identity(category, &catalog_id)?;
+                if category == ExtensionCatalogCategory::Mcp
+                    && catalog_id == BUILTIN_FRONTSTAGE_CATALOG_ID
+                {
+                    let installed = installed_catalog_joins(&self.0, category).await?;
+                    return Ok(ExtensionCenterOutput::CatalogEntry(
+                        builtin_frontstage_catalog_entry(
+                            &self.0,
+                            actor.current_workspace_id,
+                            &installed,
+                        )
+                        .await?,
+                    ));
+                }
+                let located = find_catalog_entry_for_requested_identity(
+                    &self.0,
+                    actor.current_workspace_id,
+                    category,
+                    &catalog_id,
+                )
+                .await?
+                .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                    "extension_catalog_entry",
+                ))?;
+                if located.entry.category != category.as_str()
+                    || located.entry.artifact != identity.artifact_id()
+                    || located.entry.id != catalog_id
+                    || located.entry.organization != identity.organization()
+                {
+                    return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "extension_catalog_identity",
+                    )
+                    .into());
+                }
+                let installed = installed_catalog_joins(&self.0, category).await?;
+                let trusted_key_ids = self
+                    .0
+                    .official_plugin_source
+                    .trusted_public_keys()
+                    .iter()
+                    .map(|key| key.key_id.clone())
+                    .collect::<Vec<_>>();
+                let catalog_source = if located.source_kind == "official_repository" {
+                    "official"
+                } else {
+                    "mirror"
+                };
+                Ok(ExtensionCenterOutput::CatalogEntry(project_catalog_entry(
+                    located.entry,
+                    catalog_source,
+                    &installed,
+                    &trusted_key_ids,
+                )))
+            }
+            ExtensionCenterInput::CheckUpdates(body) => {
+                if body.items.len() > 50 {
+                    return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "extension_update_check_page",
+                    )
+                    .into());
+                }
+                let category = ExtensionCatalogCategory::parse(&body.category)?;
+                for item in &body.items {
+                    catalog_identity(category, &item.catalog_id)?;
+                    if !valid_extension_segment(&item.current_version)
+                        || item.installed_versions.is_empty()
+                        || item
+                            .installed_versions
+                            .iter()
+                            .any(|version| !valid_extension_segment(version))
+                    {
+                        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                            "installed_extension_versions",
+                        )
+                        .into());
+                    }
+                }
+                let mut items = Vec::with_capacity(body.items.len());
+                for item in body.items {
+                    let latest_version = find_catalog_entry_for_requested_identity(
+                        &self.0,
+                        actor.current_workspace_id,
+                        category,
+                        &item.catalog_id,
+                    )
+                    .await?
+                    .map(|located| located.entry.version);
+                    let status = extension_update_status(
+                        latest_version.as_deref(),
+                        &item.installed_versions,
+                    );
+                    items.push(ExtensionUpdateCheckItemResponse {
+                        catalog_id: item.catalog_id,
+                        current_version: item.current_version,
+                        latest_version,
+                        status: status.to_string(),
+                    });
+                }
+                Ok(ExtensionCenterOutput::Updates(
+                    ExtensionUpdateCheckResponse {
+                        category: body.category,
+                        items,
+                    },
+                ))
+            }
+            ExtensionCenterInput::InstallOfficial(body) => Ok(ExtensionCenterOutput::Install(
+                install_or_update_official_extension(
+                    &self.0,
+                    actor,
+                    body,
+                    "extension_center.install",
+                )
+                .await?,
+            )),
+            ExtensionCenterInput::UpdateOfficial(body) => Ok(ExtensionCenterOutput::Install(
+                install_or_update_official_extension(
+                    &self.0,
+                    actor,
+                    body,
+                    "extension_center.update",
+                )
+                .await?,
+            )),
+            ExtensionCenterInput::InstallUploaded(fields) => Ok(ExtensionCenterOutput::Install(
+                upload::install_uploaded_artifact(&self.0, actor, fields).await?,
+            )),
+        }
+    }
+}
+
+impl ConsoleInterfacePort<ExtensionCenterInput, ExtensionCenterOutput> for ExtensionCenterAdapter {
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: ExtensionCenterInput,
+    ) -> ConsoleInterfaceFuture<'a, ExtensionCenterOutput> {
+        Box::pin(async move {
+            self.execute_inner(principal, input)
+                .await
+                .map_err(ConsoleInterfaceTargetError)
+        })
+    }
+}
+
+const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.managed_execution.view",
+        binding_id: "http.console.extension-center.managed-execution.view.v1",
+        method: "GET",
+        path: "/api/console/settings/extension-center/installed/:installation_id/managed-execution",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.lifecycle_deliveries.resume",
+        binding_id: "http.console.extension-center.lifecycle-deliveries.resume.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/installed/:installation_id/lifecycle-deliveries/resume",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.managed_executions.retire",
+        binding_id: "http.console.extension-center.managed-executions.retire.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/installed/:installation_id/managed-executions/retire",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.contribution_authorizations.grant",
+        binding_id: "http.console.extension-center.contribution-authorizations.grant.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.contribution_authorizations.revoke",
+        binding_id: "http.console.extension-center.contribution-authorizations.revoke.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations/revoke",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.contribution_authorizations.view",
+        binding_id: "http.console.extension-center.contribution-authorizations.view.v1",
+        method: "GET",
+        path: "/api/console/settings/extension-center/installed/:installation_id/contribution-authorizations",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.installed.view",
+        binding_id: "http.console.extension-center.installed.v1",
+        method: "GET",
+        path: "/api/console/settings/extension-center/installed",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.installed.select",
+        binding_id: "http.console.extension-center.select.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/installed/:installation_id/select",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.installed.enable",
+        binding_id: "http.console.extension-center.enable.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/installed/:installation_id/enable",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.installed.disable",
+        binding_id: "http.console.extension-center.disable.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/installed/:installation_id/disable",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.installed.delete",
+        binding_id: "http.console.extension-center.delete.v1",
+        method: "DELETE",
+        path: "/api/console/settings/extension-center/installed/:installation_id",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.catalog.view",
+        binding_id: "http.console.extension-center.catalog.v1",
+        method: "GET",
+        path: "/api/console/settings/extension-center/catalog/:category",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.catalog.detail",
+        binding_id: "http.console.extension-center.catalog-entry.v1",
+        method: "GET",
+        path: "/api/console/settings/extension-center/catalog/:category/:catalog_id",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.update_check",
+        binding_id: "http.console.extension-center.update-check.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/update-check",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.install",
+        binding_id: "http.console.extension-center.install.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/install",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.update",
+        binding_id: "http.console.extension-center.update.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/update",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.install.upload",
+        binding_id: "http.console.extension-center.install-upload.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/install-upload",
+        mutating: true,
+    },
+];
+
+pub fn compile_registry(
+    dependencies: ExtensionCenterDependencies,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    console_interface::compile_registry(
+        "api-server.console-extension-center",
+        "graph:console-extension-center-v1",
+        DECLARATIONS,
+        Arc::new(ExtensionCenterAdapter(dependencies)),
+    )
+}

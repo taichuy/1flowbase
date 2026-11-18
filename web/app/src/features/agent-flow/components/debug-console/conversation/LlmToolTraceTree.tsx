@@ -264,13 +264,17 @@ export function DebugWorkflowNodeDetailContent({
         />
       ) : null}
       {beforePayloadContent}
-      {payloadDisclosure === 'immediate' || item.finishedAt !== null ? (
+      {payloadDisclosure === 'immediate' ||
+      item.finishedAt !== null ||
+      onLoadSection ? (
         <NodeRunPayloadSections
           defaultCollapsed
           onLoadSection={onLoadSection}
+          refreshInterval={!item.finishedAt ? 1500 : undefined}
           processAction={processAction}
           debugPayload={debugPayload}
           inputPayload={item.inputPayload}
+          errorPayload={item.errorPayload}
           outputPayload={item.outputPayload}
           onLoadArtifact={onLoadArtifact}
           onLoadArtifacts={onLoadArtifacts}

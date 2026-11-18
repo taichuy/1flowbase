@@ -1,0 +1,291 @@
+use axum::{
+    extract::rejection::JsonRejection,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
+use control_plane::errors::ControlPlaneError;
+use plugin_framework::error::PluginFrameworkError;
+use serde::Serialize;
+use utoipa::ToSchema;
+
+use crate::official_extension_catalog::{
+    OfficialExtensionArtifactError, OfficialExtensionCatalogUnavailable,
+};
+use crate::system_backup::SystemBackupRuntimeError;
+
+#[derive(Debug)]
+pub struct ApiError(pub anyhow::Error);
+
+#[derive(Debug, thiserror::Error)]
+#[error("service unavailable: {0}")]
+pub struct ApiServiceUnavailable(pub &'static str);
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ErrorBody {
+    pub status: u16,
+    pub code: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inventory: Option<BackupSourceInventoryErrorDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BackupSourceInventoryErrorDetails {
+    pub reason: String,
+    pub installation_id: String,
+    pub artifact_identity: String,
+}
+
+impl<E> From<E> for ApiError
+where
+    E: Into<anyhow::Error>,
+{
+    fn from(value: E) -> Self {
+        Self(value.into())
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        if let Some(error) = self
+            .0
+            .downcast_ref::<control_plane::agent_logs::AgentLogsPartialImportError>()
+        {
+            return (StatusCode::CONFLICT, Json(ErrorBody {
+                status: StatusCode::CONFLICT.as_u16(),
+                code: "agent_logs_partial_import".to_owned(),
+                message: "Earlier source batches persisted. Retry unchanged source facts to finish the import safely.".to_owned(),
+                inventory: None,
+                details: Some(serde_json::json!({"accepted_events":error.accepted_events,"duplicate_events":error.duplicate_events,"committed_records":error.committed_records})),
+            })).into_response();
+        }
+        if let Some(error) = self
+            .0
+            .downcast_ref::<crate::managed_services::ManagedServiceFailure>()
+        {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(ErrorBody {
+                    status: StatusCode::UNPROCESSABLE_ENTITY.as_u16(),
+                    code: error.0.clone(),
+                    message: error.0.clone(),
+                    inventory: None,
+                    details: None,
+                }),
+            )
+                .into_response();
+        }
+        if let Some(error) = self
+            .0
+            .downcast_ref::<control_plane::mcp_oauth::OAuthError>()
+        {
+            return crate::routes::mcp_oauth::ProtocolError(control_plane::mcp_oauth::OAuthError {
+                error: error.error,
+                description: error.description,
+            })
+            .into_response();
+        }
+
+        if let Some(rejection) = self.0.downcast_ref::<JsonRejection>() {
+            return (rejection.status(), rejection.body_text()).into_response();
+        }
+        if let Some(error) = self
+            .0
+            .downcast_ref::<crate::routes::mcp_oauth::McpAuthenticationRequired>()
+        {
+            return crate::routes::mcp_oauth::authentication_challenge(error);
+        }
+        if let Some(error) = self
+            .0
+            .downcast_ref::<control_plane::frontstage::FrontstageSourceEditError>()
+        {
+            return crate::routes::frontstage::block_tree::source_edit_error_response(error);
+        }
+
+        if let Some(SystemBackupRuntimeError::SourceInventoryInvalid(error)) =
+            self.0.downcast_ref::<SystemBackupRuntimeError>()
+        {
+            tracing::warn!(
+                installation_id = %error.installation_id,
+                artifact_identity = %error.artifact_identity,
+                reason = error.reason.as_str(),
+                "system backup request rejected by source inventory"
+            );
+            return (
+                StatusCode::CONFLICT,
+                Json(ErrorBody {
+                    status: StatusCode::CONFLICT.as_u16(),
+                    code: "system_backup_source_inventory_invalid".to_owned(),
+                    message: "A required backup artifact cannot be restored.".to_owned(),
+                    details: None,
+                    inventory: Some(BackupSourceInventoryErrorDetails {
+                        reason: error.reason.as_str().to_owned(),
+                        installation_id: error.installation_id.to_string(),
+                        artifact_identity: error.artifact_identity.clone(),
+                    }),
+                }),
+            )
+                .into_response();
+        }
+
+        if self
+            .0
+            .downcast_ref::<SystemBackupRuntimeError>()
+            .is_some_and(|error| matches!(error, SystemBackupRuntimeError::MaintenanceBusy))
+        {
+            return (
+                StatusCode::CONFLICT,
+                Json(ErrorBody {
+                    status: StatusCode::CONFLICT.as_u16(),
+                    code: "system_maintenance_busy".to_owned(),
+                    message: "A system maintenance operation is already active.".to_owned(),
+                    inventory: None,
+                    details: None,
+                }),
+            )
+                .into_response();
+        }
+
+        if let Some(validation) = self
+            .0
+            .downcast_ref::<orchestration_runtime::compiler::FlowValidationError>()
+        {
+            let diagnostics = validation
+                .diagnostics
+                .iter()
+                .cloned()
+                .map(|mut diagnostic| {
+                    diagnostic.message = sanitize_error_message(&diagnostic.message);
+                    diagnostic
+                })
+                .collect::<Vec<_>>();
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorBody {
+                    status: 400,
+                    code: "flow_validation_failed".to_owned(),
+                    message: sanitize_error_message(&validation.to_string()),
+                    inventory: None,
+                    details: Some(
+                        serde_json::json!({ "phase": "validation", "diagnostics": diagnostics }),
+                    ),
+                }),
+            )
+                .into_response();
+        }
+
+        let (status, code) = match self.0.downcast_ref::<ControlPlaneError>() {
+            Some(ControlPlaneError::NotAuthenticated) => {
+                (StatusCode::UNAUTHORIZED, "not_authenticated")
+            }
+            Some(ControlPlaneError::PermissionDenied(reason)) => (StatusCode::FORBIDDEN, *reason),
+            Some(ControlPlaneError::NotFound(name)) => (StatusCode::NOT_FOUND, *name),
+            Some(ControlPlaneError::Conflict(name)) => (StatusCode::CONFLICT, *name),
+            Some(ControlPlaneError::PluginUnavailable) => {
+                (StatusCode::CONFLICT, "plugin_unavailable")
+            }
+            Some(ControlPlaneError::InvalidInput(name)) => (StatusCode::BAD_REQUEST, *name),
+            Some(ControlPlaneError::InvalidComponentModuleExport { .. }) => (
+                StatusCode::BAD_REQUEST,
+                "frontstage_component_module_export",
+            ),
+            Some(ControlPlaneError::InvalidStateTransition { .. }) => {
+                (StatusCode::CONFLICT, "invalid_state_transition")
+            }
+            Some(ControlPlaneError::UpstreamUnavailable(name)) => (StatusCode::BAD_GATEWAY, *name),
+            None if self
+                .0
+                .downcast_ref::<OfficialExtensionCatalogUnavailable>()
+                .is_some() =>
+            {
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "extension_catalog_temporarily_inconsistent",
+                )
+            }
+            None if let Some(error) = self.0.downcast_ref::<ApiServiceUnavailable>() => {
+                (StatusCode::SERVICE_UNAVAILABLE, error.0)
+            }
+            None if self
+                .0
+                .downcast_ref::<OfficialExtensionArtifactError>()
+                .is_some() =>
+            {
+                let error = self
+                    .0
+                    .downcast_ref::<OfficialExtensionArtifactError>()
+                    .expect("artifact error was matched above");
+                tracing::warn!(
+                    code = error.api_code(),
+                    upstream_host = ?error.host(),
+                    upstream_status = ?error.upstream_status(),
+                    error = %error,
+                    "official extension artifact operation failed"
+                );
+                (StatusCode::BAD_GATEWAY, error.api_code())
+            }
+            None => match self.0.downcast_ref::<PluginFrameworkError>() {
+                Some(PluginFrameworkError::RuntimeContract { .. }) => {
+                    (StatusCode::BAD_GATEWAY, "provider_runtime")
+                }
+                Some(PluginFrameworkError::PackageRuntimeTargetMismatch { .. }) => {
+                    (StatusCode::BAD_REQUEST, "plugin_runtime_target_mismatch")
+                }
+                Some(_) => (StatusCode::BAD_REQUEST, "provider_package"),
+                None => {
+                    tracing::error!(error = %self.0, "internal api error");
+                    (StatusCode::INTERNAL_SERVER_ERROR, "internal_error")
+                }
+            },
+        };
+
+        // Always expose the real error message, but sanitize sensitive information.
+        // Provider runtime errors are upstream passthrough. Surface the message so
+        // callers can debug provider and protocol failures without host rewriting.
+        let message = match code {
+            "subscription_required" => "No verifiable user message has been received. Send a message to the bound notification account, then refresh and retry.".to_owned(),
+            "subscription_expired" => "The notification delivery window has expired. Send a new message to the bound notification account, then refresh and retry.".to_owned(),
+            "subscription_unavailable" => "The notification delivery window could not be verified. Refresh the authorization status and retry when the provider is available.".to_owned(),
+            _ => sanitize_error_message(&self.0.to_string()),
+        };
+
+        (
+            status,
+            Json(ErrorBody {
+                status: status.as_u16(),
+                code: code.to_string(),
+                message,
+                inventory: None,
+                details: None,
+            }),
+        )
+            .into_response()
+    }
+}
+
+/// Sanitize sensitive information from error messages
+fn sanitize_error_message(message: &str) -> String {
+    let patterns = [
+        (
+            r"(api[_-]?key|token|secret|password|authorization)[=:\s]+[^\s]+",
+            "$1=<redacted>",
+        ),
+        (r"Bearer\s+[^\s]+", "Bearer <redacted>"),
+        (r"(x-[a-z]+-[a-z]+):\s*[^\s]+", "$1: <redacted>"),
+    ];
+
+    let mut sanitized = message.to_string();
+    for (pattern, replacement) in patterns {
+        if let Ok(re) = regex::Regex::new(pattern) {
+            sanitized = re.replace_all(&sanitized, replacement).to_string();
+        }
+    }
+    sanitized
+}
+
+#[cfg(test)]
+#[path = "error_response/_tests/node_diagnostics.rs"]
+mod node_diagnostics_tests;

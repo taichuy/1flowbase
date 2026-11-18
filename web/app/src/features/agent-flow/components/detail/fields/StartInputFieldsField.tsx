@@ -39,6 +39,7 @@ export type StartInputSourceOption = {
 export type StartInputContractKind =
   | 'agent'
   | 'workflow_schedule'
+  | 'workflow_event'
   | 'workflow_http';
 
 function createNextField(
@@ -282,18 +283,47 @@ function useStartInputFieldsController({
     />
   ) : null;
   return {
-    title, inputTypes, openAddPanel, triggerRef, fields, itemKeys, handleDrop,
-    handleDragStart, draggingIndexRef, openEditPanel, variableNamespace, removeItemKey,
-    onChange, contractKind, expandedSystemKeys, toggleSystemVariable, value,
+    title,
+    inputTypes,
+    openAddPanel,
+    triggerRef,
+    fields,
+    itemKeys,
+    handleDrop,
+    handleDragStart,
+    draggingIndexRef,
+    openEditPanel,
+    variableNamespace,
+    removeItemKey,
+    onChange,
+    contractKind,
+    expandedSystemKeys,
+    toggleSystemVariable,
+    value,
     floatingPanel
   };
 }
 
-export function StartInputFieldsField(props: Parameters<typeof useStartInputFieldsController>[0]) {
+export function StartInputFieldsField(
+  props: Parameters<typeof useStartInputFieldsController>[0]
+) {
   const {
-    title, inputTypes, openAddPanel, triggerRef, fields, itemKeys, handleDrop,
-    handleDragStart, draggingIndexRef, openEditPanel, variableNamespace, removeItemKey,
-    onChange, contractKind, expandedSystemKeys, toggleSystemVariable,
+    title,
+    inputTypes,
+    openAddPanel,
+    triggerRef,
+    fields,
+    itemKeys,
+    handleDrop,
+    handleDragStart,
+    draggingIndexRef,
+    openEditPanel,
+    variableNamespace,
+    removeItemKey,
+    onChange,
+    contractKind,
+    expandedSystemKeys,
+    toggleSystemVariable,
     floatingPanel
   } = useStartInputFieldsController(props);
 

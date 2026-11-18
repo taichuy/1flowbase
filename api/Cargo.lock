@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "access-control"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "domain",
  "serde",
@@ -62,11 +62,377 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
-name = "api-server"
-version = "0.6.3"
+name = "api-applications"
+version = "0.6.4"
 dependencies = [
  "access-control",
  "anyhow",
+ "api-host-kernel",
+ "async-trait",
+ "axum",
+ "base16ct",
+ "base64 0.23.1",
+ "control-plane",
+ "control-plane-contracts",
+ "domain",
+ "extension-contracts",
+ "flate2",
+ "form_urlencoded",
+ "futures-util",
+ "interface-runtime",
+ "jsonschema",
+ "observability",
+ "orchestration-runtime",
+ "plugin-framework",
+ "postgres-test-support",
+ "runtime-core",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "storage-durable-postgres",
+ "storage-ephemeral",
+ "storage-object",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "url",
+ "utoipa",
+ "uuid",
+ "zip 9.0.3",
+]
+
+[[package]]
+name = "api-console-interaction"
+version = "0.6.4"
+dependencies = [
+ "access-control",
+ "anyhow",
+ "api-host-kernel",
+ "argon2",
+ "async-trait",
+ "axum",
+ "axum-extra",
+ "base16ct",
+ "base64 0.23.1",
+ "control-plane",
+ "control-plane-contracts",
+ "domain",
+ "extension-contracts",
+ "flate2",
+ "form_urlencoded",
+ "futures-util",
+ "hmac",
+ "http-body",
+ "interface-runtime",
+ "jsonschema",
+ "libc",
+ "opentelemetry-proto",
+ "orchestration-runtime",
+ "percent-encoding",
+ "plugin-framework",
+ "postgres-test-support",
+ "prost",
+ "rand 0.10.3",
+ "rand_core 0.10.1",
+ "regex",
+ "reqwest",
+ "runtime-core",
+ "runtime-extension-host",
+ "runtime-profile",
+ "rust_decimal",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "storage-durable-postgres",
+ "storage-ephemeral",
+ "storage-object",
+ "sysinfo",
+ "tar",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tokio-stream",
+ "tower",
+ "tracing",
+ "url",
+ "utoipa",
+ "utoipa-swagger-ui",
+ "uuid",
+ "windows-sys 0.61.2",
+ "zip 9.0.3",
+]
+
+[[package]]
+name = "api-console-settings"
+version = "0.6.4"
+dependencies = [
+ "access-control",
+ "anyhow",
+ "api-host-kernel",
+ "argon2",
+ "async-trait",
+ "axum",
+ "base16ct",
+ "base64 0.23.1",
+ "control-plane",
+ "control-plane-contracts",
+ "domain",
+ "ed25519-dalek",
+ "futures-util",
+ "interface-runtime",
+ "jsonschema",
+ "orchestration-runtime",
+ "plugin-framework",
+ "postgres-test-support",
+ "reqwest",
+ "runtime-core",
+ "runtime-profile",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "storage-durable-postgres",
+ "storage-ephemeral",
+ "storage-object",
+ "sysinfo",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tracing",
+ "utoipa",
+ "uuid",
+ "zip 9.0.3",
+]
+
+[[package]]
+name = "api-host-kernel"
+version = "0.6.4"
+dependencies = [
+ "access-control",
+ "anyhow",
+ "argon2",
+ "async-trait",
+ "axum",
+ "base16ct",
+ "base64 0.23.1",
+ "control-plane",
+ "control-plane-contracts",
+ "domain",
+ "extension-contracts",
+ "flate2",
+ "form_urlencoded",
+ "futures-util",
+ "hmac",
+ "http-body",
+ "interface-runtime",
+ "jsonschema",
+ "libc",
+ "opentelemetry-proto",
+ "orchestration-runtime",
+ "percent-encoding",
+ "plugin-framework",
+ "postgres-test-support",
+ "prost",
+ "rand 0.10.3",
+ "rand_core 0.10.1",
+ "regex",
+ "reqwest",
+ "runtime-core",
+ "runtime-extension-host",
+ "runtime-profile",
+ "rust_decimal",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "storage-durable-postgres",
+ "storage-ephemeral",
+ "storage-object",
+ "sysinfo",
+ "tar",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tokio-stream",
+ "tower",
+ "tracing",
+ "url",
+ "utoipa",
+ "utoipa-swagger-ui",
+ "uuid",
+ "windows-sys 0.61.2",
+ "zip 9.0.3",
+]
+
+[[package]]
+name = "api-mcp"
+version = "0.6.4"
+dependencies = [
+ "access-control",
+ "anyhow",
+ "api-host-kernel",
+ "async-trait",
+ "axum",
+ "base16ct",
+ "base64 0.23.1",
+ "control-plane",
+ "control-plane-contracts",
+ "domain",
+ "extension-contracts",
+ "flate2",
+ "form_urlencoded",
+ "futures-util",
+ "http",
+ "interface-runtime",
+ "jsonschema",
+ "orchestration-runtime",
+ "percent-encoding",
+ "plugin-framework",
+ "postgres-test-support",
+ "rand 0.10.3",
+ "regex",
+ "reqwest",
+ "runtime-core",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "storage-durable-postgres",
+ "storage-ephemeral",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tower",
+ "tracing",
+ "url",
+ "utoipa",
+ "uuid",
+ "zip 9.0.3",
+]
+
+[[package]]
+name = "api-plugins-models"
+version = "0.6.4"
+dependencies = [
+ "access-control",
+ "anyhow",
+ "api-host-kernel",
+ "async-trait",
+ "axum",
+ "base16ct",
+ "base64 0.23.1",
+ "control-plane",
+ "control-plane-contracts",
+ "domain",
+ "extension-contracts",
+ "flate2",
+ "form_urlencoded",
+ "futures-util",
+ "hmac",
+ "http",
+ "interface-runtime",
+ "jsonschema",
+ "orchestration-runtime",
+ "percent-encoding",
+ "plugin-framework",
+ "postgres-test-support",
+ "rand 0.10.3",
+ "rand_core 0.10.1",
+ "regex",
+ "reqwest",
+ "runtime-core",
+ "runtime-extension-host",
+ "runtime-profile",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "storage-durable-postgres",
+ "storage-ephemeral",
+ "tar",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tower",
+ "tracing",
+ "url",
+ "utoipa",
+ "uuid",
+ "zip 9.0.3",
+]
+
+[[package]]
+name = "api-public-gateway"
+version = "0.6.4"
+dependencies = [
+ "anyhow",
+ "api-host-kernel",
+ "async-trait",
+ "axum",
+ "base16ct",
+ "base64 0.23.1",
+ "control-plane",
+ "control-plane-contracts",
+ "domain",
+ "extension-contracts",
+ "flate2",
+ "form_urlencoded",
+ "futures-util",
+ "http-body",
+ "hyper",
+ "hyper-util",
+ "interface-runtime",
+ "jsonschema",
+ "opentelemetry-proto",
+ "orchestration-runtime",
+ "plugin-framework",
+ "postgres-test-support",
+ "prost",
+ "runtime-core",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "storage-durable-postgres",
+ "storage-ephemeral",
+ "storage-object",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite 0.28.0",
+ "tokio-tungstenite 0.30.0",
+ "tonic-types",
+ "tracing",
+ "tungstenite 0.27.0",
+ "url",
+ "utoipa",
+ "uuid",
+ "zip 9.0.3",
+]
+
+[[package]]
+name = "api-server"
+version = "0.6.4"
+dependencies = [
+ "access-control",
+ "anyhow",
+ "api-applications",
+ "api-console-interaction",
+ "api-console-settings",
+ "api-host-kernel",
+ "api-mcp",
+ "api-plugins-models",
+ "api-public-gateway",
+ "api-server",
+ "api-test-selection",
  "argon2",
  "async-trait",
  "axum",
@@ -134,6 +500,10 @@ dependencies = [
  "windows-sys 0.61.2",
  "zip 9.0.3",
 ]
+
+[[package]]
+name = "api-test-selection"
+version = "0.6.4"
 
 [[package]]
 name = "arc-swap"
@@ -955,7 +1325,7 @@ checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
 name = "control-plane"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "access-control",
  "anyhow",
@@ -970,6 +1340,7 @@ dependencies = [
  "extension-contracts",
  "flate2",
  "hmac",
+ "jsonschema",
  "observability",
  "orchestration-runtime",
  "plugin-framework",
@@ -983,6 +1354,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.1",
+ "storage-ephemeral",
  "storage-object",
  "tar",
  "thiserror 2.0.21",
@@ -996,7 +1368,7 @@ dependencies = [
 
 [[package]]
 name = "control-plane-contracts"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1016,7 +1388,7 @@ dependencies = [
 
 [[package]]
 name = "control-plane-postgres-tests"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "access-control",
  "anyhow",
@@ -1045,7 +1417,7 @@ dependencies = [
 
 [[package]]
 name = "control-plane-test-support"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "access-control",
  "anyhow",
@@ -1302,7 +1674,7 @@ dependencies = [
 
 [[package]]
 name = "domain"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -1428,7 +1800,7 @@ dependencies = [
 
 [[package]]
 name = "extension-contracts"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "anyhow",
  "base16ct",
@@ -1444,7 +1816,7 @@ dependencies = [
 
 [[package]]
 name = "extension-package-runtime"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "base16ct",
  "extension-contracts",
@@ -2053,7 +2425,7 @@ dependencies = [
 
 [[package]]
 name = "interface-runtime"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "base16ct",
  "domain",
@@ -2565,7 +2937,7 @@ dependencies = [
 
 [[package]]
 name = "observability"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "domain",
  "serde",
@@ -2631,7 +3003,7 @@ dependencies = [
 
 [[package]]
 name = "orchestration-runtime"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2822,7 +3194,7 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "plugin-framework"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "access-control",
  "base16ct",
@@ -2862,7 +3234,7 @@ checksum = "05c8b63e8d9609db387f0324918f81d68fe27748f084ef092fb35954d0539a85"
 
 [[package]]
 name = "postgres-test-support"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "sqlx",
  "tokio",
@@ -3320,7 +3692,7 @@ dependencies = [
 
 [[package]]
 name = "runtime-core"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3336,7 +3708,7 @@ dependencies = [
 
 [[package]]
 name = "runtime-extension-host"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "async-trait",
  "base16ct",
@@ -3361,7 +3733,7 @@ dependencies = [
 
 [[package]]
 name = "runtime-extension-sdk"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "base16ct",
  "base64 0.23.1",
@@ -3376,7 +3748,7 @@ dependencies = [
 
 [[package]]
 name = "runtime-profile"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "anyhow",
  "base16ct",
@@ -4008,7 +4380,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "storage-durable"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4022,7 +4394,7 @@ dependencies = [
 
 [[package]]
 name = "storage-durable-postgres"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4058,7 +4430,7 @@ dependencies = [
 
 [[package]]
 name = "storage-ephemeral"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4073,7 +4445,7 @@ dependencies = [
 
 [[package]]
 name = "storage-object"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4148,7 +4520,7 @@ dependencies = [
 
 [[package]]
 name = "sync-js-runtime"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "base16ct",
  "rquickjs",

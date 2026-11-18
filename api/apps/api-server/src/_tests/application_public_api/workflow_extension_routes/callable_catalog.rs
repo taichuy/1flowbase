@@ -107,6 +107,7 @@ async fn invoke_mcp_workflow(app: &Router, token: &str, des_id: &str) -> Value {
             Request::builder()
                 .method("POST")
                 .uri("/api/mcp/callable-test")
+                .header("mcp-protocol-version", "2025-11-25")
                 .header("authorization", format!("Bearer {token}"))
                 .header("content-type", "application/json")
                 .body(Body::from(

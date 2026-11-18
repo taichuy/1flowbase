@@ -97,6 +97,7 @@ sys.stdin.read()
     let request = |scope: &str| RuntimeManagedCapabilityRequest {
         handle: handle.clone(),
         principal: RuntimeExecutionPrincipal {
+            record_permissions: None,
             caller: None,
             workspace_id: scope.into(),
             actor_id: Some("actor".into()),
@@ -111,6 +112,8 @@ sys.stdin.read()
     let services = |plugin_data: Arc<dyn PluginDataPort>| ManagedHostServices {
         plugin_data,
         plugin_credentials: None,
+        execution_gate: None,
+        plugin_ephemeral: None,
         file_import: None,
         file_read: None,
         application_logs: None,
@@ -271,6 +274,7 @@ fn service_request(
     RuntimeManagedCapabilityRequest {
         handle: handle.clone(),
         principal: RuntimeExecutionPrincipal {
+            record_permissions: None,
             caller: None,
             workspace_id: "system-scope".into(),
             actor_id: actor.map(str::to_owned),

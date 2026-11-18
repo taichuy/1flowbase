@@ -38,10 +38,12 @@ function resolveScriptsNodeCliEntry(repoRoot, entryName) {
 
 function usageBackend(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
-    "Usage: node scripts/node/test-backend.js [--package <crate> ...] [--lib | --test <target> | --bin <target>] [--filter <name>] [--exact]\n" +
-      "No arguments: Rust static gate and full Cargo workspace tests.\n" +
-      "Selection requires --package (or -p); --filter is a substring, --exact matches its full test name.\n" +
-      "Cargo jobs and test threads always use the repository runtime configuration.\n",
+    "Usage: node scripts/node/test-backend.js [--workspace | --package <crate> ...] [--lib | --test <target> | --bin <target>] [--filter <name>] [--exact]\n" +
+      "All selections (including --package/--lib/--filter) run the full Rust static gate before Cargo; no arguments select workspace tests.\n" +
+      "For component-only feedback, use native Cargo under the current budget with jobs/test threads from the runtime configuration, or node scripts/node/verify.js backend test <shard> when its scope fits.\n" +
+      "Selection requires --workspace or --package (or -p), mutually exclusive; --filter is a substring, --exact matches its full test name.\n" +
+      "Cargo jobs and test threads always use the repository runtime configuration.\n" +
+      "Choose --test <target> to limit compilation; --filter only selects tests after that target is built.\n",
   );
 }
 
@@ -62,7 +64,9 @@ function parseBackendTestCliArgs(argv) {
   const selection = { packages: [], targetArgs: [], filter: null, exact: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === "--package" || arg === "-p") {
+    if (arg === "--workspace") {
+      selection.workspace = true;
+    } else if (arg === "--package" || arg === "-p") {
       selection.packages.push(readCliOptionValue(argv, index));
       index += 1;
     } else if (["--lib", "--test", "--bin"].includes(arg)) {
@@ -83,8 +87,11 @@ function parseBackendTestCliArgs(argv) {
       throw new Error(`Unsupported backend test argument: ${arg}; see --help`);
     }
   }
-  if (selection.packages.length === 0) {
-    throw new Error("Backend test selection requires --package <crate>");
+  if (selection.workspace && selection.packages.length > 0) {
+    throw new Error("--workspace and --package/-p are mutually exclusive");
+  }
+  if (!selection.workspace && selection.packages.length === 0) {
+    throw new Error("Backend test selection requires --package <crate> or --workspace");
   }
   if (selection.exact && selection.filter === null) {
     throw new Error("--exact requires --filter <full-test-name>");

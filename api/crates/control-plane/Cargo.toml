@@ -21,6 +21,7 @@ argon2.workspace = true
 async-trait.workspace = true
 chacha20poly1305.workspace = true
 hmac.workspace = true
+jsonschema.workspace = true
 access-control = { path = "../access-control" }
 control-plane-contracts = { path = "../control-plane-contracts" }
 domain = { path = "../domain" }
@@ -46,5 +47,6 @@ uuid.workspace = true
 runtime-core = { path = "../runtime-core" }
 
 [dev-dependencies]
+storage-ephemeral = { path = "../storage/ephemeral" }
 ed25519-dalek = { version = "3.0.0", features = ["pem"] }
 tokio = { workspace = true, features = ["test-util"] }

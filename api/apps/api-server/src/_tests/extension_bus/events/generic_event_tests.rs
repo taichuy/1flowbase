@@ -26,6 +26,7 @@ pub(super) fn manifest(owner: &str) -> serde_json::Value {
 pub(super) struct Fixture {
     pub(super) _state: Arc<crate::app_state::ApiState>,
     pub(super) _services: Arc<ApiRuntimeServices>,
+    pub(super) composition: Arc<crate::extension_bus::ManagedExtensionComposition>,
     pub(super) store: storage_durable_postgres::MainDurableStore,
     pub(super) delivery: crate::host_extensions::lifecycle::ApiLifecycleFactDelivery,
     pub(super) actor: domain::ActorContext,
@@ -85,16 +86,15 @@ impl Fixture {
             .unwrap(),
         );
         host.mark_ready().unwrap();
-        let services = Arc::new(
-            ApiRuntimeServices::new_with_runtime_backend(host, graph)
-                .unwrap()
-                .with_managed_composition(
-                    store.clone(),
-                    state.api_node_id.clone(),
-                    assembly.module_descriptors().to_vec(),
-                ),
+        let (services, composition) = crate::managed_runtime_assembly::bind_managed_runtime(
+            crate::provider_runtime::services_for_current_cfg(
+                ApiRuntimeServices::new_with_runtime_backend(host, graph).unwrap(),
+            ),
+            store.clone(),
+            state.api_node_id.clone(),
+            assembly.module_descriptors().to_vec(),
         );
-        let composition = services.managed_composition().unwrap();
+        let services = Arc::new(services);
         composition
             .attach_native_lifecycle_plan(native_plan.clone())
             .unwrap();
@@ -102,7 +102,9 @@ impl Fixture {
             Arc::downgrade(&composition),
         ));
         catalog.attach_workspace_source(source.clone()).unwrap();
-        let delivery = delivery.with_managed(&composition);
+        let delivery = delivery.with_managed(
+            &(composition.clone() as Arc<dyn crate::extension_bus::ManagedCompositionPort>),
+        );
         let management = PluginManagementService::new(
             store.clone(),
             ApiProviderRuntime::new(services.clone()),
@@ -144,6 +146,7 @@ impl Fixture {
         Self {
             _state: state,
             _services: services,
+            composition,
             store,
             delivery,
             actor,

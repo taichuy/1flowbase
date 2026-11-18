@@ -300,6 +300,16 @@ pub(super) fn validate_anthropic_content_blocks(
                     report,
                 )?;
             }
+            "tool_addition" => {
+                validate_anthropic_tool_addition_block(object, &block_path, report)?;
+                report.record(
+                    &path,
+                    Some("$.client_protocol_envelope.source_request.body.messages"),
+                    TranslationDecisionKind::Exact,
+                    Some("dynamic tool references are preserved only by matching Anthropic source projection"),
+                    TranslationSafeRepresentation::Present,
+                );
+            }
             "tool_use" => {
                 validate_anthropic_tool_use_block(object, &block_path, report)?;
                 report.record(
@@ -361,6 +371,69 @@ pub(super) fn validate_anthropic_content_blocks(
                 );
             }
         }
+    }
+    Ok(())
+}
+
+fn validate_anthropic_tool_addition_block(
+    object: &Map<String, Value>,
+    block_path: &str,
+    report: &mut TranslationReportBuilder,
+) -> Result<(), AnthropicCompatError> {
+    reject_unknown_anthropic_content_block_fields(
+        object,
+        block_path,
+        &["type", "tool", "cache_control"],
+        &[],
+        report,
+    )?;
+    let tool_path = format!("{block_path}.tool");
+    let tool = object
+        .get("tool")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            reject_anthropic_nested_field(
+                report,
+                &tool_path,
+                "tool_addition tool must be a tool_reference object",
+                TranslationSafeRepresentation::Present,
+            )
+        })?;
+    reject_unknown_anthropic_content_block_fields(
+        tool,
+        &tool_path,
+        &["type", "name"],
+        &[],
+        report,
+    )?;
+    if tool.get("type").and_then(Value::as_str) != Some("tool_reference") {
+        return Err(reject_anthropic_nested_field(
+            report,
+            &format!("{tool_path}.type"),
+            "tool_addition requires a tool_reference",
+            TranslationSafeRepresentation::Present,
+        ));
+    }
+    if !tool
+        .get("name")
+        .and_then(Value::as_str)
+        .is_some_and(|name| !name.trim().is_empty())
+    {
+        return Err(reject_anthropic_nested_field(
+            report,
+            &format!("{tool_path}.name"),
+            "tool_reference name must be non-empty text",
+            TranslationSafeRepresentation::Present,
+        ));
+    }
+    if let Some(cache_control) = object.get("cache_control") {
+        validate_anthropic_cache_control(
+            cache_control,
+            &format!("{block_path}.cache_control"),
+            TranslationDecisionKind::Exact,
+            Some("$.client_protocol_envelope.source_request.body.messages"),
+            report,
+        )?;
     }
     Ok(())
 }

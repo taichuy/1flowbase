@@ -80,6 +80,7 @@ async fn resume_previous_wait(
             .collect();
         let resumed = store
             .commit_tool_callback_results(&CommitToolCallbackResultsInput {
+                anthropic_continuation: None,
                 responses_continuation: None,
                 scope_id: seeded.workspace_id,
                 application_id: seeded.application_id,
@@ -147,6 +148,7 @@ async fn response_scope_precedes_limit_and_reconnect_excludes_descendants_after_
     // unacked, consume the callback through its real inbox, then expire the lease.
     let consumed = store
         .commit_tool_callback_results(&CommitToolCallbackResultsInput {
+            anthropic_continuation: None,
             responses_continuation: None,
             scope_id: seeded.workspace_id,
             application_id: seeded.application_id,

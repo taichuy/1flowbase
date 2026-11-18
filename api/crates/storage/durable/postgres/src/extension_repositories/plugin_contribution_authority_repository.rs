@@ -19,6 +19,8 @@ use std::{future::Future, pin::Pin};
 use uuid::Uuid;
 
 struct PgContributionAuthorityLease {
+    lifecycle_observer:
+        Option<std::sync::Arc<dyn control_plane_contracts::ports::LifecycleFactObserver>>,
     managed_operations:
         std::sync::Arc<dyn control_plane_contracts::ports::ManagedOperationLifetime>,
     transaction: Transaction<'static, Postgres>,
@@ -48,6 +50,7 @@ impl ManagedInstallationSwitchLease for PgManagedInstallationSwitchLease {
         audit_log: domain::AuditLogRecord,
         catalog: Option<control_plane_contracts::CompiledConsolePolicyCatalog>,
         compatible_notification_types: Vec<String>,
+        event_catalog: Option<domain::event_center::EventCatalogSnapshot>,
     ) -> Pin<Box<dyn Future<Output = Result<u64>> + Send>> {
         Box::pin(async move {
             let revision = self
@@ -104,6 +107,13 @@ impl ManagedInstallationSwitchLease for PgManagedInstallationSwitchLease {
                 crate::role_repository::sync_console_permission_catalog_in_transaction(
                     transaction,
                     &catalog,
+                )
+                .await?;
+            }
+            if let Some(event_catalog) = event_catalog {
+                crate::event_center_repository::catalog::synchronize_in_transaction(
+                    transaction,
+                    &event_catalog,
                 )
                 .await?;
             }
@@ -279,6 +289,7 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
                 }
             }
             let binding = PluginDataBinding {
+                record_permissions: None,
                 managed_subject: None,
                 publisher_namespace: installation.organization.clone(),
                 plugin_code: installation.provider_code.clone(),
@@ -329,12 +340,12 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
                 let event_id = input.event_id;
                 let result = async move {
                     let record =
-                crate::lifecycle_outbox_repository::record_derived_lifecycle_fact_in_transaction(
+                crate::lifecycle_outbox_repository::record_derived_lifecycle_fact_in_transaction_with_outcome(
                     &mut self.transaction,
                     &input,
                 )
                 .await;
-                    let record = match record {
+                    let (record, inserted) = match record {
                         Ok(record) => record,
                         Err(error) => {
                             self.transaction.rollback().await?;
@@ -343,7 +354,8 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
                         }
                     };
                     self.transaction.commit().await?;
-                    drop(publication);
+                    if inserted { if let Some(observer) = &self.lifecycle_observer { observer.published(&input); } }
+                    publication.committed();
                     Ok(record)
                 }
                 .await;
@@ -380,6 +392,7 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
         mut self: Box<Self>,
         installation_ids: Vec<Uuid>,
         catalog: Option<control_plane_contracts::CompiledConsolePolicyCatalog>,
+        event_catalog: Option<domain::event_center::EventCatalogSnapshot>,
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> {
         Box::pin(async move {
             for id in installation_ids
@@ -412,6 +425,13 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
                 crate::role_repository::sync_console_permission_catalog_in_transaction(
                     &mut self.transaction,
                     &catalog,
+                )
+                .await?;
+            }
+            if let Some(event_catalog) = event_catalog {
+                crate::event_center_repository::catalog::synchronize_in_transaction(
+                    &mut self.transaction,
+                    &event_catalog,
                 )
                 .await?;
             }
@@ -734,7 +754,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
             sqlx::query_scalar::<_, Uuid>("select id from extension_installations where contract_version='1flowbase.extension-bus/v1' and coalesce(metadata_json #>> '{managed_service,scope}' = 'system' or metadata_json -> 'binding_targets' = '[\"system\"]'::jsonb, false) and desired_state='active_requested'")
                 .fetch_all(&mut *transaction).await?
         } else {
-            sqlx::query_scalar::<_, Uuid>("select i.id from plugin_assignments a join extension_installations i on i.id=a.installation_id where a.workspace_id=$1 and i.contract_version='1flowbase.extension-bus/v1' and i.desired_state='active_requested'")
+            sqlx::query_scalar::<_, Uuid>("select i.id from plugin_assignments a join extension_installations i on i.id=a.installation_id where a.workspace_id=$1 and i.contract_version='1flowbase.extension-bus/v1' and i.desired_state='active_requested' and not coalesce(i.metadata_json #>> '{managed_service,scope}' = 'system' or i.metadata_json -> 'binding_targets' = '[\"system\"]'::jsonb, false)")
                 .bind(input.workspace_id).fetch_all(&mut *transaction).await?
         };
         let mut active = active_ids
@@ -765,6 +785,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         }
         Ok(Box::new(PgManagedInstallationSwitchLease {
             authority: PgContributionAuthorityLease {
+                lifecycle_observer: self.lifecycle_observer.clone(),
                 managed_operations: self.managed_operations.clone(),
                 transaction,
                 snapshots,
@@ -808,6 +829,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
             snapshots.push(snapshot(&mut transaction, installation_id, workspace_id, None).await?);
         }
         Ok(Box::new(PgContributionAuthorityLease {
+            lifecycle_observer: self.lifecycle_observer.clone(),
             managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots,
@@ -828,6 +850,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         let snapshot = snapshot(&mut transaction, installation_id, workspace_id, None).await?;
         let installation = locked_installation(&mut transaction, installation_id).await?;
         Ok(Box::new(PgContributionAuthorityLease {
+            lifecycle_observer: self.lifecycle_observer.clone(),
             managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots: vec![snapshot],
@@ -947,6 +970,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         .await?;
         let installation = locked_installation(&mut transaction, installation_id).await?;
         Ok(Box::new(PgContributionAuthorityLease {
+            lifecycle_observer: self.lifecycle_observer.clone(),
             managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots: vec![snapshot],
@@ -970,6 +994,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         .await?;
         let installation = locked_installation(&mut transaction, installation_id).await?;
         Ok(Box::new(PgContributionAuthorityLease {
+            lifecycle_observer: self.lifecycle_observer.clone(),
             managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots: vec![snapshot],

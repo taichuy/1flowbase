@@ -29,12 +29,15 @@ pub enum ErrorKind {
 pub struct ExecutionError {
     pub(crate) kind: ErrorKind,
     pub console_logs: Vec<ConsoleLogEntry>,
+    /// Bounded guest diagnostic from legacy main; never a host stack or coercion.
+    pub exception_message: Option<String>,
 }
 impl From<ErrorKind> for ExecutionError {
     fn from(kind: ErrorKind) -> Self {
         Self {
             kind,
             console_logs: Vec::new(),
+            exception_message: None,
         }
     }
 }

@@ -204,7 +204,7 @@ describe('VariableGroupsField', () => {
     ).toHaveLength(2);
   });
 
-  test('AC-011 preserves an incompatible selector on type change and reports its row error', () => {
+  test('preserves the selected candidate on type change and leaves semantic feedback to backend diagnostics', () => {
     render(
       <Harness
         initial={[
@@ -237,12 +237,12 @@ describe('VariableGroupsField', () => {
       'node-source","text'
     );
     expect(
-      screen.getByText(
+      screen.queryByText(
         i18nText('agentFlow', 'auto.variable_group_candidate_type_mismatch', {
           value1: 'number'
         })
       )
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
   });
 
   test('AC-011 filters selector menus by declared type and maps array wildcard declarations', async () => {

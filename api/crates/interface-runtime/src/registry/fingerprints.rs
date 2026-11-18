@@ -54,6 +54,7 @@ pub(super) fn registry_fingerprint(
             digest.update([0]);
             digest.update(part.as_bytes());
         }
+        digest.update([u8::from(definition.event_observation_enabled())]);
         if let Some(event) = definition.stream_event_contract() {
             digest.update([0]);
             digest.update(event.contract_id().as_bytes());
@@ -136,6 +137,7 @@ pub(super) fn plan_fingerprint(
     effective_handler: &InterfaceHandlerCandidate,
 ) -> PlanFingerprint {
     let mut digest = Sha256::new();
+    digest.update([u8::from(definition.event_observation_enabled())]);
     for part in [
         graph_fingerprint.as_str(),
         definition.interface_id().as_str(),

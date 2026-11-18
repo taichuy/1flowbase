@@ -767,3 +767,6 @@ mod workspace_management;
 
 #[path = "mcp_management_integration/plugin_template.rs"]
 mod plugin_template;
+
+#[path = "mcp_management_integration/directory.rs"]
+mod directory;

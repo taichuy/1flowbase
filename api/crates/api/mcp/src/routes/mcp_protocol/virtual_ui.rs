@@ -1,0 +1,1274 @@
+pub use api_host_kernel::routes::mcp_protocol::virtual_ui::*;
+mod runtime_output;
+use runtime_output::runtime_internal_tool_output;
+
+use std::{collections::HashMap, sync::Arc};
+
+use async_trait::async_trait;
+use axum::{
+    body::to_bytes,
+    http::{
+        header::{AUTHORIZATION, COOKIE},
+        HeaderMap, HeaderName, StatusCode,
+    },
+    response::Response,
+    Router,
+};
+use control_plane::mcp_management::{
+    mcp_llm_registrations, McpLlmOperation, McpLlmRegistrationSource, McpManagementService,
+};
+use domain::mcp_management::{McpInstanceStatus, McpToolStatus};
+use orchestration_runtime::{
+    compiled_plan::CompiledNode,
+    execution_engine::{
+        RuntimeInternalToolInvoker, RuntimeInternalToolOutput, RuntimeInternalToolRegistration,
+    },
+};
+use serde_json::{json, Value};
+use storage_durable_postgres::MainDurableStore;
+
+use super::{input_schema, resources, result_delivery};
+
+#[path = "virtual_ui/description_guard.rs"]
+mod description_guard;
+test_support_item! { , [
+#[path = "virtual_ui/file_params.rs"]
+]
+mod file_params;
+}
+test_support_item! { , [
+#[path = "virtual_ui/workflow_credentials.rs"]
+]
+mod workflow_credentials;
+}
+use crate::{
+    error_response::ApiError,
+    middleware::require_session::{with_server_delegated_request_context, RequestContext},
+    routes::mcp_management::{
+        debug_execute::{self, McpServerBoundInputs},
+        upstream_client::{map_proxy_arguments, map_proxy_result, McpStreamableHttpClient},
+        McpDebugExecuteBody, McpDebugResponseMode,
+    },
+};
+use description_guard::{description_tool, validate_tool_call_controls};
+
+const MCP_LIST: &str = portable_meta_tool_name("mcp_list");
+const MCP_GET: &str = portable_meta_tool_name("mcp_get");
+const MCP_RESULT: &str = portable_meta_tool_name("mcp_result");
+test_support_item! { , [
+
+]
+const MCP_CALL: &str = portable_meta_tool_name("mcp_call");
+}
+const CSRF_HEADER: HeaderName = HeaderName::from_static("x-csrf-token");
+const TARGET_INTERFACE_ERROR_BODY_LIMIT: usize = 16 * 1024;
+
+test_support_item! { , [
+
+]
+const fn portable_meta_tool_name(name: &'static str) -> &'static str {
+    let bytes = name.as_bytes();
+    assert!(
+        !bytes.is_empty() && bytes.len() <= 64,
+        "meta tool names must contain between 1 and 64 bytes"
+    );
+    let mut index = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        let portable = (byte >= b'a' && byte <= b'z')
+            || (byte >= b'A' && byte <= b'Z')
+            || (byte >= b'0' && byte <= b'9')
+            || byte == b'_'
+            || byte == b'-';
+        assert!(
+            portable,
+            "meta tool names must use portable function-name characters"
+        );
+        index += 1;
+    }
+    name
+}
+}
+
+test_support_item! { pub(crate), [
+#[derive(Clone, Debug)]
+]
+struct VirtualMcpScope {
+    instance_ids: Vec<String>,
+}
+}
+
+impl VirtualMcpScope {
+    pub fn from_instance_ids(instance_ids: Vec<String>) -> Self {
+        Self { instance_ids }
+    }
+    pub fn instance_ids(&self) -> &[String] {
+        &self.instance_ids
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn selected(
+        catalog: &domain::McpCatalogSnapshot,
+        selected_instance_ids: &[String],
+    ) -> Self {
+        Self {
+            instance_ids: selected_instance_ids
+                .iter()
+                .filter_map(|selected_id| {
+                    catalog.instances.iter().find(|instance| {
+                        instance.status == McpInstanceStatus::Enabled
+                            && instance.instance_id == *selected_id
+                    })
+                })
+                .map(|instance| instance.instance_id.clone())
+                .collect(),
+        }
+    }
+
+    pub fn single(instance_id: String) -> Self {
+        Self {
+            instance_ids: vec![instance_id],
+        }
+    }
+
+    fn contains(&self, instance: &domain::McpInstanceRecord) -> bool {
+        self.instance_ids.contains(&instance.instance_id)
+    }
+
+    pub fn path_regex_enabled(&self, catalog: &domain::McpCatalogSnapshot) -> bool {
+        let mut selected_instances = catalog
+            .instances
+            .iter()
+            .filter(|instance| self.contains(instance));
+        let Some(first) = selected_instances.next() else {
+            return false;
+        };
+        std::iter::once(first)
+            .chain(selected_instances)
+            .all(|instance| {
+                catalog.discovery_policies.iter().any(|policy| {
+                    policy.instance_record_id == instance.id && policy.list_regex_enabled
+                })
+            })
+    }
+}
+
+test_support_item! { pub(crate), [
+
+]
+enum VirtualToolOutcome {
+    Success(Value),
+    Error {
+        code: i32,
+        message: &'static str,
+        data: Option<Value>,
+    },
+}
+}
+
+#[derive(Clone)]
+pub struct ApiMcpRuntimeToolInvoker {
+    dependencies: RuntimeInternalToolInvokerDependencies,
+    interface_catalog: Arc<dyn McpInterfaceCatalogPort>,
+    interface_dispatch: Arc<dyn McpInterfaceDispatchPort>,
+    headers: HeaderMap,
+    authorization: RuntimeMcpAuthorization,
+    catalog: domain::McpCatalogSnapshot,
+    run_level_instance_ids: Vec<String>,
+    assistant_client: Option<Arc<crate::routes::assistant::AssistantClientToolBridge>>,
+}
+
+pub trait McpInterfaceCatalogPort: Send + Sync + 'static {
+    fn bindable_interface(
+        &self,
+        interface_id: &str,
+    ) -> Result<domain::McpInterfaceCatalogEntry, ApiError>;
+}
+
+#[derive(Clone)]
+pub struct McpInterfaceCatalogSnapshot {
+    entries: HashMap<String, domain::McpInterfaceCatalogEntry>,
+}
+
+impl McpInterfaceCatalogSnapshot {
+    pub fn new(entries: Vec<domain::McpInterfaceCatalogEntry>) -> Self {
+        Self {
+            entries: entries
+                .into_iter()
+                .map(|entry| (entry.interface_id.clone(), entry))
+                .collect(),
+        }
+    }
+}
+
+impl McpInterfaceCatalogPort for McpInterfaceCatalogSnapshot {
+    fn bindable_interface(
+        &self,
+        interface_id: &str,
+    ) -> Result<domain::McpInterfaceCatalogEntry, ApiError> {
+        self.entries.get(interface_id).cloned().ok_or_else(|| {
+            control_plane::errors::ControlPlaneError::NotFound("mcp_interface").into()
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct ConsoleRouterMcpInterfaceDispatchPort {
+    console_router: Router,
+}
+
+impl ConsoleRouterMcpInterfaceDispatchPort {
+    pub fn new(console_router: Router) -> Self {
+        Self { console_router }
+    }
+}
+
+#[async_trait]
+impl McpInterfaceDispatchPort for ConsoleRouterMcpInterfaceDispatchPort {
+    async fn execute_workflow_http(
+        &self,
+        request: orchestration_runtime::execution_engine::WorkflowInternalHttpRequest,
+    ) -> anyhow::Result<orchestration_runtime::execution_engine::WorkflowInternalHttpResponse> {
+        workflow_credentials::dispatch_console_http(self.console_router.clone(), request).await
+    }
+
+    async fn execute(
+        &self,
+        headers: HeaderMap,
+        interface: domain::McpInterfaceCatalogEntry,
+        body: McpDebugExecuteBody,
+        server_bound_inputs: McpServerBoundInputs,
+    ) -> Result<Value, debug_execute::McpDebugExecuteError> {
+        debug_execute::execute_with_console_router(
+            self.console_router.clone(),
+            headers,
+            interface,
+            body,
+            server_bound_inputs,
+        )
+        .await
+    }
+}
+
+/// Explicit data dependencies needed by the MCP runtime execution path.
+///
+/// Interface catalog lookup and Console dispatch deliberately remain outside
+/// this boundary until their API-root port is extracted in the follow-up split.
+#[derive(Clone)]
+pub struct RuntimeInternalToolInvokerDependencies {
+    managed_services: Arc<[crate::managed_services::ManagedServiceRegistration]>,
+    store: MainDurableStore,
+    provider_secret_master_key: String,
+    result_delivery: result_delivery::McpResultDeliveryDependencies,
+}
+
+impl RuntimeInternalToolInvokerDependencies {
+    pub fn new(
+        store: MainDurableStore,
+        cache_store: Arc<dyn crate::host_infrastructure::CacheStore>,
+        provider_secret_master_key: String,
+    ) -> Self {
+        Self {
+            managed_services: Arc::from([]),
+            result_delivery: result_delivery::McpResultDeliveryDependencies::new(
+                store.clone(),
+                cache_store,
+            ),
+            store,
+            provider_secret_master_key,
+        }
+    }
+    pub fn with_managed_services(
+        mut self,
+        services: Vec<crate::managed_services::ManagedServiceRegistration>,
+    ) -> Self {
+        self.managed_services = services.into();
+        self
+    }
+}
+
+/// Creates runtime tool invokers from explicit runtime data dependencies.
+/// It owns no API state; interface catalog and dispatch are explicit ports.
+#[derive(Clone)]
+pub struct RuntimeInternalToolInvokerFactory {
+    dependencies: RuntimeInternalToolInvokerDependencies,
+    interface_catalog: Arc<dyn McpInterfaceCatalogPort>,
+    interface_dispatch: Arc<dyn McpInterfaceDispatchPort>,
+}
+
+impl RuntimeInternalToolInvokerFactory {
+    pub fn new(
+        dependencies: RuntimeInternalToolInvokerDependencies,
+        interface_catalog: Arc<dyn McpInterfaceCatalogPort>,
+        interface_dispatch: Arc<dyn McpInterfaceDispatchPort>,
+    ) -> Self {
+        Self {
+            dependencies,
+            interface_catalog,
+            interface_dispatch,
+        }
+    }
+
+    pub async fn create_server_delegated(
+        &self,
+        headers: HeaderMap,
+        actor: domain::ActorContext,
+        run_level_instance_ids: Vec<String>,
+    ) -> Result<ApiMcpRuntimeToolInvoker, ApiError> {
+        let user = self
+            .dependencies
+            .store
+            .find_user_by_id(actor.user_id)
+            .await?
+            .ok_or(control_plane::errors::ControlPlaneError::NotAuthenticated)?;
+        if matches!(user.status, domain::UserStatus::Disabled) {
+            return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
+        }
+        let catalog = McpManagementService::new(self.dependencies.store.clone())
+            .read_catalog_for_actor(&actor)
+            .await?;
+        for instance_id in &run_level_instance_ids {
+            if !catalog.instances.iter().any(|instance| {
+                instance.instance_id == *instance_id
+                    && instance.status == McpInstanceStatus::Enabled
+            }) {
+                return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                    "mcp_instance_ids",
+                )
+                .into());
+            }
+        }
+        Ok(self.build_server_delegated(
+            headers,
+            actor,
+            run_level_instance_ids,
+            catalog,
+            user.session_version,
+        ))
+    }
+
+    /// Credential-only runs keep their Console host without loading the MCP catalog.
+    pub async fn create_workflow_credential_host(
+        &self,
+        actor: domain::ActorContext,
+    ) -> Result<ApiMcpRuntimeToolInvoker, ApiError> {
+        let user = self
+            .dependencies
+            .store
+            .find_user_by_id(actor.user_id)
+            .await?
+            .ok_or(control_plane::errors::ControlPlaneError::NotAuthenticated)?;
+        if matches!(user.status, domain::UserStatus::Disabled) {
+            return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
+        }
+        Ok(self.build_server_delegated(
+            HeaderMap::new(),
+            actor,
+            Vec::new(),
+            domain::McpCatalogSnapshot {
+                instances: Vec::new(),
+                groups: Vec::new(),
+                tools: Vec::new(),
+                bindings: Vec::new(),
+                discovery_policies: Vec::new(),
+            },
+            user.session_version,
+        ))
+    }
+
+    fn build_server_delegated(
+        &self,
+        mut headers: HeaderMap,
+        actor: domain::ActorContext,
+        run_level_instance_ids: Vec<String>,
+        catalog: domain::McpCatalogSnapshot,
+        session_version: i64,
+    ) -> ApiMcpRuntimeToolInvoker {
+        headers.remove(COOKIE);
+        headers.remove(AUTHORIZATION);
+        headers.remove(CSRF_HEADER);
+        ApiMcpRuntimeToolInvoker {
+            dependencies: self.dependencies.clone(),
+            interface_catalog: self.interface_catalog.clone(),
+            interface_dispatch: self.interface_dispatch.clone(),
+            headers,
+            authorization: RuntimeMcpAuthorization::ServerDelegation(RuntimeActorDelegation {
+                user_id: actor.user_id,
+                tenant_id: actor.tenant_id,
+                workspace_id: actor.current_workspace_id,
+                active_role_code: actor.effective_display_role.clone(),
+                session_version,
+            }),
+            catalog,
+            run_level_instance_ids,
+            assistant_client: None,
+        }
+    }
+}
+
+#[derive(Clone)]
+enum RuntimeMcpAuthorization {
+    ServerDelegation(RuntimeActorDelegation),
+}
+
+#[derive(Clone)]
+struct RuntimeActorDelegation {
+    user_id: uuid::Uuid,
+    tenant_id: uuid::Uuid,
+    workspace_id: uuid::Uuid,
+    active_role_code: String,
+    session_version: i64,
+}
+
+impl RuntimeActorDelegation {
+    async fn request_context(&self, store: &MainDurableStore) -> Result<RequestContext, ApiError> {
+        let user = store
+            .find_user_by_id(self.user_id)
+            .await?
+            .ok_or(control_plane::errors::ControlPlaneError::NotAuthenticated)?;
+        if user.session_version != self.session_version
+            || matches!(user.status, domain::UserStatus::Disabled)
+        {
+            return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
+        }
+        let actor = store
+            .load_actor_context(
+                user.id,
+                self.tenant_id,
+                self.workspace_id,
+                Some(&self.active_role_code),
+            )
+            .await?;
+        if actor.effective_display_role != self.active_role_code {
+            return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
+        }
+        Ok(RequestContext::server_delegation(user, actor))
+    }
+}
+
+impl ApiMcpRuntimeToolInvoker {
+    pub async fn new(
+        factory: RuntimeInternalToolInvokerFactory,
+        headers: HeaderMap,
+        actor: domain::ActorContext,
+        run_level_instance_ids: Vec<String>,
+    ) -> Result<Self, ApiError> {
+        factory
+            .create_server_delegated(headers, actor, run_level_instance_ids)
+            .await
+    }
+
+    pub fn with_assistant_client(
+        mut self,
+        assistant_client: Option<Arc<crate::routes::assistant::AssistantClientToolBridge>>,
+    ) -> Self {
+        self.assistant_client = assistant_client;
+        self
+    }
+
+    fn selected_occurrences(&self, node: &CompiledNode) -> Vec<(String, McpLlmRegistrationSource)> {
+        let mut occurrences = self
+            .run_level_instance_ids
+            .iter()
+            .enumerate()
+            .map(|(index, id)| {
+                (
+                    id.clone(),
+                    McpLlmRegistrationSource::new("run", index.to_string()),
+                )
+            })
+            .collect::<Vec<_>>();
+        occurrences.extend(
+            node.config
+                .get("mcp_instance_ids")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .enumerate()
+                .map(|(index, id)| {
+                    (
+                        id.to_string(),
+                        McpLlmRegistrationSource::new("node", format!("{}:{index}", node.node_id)),
+                    )
+                }),
+        );
+        let enabled = self
+            .catalog
+            .instances
+            .iter()
+            .filter(|instance| instance.status == McpInstanceStatus::Enabled)
+            .map(|instance| instance.instance_id.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        occurrences
+            .into_iter()
+            .filter(|(id, _)| enabled.contains(id.as_str()))
+            .collect()
+    }
+}
+
+#[async_trait]
+impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
+    async fn prepare_workflow_credentials(
+        &self,
+        flow_run_id: uuid::Uuid,
+    ) -> anyhow::Result<orchestration_runtime::execution_engine::WorkflowCredentialReferences> {
+        self.prepare_workflow_credential_references(flow_run_id)
+            .await
+    }
+
+    async fn invoke_workflow_internal_http(
+        &self,
+        flow_run_id: uuid::Uuid,
+        credential_reference: &str,
+        request: orchestration_runtime::execution_engine::WorkflowInternalHttpRequest,
+    ) -> anyhow::Result<orchestration_runtime::execution_engine::WorkflowInternalHttpResponse> {
+        self.dispatch_workflow_credential_http(flow_run_id, credential_reference, request)
+            .await
+    }
+
+    fn registrations_for_node(&self, node: &CompiledNode) -> Vec<RuntimeInternalToolRegistration> {
+        mcp_llm_registrations(&self.selected_occurrences(node))
+            .into_iter()
+            .map(|mut registration| {
+                apply_catalog_registration_capabilities(&self.catalog, &mut registration);
+                RuntimeInternalToolRegistration {
+                    registration_id: format!(
+                        "{}|{}|{}",
+                        registration.instance_id,
+                        registration.operation.as_str(),
+                        registration.provider_name,
+                    ),
+                    provider_name: registration.provider_name,
+                    provider_tool: registration.provider_tool,
+                    owner: json!({
+                        "kind": "mcp_instance",
+                        "instance_id": registration.instance_id,
+                        "operation": registration.operation.as_str(),
+                        "source": registration.source,
+                    }),
+                }
+            })
+            .collect()
+    }
+
+    async fn invoke_runtime_internal_tool(
+        &self,
+        node: &CompiledNode,
+        registration: &RuntimeInternalToolRegistration,
+        arguments: Value,
+    ) -> anyhow::Result<RuntimeInternalToolOutput> {
+        // Runtime node execution may spawn independently of the workflow task. Restore the
+        // trusted chain captured in this invoker's explicit store before entering Console.
+        control_plane_contracts::ports::with_lifecycle_workflow_ancestors(
+            self.dependencies.store.workflow_ancestor_ids(),
+            async {
+                let instance_id = registration
+                    .owner
+                    .get("instance_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("MCP runtime registration is missing instance_id")
+                    })?;
+                let operation_name =
+                    match registration.owner.get("operation").and_then(Value::as_str) {
+                        Some("list") => MCP_LIST,
+                        Some("get") => MCP_GET,
+                        Some("result") => MCP_RESULT,
+                        Some("call") => MCP_CALL,
+                        _ => {
+                            return Err(anyhow::anyhow!(
+                                "MCP runtime registration has invalid operation"
+                            ))
+                        }
+                    };
+                let scope = VirtualMcpScope::single(instance_id.to_string());
+                let outcome = match &self.authorization {
+                    RuntimeMcpAuthorization::ServerDelegation(delegation) => {
+                        let context =
+                            match delegation.request_context(&self.dependencies.store).await {
+                                Ok(context) => context,
+                                Err(error)
+                                    if matches!(
+                            error
+                                .0
+                                .downcast_ref::<control_plane::errors::ControlPlaneError>(),
+                            Some(control_plane::errors::ControlPlaneError::NotAuthenticated)
+                        ) =>
+                                {
+                                    return runtime_internal_tool_output(
+                                        node,
+                                        registration,
+                                        target_failure(
+                                            StatusCode::UNAUTHORIZED,
+                                            Some("not_authenticated".to_string()),
+                                        ),
+                                    )
+                                }
+                                Err(error) => return Err(anyhow::anyhow!(error.0.to_string())),
+                            };
+                        let actor = context.actor.clone();
+                        with_server_delegated_request_context(
+                            context,
+                            dispatch(
+                                &self.dependencies,
+                                self.interface_catalog.as_ref(),
+                                self.interface_dispatch.as_ref(),
+                                &self.headers,
+                                &actor,
+                                &self.catalog,
+                                &scope,
+                                operation_name,
+                                arguments,
+                                self.assistant_client.as_deref(),
+                            ),
+                        )
+                        .await
+                    }
+                }
+                .map_err(|error| anyhow::anyhow!(error.0.to_string()))?;
+                runtime_internal_tool_output(node, registration, outcome)
+            },
+        )
+        .await
+    }
+}
+
+impl VirtualToolOutcome {
+    pub(super) fn invalid(message: &'static str) -> Self {
+        Self::Error {
+            code: -32602,
+            message,
+            data: None,
+        }
+    }
+
+    fn failed(message: &'static str, data: Value) -> Self {
+        Self::Error {
+            code: -32603,
+            message,
+            data: Some(data),
+        }
+    }
+}
+
+test_support_item! { pub(crate), [
+
+]
+fn meta_tools(path_regex_enabled: bool) -> [Value; 4] {
+    let mut list_properties = serde_json::Map::from_iter([
+        (
+            "path".to_string(),
+            json!({"type": "string", "minLength": 1}),
+        ),
+        (
+            "keywords".to_string(),
+            json!({"type": "array", "items": {"type": "string"}}),
+        ),
+        (
+            "depth".to_string(),
+            json!({"type": "integer", "minimum": 0}),
+        ),
+        (
+            "limit".to_string(),
+            json!({"type": "integer", "minimum": 1}),
+        ),
+    ]);
+    if path_regex_enabled {
+        list_properties.insert(
+            "path_regex".to_string(),
+            json!({"type": "string", "minLength": 1}),
+        );
+    }
+    let mut tools = [
+        json!({
+            "name": MCP_LIST,
+            "title": "Browse MCP directory",
+            "description": "Browse the selected MCP instances by path before requesting full tool details.",
+            "inputSchema": {
+                "type": "object",
+                "properties": list_properties,
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": MCP_GET,
+            "title": "Get MCP tool details",
+            "description": "Get the current description, schemas, risk information, and des_id for a visible tool before calling it. If description_tool_id is returned, get that tool and use its current des_id.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"tool_id": {"type": "string"}},
+                "required": ["tool_id"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": MCP_RESULT,
+            "title": "Continue MCP result detail",
+            "description": "Read bounded cached result detail without re-executing the tool. Continue using result_ref and next_cursor, or omit cursor to select response_fields and string_ranges for a new view. Never combine a cursor with changed selectors. String chunks include Unicode offsets and next_offset. Missing detail never authorizes retrying the original operation.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "result_ref": {"type": "string", "format": "uuid"},
+                    "cursor": {"type": "string"},
+                    "max_inline_chars": {
+                        "type": "integer",
+                        "minimum": 1
+                    }
+                },
+                "required": ["result_ref"],
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": MCP_CALL,
+            "title": "Call MCP tool",
+             "description": "Call a visible tool after mcp_get. When a target accepts files, provide its authorized ChatGPT file through top-level file (not arguments.file). When des_id_required is true, use the current des_id.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "tool_id": {"type": "string"},
+                    "des_id": {"type": "string"},
+                    "arguments": {"type": "object"},
+                    "file": file_params::file_schema(),
+                    "max_inline_chars": {
+                        "type": "integer",
+                        "minimum": 1
+                    }
+                },
+                "required": ["tool_id", "arguments"],
+                "additionalProperties": false
+            },
+            "_meta": {"openai/fileParams": ["file"]}
+        }),
+    ];
+    for tool in &mut tools[2..] {
+        tool["inputSchema"]["properties"]
+            .as_object_mut()
+            .expect("tool properties")
+            .extend(domain::mcp_management::mcp_return_control_properties());
+    }
+    tools
+}
+
+}
+test_support_item! { pub(crate), [
+#[cfg(any(test, feature = "test-support"))]
+]
+fn provider_tools(
+    catalog: &domain::McpCatalogSnapshot,
+    scope: &VirtualMcpScope,
+) -> Vec<Value> {
+    let occurrences = scope
+        .instance_ids
+        .iter()
+        .enumerate()
+        .map(|(index, instance_id)| {
+            (
+                instance_id.clone(),
+                McpLlmRegistrationSource::new("assistant", index.to_string()),
+            )
+        })
+        .collect::<Vec<_>>();
+    mcp_llm_registrations(&occurrences)
+        .into_iter()
+        .map(|mut registration| {
+            apply_catalog_registration_capabilities(catalog, &mut registration);
+            registration.provider_tool
+        })
+        .collect()
+}
+}
+
+pub(crate) fn apply_catalog_registration_capabilities(
+    catalog: &domain::McpCatalogSnapshot,
+    registration: &mut control_plane::mcp_management::McpLlmRegistration,
+) {
+    if registration.operation != McpLlmOperation::List {
+        return;
+    }
+    let regex_enabled = catalog
+        .instances
+        .iter()
+        .find(|instance| instance.instance_id == registration.instance_id)
+        .is_some_and(|instance| {
+            catalog
+                .discovery_policies
+                .iter()
+                .any(|policy| policy.instance_record_id == instance.id && policy.list_regex_enabled)
+        });
+    if regex_enabled {
+        return;
+    }
+    if let Some(properties) = registration
+        .provider_tool
+        .get_mut("function")
+        .and_then(|function| function.get_mut("parameters"))
+        .and_then(|parameters| parameters.get_mut("properties"))
+        .and_then(Value::as_object_mut)
+    {
+        properties.remove("path_regex");
+    }
+}
+
+test_support_item! { pub(crate), [
+#[allow(clippy::too_many_arguments)]
+]
+async fn dispatch(
+    dependencies: &RuntimeInternalToolInvokerDependencies,
+    interface_catalog: &dyn McpInterfaceCatalogPort,
+    interface_dispatch: &dyn McpInterfaceDispatchPort,
+    headers: &HeaderMap,
+    actor: &domain::ActorContext,
+    catalog: &domain::McpCatalogSnapshot,
+    scope: &VirtualMcpScope,
+    name: &str,
+    arguments: Value,
+    assistant_client: Option<&crate::routes::assistant::AssistantClientToolBridge>,
+) -> Result<VirtualToolOutcome, ApiError> {
+    let registrations = mcp_llm_registrations(
+        &scope
+            .instance_ids
+            .iter()
+            .enumerate()
+            .map(|(index, instance_id)| {
+                (
+                    instance_id.clone(),
+                    McpLlmRegistrationSource::new("assistant", index.to_string()),
+                )
+            })
+            .collect::<Vec<_>>(),
+    );
+    let registration = registrations.iter().find(|item| item.provider_name == name);
+    let effective_scope = registration
+        .map(|item| VirtualMcpScope::single(item.instance_id.clone()))
+        .unwrap_or_else(|| scope.clone());
+    let operation = registration.map(|item| item.operation);
+    // Recompute package-owned discovery on every dispatch; a long-lived invoker cannot
+    // retain a disabled installation or a user's revoked console operation grant.
+    let mut projected_catalog =
+        if matches!(operation, Some(McpLlmOperation::List)) || name == MCP_LIST {
+            McpManagementService::new(dependencies.store.clone())
+                .read_catalog_for_actor(actor)
+                .await?
+        } else {
+            catalog.clone()
+        };
+    crate::managed_service_mcp::append(
+        &dependencies.store,
+        &dependencies.managed_services,
+        actor,
+        &mut projected_catalog,
+        &effective_scope.instance_ids,
+        interface_catalog,
+    )
+    .await?;
+    let catalog = &projected_catalog;
+
+    let allow_assistant_client = match assistant_client {
+        Some(client) => client.has_frontstage_capability_bundle().await,
+        None => false,
+    };
+    match (name, operation) {
+        (_, Some(McpLlmOperation::List)) => {
+            list(
+                dependencies,
+                actor,
+                catalog,
+                &effective_scope,
+                &arguments,
+                allow_assistant_client,
+            )
+            .await
+        }
+        (_, Some(McpLlmOperation::Get)) => Ok(get(
+            catalog,
+            &effective_scope,
+            &arguments,
+            allow_assistant_client,
+        )),
+        (_, Some(McpLlmOperation::Result)) => {
+            result(&dependencies.result_delivery, actor, &arguments).await
+        }
+        (_, Some(McpLlmOperation::Call)) => {
+            call(McpCallRequest {
+                dependencies,
+                interface_catalog,
+                interface_dispatch,
+                headers,
+                actor,
+                catalog,
+                scope: &effective_scope,
+                arguments: &arguments,
+                assistant_client,
+            })
+            .await
+        }
+        (resources::LIST_TOOL | resources::TEMPLATES_TOOL, None) => Ok(resources::list_result(
+            actor,
+            catalog,
+            &effective_scope,
+            &arguments,
+            name == resources::TEMPLATES_TOOL,
+        )),
+        (resources::READ_TOOL, None) => {
+            resources::read(McpCallRequest {
+                dependencies,
+                interface_catalog,
+                interface_dispatch,
+                headers,
+                actor,
+                catalog,
+                scope: &effective_scope,
+                arguments: &arguments,
+                assistant_client,
+            })
+            .await
+        }
+        (MCP_LIST, None) => {
+            list(
+                dependencies,
+                actor,
+                catalog,
+                scope,
+                &arguments,
+                allow_assistant_client,
+            )
+            .await
+        }
+        (MCP_GET, None) => Ok(get(catalog, scope, &arguments, allow_assistant_client)),
+        (MCP_RESULT, None) => result(&dependencies.result_delivery, actor, &arguments).await,
+        (MCP_CALL, None) => {
+            call(McpCallRequest {
+                dependencies,
+                interface_catalog,
+                interface_dispatch,
+                headers,
+                actor,
+                catalog,
+                scope,
+                arguments: &arguments,
+                assistant_client,
+            })
+            .await
+        }
+        _ => Ok(VirtualToolOutcome::Error {
+            code: -32601,
+            message: "Tool not found",
+            data: None,
+        }),
+    }
+}
+}
+
+async fn list(
+    _dependencies: &RuntimeInternalToolInvokerDependencies,
+    _actor: &domain::ActorContext,
+    catalog: &domain::McpCatalogSnapshot,
+    scope: &VirtualMcpScope,
+    arguments: &Value,
+    allow_assistant_client: bool,
+) -> Result<VirtualToolOutcome, ApiError> {
+    let optional_string = |field| {
+        arguments
+            .get(field)
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+    };
+    let path = optional_string("path");
+    let path_regex = optional_string("path_regex");
+    let keywords = arguments
+        .get("keywords")
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        });
+    let depth = arguments
+        .get("depth")
+        .and_then(Value::as_i64)
+        .and_then(|value| i32::try_from(value).ok());
+    let limit = arguments
+        .get("limit")
+        .and_then(Value::as_u64)
+        .and_then(|value| usize::try_from(value).ok());
+    let mut items = Vec::new();
+    for instance_id in &scope.instance_ids {
+        items.extend(control_plane::mcp_management::list_catalog_items(
+            catalog,
+            instance_id,
+            path,
+            path_regex,
+            keywords.as_deref(),
+            depth,
+            limit,
+        )?);
+    }
+    if let Some(limit) = limit {
+        items.truncate(limit);
+    }
+    if !allow_assistant_client {
+        let client_tool_ids = catalog
+            .tools
+            .iter()
+            .filter(|tool| {
+                matches!(
+                    tool.execution_target,
+                    domain::McpToolExecutionTarget::AssistantClient { .. }
+                )
+            })
+            .map(|tool| tool.tool_id.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        items.retain(|item| {
+            item.item_kind != domain::McpListItemKind::Tool
+                || !client_tool_ids.contains(item.id.as_str())
+        });
+    }
+    Ok(VirtualToolOutcome::Success(result_delivery::tool_result(
+        serde_json::to_value(items).unwrap_or_else(|_| json!([])),
+    )))
+}
+
+test_support_item! { , [
+
+]
+fn get(
+    catalog: &domain::McpCatalogSnapshot,
+    scope: &VirtualMcpScope,
+    arguments: &Value,
+    allow_assistant_client: bool,
+) -> VirtualToolOutcome {
+    let Some(tool_id) = string_argument(arguments, "tool_id") else {
+        return VirtualToolOutcome::invalid("Invalid tool_id");
+    };
+    let Some((_, tool)) = visible_tool(catalog, scope, tool_id, allow_assistant_client) else {
+        return VirtualToolOutcome::invalid("Tool not visible");
+    };
+    let call_parameters = ["des_id", "max_inline_chars", "response_fields"]
+        .into_iter()
+        .filter(|name| {
+            domain::mcp_management::mcp_call_parameter_is_open(&tool.input_mapping, name)
+        })
+        .collect::<Vec<_>>();
+    VirtualToolOutcome::Success(result_delivery::tool_result(json!({
+        "tool_id": tool.tool_id,
+        "name": tool.name,
+        "short_description": tool.short_description,
+        "full_description": tool.full_description,
+        "input_schema": input_schema::tool_mapped_schema(&tool.execution_target, &tool.parameter_schema, &tool.input_mapping),
+        "result_schema": tool.result_schema,
+        "risk_level": tool.risk_level,
+        "des_id": tool.des_id,
+        "des_id_required": domain::mcp_management::mcp_des_id_required(&tool.input_mapping),
+        "description_tool_id": domain::mcp_management::mcp_description_tool_id(&tool.input_mapping),
+        "call_parameters": call_parameters,
+        "max_inline_chars": tool.max_inline_chars.unwrap_or(result_delivery::DEFAULT_INLINE_CHARS as i64),
+        "response_fields": tool.response_fields
+    })))
+}
+}
+
+async fn result(
+    dependencies: &result_delivery::McpResultDeliveryDependencies,
+    actor: &domain::ActorContext,
+    arguments: &Value,
+) -> Result<VirtualToolOutcome, ApiError> {
+    let Some(result_ref) = string_argument(arguments, "result_ref")
+        .and_then(|value| uuid::Uuid::parse_str(value).ok())
+    else {
+        return Ok(VirtualToolOutcome::invalid("Invalid result_ref"));
+    };
+    if let Err(message) = result_delivery::ResultSelection::parse(arguments, None) {
+        return Ok(VirtualToolOutcome::invalid(message));
+    }
+    if arguments.get("max_inline_chars").is_some() {
+        if let Err(message) = result_delivery::inline_limit(arguments) {
+            return Ok(VirtualToolOutcome::invalid(message));
+        }
+    }
+    Ok(VirtualToolOutcome::Success(
+        result_delivery::read_result(dependencies, actor, result_ref, arguments).await,
+    ))
+}
+
+test_support_item! { pub(super), [
+
+]
+struct McpCallRequest<'a> {
+    pub(super) dependencies: &'a RuntimeInternalToolInvokerDependencies,
+    pub(super) interface_catalog: &'a dyn McpInterfaceCatalogPort,
+    pub(super) interface_dispatch: &'a dyn McpInterfaceDispatchPort,
+    pub(super) headers: &'a HeaderMap,
+    pub(super) actor: &'a domain::ActorContext,
+    pub(super) catalog: &'a domain::McpCatalogSnapshot,
+    pub(super) scope: &'a VirtualMcpScope,
+    pub(super) arguments: &'a Value,
+    pub(super) assistant_client: Option<&'a crate::routes::assistant::AssistantClientToolBridge>,
+}
+}
+
+fn string_argument<'a>(arguments: &'a Value, field: &str) -> Option<&'a str> {
+    arguments.get(field).and_then(Value::as_str)
+}
+
+pub(crate) fn visible_tool<'a>(
+    catalog: &'a domain::McpCatalogSnapshot,
+    scope: &VirtualMcpScope,
+    tool_id: &str,
+    allow_assistant_client: bool,
+) -> Option<(&'a domain::McpInstanceRecord, &'a domain::McpToolRecord)> {
+    let mut matches = catalog.bindings.iter().filter_map(|binding| {
+        if !binding.visible || binding.tool_id != tool_id {
+            return None;
+        }
+        let instance = catalog.instances.iter().find(|instance| {
+            instance.id == binding.instance_record_id
+                && instance.status == McpInstanceStatus::Enabled
+                && scope.contains(instance)
+        })?;
+        let tool = catalog.tools.iter().find(|tool| {
+            tool.id == binding.tool_record_id && tool.status == McpToolStatus::Enabled
+        })?;
+        if !allow_assistant_client
+            && matches!(
+                tool.execution_target,
+                domain::McpToolExecutionTarget::AssistantClient { .. }
+            )
+        {
+            return None;
+        }
+        if let domain::McpToolExecutionTarget::AssistantClient { capability_code } =
+            &tool.execution_target
+        {
+            if !domain::is_mcp_assistant_client_capability(capability_code) {
+                return None;
+            }
+        }
+        Some((instance, tool))
+    });
+    let first = matches.next()?;
+    if matches.any(|(instance, tool)| instance.id != first.0.id || tool.id != first.1.id) {
+        return None;
+    }
+    Some(first)
+}
+
+pub(crate) fn interface_error(error: &anyhow::Error) -> VirtualToolOutcome {
+    let (code, category, field) =
+        match error.downcast_ref::<control_plane::errors::ControlPlaneError>() {
+            Some(control_plane::errors::ControlPlaneError::InvalidInput("mcp_arguments")) => {
+                (-32602, "invalid_tool_arguments", Some("mcp_arguments"))
+            }
+            Some(control_plane::errors::ControlPlaneError::InvalidInput("request_schema")) => {
+                (-32602, "invalid_tool_arguments", Some("request_schema"))
+            }
+            Some(control_plane::errors::ControlPlaneError::InvalidInput("input_mapping")) => {
+                (-32603, "invalid_tool_configuration", Some("input_mapping"))
+            }
+            Some(control_plane::errors::ControlPlaneError::InvalidInput("response_schema")) => (
+                -32603,
+                "invalid_tool_configuration",
+                Some("response_schema"),
+            ),
+            Some(control_plane::errors::ControlPlaneError::InvalidInput("interface_id"))
+            | Some(control_plane::errors::ControlPlaneError::NotFound("mcp_interface")) => {
+                (-32603, "interface_catalog", Some("interface_id"))
+            }
+            _ => (-32603, "interface_dispatch", None),
+        };
+    let mut data = serde_json::Map::from_iter([
+        ("category".to_string(), Value::String(category.to_string())),
+        (
+            "outcome".to_string(),
+            Value::String(
+                if category == "interface_dispatch" {
+                    "unknown"
+                } else {
+                    "not_started"
+                }
+                .to_string(),
+            ),
+        ),
+        ("retry_original".to_string(), Value::Bool(false)),
+    ]);
+    if let Some(field) = field {
+        data.insert("field".to_string(), Value::String(field.to_string()));
+    }
+    VirtualToolOutcome::Error {
+        code,
+        message: "Tool execution failed",
+        data: Some(Value::Object(data)),
+    }
+}
+
+#[cfg(test)]
+#[path = "_tests/target_error_diagnostics.rs"]
+mod target_error_diagnostics;
+
+fn media_mapping_error(reason: &str) -> VirtualToolOutcome {
+    VirtualToolOutcome::Error {
+        code: -32603,
+        message: "invalid_tool_configuration",
+        data: Some(json!({"field":"output_mapping", "reason":reason})),
+    }
+}
+
+#[path = "virtual_ui/interface_dispatch.rs"]
+mod interface_dispatch;
+
+pub(super) use interface_dispatch::call_inner;
+use interface_dispatch::*;
+
+#[cfg(any(test, feature = "test-support"))]
+impl RuntimeInternalToolInvokerDependencies {
+    #[doc(hidden)]
+    pub fn result_delivery_for_test(&self) -> &result_delivery::McpResultDeliveryDependencies {
+        &self.result_delivery
+    }
+}
+#[cfg(any(test, feature = "test-support"))]
+impl ApiMcpRuntimeToolInvoker {
+    #[doc(hidden)]
+    pub fn set_workflow_workspace_for_test(&mut self, workspace_id: uuid::Uuid) {
+        let RuntimeMcpAuthorization::ServerDelegation(delegation) = &mut self.authorization;
+        delegation.workspace_id = workspace_id;
+    }
+}
+#[cfg(any(test, feature = "test-support"))]
+impl<'a> McpCallRequest<'a> {
+    #[doc(hidden)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn for_test(
+        dependencies: &'a RuntimeInternalToolInvokerDependencies,
+        interface_catalog: &'a dyn McpInterfaceCatalogPort,
+        interface_dispatch: &'a dyn McpInterfaceDispatchPort,
+        headers: &'a HeaderMap,
+        actor: &'a domain::ActorContext,
+        catalog: &'a domain::McpCatalogSnapshot,
+        scope: &'a VirtualMcpScope,
+        arguments: &'a Value,
+        assistant_client: Option<&'a crate::routes::assistant::AssistantClientToolBridge>,
+    ) -> Self {
+        Self {
+            dependencies,
+            interface_catalog,
+            interface_dispatch,
+            headers,
+            actor,
+            catalog,
+            scope,
+            arguments,
+            assistant_client,
+        }
+    }
+}
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub mod test_support {
+    pub use super::description_guard::{description_tool, validate_tool_call_controls};
+    pub use super::interface_dispatch::{call, target_interface_failure};
+}

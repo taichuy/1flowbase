@@ -42,6 +42,7 @@ where
         + FlowRepository
         + ApplicationApiMappingRepository
         + WorkflowScheduleTriggerRepository
+        + control_plane_contracts::ports::EventCenterRepository
         + Clone,
 {
     pub async fn preview_archive_batch(

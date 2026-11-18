@@ -1,4 +1,6 @@
+import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import {
+  analyzeConsoleApplicationDocument,
   getConsoleApplicationOrchestration,
   restoreConsoleApplicationVersion,
   saveConsoleApplicationDraft,
@@ -57,5 +59,19 @@ export function updateVersion(
     input,
     csrfToken,
     getApplicationsApiBaseUrl()
+  );
+}
+
+export function analyzeDocument(
+  applicationId: string,
+  document: FlowAuthoringDocument,
+  signal?: AbortSignal,
+  node_id?: string
+) {
+  return analyzeConsoleApplicationDocument(
+    applicationId,
+    { document, ...(node_id ? { node_id } : {}) },
+    getApplicationsApiBaseUrl(),
+    signal
   );
 }

@@ -154,6 +154,33 @@ where
             .map(ApplicationPublicationJsDependencySnapshot::from)
             .collect::<Vec<_>>();
 
+        // Validate before freezing: rejected drafts must not append publication history.
+        let preflight_document = self
+            .repository
+            .load_flow_draft_document(application.workspace_id, application.id)
+            .await?
+            .unwrap_or_else(|| {
+                domain::default_flow_document_for_application(
+                    application.application_type,
+                    Uuid::nil(),
+                )
+            });
+        crate::flow::validate_flow_draft_document(&preflight_document)?;
+        let compile_context = self
+            .repository
+            .build_application_compile_context_with_cache(
+                application.workspace_id,
+                application.id,
+                self.model_routing_cache_store.as_deref(),
+            )
+            .await?;
+        orchestration_runtime::compiler::ensure_flow_analysis_valid(
+            &orchestration_runtime::compiler::analyze_flow_document_for_application(
+                &preflight_document,
+                &compile_context,
+                application.application_type,
+            ),
+        )?;
         let flow_service = FlowService::new(self.repository.clone());
         let publication_state = flow_service
             .freeze_current_draft_for_publication(&actor, &application)
@@ -179,14 +206,6 @@ where
                 }
             }
         }
-        let compile_context = self
-            .repository
-            .build_application_compile_context_with_cache(
-                application.workspace_id,
-                application.id,
-                self.model_routing_cache_store.as_deref(),
-            )
-            .await?;
         let compiled_plan = match application.application_type {
             domain::ApplicationType::AgentLogs => {
                 return Err(ControlPlaneError::InvalidInput("application_type").into());
@@ -204,6 +223,9 @@ where
                 &compile_context,
             )?,
         };
+        crate::orchestration_runtime::compile_context::ensure_compiled_plan_runnable(
+            &compiled_plan,
+        )?;
         let compiled_plan = self
             .repository
             .upsert_application_compiled_plan(&build_compiled_plan_input(

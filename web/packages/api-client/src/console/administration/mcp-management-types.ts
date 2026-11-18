@@ -552,3 +552,29 @@ export interface ConsoleMcpProxyToolDebugResponse {
   upstream_result: unknown;
   mapped_result: unknown;
 }
+
+export type ConsoleMcpInstanceDirectory = {
+  instance_record_id: string;
+  groups: ConsoleMcpGroup[];
+  bindings: ConsoleMcpToolBinding[];
+};
+
+export type ReplaceConsoleMcpInstanceDirectoryBody = {
+  expected_snapshot: ConsoleMcpInstanceDirectory;
+  groups: Array<{
+    id?: string;
+    path: string;
+    display_name: string;
+    description_short: string | null;
+    enabled: boolean;
+    sort_order: number;
+  }>;
+  bindings: Array<{
+    id?: string;
+    tool_id: string;
+    group_path: string;
+    display_alias: string | null;
+    visible: boolean;
+    sort_order: number;
+  }>;
+};

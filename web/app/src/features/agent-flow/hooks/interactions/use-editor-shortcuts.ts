@@ -9,7 +9,9 @@ import {
 } from '../../lib/document/transforms/duplicate';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 
-export function useEditorShortcuts() {
+export function useEditorShortcuts({
+  disabled = false
+}: { disabled?: boolean } = {}) {
   const can = useConsoleOperationAccess();
   const canEdit = can('save_draft');
   const workingDocument = useAgentFlowEditorStore(
@@ -62,6 +64,7 @@ export function useEditorShortcuts() {
     }
 
     function handleKeyDown(event: KeyboardEvent) {
+      if (disabled) return;
       const shortcutKey = event.key.toLowerCase();
       const isModifierShortcut = event.ctrlKey || event.metaKey;
       if (!canEdit && event.key !== 'Escape') return;
@@ -187,6 +190,7 @@ export function useEditorShortcuts() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
+    disabled,
     canEdit,
     detailActions,
     selectedNodeId,

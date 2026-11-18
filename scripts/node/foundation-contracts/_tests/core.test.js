@@ -15,7 +15,7 @@ const {
 test('AC-001/006 routes four foundations and ignores legal non-contract changes', () => {
   const matrix = [
     ['ai-gateway', 'scripts/node/ai-gateway-concurrency/contracts/index.js'],
-    ['mcp-gateway', 'api/apps/api-server/src/routes/mcp_protocol.rs'],
+    ['mcp-gateway', 'api/crates/api/mcp/src/routes/mcp_protocol.rs'],
     ['application-backend', 'api/apps/api-server/src/_tests/application/model_definition_routes/model_crud.rs'],
     ['native-react', 'web/packages/page-runtime/src/native-react-compiler/source-contract.ts'],
   ];
@@ -45,20 +45,20 @@ test('AC-001/006 routes four foundations and ignores legal non-contract changes'
   assert.deepEqual(legalPlan.selectedFoundations, []);
 
   const providerSettingsPlan = buildFoundationPlan({
-    changedFiles: ['api/apps/api-server/src/routes/plugins_and_models/model_providers/dto.rs'],
+    changedFiles: ['api/crates/api/plugins-models/src/routes/plugins_and_models/model_providers/dto.rs'],
   });
   assert.equal(providerSettingsPlan.selectedFoundations.includes('application-backend'), false);
 });
 
 test('routes current protocol and invocation owners without selecting unrelated settings', () => {
   for (const changedFile of [
-    'api/apps/api-server/src/routes/application_public_api/anthropic.rs',
-    'api/apps/api-server/src/routes/application_public_api/anthropic/error_projection.rs',
-    'api/apps/api-server/src/routes/application_public_api/anthropic/_tests/error_projection.rs',
-    'api/apps/api-server/src/routes/application_public_api/client_observer.rs',
-    'api/apps/api-server/src/routes/application_public_api/openai.rs',
-    'api/apps/api-server/src/routes/application_public_api/openai/chat_completions.rs',
-    'api/apps/api-server/src/routes/application_public_api/compatibility_interface.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/anthropic.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/anthropic/error_projection.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/anthropic/_tests/error_projection.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/client_observer.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/openai.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/openai/chat_completions.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/compatibility_interface.rs',
     'api/crates/control-plane/src/application_public_api/client_stream.rs',
     'api/crates/control-plane/src/client_trajectory/chat.rs',
     'api/crates/control-plane/src/orchestration_runtime/provider_invoker.rs',
@@ -68,9 +68,9 @@ test('routes current protocol and invocation owners without selecting unrelated 
   }
   for (const changedFile of [
     'api/crates/control-plane/src/settings/mod.rs',
-    'api/apps/api-server/src/routes/application_public_api/anthropic_settings.rs',
-    'api/apps/api-server/src/routes/application_public_api/client_observer_settings.rs',
-    'api/apps/api-server/src/routes/plugins_and_models/model_providers/dto.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/anthropic_settings.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/client_observer_settings.rs',
+    'api/crates/api/plugins-models/src/routes/plugins_and_models/model_providers/dto.rs',
     'docs/architecture/interface-lifecycle.md',
   ]) {
     assert.deepEqual(buildFoundationPlan({ changedFiles: [changedFile] }).selectedFoundations, [], changedFile);
@@ -81,18 +81,18 @@ test('routes real native transport and replay owners without widening the AI fas
   const repoRoot = path.resolve(__dirname, '../../../..');
   const baselinePack = buildFoundationPlan({ foundation: 'ai-gateway' }).packs['ai-gateway'];
   for (const changedFile of [
-    'api/apps/api-server/src/routes/application_public_api/native.rs',
-    'api/apps/api-server/src/routes/application_public_api/native_interface.rs',
-    'api/apps/api-server/src/routes/application_public_api/native_read_interface.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/native.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/native_interface.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/native_read_interface.rs',
     'api/apps/api-server/src/routes/application_public_api/native/_tests/catalog_admission.rs',
-    'api/apps/api-server/src/routes/application_public_api/native_websocket/turn_bridge.rs',
-    'api/apps/api-server/src/routes/application_public_api/sse.rs',
-    'api/apps/api-server/src/routes/application_public_api/stream_terminal_fallback.rs',
-    'api/apps/api-server/src/routes/application_public_api/stream_terminal_fallback/cold_replay.rs',
-    'api/apps/api-server/src/routes/applications/debug_run_stream.rs',
-    'api/apps/api-server/src/host_infrastructure/local_runtime_event_stream.rs',
-    'api/apps/api-server/src/provider_runtime/transport_session_lifecycle.rs',
-    'api/apps/api-server/src/provider_runtime/_tests/transport_session_lifecycle/dispatch_settlement.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/native_websocket/turn_bridge.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/sse.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/stream_terminal_fallback.rs',
+    'api/crates/api/public-gateway/src/routes/application_public_api/stream_terminal_fallback/cold_replay.rs',
+    'api/crates/api/applications/src/routes/applications/debug_run_stream.rs',
+    'api/crates/api/kernel/src/host/host_infrastructure/local_runtime_event_stream.rs',
+    'api/crates/api/kernel/src/host/provider_runtime/transport_session_lifecycle.rs',
+    'api/crates/api/kernel/src/host/provider_runtime/_tests/transport_session_lifecycle/dispatch_settlement.rs',
     'api/apps/api-server/src/_tests/runtime_event_stream/recoverable.rs',
     'api/crates/control-plane/src/orchestration_runtime/persistence/runtime_event_persister.rs',
     'api/crates/control-plane/src/orchestration_runtime/persistence/stream_terminal_recovery.rs',
@@ -113,13 +113,13 @@ test('routes real native transport and replay owners without widening the AI fas
 test('native transport routing excludes non-Rust assets and unrelated runtime owners', () => {
   for (const changedFile of [
     'api/crates/control-plane/src/orchestration_runtime/persistence/checkpoint_locator.rs',
-    'api/apps/api-server/src/routes/application_public_api/native/README.md',
-    'api/apps/api-server/src/routes/application_public_api/native/i18n/en_US.json',
-    'api/apps/api-server/src/routes/application_public_api/native/styles.css',
-    'api/apps/api-server/src/routes/application_public_api/native_settings.rs',
-    'api/apps/api-server/src/routes/plugins_and_models/model_providers/dto.rs',
-    'api/apps/api-server/src/host_infrastructure/local.rs',
-    'api/apps/api-server/src/provider_runtime/README.md',
+    'api/crates/api/public-gateway/src/routes/application_public_api/native/README.md',
+    'api/crates/api/public-gateway/src/routes/application_public_api/native/i18n/en_US.json',
+    'api/crates/api/public-gateway/src/routes/application_public_api/native/styles.css',
+    'api/crates/api/public-gateway/src/routes/application_public_api/native_settings.rs',
+    'api/crates/api/plugins-models/src/routes/plugins_and_models/model_providers/dto.rs',
+    'api/crates/api/kernel/src/host/host_infrastructure/local.rs',
+    'api/crates/api/kernel/src/host/provider_runtime/README.md',
     'api/crates/control-plane/src/orchestration_runtime/tests/billing_usage_guard.rs',
     'api/crates/control-plane/src/orchestration_runtime/frozen_plan/mod.rs',
     'api/crates/orchestration-runtime/src/transport_session/README.md',
@@ -141,12 +141,12 @@ test('AC-002 keeps mcp_result outside the core operations and only adds continua
   );
 
   const corePlan = buildFoundationPlan({
-    changedFiles: ['api/apps/api-server/src/routes/mcp_protocol.rs'],
+    changedFiles: ['api/crates/api/mcp/src/routes/mcp_protocol.rs'],
   });
   assert.equal(corePlan.packs['mcp-gateway'].fast.some((item) => item.id === 'mcp-result-continuation'), false);
 
   const continuationPlan = buildFoundationPlan({
-    changedFiles: ['api/apps/api-server/src/routes/mcp_protocol/result_delivery.rs'],
+    changedFiles: ['api/crates/api/mcp/src/routes/mcp_protocol/result_delivery.rs'],
   });
   assert.equal(
     continuationPlan.packs['mcp-gateway'].fast.some((item) => item.id === 'mcp-result-continuation'),
@@ -156,7 +156,7 @@ test('AC-002 keeps mcp_result outside the core operations and only adds continua
 
 test('mcp gateway fast pack uses Cargo default test parallelism', () => {
   const plan = buildFoundationPlan({
-    changedFiles: ['api/apps/api-server/src/routes/mcp_protocol.rs'],
+    changedFiles: ['api/crates/api/mcp/src/routes/mcp_protocol.rs'],
   });
   const command = plan.packs['mcp-gateway'].fast.find(
     (item) => item.id === 'mcp-core-list-get-call'
@@ -299,4 +299,49 @@ test('shared contract routing does not select documentation or unrelated modules
     'api/crates/interface-runtime/src/i18n/en_US.json',
     'web/app/src/features/frontstage/styles.css',
   ]) assert.deepEqual(buildFoundationPlan({ changedFiles: [file] }).selectedFoundations, [], file);
+});
+
+
+test('the moved binary schema marker keeps its application backend foundation without widening shared siblings', () => {
+  const repoRoot = path.resolve(__dirname, '../../../..');
+  for (const changedFile of [
+    'api/apps/api-server/src/openapi/mod.rs',
+    'api/crates/api/kernel/src/slices/openapi/binary_body.rs',
+  ]) {
+    assert.equal(fs.existsSync(path.join(repoRoot, changedFile)), true);
+    assert.deepEqual(buildFoundationPlan({ changedFiles: [changedFile] }).selectedFoundations, ['application-backend'], changedFile);
+  }
+  assert.deepEqual(buildFoundationPlan({ changedFiles: ['api/crates/api/kernel/src/contracts/application_runtime_shared/plugin_risk.rs'] }).selectedFoundations, []);
+  assert.deepEqual(buildFoundationPlan({ changedFiles: ['api/apps/api-server/src/routes/applications/debug_run_stream.rs'] }).selectedFoundations, ['ai-gateway']);
+});
+
+
+test('current MCP implementation and shared catalog owners retain the MCP fast pack', () => {
+  const repoRoot = path.resolve(__dirname, '../../../..');
+  const baseline = buildFoundationPlan({ foundation: 'mcp-gateway' }).packs['mcp-gateway'];
+  for (const changedFile of [
+    'api/crates/api/mcp/src/routes/mcp_protocol.rs',
+    'api/crates/api/mcp/src/routes/mcp_protocol/result_delivery.rs',
+    'api/crates/api/mcp/src/routes/settings/mcp_management/upstream_client.rs',
+    'api/crates/api/kernel/src/contracts/mcp_catalog.rs',
+    'api/crates/api/kernel/src/contracts/builtin_mcp.rs',
+  ]) {
+    assert.equal(fs.existsSync(path.join(repoRoot, changedFile)), true, changedFile);
+    const plan = buildFoundationPlan({ changedFiles: [changedFile] });
+    assert.deepEqual(plan.selectedFoundations, ['mcp-gateway'], changedFile);
+    assert.deepEqual(plan.packs['mcp-gateway'].triggerReasons, [`changed: ${changedFile}`]);
+    assert.deepEqual(plan.packs['mcp-gateway'].full, baseline.full);
+    assert.deepEqual(plan.packs['mcp-gateway'].fast.find(item => item.id === 'mcp-core-list-get-call').args,
+      ['test', '-p', 'api-server', 'mcp_protocol_routes']);
+  }
+  // Former paths remain useful for changed-file advice, including deletions.
+  assert.deepEqual(buildFoundationPlan({ changedFiles: ['api/apps/api-server/src/routes/mcp_protocol.rs'] }).selectedFoundations, ['mcp-gateway']);
+  for (const changedFile of [
+    'api/crates/api/console-settings/src/routes/settings/billing.rs',
+    'api/crates/api/console-settings/src/routes/settings/host_infrastructure.rs',
+    'api/crates/api/console-settings/src/routes/settings/system_backups/mod.rs',
+  ]) {
+    assert.equal(fs.existsSync(path.join(repoRoot, changedFile)), true, changedFile);
+    assert.deepEqual(buildFoundationPlan({ changedFiles: [changedFile] }).selectedFoundations, [], changedFile);
+  }
 });

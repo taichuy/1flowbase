@@ -70,6 +70,7 @@ function createInitialState() {
       document: createDefaultAgentFlowDocument({ flowId: 'flow-1' })
     },
     versions: [],
+    analysis: { diagnostics: [], node_outputs: [], variable_catalogs: [] },
     autosave_interval_seconds: 30,
     user_protection_limit: 10,
   };
@@ -370,7 +371,7 @@ describe('node last run runtime', () => {
         query: '总结退款政策'
       }
     });
-    fireEvent.click(screen.getByRole('tab', { name: '上次运行' }));
+    fireEvent.click(screen.getByRole('tab', { name: '本次运行' }));
 
     await waitFor(
       () => {
@@ -454,7 +455,7 @@ describe('node last run runtime', () => {
       await screen.findByRole('button', { name: '运行当前节点' })
     );
 
-    const lastRunTab = await screen.findByRole('tab', { name: '上次运行' });
+    const lastRunTab = await screen.findByRole('tab', { name: '本次运行' });
     await waitFor(() => expect(lastRunTab).toHaveAttribute('aria-selected', 'true'));
     expect(await screen.findByLabelText('错误 JSON')).toHaveTextContent(
       'syntax error at or near user'

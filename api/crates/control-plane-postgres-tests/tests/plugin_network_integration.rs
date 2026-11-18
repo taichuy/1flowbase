@@ -801,6 +801,7 @@ fn installation_commit_input(
                 runtime: runtime.into(),
                 entry: "blocks/hero/index.html".into(),
                 ui_registration: "code_template".into(),
+                block_registration: true,
                 code_template: None,
                 code_template_version: None,
                 code_template_language: None,

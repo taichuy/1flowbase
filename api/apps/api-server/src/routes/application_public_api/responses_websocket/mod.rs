@@ -6,67 +6,9 @@
 //! Connection ownership and run lifecycle are assembled here. Canonical
 //! server-event projection is supplied by the following delivery packet.
 
-use std::sync::Arc;
-
-use crate::{
-    app_state::ApiState,
-    routes::application_public_api::{compatibility_interface, openai, openai::OpenAiRouteError},
-};
-use axum::{extract::State, http::HeaderMap, response::Response};
-
-mod actor;
-mod auth;
-mod projector;
-pub(crate) mod schema;
+pub use api_public_gateway::routes::application_public_api::responses_websocket::*;
+#[cfg_attr(test, api_test_selection::group(public_api))]
 #[cfg(test)]
-mod tests;
-mod transport;
-mod turn_bridge;
-use transport::WebSocketUpgrade;
-
-/// Authentication context handed to the connection owner after HTTP upgrade.
-pub(crate) struct ResponsesWebSocketAuthorization {
-    pub(crate) _generation: Arc<crate::generation_dispatch::GenerationDispatch>,
-    pub(crate) principal: interface_runtime::ApplicationPrincipal,
-    pub(crate) handshake_headers: HeaderMap,
-    pub(crate) transport_scope: Arc<crate::provider_runtime::TransportConnectionScope>,
-}
-
-/// Upgrades an authenticated OpenAI Responses request to WebSocket transport.
-///
-/// The beta header is intentionally exact and versioned: accepting another value
-/// would silently opt clients into a protocol contract this server does not implement.
-pub(crate) async fn upgrade(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    websocket: WebSocketUpgrade,
-) -> Result<Response, OpenAiRouteError> {
-    let credential = openai::openai_credential(&headers)?;
-    auth::require_responses_websocket_beta(&headers)?;
-    let principal = compatibility_interface::authenticate_application_principal(
-        state.clone(),
-        compatibility_interface::OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID,
-        credential.token,
-    )
-    .await?
-    .into_principal();
-    let handshake_headers = auth::responses_handshake_headers(&headers);
-    // Validate the logical session identity independently of socket ownership.
-    openai::responses_transport_owner_id(&principal, &handshake_headers)?;
-    let transport_scope = state.provider_runtime.open_transport_connection_scope();
-    let generation = crate::generation_dispatch::GenerationDispatch::acquire(&state)
-        .map_err(|error| crate::routes::application_public_api::native::service_error(error.0))?;
-    let authorization = ResponsesWebSocketAuthorization {
-        _generation: generation,
-        principal,
-        handshake_headers,
-        transport_scope,
-    };
-
-    let response = websocket
-        .on_upgrade(move |socket| async move {
-            actor::run_connection(socket, state, Arc::new(authorization)).await;
-        })
-        .await;
-    Ok(response)
+mod tests {
+    mod turn_finalization;
 }

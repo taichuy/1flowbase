@@ -118,7 +118,8 @@ export function buildMcpDirectoryTreeData({
   bindings: DirectoryBinding[];
   tools: DirectoryTool[];
 }): McpDirectoryTreeNode[] {
-  const rootPath = normalizeMcpDirectoryPath(instance.default_entry_path);
+  // The editor shows the entire directory; default_entry_path only selects an MCP discovery entry.
+  const rootPath = '/';
   const instanceGroups = groups.filter(
     (group) => group.instance_record_id === instance.id
   );

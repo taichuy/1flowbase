@@ -26,35 +26,6 @@ const RUN_LEVEL_VARIABLE_NAMESPACES: &[&str] = &[
     VISIBLE_INTERNAL_LLM_TOOL_TYPE,
 ];
 
-const EXECUTABLE_NODE_TYPES: &[&str] = &[
-    "start",
-    "workflow_start",
-    "workflow_end",
-    "answer",
-    "llm",
-    "if_else",
-    "code",
-    "template_transform",
-    "http_request",
-    "notification",
-    "tool",
-    "tool_result",
-    "data_model_list",
-    "data_model_get",
-    "data_model_create",
-    "data_model_update",
-    "data_model_delete",
-    "sql",
-    "variable_assigner",
-    "variable_aggregator",
-    "human_input",
-    "plugin_node",
-    "unresolved_node",
-    "loop",
-    "iteration",
-    "container_start",
-];
-
 type NodeTopologyBuild = (
     BTreeMap<String, CompiledNode>,
     Vec<CompiledEdge>,
@@ -393,6 +364,7 @@ pub(super) fn build_nodes_and_topology(
     compile_issues.extend(validate_variable_scope_contracts(&nodes));
     compile_issues.extend(validate_llm_context_policies(&nodes));
     compile_issues.extend(validate_executable_node_types(&nodes));
+    compile_issues.extend(validate_code_sources(&nodes));
 
     Ok((nodes, compiled_edges, topological_order, compile_issues))
 }
@@ -586,13 +558,9 @@ fn validate_variable_selector(
             return;
         }
     }
-    if matches!(source.node_type.as_str(), "start" | "workflow_start") {
-        return;
-    }
-    if source
-        .outputs
-        .iter()
-        .any(|output| output.key == *output_key || output.selector.first() == Some(output_key))
+    let _ = output_key;
+    if super::output_contract::selector_contract(source, &selector[1..])
+        != super::output_contract::PathContract::Missing
     {
         return;
     }
@@ -645,7 +613,10 @@ pub(super) fn validate_executable_node_types(
 ) -> Vec<CompileIssue> {
     nodes
         .values()
-        .filter(|node| !EXECUTABLE_NODE_TYPES.contains(&node.node_type.as_str()))
+        .filter(|node| {
+            !domain::flow::flow_node_capability(&node.node_type)
+                .is_some_and(|capability| capability.is_compiler_supported())
+        })
         .map(|node| CompileIssue {
             field_path: None,
             node_id: node.node_id.clone(),
@@ -739,7 +710,7 @@ fn validate_edge_source_handle(
     Ok(())
 }
 
-fn visible_internal_llm_tool_connector_id_from_source_handle(
+pub(super) fn visible_internal_llm_tool_connector_id_from_source_handle(
     source_handle: Option<&str>,
 ) -> Option<&str> {
     source_handle?.strip_prefix(VISIBLE_INTERNAL_LLM_TOOL_SOURCE_HANDLE_PREFIX)
@@ -892,4 +863,5 @@ pub(super) use output_selectors::output_for_selector;
 #[path = "topology/internal_llm_tools.rs"]
 mod internal_llm_tools;
 
+pub(super) use internal_llm_tools::visible_internal_llm_tools_enabled;
 use internal_llm_tools::*;

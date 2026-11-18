@@ -30,6 +30,7 @@ describe('RolePermissionPanel', () => {
       consolePolicyCatalog([{
         kind: 'settings_feature',
         group_id: 'settings.applications',
+        settings_feature_id: null,
         label: '应用管理',
         description: '管理当前空间中的应用',
         operations: [{
@@ -102,6 +103,7 @@ describe('RolePermissionPanel', () => {
     const first = {
       kind: 'settings_feature',
       group_id: 'system.roles',
+      settings_feature_id: null,
       label: '角色',
       description: '角色设置',
       operations: []
@@ -109,6 +111,7 @@ describe('RolePermissionPanel', () => {
     const second = {
       kind: 'settings_feature',
       group_id: 'system.members',
+      settings_feature_id: null,
       label: '成员',
       description: '成员设置',
       operations: []
@@ -134,6 +137,7 @@ describe('RolePermissionPanel', () => {
         {
           kind: 'settings_feature',
           group_id: 'settings.applications',
+          settings_feature_id: null,
           label: '应用管理',
           description: '管理当前空间中的应用',
           operations: [
@@ -172,6 +176,7 @@ describe('RolePermissionPanel', () => {
         {
           kind: 'other',
           group_id: 'other.general',
+          settings_feature_id: null,
           label: '其他',
           description: '其他已注册操作',
           operations: [
@@ -317,6 +322,7 @@ describe('RolePermissionPanel', () => {
         {
           kind: 'other',
           group_id: 'other.general',
+          settings_feature_id: null,
           label: '其他',
           description: '其他已注册操作',
           operations: []
@@ -342,6 +348,7 @@ describe('RolePermissionPanel', () => {
         {
           kind: 'settings_feature',
           group_id: 'settings.applications',
+          settings_feature_id: null,
           label: '应用管理',
           description: null,
           operations: [
@@ -482,6 +489,7 @@ describe('RolePermissionPanel', () => {
         {
           kind: 'settings_feature',
           group_id: 'settings.batch',
+          settings_feature_id: null,
           label: '批量操作',
           description: null,
           operations: [

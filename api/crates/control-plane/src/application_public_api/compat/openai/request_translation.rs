@@ -314,7 +314,7 @@ pub fn translate_response_envelope_with_decision_and_previous(
     let (transport, request_index) = envelope.into_parts();
     let (operation, report, context) = decision.into_parts();
     translate_indexed_response_request(
-        ResponsesRequestBody::Captured(transport),
+        ResponsesRequestBody::Captured(Box::new(transport)),
         request_index,
         operation,
         context,
@@ -325,7 +325,7 @@ pub fn translate_response_envelope_with_decision_and_previous(
 
 enum ResponsesRequestBody {
     Owned(Value),
-    Captured(ProviderTransportPayload),
+    Captured(Box<ProviderTransportPayload>),
 }
 
 fn translate_indexed_response_request(
@@ -605,7 +605,7 @@ fn translate_indexed_response_request(
                 ProviderTransportPayload::openai_responses(request)
                     .map_err(|_| OpenAiCompatError::translation_invariant(report.clone()))?
             }
-            ResponsesRequestBody::Captured(transport) => transport,
+            ResponsesRequestBody::Captured(transport) => *transport,
         };
         metadata.set_provider_transport_payload(if prefers_native_transport {
             payload.preferred()

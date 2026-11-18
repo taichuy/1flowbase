@@ -668,6 +668,21 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         self.memory_list_runtime_spans(flow_run_id)
     }
 
+    async fn list_runtime_event_durable_page(
+        &self,
+        flow_run_id: Uuid,
+        after_sequence: i64,
+        through_sequence: Option<i64>,
+        limit: usize,
+    ) -> Result<Vec<domain::RuntimeEventRecord>> {
+        self.inner.lock().unwrap().native_recovery_page_reads += 1;
+        let mut records = self.memory_list_runtime_events(flow_run_id, after_sequence)?;
+        records.retain(|record| through_sequence.is_none_or(|end| record.sequence <= end));
+        records.sort_by_key(|record| record.sequence);
+        records.truncate(limit.max(1));
+        Ok(records)
+    }
+
     async fn list_runtime_events(
         &self,
         flow_run_id: Uuid,
@@ -815,6 +830,32 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         flow_run_id: Uuid,
     ) -> Result<Option<domain::ApplicationRunDetail>> {
         self.memory_get_application_run_detail(application_id, flow_run_id)
+    }
+
+    async fn get_run_node_last_run(
+        &self,
+        application_id: Uuid,
+        flow_run_id: Uuid,
+        node_id: &str,
+    ) -> Result<Option<domain::NodeLastRun>> {
+        let Some(detail) = self.memory_get_application_run_detail(application_id, flow_run_id)?
+        else {
+            return Ok(None);
+        };
+        let Some(node_run) = detail
+            .node_runs
+            .into_iter()
+            .rev()
+            .find(|n| n.node_id == node_id)
+        else {
+            return Ok(None);
+        };
+        Ok(Some(domain::NodeLastRun {
+            flow_run: detail.flow_run,
+            node_run,
+            checkpoints: detail.checkpoints,
+            events: detail.events,
+        }))
     }
 
     async fn get_latest_node_run(

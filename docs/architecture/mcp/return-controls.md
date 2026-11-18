@@ -108,7 +108,7 @@ inline 判定使用同一 defaults 的 null envelope 长度减 4，再加已序�
 | `resource_link` | `uri_path`、`name_path` | `mime_type_path`、`description_path`、`annotations_path` |
 | `resource` | `uri_path`、`text_path` / `blob_path` 恰好一个 | `mime_type_path`、`annotations_path` |
 
-图片和音频必须是非空、规范 base64，MIME 分别满足合法 `image/*`、`audio/*`，不限定业务 MIME 白名单；空 resource blob 是合法空文件。资源 URI 必须绝对，宿主不下载或解析目标。嵌入资源输出 `{type:"resource",resource:{uri,mimeType?,text|blob}}`，合法 annotations 保留。`resource_read` 默认 false，启用要求至少一个嵌入资源，可同时包含 resource_link；含 text、image 或 audio 的 mapping 不允许启用，声明可接入资源读取 adapter。
+图片和音频必须是非空、规范 base64，MIME 分别满足合法 `image/*`、`audio/*`，不限定业务 MIME 白名单；空 resource blob 是合法空文件。资源 URI 必须绝对，宿主不下载或解析目标。嵌入资源输出 `{type:"resource",resource:{uri,mimeType?,text|blob}}`，合法 annotations 保留。`resource_read` 默认 false，启用必须声明至少一个 resource（允许 skip_if_null），可同时声明 resource_link；首次结果可仅有 link，重读必须产出唯一匹配的嵌入正文；含 text、image 或 audio 的 mapping 不允许启用，声明可接入资源读取 adapter。
 
 本地声明的全部原生内容（含 text）独立于 metadata 的选择、文本分页与续读缓存。`max_inline_chars`、字段/范围选择和详情续读只作用于独立 metadata 对象，低 metadata 预算不截断原生 block。上游 proxy 的 text 继续保持现有 metadata 预算语义，非文本内容在分页时保留。
 
@@ -118,10 +118,36 @@ inline 判定使用同一 defaults 的 null envelope 长度减 4，再加已序�
 
 ## 资源重读
 
-服务器在 tools 之外声明 `capabilities.resources = {}`，保留原协议版本 `2025-03-26`。`resources/list` 返回 `{resources:[]}`；工具产出的资源不承诺进入资源目录。
+服务器在 tools 之外声明 `capabilities.resources = {}`，支持 `2025-11-25` 与 `2025-03-26` 的本轮 tools / resources 子集。initialize 返回客户端提出的受支持版本，未知提议返回 `2025-11-25`；后续无状态 HTTP 请求通过 `MCP-Protocol-Version` 明确版本，缺失按规范回落 `2025-03-26`，不支持的 header 返回 HTTP 400。旧 wire 将 resource_link 转为保留 URI/名称的 JSON text，将 structuredContent 转为 JSON text（已存在相同 JSON text 时不重复），不发送这两个旧 schema 不支持的字段/块；新版本保留五类原生 content。未声明订阅、标准 Tasks 或 2026 扩展。
 
-InterfaceWrapper 的 mapping 显式设置 `resource_read:true` 时，嵌入资源与指向相同原 URI 的 resource_link 使用宿主 URI：`flowbase-resource://read/<BASE64URL_JSON>`。一般外部链接保留原 URI，不自动 fetch。自包含、带版本的引用只携带用户/workspace、所选 instance、tool ID、当前 `des_id`、调用者原业务 arguments 与原 resource URI，不含响应 binary、请求 headers、session 凭证或 hidden/default bindings；不维护 URI registry 或 binary cache。该声明用于输入参数可安全作为 locator 暴露的文件读取操作。
+InterfaceWrapper 的 mapping 显式设置 `resource_read:true` 时，全部声明的嵌入资源与 resource_link（包括独立 link-only）使用宿主 URI：`flowbase-resource://read/<BASE64URL_JSON>`。未开启 resource_read 的一般外部链接保留原 URI，不自动 fetch。自包含、带版本的引用只携带用户/workspace、所选 instance、tool ID、当前 `des_id`、调用者原业务 arguments 与原 resource URI，不含响应 binary、请求 headers、session 凭证或 hidden/default bindings；不维护 URI registry 或 binary cache。该声明用于输入参数可安全作为 locator 暴露的文件读取操作。
 
 `resources/read` 接收 `{uri}`，返回 `{contents:[{uri,mimeType?,text|blob}]}`。返回 URI 保持请求的宿主 URI，不递归包装。引用只定位资源，不授予权限：每次读取在调用前检查当前用户/workspace、所选且可见的工具/instance、显式 opt-in 与当前 revision。可见性撤销、opt-in 关闭、revision 改变、非法或未知宿主 URI 均在工具调用前拒绝。修改 locator 的 arguments 不扩大访问权限。
 
 RPC 经现有 Invocation Kernel 与 ToolCall port，重新投影当前受管工具，经同一 InterfaceDispatch 与宿主 executable 检查执行原读取工具。只返回成功结果中与原 URI 相同的嵌入资源；失败不返回部分结果。重读会再次执行原业务读取，可能观察到文件变化。编码与解码均服从现有 2 MiB tool arguments 真实传输预算，payload 字段与版本严格校验。
+
+
+### Link-only 与可发现资源契约
+
+`resource_read_arguments` 是可选对象，只在重读时浅合并到公开业务 arguments，覆盖同名参数；不改变 actor、workspace、instance、tool 或 des_id。协议重读和 Host import 共用该逻辑，同安装串行源重入保护继续生效。Resource 块的 `skip_if_null` 默认为 false；开启时，仅对应 text/blob 路径明确为 null 才跳过，缺失路径或格式错误仍失败。例：
+
+```json
+{
+  "structured_content_path": "/metadata",
+  "resource_read": true,
+  "resource_read_arguments": {"link_only": false},
+  "resources": [{"name": "Report", "uri": "urn:report:current", "arguments": {"id": "current"}, "mime_type": "application/pdf"}],
+  "mcp_content": [
+    {"type": "resource_link", "uri_path": "/uri", "name_path": "/name"},
+    {"type": "resource", "uri_path": "/uri", "blob_path": "/blob", "skip_if_null": true}
+  ]
+}
+```
+
+首次 `link_only:true` 可返回 `blob:null` 和链接，重读覆盖为 false 并返回完整 blob。纯 ResourceLink 声明可正常投影，但不允许开启 resource_read，避免发布无法读取的模板；link-only 指首次业务结果正文为 null，不指永久无正文的 mapping。正文不写入 ephemeral store，`ResourceReference` 既有 wire 不变。
+
+`resources/list` 只投影当前可见、InterfaceWrapper、resource_read 开启工具的显式 `resources` 数组；每项 name、uri、arguments 必填，mime_type 可选。资源 URI 包装为上述引用。未声明条目时空列表合法，不执行工具、不扫描磁盘、不自动枚举历史调用结果。
+
+`resources/templates/list` 为同一可见 read 工具生成版本绑定模板：`flowbase-resource://template/<BASE64URL_IDENTITY>?arguments={arguments}&resource_uri={resource_uri}`。这是 RFC 6570 简单变量展开；arguments 是 JSON 对象字符串，resource_uri 是原始绝对 URI，两者按 URI 变量编码。identity 只含 instance_id、tool_id、des_id，用户/workspace 从当前请求派生。展开后 read 复用既有 locator codec、当前授权及 canonical tool 调用，只返回一个 URI 匹配的嵌入资源；零个或多个匹配失败，自引用宿主 URI、未知参数、重复参数与旧版本失败。
+
+两种目录以 URI 排序，用带目录类型的最后键 cursor 分页；每次重新计算当前可见目录，页面（含 nextCursor）使用既有 JSON envelope 预算的一半，保留 envelope 余量。没有机器容量常量或跨请求目录/二进制缓存；过大的单项明确失败。客户端用 nextCursor 续页，权限或目录改变可能改变后续页。

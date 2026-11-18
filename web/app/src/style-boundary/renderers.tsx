@@ -1,3 +1,4 @@
+import { ApplicationTemplateCatalogList } from '../features/settings/components/extension-center/ApplicationTemplateCatalogList';
 import { CommunicationChatStyleBoundaryScene } from './scene-fixtures/notifications/communications';
 import { seedStyleBoundaryCommunicationChatFetch } from './scene-fixtures/notifications/communications-fetch';
 import {
@@ -13,6 +14,7 @@ import {
 } from './scene-fixtures/notifications/data';
 import { SettingsOrganizationStyleBoundaryScene } from './SettingsOrganizationStyleBoundaryScene';
 import { seedStyleBoundaryOrganizationFetch } from './scene-fixtures/settings/organization';
+import { seedStyleBoundaryEventsFetch } from './scene-fixtures/settings/events';
 import type { ReactNode } from 'react';
 import { AssistantPreviewScene } from './scene-fixtures/AssistantPreviewScene';
 import { Menu } from 'antd';
@@ -51,6 +53,35 @@ import {
 } from './scene-fixtures/common-fetch';
 import type { StyleBoundaryRuntimeScene } from './types';
 import './style-boundary-fixtures.css';
+
+function renderApplicationTemplateCatalogScene() {
+  return (
+    <div style={{ height: 600, display: 'flex', flexDirection: 'column' }}>
+      <ApplicationTemplateCatalogList
+        items={[
+          {
+            template_id: 'wiki',
+            catalog_id: 'official/wiki',
+            name: 'Wiki',
+            description: 'Knowledge workspace',
+            release_version: 1,
+            checksum: 'fixture',
+            installed_release_version: null,
+            installed_checksum: null,
+            source: 'official'
+          }
+        ]}
+        total={1}
+        loading={false}
+        failed={false}
+        hasMore={false}
+        canInstall
+        onLoadMore={async () => {}}
+        onInstall={() => {}}
+      />
+    </div>
+  );
+}
 
 function getAccountPopupChildren() {
   const items = createAccountMenuItems() ?? [];
@@ -130,6 +161,13 @@ function renderRouteManagementScene() {
     }
     return fallbackFetch(input, init);
   };
+  return scene;
+}
+
+function renderEventsScene() {
+  seedStyleBoundarySettingsFetch();
+  const scene = renderRouterScene('/settings/events');
+  seedStyleBoundaryEventsFetch();
   return scene;
 }
 
@@ -446,6 +484,10 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
   },
   'page.embedded-apps': () =>
     renderShellScene('/embedded-apps', <EmbeddedAppsPage />),
+  'component.application-template-catalog.desktop':
+    renderApplicationTemplateCatalogScene,
+  'component.application-template-catalog.mobile':
+    renderApplicationTemplateCatalogScene,
   'page.settings-extension-center-agent-flow': () => {
     seedStyleBoundaryTemplateFetch();
     return renderRouterScene('/settings/extension-center/agent-flow');
@@ -461,6 +503,8 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
     seedStyleBoundarySettingsFetch();
     return renderRouterScene('/settings/model-providers');
   },
+  'page.settings-events.desktop': renderEventsScene,
+  'page.settings-events.mobile': renderEventsScene,
   'page.settings-i18n.desktop': () => {
     seedStyleBoundarySettingsFetch();
     return renderRouterScene('/settings/i18n');

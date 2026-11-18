@@ -8,6 +8,45 @@ import {
 } from '../mcp-management-view-model';
 
 describe('mcp management view model', () => {
+  test('retains the default entry as a top-level group under the absolute root', () => {
+    const [root] = buildMcpDirectoryTreeData({
+      instance: {
+        id: 'ssh-i',
+        instance_id: 'ssh',
+        name: 'SSH',
+        default_entry_path: '/ssh'
+      },
+      groups: [
+        '/ssh',
+        '/ssh/hosts',
+        '/ssh/sessions',
+        '/ssh/terminal',
+        '/ssh/files'
+      ].map((path) => ({
+        id: path,
+        instance_record_id: 'ssh-i',
+        path,
+        display_name: path.split('/').at(-1)!,
+        description_short: null,
+        enabled: true,
+        sort_order: 0
+      })),
+      bindings: [],
+      tools: []
+    });
+    expect(root).toMatchObject({
+      key: 'instance:ssh:/',
+      title: '/',
+      path: '/'
+    });
+    expect(root?.children?.map((node) => node.path)).toEqual(['/ssh']);
+    expect(root?.children?.[0]?.children?.map((node) => node.path)).toEqual([
+      '/ssh/files',
+      '/ssh/hosts',
+      '/ssh/sessions',
+      '/ssh/terminal'
+    ]);
+  });
   test('builds a direct child path from fixed root and nested parents', () => {
     expect(buildMcpChildGroupPath('/', 'system_mcp')).toBe('/system_mcp');
     expect(buildMcpChildGroupPath('/system_mcp', 'discovery')).toBe(
@@ -241,42 +280,90 @@ describe('mcp management view model', () => {
     });
   });
 
-  test('shares deep ancestors while preserving scoped roots, sibling order and every binding', () => {
+  test('shares deep ancestors while preserving every top-level group, sibling order and binding', () => {
     const input = {
-      instance: { id: 'i', instance_id: 'ops', name: 'Ops', default_entry_path: '/ops' },
-      groups: ['/ops/shared/z', '/ops/shared/a', '/outside', '/ops/shared'].map((path, index) => ({
-        id: `g${index}`, instance_record_id: 'i', path, display_name: path,
-        description_short: null, enabled: true, sort_order: -index
-      })),
+      instance: {
+        id: 'i',
+        instance_id: 'ops',
+        name: 'Ops',
+        default_entry_path: '/ops'
+      },
+      groups: ['/ops/shared/z', '/ops/shared/a', '/outside', '/ops/shared'].map(
+        (path, index) => ({
+          id: `g${index}`,
+          instance_record_id: 'i',
+          path,
+          display_name: path,
+          description_short: null,
+          enabled: true,
+          sort_order: -index
+        })
+      ),
       bindings: Array.from({ length: 50 }, (_, index) => ({
-        id: `b${index}`, instance_record_id: 'i', tool_record_id: 'missing',
+        id: `b${index}`,
+        instance_record_id: 'i',
+        tool_record_id: 'missing',
         group_path: index % 2 ? '/ops/shared/a/deep' : '/ops/shared/z/deep',
-        tool_id: `tool_${index}`, display_alias: null, visible: true, sort_order: index
+        tool_id: `tool_${index}`,
+        display_alias: null,
+        visible: true,
+        sort_order: index
       })),
       tools: []
     };
     const [root] = buildMcpDirectoryTreeData(input);
-    expect(root?.children?.map((node) => node.path)).toEqual(['/ops/shared']);
-    const branches = root?.children?.[0]?.children;
-    expect(branches?.map((node) => node.path)).toEqual(['/ops/shared/a', '/ops/shared/z']);
-    for (const [branch, parity] of [[0, 1], [1, 0]] as const) {
-      expect(branches?.[branch]?.children?.[0]?.children?.map((node) => node.binding_id))
-        .toEqual(input.bindings.filter((_, index) => index % 2 === parity).map((binding) => binding.id));
+    expect(root?.children?.map((node) => node.path)).toEqual([
+      '/outside',
+      '/ops'
+    ]);
+    const branches = root?.children?.find((node) => node.path === '/ops')
+      ?.children?.[0]?.children;
+    expect(branches?.map((node) => node.path)).toEqual([
+      '/ops/shared/a',
+      '/ops/shared/z'
+    ]);
+    for (const [branch, parity] of [
+      [0, 1],
+      [1, 0]
+    ] as const) {
+      expect(
+        branches?.[branch]?.children?.[0]?.children?.map(
+          (node) => node.binding_id
+        )
+      ).toEqual(
+        input.bindings
+          .filter((_, index) => index % 2 === parity)
+          .map((binding) => binding.id)
+      );
     }
   });
 
   test('keeps first appearance for collation ties and last group metadata for duplicate paths', () => {
     const paths = ['/ops/é', '/ops/e\u0301', '/ops/é'];
     const [root] = buildMcpDirectoryTreeData({
-      instance: { id: 'i', instance_id: 'ops', name: 'Ops', default_entry_path: '/ops' },
+      instance: {
+        id: 'i',
+        instance_id: 'ops',
+        name: 'Ops',
+        default_entry_path: '/ops'
+      },
       groups: paths.map((path, index) => ({
-        id: `g${index}`, instance_record_id: 'i', path, display_name: `Group ${index}`,
-        description_short: null, enabled: true, sort_order: 0
+        id: `g${index}`,
+        instance_record_id: 'i',
+        path,
+        display_name: `Group ${index}`,
+        description_short: null,
+        enabled: true,
+        sort_order: 0
       })),
-      bindings: [], tools: []
+      bindings: [],
+      tools: []
     });
-    expect(root?.children?.map((node) => [node.path, node.title])).toEqual([
-      ['/ops/é', 'Group 2'], ['/ops/e\u0301', 'Group 1']
+    expect(
+      root?.children?.[0]?.children?.map((node) => [node.path, node.title])
+    ).toEqual([
+      ['/ops/é', 'Group 2'],
+      ['/ops/e\u0301', 'Group 1']
     ]);
   });
 });

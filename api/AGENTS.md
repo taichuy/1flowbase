@@ -15,13 +15,15 @@
 
 按 `api/` 目录树顺序阅读和维护：
 
-- `apps/api-server` 是 Axum HTTP API 宿主，负责 public / console / runtime route、middleware、response、OpenAPI、loader、policy、inventory、infra bootstrap、route mount 与 boot assembly。
+- `apps/api-server` 是 Axum HTTP API 的唯一 composition root，合并真实 Router、Endpoint Catalog、OpenAPI 与冻结注册贡献，保留 boot、workers、native distribution 和 bin。HTTP Kernel 与六个协议适配域位于 `crates/api/`，完整 owner 见其 [AGENTS.md](crates/api/AGENTS.md)。
 - `apps/api-server` 是唯一 Backend composition root，在进程内创建、注入并关闭唯一 `RuntimeExtensionHost`；不得恢复独立 Runtime 服务或端口。
-- `crates/` 承载协议无关的调用内核、业务、执行与存储模块；完整 crate owner、允许依赖与代码归属只维护在 [crates/AGENTS.md](crates/AGENTS.md)，修改库代码前读取该文件及对应局部规则。
+- `crates/` 承载 HTTP Kernel / 协议适配域，以及协议无关的调用内核、业务、执行与存储模块；完整 crate owner、允许依赖与代码归属只维护在 [crates/AGENTS.md](crates/AGENTS.md)，修改库代码前读取该文件及对应局部规则。
 - 总体调用关系：Protocol Adapter → `interface-runtime` 冻结计划 → typed Handler → Business / Execution；这是调用关系，不授予 crate 反向依赖实现层的权限。
 - `plugins` 是插件源码工作区和包工作区；`host-extensions`、`sets`、`templates`、`packages`、`installed` 的生命周期以 `api/plugins/README.md` 为准。
 - `target` 是构建产物目录，不手工修改。
 - 模块级与单元测试放到对应 `src/_tests`；应用宿主级健康检查、启动冒烟、跨 crate 集成验证放到 `tests/`。
+- 域内纯模块测试随 canonical owner；跨域、完整 HTTP 与混合白盒测试留在 `api-server`。原生 integration target 可挂载原测试 leaf；窄访问器走 `test-support`，保留测试名、属性与断言，不重复挂载。根库及三个私有 integration include 根继续使用 `api-test-selection` 分区，选择方式见 [API 测试目标](apps/api-server/tests/README.md)。
+- 定向验证先选 `--test <target>` 再选 `--filter`；测试名过滤不减少 lib-test 编译范围。目标与例子见 [API 测试目标](apps/api-server/tests/README.md)。白盒私有状态测试保留在所属模块；全量入口必须仍发现所有目标。
 - 同一目录文件接近 `15` 个时收纳子目录；单文件接近 `1500` 行时拆职责。
 
 ## Interface Lifecycle Boundary
@@ -40,13 +42,14 @@
 - 删除用户时保留业务资源、会话与账务历史；历史归属 UUID 可指向已删除用户，不通过用户外键阻止删除或级联删除历史。登录身份、角色绑定与凭据仍随用户清理。
 - 历史资源查询不得依赖用户存在的 inner join；查不到用户时姓名 / 账号可为空，保持资源可读。
 - 后端验证在同一 worktree 同时只运行一条 Cargo 命令；本地复用共享预算入口，CPU / 内存取半机与 4 CPU / 8 GiB 的较大值且不超过有效容量，限制只施加 Rust 子组。GitHub Actions 使用全部 runner 资源；保留显式更低的调试预算，不在命令中另写固定并发。
-- `apps/api-server/src/routes` 的协议适配器负责参数解析、认证接入和响应投影；业务调用通过已注册 Binding 进入统一 Kernel，再由 typed Handler 调用 service / action，不从协议入口直接绕过调用计划。
+- `crates/api/` 各域的 `src/routes` 协议适配器负责参数解析、认证接入和响应投影；根 `apps/api-server/src/routes` 保留装配与必要 facade。业务调用通过已注册 Binding 进入统一 Kernel，再由 typed Handler 调用 service / action，不从协议入口直接绕过调用计划。
 - API DTO 字段名优先跟领域模型 / 持久化语义一致；不要为了前端展示创建新的语义别名字段。
-- `apps/api-server/src/middleware` 是请求链路约束层。
+- `crates/api/kernel/src/host/middleware` 是请求链路约束层；根 middleware 路径仅作 facade。
 - 后台注册设置项是后端安全对象：稳定 `feature_id` 同时拥有 console surface 与 Settings API scope；前端只消费注册结果，不定义权限真值。
 - SettingsFeature 是后台设置分组；组内角色授权使用单接口 operation，不得恢复为整组 feature grant 或聚合 routes。
 - Settings API 未注册、重复归属或 owner inactive 时 fail closed；不得按前端 URL 推断、allow-by-default，或建立管理员可编辑的 route-to-permission 映射。
-- 新增或调整后台设置注册必须使用统一 CLI 与 compiled inventory。统一入口尚未落地时，只能在已批准的 registry foundation Issue 内建立它，不新增平行手写注册表。
+- 后台设置注册保持 canonical Rust registry、唯一 route ownership 与 compiled inventory 同源；优先复用已有且适用的编辑工具，工具缺失或不适用时直接对现有 canonical 源作最小修改并验证，不新增平行注册表。
+- 通用注册 CLI / 生成器及其 fixtures 仅在当前用户目标包含工具建设，或已获授权的独立交付需要时新增；工具缺失本身不扩大当前业务交付。
 - 后台设置授权只解决入口与操作资格；workspace / system、owner、row、field、secret 和状态约束继续由 `control-plane` 与 repository 执行。
 - controller / routes 不得直接导入具体 PostgreSQL adapter 或 `runtime-extension-host` 内部模块，通过 typed Handler 消费业务 service，协议适配器消费稳定调用 contract。
 - 主仓 durable 后端官方支持 PostgreSQL；外部数据库、SaaS、API 数据源走 runtime extension。

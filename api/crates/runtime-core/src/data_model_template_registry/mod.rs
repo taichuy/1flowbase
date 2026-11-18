@@ -172,6 +172,19 @@ pub struct DataModelTemplateCatalog {
 }
 
 impl DataModelTemplateCatalog {
+    /// A single resolved template for one execution. Mutable provider refreshes cannot
+    /// replace its operations after the caller has authorized the target.
+    pub(crate) fn frozen(template: CompiledDataModelTemplate) -> Self {
+        let descriptor = template.descriptor().clone();
+        let mut templates = BTreeMap::new();
+        templates.insert(template.identity().clone(), template);
+        Self {
+            core_descriptors: Arc::new(vec![descriptor]),
+            provider_descriptors: Arc::new(RwLock::new(BTreeMap::new())),
+            compiled: Arc::new(RwLock::new(DataModelTemplateRegistry { templates })),
+        }
+    }
+
     pub fn core() -> Self {
         let core_registry = crate::general_data_model_template::core_data_model_template_registry()
             .expect("Core data model template registry must compile");
