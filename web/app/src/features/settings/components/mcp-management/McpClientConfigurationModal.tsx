@@ -26,16 +26,6 @@ import {
   saveSettingsMcpClientCredential
 } from '../../api/mcp-management';
 
-function buildMcpServerConfiguration(endpoint: string, apiKey: string) {
-  return {
-    type: 'http',
-    url: endpoint,
-    headers: {
-      Authorization: `Bearer ${apiKey}`
-    }
-  };
-}
-
 function buildCodexRemoveCommands(instanceName: string) {
   return [
     {
@@ -246,12 +236,25 @@ export function McpClientConfigurationModal({
     }
   });
 
-  const endpoint = instance
-    ? `${window.location.origin}/api/mcp/${encodeURIComponent(instance.instance_id)}`
+  const instanceId = instance?.instance_id;
+  const endpoint = instanceId
+    ? `${window.location.origin}/api/mcp/${encodeURIComponent(instanceId)}`
     : '';
   const configuration = useMemo(
-    () => buildMcpServerConfiguration(endpoint, apiKey),
-    [apiKey, endpoint]
+    () =>
+      instanceId
+        ? {
+            mcpServers: {
+              [instanceId]: {
+                serverUrl: endpoint,
+                headers: {
+                  Authorization: `Bearer ${apiKey.trim() ? apiKey : 'YOUR_API_TOKEN'}`
+                }
+              }
+            }
+          }
+        : null,
+    [apiKey, endpoint, instanceId]
   );
   const commandTabs = useMemo(() => {
     if (!instance) {
