@@ -13,7 +13,7 @@ description: 实现或审查 1flowbase api/ 的接口、业务、状态与模块
 
 ## Backend Architecture Map
 
-涉及入口装配或调用收尾时，用[请求架构与调用生命周期](../../../docs/architecture/interface-lifecycle.md)定位对应边界。
+先理解 [请求架构与调用生命周期](../../../docs/architecture/interface-lifecycle.md) 的总体结构与维护边界，再按任务读主题，无需先遍历全项目架构。
 
 ```text
 api-server（唯一进程内 composition root）
@@ -36,8 +36,8 @@ api-server（唯一进程内 composition root）
 | --- | --- |
 | 接口装配、认证、Binding、Kernel、stream / cancel / deadline | [interface-lifecycle](references/interface-lifecycle.md) → 架构对应主题 |
 | API 输入输出、错误模型 | [api-design](references/api-design.md) → route / DTO / typed Handler |
-| 状态转换、事务、用户删除、作用域、文件改绑 | [state-and-consistency](references/state-and-consistency.md) → 状态写 owner |
-| 核心与适配器、外部依赖、HostExtension、HTTP 出口 | [boundary-design](references/boundary-design.md) → 局部 AGENTS / ports |
+| 状态转换、事务、幂等 | [state-and-consistency](references/state-and-consistency.md) → 状态写 owner |
+| 核心与适配器、外部依赖、HostExtension | [boundary-design](references/boundary-design.md) → 局部 AGENTS / ports |
 | 新资源或实现落点 | [implementation-rules](references/implementation-rules.md) |
 | Rust 类型、async、锁与实现自查 | [rust-backend-practices](references/rust-backend-practices.md) 的相关章节及 completion self-check |
 | 内置模型、metadata overlay、runtime read model | [builtin-data-model-contract](references/builtin-data-model-contract.md) |
@@ -54,8 +54,8 @@ api-server（唯一进程内 composition root）
 - 系统内置数据与用户 metadata、宿主与插件写集等专项边界，按上表加载对应真值；不因任何后端改动加载所有专项。
 - 新增或改变目标、source of truth、权限、历史数据处理或对外 contract 时回到需求对齐；已批准范围内的装配、fixture 与局部实现修正继续。
 
-## 开发反馈
+## Evidence and Exit
 
-先看目标 crate 的现有测试能否区分改前和改后。纯领域规则留在所属 crate；只有需要真实装配或跨边界时才进入 api-server。定向编译先选 [Cargo target](../../../api/apps/api-server/tests/README.md)，再过滤测试名；单独按名字过滤不会缩小链接目标。
+完成开发后用 `qa-evaluation` 对照架构与行为验收。交付保留 route / service / domain / adapter 等改动 owner、关键决策与证据指针；已有 AC 标明已覆盖、未覆盖及延后项。
 
-给用户看本次接口或状态变化及实际验证结果即可。正式验收、合并或发布再按 `qa-evaluation` 集中执行。
+执行成本、Cargo 并发、证据复用与资源失败转向沿用 `test-driven-development`。当前行为与直接风险证据充分即停止；编译或源码门禁不代替行为测试，未运行的重型验证不冒充通过。
