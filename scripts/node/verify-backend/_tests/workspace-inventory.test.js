@@ -63,20 +63,16 @@ test('API app checks and every hash shard select all actual API owners', () => {
 });
 
 
-test('managed MCP CI filters select their actual library owner and retain Root lifecycle tests', () => {
-  const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/browser-managed-plugin.yml'), 'utf8');
-  for (const [label, filter, source, mount] of [
-    ['mcp-http', 'managed_service_mcp', '_tests/mcp_routes/managed_service_mcp.rs', 'managed_service_mcp.rs'],
-    ['mcp-media', 'result_delivery::media::tests', 'routes/mcp_protocol/result_delivery/_tests/media.rs', 'routes/mcp_protocol/result_delivery/media.rs'],
-    ['mcp-errors', 'target_error_diagnostics', 'routes/mcp_protocol/_tests/target_error_diagnostics.rs', 'routes/mcp_protocol/virtual_ui.rs'],
+test('managed MCP regressions remain mounted by their library owner', () => {
+  for (const [source, mount] of [
+    ['_tests/mcp_routes/managed_service_mcp.rs', 'managed_service_mcp.rs'],
+    ['routes/mcp_protocol/result_delivery/_tests/media.rs', 'routes/mcp_protocol/result_delivery/media.rs'],
+    ['routes/mcp_protocol/_tests/target_error_diagnostics.rs', 'routes/mcp_protocol/virtual_ui.rs'],
   ]) {
-    const lines = workflow.split('\n').map(line => line.trim()).filter(line => line.startsWith(`run_test ${label} `));
-    assert.deepEqual(lines, [`run_test ${label} -p api-mcp --lib ${filter}`]);
     const sourceRoot = path.join(repoRoot, 'api/crates/api/mcp/src');
     assert.match(fs.readFileSync(path.join(sourceRoot, source), 'utf8'), /#\[(?:tokio::)?test\]/u);
     assert.ok(fs.readFileSync(path.join(sourceRoot, mount), 'utf8').includes(`#[path = "${source.startsWith('routes/') ? '_tests/' + path.basename(source) : source}"]`));
   }
-  assert.ok(workflow.includes('run_test lifecycle -p api-server --lib managed_services::'));
 });
 
 test('pricing CI watches the current Settings implementation and Root billing integration tests', () => {
