@@ -54,4 +54,4 @@ HTTP 断连不会主动取消业务，完整调用由独立任务持有；内部
 
 这不是沙箱，不保证终止主动逃离管理边界的进程，也不回滚命令副作用。反向代理自身超时仍可能先于命令结束。
 
-`.github/workflows/local-command.yml` 在 Windows、Linux、macOS 原生 runner 上直接编译并测试生产执行模块。Linux 的 API 测试另验证真实认证、角色授权、撤销与完整响应。轻量原生测试不等于整个原生发行包已经验证；每次交付以实际 Actions 结果和候选 SHA 为准。
+本地命令的原生测试保留在 `api/apps/api-server/tests/local-command-platform/`。专项 Actions 入口已退役，不再自动验证 Windows、Linux 和 macOS；交付时应注明实际测试的平台、候选 SHA 及结果。原生模块测试不能代替完整发行包验证。
