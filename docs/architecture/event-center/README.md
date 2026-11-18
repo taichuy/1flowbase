@@ -165,7 +165,7 @@ MCP 参数映射 → 同代 Router ├→ 协议解码 → 认证/授权/准入 
 
 ## 验证入口
 
-完整 API 纠偏的集中验证入口为 `event-lifecycle.yml` 的 `full-api-events` scope；`full-api-events-types` 仅收集类型诊断，不是行为验收。既有业务事件使用 `event-business` scope，保存精确 source SHA、非零测试结果和匹配的宿主候选产物。接口观察、应用终态、积分筛选、通信去重/结果与权限分别验证；源码检查不代替运行结果。
+API 事件与业务事件验收应保留精确 source SHA、非零测试结果和匹配的宿主候选产物。旧专项 Actions 入口已退役。接口观察、应用终态、积分筛选、通信去重/结果与权限分别验证；源码检查和类型诊断不代替运行结果。
 
 行为证据分为事件服务单元测试、`event_center_configuration` PostgreSQL target、`api_system_settings` 的 event center 路由用例、`api_private_contracts` 的 event workflow/communication 用例，以及对应前端 feature 测试和 page-debug 页面证据。有限设计模型不替代这些实现测试。
 

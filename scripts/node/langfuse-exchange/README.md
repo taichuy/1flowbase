@@ -1,8 +1,8 @@
 # Langfuse managed-plugin acceptance
 
 This finite scenario targets an independently running exact-source host and installed
-public `@taichuy/langfuse` plugin. Build the host/static web/plugin with the GitHub
-Actions evidence workflows; do not run local Cargo or cold frontend builds.
+public `@taichuy/langfuse` plugin. Supply matching host, static web and plugin artifacts before starting the scenario;
+the one-off evidence workflows are retired. Do not run local Cargo or cold frontend builds.
 
 Use `install.cjs`'s `install` function with an explicit package, parsed public manifest,
 `apiBaseUrl`, `credentialsRoot`, and `outDir`. It exercises the existing package
@@ -69,7 +69,7 @@ must stop only this task's runtime/browser processes if system CPU, physical mem
 or disk occupancy reaches 90%. Ports 7600 and 7800 are protected and rejected.
 
 Existing standard OTLP codec, authorization, native archive and source-reader
-regressions run in `agent-logs-otlp.yml`; the plugin's own SDK callback and mapping
+regressions remain in the repository (the one-off OTLP workflow is retired); the plugin's own SDK callback and mapping
 fixtures run in the official repository's `langfuse-ci.yml`.
 
 Remote persistence is verified by complete, trace-bound observations v2 cursor reads,
