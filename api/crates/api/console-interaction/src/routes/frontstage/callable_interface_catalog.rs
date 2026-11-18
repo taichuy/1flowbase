@@ -397,26 +397,6 @@ impl ConsoleInterfacePort<FrontstageCallableCatalogInput, FrontstageCallableCata
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn f12c1_registry_freezes_callable_catalog_bindings() {
-        let registry =
-            compile_registry(Arc::new(UnavailableFrontstageCallableCatalogPort)).unwrap();
-        for declaration in DECLARATIONS {
-            let binding = registry
-                .binding(&interface_runtime::BindingId::new(declaration.binding_id).unwrap())
-                .expect("declared callable catalog binding must be frozen");
-            let route = binding.projection().http_route().unwrap();
-            assert_eq!(route.method(), declaration.method);
-            assert_eq!(route.path(), declaration.path);
-        }
-        assert_eq!(registry.bindings().count(), DECLARATIONS.len());
-    }
-}
-
 impl crate::openapi_interface::contract::ApiInput for FrontstageCallableCatalogInput {
     fn project_document_input(
         &self,
@@ -453,5 +433,25 @@ impl crate::openapi_interface::contract::ApiOutput for FrontstageCallableCatalog
             Self::Page(page) => to_value(&page_response(page.clone())),
             Self::Entry(entry) => to_value(&entry_response(entry.clone())),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn f12c1_registry_freezes_callable_catalog_bindings() {
+        let registry =
+            compile_registry(Arc::new(UnavailableFrontstageCallableCatalogPort)).unwrap();
+        for declaration in DECLARATIONS {
+            let binding = registry
+                .binding(&interface_runtime::BindingId::new(declaration.binding_id).unwrap())
+                .expect("declared callable catalog binding must be frozen");
+            let route = binding.projection().http_route().unwrap();
+            assert_eq!(route.method(), declaration.method);
+            assert_eq!(route.path(), declaration.path);
+        }
+        assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
 }
