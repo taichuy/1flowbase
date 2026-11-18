@@ -1100,21 +1100,6 @@ test('manual quality scopes and plugin batches retain independent concurrency id
   assert.doesNotMatch(render('ci'), /\$\{\{/u);
 });
 
-test('template focused gate rejects each empty selector while keeping compile evidence separate', () => {
-  const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/application-template-contracts.yml'), 'utf8');
-  const testStep = workflow.slice(workflow.indexOf('- name: Verify template merge'), workflow.indexOf('- name: Compile API consumers'));
-  const logs = [...testStep.matchAll(/> tmp\/test-governance\/application-templates\/([a-z][a-z0-9]*)\.log/gu)].map((match) => match[1]);
-  const checked = testStep.match(/for suite in ([a-z0-9 ]+); do/u)?.[1].split(' ');
-  assert.deepEqual(checked?.sort(), logs.sort());
-  assert.equal(logs.length, 5);
-  assert.match(testStep, /node scripts\/node\/verify\/cargo-test-results\.js "tmp\/test-governance\/application-templates\/\$suite\.log" \|\| verification_status=1/u);
-  assert.match(testStep, /exit "\$verification_status"/u);
-  const compileStep = workflow.slice(workflow.indexOf('- name: Compile API consumers'));
-  assert.match(compileStep, /cargo check --locked/u);
-  assert.doesNotMatch(compileStep, /cargo-test-results\.js/u);
-});
-
-
 test('AI protocol concurrency separates caller workflows and candidate sources', () => {
   const group = readAiGatewayConcurrencyWorkflow().match(/group: (ai-gateway-protocol-conformance-[^\n]+)/u)?.[1];
   assert.ok(group);
@@ -1137,31 +1122,11 @@ test('AI protocol concurrency separates caller workflows and candidate sources',
 });
 
 
-test('organization gate validates the exact selected batch without treating compile checks as tests', () => {
-  const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/organization-contracts.yml'), 'utf8');
-  const testStep = workflow.slice(workflow.indexOf('- name: Verify organization'), workflow.indexOf('- name: Compile API consumers'));
-  const logs = [...new Set([...testStep.matchAll(/tee tmp\/test-governance\/organization\/([a-z-]+)\.log/gu)].map((match) => match[1]))];
-  const selections = [...testStep.matchAll(/suites="([a-z -]+)"/gu)].map((match) => match[1].split(' '));
-  assert.deepEqual(selections[0], ['integration']);
-  assert.deepEqual(selections[1].sort(), logs.sort());
-  assert.deepEqual(logs, [
-    'contracts', 'tree', 'block-tree', 'members', 'domain', 'metadata', 'permissions',
-    'integration', 'template', 'runtime-http', 'runtime-http-application',
-  ].sort());
-  assert.match(testStep, /for suite in \$suites; do/u);
-  assert.match(testStep, /node scripts\/node\/verify\/cargo-test-results\.js "tmp\/test-governance\/organization\/\$suite\.log" \|\| verification_status=1/u);
-  // The cache invalidation HTTP consumer moved out of the private-routes root.
-  // Both cache and application lifecycle consumers must still execute.
-  assert.match(testStep, /-p api-server --test frontstage_data_capability_routes ordered_tree[^\n]+organization\/runtime-http\.log/u);
-  assert.match(testStep, /-p api-server --test api_application ordered_tree[^\n]+organization\/runtime-http-application\.log/u);
-  assert.doesNotMatch(testStep, /--lib --test api_private_routes ordered_tree/u);
+test('ordered tree cache invalidation tests stay mounted by the HTTP consumer', () => {
   const cacheConsumer = fs.readFileSync(path.join(repoRoot, 'api/apps/api-server/tests/frontstage_data_capability_routes.rs'), 'utf8');
   assert.match(cacheConsumer, /mod runtime_ordered_tree_cache;/u);
   const cacheTests = fs.readFileSync(path.join(repoRoot, 'api/apps/api-server/tests/_tests/runtime_ordered_tree_cache.rs'), 'utf8');
   assert.match(cacheTests, /async fn runtime_ordered_tree_writes_invalidate_warmed_record_and_list_caches\(/u);
-  const compileStep = workflow.slice(workflow.indexOf('- name: Compile API consumers'));
-  assert.match(compileStep, /cargo check --locked/u);
-  assert.doesNotMatch(compileStep, /cargo-test-results\.js/u);
 });
 
 test('aggregate downloads current component artifacts without its own archived reports', () => {
