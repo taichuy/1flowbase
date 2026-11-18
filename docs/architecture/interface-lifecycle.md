@@ -88,6 +88,33 @@ Agent Flow 草稿的画布投影与直接下游查询使用调用内节点索引
 
 ## 入口、装配与模块职责
 
+<a id="http-host-crates"></a>
+
+### 拆分后的 HTTP 宿主
+
+`api-server` 仍是唯一启动和装配入口。拆开的是编译和源码边界，不是服务进程，也没有增加一次网络跳转。下图只画 HTTP 层内的直接 Cargo 依赖，箭头从使用方指向依赖方；请求如何执行见文首的调用图。
+
+```mermaid
+flowchart LR
+    R["api-server · 进程与装配"] --> D["六个协议适配域 · crates/api/"]
+    R --> K["api-host-kernel · HTTP 状态、中间件、共用构件"]
+    D --> K
+```
+
+- **改协议实现**：公开 API、兼容协议和流式投影在 `public-gateway`，应用管理在 `applications`，设置在 `console-settings`，MCP / WebMCP 在 `mcp`，插件、模型与受管服务在 `plugins-models`，会话、文件与交互在 `console-interaction`。六域之间不直接依赖；稳定共享接口放在 [HTTP 宿主内核](../../api/crates/api/kernel/src/lib.rs)。它与管理 Binding、冻结计划和调用终态的 `interface-runtime` 是两个 crate。
+- **改装配**：域提供路由、Handler 和 OpenAPI 片段，宿主合并 Router、校验端点目录，并按 `application → console → extensions` 顺序[合并 OpenAPI](../../api/apps/api-server/src/openapi/mod.rs)。宿主自有 health 路由；在宿主目录看到同名模块不代表实现仍在那里。[域目录与允许依赖](../../api/crates/api/AGENTS.md)按源码归属查。
+- **找测试**：域内纯模块测试跟域走；跨域、完整 HTTP 和需要宿主私有状态的混合场景留在宿主。只测 `api-server` 不等于覆盖六个域；局部反馈先查[测试目标表](../../api/apps/api-server/tests/README.md)，按 target 选编译范围，再按名称选用例。
+
+#### 为什么编译峰值会变小
+
+拆目录本身不省内存；这里改了 Cargo 的编译边界和生成代码的位置：
+
+1. **分开编译。** 路由、协议转换和 OpenAPI 片段在各自域 crate 生成，宿主消费编译产物。改一个 MCP 适配器时，若其他输入不变，Cargo 可以复用另外五域；检查该域也不必链接整个服务。改共享 Kernel 或构建最终二进制的影响面仍然更大。
+2. **减少泛型重复。** 不同 Axum handler 有不同的 Rust 类型。域仍保留类型检查，但在进入共用路由栈之前，用 [ErasedRouteHandler](../../api/crates/api/kernel/src/slices/console_contracts/erased_route_handler.rs) 统一类型。对同一种状态，后面的共用栈不必再按每个 handler 各生成一份机器码。代价是这道边界采用间接调用和装箱，不是请求执行变快的承诺。
+3. **测试按编译目标选。** 只跑域内行为时选所属 crate 或 integration target；在庞大的 `--lib` 后面写一个测试名，只会过滤执行，不会省掉前面的编译和链接。
+
+**历史测量（#2824，不是当前 HEAD 的跑分）：** 同一条冷构建命令 `cargo build --locked --offline -p api-server`、jobs=2，基线到拆域候选 `c9071ce90` 的 cgroup 匿名内存峰值从 **8.327 降至 3.338 GiB**（每侧一次）。最终链接要合并所有域，同轮链接器峰值反而从 **3.840 升至 4.147 GiB**；后续 `80a933b1f` 实测为 **3.926 GiB**，仍高于当时的 3.9 GiB 目标。这些数据支持降低冷编译内存压力，不代表编译耗时也按相同比例缩短。
+
 ### 装配产生覆盖真值
 
 ```mermaid
@@ -180,9 +207,9 @@ Schema 门禁对这些有限表使用具体字段/索引例外，并独立检查
 
 ### 源码入口
 
-- [external_route_assembly.rs](../../api/apps/api-server/src/console_contracts/external_route_assembly.rs)：挂载与 Inventory 同源构造。
+- [external_route_assembly.rs](../../api/crates/api/kernel/src/slices/console_contracts/external_route_assembly.rs)：挂载与 Inventory 同源构造。
 - [external_endpoint_catalog.rs](../../api/apps/api-server/src/console_contracts/external_endpoint_catalog.rs)：覆盖分类与发布校验。
-- [WebMCP interface](../../api/apps/api-server/src/routes/webmcp/interface.rs)：外层调用接入。
+- [WebMCP interface](../../api/crates/api/mcp/src/routes/webmcp/interface.rs)：外层调用接入。
 
 
 <a id="contracts-and-identity"></a>
@@ -410,7 +437,7 @@ Completed 不等于 Projected；Projected 也不是客户端收到或 subscriber
 
 Outbox lease/retry/去重/每订阅者 ACK 与 PluginData 局部幂等归各自 owner；调用生命周期不自动提供全接口幂等或端到端 exactly-once。
 
-源码：[finalization.rs](../../api/crates/interface-runtime/src/finalization.rs)、[stream.rs](../../api/crates/interface-runtime/src/stream.rs)、[turn_bridge.rs](../../api/apps/api-server/src/routes/application_public_api/responses_websocket/turn_bridge.rs)。
+源码：[finalization.rs](../../api/crates/interface-runtime/src/finalization.rs)、[stream.rs](../../api/crates/interface-runtime/src/stream.rs)、[turn_bridge.rs](../../api/crates/api/public-gateway/src/routes/application_public_api/responses_websocket/turn_bridge.rs)。
 
 
 <a id="equivalence-and-evidence"></a>
