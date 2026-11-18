@@ -568,8 +568,13 @@ describe('McpManagementPanel', () => {
 
     const dialog = screen.getByRole('dialog', { name: '目录编辑' });
     const tree = within(dialog).getByRole('tree');
-    expandTreeRootIfCollapsed(tree);
-    fireEvent.click(within(within(dialog).getByRole('tree')).getByText('ops'));
+    await act(async () => {
+      expandTreeRootIfCollapsed(tree);
+    });
+    const group = await within(tree).findByText('ops');
+    await act(async () => {
+      fireEvent.click(group);
+    });
 
     await waitFor(() => {
       expect(

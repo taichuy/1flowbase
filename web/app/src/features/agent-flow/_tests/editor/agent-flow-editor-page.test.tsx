@@ -1,5 +1,6 @@
 import { historicalAnalysisFixture } from '../fixtures/analysis-fixture';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -721,29 +722,39 @@ describe('AgentFlowEditorShell', () => {
   });
 
   test('opens the selected issue target and focuses the node field', async () => {
-    renderShell(
-      <AgentFlowEditorShell
-        applicationId="app-1"
-        applicationName="Support Agent"
-        initialState={{
-          ...createInitialState(),
-          versions: [
-            {
-              id: 'version-1',
-              sequence: 1,
-              trigger: 'autosave',
-              change_kind: 'logical',
-              summary: '初始化默认草稿',
-              summary_is_custom: false,
-              is_user_protected: false,
-              is_current_publication: false,
-              created_at: '2026-04-15T09:00:00Z'
-            }
-          ]
-        }}
-        saveDraftOverride={vi.fn().mockResolvedValue(createInitialState())}
-      />
-    );
+    // Run the real analysis debounce deterministically before searching for
+    // the issue; keep the mock backend analysis and focus assertions intact.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+        renderShell(
+          <AgentFlowEditorShell
+            applicationId="app-1"
+            applicationName="Support Agent"
+            initialState={{
+              ...createInitialState(),
+              versions: [
+                {
+                  id: 'version-1',
+                  sequence: 1,
+                  trigger: 'autosave',
+                  change_kind: 'logical',
+                  summary: '初始化默认草稿',
+                  summary_is_custom: false,
+                  is_user_protected: false,
+                  is_current_publication: false,
+                  created_at: '2026-04-15T09:00:00Z'
+                }
+              ]
+            }}
+            saveDraftOverride={vi.fn().mockResolvedValue(createInitialState())}
+          />
+        );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
 
     fireEvent.click(screen.getByRole('button', { name: 'Issues' }));
     fireEvent.click(
