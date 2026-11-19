@@ -48,7 +48,7 @@ FROM node:24.22.1-alpine AS application-template-bootstrap
 
 ARG APPLICATION_TEMPLATE_REPOSITORY=taichuy/1flowbase-official-plugins
 # Immutable application template snapshot; changing a package also bumps its release_version.
-ARG APPLICATION_TEMPLATE_REF=392faa3bfbc086e8cbfda70f6ec765dffdb02906
+ARG APPLICATION_TEMPLATE_REF=883c0425d58b285fb52a9d75aac4602ef74ab8d5
 
 RUN apk add --no-cache 'ca-certificates>=20261020-r0' git curl
 COPY scripts/shell/package-application-templates.sh /usr/local/bin/package-application-templates

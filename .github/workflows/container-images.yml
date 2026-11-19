@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/actions/setup-trivy/**"
       - ".github/workflows/container-images.yml"
+      - ".github/scripts/verify-builtin-application-templates.sh"
       - ".github/workflows/native-build.yml"
       - ".github/workflows/web-build.yml"
       - "scripts/node/native-release/**"
@@ -596,6 +597,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Build and push prebuilt api-server scan candidate
+        id: api_server_candidate
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -624,6 +626,16 @@ jobs:
           cache-to: |
             type=gha,mode=max,scope=1flowbase-api-server-runtime
             type=registry,ref=${{ steps.image_refs.outputs.buildcache_ref }},mode=max
+
+      - name: Require built-in application templates on API cold start
+        env:
+          CANDIDATE_IMAGE: ${{ steps.image_refs.outputs.scan_image_ref }}@${{ steps.api_server_candidate.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/test-governance
+          docker pull --platform linux/amd64 "$CANDIDATE_IMAGE"
+          bash .github/scripts/verify-builtin-application-templates.sh "$CANDIDATE_IMAGE" 2>&1 \
+            | tee tmp/test-governance/builtin-application-template-bootstrap.log
 
       - name: Verify offline recovery and PostgreSQL tool provenance
         shell: bash
@@ -699,16 +711,20 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: test-governance-trivy-api-server
-          path: tmp/test-governance/trivy-api-server-*.json
+          path: |
+            tmp/test-governance/trivy-api-server-*.json
+            tmp/test-governance/builtin-application-template-bootstrap.log
           if-no-files-found: warn
 
       - name: Promote scanned api-server image to official tags
         if: github.event_name != 'workflow_dispatch' || inputs.promote_official_tags == true || inputs.promote_official_tags == 'true'
+        env:
+          CANDIDATE_IMAGE: ${{ steps.image_refs.outputs.scan_image_ref }}@${{ steps.api_server_candidate.outputs.digest }}
         run: |
           docker buildx imagetools create \
             --tag "${{ steps.image_refs.outputs.version_image_ref }}" \
             --tag "${{ steps.image_refs.outputs.latest_image_ref }}" \
-            "${{ steps.image_refs.outputs.scan_image_ref }}"
+            "$CANDIDATE_IMAGE"
 
   publish-release:
     if: ${{ always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.component == 'all' && inputs.promote_official_tags == true)) && github.ref == 'refs/heads/latest' && needs.select-release.result == 'success' && needs.select-release.outputs.enabled == 'true' && needs.build-native.result == 'success' && (needs.publish-web.result == 'success' || (needs.select-web.outputs.enabled != 'true' && needs.publish-web.result == 'skipped')) && (needs.publish-api-server.result == 'success' || (needs.select-api-server.outputs.enabled != 'true' && needs.publish-api-server.result == 'skipped')) }}

@@ -151,6 +151,13 @@ with a second run using its cache. Check `rust-release-timings-<arch>` artifacts
 itself does not demonstrate compilation reuse. GitHub caches are branch-scoped;
 a beta cache is not automatically available to a sibling release branch.
 
+The `container-images` quality scope and API image CD both boot the candidate against fresh
+PostgreSQL on an internal Docker network, without a provider configuration or an auto-update
+override. The gate requires a successful database receipt for every release listed in the
+image's bundle, plus the Gateway Demo `/route` page. `/health` alone is not enough. CD fails
+before promoting the tested digest if cold-start initialization does not complete. Evidence
+is in `tmp/test-governance/builtin-application-template-bootstrap.log`.
+
 Before promotion, Trivy scans the candidate image with a pinned `aquasecurity/trivy-action`
 commit for action version `v0.36.0`; the action installs Trivy `v0.70.0`. `HIGH` and
 `CRITICAL` findings are written as warning evidence with `exit-code: "0"`. Reports are

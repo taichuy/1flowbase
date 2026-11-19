@@ -896,6 +896,11 @@ jobs:
             "1flowbase-web:$QUALITY_GATE_TARGET_SHA" \
             "1flowbase-api-server:$QUALITY_GATE_TARGET_SHA" \
             > tmp/test-governance/candidate-images.json
+      - name: Require built-in application templates on API cold start
+        run: |
+          set -euo pipefail
+          bash .github/scripts/verify-builtin-application-templates.sh "1flowbase-api-server:$QUALITY_GATE_TARGET_SHA" 2>&1 \
+            | tee tmp/test-governance/builtin-application-template-bootstrap.log
       - name: Generate web HIGH Trivy warning report
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         env:
