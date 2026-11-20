@@ -1,3 +1,6 @@
+import { discardDocumentScene } from './features/auth/components/hero/document-motion';
+import { startLoginEntryDiscovery } from './features/auth/api/login-entry-discovery';
+import { startAuthSessionDiscovery } from './features/auth/api/auth-session-discovery';
 import {
   currentDevGeneration,
   recoverDevModuleGraph,
@@ -18,6 +21,7 @@ function rootElement() {
 function renderBootFailure(error: unknown) {
   console.error('[1flowbase-bootstrap] application module graph failed', error);
   if (recoverDevModuleGraph(error)) return;
+  discardDocumentScene();
   const generation = currentDevGeneration();
 
   const root = rootElement();
@@ -40,7 +44,12 @@ function renderBootFailure(error: unknown) {
   root.replaceChildren(alert);
 }
 
-void import('./features/auth/api/auth-session-discovery')
-  .then(({ startAuthSessionDiscovery }) => startAuthSessionDiscovery())
-  .catch(() => undefined);
+void startAuthSessionDiscovery().catch(() => undefined);
+
+if (/^\/sign-in\/?$/.test(location.pathname)) {
+  // Prepare the route in parallel. Session discovery alone decides whether it mounts.
+  void import('./app/AnonymousAppRuntime').catch(() => undefined);
+  startLoginEntryDiscovery();
+}
+
 void import('./main').catch(renderBootFailure);

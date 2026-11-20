@@ -32,6 +32,11 @@ const docker = (args) => {
   const config = path.join(root, "config");
   fs.mkdirSync(config);
   const upstream = http.createServer((req, res) => {
+    if (req.url === "/api/public/system-metadata") {
+      assert.equal(req.headers.authorization, undefined);
+      res.writeHead(200, {"content-type":"application/json"});
+      return res.end(JSON.stringify({data:{hide_login_tagline:true,filing_html:"<b>registry</b>"}}));
+    }
     res.writeHead(req.url === "/health" ? 200 : 426);
     res.end("fixture");
   });
@@ -138,7 +143,32 @@ const docker = (args) => {
   };
   const results = [];
   try {
-    await start();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(documents);
+    fs.writeFileSync(path.join(documents, "index.html"), "guarded");
+    fs.writeFileSync(path.join(documents, "sign-in-preload.html"), "motion");
+    await start(["-v", `${documents}:/usr/share/nginx/html:ro`]);
+    for (const [suffix, headers, expected] of [
+      ["", {}, "motion"],
+      ["", { Cookie: "fixture=present" }, "guarded"],
+      ["", { Authorization: "Bearer fixture" }, "guarded"],
+      ["?auth_error=registration_disabled", {}, "guarded"],
+      ["?login_entry_id=fixture", {}, "guarded"],
+    ]) {
+      const res = await fetch(`http://127.0.0.1:${port}/sign-in${suffix}`, { headers });
+      assert.equal(res.status, 200);
+      assert.equal(await res.text(), expected, `wrong document for /sign-in${suffix}`);
+      assert.match(res.headers.get("cache-control"), /no-store/);
+      assert.match(res.headers.get("vary"), /Cookie, Authorization/i);
+    }
+    fs.writeFileSync(path.join(documents, "sign-in-preload.html"), '<!--# include virtual="/_sign-in/public-metadata" set="frame_metadata" --><template><!--# echo var="frame_metadata" encoding="entity" --></template>');
+    const meta = await (await fetch(`http://127.0.0.1:${port}/sign-in`)).text();
+    assert.match(meta, /hide_login_tagline/);
+    assert.match(meta, /&lt;b&gt;registry&lt;\/b&gt;/);
+    assert.doesNotMatch(meta, /<b>registry/);
+    assert.equal((await fetch(`http://127.0.0.1:${port}/_sign-in/public-metadata`)).status, 404);
+    results.push("public metadata included as inert text, internal subrequest is not a client endpoint");
+    results.push("only plain credential-free sign-in receives the private motion document");
     assert.equal(
       fs.readFileSync(path.join(config, "nginx.default.conf"), "utf8"),
       source,

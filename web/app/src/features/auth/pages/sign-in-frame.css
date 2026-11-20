@@ -1,0 +1,61 @@
+.auth-sign-in-page {
+  display: flex;
+  min-height: 100vh;
+  width: 100vw;
+  background:
+    radial-gradient(rgba(0, 208, 132, 0.05) 1px, transparent 1px) 0 0 / 24px
+      24px,
+    linear-gradient(135deg, #ffffff 35%, #e6f7f2 100%);
+}
+
+.auth-sign-in-panel {
+  flex: 0 0 420px;
+  box-sizing: border-box;
+  padding: 32px clamp(24px, 4.5vw, 64px);
+  overflow-y: auto;
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.015)
+  );
+  border-left: 1px solid rgba(255, 255, 255, 0.62);
+  box-shadow:
+    inset 1px 0 0 rgba(255, 255, 255, 0.28),
+    -12px 0 36px rgba(18, 71, 53, 0.06);
+}
+
+@media (max-width: 839px) {
+  .auth-sign-in-hero {
+    display: none !important;
+  }
+
+  .auth-sign-in-panel {
+    flex-basis: 100%;
+    width: 100%;
+    padding: 24px;
+    border-left: 0 !important;
+    box-shadow: none;
+  }
+}
+
+.auth-sign-in-content {
+  display: grid;
+  gap: 24px;
+  width: 100%;
+}
+.auth-sign-in-footer {
+  color: #55645d;
+  font-size: 12px;
+}
+
+.auth-sign-in-footer a {
+  color: #008f5f;
+  text-decoration: none;
+}
+
+.auth-sign-in-filing {
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}

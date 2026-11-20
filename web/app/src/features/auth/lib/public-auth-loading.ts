@@ -22,12 +22,6 @@ export function canPrefetchPublicAuth(): boolean {
   );
 }
 
-export function preloadPublicAuthRuntime(): void {
-  if (!canPrefetchPublicAuth()) return;
-  // A failed speculative import is retried by the real lazy-loading boundary.
-  void loadPublicAuthBlock().catch(() => undefined);
-}
-
 export function prefetchPublicAuthEntry(source: string): void {
   const generation = ++intentGeneration;
   if (!canPrefetchPublicAuth()) return;

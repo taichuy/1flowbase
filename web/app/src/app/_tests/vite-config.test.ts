@@ -66,7 +66,14 @@ describe('vite config', () => {
 
     expect(source).toContain('location = /external-npm/manifest.json');
     expect(source).toContain('location /external-npm/assets/');
-    expect(source.match(/try_files \$uri =404;/gu)).toHaveLength(3);
+    for (const location of [
+      '= /external-npm/manifest.json',
+      '/external-npm/assets/',
+      '/external-npm/'
+    ]) {
+      const block = source.split(`location ${location} {`)[1]?.split('}')[0];
+      expect(block).toContain('try_files $uri =404;');
+    }
   });
 
   test('can expose the dev proxy to configured frontend origins', async () => {
@@ -109,7 +116,7 @@ describe('vite config', () => {
     );
 
     expect(source).toContain('pageTreeIconAssetsPlugin');
-    expect(source).toContain('manualChunks: planScenarioChunk');
+    expect(source).toContain('codeSplitting: scenarioCodeSplitting');
     expect(source).toContain('scenarioChunkManifestPlugin');
     expect(source).toContain('chunkSizeWarningLimit: 3500');
   });

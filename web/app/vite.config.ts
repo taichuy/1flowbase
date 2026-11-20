@@ -6,6 +6,8 @@ import { oauthAwareApiProxy } from './vite/oauth-proxy';
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite';
 
+import { signInResourceHintsPlugin } from './build/sign-in-resource-hints';
+import { publicSignInPlugin } from './build/public-sign-in';
 import { nativeModuleDeclarationsPlugin } from './build/native-module-declarations';
 import {
   collectAntDesignEsModuleSources,
@@ -27,7 +29,7 @@ import {
 } from './build/native-dayjs-modules';
 import { resolveProductionModulePreloadDependencies } from './build/production-module-preload';
 import {
-  planScenarioChunk,
+  scenarioCodeSplitting,
   scenarioChunkManifestPlugin
 } from './build/scenario-chunk-planner';
 import { FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES } from './src/features/frontstage/lib/native-modules/resolved-dependency-sources';
@@ -124,6 +126,8 @@ export default defineConfig(({ command, mode }) => {
   return {
     cacheDir: devCacheDirectory,
     plugins: [
+      publicSignInPlugin(appRoot),
+      signInResourceHintsPlugin(),
       vditorAssetsPlugin(),
       oneFlowbaseDevRuntimePlugin({ root: process.cwd(), mode, command }),
       pageTreeIconAssetsPlugin({ projectRoot: appRoot }),
@@ -221,7 +225,7 @@ export default defineConfig(({ command, mode }) => {
       chunkSizeWarningLimit: 3500,
       rollupOptions: {
         output: {
-          manualChunks: planScenarioChunk
+          codeSplitting: scenarioCodeSplitting
         }
       },
       modulePreload: {
@@ -261,7 +265,9 @@ export default defineConfig(({ command, mode }) => {
         allow: [
           searchForWorkspaceRoot(process.cwd()),
           // Worktrees may reuse installed dependencies through a node_modules symlink.
-          realpathSync(fileURLToPath(new URL('../node_modules', import.meta.url))),
+          realpathSync(
+            fileURLToPath(new URL('../node_modules', import.meta.url))
+          ),
           fileURLToPath(new URL('../../scripts', import.meta.url)),
           // Vite 8 checks both the file path and the full raw-import ID.
           // Permit only this backend-owned public login block and its raw ID.

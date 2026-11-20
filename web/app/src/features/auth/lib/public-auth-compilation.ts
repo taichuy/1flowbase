@@ -1,3 +1,4 @@
+import { matchingDefaultLoginArtifact } from './default-login-artifact';
 import {
   diagnoseLegacyBlockModuleSource,
   NATIVE_REACT_COMPONENT_ARTIFACT_VERSION,
@@ -10,7 +11,7 @@ import {
   type NativeReactBrowserCompileResult
 } from '../../../shared/code-block/native-react-compiler-browser';
 
-import { createFrontstageNativeReactModuleRegistry } from '../../frontstage/lib/native-modules/registry';
+import { defaultLoginImports } from './default-login-imports';
 
 type Compile = typeof compileNativeReactComponentInBrowser;
 type Request = Omit<Parameters<Compile>[0], 'signal'>;
@@ -162,10 +163,24 @@ function unavailable(message: string): NativeReactBrowserCompileResult {
   };
 }
 
-export const publicAuthCompilation = createPublicAuthCompilation();
+// An explicit worker owner (e.g. a studio/fixture) retains its own lifecycle.
+export const publicAuthCompilation = createPublicAuthCompilation(
+  async (request) => {
+    if (!request.workerFactory) {
+      const artifact = matchingDefaultLoginArtifact(
+        request.source,
+        request.moduleDefinitions
+      );
+      if (artifact) return { ok: true, artifact, diagnostics: [] };
+    }
+    return compileNativeReactComponentInBrowser(request);
+  }
+);
 
-export function prefetchPublicAuthSource(source: string) {
+export async function prefetchPublicAuthSource(source: string) {
   if (diagnoseLegacyBlockModuleSource(source)) return;
+  if (matchingDefaultLoginArtifact(source, defaultLoginImports)) return;
+  const {createFrontstageNativeReactModuleRegistry} = await import('../../frontstage/lib/native-modules/registry');
   return publicAuthCompilation.prefetch({
     source,
     requestId: `public-auth-prefetch:${sha256Text(source)}`,

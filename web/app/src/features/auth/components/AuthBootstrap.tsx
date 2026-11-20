@@ -1,6 +1,8 @@
+import { discardDocumentScene } from './hero/document-motion';
 import { type PropsWithChildren, useEffect } from 'react';
 
 import { useAuthStore } from '../../../state/auth-store';
+import { discardLoginEntryDiscovery } from '../api/login-entry-discovery';
 import { startAuthSessionDiscovery } from '../api/auth-session-discovery';
 
 export function AuthBootstrap({ children }: PropsWithChildren) {
@@ -14,6 +16,8 @@ export function AuthBootstrap({ children }: PropsWithChildren) {
       const discovery = await startAuthSessionDiscovery();
       if (cancelled) return;
       if (discovery.status === 'authenticated') {
+        discardDocumentScene();
+        discardLoginEntryDiscovery();
         setAuthenticated(discovery.snapshot);
       } else {
         setAnonymous();

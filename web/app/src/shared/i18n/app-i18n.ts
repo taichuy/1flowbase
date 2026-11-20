@@ -3,15 +3,8 @@ import { initReactI18next } from 'react-i18next';
 
 import authEnUS from '../../features/auth/i18n/en_US.json';
 import authZhHans from '../../features/auth/i18n/zh_Hans.json';
-import {
-  FALLBACK_APP_LOCALE,
-  resolveAppLocale,
-  SUPPORTED_APP_LOCALES
-} from './locales';
-import {
-  readLocalePreferenceFromStorage,
-  readLocalePreferenceFromUrl
-} from '../user-preferences/locale-preference';
+import { FALLBACK_APP_LOCALE, SUPPORTED_APP_LOCALES } from './locales';
+import { getInitialAppLocale } from './initial-locale';
 
 const publicTranslationResources = {
   zh_Hans: { auth: authZhHans },
@@ -19,12 +12,6 @@ const publicTranslationResources = {
 } as const;
 
 let applicationResourcesFlight: Promise<void> | undefined;
-
-function getInitialAppLocale() {
-  return resolveAppLocale(
-    readLocalePreferenceFromStorage() ?? readLocalePreferenceFromUrl()
-  );
-}
 
 export const appI18n = i18next.createInstance();
 

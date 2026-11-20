@@ -136,6 +136,8 @@ export interface FrontstageNativeTrustedBlockPortalHostProps {
   providerScope?: FrontstageNativeTrustedBlockProviderScope;
   providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper;
   onRuntimeError?: FrontstageNativeTrustedBlockRuntimeErrorHandler;
+  /** While supplied, the caller owns the initial loading indicator. */
+  onInitialContentCommit?: (renderEpoch: string) => void;
   contribution?: PreparedTrustedFrontendContribution;
   surfaceLayoutEpoch?: string;
 }
@@ -154,6 +156,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
   providerScope,
   providerWrapper,
   onRuntimeError,
+  onInitialContentCommit,
   contribution,
   surfaceLayoutEpoch = 'stable'
 }: FrontstageNativeTrustedBlockPortalHostProps): ReactNode {
@@ -329,38 +332,58 @@ export function FrontstageNativeTrustedBlockPortalHost({
     portalContainment
   };
   const content = (
-    <Suspense fallback={<NativeBlockModuleLoadingShell />}>
-      <FrontstageNativeTrustedBlockErrorBoundary
-        context={{ ...providerContext, blockId: plan.blockId }}
-        onRuntimeError={onRuntimeError}
-      >
-        <BlockComponent
-          plan={plan}
-          props={plan.props}
-          ctx={blockContext}
-          portalContainment={portalContainment}
-        />
-      </FrontstageNativeTrustedBlockErrorBoundary>
+    <Suspense
+      fallback={
+        onInitialContentCommit ? null : <NativeBlockModuleLoadingShell />
+      }
+    >
+      <BlockComponent
+        plan={plan}
+        props={plan.props}
+        ctx={blockContext}
+        portalContainment={portalContainment}
+      />
+      {onInitialContentCommit ? (
+        <ContentCommitted epoch={renderEpoch} notify={onInitialContentCommit} />
+      ) : null}
     </Suspense>
   );
 
   return createPortal(
     <EChartResourceBoundary>
       <Activity mode={active ? 'visible' : 'hidden'}>
-        {wrapWithHostProviders(
-          content,
-          providerContext,
-          styleCache,
-          antdStylePrefix,
-          surfaceRuntime,
-          { ...providerScope, theme: runtimeMotionTheme },
-          providerWrapper
-        )}
+        <FrontstageNativeTrustedBlockErrorBoundary
+          context={{ ...providerContext, blockId: plan.blockId }}
+          onRuntimeError={onRuntimeError}
+        >
+          {wrapWithHostProviders(
+            content,
+            providerContext,
+            styleCache,
+            antdStylePrefix,
+            surfaceRuntime,
+            { ...providerScope, theme: runtimeMotionTheme },
+            providerWrapper
+          )}
+        </FrontstageNativeTrustedBlockErrorBoundary>
       </Activity>
     </EChartResourceBoundary>,
     surface.mountElement,
     renderEpoch
   );
+}
+
+// Inside both the async providers and the content's Suspense boundary: an
+// empty provider or a suspended form must not acknowledge the first commit.
+function ContentCommitted({
+  epoch,
+  notify
+}: {
+  epoch: string;
+  notify: (epoch: string) => void;
+}) {
+  useLayoutEffect(() => notify(epoch), [epoch, notify]);
+  return null;
 }
 
 function attachModuleStyleAssets(

@@ -26,6 +26,7 @@ vi.mock('../api/session', async () => {
   return { ...actual, signInWithPassword: passwordSignIn };
 });
 
+import * as styleRuntime from '../../frontstage/lib/native-modules/antd-style-runtime';
 import { PublicAuthBlock } from '../components/PublicAuthBlock';
 import { createPublicAuthCompilation } from '../lib/public-auth-compilation';
 import { appI18n } from '../../../shared/i18n/app-i18n';
@@ -40,6 +41,75 @@ describe('PublicAuthBlock Native Host composition', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  test('keeps the panel animation until the configured form commits, not just until the next frame', async () => {
+    const gate = deferred<void>();
+    const loadStyles = styleRuntime.loadAntdStyleModule;
+    const held = vi
+      .spyOn(styleRuntime, 'loadAntdStyleModule')
+      .mockImplementationOnce(() => gate.promise.then(loadStyles));
+    try {
+      const source =
+        'export default function Auth() { return <input aria-label="Configured password" type="password" />; }';
+      render(
+        <PublicAuthBlock
+          instance={instance(source)}
+          nativeCompiler={compiler(source)}
+          onAuthenticated={vi.fn()}
+        />
+      );
+      await waitFor(() => expect(held).toHaveBeenCalled());
+      await act(
+        () =>
+          new Promise<void>((resume) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resume()))
+          )
+      );
+      const root = screen.getByTestId('native-react-public-auth-root');
+      expect(root.shadowRoot?.querySelector('input')).toBeNull();
+      expect(root).toHaveAttribute('data-public-auth-phase', 'mounting');
+      expect(screen.getByRole('status', { name: 'thinking' })).toBeVisible();
+      await act(async () => gate.resolve());
+      await waitFor(() =>
+        expect(root).toHaveAttribute('data-public-auth-phase', 'ready')
+      );
+      expect(
+        root.shadowRoot?.querySelector('input[type=password]')
+      ).not.toBeNull();
+      expect(screen.queryByRole('status', { name: 'thinking' })).toBeNull();
+    } finally {
+      gate.resolve();
+      held.mockRestore();
+    }
+  });
+
+  test('hands off to the existing fallback if the form style provider fails twice', async () => {
+    const failed = vi
+      .spyOn(styleRuntime, 'loadAntdStyleModule')
+      .mockRejectedValueOnce(new Error('style download unavailable'))
+      .mockRejectedValueOnce(new Error('style retry unavailable'));
+    try {
+      const source =
+        'export default function Auth() { return <button>Configured login</button>; }';
+      render(
+        <PublicAuthBlock
+          instance={instance(source)}
+          nativeCompiler={compiler(source)}
+          onAuthenticated={vi.fn()}
+        />
+      );
+      expect(
+        await screen.findByTestId('builtin-password-sign-in')
+      ).toBeVisible();
+      expect(
+        screen.getByTestId('native-react-public-auth-root')
+      ).toHaveAttribute('data-public-auth-diagnostic', 'mount_failed');
+      expect(screen.queryByRole('status', { name: 'thinking' })).toBeNull();
+      expect(failed).toHaveBeenCalledTimes(2);
+    } finally {
+      failed.mockRestore();
+    }
   });
 
   test('I2012-AC-002 shares artifacts across mounts without sharing entry inputs or event callbacks', async () => {
