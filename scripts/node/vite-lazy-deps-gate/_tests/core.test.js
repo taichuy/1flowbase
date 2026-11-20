@@ -163,6 +163,33 @@ test('analyzeStaticLazyDeps fails when a lazy-only bare npm import is not optimi
   assert.equal(result.findings[0].dependency, 'missing-lazy');
 });
 
+test('lazy roots share cyclic paths without reclassifying dynamic imports as eager', (t) => {
+  const fixture = createFixtureRepo({
+    manifestEntries: [
+      { source: 'web/app/src/app/router.tsx', specifier: '../features/lazy/LazyPage', smokePaths: ['/lazy/one'] },
+      { source: 'web/app/src/app/router.tsx', specifier: '../features/lazy/OtherPage', smokePaths: ['/lazy/two'] },
+    ],
+    lazyPageImport: "import './shared';\nimport 'missing-lazy';\n",
+  });
+  t.after(() => fs.rmSync(fixture.repoRoot, { recursive: true, force: true }));
+  const source = 'web/app/src';
+  fs.appendFileSync(path.join(fixture.repoRoot, `${source}/app/router.tsx`),
+    "\nconst Other = lazy(() => import('../features/lazy/OtherPage'));\n");
+  fs.appendFileSync(path.join(fixture.repoRoot, `${source}/main.tsx`),
+    "\nimport './features/lazy/shared';\n");
+  writeFile(fixture.repoRoot, `${source}/features/lazy/OtherPage.tsx`, "import './shared';\n");
+  writeFile(fixture.repoRoot, `${source}/features/lazy/shared.ts`,
+    "import './OtherPage';\nvoid import('./dynamic');\n");
+  writeFile(fixture.repoRoot, `${source}/features/lazy/dynamic.ts`, "import 'missing-lazy';\n");
+
+  const { findings } = analyzeStaticLazyDeps(fixture);
+  assert.deepEqual(findings.map(({ code, dependency, files }) => ({ code, dependency, files })), [{
+    code: 'missing-optimize-dep',
+    dependency: 'missing-lazy',
+    files: [`${source}/features/lazy/dynamic.ts`, `${source}/features/lazy/LazyPage.tsx`],
+  }]);
+});
+
 test('analyzeStaticLazyDeps accepts a lazy-only dependency explicitly excluded by Vite', () => {
   const { repoRoot, manifestPath } = createFixtureRepo({
     manifestEntries: [
