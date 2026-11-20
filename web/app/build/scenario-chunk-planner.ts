@@ -131,19 +131,25 @@ export const scenarioCodeSplitting = {
 export function scenarioChunkManifestPlugin(): Plugin {
   return {
     name: '1flowbase-scenario-chunk-manifest',
-    generateBundle(_options, bundle) {
-      assertSignInVisualBoundary(bundle);
-      const manifest = collectScenarioDemandManifest(bundle);
-      const partitions = manifest.chunks.filter((chunk) =>
-        [...SCENARIO_CHUNK_NAMES].some(
-          (name) => chunk.name === name || chunk.name.startsWith(`${name}~`)
-        )
-      );
-      this.emitFile({
-        type: 'asset',
-        fileName: 'scenario-chunk-manifest.json',
-        source: `${JSON.stringify({ ...manifest, partitions }, null, 2)}\n`
-      });
+    enforce: 'post',
+    // Vite removes pure-CSS placeholder chunks and transfers their CSS edges
+    // in generateBundle. Record the final graph, not the pre-transformation one.
+    generateBundle: {
+      order: 'post',
+      handler(_options, bundle) {
+        assertSignInVisualBoundary(bundle);
+        const manifest = collectScenarioDemandManifest(bundle);
+        const partitions = manifest.chunks.filter((chunk) =>
+          [...SCENARIO_CHUNK_NAMES].some(
+            (name) => chunk.name === name || chunk.name.startsWith(`${name}~`)
+          )
+        );
+        this.emitFile({
+          type: 'asset',
+          fileName: 'scenario-chunk-manifest.json',
+          source: `${JSON.stringify({ ...manifest, partitions }, null, 2)}\n`
+        });
+      }
     }
   };
 }

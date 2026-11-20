@@ -27,6 +27,9 @@ test('hashed declaration JSON is cached as an immutable file, never SPA fallback
   const end = config.indexOf('\n  }', start);
   const location = config.slice(start, end);
   assert.match(location, /try_files \$uri =404;/);
+  assert.match(location, /gzip on;/);
+  assert.match(location, /gzip_types application\/json;/);
+  assert.match(location, /gzip_vary on;/);
   assert.match(location, /add_header Cache-Control "public, max-age=31536000, immutable";/);
   assert.doesNotMatch(location, /index\.html|immutable" always/);
 });
