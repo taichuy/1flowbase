@@ -8,7 +8,7 @@
       "reason": "The status region contains the structured Ant Spin/skeleton block layout, not phrasing content or the result of a form calculation. Keep a named polite live region on the existing block element for both the server document and the interactive component.",
       "evidence": [
         {"file":"web/app/src/shared/ui/loading-state/_tests/LoadingState.test.tsx","sha256":"0f498085fb035479b6a0430b7b572bd65421d82e98ca8a848d9ab50ccef4478d"},
-        {"file":"web/app/build/_tests/sign-in-motion-document.test.ts","sha256":"9366840aa4023d70fd5494d1aca688287ef8b9723ca9affa69b237267008be6e"}
+        {"file":"web/app/build/_tests/sign-in-motion-document.test.ts","sha256":"8e4dc1b9ad213d7605e21457e8b980e1def8c8830e3e1508c071da3b5c1479fc"}
       ]
     },
     {
@@ -19,7 +19,7 @@
       "evidence": [
         {"file":"web/app/src/shared/ui/loading-state/LoadingState.tsx","sha256":"2e6327a6d4c41a8b3c3dc2f8340a40aa31ace5e75261e217969221dae742b662"},
         {"file":"web/app/src/shared/ui/loading-state/_tests/LoadingState.test.tsx","sha256":"0f498085fb035479b6a0430b7b572bd65421d82e98ca8a848d9ab50ccef4478d"},
-        {"file":"web/app/build/sign-in-motion-document.tsx","sha256":"78a900d3fa7892b159c348fc1447500465a633232f0f8c414acc51d478151724"}
+        {"file":"web/app/build/sign-in-motion-document.tsx","sha256":"b601874f1dd0e31b9b4c222e93cd1b6867625f7bd5477cc79c5f6b3b902dc50b"}
       ]
     }
   ]

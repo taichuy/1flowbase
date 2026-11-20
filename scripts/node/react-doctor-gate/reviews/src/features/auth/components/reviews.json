@@ -25,8 +25,8 @@
       "sourceSha256": "21dff17075dd847edb2f0513a007a5bc9c5454fd90655ff88c6cfe2e83e0c716",
       "reason": "The hero is rendered in the initial static login document and the live route. Inline decoration keeps the initial document independent of delayed route CSS; preserve it for both consumers.",
       "evidence": [
-        {"file":"web/app/build/sign-in-motion-document.tsx","sha256":"78a900d3fa7892b159c348fc1447500465a633232f0f8c414acc51d478151724"},
-        {"file":"web/app/build/_tests/sign-in-motion-document.test.ts","sha256":"9366840aa4023d70fd5494d1aca688287ef8b9723ca9affa69b237267008be6e"},
+        {"file":"web/app/build/sign-in-motion-document.tsx","sha256":"b601874f1dd0e31b9b4c222e93cd1b6867625f7bd5477cc79c5f6b3b902dc50b"},
+        {"file":"web/app/build/_tests/sign-in-motion-document.test.ts","sha256":"8e4dc1b9ad213d7605e21457e8b980e1def8c8830e3e1508c071da3b5c1479fc"},
         {"file":"DESIGN.md","sha256":"dc95d14bf93aebcec856a725385c27527b5582d58db5473f300b55eaa2ab1632"}
       ]
     },
@@ -36,8 +36,8 @@
       "sourceSha256": "21dff17075dd847edb2f0513a007a5bc9c5454fd90655ff88c6cfe2e83e0c716",
       "reason": "The three floating backdrops keep fixed blur values while the animation translates the layers. Keep the Brand Layer decoration used by the static and live renders. This is a deliberate visual trade-off, not an assertion that large blurred layers are cost-free.",
       "evidence": [
-        {"file":"web/app/build/sign-in-motion-document.tsx","sha256":"78a900d3fa7892b159c348fc1447500465a633232f0f8c414acc51d478151724"},
-        {"file":"web/app/build/_tests/sign-in-motion-document.test.ts","sha256":"9366840aa4023d70fd5494d1aca688287ef8b9723ca9affa69b237267008be6e"},
+        {"file":"web/app/build/sign-in-motion-document.tsx","sha256":"b601874f1dd0e31b9b4c222e93cd1b6867625f7bd5477cc79c5f6b3b902dc50b"},
+        {"file":"web/app/build/_tests/sign-in-motion-document.test.ts","sha256":"8e4dc1b9ad213d7605e21457e8b980e1def8c8830e3e1508c071da3b5c1479fc"},
         {"file":"DESIGN.md","sha256":"dc95d14bf93aebcec856a725385c27527b5582d58db5473f300b55eaa2ab1632"}
       ]
     },
@@ -55,11 +55,11 @@
     {
       "file": "web/app/src/features/auth/components/hero/start-document-motion.ts",
       "rule": "deslop/unused-file",
-      "sourceSha256": "fe68b0d7787a5daf0a13ba6855a953bac7f045c0e7379d076591d51a330d5dd6",
+      "sourceSha256": "83daa372d7e8238366a09720c49abc140f5d17606619101cc99fd4574462a1e2",
       "reason": "The static login document builder gives this file path to Vite as an IIFE entry, not as a source import. The build test requires an inline animation script with requestAnimationFrame and no dynamic imports.",
       "evidence": [
-        {"file":"web/app/build/sign-in-motion-document.tsx","sha256":"78a900d3fa7892b159c348fc1447500465a633232f0f8c414acc51d478151724"},
-        {"file":"web/app/build/_tests/sign-in-motion-document.test.ts","sha256":"9366840aa4023d70fd5494d1aca688287ef8b9723ca9affa69b237267008be6e"}
+        {"file":"web/app/build/sign-in-motion-document.tsx","sha256":"b601874f1dd0e31b9b4c222e93cd1b6867625f7bd5477cc79c5f6b3b902dc50b"},
+        {"file":"web/app/build/_tests/sign-in-motion-document.test.ts","sha256":"8e4dc1b9ad213d7605e21457e8b980e1def8c8830e3e1508c071da3b5c1479fc"}
       ]
     },
     {
