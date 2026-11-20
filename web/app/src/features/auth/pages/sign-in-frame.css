@@ -1,4 +1,9 @@
 .auth-sign-in-page {
+  color: #16211d;
+  font:
+    14px / 1.5714285714285714 'IBM Plex Sans',
+    'Segoe UI',
+    sans-serif;
   display: flex;
   min-height: 100vh;
   width: 100vw;

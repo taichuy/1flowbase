@@ -8,8 +8,8 @@ const { systemMetadata } = vi.hoisted(() => ({
       '<a href="https://beian.miit.gov.cn/" data-free="yes">备案号</a>'
   }
 }));
-vi.mock('../../../shared/api/system-metadata', () => ({
-  useSystemMetadata: () => ({ data: systemMetadata })
+vi.mock('../lib/public-system-metadata', () => ({
+  usePublicSystemMetadata: () => ({ data: systemMetadata })
 }));
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -35,11 +35,11 @@ const {
   }
 }));
 
-vi.mock('@tanstack/react-router', async () => {
-  const actual = await vi.importActual<typeof import('@tanstack/react-router')>(
-    '@tanstack/react-router'
-  );
-  return { ...actual, useNavigate: () => navigateSpy };
+vi.mock('../lib/anonymous-navigation', async () => {
+  const actual = await vi.importActual<
+    typeof import('../lib/anonymous-navigation')
+  >('../lib/anonymous-navigation');
+  return { ...actual, navigatePublicRoute: navigateSpy };
 });
 
 vi.mock('../api/session', () => ({
@@ -530,13 +530,17 @@ describe('declarative authentication entry actions', () => {
 });
 
 test('renders raw registration HTML below the powered-by footer', async () => {
+  window.localStorage.clear();
+  window.history.replaceState({}, '', '/sign-in?language=zh');
   render(
     <AppProviders>
       <SignInPage />
     </AppProviders>
   );
   expect(await screen.findByText('1flowbase', { exact: true })).toBeVisible();
-  expect(document.querySelector('.hero-slogan-line')).toHaveTextContent('对话即是壁垒，AI应用原生底座');
+  expect(document.querySelector('.hero-slogan-line')).toHaveTextContent(
+    '对话即是壁垒，AI应用原生底座'
+  );
   expect(screen.queryByText('Configured description')).not.toBeInTheDocument();
   const link = await screen.findByRole('link', { name: '备案号' });
   expect(link).toHaveAttribute('href', 'https://beian.miit.gov.cn/');

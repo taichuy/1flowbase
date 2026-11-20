@@ -1,6 +1,6 @@
 import { Suspense, lazy } from 'react';
 
-import { LoadingState } from '../shared/ui/loading-state/LoadingState';
+import { AnonymousLoadingState } from '../features/auth/components/anonymous-loading/AnonymousLoadingState';
 import { useAuthStore } from '../state/auth-store';
 
 const AnonymousRuntime = lazy(() =>
@@ -19,11 +19,11 @@ const AuthenticatedStartup = lazy(() =>
 export function ApplicationRuntimeBootstrap() {
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
   if (sessionStatus === 'unknown') {
-    return <LoadingState fullscreen />;
+    return <AnonymousLoadingState fullscreen />;
   }
 
   return (
-    <Suspense fallback={<LoadingState fullscreen />}>
+    <Suspense fallback={<AnonymousLoadingState fullscreen />}>
       {sessionStatus === 'authenticated' ? (
         <AuthenticatedStartup />
       ) : (

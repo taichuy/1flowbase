@@ -1,3 +1,5 @@
+import { matchesDefaultPasswordSource } from '../components/default-password/DefaultPasswordSignIn';
+
 type PublicAuthModule = typeof import('../components/PublicAuthBlock');
 let runtimeFlight: Promise<PublicAuthModule> | undefined;
 let intentGeneration = 0;
@@ -24,7 +26,7 @@ export function canPrefetchPublicAuth(): boolean {
 
 export function prefetchPublicAuthEntry(source: string): void {
   const generation = ++intentGeneration;
-  if (!canPrefetchPublicAuth()) return;
+  if (matchesDefaultPasswordSource(source) || !canPrefetchPublicAuth()) return;
   void loadPublicAuthBlock()
     .then(() => {
       if (generation !== intentGeneration) return;

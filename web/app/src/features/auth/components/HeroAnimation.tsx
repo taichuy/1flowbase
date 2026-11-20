@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { i18nText } from '../../../shared/i18n/text';
+import { useAuthTranslation } from '../lib/auth-i18n';
 import { HeroArtwork, HeroTagline } from './hero/HeroArtwork';
 import {
   findDocumentArtwork,
@@ -13,11 +13,10 @@ export function HeroAnimation({
 }: {
   hide_login_tagline?: boolean;
 }) {
+  const { t } = useAuthTranslation();
   const host = useRef<HTMLDivElement>(null);
   const [opening] = useState(findDocumentArtwork);
-  const slogan = hide_login_tagline
-    ? null
-    : i18nText('auth', 'auto.product_tagline');
+  const slogan = hide_login_tagline ? null : t('auto.product_tagline');
   useLayoutEffect(() => {
     if (opening) setDocumentBrand(opening, slogan);
   }, [opening, slogan]);

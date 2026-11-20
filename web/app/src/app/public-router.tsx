@@ -1,76 +1,39 @@
-import {
-  lazyRouteComponent,
-  Navigate,
-  Outlet,
-  RouterProvider,
-  createRootRoute,
-  createRoute,
-  createRouter
-} from '@tanstack/react-router';
-import { useState } from 'react';
-
+import { lazy, Suspense, useEffect } from 'react';
 import { SignInPage } from '../features/auth/pages/SignInPage';
+import { AnonymousLoadingState } from '../features/auth/components/anonymous-loading/AnonymousLoadingState';
+import { discardDocumentScene } from '../features/auth/components/hero/document-motion';
+import {
+  navigatePublicRoute,
+  usePublicLocation
+} from '../features/auth/lib/anonymous-navigation';
 
-const McpAuthorizePage = lazyRouteComponent(
-  () => import('../features/auth/pages/mcp-authorization/McpAuthorizePage'),
-  'McpAuthorizePage'
+const McpAuthRuntime = lazy(() =>
+  import('../features/auth/components/public-runtime/McpAuthRuntime').then(
+    (module) => ({ default: module.McpAuthRuntime })
+  )
 );
 
-const rootRoute = createRootRoute({
-  component: () => <Outlet />,
-  notFoundComponent: () => (
-    <Navigate to="/sign-in" search={{ login_entry_id: undefined }} replace />
-  )
-});
-
-const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/',
-  component: () => (
-    <Navigate to="/sign-in" search={{ login_entry_id: undefined }} replace />
-  )
-});
-
-const signInRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/sign-in',
-  validateSearch: (search: Record<string, unknown>) => ({
-    login_entry_id:
-      typeof search.login_entry_id === 'string' &&
-      search.login_entry_id.trim().length > 0
-        ? search.login_entry_id
-        : undefined
-  }),
-  component: () => {
-    const { login_entry_id } = signInRoute.useSearch();
-    return <SignInPage loginEntryId={login_entry_id} />;
-  }
-});
-
-const mcpAuthorizeRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/mcp/authorize',
-  validateSearch: (search: Record<string, unknown>) => ({
-    request_id:
-      typeof search.request_id === 'string' ? search.request_id : undefined
-  }),
-  component: () => {
-    const { request_id } = mcpAuthorizeRoute.useSearch();
-    return <McpAuthorizePage requestId={request_id} />;
-  }
-});
-
-const routeTree = rootRoute.addChildren([
-  indexRoute,
-  signInRoute,
-  mcpAuthorizeRoute
-]);
-
-function createPublicRouter() {
-  return createRouter({ routeTree, notFoundMode: 'root' });
-}
-
 export function PublicRouterProvider() {
-  const [router] = useState(createPublicRouter);
-  return <RouterProvider router={router} />;
+  const location = usePublicLocation();
+  const url = new URL(location, window.location.origin);
+  const signIn = /^\/sign-in\/?$/.test(url.pathname);
+  const mcp = /^\/mcp\/authorize\/?$/.test(url.pathname);
+  const loginEntryId = url.searchParams.get('login_entry_id') ?? undefined;
+  const requestId = url.searchParams.get('request_id') ?? undefined;
+  useEffect(() => {
+    if (mcp) discardDocumentScene();
+    else if (!signIn) navigatePublicRoute({ to: '/sign-in', replace: true });
+  }, [mcp, signIn]);
+  if (mcp)
+    return (
+      <Suspense fallback={<AnonymousLoadingState fullscreen />}>
+        <McpAuthRuntime requestId={requestId} />
+      </Suspense>
+    );
+  if (!signIn) return <AnonymousLoadingState fullscreen />;
+  return (
+    <SignInPage
+      loginEntryId={loginEntryId?.trim() ? loginEntryId : undefined}
+    />
+  );
 }

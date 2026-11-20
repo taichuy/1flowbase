@@ -121,3 +121,32 @@
   z-index: 20;
   background: color-mix(in srgb, var(--bg-surface, #ffffff) 45%, transparent);
 }
+
+/* Replaces the public error Alert only; custom/MCP keep their themed Ant UI. */
+.auth-sign-in-error {
+  position: relative;
+  overflow-wrap: break-word;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #ffd4d1;
+  border-radius: 12px;
+  background: #fff2f0;
+  color: #16211d;
+  font:
+    14px / 1.5714285714285714 'IBM Plex Sans',
+    'Segoe UI',
+    sans-serif;
+}
+.auth-sign-in-error svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: #fb565b;
+}
+
+.auth-sign-in-error > span {
+  flex: 1;
+  min-width: 0;
+}

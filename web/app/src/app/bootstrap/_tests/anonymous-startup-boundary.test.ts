@@ -62,7 +62,14 @@ test('the sign-in-preloaded bootstrap has no static private runtime/API dependen
       if (target) walk(target);
     }
   };
-  walk(resolve(root, 'app/ApplicationRuntimeBootstrap.tsx'));
+  for (const entry of [
+    'App',
+    'ApplicationRuntimeBootstrap',
+    'AnonymousAppRuntime',
+    'public-router'
+  ]) {
+    walk(resolve(root, `app/${entry}.tsx`));
+  }
   const paths = [...visited].map((path) => relative(root, path));
   expect(paths).not.toContain('app/bootstrap/authenticated-navigation.ts');
   expect(paths).not.toContain('app/bootstrap/AuthenticatedStartup.tsx');
@@ -75,6 +82,20 @@ test('the sign-in-preloaded bootstrap has no static private runtime/API dependen
   ).toBe(false);
   expect(specifiers.has('@tanstack/react-query')).toBe(false);
   expect(specifiers.has('@1flowbase/api-client')).toBe(false);
+  expect(
+    [...specifiers].filter((name) =>
+      /^(antd(?:\/|$)|antd-style(?:\/|$)|@ant-design\/(?:icons|cssinjs)|@tanstack\/(?:react-router|react-query)|i18next(?:\/|$)|react-i18next(?:\/|$)|@1flowbase\/ui(?:\/|$))/.test(
+        name
+      )
+    )
+  ).toEqual([]);
+  for (const heavy of [
+    'features/auth/components/PublicAuthBlock.tsx',
+    'features/auth/components/PublicAuthProviders.tsx',
+    'features/auth/pages/mcp-authorization/McpAuthorizePage.tsx',
+    'shared/i18n/app-i18n.ts'
+  ])
+    expect(paths).not.toContain(heavy);
   // Dynamic imports are deliberately excluded; the production chunk graph is a
   // separate Root check against accidental bundler coalescing of this boundary.
 });
