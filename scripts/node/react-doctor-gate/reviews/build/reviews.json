@@ -22,13 +22,6 @@
   ],
   "reviews": [
     {
-      "file": "web/app/build/native-ant-design-icons-modules.ts",
-      "rule": "react-doctor/js-tosorted-immutable",
-      "sourceSha256": "a144c1db4437c111cc93f24cce356fbe9538bfa6a8330c547c4400265e9c985c",
-      "reason": "web/app/build/native-ant-design-icons-modules.ts:171（react-doctor/js-tosorted-immutable）：[...array].sort() 对原始输入先复制，保证不原地改变调用方数据/权限集合/排序编辑计划；toSorted() 也必须分配一个结果数组，并不消除排序的复制成本。当前写法已满足不变性，改 ES2023 方法不是修复源码中可见的重复副作用。 P21d reassessed 2026-11-17: The only new witness delta is Vite test.css.include adding block-design and node-action-button inline CSS. Build plugins themselves and their deterministic inventory/pack tests are unchanged: package file guards, Node createRequire of validated installed paths, copied-array sorting and ordered filter/project inventories remain. No module resolution, plugin installation or build algorithm is changed by this test CSS inclusion.",
-      "evidenceSet": 0
-    },
-    {
       "file": "web/app/build/native-dayjs-modules.ts",
       "rule": "react-doctor/js-tosorted-immutable",
       "sourceSha256": "e50d5ef0a167602856624e13a7847ebc6aa9e0932fbe40e2846e348952e088b4",
@@ -55,13 +48,6 @@
         {"file":"web/app/src/features/frontstage/lib/native-modules/_tests/dnd-kit-modules.test.ts","sha256":"323f046c5ef9a1a5aee5a969460c772d7606c65b11a09d7868cbb1938a71f94a"},
         {"file":"web/app/vite.config.ts","sha256":"b8465d554205a27870b200897fdf455eb99dca0767ed1e04f49b8047f8507997"}
       ]
-    },
-    {
-      "file": "web/app/build/native-module-declarations.ts",
-      "rule": "react-doctor/js-tosorted-immutable",
-      "sourceSha256": "43b529ae63776a5bb521961f751291c7f4f830d971c8979d29e8339ad86acae2",
-      "reason": "web/app/build/native-module-declarations.ts:155（react-doctor/js-tosorted-immutable）：[...array].sort() 对原始输入先复制，保证不原地改变调用方数据/权限集合/排序编辑计划；toSorted() 也必须分配一个结果数组，并不消除排序的复制成本。当前写法已满足不变性，改 ES2023 方法不是修复源码中可见的重复副作用。 web/app/build/native-module-declarations.ts:172（react-doctor/js-tosorted-immutable）：[...array].sort() 对原始输入先复制，保证不原地改变调用方数据/权限集合/排序编辑计划；toSorted() 也必须分配一个结果数组，并不消除排序的复制成本。当前写法已满足不变性，改 ES2023 方法不是修复源码中可见的重复副作用。 P21d reassessed 2026-11-17: The only new witness delta is Vite test.css.include adding block-design and node-action-button inline CSS. Build plugins themselves and their deterministic inventory/pack tests are unchanged: package file guards, Node createRequire of validated installed paths, copied-array sorting and ordered filter/project inventories remain. No module resolution, plugin installation or build algorithm is changed by this test CSS inclusion.",
-      "evidenceSet": 1
     },
     {
       "file": "web/app/build/page-tree-icon-assets.ts",

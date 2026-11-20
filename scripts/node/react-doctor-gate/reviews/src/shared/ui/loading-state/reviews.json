@@ -10,6 +10,17 @@
         {"file":"web/app/src/shared/ui/loading-state/_tests/LoadingState.test.tsx","sha256":"0f498085fb035479b6a0430b7b572bd65421d82e98ca8a848d9ab50ccef4478d"},
         {"file":"web/app/build/_tests/sign-in-motion-document.test.ts","sha256":"9366840aa4023d70fd5494d1aca688287ef8b9723ca9affa69b237267008be6e"}
       ]
+    },
+    {
+      "file": "web/app/src/shared/ui/loading-state/create-loading-state.tsx",
+      "rule": "react-doctor/jsx-no-jsx-as-prop",
+      "sourceSha256": "c70c41f86889e7f02206d9202f2fb0903706bee83aaf0bba12fd37ee3172b3be",
+      "reason": "The indicator React element is created once per component factory call, outside the returned component. The browser owner instantiates its factory at module scope; the build owner constructs it once for its static document render. Renders of LoadingState pass the same element reference regardless of layout props; this is the public ReactNode slot, not a render-local JSX allocation.",
+      "evidence": [
+        {"file":"web/app/src/shared/ui/loading-state/LoadingState.tsx","sha256":"2e6327a6d4c41a8b3c3dc2f8340a40aa31ace5e75261e217969221dae742b662"},
+        {"file":"web/app/src/shared/ui/loading-state/_tests/LoadingState.test.tsx","sha256":"0f498085fb035479b6a0430b7b572bd65421d82e98ca8a848d9ab50ccef4478d"},
+        {"file":"web/app/build/sign-in-motion-document.tsx","sha256":"78a900d3fa7892b159c348fc1447500465a633232f0f8c414acc51d478151724"}
+      ]
     }
   ]
 }
