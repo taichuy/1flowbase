@@ -1,6 +1,5 @@
 import type { ComponentPropsWithoutRef, ComponentRef } from 'react';
 import { forwardRef, useContext } from 'react';
-import reactEasyCropStyles from 'react-easy-crop/react-easy-crop.css?raw';
 import { ConfigContext } from 'antd/es/config-provider/context';
 
 import type { NativeReactFrontendModuleLoadResult } from '@1flowbase/page-runtime';
@@ -31,6 +30,11 @@ async function loadAntdImgCropModuleOnce(): Promise<NativeReactFrontendModuleLoa
     throw new Error('antd-img-crop requires a browser document.');
   }
 
+  // Only a crop block needs this stylesheet. Resolve it before the package
+  // injects its global style so a failed CSS load leaves nothing to clean up.
+  const { default: reactEasyCropStyles } = await import(
+    'react-easy-crop/react-easy-crop.css?inline'
+  );
   const existingStyles = new Set(document.head.querySelectorAll('style'));
   const module = await import('antd-img-crop');
   const packageStyles = [...document.head.querySelectorAll('style')].filter(

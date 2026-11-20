@@ -386,11 +386,9 @@ function oneFlowbaseDevRuntimePlugin({
 }): Plugin {
   const manifest = createDevGenerationDependencyManifest(root, mode);
   const generation = sha256(JSON.stringify(manifest));
-  const runtimeDirectory = path.join(
-    path.resolve(root, '..', '..'),
-    'tmp',
-    'dev-runtime'
-  );
+  // The browser imports this generated module. Keep it within the served app
+  // rather than exposing the repository's private tmp directory via fs.allow.
+  const runtimeDirectory = path.join(root, 'tmp', 'dev-runtime');
   const hmrProbeFile =
     command === 'serve'
       ? path.join(

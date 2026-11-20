@@ -4,13 +4,13 @@
     {
       "file": "web/app/vite/dev-runtime.ts",
       "rule": "react-doctor/async-await-in-loop",
-      "sourceSha256": "ce4f288569437405cd9b1becdb2b80d17e14e9573534a8262e47ae422e496bef",
-      "reason": "waitForCriticalInteropCache verifies the optimizer cache, catches an incomplete-cache failure, waits 100 ms and retries until the elapsed-time timeout. Each next probe depends on the external cache after the prior wait. Parallelizing these awaits would remove the bounded sequential polling behavior. Existing cache/runtime fixtures describe generation ownership and validation-stage diagnostics; they are not claimed as a direct timing test of this private loop. The sign-in document and resource-hint plugins leave the pre-existing optimizer readiness check and its retry sequence intact.",
+      "sourceSha256": "6bca6f78ad4cc18ad6737c9617f25f05c8913cbb7a235410b769c02f30e916bf",
+      "reason": "waitForCriticalInteropCache verifies the optimizer cache, catches an incomplete-cache failure, waits 100 ms and retries until the elapsed-time timeout. Each next probe depends on the external cache after the prior wait. Parallelizing these awaits would remove the bounded sequential polling behavior. Existing cache/runtime fixtures describe generation ownership and validation-stage diagnostics; they are not claimed as a direct timing test of this private loop. Moving the generated HMR probe under the served app does not change the optimizer readiness loop or its timeout.",
       "evidence": [
         {"file":"web/app/vite.config.ts","sha256":"26f708ce3f75c5d2374fe696652c65171831000ac62f93f2f3f8e4a85f0a75ab"},
         {"file":"web/app/vite/_tests/dev-generation-cache.test.ts","sha256":"0f767f71fba7f2e4d307dfcc286be90fde4ce1df893d21f9c78255e062e6d0ed"},
         {"file":"web/app/vite/_tests/dev-runtime.test.ts","sha256":"ee3cc6f4ee80d0741aa881a68d6409f9f9e85d1ff9c6539b5771cf43d646013b"},
-        {"file":"web/app/vite/dev-runtime.ts","sha256":"ce4f288569437405cd9b1becdb2b80d17e14e9573534a8262e47ae422e496bef"}
+        {"file":"web/app/vite/dev-runtime.ts","sha256":"6bca6f78ad4cc18ad6737c9617f25f05c8913cbb7a235410b769c02f30e916bf"}
       ]
     }
   ]
