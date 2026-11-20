@@ -18,16 +18,13 @@ import { useAuthStore } from '../../../state/auth-store';
 import {
   fetchCurrentMe,
   fetchCurrentSession,
-  fetchLoginEntries,
   type PublicLoginEntry
 } from '../api/session';
 import { BuiltinPasswordSignIn } from '../components/BuiltinPasswordSignIn';
 
-const HeroAnimation = lazy(() =>
-  import('../components/HeroAnimation').then((module) => ({
-    default: module.HeroAnimation
-  }))
-);
+import { consumeLoginEntryDiscovery } from '../api/login-entry-discovery';
+import { SignInPanel } from '../components/hero/SignInPanel';
+import { HeroAnimation } from '../components/HeroAnimation';
 
 const PublicAuthBlock = lazy(() =>
   loadPublicAuthBlock().then((module) => ({
@@ -37,8 +34,7 @@ const PublicAuthBlock = lazy(() =>
 
 import {
   loadPublicAuthBlock,
-  prefetchPublicAuthEntry,
-  preloadPublicAuthRuntime
+  prefetchPublicAuthEntry
 } from '../lib/public-auth-loading';
 import { redirectToExternalLogin } from '../lib/external-login';
 import './sign-in-page.css';
@@ -121,8 +117,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
 
   useEffect(() => {
     let active = true;
-    preloadPublicAuthRuntime();
-    fetchLoginEntries()
+    consumeLoginEntryDiscovery()
       .then((payload) => {
         if (!active) return;
         setLoginEntries(payload.login_entries);
@@ -192,128 +187,99 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
 
   return (
     <div className="auth-sign-in-page">
-      <Suspense fallback={null}>
-        <HeroAnimation
-          hide_login_tagline={metadata?.hide_login_tagline}
-        />
-      </Suspense>
-      <div
-        className="auth-sign-in-panel"
+      <HeroAnimation
+        hide_login_tagline={metadata?.hide_login_tagline !== false}
+      />
+      <SignInPanel
         inert={isStarting}
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          position: 'relative',
-          zIndex: 10
-        }}
+        footer={t('sign_in.footer')}
+        filing_html={metadata?.filing_html}
       >
-        <div className="auth-sign-in-content">
-          {externalError ? (
-            <Alert
-              showIcon
-              type="error"
-              title={
-                externalErrorMessages[externalError] ??
-                t('external_auth.failed')
-              }
-            />
-          ) : null}
-          {startFailed ? (
-            <Alert showIcon type="error" title={t('external_auth.failed')} />
-          ) : null}
-          {loading ? <LoadingState compact /> : null}
-          {!loading && selectedLoginEntry?.entry_action === 'external_login' ? (
-            <div className="auth-sign-in-selector">
-              {loginEntrySelector ? (
-                <button
-                  className="auth-sign-in-selector-button"
-                  type="button"
-                  disabled={isStarting}
-                  onClick={requestLoginEntrySelector}
-                >
-                  {t('external_auth.other_methods')}
-                </button>
-              ) : null}
+        {externalError ? (
+          <Alert
+            showIcon
+            type="error"
+            title={
+              externalErrorMessages[externalError] ?? t('external_auth.failed')
+            }
+          />
+        ) : null}
+        {startFailed ? (
+          <Alert showIcon type="error" title={t('external_auth.failed')} />
+        ) : null}
+        {loading ? <LoadingState compact /> : null}
+        {!loading && selectedLoginEntry?.entry_action === 'external_login' ? (
+          <div className="auth-sign-in-selector">
+            {loginEntrySelector ? (
               <button
                 className="auth-sign-in-selector-button"
                 type="button"
                 disabled={isStarting}
-                aria-busy={startingEntryId === selectedLoginEntry.id}
-                onClick={() => activateLoginEntry(selectedLoginEntry)}
+                onClick={requestLoginEntrySelector}
               >
-                {selectedLoginEntry.title}
+                {t('external_auth.other_methods')}
               </button>
-            </div>
-          ) : null}
-          {!loading && loginEntries.length > 1 && !selectedLoginEntry ? (
-            <div className="auth-sign-in-selector">
-              {loginEntries.map((instance) => (
-                <button
-                  key={instance.id}
-                  className="auth-sign-in-selector-button"
-                  type="button"
-                  disabled={isStarting}
-                  aria-busy={startingEntryId === instance.id}
-                  onPointerEnter={() => {
-                    if (instance.entry_action === 'render_ui')
-                      prefetchPublicAuthEntry(instance.public_ui_block);
-                  }}
-                  onFocus={() => {
-                    if (instance.entry_action === 'render_ui')
-                      prefetchPublicAuthEntry(instance.public_ui_block);
-                  }}
-                  onClick={() => activateLoginEntry(instance)}
-                >
-                  {instance.title}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {!loading &&
-          selectedLoginEntry?.entry_action === 'render_ui' &&
-          selectedInstanceUsesLegacyContract ? (
-            <BuiltinPasswordSignIn
-              loginEntryId={selectedLoginEntry.id}
+            ) : null}
+            <button
+              className="auth-sign-in-selector-button"
+              type="button"
+              disabled={isStarting}
+              aria-busy={startingEntryId === selectedLoginEntry.id}
+              onClick={() => activateLoginEntry(selectedLoginEntry)}
+            >
+              {selectedLoginEntry.title}
+            </button>
+          </div>
+        ) : null}
+        {!loading && loginEntries.length > 1 && !selectedLoginEntry ? (
+          <div className="auth-sign-in-selector">
+            {loginEntries.map((instance) => (
+              <button
+                key={instance.id}
+                className="auth-sign-in-selector-button"
+                type="button"
+                disabled={isStarting}
+                aria-busy={startingEntryId === instance.id}
+                onPointerEnter={() => {
+                  if (instance.entry_action === 'render_ui')
+                    prefetchPublicAuthEntry(instance.public_ui_block);
+                }}
+                onFocus={() => {
+                  if (instance.entry_action === 'render_ui')
+                    prefetchPublicAuthEntry(instance.public_ui_block);
+                }}
+                onClick={() => activateLoginEntry(instance)}
+              >
+                {instance.title}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {!loading &&
+        selectedLoginEntry?.entry_action === 'render_ui' &&
+        selectedInstanceUsesLegacyContract ? (
+          <BuiltinPasswordSignIn
+            loginEntryId={selectedLoginEntry.id}
+            loginEntrySelector={loginEntrySelector}
+            onAuthenticated={handleAuthenticated}
+          />
+        ) : null}
+        {!loading &&
+        selectedLoginEntry?.entry_action === 'render_ui' &&
+        !selectedInstanceUsesLegacyContract ? (
+          <Suspense fallback={<LoadingState compact />}>
+            <PublicAuthBlock
+              key={selectedLoginEntry.id}
+              instance={selectedLoginEntry}
               loginEntrySelector={loginEntrySelector}
               onAuthenticated={handleAuthenticated}
             />
-          ) : null}
-          {!loading &&
-          selectedLoginEntry?.entry_action === 'render_ui' &&
-          !selectedInstanceUsesLegacyContract ? (
-            <Suspense fallback={<LoadingState compact />}>
-              <PublicAuthBlock
-                key={selectedLoginEntry.id}
-                instance={selectedLoginEntry}
-                loginEntrySelector={loginEntrySelector}
-                onAuthenticated={handleAuthenticated}
-              />
-            </Suspense>
-          ) : null}
-          {!loading && (discoveryFailed || loginEntries.length === 0) ? (
-            <BuiltinPasswordSignIn onAuthenticated={handleAuthenticated} />
-          ) : null}
-        </div>
-
-        <div style={{ textAlign: 'center', marginTop: 48 }}>
-          <span className="auth-sign-in-footer">
-            <a
-              href="https://1flowbase.taichuy.com/"
-              target="_blank"
-              rel="noreferrer"
-            >
-              {t('sign_in.footer')}
-            </a>
-          </span>
-          {metadata?.filing_html ? (
-            <div
-              className="auth-sign-in-filing"
-              dangerouslySetInnerHTML={{ __html: metadata.filing_html }}
-            />
-          ) : null}
-        </div>
-      </div>
+          </Suspense>
+        ) : null}
+        {!loading && (discoveryFailed || loginEntries.length === 0) ? (
+          <BuiltinPasswordSignIn onAuthenticated={handleAuthenticated} />
+        ) : null}
+      </SignInPanel>
       {isStarting ? (
         <LoadingState fullscreen className="auth-sign-in-loading-overlay" />
       ) : null}

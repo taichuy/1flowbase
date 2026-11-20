@@ -10,7 +10,8 @@ use crate::{
     installed_provider_package::load_installed_provider_package,
     model_provider::{
         ConsumeModelProviderResetCreditCommand, ConsumeModelProviderResetCreditResult,
-        ModelProviderResetCreditCount, ModelProviderUsageWindowsResult, ModelProviderUseCase,
+        ModelProviderResetCreditCount, ModelProviderService, ModelProviderUsageWindowsResult,
+        ModelProviderUseCase,
     },
     ports::{AuthRepository, ModelProviderRepository, PluginRepository, ProviderRuntimePort},
 };
@@ -79,143 +80,140 @@ where
     })
 }
 
-pub(super) async fn get_usage_windows<R, H>(
-    repository: &R,
-    runtime: &H,
-    provider_secret_master_key: &str,
-    actor_user_id: Uuid,
-    instance_id: Uuid,
-    node_artifact_context: Option<ModelProviderNodeArtifactContext<'_>>,
-    use_case: ModelProviderUseCase,
-) -> Result<ModelProviderUsageWindowsResult>
+impl<R, H> ModelProviderService<R, H>
 where
     R: AuthRepository + PluginRepository + ModelProviderRepository,
     H: ProviderRuntimePort,
 {
-    let target = resolve_provider_account_runtime_target(
-        repository,
-        runtime,
-        provider_secret_master_key,
-        actor_user_id,
-        instance_id,
-        node_artifact_context,
-        use_case,
-    )
-    .await?;
-    runtime
-        .get_usage_windows(&target.installation, target.provider_config)
-        .await
-}
-
-pub(super) async fn count_reset_credits<R, H>(
-    repository: &R,
-    runtime: &H,
-    provider_secret_master_key: &str,
-    actor_user_id: Uuid,
-    instance_id: Uuid,
-    node_artifact_context: Option<ModelProviderNodeArtifactContext<'_>>,
-    use_case: ModelProviderUseCase,
-) -> Result<ModelProviderResetCreditCount>
-where
-    R: AuthRepository + PluginRepository + ModelProviderRepository,
-    H: ProviderRuntimePort,
-{
-    let target = resolve_provider_account_runtime_target(
-        repository,
-        runtime,
-        provider_secret_master_key,
-        actor_user_id,
-        instance_id,
-        node_artifact_context,
-        use_case,
-    )
-    .await?;
-    match runtime
-        .reset_credit(
-            &target.installation,
-            target.provider_config,
-            ProviderResetCreditOperation::Count,
+    pub async fn get_usage_windows(
+        &self,
+        actor_user_id: Uuid,
+        instance_id: Uuid,
+    ) -> Result<ModelProviderUsageWindowsResult> {
+        let repository = &self.repository;
+        let runtime = &self.runtime;
+        let provider_secret_master_key: &str = &self.provider_secret_master_key;
+        let node_artifact_context = self.node_artifact_context();
+        let use_case = self.use_case.clone();
+        let target = resolve_provider_account_runtime_target(
+            repository,
+            runtime,
+            provider_secret_master_key,
+            actor_user_id,
+            instance_id,
+            node_artifact_context,
+            use_case,
         )
-        .await?
-    {
-        ProviderResetCreditResult::Count { available_count } => {
-            Ok(ModelProviderResetCreditCount { available_count })
-        }
-        ProviderResetCreditResult::Consumed => {
-            Err(ControlPlaneError::InvalidInput("provider_reset_credit_result").into())
+        .await?;
+        runtime
+            .get_usage_windows(&target.installation, target.provider_config)
+            .await
+    }
+
+    pub async fn count_reset_credits(
+        &self,
+        actor_user_id: Uuid,
+        instance_id: Uuid,
+    ) -> Result<ModelProviderResetCreditCount> {
+        let repository = &self.repository;
+        let runtime = &self.runtime;
+        let provider_secret_master_key: &str = &self.provider_secret_master_key;
+        let node_artifact_context = self.node_artifact_context();
+        let use_case = self.use_case.clone();
+        let target = resolve_provider_account_runtime_target(
+            repository,
+            runtime,
+            provider_secret_master_key,
+            actor_user_id,
+            instance_id,
+            node_artifact_context,
+            use_case,
+        )
+        .await?;
+        match runtime
+            .reset_credit(
+                &target.installation,
+                target.provider_config,
+                ProviderResetCreditOperation::Count,
+            )
+            .await?
+        {
+            ProviderResetCreditResult::Count { available_count } => {
+                Ok(ModelProviderResetCreditCount { available_count })
+            }
+            ProviderResetCreditResult::Consumed => {
+                Err(ControlPlaneError::InvalidInput("provider_reset_credit_result").into())
+            }
         }
     }
-}
 
-pub(super) async fn consume_reset_credit<R, H>(
-    repository: &R,
-    runtime: &H,
-    provider_secret_master_key: &str,
-    command: ConsumeModelProviderResetCreditCommand,
-    node_artifact_context: Option<ModelProviderNodeArtifactContext<'_>>,
-    use_case: ModelProviderUseCase,
-) -> Result<ConsumeModelProviderResetCreditResult>
-where
-    R: AuthRepository + PluginRepository + ModelProviderRepository,
-    H: ProviderRuntimePort,
-{
-    if command.idempotency_key.trim().is_empty() {
-        return Err(ControlPlaneError::InvalidInput("idempotency_key").into());
-    }
-    let target = resolve_provider_account_runtime_target(
-        repository,
-        runtime,
-        provider_secret_master_key,
-        command.actor_user_id,
-        command.instance_id,
-        node_artifact_context,
-        use_case,
-    )
-    .await?;
-
-    let result = runtime
-        .reset_credit(
-            &target.installation,
-            target.provider_config,
-            ProviderResetCreditOperation::Consume {
-                idempotency_key: command.idempotency_key,
-            },
+    pub async fn consume_reset_credit(
+        &self,
+        command: ConsumeModelProviderResetCreditCommand,
+    ) -> Result<ConsumeModelProviderResetCreditResult> {
+        let repository = &self.repository;
+        let runtime = &self.runtime;
+        let provider_secret_master_key: &str = &self.provider_secret_master_key;
+        let node_artifact_context = self.node_artifact_context();
+        let use_case = self.use_case.clone();
+        if command.idempotency_key.trim().is_empty() {
+            return Err(ControlPlaneError::InvalidInput("idempotency_key").into());
+        }
+        let target = resolve_provider_account_runtime_target(
+            repository,
+            runtime,
+            provider_secret_master_key,
+            command.actor_user_id,
+            command.instance_id,
+            node_artifact_context,
+            use_case,
         )
-        .await;
-    match result {
-        Ok(ProviderResetCreditResult::Consumed) => {
-            repository
-                .append_audit_log(&audit_log(
-                    Some(target.workspace_id),
-                    Some(command.actor_user_id),
-                    "model_provider_instance",
-                    Some(target.instance.id),
-                    "model_provider.reset_credit_consumed",
-                    serde_json::json!({
-                        "provider_code": target.instance.provider_code,
-                    }),
-                ))
-                .await?;
-            Ok(ConsumeModelProviderResetCreditResult { consumed: true })
-        }
-        Ok(ProviderResetCreditResult::Count { .. }) => {
-            Err(ControlPlaneError::InvalidInput("provider_reset_credit_result").into())
-        }
-        Err(error) => {
-            let _ = repository
-                .append_audit_log(&audit_log(
-                    Some(target.workspace_id),
-                    Some(command.actor_user_id),
-                    "model_provider_instance",
-                    Some(target.instance.id),
-                    "model_provider.reset_credit_failed",
-                    serde_json::json!({
-                        "provider_code": target.instance.provider_code,
-                        "message": error.to_string(),
-                    }),
-                ))
-                .await;
-            Err(error)
+        .await?;
+
+        let result = runtime
+            .reset_credit(
+                &target.installation,
+                target.provider_config,
+                ProviderResetCreditOperation::Consume {
+                    idempotency_key: command.idempotency_key,
+                },
+            )
+            .await;
+        match result {
+            Ok(ProviderResetCreditResult::Consumed) => {
+                repository
+                    .append_audit_log(&audit_log(
+                        Some(target.workspace_id),
+                        Some(command.actor_user_id),
+                        "model_provider_instance",
+                        Some(target.instance.id),
+                        "model_provider.reset_credit_consumed",
+                        serde_json::json!({
+                            "provider_code": target.instance.provider_code,
+                        }),
+                    ))
+                    .await?;
+                Ok(ConsumeModelProviderResetCreditResult { consumed: true })
+            }
+            Ok(ProviderResetCreditResult::Count { .. }) => {
+                Err(ControlPlaneError::InvalidInput("provider_reset_credit_result").into())
+            }
+            Err(error) => {
+                let _ = repository
+                    .append_audit_log(&audit_log(
+                        Some(target.workspace_id),
+                        Some(command.actor_user_id),
+                        "model_provider_instance",
+                        Some(target.instance.id),
+                        "model_provider.reset_credit_failed",
+                        serde_json::json!({
+                            "provider_code": target.instance.provider_code,
+                            "message": error.to_string(),
+                        }),
+                    ))
+                    .await;
+                Err(error)
+            }
         }
     }
 }

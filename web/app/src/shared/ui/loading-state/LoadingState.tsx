@@ -4,62 +4,10 @@ import Spin from 'antd/es/spin';
 
 import './loading-state.css';
 
-const LOADING_COLOR = '#1677ff';
-const LOADING_LABEL = 'thinking';
-
-export interface LoadingStateProps {
-  fullscreen?: boolean;
-  compact?: boolean;
-  className?: string;
-}
-
-export function LoadingState({
-  fullscreen = false,
-  compact = false,
-  className
-}: LoadingStateProps) {
-  const classNames = [
-    'loading-state',
-    fullscreen ? 'loading-state--fullscreen' : null,
-    compact ? 'loading-state--compact' : null,
-    className
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  return (
-    <div
-      className={classNames}
-      role="status"
-      aria-live="polite"
-      aria-label={LOADING_LABEL}
-    >
-      <Spin
-        spinning
-        description={LOADING_LABEL}
-        indicator={
-          <LoadingOutlined
-            spin
-            style={{ color: LOADING_COLOR, fontSize: 48 }}
-          />
-        }
-        size={compact ? 'medium' : 'large'}
-        styles={{
-          description: { color: LOADING_COLOR },
-          indicator: { color: LOADING_COLOR }
-        }}
-      >
-        <div className="loading-state__surface" aria-hidden="true">
-          <Skeleton
-            active
-            title={{ width: compact ? '38%' : '28%' }}
-            paragraph={{
-              rows: compact ? 3 : 5,
-              width: ['92%', '84%', '76%', '68%', '52%']
-            }}
-          />
-        </div>
-      </Spin>
-    </div>
-  );
-}
+import { createLoadingState } from './create-loading-state';
+export type { LoadingStateProps } from './create-loading-state';
+export const LoadingState = createLoadingState({
+  Spin,
+  Skeleton,
+  LoadingOutlined
+});

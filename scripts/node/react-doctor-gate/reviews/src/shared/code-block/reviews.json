@@ -11,8 +11,8 @@
       "file": "web/app/src/shared/code-block/BlockSourceEditor.tsx",
       "rule": "react-doctor/no-pass-data-to-parent",
       "sourceSha256": "8f4b77c4f3f3bd73d8ad147d147bea609826a5d71a99281f4e21c046a193ef3d",
-      "reason": "The recorded effect calls the local registerDiagnostics callback to update Monaco model markers for the current path and diagnostics; it does not call a parent callback. Extra-library registrations and marker ownership are released by editor cleanup. Parent onMount runs only from the lazy Monaco editor actual onMount callback. The configureMonaco function moved to module scope with an identical body and an otherwise whitespace-equivalent module, preserving those effect and callback contracts.",
-      "evidenceSet": 3
+      "reason": "The effect invokes the local registerDiagnostics callback only when the editor and Monaco refs exist. It writes diagnostics to the active Monaco model under a path-scoped marker owner and clears the old owner on model/path changes; cleanup releases the remaining markers. The marker test verifies projection and clearing after a diagnostics rerender. Parent onMount is invoked by the real Editor onMount callback, not by this effect; the LoadingState Suspense fallback has no marker or callback ownership.",
+      "evidence": [{"file":"web/app/src/shared/code-block/_tests/BlockSourceEditor.test.tsx","sha256":"76cbb12fc41c96fe051319fafd6d2d983f706e83ae5319b6fb998bc7786b2e61"}]
     },
     {
       "file": "web/app/src/shared/code-block/BlockSourceEditor.tsx",

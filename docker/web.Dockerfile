@@ -33,6 +33,7 @@ RUN --mount=type=cache,id=1flowbase-pnpm-store,sharing=locked,target=/pnpm/store
     && pnpm config set package-import-method copy \
     && pnpm --dir web install --frozen-lockfile --fetch-timeout=300000 --network-concurrency=8
 
+COPY api/crates/control-plane/src/auth/public_ui_blocks/password_local.tsx ./api/crates/control-plane/src/auth/public_ui_blocks/password_local.tsx
 COPY web ./web
 COPY scripts ./scripts
 

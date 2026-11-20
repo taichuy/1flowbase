@@ -7,7 +7,7 @@ import {
 } from '@1flowbase/page-runtime/browser';
 import type { BlockContextSeed } from '@1flowbase/page-protocol';
 import Space from 'antd/es/space';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   type NativeReactBrowserCompilerWorkerFactory,
@@ -22,10 +22,12 @@ import {
   type FrontstageNativeTrustedBlockReactComponent
 } from '../../frontstage/lib/native-adapter/native-trusted-block-react-adapter';
 import { createFrontstageUnavailableBlockContext } from '../../frontstage/lib/native-trusted-block/unavailable-context';
-import { createFrontstageNativeReactModuleRegistry } from '../../frontstage/lib/native-modules/registry';
 import type { FrontstageBlockInstance } from '../../frontstage/lib/page-document';
 import type { PasswordSignInResponse, PublicLoginEntry } from '../api/session';
+import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import { BuiltinPasswordSignIn } from './BuiltinPasswordSignIn';
+import { defaultLoginImports } from '../lib/default-login-imports';
+import { matchingDefaultLoginArtifact } from '../lib/default-login-artifact';
 import { publicAuthCompilation } from '../lib/public-auth-compilation';
 import {
   createPublicAuthInputs,
@@ -43,19 +45,11 @@ export interface PublicAuthBlockProps {
   nativeCompiler?: typeof compileNativeReactComponentInBrowser;
   nativeCompilerWorkerFactory?: NativeReactBrowserCompilerWorkerFactory;
   nativeModuleRegistryFactory?: NativeReactModuleRegistryFactory;
-  onPhaseChange?: (phase: PublicAuthPhase) => void;
 }
 
 interface ActivePublicAuthInstance {
   requestId: string;
 }
-
-export type PublicAuthPhase =
-  | 'discovering'
-  | 'compiling'
-  | 'mounting'
-  | 'ready'
-  | 'failed';
 
 type ReadyPublicAuthSnapshot = {
   component: FrontstageNativeTrustedBlockReactComponent;
@@ -75,14 +69,50 @@ type PublicAuthRenderSnapshot =
       value: ReadyPublicAuthSnapshot;
     };
 
-export function PublicAuthBlock({
+// Resolve the exact module payload before mounting the configured runtime; a
+// slow download is not a compiler failure. Unexpected imports use the full host.
+const ShippedPasswordBlock = lazy(async () => {
+  const registry = await import('../lib/default-login-registry').catch(
+    () => null
+  );
+  return {
+    default: registry
+      ? (props: PublicAuthBlockProps) => (
+          <PublicAuthBlockRuntime
+            {...props}
+            nativeModuleRegistryFactory={registry.createDefaultLoginRegistry}
+          />
+        )
+      : PublicAuthBlockRuntime
+  };
+});
+
+export function PublicAuthBlock(props: PublicAuthBlockProps) {
+  const shipped = useMemo(
+    () =>
+      matchingDefaultLoginArtifact(
+        props.instance.public_ui_block,
+        defaultLoginImports
+      ),
+    [props.instance.public_ui_block]
+  );
+  return shipped &&
+    !props.nativeModuleRegistryFactory &&
+    !props.nativeCompiler &&
+    !props.nativeCompilerWorkerFactory ? (
+    <ShippedPasswordBlock {...props} />
+  ) : (
+    <PublicAuthBlockRuntime {...props} />
+  );
+}
+
+function PublicAuthBlockRuntime({
   instance,
   loginEntrySelector = null,
   onAuthenticated,
   nativeCompiler = publicAuthCompilation.compile,
   nativeCompilerWorkerFactory,
-  nativeModuleRegistryFactory = createFrontstageNativeReactModuleRegistry,
-  onPhaseChange
+  nativeModuleRegistryFactory
 }: PublicAuthBlockProps) {
   const [renderRoot, setRenderRoot] = useState<HTMLDivElement | null>(null);
   const [snapshot, setSnapshot] = useState<PublicAuthRenderSnapshot>({
@@ -96,21 +126,13 @@ export function PublicAuthBlock({
   );
   const escapeFallbackVisible = snapshot.status === 'failed';
 
-  useEffect(() => {
-    onPhaseChange?.(snapshot.status);
-  }, [onPhaseChange, snapshot.status]);
-
-  useEffect(() => {
-    if (snapshot.status !== 'mounting') return;
-    const frame = window.requestAnimationFrame(() => {
-      setSnapshot((current) =>
-        current.status === 'mounting'
-          ? { status: 'ready', value: current.value }
-          : current
-      );
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [snapshot.status]);
+  const markContentCommitted = useCallback((renderEpoch: string) => {
+    setSnapshot((current) =>
+      current.status === 'mounting' && current.value.renderEpoch === renderEpoch
+        ? { status: 'ready', value: current.value }
+        : current
+    );
+  }, []);
 
   const prepare = useCallback(
     async (initialAttempt: PublicAuthAttempt = 0) => {
@@ -159,7 +181,10 @@ export function PublicAuthBlock({
             ...(nativeCompilerWorkerFactory
               ? { workerFactory: nativeCompilerWorkerFactory }
               : {}),
-            registryFactory: nativeModuleRegistryFactory
+            registryFactory:
+              nativeModuleRegistryFactory ??
+              (await import('../../frontstage/lib/native-modules/registry'))
+                .createFrontstageNativeReactModuleRegistry
           });
           if (
             generationRef.current !== generation ||
@@ -281,6 +306,9 @@ export function PublicAuthBlock({
           ctx={snapshot.value.context}
           moduleAssets={snapshot.value.moduleAssets}
           moduleSources={snapshot.value.moduleSources}
+          onInitialContentCommit={
+            snapshot.status === 'mounting' ? markContentCommitted : undefined
+          }
           onRuntimeError={() => {
             activeInstanceRef.current = null;
             if (snapshot.value.attempt === 0) {
@@ -291,12 +319,11 @@ export function PublicAuthBlock({
           }}
         />
       ) : null}
-      {(snapshot.status === 'discovering' ||
-        snapshot.status === 'compiling' ||
-        snapshot.status === 'mounting') &&
+      {(snapshot.status === 'discovering' || snapshot.status === 'compiling') &&
       !escapeFallbackVisible ? (
         <BlockUiLoadingShell />
       ) : null}
+      {snapshot.status === 'mounting' ? <LoadingState compact /> : null}
       {escapeFallbackVisible ? (
         <BuiltinPasswordSignIn
           loginEntryId={instance.id}

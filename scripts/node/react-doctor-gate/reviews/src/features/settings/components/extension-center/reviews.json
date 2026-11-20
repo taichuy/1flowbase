@@ -7,6 +7,13 @@
   ],
   "reviews": [
     {
+      "file": "web/app/src/features/settings/components/extension-center/ApplicationTemplateCatalogList.tsx",
+      "rule": "react-doctor/prefer-tag-over-role",
+      "sourceSha256": "0671679a9fb29245302d6d0974ec72785489737e32e92f36add355bffd7ec228",
+      "reason": "Catalog table contract: the named role=table carries busy state and logical row/column counts; its CSS-grid header row owns six columnheaders, and each indexed virtual row owns five value cells and one action cell with a native Install button. AntD Listy 6.6.2 delegates to @rc-component/listy 1.2.3 and @rc-component/virtual-list 1.5.1; the latter’s viewport/filler and Listy item wrappers are divs. Swapping the table, either row, header, or either cell site independently would break native table ancestry; swapping all six would still leave the measured scrolling viewport, virtual wrappers and pagination sentinel in invalid native table positions. Separately, the footer status wraps an AntD Spin div while loading, which output cannot contain. Keep the logical table and the polite status without changing virtual scrolling, responsive layout, or installation.",
+      "evidence": [{"file":"web/pnpm-lock.yaml","sha256":"efe9a6baabe230a49055cf69700158e3f488b326d7fc55012074b3575c52b0a0"},{"file":"web/app/src/features/settings/components/extension-center/application-template-catalog.css","sha256":"18d286f6d19bd833ac573eb72aecba262bf08ad20b0313156175cf03410820fc"},{"file":"web/app/src/features/settings/components/extension-center/_tests/ApplicationTemplateCatalogList.test.tsx","sha256":"e63d3ffdf70d3735023f2a58d17b94cafa39d7ffec57cadeb936d4983cab5f8d"},{"file":"web/app/src/features/settings/components/extension-center/_tests/ApplicationTemplateCatalogPanel.test.tsx","sha256":"28254cf1d6ea709843ded19a91d6d4126a3b6b669d532ed6bf7ba9e87f488a52"}]
+    },
+    {
       "file": "web/app/src/features/settings/components/extension-center/ApplicationTemplateCatalogPanel.tsx",
       "rule": "react-doctor/jsx-no-jsx-as-prop",
       "sourceSha256": "f72f330fa4a66ce563245240fdd3ca2febbed64fa32fd079cbf0260cb98a5d6a",

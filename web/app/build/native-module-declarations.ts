@@ -137,16 +137,15 @@ function collectNativeModuleDeclarationGraph({
     );
   }
 
-  const physicalFiles = new Set(
-    program
-      .getSourceFiles()
-      .filter(
-        (sourceFile) =>
-          sourceFile.isDeclarationFile &&
-          normalizePath(sourceFile.fileName).includes('/node_modules/')
-      )
-      .map((sourceFile) => sourceFile.fileName)
-  );
+  const physicalFiles = new Set<string>();
+  for (const sourceFile of program.getSourceFiles()) {
+    if (
+      sourceFile.isDeclarationFile &&
+      normalizePath(sourceFile.fileName).includes('/node_modules/')
+    ) {
+      physicalFiles.add(sourceFile.fileName);
+    }
+  }
   for (const declarationFile of [...physicalFiles]) {
     physicalFiles.add(findOwningPackageJson(declarationFile));
   }

@@ -9,15 +9,15 @@
       "file": "web/app/src/features/workflow/components/WorkflowCanvasFrame.tsx",
       "rule": "react-doctor/prefer-tag-over-role",
       "sourceSha256": "07f1186f4e7f8888ea6b502047968d99e8408c25dffca12ec2a3bbf4da5cbddf",
-      "reason": "The Frame div is an interactive, focusable vertical splitter with an accessible label, tabIndex=0, ArrowLeft/ArrowRight keyboard resizing and pointer resizing through its mouse handler. Replacing it with a static hr would not supply this adjustable control behavior. P116 reassessed 2026-11-17: the full P115 old/new Frame diff preserves the splitter JSX and both resize handlers byte-for-byte; it moves canonical transient cleanup into validated synchronous run start. P114 only narrows setSelection and does not change setPanelState({ nodeDetailWidth }) or resize ownership. This exception concerns that adjustable splitter, not generic div separators elsewhere.",
-      "evidenceSet": 0
+      "reason": "The named vertical separator is a focusable splitter, not a decorative thematic break. Both mouse dragging and ArrowLeft/ArrowRight update the shared, clamped node-detail width. A replacement justified only by the implicit separator role of hr does not preserve that interactive contract. The run-transition fixture exercises a real ArrowLeft resize on the named separator; the LoadingState Suspense fallback does not own the splitter or its handlers.",
+      "evidence": [{"file":"web/app/src/features/workflow/_tests/workflow-editor.test.tsx","sha256":"5eadbb22044d8e0ecb9e07007891ccc449158fa55d2d826be7c1d30a79383878"},{"file":"web/app/src/features/workflow/_tests/workflow-frame-run-transition.test.tsx","sha256":"aa370057a269105c73e08259bef513cba5da4c7a83438b04e32eea3bcb6e524a"}]
     },
     {
       "file": "web/app/src/features/workflow/components/WorkflowCanvasFrame.tsx",
       "rule": "react-doctor/query-mutation-missing-invalidation",
       "sourceSha256": "07f1186f4e7f8888ea6b502047968d99e8408c25dffca12ec2a3bbf4da5cbddf",
-      "reason": "Both publishMutation.onSuccess and revertToDraftMutation.onSuccess call invalidatePublication, which invalidates applicationApiPublicationQueryKey(applicationId) and applicationDetailQueryKey(applicationId). The success path therefore reaches cache invalidation through a local helper outside the useMutation object. P116 reassessed 2026-11-17: the full P115 old/new Frame diff leaves publicationQuery, invalidatePublication and both mutation success callbacks byte-identical; only run-entry transient cleanup moves to validated synchronous start. P114 restricts selection updates and changes neither query keys nor mutation/cache ownership. This review applies to those helper-mediated publication/revert success paths; fresh findings at other mutation sites require their own path assessment.",
-      "evidenceSet": 0
+      "reason": "Both publishMutation and revertToDraftMutation call invalidatePublication on success. That helper invalidates the same applicationApiPublicationQueryKey(applicationId) read by publicationQuery and also applicationDetailQueryKey(applicationId). Publication status is derived from that query; neither success path relies on a toast or optimistic status flag to refresh it. The LoadingState Suspense fallback does not participate in either cache path.",
+      "evidence": [{"file":"web/app/src/features/applications/api/applications.ts","sha256":"490a1622922dc004987716d3dc72801081fcaaf5e3e6ed777665ed499708e3d7"},{"file":"web/app/src/features/applications/api/public-api.ts","sha256":"15389c4416a2b3cc1b9996e2ceb11f4b3c9b7ac6d27a7e04df89502880459215"}]
     },
     {
       "file": "web/app/src/features/workflow/components/WorkflowEditorAssembly.tsx",

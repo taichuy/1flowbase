@@ -31,7 +31,25 @@ const docker = (args) => {
   );
   const config = path.join(root, "config");
   fs.mkdirSync(config);
+  let metadataRequests = 0;
+  const metadataBody = JSON.stringify({
+    data: {
+      logo_url: `data:image/png;base64,${"A".repeat(96 * 1024)}`,
+      system_name: "Fixture",
+      system_description: "",
+      hide_login_tagline: true,
+      filing_html: "<b>registry</b>",
+    },
+    meta: null,
+  });
   const upstream = http.createServer((req, res) => {
+    if (req.url === "/api/public/system-metadata") {
+      metadataRequests += 1;
+      assert.equal(req.headers.authorization, undefined);
+      assert.equal(req.headers.cookie, undefined);
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end(metadataBody);
+    }
     res.writeHead(req.url === "/health" ? 200 : 426);
     res.end("fixture");
   });
@@ -138,7 +156,39 @@ const docker = (args) => {
   };
   const results = [];
   try {
-    await start();
+    const documents = path.join(root, "documents");
+    fs.mkdirSync(documents);
+    fs.writeFileSync(path.join(documents, "index.html"), "guarded");
+    fs.writeFileSync(path.join(documents, "sign-in-preload.html"), "motion");
+    await start(["-v", `${documents}:/usr/share/nginx/html:ro`]);
+    for (const [suffix, headers, expected] of [
+      ["", {}, "motion"],
+      ["", { Cookie: "fixture=present" }, "guarded"],
+      ["", { Authorization: "Bearer fixture" }, "guarded"],
+      ["?auth_error=registration_disabled", {}, "guarded"],
+      ["?login_entry_id=fixture", {}, "guarded"],
+    ]) {
+      const res = await fetch(`http://127.0.0.1:${port}/sign-in${suffix}`, { headers });
+      assert.equal(res.status, 200);
+      assert.equal(await res.text(), expected, `wrong document for /sign-in${suffix}`);
+      assert.match(res.headers.get("cache-control"), /no-store/);
+      assert.match(res.headers.get("vary"), /Cookie, Authorization/i);
+    }
+    // The former SSI directives are inert even if a document still contains them.
+    const obsoleteSsi = '<!--# include virtual="/_sign-in/public-metadata" set="frame_metadata" --><!--# echo var="frame_metadata" encoding="entity" -->';
+    fs.writeFileSync(path.join(documents, "sign-in-preload.html"), `${obsoleteSsi}end`);
+    const document = await fetch(`http://127.0.0.1:${port}/sign-in`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    assert.equal(document.status, 200);
+    assert.equal(await document.text(), `${obsoleteSsi}end`);
+    assert.equal(metadataRequests, 0);
+    const metadata = await fetch(`http://127.0.0.1:${port}/api/public/system-metadata`);
+    assert.equal(metadata.status, 200);
+    assert.equal(await metadata.text(), metadataBody);
+    assert.equal(metadataRequests, 1);
+    results.push("sign-in does not wait for metadata; the public route delivers the full large response");
+    results.push("only plain credential-free sign-in receives the private motion document");
     assert.equal(
       fs.readFileSync(path.join(config, "nginx.default.conf"), "utf8"),
       source,

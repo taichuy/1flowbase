@@ -1,5 +1,5 @@
-import { McpAuthorizePage } from '../features/auth/pages/mcp-authorization/McpAuthorizePage';
 import {
+  lazyRouteComponent,
   Navigate,
   Outlet,
   RouterProvider,
@@ -10,6 +10,11 @@ import {
 import { useState } from 'react';
 
 import { SignInPage } from '../features/auth/pages/SignInPage';
+
+const McpAuthorizePage = lazyRouteComponent(
+  () => import('../features/auth/pages/mcp-authorization/McpAuthorizePage'),
+  'McpAuthorizePage'
+);
 
 const rootRoute = createRootRoute({
   component: () => <Outlet />,

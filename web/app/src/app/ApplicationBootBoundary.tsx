@@ -1,3 +1,4 @@
+import { discardDocumentScene } from '../features/auth/components/hero/document-motion';
 import {
   Component,
   type ErrorInfo,
@@ -22,6 +23,7 @@ class ApplicationBootBoundary extends Component<
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    discardDocumentScene();
     recoverDevModuleGraph(error);
     if (import.meta.env.DEV) {
       console.error('[1flowbase-dev-runtime] application boot failed', {

@@ -131,8 +131,8 @@
       ]
     },
     {
-      "source": "web/app/src/features/auth/pages/SignInPage.tsx",
-      "specifier": "../components/HeroAnimation",
+      "source": "web/app/src/app/ApplicationRuntimeBootstrap.tsx",
+      "specifier": "./AnonymousAppRuntime",
       "smokePaths": [
         "/sign-in"
       ]

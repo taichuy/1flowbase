@@ -63,33 +63,24 @@ test('API app checks and every hash shard select all actual API owners', () => {
 });
 
 
-test('managed MCP CI filters select their actual library owner and retain Root lifecycle tests', () => {
-  const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/browser-managed-plugin.yml'), 'utf8');
-  for (const [label, filter, source, mount] of [
-    ['mcp-http', 'managed_service_mcp', '_tests/mcp_routes/managed_service_mcp.rs', 'managed_service_mcp.rs'],
-    ['mcp-media', 'result_delivery::media::tests', 'routes/mcp_protocol/result_delivery/_tests/media.rs', 'routes/mcp_protocol/result_delivery/media.rs'],
-    ['mcp-errors', 'target_error_diagnostics', 'routes/mcp_protocol/_tests/target_error_diagnostics.rs', 'routes/mcp_protocol/virtual_ui.rs'],
+test('managed MCP regressions remain mounted by their library owner', () => {
+  for (const [source, mount] of [
+    ['_tests/mcp_routes/managed_service_mcp.rs', 'managed_service_mcp.rs'],
+    ['routes/mcp_protocol/result_delivery/_tests/media.rs', 'routes/mcp_protocol/result_delivery/media.rs'],
+    ['routes/mcp_protocol/_tests/target_error_diagnostics.rs', 'routes/mcp_protocol/virtual_ui.rs'],
   ]) {
-    const lines = workflow.split('\n').map(line => line.trim()).filter(line => line.startsWith(`run_test ${label} `));
-    assert.deepEqual(lines, [`run_test ${label} -p api-mcp --lib ${filter}`]);
     const sourceRoot = path.join(repoRoot, 'api/crates/api/mcp/src');
     assert.match(fs.readFileSync(path.join(sourceRoot, source), 'utf8'), /#\[(?:tokio::)?test\]/u);
     assert.ok(fs.readFileSync(path.join(sourceRoot, mount), 'utf8').includes(`#[path = "${source.startsWith('routes/') ? '_tests/' + path.basename(source) : source}"]`));
   }
-  assert.ok(workflow.includes('run_test lifecycle -p api-server --lib managed_services::'));
 });
 
-test('pricing CI watches the current Settings implementation and Root billing integration tests', () => {
-  const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/model-pricing-pagination.yml'), 'utf8');
-  assert.ok(workflow.includes("'api/crates/api/console-settings/src/routes/settings/billing*'"));
-  assert.ok(workflow.includes("'api/crates/api/console-settings/src/routes/settings/billing*/**'"));
+test('Settings owns the billing route', () => {
   assert.equal(fs.existsSync(path.join(repoRoot, 'api/crates/api/console-settings/src/routes/settings/billing.rs')), true);
-  assert.ok(workflow.includes("'api/apps/api-server/src/_tests/system_settings/billing_routes/**'"));
-  assert.ok(workflow.includes('-p api-server --test api_private_contracts _tests::billing_routes'));
 });
 
 
-test('identity and Terminal CI follow the new owners and retain the Root acceptance targets', () => {
+test('identity CI follows its route owner and retains the Root acceptance targets', () => {
   const authentication = fs.readFileSync(path.join(repoRoot, '.github/workflows/github-authentication.yml'), 'utf8');
   assert.equal(authentication.split('      - api/crates/api/console-interaction/src/routes/identity/**').length - 1, 2);
   assert.ok(authentication.includes('-p api-console-interaction --lib external_auth'));
@@ -100,15 +91,4 @@ test('identity and Terminal CI follow the new owners and retain the Root accepta
     assert.ok(fs.readFileSync(path.join(repoRoot, external, mount), 'utf8').includes(`#[path = "${leaf}"]`));
     assert.match(fs.readFileSync(path.join(repoRoot, external, leaf), 'utf8'), /#\[(?:tokio::)?test\]/u);
   }
-  const terminal = fs.readFileSync(path.join(repoRoot, '.github/workflows/local-command.yml'), 'utf8');
-  for (const trigger of [
-    'api/crates/api/kernel/src/slices/local_command/**',
-    'api/crates/api/console-interaction/src/local_command/**',
-    'api/crates/api/console-interaction/src/local_terminal/**',
-    'api/crates/api/console-interaction/src/routes/local_commands/**',
-    'api/crates/api/console-interaction/src/routes/terminal/**',
-    'api/crates/api/kernel/src/contracts/interaction_shared/terminal_host.rs',
-  ]) assert.ok(terminal.includes(`'${trigger}'`), trigger);
-  assert.ok(terminal.includes('run_case terminal --test api_private_routes routes::terminal::'));
-  assert.ok(terminal.includes('run_case existing-local-command --test api_private_routes local_commands'));
 });

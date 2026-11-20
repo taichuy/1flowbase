@@ -59,6 +59,7 @@ test('I2012-AC-001 keeps TSX compilation and legacy JSX transformation out of th
   }
   visit(path.join(appRoot, 'src/features/auth/components/PublicAuthBlock.tsx'));
   const graph = [...visited].map((file) => path.relative(runtimeRoot, file));
+  expect([...visited].some(file => file.endsWith('/frontstage/lib/native-modules/registry.ts'))).toBe(false);
   expect(graph).not.toContain('native-react-compiler/tsx-transform.ts');
   expect(graph).not.toContain('native-trusted-block/jsx-transform.ts');
   expect(graph).not.toContain('native-react-compiler/worker-protocol.ts');

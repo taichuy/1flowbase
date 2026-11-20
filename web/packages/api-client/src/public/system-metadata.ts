@@ -9,5 +9,8 @@ export interface SystemMetadata {
 }
 
 export function fetchPublicSystemMetadata() {
-  return apiFetch<SystemMetadata>({ path: '/api/public/system-metadata' });
+  return apiFetch<SystemMetadata>({
+    path: '/api/public/system-metadata',
+    credentials: 'omit'
+  });
 }

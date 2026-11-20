@@ -24,3 +24,10 @@ declare module 'virtual:1flowbase-page-tree-icon-runtime' {
 }
 
 declare module 'virtual:1flowbase-dev-hmr-probe' {}
+
+declare module 'virtual:1flowbase-default-login-artifact' {
+  const artifact:
+    | import('@1flowbase/page-runtime/browser').NativeReactComponentArtifact
+    | null;
+  export default artifact;
+}

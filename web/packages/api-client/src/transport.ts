@@ -25,6 +25,7 @@ export interface ApiRequestOptions {
   rawBody?: BodyInit;
   contentType?: string | null;
   headers?: Record<string, string>;
+  credentials?: RequestCredentials;
   csrfToken?: string | null;
   baseUrl?: string;
   expectJson?: boolean;
@@ -112,6 +113,7 @@ export async function apiFetch<T>({
   rawBody,
   contentType,
   headers: extraHeaders,
+  credentials = 'include',
   csrfToken,
   baseUrl = getDefaultApiBaseUrl(),
   expectJson = true,
@@ -142,7 +144,7 @@ export async function apiFetch<T>({
 
   const response = await fetch(`${baseUrl}${path}`, {
     method,
-    credentials: 'include',
+    credentials,
     headers,
     body:
       body !== undefined
