@@ -334,10 +334,19 @@ const dataModelsApi = vi.hoisted(() => ({
   fetchSettingsDataModelRecordPreview: vi.fn()
 }));
 
-const consoleNavigationApi = vi.hoisted(() => ({
-  settingsConsoleNavigationQueryKey: ['settings', 'console-navigation'],
-  fetchSettingsConsoleNavigation: vi.fn()
-}));
+const consoleNavigationApi = vi.hoisted(() => {
+  const fetchSettingsConsoleNavigation = vi.fn();
+  return {
+    settingsConsoleNavigationQueryKey: ['settings', 'console-navigation'],
+    fetchSettingsConsoleNavigation,
+    settingsConsoleNavigationQueryOptions: (scope: string) => ({
+      queryKey: ['settings', 'console-navigation', scope],
+      queryFn: fetchSettingsConsoleNavigation,
+      staleTime: 30_000,
+      retry: false
+    })
+  };
+});
 
 vi.mock('../../api/identity-access/members', () => membersApi);
 vi.mock('../../api/identity-access/roles', () => rolesApi);

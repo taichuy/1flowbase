@@ -8,7 +8,7 @@ import MenuOutlined from '@ant-design/icons/es/icons/MenuOutlined';
 import { Button, Drawer, Menu, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import type { ConsoleNavigation } from '@1flowbase/api-client';
@@ -317,6 +317,26 @@ export function Navigation({
     enabled: Boolean(workspaceId),
     retry: false
   });
+  useEffect(() => {
+    // Shell mount alone is not business readiness: menus and translated dynamic
+    // labels must have committed successfully before this semantic milestone.
+    if (
+      consoleNavigationQuery.isSuccess &&
+      (!workspaceId ||
+        (frontstageNavigationQuery.isSuccess &&
+          runtimeI18n.status === 'ready')) &&
+      performance.getEntriesByName('1flowbase:NavigationInteractive').length ===
+        0
+    ) {
+      performance.mark('1flowbase:NavigationInteractive');
+    }
+  }, [
+    consoleNavigationQuery.isSuccess,
+    frontstageNavigationQuery.isSuccess,
+    runtimeI18n.status,
+    workspaceId
+  ]);
+
   const dynamicRoutes = useMemo(
     () => topbarPageRoutes(frontstageNavigationQuery.data ?? EMPTY_FRONTSTAGE_NODES),
     [frontstageNavigationQuery.data]

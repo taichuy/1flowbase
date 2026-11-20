@@ -1,5 +1,10 @@
+import { queryOptions } from '@tanstack/react-query';
+
 import { useAuthStore } from '../../../state/auth-store';
-import { selectNavigationQueryScope } from '../../../state/navigation-query-scope';
+import {
+  navigationQueryStaleTime,
+  selectNavigationQueryScope
+} from '../../../state/navigation-query-scope';
 import {
   createFrontstageGroup,
   createFrontstagePage,
@@ -58,6 +63,19 @@ export const frontstagePageTreeQueryKey = (
   workspaceId: string,
   scope = selectNavigationQueryScope(useAuthStore.getState())
 ) => ['frontstage', workspaceId, 'page-tree', scope] as const;
+
+export function frontstagePageTreeQueryOptions(
+  workspaceId: string,
+  scope: string
+) {
+  return queryOptions({
+    queryKey: frontstagePageTreeQueryKey(workspaceId, scope),
+    queryFn: () => fetchFrontstagePageTree(workspaceId),
+    staleTime: navigationQueryStaleTime,
+    enabled: Boolean(workspaceId),
+    retry: false
+  });
+}
 
 export function getFrontstageApiBaseUrl(
   locationLike: ApiBaseUrlLocation | undefined = typeof window !== 'undefined'

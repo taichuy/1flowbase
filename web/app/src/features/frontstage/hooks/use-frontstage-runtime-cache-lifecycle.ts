@@ -1,7 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect } from 'react';
 
 import { useAuthStore } from '../../../state/auth-store';
+import { selectNavigationQueryScope } from '../../../state/navigation-query-scope';
 import { resetFrontstageRuntimeObservations } from '../lib/page-canvas/runtime-observation';
 import { frontstageNativeReactArtifactCache } from '../lib/runtime-cache/default-cache';
 import type { FrontstageNativeReactArtifactCache } from '../lib/runtime-cache/native-react-artifact-cache';
@@ -22,45 +23,61 @@ export function useFrontstageRuntimeCacheLifecycle(
   options: FrontstageRuntimeCacheLifecycleOptions = {}
 ): void {
   const queryClient = useQueryClient();
-  const sessionStatus = useAuthStore((state) => state.sessionStatus);
-  const actor = useAuthStore((state) => state.actor);
-  const lifecycleIdentity = actor
-    ? `actor:${actor.id}:workspace:${actor.current_workspace_id}`
-    : sessionStatus;
-  const previousIdentityRef = useRef<string | null>(null);
-  const previousActorIdRef = useRef<string | null>(null);
   const nativeReactArtifactCache =
     options.nativeReactArtifactCache ?? frontstageNativeReactArtifactCache;
 
   useLayoutEffect(() => {
-    if (previousIdentityRef.current === lifecycleIdentity) {
-      return;
-    }
-    const hadPreviousIdentity = previousIdentityRef.current !== null;
-    previousIdentityRef.current = lifecycleIdentity;
-    const previousActorId = previousActorIdRef.current;
-    const currentActorId = actor?.id ?? null;
-    previousActorIdRef.current = currentActorId;
-    // The lifecycle is lazy-loaded after authentication. Its first mount must
-    // not discard the page tree already fetched by the shell/route observers.
-    if (hadPreviousIdentity) {
-      queryClient.removeQueries({
-        predicate: (query) => query.queryKey[0] === 'frontstage'
-      });
-    }
-    resetFrontstageRuntimeObservations();
-    if (previousActorId && previousActorId !== currentActorId) {
-      void nativeReactArtifactCache
-        .deleteActor(previousActorId)
-        .catch(() => undefined);
-    }
-    if (actor) {
-      void nativeReactArtifactCache
-        .pruneWorkspace({
-          actorId: actor.id,
-          workspaceId: actor.current_workspace_id
-        })
-        .catch(() => undefined);
-    }
-  }, [actor, lifecycleIdentity, nativeReactArtifactCache, queryClient]);
+    let previousIdentity: string | null = null;
+    let previousActorId: string | null = null;
+    const synchronize = () => {
+      const state = useAuthStore.getState();
+      const actor = state.actor;
+      const scope = selectNavigationQueryScope(state);
+      const identity =
+        state.sessionStatus === 'authenticated' && actor
+          ? scope
+          : state.sessionStatus;
+      if (previousIdentity === identity) return;
+      const hadPreviousIdentity = previousIdentity !== null;
+      previousIdentity = identity;
+      const currentActorId = actor?.id ?? null;
+      if (hadPreviousIdentity) {
+        queryClient.removeQueries({
+          predicate: (query) =>
+            query.queryKey[0] === 'frontstage' &&
+            !(
+              // A store subscriber may already have prefetched the NEW scope.
+              // Never discard that in-flight request or its successful result.
+              (
+                state.sessionStatus === 'authenticated' &&
+                actor &&
+                query.queryKey[1] === actor.current_workspace_id &&
+                query.queryKey[2] === 'page-tree' &&
+                query.queryKey[3] === scope
+              )
+            )
+        });
+      }
+      resetFrontstageRuntimeObservations();
+      if (previousActorId && previousActorId !== currentActorId) {
+        void nativeReactArtifactCache
+          .deleteActor(previousActorId)
+          .catch(() => undefined);
+      }
+      previousActorId = currentActorId;
+      if (actor) {
+        void nativeReactArtifactCache
+          .pruneWorkspace({
+            actorId: actor.id,
+            workspaceId: actor.current_workspace_id
+          })
+          .catch(() => undefined);
+      }
+    };
+    // Synchronous store observation handles logout even when the authenticated
+    // runtime unmounts in the same React commit.
+    const unsubscribe = useAuthStore.subscribe(synchronize);
+    synchronize();
+    return unsubscribe;
+  }, [nativeReactArtifactCache, queryClient]);
 }

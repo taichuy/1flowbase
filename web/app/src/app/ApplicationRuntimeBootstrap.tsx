@@ -1,6 +1,5 @@
 import { Suspense, lazy } from 'react';
 
-import { loadApplicationI18nResources } from '../shared/i18n/app-i18n';
 import { LoadingState } from '../shared/ui/loading-state/LoadingState';
 import { useAuthStore } from '../state/auth-store';
 
@@ -9,26 +8,27 @@ const AnonymousRuntime = lazy(() =>
     default: module.AnonymousAppRuntime
   }))
 );
-const AuthenticatedRuntime = lazy(async () => {
-  const [runtimeModule] = await Promise.all([
-    import('./AuthenticatedAppRuntime'),
-    loadApplicationI18nResources(),
-    import('../app-shell/AppShellFrame')
-  ]);
-  return { default: runtimeModule.AuthenticatedAppRuntime };
-});
+// This entry is preloaded by public sign-in HTML. Keep QueryClient, private API
+// consumers and authenticated dictionaries behind the authenticated boundary.
+const AuthenticatedStartup = lazy(() =>
+  import('./bootstrap/AuthenticatedStartup').then((module) => ({
+    default: module.AuthenticatedStartup
+  }))
+);
 
 export function ApplicationRuntimeBootstrap() {
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
   if (sessionStatus === 'unknown') {
     return <LoadingState fullscreen />;
   }
-  const Runtime =
-    sessionStatus === 'authenticated' ? AuthenticatedRuntime : AnonymousRuntime;
 
   return (
     <Suspense fallback={<LoadingState fullscreen />}>
-      <Runtime />
+      {sessionStatus === 'authenticated' ? (
+        <AuthenticatedStartup />
+      ) : (
+        <AnonymousRuntime />
+      )}
     </Suspense>
   );
 }

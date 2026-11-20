@@ -1,10 +1,11 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import type { PropsWithChildren } from 'react';
 import { Suspense, lazy, useEffect, useState } from 'react';
 
 import { AppThemeProvider } from '@1flowbase/ui/app-theme-provider';
 
 import { AppI18nProvider } from './AppI18nProvider';
+import { createApplicationQueryClient } from './bootstrap/authenticated-navigation';
 import { WindowWorkspaceProvider } from '../shared/ui/window-workspace/WindowWorkspaceProvider';
 import { useAuthStore } from '../state/auth-store';
 
@@ -31,22 +32,16 @@ function ActivatedRuntimeLifecycles() {
   ) : null;
 }
 
-export function AppProviders({ children }: PropsWithChildren) {
-  const [queryClient] = useState(() => {
-    const client = new QueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false
-        },
-        mutations: {
-          retry: false
-        }
-      }
-    });
-    // Retained canvases refresh after edits or explicit refresh, not on window focus.
-    client.setQueryDefaults(['frontstage'], { refetchOnWindowFocus: false });
-    return client;
-  });
+export function AppProviders({
+  children,
+  queryClient: suppliedClient
+}: PropsWithChildren<{
+  queryClient?: QueryClient;
+}>) {
+  const [ownedClient] = useState(
+    () => suppliedClient ?? createApplicationQueryClient()
+  );
+  const queryClient = suppliedClient ?? ownedClient;
 
   return (
     <AppThemeProvider>

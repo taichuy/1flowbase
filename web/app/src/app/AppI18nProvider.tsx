@@ -3,11 +3,17 @@ import enUS from 'antd/locale/en_US';
 import zhCN from 'antd/locale/zh_CN';
 import 'dayjs/locale/zh-cn';
 import type { PropsWithChildren } from 'react';
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { I18nextProvider } from 'react-i18next';
 
 import { useAuthStore } from '../state/auth-store';
-import { appI18n } from '../shared/i18n/app-i18n';
+import {
+  appI18n,
+  applicationI18nLoader,
+  prepareApplicationI18n
+} from '../shared/i18n/app-i18n';
+import { applicationNamespacesForPath } from '../shared/i18n/application-i18n-demand';
+import { LoadingState } from '../shared/ui/loading-state/LoadingState';
 import { resolveAppLocale, type AppLocale } from '../shared/i18n/locales';
 import {
   LOCALE_PREFERENCE_CHANGE_EVENT,
@@ -34,6 +40,16 @@ function getServerLocalePreference() {
   return null;
 }
 
+function subscribeToAppliedLanguage(onStoreChange: () => void) {
+  appI18n.on('languageChanged', onStoreChange);
+  return () => {
+    appI18n.off('languageChanged', onStoreChange);
+  };
+}
+function getAppliedLocale() {
+  return resolveAppLocale(appI18n.language);
+}
+
 export function AppI18nProvider({ children }: PropsWithChildren) {
   const preferredLocale = useAuthStore((state) => state.me?.preferred_locale);
   const userMeta = useAuthStore((state) => state.me?.meta);
@@ -51,9 +67,35 @@ export function AppI18nProvider({ children }: PropsWithChildren) {
     userLocalePreference ?? storedLocalePreference ?? urlLocalePreference;
   const appLocale = resolveAppLocale(resolvedUserLocalePreference);
 
+  const appliedLocale = useSyncExternalStore(
+    subscribeToAppliedLanguage,
+    getAppliedLocale,
+    getAppliedLocale
+  );
+  const [ready, setReady] = useState(
+    () =>
+      appliedLocale === appLocale &&
+      applicationI18nLoader.ready(
+        appLocale,
+        applicationNamespacesForPath(window.location.pathname)
+      )
+  );
+  const [initialError, setInitialError] = useState<unknown>(null);
+
   useEffect(() => {
-    void appI18n.changeLanguage(appLocale);
-  }, [appLocale]);
+    let active = true;
+    void prepareApplicationI18n(appLocale, window.location.pathname)
+      .then((applied) => {
+        if (active && applied) setReady(true);
+      })
+      .catch((error: unknown) => {
+        // A failed switch must retain the displayed page, drafts and old language.
+        if (active && !ready) setInitialError(error);
+      });
+    return () => {
+      active = false;
+    };
+  }, [appLocale, ready]);
 
   useEffect(() => {
     if (!userLocalePreference) {
@@ -63,9 +105,12 @@ export function AppI18nProvider({ children }: PropsWithChildren) {
     writeLocalePreferenceToStorage(userLocalePreference);
   }, [userLocalePreference]);
 
+  if (initialError) throw initialError;
+  if (!ready) return <LoadingState fullscreen />;
+
   return (
     <I18nextProvider i18n={appI18n}>
-      <ConfigProvider locale={getAntdLocale(appLocale)}>
+      <ConfigProvider locale={getAntdLocale(appliedLocale)}>
         {children}
       </ConfigProvider>
     </I18nextProvider>
