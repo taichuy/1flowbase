@@ -16,18 +16,24 @@ export function publicSignInPlugin(root: string): Plugin {
   );
   return {
     name: '1flowbase-public-sign-in',
-    resolveId(id, importer) {
-      if (id === virtualId || id === passwordId) return '\0' + id;
-      // This alias belongs ONLY to the build-time official template. Custom
-      // providers and the legacy artifact registry still receive real Antd.
-      if (
-        importer === '\0' + passwordId &&
-        (id === 'antd' || id === '@ant-design/icons')
-      ) {
-        return path.resolve(
-          root,
-          'src/features/auth/components/default-password/primitives.tsx'
-        );
+    resolveId: {
+      // Run before Vite's dependency resolver AND ordinary aliases (including
+      // the test/browser Antd ESM alias). Otherwise the bare import escapes to
+      // real Antd before this importer-scoped fast-path alias is considered.
+      order: 'pre',
+      handler(id, importer) {
+        if (id === virtualId || id === passwordId) return '\0' + id;
+        // This alias belongs ONLY to the build-time official template. Custom
+        // providers and the legacy artifact registry still receive real Antd.
+        if (
+          importer === '\0' + passwordId &&
+          (id === 'antd' || id === '@ant-design/icons')
+        ) {
+          return path.resolve(
+            root,
+            'src/features/auth/components/default-password/primitives.tsx'
+          );
+        }
       }
     },
     async load(id) {

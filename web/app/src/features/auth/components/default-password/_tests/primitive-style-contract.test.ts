@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import getDesignToken from 'antd/es/theme/getDesignToken';
 import ArrowLeftOutlined from '@ant-design/icons-svg/es/asn/ArrowLeftOutlined';
 import CloseCircleFilled from '@ant-design/icons-svg/es/asn/CloseCircleFilled';
@@ -6,12 +7,17 @@ import LoadingOutlined from '@ant-design/icons-svg/es/asn/LoadingOutlined';
 import { expect, test } from 'vitest';
 import { emeraldLightTheme } from '../../../../../../../packages/ui/src/theme';
 
+// These are filesystem fixtures, not Vite's new URL browser asset imports.
+const componentDirectory = path.resolve(
+  process.cwd(),
+  'src/features/auth/components/default-password'
+);
 const css = readFileSync(
-  new URL('../default-password.css', import.meta.url),
+  path.join(componentDirectory, 'default-password.css'),
   'utf8'
 );
 const primitives = readFileSync(
-  new URL('../primitives.tsx', import.meta.url),
+  path.join(componentDirectory, 'primitives.tsx'),
   'utf8'
 );
 const token = getDesignToken(emeraldLightTheme);

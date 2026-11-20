@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
-import { transformWithOxc } from 'vite';
+import { createServer, transformWithOxc } from 'vite';
 import { expect, test, vi } from 'vitest';
 import { publicSignInPlugin } from '../public-sign-in';
 
@@ -38,9 +38,11 @@ test('compiles the original backend source as conventional React, changing only 
 
 test('primitive aliases apply only to the official compiled module; custom/legacy modules keep real Antd', () => {
   const plugin = publicSignInPlugin(root);
-  const resolveId = plugin.resolveId;
-  if (typeof resolveId !== 'function')
-    throw new Error('Expected a resolve hook');
+  const resolveHook = plugin.resolveId;
+  if (!resolveHook || typeof resolveHook === 'function')
+    throw new Error('Expected an ordered resolve hook');
+  expect(resolveHook.order).toBe('pre');
+  const resolveId = resolveHook.handler;
   const resolve = (id: string, importer?: string) =>
     resolveId.call({} as never, id, importer, {} as never);
   expect(resolve(fastId)).toBe('\0' + fastId);
@@ -69,4 +71,45 @@ test('keeps the existing compiled artifact module and exact source SHA', async (
   );
   expect(result).toMatch(/^export default /);
   expect(result).toContain(createHash('sha256').update(source).digest('hex'));
+});
+
+test('Vite resolves official primitives before ordinary Antd aliases while custom modules retain Antd', async () => {
+  const alias = {
+    antd: path.resolve(root, 'node_modules/antd/es/index.js'),
+    '@ant-design/icons': path.resolve(
+      root,
+      'node_modules/@ant-design/icons/es/index.js'
+    )
+  };
+  const server = await createServer({
+    root,
+    configFile: false,
+    plugins: [publicSignInPlugin(root)],
+    resolve: { alias },
+    server: {
+      middlewareMode: true,
+      hmr: false,
+      watch: null,
+      preTransformRequests: false
+    },
+    optimizeDeps: { noDiscovery: true, include: [] }
+  });
+  try {
+    for (const [name, legacyPath] of Object.entries(alias)) {
+      const fast = await server.pluginContainer.resolveId(name, '\0' + fastId);
+      expect(fast?.id).toBe(
+        path.resolve(
+          root,
+          'src/features/auth/components/default-password/primitives.tsx'
+        )
+      );
+      const custom = await server.pluginContainer.resolveId(
+        name,
+        path.join(root, 'src/custom-provider.tsx')
+      );
+      expect(custom?.id).toBe(realpathSync(legacyPath));
+    }
+  } finally {
+    await server.close();
+  }
 });

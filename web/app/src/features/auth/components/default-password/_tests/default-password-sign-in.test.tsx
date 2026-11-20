@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import path from 'node:path';
 import {
   act,
   fireEvent,
@@ -27,9 +28,9 @@ afterEach(() => {
 });
 
 const source = readFileSync(
-  new URL(
-    '../../../../../../../../api/crates/control-plane/src/auth/public_ui_blocks/password_local.tsx',
-    import.meta.url
+  path.resolve(
+    process.cwd(),
+    '../../api/crates/control-plane/src/auth/public_ui_blocks/password_local.tsx'
   ),
   'utf8'
 );
@@ -113,6 +114,12 @@ test('uses native form controls and the existing POST client; pending lasts thro
     </StrictMode>
   );
   fillSignIn();
+  // Exercise the real plugin/TSX path, not an Antd-backed lookalike.
+  expect(screen.getByLabelText('Password')).toHaveClass('auth-password-input');
+  expect(screen.getByRole('button', { name: 'Sign in' })).toHaveClass(
+    'auth-password-button-primary'
+  );
+  expect(document.querySelector('.ant-input, .ant-btn, .ant-space')).toBeNull();
   expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password');
   expect(screen.getByLabelText('Password')).toHaveAttribute(
     'autocomplete',
