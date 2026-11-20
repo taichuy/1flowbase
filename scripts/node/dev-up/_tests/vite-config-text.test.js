@@ -28,19 +28,90 @@ function sourceFiles(directory) {
   });
 }
 
-function assertPreReactModuleBoundary(bootstrapSource, recoverySource) {
-  const staticImports = [
-    ...bootstrapSource.matchAll(
-      /^\s*import\s+(?:[^;]*?\s+from\s+)?['"]([^'"]+)['"]/gmu,
-    ),
-  ].map((match) => match[1]);
-  assert.deepEqual(staticImports, ['./app/bootstrap/dev-module-recovery']);
-  // The sole eager dependency is a browser-only recovery helper with no further
-  // module edges. Reject local transitive imports as well as heavy packages.
-  assert.doesNotMatch(
-    recoverySource,
-    /^\s*import\s|^\s*export\s+[^;]*?\s+from\s+['"]|\b(?:import|require)\s*\(/mu,
-  );
+// Pin the pre-React runtime graph, including the narrow API client export.
+// Type-only references are erased; the two deferred entry points are not walked.
+const webRoot = path.resolve(webSourceRoot, "../..");
+const bootstrapFile = "app/src/bootstrap.ts";
+const recoveryFile = "app/src/app/bootstrap/dev-module-recovery.ts";
+const auth = "app/src/features/auth";
+const api = "packages/api-client/src";
+const authSubpath = "@1flowbase/api-client/auth";
+const preReactImports = new Map([
+  [bootstrapFile, [
+    "./features/auth/components/hero/document-motion",
+    "./features/auth/api/login-entry-discovery",
+    "./features/auth/api/auth-session-discovery",
+    "./app/bootstrap/dev-module-recovery",
+  ]],
+  [recoveryFile, []],
+  [`${auth}/components/hero/document-motion.ts`, []],
+  [`${auth}/api/login-entry-discovery.ts`, ["./session"]],
+  [`${auth}/api/auth-session-discovery.ts`, ["./session"]],
+  [`${auth}/api/session.ts`, [authSubpath]],
+  [`${api}/auth/index.ts`, [
+    "../public/system-metadata", "../errors", "../transport",
+    "../console/session", "../console/identity/me", "../public-auth",
+  ]],
+  [`${api}/public/system-metadata.ts`, ["../transport"]],
+  [`${api}/errors.ts`, []],
+  [`${api}/transport.ts`, ["./errors"]],
+  [`${api}/console/session.ts`, ["../transport"]],
+  [`${api}/console/identity/me.ts`, ["../../transport"]],
+  [`${api}/public-auth.ts`, ["./transport"]],
+]);
+
+function readWebSource(file) {
+  return fs.readFileSync(path.resolve(webRoot, file), "utf8");
+}
+
+function assertPreReactModuleBoundary(readSource = readWebSource) {
+  const webRequire = createRequire(path.join(webRoot, "package.json"));
+  const ts = webRequire("typescript");
+  const authEntry = JSON.parse(readSource("packages/api-client/package.json"))
+    .exports["./auth"].default;
+  assert.equal(authEntry, "./src/auth/index.ts");
+
+  for (const [file, expected] of preReactImports) {
+    const source = ts.createSourceFile(file, readSource(file), ts.ScriptTarget.Latest);
+    const eager = [];
+    const deferred = [];
+    function visit(node) {
+      if (
+        (ts.isImportDeclaration(node) && !node.importClause?.isTypeOnly) ||
+        (ts.isExportDeclaration(node) && node.moduleSpecifier && !node.isTypeOnly)
+      ) {
+        eager.push(node.moduleSpecifier.text);
+      }
+      if (ts.isExternalModuleReference(node)) {
+        assert.fail(`${file}: unexpected import-equals dependency`);
+      }
+      if (ts.isCallExpression(node)) {
+        if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+          const target = node.arguments[0];
+          assert.ok(target && ts.isStringLiteral(target), `${file}: nonliteral import()`);
+          deferred.push(target.text);
+        }
+        assert.ok(
+          !ts.isIdentifier(node.expression) || node.expression.text !== "require",
+          `${file}: unexpected require() dependency`,
+        );
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+    assert.deepEqual(eager.sort(), [...expected].sort(), `${file}: eager dependencies`);
+    assert.deepEqual(
+      deferred.sort(),
+      file === bootstrapFile ? ["./app/AnonymousAppRuntime", "./main"] : [],
+      `${file}: deferred dependencies`,
+    );
+    for (const specifier of eager) {
+      const target = specifier === authSubpath
+        ? path.posix.join("packages/api-client", authEntry)
+        : path.posix.join(path.posix.dirname(file), `${specifier}.ts`);
+      assert.ok(preReactImports.has(target), `${file}: unverified dependency ${target}`);
+    }
+  }
 }
 
 test("vite config uses the repo default frontend port", () => {
@@ -176,20 +247,13 @@ test("DRS-003 pre-React bootstrap never leaves an empty root after module failur
   assert.match(indexSource, /data-testid="application-bootstrap-shell"/u);
   assert.match(indexSource, /class="application-bootstrap-shell__spinner"/u);
   assert.match(indexSource, />thinking<\/span>/u);
-  const recoverySource = fs.readFileSync(
-    path.resolve(webSourceRoot, 'app/bootstrap/dev-module-recovery.ts'),
-    'utf8',
-  );
-  assertPreReactModuleBoundary(bootstrapSource, recoverySource);
+  assertPreReactModuleBoundary();
   assert.match(bootstrapSource, /if \(recoverDevModuleGraph\(error\)\) return/u);
   assert.match(bootstrapSource, /resetDevModuleRecovery\(\)/u);
   assert.match(bootstrapSource, /root\.replaceChildren\(alert\)/u);
   assert.doesNotMatch(bootstrapSource, /renderBootStage/u);
   assert.match(bootstrapSource, /renderBootFailure/u);
-  assert.match(
-    bootstrapSource,
-    /import\(['"]\.\/features\/auth\/api\/auth-session-discovery['"]\)/u,
-  );
+  assert.match(bootstrapSource, /void startAuthSessionDiscovery\(\)\.catch/u);
   assert.match(bootstrapSource, /import\(['"]\.\/main['"]\)\.catch/u);
   assert.match(appSource, /import \{ LoadingState \}/u);
   assert.match(appSource, /fallback=\{<LoadingState fullscreen \/>\}/u);
@@ -208,28 +272,23 @@ test("DRS-003 pre-React bootstrap never leaves an empty root after module failur
   );
 });
 
-test('DRS-003 eager boundary rejects new bootstrap or recovery module dependencies', () => {
-  const bootstrap = "import { recoverDevModuleGraph } from './app/bootstrap/dev-module-recovery';";
-  const recovery = 'export function recoverDevModuleGraph() { return false; }';
-  assert.doesNotThrow(() => assertPreReactModuleBoundary(bootstrap, recovery));
-  for (const dependency of [
-    "import React from 'react';",
-    "import './heavy-local-module';",
+test("DRS-003 rejects new dependencies anywhere in the pre-React graph", () => {
+  for (const [file, dependency] of [
+    [bootstrapFile, "import React from 'react';"],
+    [bootstrapFile, "void import('./unexpected-runtime');"],
+    [recoveryFile, "import './heavy-local-module';"],
+    [recoveryFile, "export { App } from './App';"],
+    [recoveryFile, "void import('./App');"],
+    [recoveryFile, "const React = require('react');"],
+    [`${auth}/api/session.ts`, "import '@1flowbase/api-client';"],
+    [`${api}/transport.ts`, "export { render } from 'react-dom';"],
   ]) {
-    assert.throws(() =>
-      assertPreReactModuleBoundary(`${bootstrap}\n${dependency}`, recovery),
-    );
-    assert.throws(() =>
-      assertPreReactModuleBoundary(bootstrap, `${dependency}\n${recovery}`),
-    );
-  }
-  for (const dependency of [
-    "export { App } from './App';",
-    "void import('./App');",
-    "const React = require('react');",
-  ]) {
-    assert.throws(() =>
-      assertPreReactModuleBoundary(bootstrap, `${dependency}\n${recovery}`),
+    assert.throws(
+      () => assertPreReactModuleBoundary((sourceFile) => {
+        const source = readWebSource(sourceFile);
+        return sourceFile === file ? `${source}\n${dependency}` : source;
+      }),
+      (error) => error.code === "ERR_ASSERTION" && error.message.startsWith(`${file}:`),
     );
   }
 });
