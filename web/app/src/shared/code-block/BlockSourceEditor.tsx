@@ -1,4 +1,5 @@
 import { Button } from 'antd';
+import type { CancellationToken, editor, languages, Position } from 'monaco-editor';
 import type { BeforeMount, Monaco, OnMount } from '@monaco-editor/react';
 import {
   Suspense,
@@ -122,7 +123,12 @@ export function BlockSourceEditor({
       'typescript',
       {
         triggerCharacters: ['"', "'", '/'],
-        async provideCompletionItems(model, _position, _context, token) {
+        async provideCompletionItems(
+          model: editor.ITextModel,
+          _position: Position,
+          _context: languages.CompletionContext,
+          token: CancellationToken
+        ) {
           if (model !== editor.getModel()) return { suggestions: [] };
           try {
             const changed = await session.loadAll(declarationLoader);
