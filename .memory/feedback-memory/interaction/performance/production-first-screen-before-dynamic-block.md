@@ -3,7 +3,7 @@ title: "生产首屏性能以真实页面和动态区块分阶段验收"
 memory_type: feedback
 feedback_category: interaction
 created_at: "2026-11-19 22"
-updated_at: "2026-11-20 10"
+updated_at: "2026-11-20 16"
 decision_policy: direct_reference
 status: active
 tags: [frontend, production-build, first-screen, dynamic-block, performance]
@@ -34,3 +34,5 @@ tags: [frontend, production-build, first-screen, dynamic-block, performance]
 2026-11-20 09：用户明确本次不满意的是首次直达时全屏 `thinking` 停留过久，不是表单区的等待提示。处理此类首访问题，先使原动画页面可见、可交互，再在不抢当前交互的前提下异步取得下一步所需的通用依赖；算法建议应指向具体阻塞关系与可验证的结果，而非只报包大小。该优先级不授权绕过会话或部署。
 
 2026-11-20 10：首访截图若只有叶片和 thinking 而缺原页面配置允许的标题、标语与页脚，只能作阻塞诊断，不能作为完成交付。验收从导航开始，分别记录完整可辨认的原画面与真实输入；保留动态表单二阶段，不以假表单填充。
+
+2026-11-20 16：用户提交渲染后表单外观差异和公网登录后工作区报错一起复核；此类对比先核对同入口的实际渲染分支（动态块还是异常兜底），再比较计算样式。登录链须验证跳转后的工作区内容，不把能输入或路由已切换当作工作区可用。
