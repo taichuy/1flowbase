@@ -209,7 +209,27 @@ export function assertSignInBudget(bundle: Bundle) {
   ].filter(Boolean);
   if (failures.length)
     throw new Error(
-      `Sign-in budget exceeded: ${failures.join(', ')}\n${JSON.stringify(summary, null, 2)}`
+      `Sign-in budget exceeded: ${failures.join(', ')}\n${JSON.stringify(
+        {
+          ...summary,
+          contributors: files
+            .filter((file) => bundle[file.file].type === 'chunk')
+            .map((file) => ({
+              file: file.file,
+              modules: Object.entries((bundle[file.file] as Chunk).modules)
+                .map(([id, info]) => ({
+                  id,
+                  renderedLength: (info as { renderedLength?: number })
+                    .renderedLength
+                }))
+                .sort(
+                  (a, b) => (b.renderedLength ?? 0) - (a.renderedLength ?? 0)
+                )
+            }))
+        },
+        null,
+        2
+      )}`
     );
   return summary;
 }

@@ -120,7 +120,7 @@ export const scenarioCodeSplitting = {
     // entry; authenticated/MCP/custom imports remain real dynamic boundaries.
     {
       name: 'auth-anonymous',
-      test: /[\\/]src[\\/](?:bootstrap\.ts|main\.tsx|app[\\/](?:AnonymousAppRuntime|ApplicationRuntimeBootstrap)\.tsx)$/u,
+      test: /[\\/]src[\\/](?:bootstrap\.ts|main\.tsx|app[\\/](?:AnonymousAppRuntime|ApplicationRuntimeBootstrap)\.tsx)$|vite[\\/]modulepreload-polyfill(?:\.js)?$/u,
       priority: 25
     },
     { name: (id: string) => planScenarioChunk(id) ?? null }

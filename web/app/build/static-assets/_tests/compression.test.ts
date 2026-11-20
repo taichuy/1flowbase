@@ -74,13 +74,13 @@ test('511/512 is a byte boundary for binary and multibyte UTF-8 originals', asyn
   }
 });
 
-test('all six final extensions use exact gz9/br11-text bytes and preserve original bytes/mtime', async () => {
+test('all supported final extensions use exact gz9/br11-text bytes and preserve original bytes/mtime', async () => {
   const f = await fixture();
   try {
     const backing = Buffer.concat([Buffer.from('ignore'), Buffer.alloc(2048, 0xfe), Buffer.from('ignore')]);
     const bytes = Buffer.from(backing.subarray(6, -6));
     const files = [];
-    for (const extension of ['js', 'css', 'html', 'svg', 'json', 'wasm']) {
+    for (const extension of ['js', 'mjs', 'css', 'html', 'svg', 'json', 'wasm']) {
       const file = await f.put(`nested/original.${extension}`, backing.subarray(6, -6));
       await utimes(file, 1700000000.125, 1700000000.125);
       files.push(file);

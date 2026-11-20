@@ -1,3 +1,4 @@
+import '../styles/antd-defaults.css';
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import type { PropsWithChildren } from 'react';
 import { Suspense, lazy, useEffect, useState } from 'react';

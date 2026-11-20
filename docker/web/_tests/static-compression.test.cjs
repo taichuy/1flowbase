@@ -21,7 +21,7 @@ function location(header) {
 
 test('server compression is negotiated, inherited, thresholded and does not assume a Brotli module', () => {
   for (const directive of [
-    'gzip on;', 'gzip_static on;', 'gzip_vary on;',
+    'gzip on;', 'gzip_static on;', 'gzip_vary on;', 'gzip_proxied any;',
     'gzip_min_length 512;', 'gzip_comp_level 5;',
   ]) assert.ok(serverDirectives.includes(directive), directive);
   const types = serverDirectives.match(/gzip_types\s+([^;]+);/)[1].split(/\s+/);
@@ -206,14 +206,14 @@ http {
   });
 
   await t.test('server-level dynamic gzip uses the byte threshold and all required MIME types', async () => {
-    const small = await request(port, '/small.txt', { 'Accept-Encoding': 'gzip' });
+    const small = await request(port, '/small.txt', { 'Accept-Encoding': 'gzip', Via: '1.1 fixture-proxy' });
     assert.equal(small.headers['content-encoding'], undefined);
     assert.equal(small.body.length, 511);
-    const boundary = await request(port, '/boundary.txt', { 'Accept-Encoding': 'gzip' });
+    const boundary = await request(port, '/boundary.txt', { 'Accept-Encoding': 'gzip', Via: '1.1 fixture-proxy' });
     assert.equal(boundary.headers['content-encoding'], 'gzip');
     assert.deepEqual(gunzipSync(boundary.body), Buffer.alloc(512, 0x61));
     for (const extension of ['txt', 'css', 'js', 'mjs', 'json', 'svg', 'wasm']) {
-      const response = await request(port, `/dynamic.${extension}`, { 'Accept-Encoding': 'gzip' });
+      const response = await request(port, `/dynamic.${extension}`, { 'Accept-Encoding': 'gzip', Via: '1.1 fixture-proxy' });
       assert.equal(response.headers['content-encoding'], 'gzip', extension);
       assert.deepEqual(gunzipSync(response.body), payload);
     }
@@ -245,7 +245,7 @@ http {
 
   await t.test('hashed assets/native JSON cache hits only; unhashed assets and misses are never immutable', async () => {
     for (const url of [nativePath, ...['js', 'css', 'html', 'svg', 'json', 'wasm'].map((ext) => `/assets/file-abcd1234.${ext}`)]) {
-      const response = await request(port, url, { 'Accept-Encoding': 'gzip' });
+      const response = await request(port, url, { 'Accept-Encoding': 'gzip', Via: '1.1 fixture-proxy' });
       assert.equal(response.status, 200, url);
       assert.match(response.headers['cache-control'], /immutable/);
       assert.deepEqual(gunzipSync(response.body), payload);

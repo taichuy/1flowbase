@@ -13,7 +13,6 @@ import {
   navigatePublicRoute,
   usePublicLocation
 } from '../lib/anonymous-navigation';
-import { diagnoseLegacyBlockModuleSource } from '@1flowbase/page-runtime/source-contract';
 
 import { AnonymousLoadingState as LoadingState } from '../components/anonymous-loading/AnonymousLoadingState';
 import { useAuthStore } from '../../../state/auth-store';
@@ -22,7 +21,11 @@ import {
   fetchCurrentSession,
   type PublicLoginEntry
 } from '../api/session';
-import { BuiltinPasswordSignIn } from '../components/BuiltinPasswordSignIn';
+const BuiltinPasswordSignIn = lazy(() =>
+  import('../components/BuiltinPasswordSignIn').then((module) => ({
+    default: module.BuiltinPasswordSignIn
+  }))
+);
 
 import { consumeLoginEntryDiscovery } from '../api/login-entry-discovery';
 import { SignInPanel } from '../components/hero/SignInPanel';
@@ -125,12 +128,6 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
       ),
     [selectedLoginEntry]
   );
-  const selectedInstanceUsesLegacyContract =
-    !isDefaultPassword &&
-    Boolean(
-      selectedLoginEntry &&
-      diagnoseLegacyBlockModuleSource(selectedLoginEntry.public_ui_block)
-    );
 
   const formHost = useRef<HTMLDivElement>(null);
   useAuthenticatedPrewarm(formHost, selectedLoginEntry);
@@ -284,16 +281,6 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
           ) : null}
           {!loading &&
           selectedLoginEntry?.entry_action === 'render_ui' &&
-          selectedInstanceUsesLegacyContract ? (
-            <BuiltinPasswordSignIn
-              loginEntryId={selectedLoginEntry.id}
-              loginEntrySelector={loginEntrySelector}
-              onAuthenticated={handleAuthenticated}
-            />
-          ) : null}
-          {!loading &&
-          selectedLoginEntry?.entry_action === 'render_ui' &&
-          !selectedInstanceUsesLegacyContract &&
           isDefaultPassword ? (
             <DefaultPasswordSignIn
               key={selectedLoginEntry.id}
@@ -304,7 +291,6 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
           ) : null}
           {!loading &&
           selectedLoginEntry?.entry_action === 'render_ui' &&
-          !selectedInstanceUsesLegacyContract &&
           !isDefaultPassword ? (
             <Suspense fallback={<LoadingState compact />}>
               <CustomAuthRuntime
@@ -316,7 +302,9 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
             </Suspense>
           ) : null}
           {!loading && (discoveryFailed || loginEntries.length === 0) ? (
-            <BuiltinPasswordSignIn onAuthenticated={handleAuthenticated} />
+            <Suspense fallback={<LoadingState compact />}>
+              <BuiltinPasswordSignIn onAuthenticated={handleAuthenticated} />
+            </Suspense>
           ) : null}
         </SignInPanel>
       </div>

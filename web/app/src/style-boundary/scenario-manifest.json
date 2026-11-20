@@ -6,6 +6,7 @@
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/app/src/features/agent-flow/components/editor/styles/shell.css",
       "web/app/src/features/agent-flow/components/editor/styles/dock-panel.css",
       "web/app/src/shared/ui/loading-state/loading-state.css",
@@ -60,6 +61,7 @@
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/app/src/app-shell/app-shell.css",
       "web/packages/ui/src/index.tsx",
       "web/app/src/app-shell/AccountMenu.tsx",
@@ -85,6 +87,7 @@
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/app/src/app-shell/app-shell.css",
       "web/packages/ui/src/index.tsx",
       "web/app/src/app-shell/AccountMenu.tsx",
@@ -157,6 +160,7 @@
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/app/src/app-shell/app-shell.css",
       "web/packages/ui/src/index.tsx",
       "web/app/src/app-shell/AppShellFrame.tsx",
@@ -195,6 +199,7 @@
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/app/src/app/AppProviders.tsx",
       "web/app/src/app-shell/app-shell.css",
       "web/packages/ui/src/index.tsx",
@@ -632,6 +637,7 @@
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/app/src/app-shell/app-shell.css",
       "web/packages/ui/src/index.tsx",
       "web/app/src/app-shell/AppShellFrame.tsx",
@@ -778,6 +784,7 @@
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/app/src/app-shell/app-shell.css",
       "web/packages/ui/src/index.tsx",
       "web/app/src/app-shell/AppShellFrame.tsx",
@@ -928,6 +935,7 @@
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/app/src/app-shell/app-shell.css",
       "web/packages/ui/src/index.tsx",
       "web/app/src/app-shell/AppShellFrame.tsx",
@@ -957,6 +965,7 @@
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/app/src/app-shell/app-shell.css",
       "web/packages/ui/src/index.tsx",
       "web/app/src/app-shell/AppShellFrame.tsx",
@@ -999,6 +1008,7 @@
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/packages/ui/src/index.tsx",
       "web/app/src/features/settings/pages/settings-page/SettingsExtensionCenterSection.tsx",
       "web/app/src/features/settings/components/mcp-management/bundle/McpTemplateLibrary.tsx",
@@ -1028,6 +1038,7 @@
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/app/src/app-shell/app-shell.css",
       "web/packages/ui/src/index.tsx",
       "web/app/src/app-shell/AppShellFrame.tsx",
@@ -1604,6 +1615,7 @@
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/app/src/app-shell/app-shell.css",
       "web/packages/ui/src/index.tsx",
       "web/app/src/app-shell/AppShellFrame.tsx",
@@ -1674,6 +1686,7 @@
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/app/src/app-shell/app-shell.css",
       "web/packages/ui/src/index.tsx",
       "web/app/src/app-shell/AppShellFrame.tsx",
@@ -1833,6 +1846,7 @@
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/app/src/app-shell/app-shell.css",
       "web/packages/ui/src/index.tsx",
       "web/app/src/app-shell/AppShellFrame.tsx",
@@ -1911,6 +1925,7 @@
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/app/src/app-shell/app-shell.css",
       "web/packages/ui/src/index.tsx",
       "web/app/src/app-shell/AppShellFrame.tsx",
@@ -2004,6 +2019,7 @@
     "impactFiles": [
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/app/src/app-shell/app-shell.css",
       "web/packages/ui/src/index.tsx",
       "web/app/src/app-shell/AppShellFrame.tsx",
@@ -2095,11 +2111,15 @@
       "web/app/index.html",
       "web/app/src/styles/tokens.css",
       "web/app/src/styles/globals.css",
+      "web/app/src/styles/antd-defaults.css",
       "web/app/src/shared/i18n/app-i18n.ts",
       "web/app/src/shared/ui/loading-state/LoadingState.tsx",
       "web/app/src/shared/ui/loading-state/loading-state.css",
       "web/app/src/features/auth/pages/SignInPage.tsx",
       "web/app/src/features/auth/pages/sign-in-page.css",
+      "web/app/src/features/auth/components/anonymous-loading/anonymous-loading.css",
+      "web/app/src/features/auth/components/default-password/default-password.css",
+      "web/app/src/features/auth/components/builtin-password.css",
       "web/app/src/features/auth/components/HeroAnimation.tsx",
       "web/app/src/features/auth/components/PublicAuthProviders.tsx",
       "web/app/src/app/AnonymousAppRuntime.tsx",

@@ -6,7 +6,7 @@ import type { Plugin } from 'vite';
 
 const compressGzip = promisify(gzip);
 const compressBrotli = promisify(brotliCompress);
-const compressibleFile = /\.(?:js|css|html|svg|json|wasm)$/u;
+const compressibleFile = /\.(?:js|mjs|css|html|svg|json|wasm)$/u;
 
 async function compressDirectory(directory: string): Promise<void> {
   const entries = await readdir(directory, { withFileTypes: true });

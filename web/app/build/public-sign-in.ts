@@ -8,6 +8,7 @@ import { defaultLoginImports } from '../src/features/auth/lib/default-login-impo
 
 const virtualId = 'virtual:1flowbase-default-login-artifact';
 const passwordId = 'virtual:1flowbase-default-password';
+const translationsId = 'virtual:1flowbase-auth-translations';
 
 export function publicSignInPlugin(root: string): Plugin {
   const template = path.resolve(
@@ -22,7 +23,8 @@ export function publicSignInPlugin(root: string): Plugin {
       // real Antd before this importer-scoped fast-path alias is considered.
       order: 'pre',
       handler(id, importer) {
-        if (id === virtualId || id === passwordId) return '\0' + id;
+        if (id === virtualId || id === passwordId || id === translationsId)
+          return '\0' + id;
         // This alias belongs ONLY to the build-time official template. Custom
         // providers and the legacy artifact registry still receive real Antd.
         if (
@@ -37,6 +39,23 @@ export function publicSignInPlugin(root: string): Plugin {
       }
     },
     async load(id) {
+      if (id === '\0' + translationsId) {
+        // A build-time projection of the same catalogs, not a second dictionary.
+        // The full auth namespace (including MCP) stays in the lazy appI18n graph.
+        return ['en_US', 'zh_Hans']
+          .map((locale) => {
+            const file = path.resolve(
+              root,
+              `src/features/auth/i18n/${locale}.json`
+            );
+            this.addWatchFile(file);
+            const { sign_in, external_auth, auto } = JSON.parse(
+              readFileSync(file, 'utf8')
+            );
+            return `export const ${locale} = ${JSON.stringify({ sign_in, external_auth, auto })};`;
+          })
+          .join('\n');
+      }
       if (id === '\0' + passwordId) {
         this.addWatchFile(template);
         const source = readFileSync(template, 'utf8');

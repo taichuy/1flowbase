@@ -93,6 +93,35 @@ export function signInResourceHintsPlugin(): Plugin {
           throw new Error(`Missing sign-in preload root: ${root}`);
         });
         const href = (file: string) => `${base}${file}`;
+        // The guarded index has no document-owned hero. Discover its fallback
+        // graph in HTML, not after React mounts. The motion document deliberately
+        // uses the original HTML below: its live artwork needs no second copy.
+        const fallbackRoots = [...chunks]
+          .filter(([, chunk]) =>
+            Object.keys(chunk.modules).some((id) =>
+              id.replaceAll('\\', '/').endsWith('/hero/SignInFallbackHero.tsx')
+            )
+          )
+          .map(([file]) => file);
+        if (fallbackRoots.length) {
+          const fallback = signInPreloads(chunks, fallbackRoots);
+          const resources = [
+            ...fallback.map((file) => ({
+              rel: 'modulepreload',
+              href: href(file)
+            })),
+            ...signInStylePreloads(chunks, fallback).map((file) => ({
+              rel: 'preload',
+              href: href(file),
+              as: 'style'
+            }))
+          ];
+          doc.source = html.replace(
+            '</body>',
+            `<script>if(/^\\/sign-in\\/?$/.test(location.pathname)){for(const r of ${JSON.stringify(resources)}){if(Array.from(document.querySelectorAll('link')).some(l=>l.href===new URL(r.href,document.baseURI).href))continue;const l=document.createElement('link');Object.assign(l,r);l.crossOrigin='';document.head.append(l)}}</script></body>`
+          );
+        }
+
         const visual = signInPreloads(chunks, entries);
         const hints: string[] = [];
         for (const file of signInStylePreloads(chunks, visual)) {

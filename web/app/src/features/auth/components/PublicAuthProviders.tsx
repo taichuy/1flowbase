@@ -1,3 +1,4 @@
+import '../../../styles/antd-defaults.css';
 import { useLayoutEffect, useState, type PropsWithChildren } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { I18nextProvider } from 'react-i18next';

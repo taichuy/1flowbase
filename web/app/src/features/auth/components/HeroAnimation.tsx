@@ -1,12 +1,11 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useLayoutEffect, useRef, useState } from 'react';
 import { useAuthTranslation } from '../lib/auth-i18n';
-import { HeroArtwork, HeroTagline } from './hero/HeroArtwork';
 import {
   findDocumentArtwork,
   discardDocumentScene,
   setDocumentBrand
 } from './hero/document-motion';
-import { startLeafMotion } from './hero/leaf-motion';
+const SignInFallbackHero = lazy(() => import('./hero/SignInFallbackHero'));
 
 export function HeroAnimation({
   hide_login_tagline
@@ -21,14 +20,10 @@ export function HeroAnimation({
     if (opening) setDocumentBrand(opening, slogan);
   }, [opening, slogan]);
   useLayoutEffect(() => {
-    const target = host.current!;
     if (opening) {
+      const target = host.current!;
       // Move the live canvas, its pointer target and its simulation together. Do not restart on handoff.
       target.appendChild(opening);
-      opening.stopMotion ??= startLeafMotion(
-        opening.querySelector('canvas')!,
-        opening.querySelector('.auth-sign-in-hero')!
-      );
       discardDocumentScene();
       return () => {
         queueMicrotask(() => {
@@ -39,18 +34,19 @@ export function HeroAnimation({
         });
       };
     }
-    return startLeafMotion(
-      target.querySelector('canvas')!,
-      target.querySelector('.auth-sign-in-hero')!
-    );
   }, [opening]);
-  return (
+  // An intact document opening never requests the fallback graph. Recovery also
+  // goes through Suspense: an abandoned mount cannot start a late simulation.
+  const fallback = (!opening || !opening.stopMotion) && (
+    <Suspense fallback={null}>
+      <SignInFallbackHero opening={opening} slogan={slogan} />
+    </Suspense>
+  );
+  return opening ? (
     <div ref={host} style={{ display: 'contents' }}>
-      {!opening && (
-        <HeroArtwork>
-          {slogan !== null && <HeroTagline slogan={slogan} />}
-        </HeroArtwork>
-      )}
+      {fallback}
     </div>
+  ) : (
+    fallback
   );
 }

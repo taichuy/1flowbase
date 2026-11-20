@@ -5,7 +5,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { build } from 'vite';
+import { build, preprocessCSS, resolveConfig } from 'vite';
 import {
   HeroArtwork,
   HeroTagline
@@ -57,7 +57,25 @@ export async function motionDocument(
     ),
     'utf8'
   );
-  const scene = renderToStaticMarkup(
+  // Reuse Vite's installed Lightning CSS pipeline; no optional esbuild install.
+  const styleConfig = await resolveConfig(
+    {
+      configFile: false,
+      root,
+      logLevel: 'silent',
+      css: { transformer: 'lightningcss' },
+      build: { cssMinify: 'lightningcss' }
+    },
+    'build',
+    'production'
+  );
+  const minifyStyle = (css: string) =>
+    preprocessCSS(css, path.join(root, 'sign-in-opening.css'), {
+      ...styleConfig,
+      isProduction: true
+    });
+  const styles = await minifyStyle(`${frameCSS}\n${loadingCSS}`);
+  let scene = renderToStaticMarkup(
     <div id={documentSceneId}>
       <div className="auth-sign-in-page">
         <div data-hero-artwork="" style={{ display: 'contents' }}>
@@ -73,6 +91,31 @@ export async function motionDocument(
       </div>
     </div>
   );
+  // Hero's existing inline style literal has the same CSS-parser minification;
+  // markup, geometry, keyframes and animation ownership remain unchanged.
+  for (const match of [...scene.matchAll(/<style>([\s\S]*?)<\/style>/gu)]) {
+    scene = scene.replace(
+      match[0],
+      `<style>${(await minifyStyle(match[1])).code}</style>`
+    );
+  }
+  // The opening owns the loading skeleton; the hidden generic entry skeleton
+  // is redundant. Keep base/reset and failure/retry styles for load failures.
+  html = html
+    .replace(
+      /\/\* document-skeleton:start \*\/[\s\S]*?\/\* document-skeleton:end \*\//gu,
+      ''
+    )
+    .replace(
+      /<!-- document-skeleton:start -->[\s\S]*?<!-- document-skeleton:end -->/gu,
+      ''
+    );
+  for (const match of [...html.matchAll(/<style>([\s\S]*?)<\/style>/gu)]) {
+    html = html.replace(
+      match[0],
+      `<style>${(await minifyStyle(match[1])).code}</style>`
+    );
+  }
   // Vite's generated head hints belong to stage two; the static scene carries its own CSS.
   const deferred: string[] = [];
   const document = html.replace(
@@ -85,7 +128,7 @@ export async function motionDocument(
   return document
     .replace(
       '</head>',
-      `<style>${frameCSS}\n${loadingCSS}\n#${documentSceneId} * {box-sizing:border-box}\n#${documentSceneId} ~ #root {display:none}\n[data-opening-brand]:not([hidden]){display:contents}</style></head>`
+      `<style>${styles.code}\n#${documentSceneId} * {box-sizing:border-box}\n#${documentSceneId} ~ #root {display:none}\n[data-opening-brand]:not([hidden]){display:contents}</style></head>`
     )
     .replace(
       '<body>',

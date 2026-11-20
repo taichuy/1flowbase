@@ -5,6 +5,11 @@ import { HeroAnimation } from '../components/HeroAnimation';
 import { startLeafMotion } from '../components/hero/leaf-motion';
 import type { DocumentArtwork } from '../components/hero/document-motion';
 
+const fallbackLoad = vi.hoisted(() => vi.fn());
+vi.mock('../components/hero/SignInFallbackHero', async (importOriginal) => {
+  fallbackLoad();
+  return importOriginal();
+});
 vi.mock('../components/hero/leaf-motion', () => ({ startLeafMotion: vi.fn() }));
 test('StrictMode adopts the existing document canvas and simulation without restarting motion', async () => {
   localStorage.clear();
@@ -34,6 +39,7 @@ test('StrictMode adopts the existing document canvas and simulation without rest
     'AI app base begins from chat history.'
   );
   expect(startLeafMotion).not.toHaveBeenCalled();
+  expect(fallbackLoad).not.toHaveBeenCalled();
   expect(stop).not.toHaveBeenCalled();
   view.rerender(
     <StrictMode>

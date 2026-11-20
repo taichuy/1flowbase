@@ -1,11 +1,10 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { dirname, resolve, relative } from 'node:path';
 import ts from 'typescript';
 import { expect, test } from 'vitest';
 
 test('the sign-in-preloaded bootstrap has no static private runtime/API dependency', () => {
-  const root = fileURLToPath(new URL('../../../', import.meta.url));
+  const root = resolve(process.cwd(), 'src');
   const visited = new Set<string>();
   const specifiers = new Set<string>();
   const walk = (path: string) => {

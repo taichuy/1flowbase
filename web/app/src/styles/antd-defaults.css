@@ -1,0 +1,38 @@
+/* Whitelisted theme-level Ant Design defaults: keep these as approved global styling baselines, not as strict override violations, unless they cause a concrete page regression or block local fixes. */
+.ant-card {
+  box-shadow: var(--shadow-card) !important;
+}
+
+.ant-btn-link {
+  padding-inline: 0 !important;
+}
+
+.ant-btn-primary {
+  border: 1px solid rgba(0, 171, 115, 0.24) !important;
+  text-shadow: none !important;
+  transition: all 0.2s ease !important;
+}
+
+.ant-btn-primary:hover,
+.ant-btn-primary:focus-visible {
+  border-color: rgba(0, 171, 115, 0.45) !important;
+}
+
+.ant-btn-primary:active {
+  border-color: rgba(0, 171, 115, 0.58) !important;
+}
+
+.ant-btn-dangerous.ant-btn-default {
+  background: rgba(251, 86, 91, 0.08) !important;
+  border-color: rgba(251, 86, 91, 0.26) !important;
+  color: #c83c43 !important;
+}
+
+.ant-list .ant-list-item {
+  border-block-end-color: var(--border-subtle) !important;
+}
+
+.ant-table-wrapper .ant-table {
+  background: transparent !important;
+}
+

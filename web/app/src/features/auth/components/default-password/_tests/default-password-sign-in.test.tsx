@@ -24,7 +24,9 @@ vi.mock('@1flowbase/api-client/auth', async (importOriginal) => ({
 }));
 
 afterEach(() => {
-  vi.resetAllMocks();
+  // Reset our request double, not shared DOM shims from the standard setup.
+  vi.mocked(apiFetch).mockReset();
+  vi.clearAllMocks();
 });
 
 const source = readFileSync(

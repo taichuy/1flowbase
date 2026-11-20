@@ -1,14 +1,5 @@
 import { useCallback, useSyncExternalStore } from 'react';
-import {
-  sign_in as enSignIn,
-  external_auth as enExternal,
-  auto as enAuto
-} from '../i18n/en_US.json';
-import {
-  sign_in as zhSignIn,
-  external_auth as zhExternal,
-  auto as zhAuto
-} from '../i18n/zh_Hans.json';
+import { en_US, zh_Hans } from 'virtual:1flowbase-auth-translations';
 import { getInitialAppLocale } from '../../../shared/i18n/initial-locale';
 import { LOCALE_PREFERENCE_CHANGE_EVENT } from '../../../shared/user-preferences/locale-preference';
 import type { AppLocale } from '../../../shared/i18n/locales';
@@ -17,8 +8,8 @@ import { subscribePublicLocation } from './anonymous-navigation';
 // These are the existing JSON values, not a second copy/catalog. MCP keeps its
 // namespace in appI18n behind its full-runtime boundary.
 const resources = {
-  en_US: { sign_in: enSignIn, external_auth: enExternal, auto: enAuto },
-  zh_Hans: { sign_in: zhSignIn, external_auth: zhExternal, auto: zhAuto }
+  en_US,
+  zh_Hans
 };
 type Options = Record<string, unknown> & { defaultValue?: string };
 

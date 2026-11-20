@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import * as transport from '../transport';
+import * as transport from '../transport/json';
 
 import { fetchPublicLoginEntries, signInWithPassword } from '../public-auth';
 

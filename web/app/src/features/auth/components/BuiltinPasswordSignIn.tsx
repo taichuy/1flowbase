@@ -1,3 +1,4 @@
+import './builtin-password.css';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useAuthTranslation } from '../lib/auth-i18n';
 

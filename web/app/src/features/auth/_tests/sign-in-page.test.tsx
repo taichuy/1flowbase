@@ -12,7 +12,7 @@ vi.mock('../lib/public-system-metadata', () => ({
   usePublicSystemMetadata: () => ({ data: systemMetadata })
 }));
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const {
   navigateSpy,
@@ -93,7 +93,6 @@ vi.mock('../components/BuiltinPasswordSignIn', () => ({
   BuiltinPasswordSignIn: () => <form aria-label="Escape password sign in" />
 }));
 
-import { AppProviders } from '../../../app/AppProviders';
 import { useAuthStore } from '../../../state/auth-store';
 import { SignInPage } from '../pages/SignInPage';
 
@@ -110,6 +109,11 @@ const passwordInstance = {
 };
 
 describe('SignInPage', () => {
+  // Transform the real lazy provider graph outside per-interaction waits.
+  // The mocked block still suspends below, exercising the actual fallback.
+  beforeAll(async () => {
+    await import('../components/public-runtime/CustomAuthRuntime');
+  });
   beforeEach(() => {
     window.localStorage.clear();
     window.history.pushState({}, '', '/sign-in');
@@ -162,9 +166,9 @@ describe('SignInPage', () => {
     fetchLoginEntries.mockImplementation(() => new Promise(() => undefined));
 
     render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
 
     expect(
@@ -179,9 +183,9 @@ describe('SignInPage', () => {
     publicAuthBlockControl.suspend = true;
 
     render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
 
     await waitFor(() => expect(renderedBlocks).toHaveBeenCalled());
@@ -195,9 +199,9 @@ describe('SignInPage', () => {
 
   test('mounts the only authenticator Block directly and accepts its session', async () => {
     render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
 
     fireEvent.click(
@@ -226,9 +230,9 @@ describe('SignInPage', () => {
     });
 
     const view = render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
 
     expect(
@@ -249,9 +253,9 @@ describe('SignInPage', () => {
     });
 
     view.rerender(
-      <AppProviders>
+      <>
         <SignInPage loginEntryId="auth-qr" />
-      </AppProviders>
+      </>
     );
     expect(
       await screen.findByRole('button', { name: 'Run auth-qr' })
@@ -274,9 +278,9 @@ describe('SignInPage', () => {
     });
 
     view.rerender(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
     expect(
       await screen.findByRole('button', { name: 'Password' })
@@ -303,9 +307,9 @@ describe('SignInPage', () => {
     });
 
     render(
-      <AppProviders>
+      <>
         <SignInPage loginEntryId="auth-qr" />
-      </AppProviders>
+      </>
     );
 
     expect(
@@ -332,9 +336,9 @@ describe('SignInPage', () => {
     });
 
     render(
-      <AppProviders>
+      <>
         <SignInPage loginEntryId="missing-authenticator" />
-      </AppProviders>
+      </>
     );
 
     expect(
@@ -357,9 +361,9 @@ describe('SignInPage', () => {
     });
 
     render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
 
     expect(
@@ -372,9 +376,9 @@ describe('SignInPage', () => {
   test('AC-001 shows the escape form when login instance discovery fails', async () => {
     fetchLoginEntries.mockRejectedValue(new Error('network failed'));
     render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
 
     expect(
@@ -407,9 +411,9 @@ describe('declarative authentication entry actions', () => {
 
   test('one chooser click starts external authorization without routing to or mounting a block', async () => {
     render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
     const button = await screen.findByRole('button', { name: external.title });
     expect(externalRedirect).not.toHaveBeenCalled();
@@ -458,11 +462,11 @@ describe('declarative authentication entry actions', () => {
             (mode === 'cancelled' ? 'cancelled' : 'external_auth_failed')
         );
       render(
-        <AppProviders>
+        <>
           <SignInPage
             loginEntryId={mode === 'deep-link' ? external.id : undefined}
           />
-        </AppProviders>
+        </>
       );
       const button = await screen.findByRole('button', {
         name: external.title
@@ -489,9 +493,9 @@ describe('declarative authentication entry actions', () => {
       throw new Error('blocked');
     });
     render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
     const button = await screen.findByRole('button', { name: external.title });
     fireEvent.click(button);
@@ -516,9 +520,9 @@ describe('declarative authentication entry actions', () => {
       '/sign-in?auth_error=identity_unlinked&language=zh'
     );
     render(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('该 GitHub 身份已解绑');
@@ -533,9 +537,9 @@ test('renders raw registration HTML below the powered-by footer', async () => {
   window.localStorage.clear();
   window.history.replaceState({}, '', '/sign-in?language=zh');
   render(
-    <AppProviders>
+    <>
       <SignInPage />
-    </AppProviders>
+    </>
   );
   expect(await screen.findByText('1flowbase', { exact: true })).toBeVisible();
   expect(document.querySelector('.hero-slogan-line')).toHaveTextContent(
@@ -552,17 +556,17 @@ test('renders raw registration HTML below the powered-by footer', async () => {
 
 test('the hide switch removes the fixed login tagline while keeping sign-in and filing available', async () => {
   const view = render(
-    <AppProviders>
+    <>
       <SignInPage />
-    </AppProviders>
+    </>
   );
   expect(await screen.findByText('1flowbase', { exact: true })).toBeVisible();
   systemMetadata.hide_login_tagline = true;
   try {
     view.rerender(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
     expect(document.querySelector('.hero-text-block')).not.toBeInTheDocument();
     expect(document.querySelector('.hero-slogan-line')).not.toBeInTheDocument();
@@ -571,9 +575,9 @@ test('the hide switch removes the fixed login tagline while keeping sign-in and 
     expect(screen.getByRole('link', { name: '备案号' })).toBeVisible();
     systemMetadata.hide_login_tagline = false;
     view.rerender(
-      <AppProviders>
+      <>
         <SignInPage />
-      </AppProviders>
+      </>
     );
     expect(await screen.findByText('1flowbase', { exact: true })).toBeVisible();
   } finally {
