@@ -11,7 +11,7 @@ test('only the login document gets a self-starting animation before deferred run
     '<link rel="modulepreload" href="/deferred.js">'
   ]);
   expect(page.split('<body>')[0]).not.toContain('href="/assets/route.css"');
-  expect(page).toContain('include virtual="/_sign-in/public-metadata"');
+  expect(page).not.toContain('<!--#');
   const opening = page.slice(
     page.indexOf('<body>'),
     page.indexOf('<div id="root">')

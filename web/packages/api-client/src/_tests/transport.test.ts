@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import { apiFetch, apiFetchBlob, getDefaultApiBaseUrl } from '../transport';
+import { fetchPublicSystemMetadata } from '../public/system-metadata';
 
 describe('apiFetch', () => {
   afterEach(() => {
@@ -31,6 +32,27 @@ describe('apiFetch', () => {
           'x-csrf-token': 'csrf-123'
         })
       })
+    );
+  });
+
+  test('public system metadata is read without visitor credentials', async () => {
+    const metadata = {
+      logo_url: `data:image/png;base64,${'A'.repeat(96 * 1024)}`,
+      system_name: 'Fixture',
+      system_description: '',
+      hide_login_tagline: true,
+      filing_html: '<b>registry</b>'
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ data: metadata, meta: null }), {
+        headers: { 'content-type': 'application/json' }
+      })
+    );
+
+    expect(await fetchPublicSystemMetadata()).toEqual(metadata);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/public\/system-metadata$/),
+      expect.objectContaining({ credentials: 'omit' })
     );
   });
 

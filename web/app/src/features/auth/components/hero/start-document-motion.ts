@@ -1,7 +1,4 @@
-import {
-  fetchPublicSystemMetadata,
-  type SystemMetadata
-} from '@1flowbase/api-client/auth';
+import { fetchPublicSystemMetadata } from '@1flowbase/api-client/auth';
 import { getInitialAppLocale } from '../../../../shared/i18n/initial-locale';
 import { auto as enBrand, sign_in as enPage } from '../../i18n/en_US.json';
 import { auto as zhBrand, sign_in as zhPage } from '../../i18n/zh_Hans.json';
@@ -11,28 +8,6 @@ import {
   documentSceneId
 } from './document-motion';
 import { startLeafMotion } from './leaf-motion';
-// Same public API envelope as the normal request. Missing SSI, a timed-out
-// subrequest or an invalid response all take the normal API-client path.
-function includedMetadata(): SystemMetadata | undefined {
-  const template =
-    document.querySelector<HTMLTemplateElement>('#sign-in-metadata');
-  const text = template?.content.textContent;
-  template?.remove();
-  if (!text) return;
-  try {
-    const data = JSON.parse(text)?.data;
-    if (
-      typeof data?.hide_login_tagline === 'boolean' &&
-      typeof data.filing_html === 'string' &&
-      typeof data.logo_url === 'string' &&
-      typeof data.system_description === 'string' &&
-      typeof data.system_name === 'string'
-    )
-      return data;
-  } catch {
-    /* e.g. failed upstream; never guess the public configuration */
-  }
-}
 const art = findDocumentArtwork();
 if (art) {
   art.stopMotion = startLeafMotion(
@@ -47,10 +22,7 @@ if (art) {
     ? zhPage.footer
     : enPage.footer;
   // The public response, not the core bundle or auth decision, owns this reveal.
-  const included = includedMetadata();
-  art.metadataFlight = included
-    ? Promise.resolve(included)
-    : fetchPublicSystemMetadata();
+  art.metadataFlight = fetchPublicSystemMetadata();
   void art.metadataFlight
     .then((metadata) => {
       art.metadata = metadata;
