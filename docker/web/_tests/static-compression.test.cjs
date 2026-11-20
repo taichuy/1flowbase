@@ -139,7 +139,7 @@ test('native nginx serves the actual repository configuration safely', {
   put('small.txt', Buffer.alloc(511, 0x61), false);
   put('boundary.txt', Buffer.alloc(512, 0x61), false);
   for (const extension of ['txt', 'css', 'js', 'mjs', 'json', 'svg', 'wasm']) put(`dynamic.${extension}`, payload, false);
-  for (const extension of ['js', 'css', 'html', 'svg', 'json', 'wasm']) put(`assets/file-abcd1234.${extension}`, payload);
+  for (const extension of ['js', 'css', 'html', 'svg', 'json', 'ttf', 'wasm']) put(`assets/file-abcd1234.${extension}`, payload);
   const nativePath = `/assets/native-declarations/${'a'.repeat(64)}.json`;
   put(nativePath.slice(1), payload);
   put('assets/unhashed.js', payload);
@@ -188,7 +188,7 @@ http {
   await t.test('static gzip honors Accept-Encoding including q=0; Brotli is not assumed', async () => {
     let modified;
     for (const encoding of ['gzip', 'gzip;q=0', 'identity', 'br']) {
-      const response = await request(port, '/assets/file-abcd1234.js', { 'Accept-Encoding': encoding });
+      const response = await request(port, '/assets/file-abcd1234.js', { 'Accept-Encoding': encoding, Via: '1.1 fixture-proxy' });
       assert.equal(response.status, 200);
       assert.match(response.headers['cache-control'], /immutable/);
       assert.ok(vary(response).has('accept-encoding'));
@@ -244,7 +244,7 @@ http {
   });
 
   await t.test('hashed assets/native JSON cache hits only; unhashed assets and misses are never immutable', async () => {
-    for (const url of [nativePath, ...['js', 'css', 'html', 'svg', 'json', 'wasm'].map((ext) => `/assets/file-abcd1234.${ext}`)]) {
+    for (const url of [nativePath, ...['js', 'css', 'html', 'svg', 'json', 'ttf', 'wasm'].map((ext) => `/assets/file-abcd1234.${ext}`)]) {
       const response = await request(port, url, { 'Accept-Encoding': 'gzip', Via: '1.1 fixture-proxy' });
       assert.equal(response.status, 200, url);
       assert.match(response.headers['cache-control'], /immutable/);
