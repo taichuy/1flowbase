@@ -1,8 +1,29 @@
+import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 
 import { collectNativeModuleDeclarations } from '../../../../../../build/native-module-declarations';
-import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS } from '../editor-declarations';
+import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS as FRONTEND_DECLARATIONS } from '../editor-declarations';
+import { FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS } from '../registry';
+import { isFrontstageNativeReactResolvedDeclarationSource } from '../resolved-dependency-sources';
+import { DAYJS_DECLARATION_SOURCES } from 'virtual:1flowbase-native-dayjs-modules';
+
+// This suite checks the full real type contract without fetching dev-server URLs.
+// Resource transport/closure tests exercise the demand loader separately.
+vi.mock('virtual:1flowbase-native-module-declarations', () => ({
+  default: { version: 1, roots: {}, resources: {} }
+}));
+const FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS = [
+  ...FRONTEND_DECLARATIONS,
+  ...collectNativeModuleDeclarations({
+    projectRoot: fileURLToPath(new URL('../../../../../../', import.meta.url)),
+    moduleSources: [...new Set([
+      ...FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS.map((module) => module.module_source)
+        .filter(isFrontstageNativeReactResolvedDeclarationSource),
+      ...DAYJS_DECLARATION_SOURCES
+    ])]
+  })
+];
 
 describe('frontend Monaco module declarations', () => {
   test('plugin settings exposes typed host-owned record permissions without caller overrides', () => {

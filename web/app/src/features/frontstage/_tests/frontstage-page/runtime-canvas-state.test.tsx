@@ -682,7 +682,7 @@ describe('FrontStagePage - runtime canvas state', () => {
         name: i18nText('frontstage', 'auto.edit_block')
       })
     );
-    expect(screen.getByTestId('jsx-studio-drawer')).toHaveTextContent(
+    expect(await screen.findByTestId('jsx-studio-drawer')).toHaveTextContent(
       'studio:assembly-content'
     );
     fireEvent.click(

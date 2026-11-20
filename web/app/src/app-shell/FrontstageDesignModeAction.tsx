@@ -7,7 +7,6 @@ import { i18nText } from '../shared/i18n/text';
 import { preloadDesignModeDemand } from './design-mode-demand';
 
 const DESIGN_MODE_PERMISSION = 'frontstage.page.design';
-const DESIGN_MODE_PRELOAD_GRACE_MS = 1000;
 
 function FrontstageDesignModeActionBase() {
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
@@ -27,16 +26,6 @@ function FrontstageDesignModeActionBase() {
     actor?.effective_display_role === 'root' ||
     Boolean(me?.permissions.includes(DESIGN_MODE_PERMISSION));
   const hasResolvedDesignModePermission = sessionStatus !== 'unknown';
-
-  useEffect(() => {
-    if (hasResolvedDesignModePermission && canUseDesignMode && !isDesignMode) {
-      const preloadTimer = window.setTimeout(() => {
-        void preloadDesignModeDemand();
-      }, DESIGN_MODE_PRELOAD_GRACE_MS);
-
-      return () => window.clearTimeout(preloadTimer);
-    }
-  }, [canUseDesignMode, hasResolvedDesignModePermission, isDesignMode]);
 
   // Exit design mode only when permission is lost; route changes should not
   // overwrite the browser-persisted preference.
@@ -72,7 +61,13 @@ function FrontstageDesignModeActionBase() {
     ? i18nText('appShell', 'auto.exit_design_mode')
     : i18nText('appShell', 'auto.enter_design_mode');
 
+  const prepareDesignMode = () => {
+    if (hasResolvedDesignModePermission && canUseDesignMode && !isDesignMode) {
+      void preloadDesignModeDemand();
+    }
+  };
   const handleDesignModeMenuClick = () => {
+    prepareDesignMode();
     toggleDesignMode();
   };
 
@@ -88,13 +83,7 @@ function FrontstageDesignModeActionBase() {
     className: isDesignMode
       ? 'app-shell-design-mode-button ant-menu-item-selected'
       : 'app-shell-design-mode-button',
-    label: (
-      <span
-        className="app-shell-design-block"
-      >
-        UI
-      </span>
-    )
+    label: <span className="app-shell-design-block">UI</span>
   };
 
   return (
@@ -106,6 +95,8 @@ function FrontstageDesignModeActionBase() {
         selectedKeys={selectedKeys}
         items={[designModeItem]}
         onClick={handleDesignModeMenuClick}
+        onPointerEnter={prepareDesignMode}
+        onFocus={prepareDesignMode}
         disabledOverflow
       />
     </Tooltip>

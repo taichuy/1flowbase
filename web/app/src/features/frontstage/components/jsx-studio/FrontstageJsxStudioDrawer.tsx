@@ -256,6 +256,7 @@ export function FrontstageJsxStudioDrawer({
           onClose={blockTabs.closeBlock}
         />
       }
+      declarationLoader={projection.declarationLoader}
       extraLibs={monacoExtraLibs}
       initialSection={initialSection}
       loading={activeTab?.loading ?? true}

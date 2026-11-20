@@ -1,8 +1,8 @@
 declare module 'virtual:1flowbase-native-module-declarations' {
-  import type { BlockSourceExtraLib } from './shared/code-block/extra-lib';
+  import type { NativeDeclarationIndex } from './features/frontstage/lib/native-modules/editor-declarations/loader';
 
-  const declarations: readonly BlockSourceExtraLib[];
-  export default declarations;
+  const index: NativeDeclarationIndex;
+  export default index;
 }
 
 declare module 'virtual:1flowbase-native-antd-es-modules' {

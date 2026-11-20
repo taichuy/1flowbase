@@ -105,6 +105,7 @@ const operations = [
 const projection: FrontstageJsxEditorProjection = {
   contextComment: '',
   allowedImportSources: new Set<string>(),
+  declarationLoader: { loadForSource: async () => [], loadAll: async () => [] },
   monacoExtraLibs: []
 };
 
