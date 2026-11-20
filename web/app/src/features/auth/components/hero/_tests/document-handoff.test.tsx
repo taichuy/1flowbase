@@ -39,24 +39,24 @@ test('route adoption preserves the existing simulation and title; cleanup stops 
   const { art, stop, canvas, brand } = earlyScene();
   expect(brand.hidden).toBe(true);
   setDocumentBrand(art, 'already visible');
-  const route = render(
+  const view = render(
     <StrictMode>
       <HeroAnimation hide_login_tagline={false} />
     </StrictMode>
   );
   expect(document.getElementById(documentSceneId)).toBeNull();
-  expect(route.container.querySelector('canvas')).toBe(canvas);
-  expect(route.container.querySelector('[data-opening-brand]')).toBe(brand);
+  expect(view.container.querySelector('canvas')).toBe(canvas);
+  expect(view.container.querySelector('[data-opening-brand]')).toBe(brand);
   expect(brand.hidden).toBe(false);
   await Promise.resolve();
   expect(stop).not.toHaveBeenCalled();
-  route.rerender(
+  view.rerender(
     <StrictMode>
       <HeroAnimation hide_login_tagline />
     </StrictMode>
   );
   expect(brand.hidden).toBe(true);
-  route.unmount();
+  view.unmount();
   await Promise.resolve();
   expect(stop).toHaveBeenCalledTimes(1);
 });

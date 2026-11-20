@@ -201,8 +201,8 @@ function collectModuleGraphDependencies({
   packageInfo,
   repoRoot,
   includeDynamicImports = false,
+  dependencies = new Map(),
 }) {
-  const dependencies = new Map();
   const visited = new Set();
   const pending = [...entryFiles];
 
@@ -232,10 +232,7 @@ function collectModuleGraphDependencies({
     }
   }
 
-  return {
-    dependencies,
-    visitedFiles: uniqueSorted([...visited].map((filePath) => toRepoRelative(repoRoot, filePath))),
-  };
+  return dependencies;
 }
 
 // Keep helper support narrow: a lazy callback must call a local zero-argument
@@ -453,15 +450,15 @@ function analyzeStaticLazyDeps({
   const optimizeDepsExclude = parseOptimizeDepsExclude(viteConfigSource);
   const optimizedRoots = new Set(optimizeDepsInclude.map(packageRoot).filter(Boolean));
   const excludedRoots = new Set(optimizeDepsExclude.map(packageRoot).filter(Boolean));
-  const eagerGraph = collectModuleGraphDependencies({
+  const eagerDependencies = collectModuleGraphDependencies({
     entryFiles: [mainEntry],
     packageInfo,
     repoRoot,
     includeDynamicImports: false,
   });
-  const eagerDependencies = new Set(eagerGraph.dependencies.keys());
   const lazyEntries = discoverLazyImports({ repoRoot });
   const lazyDependencies = new Map();
+  const lazyRoots = [];
   const findings = [];
 
   for (const entry of lazyEntries) {
@@ -487,23 +484,18 @@ function analyzeStaticLazyDeps({
       continue;
     }
 
-    const graph = collectModuleGraphDependencies({
-      entryFiles: [entry.resolvedPath],
-      packageInfo,
-      repoRoot,
-      includeDynamicImports: true,
-    });
-
-    for (const [dependency, files] of graph.dependencies.entries()) {
-      if (!lazyDependencies.has(dependency)) {
-        lazyDependencies.set(dependency, new Set());
-      }
-
-      for (const filePath of files) {
-        lazyDependencies.get(dependency).add(filePath);
-      }
-    }
+    lazyRoots.push(entry.resolvedPath);
   }
+
+  // The report needs the union of lazy dependencies, not a graph per boundary.
+  // Share visited state across lazy roots, but not with the static eager walk.
+  collectModuleGraphDependencies({
+    entryFiles: lazyRoots,
+    packageInfo,
+    repoRoot,
+    includeDynamicImports: true,
+    dependencies: lazyDependencies,
+  });
 
   const lazyOnlyDependencies = uniqueSorted(
     [...lazyDependencies.keys()].filter((dependency) => !eagerDependencies.has(dependency))
@@ -882,7 +874,6 @@ async function main(argv = [], deps = {}) {
 module.exports = {
   DEFAULT_MANIFEST_PATH,
   analyzeStaticLazyDeps,
-  collectModuleGraphDependencies,
   detectRuntimeFailureSignals,
   discoverLazyImports,
   flattenSmokePaths,

@@ -143,15 +143,19 @@ export function collectAntDesignIconModuleSources({
   assertPublicLeafExport(manifest.exports, packageRoot);
   const iconJavaScriptRoot = path.join(packageRoot, 'es/icons');
   const iconDeclarationRoot = path.join(packageRoot, 'lib/icons');
-  const iconNames = readdirSync(iconJavaScriptRoot, { withFileTypes: true })
-    .filter(
-      (entry) =>
-        entry.isFile() &&
-        entry.name.endsWith('.js') &&
-        entry.name !== 'index.js'
-    )
-    .map((entry) => entry.name.slice(0, -'.js'.length))
-    .sort((left, right) => left.localeCompare(right));
+  const iconNames: string[] = [];
+  for (const entry of readdirSync(iconJavaScriptRoot, {
+    withFileTypes: true
+  })) {
+    if (
+      entry.isFile() &&
+      entry.name.endsWith('.js') &&
+      entry.name !== 'index.js'
+    ) {
+      iconNames.push(entry.name.slice(0, -'.js'.length));
+    }
+  }
+  iconNames.sort((left, right) => left.localeCompare(right));
 
   for (const iconName of iconNames) {
     if (!existsSync(path.join(iconDeclarationRoot, `${iconName}.d.ts`))) {

@@ -96,10 +96,6 @@ export async function motionDocument(
       return '';
     }
   );
-  // Use escaped text in an inert template (not a JSON script or executable HTML).
-  // A plain static host leaves only comments; the browser then requests the public DTO.
-  const metadata =
-    '<template id="sign-in-metadata"><!--# include virtual="/_sign-in/public-metadata" set="frame_metadata" --><!--# echo var="frame_metadata" encoding="entity" default="" --></template>';
   return document
     .replace(
       '</head>',
@@ -108,6 +104,6 @@ export async function motionDocument(
     .replace(
       '<body>',
       () =>
-        `<body>${scene}${metadata}<template id="sign-in-next-resources">${[...deferred, ...hints].join('\n')}</template><script>${output.output[0].code.replace(/<\/script/gi, '<\\/script')};document.head.append(document.getElementById('sign-in-next-resources').content)</script>`
+        `<body>${scene}<template id="sign-in-next-resources">${[...deferred, ...hints].join('\n')}</template><script>${output.output[0].code.replace(/<\/script/gi, '<\\/script')};document.head.append(document.getElementById('sign-in-next-resources').content)</script>`
     );
 }

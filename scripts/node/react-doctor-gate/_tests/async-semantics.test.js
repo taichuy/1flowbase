@@ -990,10 +990,6 @@ const actualCompletionGuards = [
     "const detail = await cancelConsoleFlowRun(",
   ],
   [
-    "features/auth/components/PublicAuthBlock.tsx",
-    "const prepared = await prepareNativeReactSource(",
-  ],
-  [
     "features/frontstage/components/files/FileTableView.tsx",
     "const result = await uploadConsoleFile(",
   ],
@@ -1055,6 +1051,57 @@ for (const [relative, anchor, occurrence = 0] of actualCompletionGuards) {
     },
   );
 }
+
+semanticTest("proves the actual PublicAuthBlock completion guard with a JSX lifetime witness", (t) => {
+  const repoRoot = path.resolve(__dirname, "../../../..");
+  const file = "web/app/src/features/auth/components/PublicAuthBlock.tsx";
+  const unit = parseUnit(repoRoot, file);
+  const { source, nodes, parents } = unit;
+  const entry = unit.ast.body.find(
+    (node) => node.type === "ExportNamedDeclaration" &&
+      node.declaration?.id?.name === "PublicAuthBlock",
+  )?.declaration;
+  const runtime = unit.ast.body.find(
+    (node) => node.type === "FunctionDeclaration" &&
+      node.id.name === "PublicAuthBlockRuntime",
+  );
+  assert.ok(entry && runtime);
+  assert.ok(nodes.some((node) =>
+    node.type === "JSXOpeningElement" &&
+    node.range[0] > entry.range[0] && node.range[1] < entry.range[1] &&
+    unit.binding(node.name) === unit.binding(runtime.id),
+  ), "the public component must render the guarded runtime");
+
+  const anchor = "const prepared = await prepareNativeReactSource(";
+  const preparation = nodes.find(
+    (node) => node.type === "VariableDeclaration" &&
+      source.startsWith(anchor, node.range[0]),
+  );
+  assert.ok(preparation);
+  assert.ok(preparation.range[0] > runtime.range[0] && preparation.range[1] < runtime.range[1]);
+  const block = parents.get(preparation);
+  const guard = block.body[block.body.indexOf(preparation) + 1];
+  assert.equal(guard.type, "IfStatement");
+  const guardText = source.slice(...guard.range);
+  assert.match(
+    guardText,
+    /^if \(\s*generationRef\.current !== generation \|\|\s*activeInstanceRef\.current !== activeInstance\s*\) \{\s*return;\s*\}$/u,
+  );
+
+  // The prover recognizes exported lifetimes, not this private JSX component.
+  // Supply only that entry point in the fixture; keep the actual await, guard,
+  // and invalidation code unchanged. This does not authorize the raw diagnostic.
+  const exposeRuntime = (input) =>
+    `${input.slice(0, runtime.range[0])}export ${input.slice(runtime.range[0])}`;
+  const f = fixture(t, exposeRuntime(source), file);
+  const diagnostic = f.add("async-defer-await", anchor);
+  assertProof(f, diagnostic, "completion-time-guard", [guardText]);
+
+  f.write(file, exposeRuntime(source.slice(0, guard.range[0]) + source.slice(guard.range[1])));
+  const withoutGuard = f.evaluate();
+  assert.equal(withoutGuard.status, "requires-review");
+  assert.deepEqual(withoutGuard.upstreamCorrections ?? [], []);
+});
 
 for (const [name, declaration, later] of [
   [

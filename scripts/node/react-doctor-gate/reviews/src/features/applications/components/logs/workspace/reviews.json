@@ -38,9 +38,9 @@
     {
       "file": "web/app/src/features/applications/components/logs/workspace/AgentLogsDeleteButton.tsx",
       "rule": "react-doctor/prefer-tag-over-role",
-      "sourceSha256": "67be22ffb61a6f1cfbe9aa3c7a12eab7614a8553463ac87038d2c8125eba590c",
-      "reason": "This element is a live status/progress region with role=status. HTML has no native status tag; the role supplies announcement semantics without turning the message into a different control. Reassessed 2026-10-30: ApplicationLogsWorkspace only enables workflowTrace on its existing conversation panel; named render helpers still return ReactNode by direct invocation. Reassessed 2026-11-03: Deletion preview/latest/get/create/stop use exact operations. Existing controller owns job observation, stable request ID/retry, terminal deduplication and onFinished; component only composes form, progress and action slots.",
-      "evidenceSet": 0
+      "sourceSha256": "32c2bc4416f088885f6fbf1880a1e61d3c01f2d0ed3582bd4e025f4053a7c163",
+      "reason": "The job panel’s status region announces the polled deleted/total count and running or terminal state. Its AntD 6.6.2 Progress renders a div with progressbar semantics (es/progress/progress.js); placing it inside output would violate output’s phrasing-content model. Keep the flow-content status container and the separate progressbar semantics.",
+      "evidence": [{"file":"web/pnpm-lock.yaml","sha256":"efe9a6baabe230a49055cf69700158e3f488b326d7fc55012074b3575c52b0a0"},{"file":"web/app/src/features/applications/_tests/agent-logs/log-deletion.test.tsx","sha256":"638528640b999841ca8e302c9857ab653c40fb0f54ee2cc8513e28a70c8ca55a"}]
     },
     {
       "file": "web/app/src/features/applications/components/logs/workspace/ApplicationLogsWorkspace.tsx",

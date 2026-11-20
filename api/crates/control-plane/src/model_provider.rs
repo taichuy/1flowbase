@@ -631,55 +631,6 @@ where
         .await
     }
 
-    pub async fn get_usage_windows(
-        &self,
-        actor_user_id: Uuid,
-        instance_id: Uuid,
-    ) -> Result<ModelProviderUsageWindowsResult> {
-        account::get_usage_windows(
-            &self.repository,
-            &self.runtime,
-            &self.provider_secret_master_key,
-            actor_user_id,
-            instance_id,
-            self.node_artifact_context(),
-            self.use_case.clone(),
-        )
-        .await
-    }
-
-    pub async fn count_reset_credits(
-        &self,
-        actor_user_id: Uuid,
-        instance_id: Uuid,
-    ) -> Result<ModelProviderResetCreditCount> {
-        account::count_reset_credits(
-            &self.repository,
-            &self.runtime,
-            &self.provider_secret_master_key,
-            actor_user_id,
-            instance_id,
-            self.node_artifact_context(),
-            self.use_case.clone(),
-        )
-        .await
-    }
-
-    pub async fn consume_reset_credit(
-        &self,
-        command: ConsumeModelProviderResetCreditCommand,
-    ) -> Result<ConsumeModelProviderResetCreditResult> {
-        account::consume_reset_credit(
-            &self.repository,
-            &self.runtime,
-            &self.provider_secret_master_key,
-            command,
-            self.node_artifact_context(),
-            self.use_case.clone(),
-        )
-        .await
-    }
-
     pub async fn delete_instance(&self, command: DeleteModelProviderInstanceCommand) -> Result<()> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         ensure_model_provider_permission(&actor, "manage", &self.use_case).await?;

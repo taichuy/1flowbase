@@ -45,19 +45,11 @@ export interface PublicAuthBlockProps {
   nativeCompiler?: typeof compileNativeReactComponentInBrowser;
   nativeCompilerWorkerFactory?: NativeReactBrowserCompilerWorkerFactory;
   nativeModuleRegistryFactory?: NativeReactModuleRegistryFactory;
-  onPhaseChange?: (phase: PublicAuthPhase) => void;
 }
 
 interface ActivePublicAuthInstance {
   requestId: string;
 }
-
-export type PublicAuthPhase =
-  | 'discovering'
-  | 'compiling'
-  | 'mounting'
-  | 'ready'
-  | 'failed';
 
 type ReadyPublicAuthSnapshot = {
   component: FrontstageNativeTrustedBlockReactComponent;
@@ -120,8 +112,7 @@ function PublicAuthBlockRuntime({
   onAuthenticated,
   nativeCompiler = publicAuthCompilation.compile,
   nativeCompilerWorkerFactory,
-  nativeModuleRegistryFactory,
-  onPhaseChange
+  nativeModuleRegistryFactory
 }: PublicAuthBlockProps) {
   const [renderRoot, setRenderRoot] = useState<HTMLDivElement | null>(null);
   const [snapshot, setSnapshot] = useState<PublicAuthRenderSnapshot>({
@@ -134,10 +125,6 @@ function PublicAuthBlockRuntime({
     [instance]
   );
   const escapeFallbackVisible = snapshot.status === 'failed';
-
-  useEffect(() => {
-    onPhaseChange?.(snapshot.status);
-  }, [onPhaseChange, snapshot.status]);
 
   const markContentCommitted = useCallback((renderEpoch: string) => {
     setSnapshot((current) =>

@@ -77,7 +77,7 @@ describe('PublicAuthBlock Native Host composition', () => {
       expect(
         root.shadowRoot?.querySelector('input[type=password]')
       ).not.toBeNull();
-      expect(screen.queryByRole('status', { name: 'thinking' })).toBeNull();
+      expect(screen.queryByRole('status', { name: 'thinking' })).not.toBeInTheDocument();
     } finally {
       gate.resolve();
       held.mockRestore();
@@ -105,7 +105,7 @@ describe('PublicAuthBlock Native Host composition', () => {
       expect(
         screen.getByTestId('native-react-public-auth-root')
       ).toHaveAttribute('data-public-auth-diagnostic', 'mount_failed');
-      expect(screen.queryByRole('status', { name: 'thinking' })).toBeNull();
+      expect(screen.queryByRole('status', { name: 'thinking' })).not.toBeInTheDocument();
       expect(failed).toHaveBeenCalledTimes(2);
     } finally {
       failed.mockRestore();

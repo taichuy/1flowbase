@@ -16,7 +16,7 @@
         },
         {
           "file": "api/crates/control-plane/src/model_provider.rs",
-          "sha256": "3fde5dc560f6e50b8bbb77c2b6d345f0068f9d327b1e5bcdb5b6bf2dd308d162",
+          "sha256": "83ed33451151eec14e75273065ca017f414a0e67bda3cb45a417235ea69c31a5",
           "reason": "ModelProviderCatalogView and ModelProviderOptionsView fields use the exact I18nCatalog alias."
         },
         {
@@ -46,7 +46,7 @@
         },
         {
           "file": "api/crates/control-plane/src/model_provider.rs",
-          "sha256": "3fde5dc560f6e50b8bbb77c2b6d345f0068f9d327b1e5bcdb5b6bf2dd308d162",
+          "sha256": "83ed33451151eec14e75273065ca017f414a0e67bda3cb45a417235ea69c31a5",
           "reason": "ModelProviderCatalogView and ModelProviderOptionsView fields use the exact I18nCatalog alias."
         },
         {
