@@ -1,6 +1,7 @@
 import type { Plugin, ResolvedConfig } from 'vite';
 
 import { collectNativeModuleDeclarationGraph } from './native-module-declarations/graph';
+import { serializeDeclarationIndex } from './native-module-declarations/index';
 import { createDeclarationResources } from './native-module-declarations/resources';
 export type { CollectedNativeModuleDeclaration } from './native-module-declarations/resources';
 
@@ -44,15 +45,13 @@ export function nativeModuleDeclarationsPlugin(options: Options): Plugin {
         if (id !== RESOLVED_VIRTUAL_ID) return undefined;
         const index = collect();
         for (const file of graph!.watchedFiles) this.addWatchFile(file);
-        const urls = Object.entries(index.resources).map(([hash, source]) => {
+        return serializeDeclarationIndex(index, (hash) => {
+          const source = index.resources[hash]!;
           const fileName = `${RESOURCE_PREFIX}${hash}.json`;
-          const url =
-            config.command === 'build'
-              ? `import.meta.ROLLUP_FILE_URL_${this.emitFile({ type: 'asset', fileName, source })}`
-              : JSON.stringify(`${config.base}${fileName}`);
-          return `${JSON.stringify(hash)}:${url}`;
+          return config.command === 'build'
+            ? `import.meta.ROLLUP_FILE_URL_${this.emitFile({ type: 'asset', fileName, source })}`
+            : JSON.stringify(`${config.base}${fileName}`);
         });
-        return `export default {version:1,roots:${JSON.stringify(index.roots)},resources:{${urls.join(',')}}};`;
       }
     },
     configureServer(server) {
