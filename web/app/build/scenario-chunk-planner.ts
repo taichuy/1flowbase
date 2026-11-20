@@ -1,5 +1,6 @@
 import type { Plugin } from 'vite';
 import { assertSignInVisualBoundary } from './sign-in-visual-boundary';
+import { collectScenarioDemandManifest } from './scenario-demand/manifest';
 
 import { PRODUCT_ANT_DESIGN_ICON_RESOLVED_IDS } from './native-ant-design-icons-modules';
 import {
@@ -132,30 +133,16 @@ export function scenarioChunkManifestPlugin(): Plugin {
     name: '1flowbase-scenario-chunk-manifest',
     generateBundle(_options, bundle) {
       assertSignInVisualBoundary(bundle);
-      const chunks = Object.values(bundle)
-        .flatMap((chunk) => {
-          if (
-            chunk.type !== 'chunk' ||
-            ![...SCENARIO_CHUNK_NAMES].some(
-              (name) => chunk.name === name || chunk.name.startsWith(`${name}~`)
-            )
-          )
-            return [];
-          return [
-            {
-              file: chunk.fileName,
-              name: chunk.name,
-              dynamicImports: [...chunk.dynamicImports].sort(),
-              imports: [...chunk.imports].sort(),
-              moduleCount: Object.keys(chunk.modules).length
-            }
-          ];
-        })
-        .sort((left, right) => left.file.localeCompare(right.file));
+      const manifest = collectScenarioDemandManifest(bundle);
+      const partitions = manifest.chunks.filter((chunk) =>
+        [...SCENARIO_CHUNK_NAMES].some(
+          (name) => chunk.name === name || chunk.name.startsWith(`${name}~`)
+        )
+      );
       this.emitFile({
         type: 'asset',
         fileName: 'scenario-chunk-manifest.json',
-        source: `${JSON.stringify({ version: 1, partitions: chunks }, null, 2)}\n`
+        source: `${JSON.stringify({ ...manifest, partitions }, null, 2)}\n`
       });
     }
   };

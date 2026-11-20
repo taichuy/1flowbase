@@ -218,3 +218,32 @@ test("BGP-F01 scenario profile rejects leaf-chunk request fan-out", () => {
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+
+test("declaration strings, comments and dynamic imports are not static graph edges", () => {
+  assert.deepEqual(collectStaticImports(`
+    export const declaration = \`import type { X } from './editor-only.d.ts';\`;
+    /* import './comment.js'; */
+    import { value } from './actual.js';
+    export { something } from './reexport.js';
+    import('./lazy.js');
+  `), ["actual.js", "reexport.js"]);
+});
+
+test("current artifacts use compiler edges and CSS instead of bundled text", () => {
+  const directory = createBundle({
+    "index-a.js": `import "./wrong.js";`,
+    "actual.js": "export const n=1;",
+    "actual.css": "body {color:black}",
+  }, `<script type="module" src="/assets/index-a.js"></script>`);
+  try {
+    fs.writeFileSync(path.join(directory, "scenario-chunk-manifest.json"), JSON.stringify({
+      version: 2, chunks: [
+        { file: "assets/index-a.js", imports: ["assets/actual.js"], css: ["assets/actual.css"] },
+        { file: "assets/actual.js", imports: [], css: [] }
+      ]
+    }));
+    const profile = profileProductionBundle(directory);
+    assert.deepEqual(profile.initialAssets.map((asset) => asset.file), ["actual.css", "actual.js", "index-a.js"]);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
