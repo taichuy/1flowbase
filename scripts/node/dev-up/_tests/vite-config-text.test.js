@@ -70,6 +70,11 @@ function assertPreReactModuleBoundary(readSource = readWebSource) {
   const authEntry = JSON.parse(readSource("packages/api-client/package.json"))
     .exports["./auth"].default;
   assert.equal(authEntry, "./src/auth/index.ts");
+  // Vite resolves this before consulting package.json exports.
+  const aliases = [...readSource("app/vite.config.ts").matchAll(
+    /['"]@1flowbase\/api-client\/auth['"]\s*:\s*fileURLToPath\(\s*new URL\(\s*['"]([^'"]+)['"]/gu,
+  )].map((match) => path.posix.normalize(path.posix.join("app", match[1])));
+  assert.deepEqual(aliases, [path.posix.join("packages/api-client", authEntry)], "Vite auth alias");
 
   for (const [file, expected] of preReactImports) {
     const source = ts.createSourceFile(file, readSource(file), ts.ScriptTarget.Latest);
@@ -291,6 +296,15 @@ test("DRS-003 rejects new dependencies anywhere in the pre-React graph", () => {
       (error) => error.code === "ERR_ASSERTION" && error.message.startsWith(`${file}:`),
     );
   }
+});
+
+test("DRS-003 rejects a Vite auth alias redirected to the API client barrel", () => {
+  assert.throws(() => assertPreReactModuleBoundary((file) => {
+    const source = readWebSource(file);
+    return file === "app/vite.config.ts"
+      ? source.replace("../packages/api-client/src/auth/index.ts", "../packages/api-client/src/index.ts")
+      : source;
+  }), /Vite auth alias/u);
 });
 
 test("DV-F07 host UI imports Ant icons through deterministic leaf modules", () => {
