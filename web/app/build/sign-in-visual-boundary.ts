@@ -26,12 +26,14 @@ export function assertSignInVisualBoundary(bundle: Bundle): void {
       );
     }
   }
-  const rootsFor = (suffixes: readonly string[]) =>
-    [...owners]
-      .filter(([, ids]) =>
-        ids.some((id) => suffixes.some((s) => id.endsWith(s)))
-      )
-      .map(([file]) => file);
+  const rootsFor = (suffixes: readonly string[]) => {
+    const roots: string[] = [];
+    for (const [file, ids] of owners) {
+      if (ids.some((id) => suffixes.some((s) => id.endsWith(s))))
+        roots.push(file);
+    }
+    return roots;
+  };
   const pageRoots = rootsFor([page]);
   if (!pageRoots.length) return; // Worker-only outputs do not contain a page.
   const chunks = new Map(

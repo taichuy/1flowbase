@@ -51,9 +51,9 @@
     {
       "file": "web/app/src/shared/ui/data-table/DataTableMobileList.tsx",
       "rule": "react-doctor/prefer-tag-over-role",
-      "sourceSha256": "15fabe0567eb042695a747b38ca1eb03539cc8e2a8b4a481a380d9bd6366d537",
-      "reason": "web/app/src/shared/ui/data-table/DataTableMobileList.tsx:202（react-doctor/prefer-tag-over-role）：role=status 为 runtime 状态/拖动投影提示/移动目标提示/加载状态提供 live announcement，不是表单计算结果。<output> 的计算输出语义不适用；当前元素不会因使用标准 status role 失去屏幕阅读器语义。",
-      "evidenceSet": 1
+      "sourceSha256": "1216a4c6e5c9e5274b174d91c791027d424ee5483768a438f2ff666a4d04f05c",
+      "reason": "The mobile pagination footer is the stable observation target and status region across loading, retry, load more and end-of-results. Its loading branch renders AntD 6.6.2 standalone Spin, whose host is a div (es/spin/index.js), so output would not accept all branches. Retaining the div also preserves the footer ref and the native, keyboard-operable retry/load-more buttons.",
+      "evidence": [{"file":"web/pnpm-lock.yaml","sha256":"efe9a6baabe230a49055cf69700158e3f488b326d7fc55012074b3575c52b0a0"},{"file":"web/app/src/features/settings/pages/events/_tests/events-table.test.tsx","sha256":"6fc4726f3fe6627f7c049ef856902027cfa0cea146a1af5a006049f0a660f961"}]
     },
     {
       "file": "web/app/src/shared/ui/data-table/data-table-state.ts",

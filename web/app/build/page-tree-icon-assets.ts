@@ -89,9 +89,9 @@ function planPageTreeIconPacks<T extends PageTreeIconPackInput>(
   const packs: T[][] = [];
   let current: T[] = [];
   let currentBytes = 0;
-  for (const family of [...families.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([, entries]) => entries)) {
+  const sortedFamilies = Array.from(families);
+  sortedFamilies.sort(([left], [right]) => left.localeCompare(right));
+  for (const [, family] of sortedFamilies) {
     const familyBytes = family.reduce(
       (total, icon) => total + icon.sourceBytes,
       0
@@ -138,17 +138,15 @@ function collectPageTreeIconInventory({
   }
 
   const definitionsRoot = path.join(iconsSvgRoot, 'lib', 'asn');
-  const iconNames = readdirSync(path.join(iconPackageRoot, 'es', 'icons'), {
+  const iconNames: string[] = [];
+  for (const entry of readdirSync(path.join(iconPackageRoot, 'es', 'icons'), {
     withFileTypes: true
-  })
-    .filter(
-      (entry) =>
-        entry.isFile() &&
-        entry.name.endsWith('.js') &&
-        ICON_THEME_PATTERN.test(entry.name.slice(0, -3))
-    )
-    .map((entry) => entry.name.slice(0, -3))
-    .sort((left, right) => left.localeCompare(right));
+  })) {
+    if (!entry.isFile() || !entry.name.endsWith('.js')) continue;
+    const name = entry.name.slice(0, -3);
+    if (ICON_THEME_PATTERN.test(name)) iconNames.push(name);
+  }
+  iconNames.sort((left, right) => left.localeCompare(right));
   const icons = iconNames.map((name) => {
     const definitionPath = path.join(definitionsRoot, `${name}.js`);
     if (!existsSync(definitionPath)) {
@@ -200,23 +198,22 @@ function escapeXml(value: boolean | number | string) {
 }
 
 function serializeNode(node: AbstractIconNode): string {
-  const attributes = Object.entries(node.attrs ?? {})
-    .filter(([name]) => name !== 'focusable' && name !== 'viewBox')
-    .map(([name, value]) => {
-      const normalizedName = name === 'className' ? 'class' : name;
-      const normalizedValue =
-        value === PRIMARY_PREVIEW_COLOR
+  let attributes = '';
+  for (const [name, value] of Object.entries(node.attrs ?? {})) {
+    if (name === 'focusable' || name === 'viewBox') continue;
+    const normalizedName = name === 'className' ? 'class' : name;
+    const normalizedValue =
+      value === PRIMARY_PREVIEW_COLOR
+        ? 'currentColor'
+        : value === SECONDARY_PREVIEW_COLOR
           ? 'currentColor'
-          : value === SECONDARY_PREVIEW_COLOR
-            ? 'currentColor'
-            : value;
-      const secondaryOpacity =
-        value === SECONDARY_PREVIEW_COLOR && name === 'fill'
-          ? ' fill-opacity="0.28"'
-          : '';
-      return ` ${normalizedName}="${escapeXml(normalizedValue)}"${secondaryOpacity}`;
-    })
-    .join('');
+          : value;
+    const secondaryOpacity =
+      value === SECONDARY_PREVIEW_COLOR && name === 'fill'
+        ? ' fill-opacity="0.28"'
+        : '';
+    attributes += ` ${normalizedName}="${escapeXml(normalizedValue)}"${secondaryOpacity}`;
+  }
   const children = (node.children ?? []).map(serializeNode).join('');
   return `<${node.tag}${attributes}>${children}</${node.tag}>`;
 }
@@ -277,15 +274,16 @@ export function pageTreeIconPreviewHref(name) {
 }
 
 function generateRuntimeModule(inventory: PageTreeIconInventory) {
-  const loaders = inventory.packs
-    .flatMap((pack) => pack.icons)
-    .map(
-      ({ componentSource, name }) =>
+  const loaders: string[] = [];
+  for (const { icons } of inventory.packs) {
+    for (const { componentSource, name } of icons) {
+      loaders.push(
         `${JSON.stringify(name)}: () => import(${JSON.stringify(componentSource)}).then((module) => module.default)`
-    )
-    .join(',\n');
+      );
+    }
+  }
   return singleFlightRuntimeSource(
-    `const iconLoaders = {${loaders}};`,
+    `const iconLoaders = {${loaders.join(',\n')}};`,
     `return Boolean(iconLoaders[name]);`,
     `const load = iconLoaders[name];
   if (!load) return null;

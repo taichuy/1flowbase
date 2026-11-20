@@ -17,6 +17,10 @@ export function createLoadingState({
   LoadingOutlined
 }: Pick<typeof import('antd'), 'Spin' | 'Skeleton'> &
   Pick<typeof import('@ant-design/icons'), 'LoadingOutlined'>) {
+  const indicator = (
+    <LoadingOutlined spin style={{ color: LOADING_COLOR, fontSize: 48 }} />
+  );
+
   return function LoadingState({
     fullscreen = false,
     compact = false,
@@ -41,12 +45,7 @@ export function createLoadingState({
         <Spin
           spinning
           description={LOADING_LABEL}
-          indicator={
-            <LoadingOutlined
-              spin
-              style={{ color: LOADING_COLOR, fontSize: 48 }}
-            />
-          }
+          indicator={indicator}
           size={compact ? 'medium' : 'large'}
           styles={{
             description: { color: LOADING_COLOR },

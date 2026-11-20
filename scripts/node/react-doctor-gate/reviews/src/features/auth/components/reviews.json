@@ -1,58 +1,86 @@
 {
   "toolPackage": "react-doctor@0.2.16",
-  "evidenceSets": [
-    [{"file":"DESIGN.md","sha256":"dc95d14bf93aebcec856a725385c27527b5582d58db5473f300b55eaa2ab1632"},{"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"605d49b5c9e6845b1a2a62c50404382949f1f290fff03ce70ca1027934a44a2c"}],
-    [{"file":"web/app/src/features/auth/_tests/public-auth-block-component.test.tsx","sha256":"fd5374e3f33cb2d086ce1d9ccdab93199c5d24ef77fe5bec9503de49298741d0"},{"file":"web/app/src/features/auth/_tests/public-auth-block.test.ts","sha256":"440ddd89c9e834239b486c7eccbf830504daa90775bd95a90653e06a982670c8"},{"file":"web/app/src/features/auth/_tests/public-auth-compilation.test.ts","sha256":"ee907ed983140428b2522075be138c03f8da1124cd478a95d2c385bd9196886b"},{"file":"web/app/src/features/auth/_tests/public-auth-import-graph.test.ts","sha256":"d28817b8743c0aa7ef0bf6fe374a72ec6a0947bf78c74ebea1e9dc6746e04be9"},{"file":"web/app/src/features/auth/_tests/public-auth-loading.test.ts","sha256":"a596de210e4af809585a36944424410ab6cfe76c4cbd76f9108cd6b002005d72"},{"file":"web/app/src/features/auth/_tests/public-auth-runtime-boundary.test.ts","sha256":"8856b1e7c9a80198cc68dcdc01afa3ad5eeffc08b99fd5945be422539e81b4e1"},{"file":"web/app/src/features/auth/components/PublicAuthBlock.tsx","sha256":"0cf5fbe078a2e3b52c9ad7d9d7cc23ec3c982723112e87f52c1aecfcec9e41a0"}]
-  ],
   "reviews": [
-    {
-      "file": "web/app/src/features/auth/components/HeroAnimation.tsx",
-      "rule": "react-doctor/js-tosorted-immutable",
-      "sourceSha256": "fc023342fa6b620a57a15003d9a700e3c968a2cd5083a7904f8c21b3f1c7421b",
-      "reason": "[...leaves].sort 按 z 深度排序新数组以实现画家算法，不修改 leaves 原集合；hide_login_tagline 仅控制文案块，未改变此排序。 P21b reassessed 2026-11-17: Auth sources are unchanged. The only changed witness is DESIGN.md row-action guidance, which does not change Brand Layer ownership: HeroAnimation sorts a copied leaves array, owns RAF/resize cleanup and animates transforms with fixed blur values. PublicAuthBlock still awaits compilation before prepared.ok use and fences external preparation with generation/instance cleanup. Static evidence does not establish runtime frame-rate or universal device compositing cost.",
-      "evidenceSet": 0
-    },
-    {
-      "file": "web/app/src/features/auth/components/HeroAnimation.tsx",
-      "rule": "react-doctor/no-giant-component",
-      "sourceSha256": "fc023342fa6b620a57a15003d9a700e3c968a2cd5083a7904f8c21b3f1c7421b",
-      "reason": "HeroAnimation 实现 DESIGN.md 的 Brand Layer；同一 canvas effect 拥有粒子、RAF 和 resize listener，并在 cleanup 中取消 RAF/监听。文件长度不是已发生额外渲染或职责越界的证据；新增 hide_login_tagline 只控制文案，登录/footer 保留由 sign-in 测试覆盖。 P21b reassessed 2026-11-17: Auth sources are unchanged. The only changed witness is DESIGN.md row-action guidance, which does not change Brand Layer ownership: HeroAnimation sorts a copied leaves array, owns RAF/resize cleanup and animates transforms with fixed blur values. PublicAuthBlock still awaits compilation before prepared.ok use and fences external preparation with generation/instance cleanup. Static evidence does not establish runtime frame-rate or universal device compositing cost.",
-      "evidenceSet": 0
-    },
-    {
-      "file": "web/app/src/features/auth/components/HeroAnimation.tsx",
-      "rule": "react-doctor/no-inline-exhaustive-style",
-      "sourceSha256": "fc023342fa6b620a57a15003d9a700e3c968a2cd5083a7904f8c21b3f1c7421b",
-      "reason": "Brand Layer 的固定几何和 blur 使用内联 style；float keyframes 只动画 transform，没有逐帧计算 blur 属性。hide_login_tagline 不改变动画资源生命周期。此源码结论不冒充运行时帧率验证。 P21b reassessed 2026-11-17: Auth sources are unchanged. The only changed witness is DESIGN.md row-action guidance, which does not change Brand Layer ownership: HeroAnimation sorts a copied leaves array, owns RAF/resize cleanup and animates transforms with fixed blur values. PublicAuthBlock still awaits compilation before prepared.ok use and fences external preparation with generation/instance cleanup. Static evidence does not establish runtime frame-rate or universal device compositing cost.",
-      "evidenceSet": 0
-    },
-    {
-      "file": "web/app/src/features/auth/components/HeroAnimation.tsx",
-      "rule": "react-doctor/no-large-animated-blur",
-      "sourceSha256": "fc023342fa6b620a57a15003d9a700e3c968a2cd5083a7904f8c21b3f1c7421b",
-      "reason": "三片光晕的 blur 是固定 filter，float keyframes 只改变 transform，未逐帧改变模糊半径；RAF/resize 有 cleanup。保留品牌视觉契约；当前证据不能据此声称所有设备的合成成本均低。 P21b reassessed 2026-11-17: Auth sources are unchanged. The only changed witness is DESIGN.md row-action guidance, which does not change Brand Layer ownership: HeroAnimation sorts a copied leaves array, owns RAF/resize cleanup and animates transforms with fixed blur values. PublicAuthBlock still awaits compilation before prepared.ok use and fences external preparation with generation/instance cleanup. Static evidence does not establish runtime frame-rate or universal device compositing cost.",
-      "evidenceSet": 0
-    },
     {
       "file": "web/app/src/features/auth/components/PublicAuthBlock.tsx",
       "rule": "react-doctor/async-defer-await",
-      "sourceSha256": "0cf5fbe078a2e3b52c9ad7d9d7cc23ec3c982723112e87f52c1aecfcec9e41a0",
-      "reason": "The awaited result is consumed by the immediately following validation/preparation step; it is a data dependency. PublicAuthBlock prepare fences async preparation with generationRef and activeInstanceRef; cleanup increments the current generation to invalidate late attempts and clears the active instance. onPhaseChange reports committed phase to its host. Compilation is awaited before inspecting prepared.ok and constructing the runtime.",
-      "evidenceSet": 1
+      "sourceSha256": "c7b9d211c505f945d257764337fdd787feeec948de92395e4b05d8a229d1fc7d",
+      "reason": "The prepare result is needed to construct the runtime. The guard after awaiting prepare rejects generations invalidated during the wait, including watchdog timeout, retry and unmount. Moving the only guard above await admits the late compile result that the timeout test rejects.",
+      "evidence": [
+        {"file":"web/app/src/features/auth/_tests/public-auth-block-component.test.tsx","sha256":"d0a209b6915db622c4cddff16b5e88cc7035f328546bf6ffe29d82b7268560f7"}
+      ]
     },
     {
       "file": "web/app/src/features/auth/components/PublicAuthBlock.tsx",
       "rule": "react-doctor/exhaustive-deps",
-      "sourceSha256": "0cf5fbe078a2e3b52c9ad7d9d7cc23ec3c982723112e87f52c1aecfcec9e41a0",
-      "reason": "Cleanup intentionally invalidates the current generation and clears current activeInstance, not a stale captured ref value; prepare itself carries the full reactive dependency list and late results check the generation. PublicAuthBlock prepare fences async preparation with generationRef and activeInstanceRef; cleanup increments the current generation to invalidate late attempts and clears the active instance. onPhaseChange reports committed phase to its host. Compilation is awaited before inspecting prepared.ok and constructing the runtime.",
-      "evidenceSet": 1
+      "sourceSha256": "c7b9d211c505f945d257764337fdd787feeec948de92395e4b05d8a229d1fc7d",
+      "reason": "Cleanup invalidates the current generation and clears the current active attempt, including a retry started since setup. The ref is not a DOM node that cleanup needs to capture at setup. The effect depends on prepare and the timeout/retry tests exercise late-result rejection.",
+      "evidence": [
+        {"file":"web/app/src/features/auth/_tests/public-auth-block-component.test.tsx","sha256":"d0a209b6915db622c4cddff16b5e88cc7035f328546bf6ffe29d82b7268560f7"}
+      ]
     },
     {
-      "file": "web/app/src/features/auth/components/PublicAuthBlock.tsx",
-      "rule": "react-doctor/no-pass-live-state-to-parent",
-      "sourceSha256": "0cf5fbe078a2e3b52c9ad7d9d7cc23ec3c982723112e87f52c1aecfcec9e41a0",
-      "reason": "The callback synchronizes an external owner with committed validity, DOM geometry, focus or session state; it must also fire for externally supplied state changes. PublicAuthBlock prepare fences async preparation with generationRef and activeInstanceRef; cleanup increments the current generation to invalidate late attempts and clears the active instance. onPhaseChange reports committed phase to its host. Compilation is awaited before inspecting prepared.ok and constructing the runtime.",
-      "evidenceSet": 1
+      "file": "web/app/src/features/auth/components/hero/HeroArtwork.tsx",
+      "rule": "react-doctor/no-inline-exhaustive-style",
+      "sourceSha256": "21dff17075dd847edb2f0513a007a5bc9c5454fd90655ff88c6cfe2e83e0c716",
+      "reason": "The hero is rendered in the initial static login document and the live route. Inline decoration keeps the initial document independent of delayed route CSS; preserve it for both consumers.",
+      "evidence": [
+        {"file":"web/app/build/sign-in-motion-document.tsx","sha256":"78a900d3fa7892b159c348fc1447500465a633232f0f8c414acc51d478151724"},
+        {"file":"web/app/build/_tests/sign-in-motion-document.test.ts","sha256":"9366840aa4023d70fd5494d1aca688287ef8b9723ca9affa69b237267008be6e"},
+        {"file":"DESIGN.md","sha256":"dc95d14bf93aebcec856a725385c27527b5582d58db5473f300b55eaa2ab1632"}
+      ]
+    },
+    {
+      "file": "web/app/src/features/auth/components/hero/HeroArtwork.tsx",
+      "rule": "react-doctor/no-large-animated-blur",
+      "sourceSha256": "21dff17075dd847edb2f0513a007a5bc9c5454fd90655ff88c6cfe2e83e0c716",
+      "reason": "The three floating backdrops keep fixed blur values while the animation translates the layers. Keep the Brand Layer decoration used by the static and live renders. This is a deliberate visual trade-off, not an assertion that large blurred layers are cost-free.",
+      "evidence": [
+        {"file":"web/app/build/sign-in-motion-document.tsx","sha256":"78a900d3fa7892b159c348fc1447500465a633232f0f8c414acc51d478151724"},
+        {"file":"web/app/build/_tests/sign-in-motion-document.test.ts","sha256":"9366840aa4023d70fd5494d1aca688287ef8b9723ca9affa69b237267008be6e"},
+        {"file":"DESIGN.md","sha256":"dc95d14bf93aebcec856a725385c27527b5582d58db5473f300b55eaa2ab1632"}
+      ]
+    },
+    {
+      "file": "web/app/src/features/auth/components/hero/SignInPanel.tsx",
+      "rule": "react-doctor/no-danger",
+      "sourceSha256": "366869920652cdd5a88224ebb7966f64e4eaa9f0bf2def847fc255e4010bd2e8",
+      "reason": "filing_html 是拥有 system.branding.save operation 的管理者编写的站点 HTML，既定契约要求原样保存和展示；它不是普通访客、登录输入或聊天消息。后端 branding route 经认证 Kernel 和独立写 operation 授权，route 测试覆盖只读授权不能 PUT、完整授权可写及 public 原文读取；前端测试保留 HTML 元素和属性。这里显式信任具备站点 HTML 发布权限的管理者，dangerouslySetInnerHTML 是该功能的实现。若写权限边界或内容来源改变必须重新审查；不声称任意不可信 HTML 可安全展示。",
+      "evidence": [
+        {"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"605d49b5c9e6845b1a2a62c50404382949f1f290fff03ce70ca1027934a44a2c"},
+        {"file":"api/crates/api/console-settings/src/routes/settings/branding/mod.rs","sha256":"ca7db62774116bd972cab2e305d56b3d7ca55ad7603d9d7c7ac0d574b72de002"},
+        {"file":"api/apps/api-server/src/_tests/system_settings/system_branding_routes.rs","sha256":"ae565962d01ca072f99a09456fc086f2d403f0b3acc6aea1c44f9ff0e7f44ac7"}
+      ]
+    },
+    {
+      "file": "web/app/src/features/auth/components/hero/start-document-motion.ts",
+      "rule": "deslop/unused-file",
+      "sourceSha256": "fe68b0d7787a5daf0a13ba6855a953bac7f045c0e7379d076591d51a330d5dd6",
+      "reason": "The static login document builder gives this file path to Vite as an IIFE entry, not as a source import. The build test requires an inline animation script with requestAnimationFrame and no dynamic imports.",
+      "evidence": [
+        {"file":"web/app/build/sign-in-motion-document.tsx","sha256":"78a900d3fa7892b159c348fc1447500465a633232f0f8c414acc51d478151724"},
+        {"file":"web/app/build/_tests/sign-in-motion-document.test.ts","sha256":"9366840aa4023d70fd5494d1aca688287ef8b9723ca9affa69b237267008be6e"}
+      ]
+    },
+    {
+      "file": "web/app/src/features/auth/lib/default-login-artifact.ts",
+      "rule": "react-doctor/js-index-maps",
+      "sourceSha256": "36ea4f09174484b57d8d26751b9f4e8069358b119bd83d5a8dd30f8cea2fa299",
+      "reason": "The default login path checks the exact source identity before scanning the fixed import set against the four built-in definitions. Building an index for each match adds allocation here and a direct Map construction would replace first-match semantics with last-match semantics.",
+      "evidence": [
+        {"file":"web/app/src/features/auth/lib/default-login-imports.ts","sha256":"a59ca5a09107db7a087f02983e0cb21cef0700e67ab1c578df3298b905a73861"},
+        {"file":"web/app/src/features/auth/_tests/sign-in-cold-start.test.ts","sha256":"d2e1ed1ac298a25bd6bba3ab79ad86b50c58372892dd13f8155296133d327359"}
+      ]
+    },
+    {
+      "file": "web/app/src/features/auth/lib/default-login-artifact.ts",
+      "rule": "react-doctor/js-set-map-lookups",
+      "sourceSha256": "36ea4f09174484b57d8d26751b9f4e8069358b119bd83d5a8dd30f8cea2fa299",
+      "reason": "The wildcard and named-export checks are membership tests over the fixed built-in module definitions after the artifact identity matches. No per-match set is needed to handle this bounded artifact; missing named exports must continue to select the normal compiler.",
+      "evidence": [
+        {"file":"web/app/src/features/auth/lib/default-login-imports.ts","sha256":"a59ca5a09107db7a087f02983e0cb21cef0700e67ab1c578df3298b905a73861"},
+        {"file":"web/app/src/features/auth/_tests/sign-in-cold-start.test.ts","sha256":"d2e1ed1ac298a25bd6bba3ab79ad86b50c58372892dd13f8155296133d327359"}
+      ]
     }
   ]
 }

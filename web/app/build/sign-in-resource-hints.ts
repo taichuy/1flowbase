@@ -75,19 +75,21 @@ export function signInResourceHintsPlugin(): Plugin {
         });
         const href = (file: string) => `${base}${file}`;
         const visual = signInPreloads(chunks, entries);
-        const hints = signInStylePreloads(chunks, visual)
-          .filter((f) => !html.includes(`href="${href(f)}"`))
-          .map(
-            (f) =>
-              `<link rel="preload" as="style" crossorigin href="${href(f)}">`
-          );
-        hints.push(
-          ...visual
-            .filter((f) => !html.includes(`href="${href(f)}"`))
-            .map(
-              (f) => `<link rel="modulepreload" crossorigin href="${href(f)}">`
-            )
-        );
+        const hints: string[] = [];
+        for (const file of signInStylePreloads(chunks, visual)) {
+          const url = href(file);
+          if (!html.includes(`href="${url}"`)) {
+            hints.push(
+              `<link rel="preload" as="style" crossorigin href="${url}">`
+            );
+          }
+        }
+        for (const file of visual) {
+          const url = href(file);
+          if (!html.includes(`href="${url}"`)) {
+            hints.push(`<link rel="modulepreload" crossorigin href="${url}">`);
+          }
+        }
         this.emitFile({
           type: 'asset',
           fileName: 'sign-in-preload.html',

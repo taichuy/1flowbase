@@ -4,9 +4,9 @@
     {
       "file": "web/app/package.json",
       "rule": "deslop/unused-dependency",
-      "sourceSha256": "b63a1e6dafb3009e154a38b70f445b5996f2fe442b1dee741ed37594a7206c32",
-      "reason": "web/app/package.json 的 is-mobile 是 Vite 开发态 interop cache 的直接依赖，由 vite/dev-runtime.ts 的 DEV_CRITICAL_INTEROP_SPECIFIERS 字符串列表和 verifyCriticalInteropCache 消费，不要求业务 TSX 直接 import。scripts/node/dev-up/_tests/vite-config-text.test.js 的 DRS-001 critical CommonJS dependencies share the optimized ESM boundary 断言 is-mobile/react-is、optimize include/needsInterop 引用及 appPackage.dependencies 实际存在。删除会破坏该真实开发配置合同；此证据是现存静态 contract test，不冒充浏览器验证。 P21 reassessed 2026-11-17: The package source changes only version 0.6.2 to 0.6.4; is-mobile 5.0.0 remains directly declared and consumed by DEV_CRITICAL_INTEROP_SPECIFIERS and the existing DRS-001 config contract test. LLM fixture source only adds analysis to seed state; its stable harness/mock exports remain test-only. Design-control fixture consumers now select a specific catalog entry before the existing create assertions.",
-      "evidence": [{"file":"web/app/vite/dev-runtime.ts","sha256":"ce4f288569437405cd9b1becdb2b80d17e14e9573534a8262e47ae422e496bef"},{"file":"scripts/node/dev-up/_tests/vite-config-text.test.js","sha256":"c3eb165ba5c7644691211e59da2203a10df8b411da34133a289aef4406fb11a1"}]
+      "sourceSha256": "3bc83ead8fab93d3c82a5fcac8854433be9b42626e4eee2c3afd047b46fa5e9d",
+      "reason": "web/app/package.json 的 is-mobile 是 Vite 开发态 interop cache 的直接依赖，由 vite/dev-runtime.ts 的 DEV_CRITICAL_INTEROP_SPECIFIERS 字符串列表和 verifyCriticalInteropCache 消费，不要求业务 TSX 直接 import。scripts/node/dev-up/_tests/vite-config-text.test.js 的 DRS-001 critical CommonJS dependencies share the optimized ESM boundary 断言 is-mobile/react-is、optimize include/needsInterop 引用及 appPackage.dependencies 实际存在。删除会破坏该真实开发配置合同；此证据是现存静态 contract test，不冒充浏览器验证。 The package version bump and added pre-React auth alias assertions leave is-mobile and the DRS-001 optimization witness in place.",
+      "evidence": [{"file":"web/app/vite/dev-runtime.ts","sha256":"ce4f288569437405cd9b1becdb2b80d17e14e9573534a8262e47ae422e496bef"},{"file":"scripts/node/dev-up/_tests/vite-config-text.test.js","sha256":"c39c0167c843c117c0415e7a8eaeac4230396103a601555ed75bab12f24afe84"}]
     },
     {
       "file": "web/app/src/features/agent-flow/_tests/llm/llm-model-provider-field.fixtures.tsx",
