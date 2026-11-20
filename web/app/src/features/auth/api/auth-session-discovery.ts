@@ -1,3 +1,7 @@
+import {
+  takeDocumentSessionDiscovery,
+  discardDocumentSessionDiscovery
+} from './document-start-discovery';
 import type { AuthSnapshot } from '../../../state/auth-store';
 import { fetchCurrentMe, fetchCurrentSession } from './session';
 
@@ -14,11 +18,13 @@ export function startAuthSessionDiscovery(): Promise<AuthSessionDiscovery> {
 
 export function resetAuthSessionDiscovery() {
   discoveryFlight = undefined;
+  discardDocumentSessionDiscovery();
 }
 
 async function discoverAuthSession(): Promise<AuthSessionDiscovery> {
   try {
-    const session = await fetchCurrentSession();
+    const session = await (takeDocumentSessionDiscovery() ??
+      fetchCurrentSession());
     const me = await fetchCurrentMe();
     return {
       status: 'authenticated',

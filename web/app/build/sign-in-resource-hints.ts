@@ -36,6 +36,7 @@ export function signInStylePreloads(
 // After native motion starts, prepare the application graph without waking the
 // lazy form, the workspace or unrelated public routes.
 export const signInPreloadRoots = [
+  '/src/bootstrap.ts',
   '/src/app/AnonymousAppRuntime.tsx',
   '/src/app/ApplicationRuntimeBootstrap.tsx',
   '/src/main.tsx'

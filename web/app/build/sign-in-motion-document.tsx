@@ -1,8 +1,4 @@
-import { Skeleton, Spin, ConfigProvider, App as AntdApp } from 'antd';
-import { LoadingOutlined } from '@ant-design/icons';
-import { StyleProvider, createCache, extractStyle } from '@ant-design/cssinjs';
-import { emeraldLightTheme } from '../../packages/ui/src/theme';
-import { createLoadingState } from '../src/shared/ui/loading-state/create-loading-state';
+import { AnonymousLoadingState } from '../src/features/auth/components/anonymous-loading/AnonymousLoadingView';
 import { SignInPanel } from '../src/features/auth/components/hero/SignInPanel';
 import en from '../src/features/auth/i18n/en_US.json';
 import React from 'react';
@@ -17,7 +13,7 @@ import {
 import { documentSceneId } from '../src/features/auth/components/hero/document-motion';
 
 // Build the real scene's input/drawing loop as a closed graph: no React, theme,
-// router, session, or secondary network request on the first-motion path.
+// router or deferred UI dependency. Auth discovery starts in the same HTML wave.
 export async function motionDocument(
   html: string,
   root: string,
@@ -54,37 +50,27 @@ export async function motionDocument(
     path.join(root, 'src/features/auth/pages/sign-in-frame.css'),
     'utf8'
   );
-  const cache = createCache();
-  const LoadingState = createLoadingState({ Skeleton, Spin, LoadingOutlined });
   const loadingCSS = readFileSync(
-    path.join(root, 'src/shared/ui/loading-state/loading-state.css'),
+    path.join(
+      root,
+      'src/features/auth/components/anonymous-loading/anonymous-loading.css'
+    ),
     'utf8'
   );
-  // Render after the panel: its actual Ant components have now registered their CSS.
-  function OpeningStyles() {
-    return <style>{extractStyle(cache, { plain: true })}</style>;
-  }
   const scene = renderToStaticMarkup(
     <div id={documentSceneId}>
-      <StyleProvider cache={cache}>
-        <ConfigProvider theme={emeraldLightTheme}>
-          <AntdApp>
-            <div className="auth-sign-in-page">
-              <div data-hero-artwork="" style={{ display: 'contents' }}>
-                <HeroArtwork>
-                  <div data-opening-brand="" hidden>
-                    <HeroTagline slogan="" />
-                  </div>
-                </HeroArtwork>
-              </div>
-              <SignInPanel footer={en.sign_in.footer}>
-                <LoadingState compact />
-              </SignInPanel>
+      <div className="auth-sign-in-page">
+        <div data-hero-artwork="" style={{ display: 'contents' }}>
+          <HeroArtwork>
+            <div data-opening-brand="" hidden>
+              <HeroTagline slogan="" />
             </div>
-          </AntdApp>
-        </ConfigProvider>
-      </StyleProvider>
-      <OpeningStyles />
+          </HeroArtwork>
+        </div>
+        <SignInPanel footer={en.sign_in.footer}>
+          <AnonymousLoadingState compact />
+        </SignInPanel>
+      </div>
     </div>
   );
   // Vite's generated head hints belong to stage two; the static scene carries its own CSS.

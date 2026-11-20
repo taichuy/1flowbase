@@ -132,8 +132,8 @@ export default defineConfig(({ command, mode }) => {
       vditorAssetsPlugin(),
       oneFlowbaseDevRuntimePlugin({ root: process.cwd(), mode, command }),
       pageTreeIconAssetsPlugin({ projectRoot: appRoot }),
-      staticAssetCompressionPlugin(),
       scenarioChunkManifestPlugin(),
+      staticAssetCompressionPlugin(),
       nativeAntDesignEsModulesPlugin(command),
       nativeAntDesignIconsModulesPlugin({
         inventory: nativeAntDesignIconsModuleInventory
