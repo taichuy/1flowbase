@@ -110,7 +110,7 @@ export function Alert({
 }
 
 export function ArrowLeftOutlined(props: SVGProps<SVGSVGElement>) {
-  return <Glyph name="back" {...props} />;
+  return <Glyph {...props} name="back" />;
 }
 
 // SVG geometry from the installed @ant-design/icons-svg definitions:
