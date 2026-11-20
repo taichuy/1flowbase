@@ -230,6 +230,27 @@ function profileProductionBundle(distDirectory, budget = DEFAULT_BUDGET) {
   );
 }
 
+function profileScenarioBundle(distDirectory, scene) {
+  const manifest = JSON.parse(fs.readFileSync(path.join(distDirectory, "scenario-chunk-manifest.json"), "utf8"));
+  if (manifest.version !== 2 || !manifest.scenes?.[scene]?.roots?.length) {
+    throw new Error(`Missing compiler-owned scene: ${scene}`);
+  }
+  const chunks = new Map(manifest.chunks.map((chunk) => [chunk.file, chunk]));
+  const files = new Set(manifest.scenes[scene].staticClosure);
+  for (const file of [...files]) for (const css of chunks.get(file)?.css ?? []) files.add(css);
+  return {
+    scene,
+    coverage: "Compiler static closure and CSS only; dynamic/Worker/data demands require the real browser scene trace",
+    roots: manifest.scenes[scene].roots,
+    dynamicBoundaries: [...new Set(manifest.scenes[scene].staticClosure.flatMap((file) => chunks.get(file)?.dynamicImports ?? []))].sort(),
+    ...profileAssetFiles(distDirectory, [...files], {
+      initialGzipBytesMax: Infinity,
+      largestInitialGzipBytesMax: Infinity,
+      javaScriptCountMax: Infinity,
+    }),
+  };
+}
+
 function classifyAsset(file) {
   if (
     /^(?:(?:assets|icons)\/)?page-tree-icons-pack-[a-f0-9]{12}-.+\.svg$/u.test(
@@ -307,6 +328,7 @@ module.exports = {
   classifyAsset,
   collectHtmlEntryAssets,
   collectStaticImports,
+  profileScenarioBundle,
   observeAssetDemand,
   percentile,
   profileAssetFiles,
