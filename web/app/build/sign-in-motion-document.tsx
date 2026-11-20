@@ -128,7 +128,8 @@ export async function motionDocument(
   return document
     .replace(
       '</head>',
-      `<style>${styles.code}\n#${documentSceneId} * {box-sizing:border-box}\n#${documentSceneId} ~ #root {display:none}\n[data-opening-brand]:not([hidden]){display:contents}</style></head>`
+      `<style>${styles.code}\n#${documentSceneId}{color:#16211d;font:14px/22px 'IBM Plex Sans','Segoe UI',sans-serif}
+#${documentSceneId} * {box-sizing:border-box}\n#${documentSceneId} ~ #root {display:none}\n[data-opening-brand]:not([hidden]){display:contents}</style></head>`
     )
     .replace(
       '<body>',
