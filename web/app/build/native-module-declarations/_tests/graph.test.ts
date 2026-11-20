@@ -39,7 +39,7 @@ test('TypeScript resolution supplies cross-package, triple-slash and types edges
       projectRoot: root,
       moduleSources: ['alpha', 'unrelated']
     });
-    const index = createDeclarationResources(graph);
+    const index = createDeclarationResources(graph, ['alpha']);
     const libs = index.roots.alpha!.flatMap((id) =>
       JSON.parse(index.resources[id]!)
     ) as { filePath: string }[];

@@ -1,5 +1,10 @@
 import type { Plugin, ResolvedConfig } from 'vite';
 
+import {
+  FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES,
+  isFrontstageNativeReactResolvedDeclarationSource
+} from '../src/features/frontstage/lib/native-modules/resolved-dependency-sources';
+
 import { collectNativeModuleDeclarationGraph } from './native-module-declarations/graph';
 import { serializeDeclarationIndex } from './native-module-declarations/index';
 import { createDeclarationResources } from './native-module-declarations/resources';
@@ -22,7 +27,19 @@ export function nativeModuleDeclarationsPlugin(options: Options): Plugin {
   let config: ResolvedConfig;
   const collect = () => {
     graph ??= collectNativeModuleDeclarationGraph(options);
-    resources ??= createDeclarationResources(graph);
+    // Reuse the editor's explicit public entries and discovered DnD package
+    // roots. Deep antd/dayjs imports stay indexed, but do not split primaries.
+    resources ??= createDeclarationResources(
+      graph,
+      options.moduleSources.filter(
+        (source) =>
+          FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES.some(
+            (primary) => primary === source
+          ) ||
+          (source.startsWith('@dnd-kit/') &&
+            isFrontstageNativeReactResolvedDeclarationSource(source))
+      )
+    );
     return resources;
   };
   return {

@@ -1,4 +1,3 @@
-import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { describe, expect, test, vi } from 'vitest';
 
@@ -16,7 +15,9 @@ vi.mock('virtual:1flowbase-native-module-declarations', () => ({
 const FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS = [
   ...FRONTEND_DECLARATIONS,
   ...collectNativeModuleDeclarations({
-    projectRoot: fileURLToPath(new URL('../../../../../../', import.meta.url)),
+    // The app test runner starts in web/app; jsdom transforms import.meta.url
+    // into an HTTP URL, which cannot identify the installed declaration root.
+    projectRoot: process.cwd(),
     moduleSources: [...new Set([
       ...FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS.map((module) => module.module_source)
         .filter(isFrontstageNativeReactResolvedDeclarationSource),
