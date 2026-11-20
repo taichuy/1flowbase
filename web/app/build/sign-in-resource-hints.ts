@@ -1,3 +1,4 @@
+import path from 'node:path';
 import type { Plugin } from 'vite';
 import { motionDocument } from './sign-in-motion-document';
 
@@ -45,13 +46,30 @@ export const signInPreloadRoots = [
 export function signInResourceHintsPlugin(): Plugin {
   let base: string;
   let root: string;
+  let building = false;
+  const prewarmId = 'virtual:1flowbase-authenticated-preload';
   return {
     name: '1flowbase-sign-in-resource-hints',
-    apply: 'build',
     enforce: 'post',
     configResolved(config) {
       base = config.base;
       root = config.root;
+      building = config.command === 'build';
+    },
+    resolveId(id) {
+      if (id === prewarmId) return '\0' + prewarmId;
+    },
+    load(id) {
+      if (id !== '\0' + prewarmId) return;
+      if (!building)
+        return `export default ${JSON.stringify(`${base}src/app/AuthenticatedAppRuntime.tsx`)};`;
+      const reference = this.emitFile({
+        type: 'chunk',
+        id: path.join(root, 'src/app/AuthenticatedAppRuntime.tsx')
+      });
+      // A URL, not an import: idle modulepreload fetches/parses without evaluating
+      // authenticated providers or initializing i18next in the anonymous state.
+      return `export default import.meta.ROLLUP_FILE_URL_${reference};`;
     },
     generateBundle: {
       order: 'post',
