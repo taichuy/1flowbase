@@ -18,3 +18,15 @@ for (const prefix of ['/api/', '/v1/']) {
     assert.match(location, /proxy_set_header\s+Connection\s+\$connection_upgrade;/);
   });
 }
+
+
+test('hashed declaration JSON is cached as an immutable file, never SPA fallback or a cached miss', () => {
+  const start = config.indexOf('location ~ "^/assets/native-declarations/');
+  assert.notEqual(start, -1);
+  // The regex contains {64}; find the block delimiter rather than that brace.
+  const end = config.indexOf('\n  }', start);
+  const location = config.slice(start, end);
+  assert.match(location, /try_files \$uri =404;/);
+  assert.match(location, /add_header Cache-Control "public, max-age=31536000, immutable";/);
+  assert.doesNotMatch(location, /index\.html|immutable" always/);
+});
