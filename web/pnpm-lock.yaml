@@ -266,6 +266,9 @@ importers:
       typescript-eslint:
         specifier: ^8.29.0
         version: 8.58.1(eslint@9.39.4(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)
+      typescript-legacy:
+        specifier: npm:typescript@5.9.3
+        version: typescript@5.9.3
       vite:
         specifier: 8.3.8
         version: 8.3.8(@types/node@24.19.2)(yaml@2.9.0)
@@ -447,6 +450,9 @@ importers:
       fake-indexeddb:
         specifier: ^6.2.5
         version: 6.2.5
+      typescript-legacy:
+        specifier: npm:typescript@5.9.3
+        version: typescript@5.9.3
       vite:
         specifier: 8.3.8
         version: 8.3.8(@types/node@24.19.2)(yaml@2.9.0)

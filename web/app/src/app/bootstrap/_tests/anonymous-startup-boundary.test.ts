@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve, relative } from 'node:path';
-import ts from 'typescript';
+import { parseSync } from 'vite';
 import { expect, test } from 'vitest';
 
 test('the sign-in-preloaded bootstrap has no static private runtime/API dependency', () => {
@@ -10,44 +10,40 @@ test('the sign-in-preloaded bootstrap has no static private runtime/API dependen
   const walk = (path: string) => {
     if (visited.has(path)) return;
     visited.add(path);
-    const source = ts.createSourceFile(
-      path,
-      readFileSync(path, 'utf8'),
-      ts.ScriptTarget.Latest,
-      true
-    );
-    for (const statement of source.statements) {
-      if (
-        !ts.isImportDeclaration(statement) &&
-        !ts.isExportDeclaration(statement)
-      )
-        continue;
-      if (
-        !statement.moduleSpecifier ||
-        !ts.isStringLiteral(statement.moduleSpecifier)
-      )
-        continue;
-      if (ts.isImportDeclaration(statement)) {
-        const clause = statement.importClause;
-        if (clause?.isTypeOnly) continue;
+    const code = readFileSync(path, 'utf8');
+    const parsed = parseSync(path, code);
+    expect(parsed.errors).toEqual([]);
+    for (const statement of parsed.program.body) {
+      let specifier: string | undefined;
+      if (statement.type === 'ImportDeclaration') {
+        if (statement.importKind === 'type') continue;
         if (
-          clause &&
-          !clause.name &&
-          clause.namedBindings &&
-          ts.isNamedImports(clause.namedBindings) &&
-          clause.namedBindings.elements.every((element) => element.isTypeOnly)
+          statement.specifiers.length === 0 &&
+          /\bfrom\s*['"]/u.test(code.slice(statement.start, statement.end))
         )
           continue;
-      } else {
-        if (statement.isTypeOnly) continue;
         if (
-          statement.exportClause &&
-          ts.isNamedExports(statement.exportClause) &&
-          statement.exportClause.elements.every((element) => element.isTypeOnly)
+          statement.specifiers.length > 0 &&
+          statement.specifiers.every(
+            (element) =>
+              element.type === 'ImportSpecifier' &&
+              element.importKind === 'type'
+          )
         )
           continue;
+        specifier = statement.source.value;
+      } else if (statement.type === 'ExportNamedDeclaration') {
+        if (!statement.source || statement.exportKind === 'type') continue;
+        if (
+          statement.specifiers.every((element) => element.exportKind === 'type')
+        )
+          continue;
+        specifier = statement.source.value;
+      } else if (statement.type === 'ExportAllDeclaration') {
+        if (statement.exportKind === 'type') continue;
+        specifier = statement.source.value;
       }
-      const specifier = statement.moduleSpecifier.text;
+      if (!specifier) continue;
       specifiers.add(specifier);
       if (!specifier.startsWith('.')) continue;
       const local = resolve(dirname(path), specifier);
@@ -69,7 +65,9 @@ test('the sign-in-preloaded bootstrap has no static private runtime/API dependen
   ]) {
     walk(resolve(root, `app/${entry}.tsx`));
   }
-  const paths = [...visited].map((path) => relative(root, path));
+  const paths = [...visited].map((path) =>
+    relative(root, path).replaceAll('\\', '/')
+  );
   expect(paths).not.toContain('app/bootstrap/authenticated-navigation.ts');
   expect(paths).not.toContain('app/bootstrap/AuthenticatedStartup.tsx');
   expect(

@@ -114,17 +114,25 @@ function collectHtmlEntryAssets(html) {
 
 function collectStaticImports(source) {
   // Legacy fixture/bundle fallback only. Current builds provide compiler edges.
-  // The already-installed TypeScript parser distinguishes imports from comments,
+  // The already-installed Vite/Oxc parser distinguishes imports from comments,
   // regexes and declaration/template strings; a regular expression cannot.
   const { createRequire } = require("node:module");
-  const ts = createRequire(path.resolve(__dirname, "../../../web/package.json"))("typescript");
-  const file = ts.createSourceFile("bundle.js", source, ts.ScriptTarget.Latest, false, ts.ScriptKind.JS);
+  const { parseSync } = createRequire(
+    path.resolve(__dirname, "../../../web/package.json"),
+  )("vite");
+  const parsed = parseSync("bundle.js", source);
   const imports = new Set();
-  for (const statement of file.statements) {
-    if (!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) continue;
-    const specifier = statement.moduleSpecifier;
-    if (specifier && ts.isStringLiteral(specifier) && specifier.text.startsWith(".")) {
-      imports.add(normalizeAssetPath(specifier.text));
+  for (const statement of parsed.program.body) {
+    if (
+      statement.type !== "ImportDeclaration" &&
+      statement.type !== "ExportNamedDeclaration" &&
+      statement.type !== "ExportAllDeclaration"
+    ) {
+      continue;
+    }
+    const specifier = statement.source?.value;
+    if (typeof specifier === "string" && specifier.startsWith(".")) {
+      imports.add(normalizeAssetPath(specifier));
     }
   }
   return [...imports];

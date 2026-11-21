@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import ts from 'typescript';
+// Programmatic TypeChecker symbol resolution requires the JS TypeScript Compiler API while workspace `typescript` is native TS 7.
+import ts from 'typescript-legacy';
 import { describe, expect, test } from 'vitest';
 
 type SourceEntry = {

@@ -291,12 +291,14 @@ semanticTest('does not turn React19 support into a rule-wide migration exemption
 // These exercise real React reconciliation/ref behavior. They are controls for
 // the diagnostic premise, not fake application objects or source snapshots.
 function compileFixture(source) {
-  const fromWeb = createRequire(path.join(ROOT, 'web/package.json'));
+  const fromPageRuntime = createRequire(path.join(ROOT, 'web/packages/page-runtime/package.json'));
   const fromApp = createRequire(path.join(ROOT, 'web/app/package.json'));
-  const ts = fromWeb('typescript');
-  const output = ts.transpileModule(source, { compilerOptions: {
-    module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX,
-  } }).outputText;
+  const { transform } = fromPageRuntime('sucrase');
+  const output = transform(source, {
+    transforms: ['typescript', 'jsx', 'imports'],
+    jsxRuntime: 'automatic',
+    production: true,
+  }).code;
   const module = { exports: {} };
   new Function('require', 'module', 'exports', output)(fromApp, module, module.exports);
   return module.exports;

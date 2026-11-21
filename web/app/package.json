@@ -76,6 +76,7 @@
     "@types/react-is": "^19.3.0",
     "@vitest/coverage-v8": "5.1.1",
     "fake-indexeddb": "^6.2.5",
+    "typescript-legacy": "npm:typescript@5.9.3",
     "vite": "8.3.8",
     "vitest": "5.1.1"
   }

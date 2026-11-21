@@ -4,7 +4,6 @@ import { dirname, join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import * as React from 'react';
 import { render } from '@testing-library/react';
-import ts from 'typescript';
 import { afterEach, describe, expect, test } from 'vitest';
 
 type PanelHandle = { focus(): void };
@@ -12,6 +11,15 @@ type MotionHandle = { inMotion(): boolean; enableMotion(): boolean };
 type ContentHandle = PanelHandle & MotionHandle;
 
 const require = createRequire(import.meta.url);
+const requireFromPageRuntime = createRequire(
+  join(process.cwd(), '../packages/page-runtime/package.json')
+);
+const { transform: transformModule } = requireFromPageRuntime('sucrase') as {
+  transform(
+    code: string,
+    options: { transforms: readonly ('imports' | 'jsx' | 'typescript')[] }
+  ): { code: string };
+};
 const requireFromAntd = createRequire(require.resolve('antd/package.json'));
 const dialogRoot = dirname(
   requireFromAntd.resolve('@rc-component/dialog/package.json')
@@ -66,12 +74,7 @@ function fixture(
   const executable =
     format === 'lib'
       ? source
-      : ts.transpileModule(source, {
-          compilerOptions: {
-            module: ts.ModuleKind.CommonJS,
-            target: ts.ScriptTarget.ES2022
-          }
-        }).outputText;
+      : transformModule(source, { transforms: ['imports'] }).code;
   const module = {
     exports: {} as {
       default: React.ForwardRefExoticComponent<

@@ -66,7 +66,7 @@ function readWebSource(file) {
 
 function assertPreReactModuleBoundary(readSource = readWebSource) {
   const webRequire = createRequire(path.join(webRoot, "package.json"));
-  const ts = webRequire("typescript");
+  const { parseSync } = webRequire("vite");
   const authEntry = JSON.parse(readSource("packages/api-client/package.json"))
     .exports["./auth"].default;
   assert.equal(authEntry, "./src/auth/index.ts");
@@ -77,33 +77,58 @@ function assertPreReactModuleBoundary(readSource = readWebSource) {
   assert.deepEqual(aliases, [path.posix.join("packages/api-client", authEntry)], "Vite auth alias");
 
   for (const [file, expected] of preReactImports) {
-    const source = ts.createSourceFile(file, readSource(file), ts.ScriptTarget.Latest);
+    const parsed = parseSync(file, readSource(file));
+    assert.equal(parsed.errors.length, 0, `${file}: syntax error`);
     const eager = [];
     const deferred = [];
     function visit(node) {
       if (
-        (ts.isImportDeclaration(node) && !node.importClause?.isTypeOnly) ||
-        (ts.isExportDeclaration(node) && node.moduleSpecifier && !node.isTypeOnly)
+        (node.type === "ImportDeclaration" && node.importKind !== "type") ||
+        ((node.type === "ExportNamedDeclaration" ||
+          node.type === "ExportAllDeclaration") &&
+          node.source &&
+          node.exportKind !== "type")
       ) {
-        eager.push(node.moduleSpecifier.text);
+        eager.push(node.source.value);
       }
-      if (ts.isExternalModuleReference(node)) {
+      if (node.type === "TSExternalModuleReference") {
         assert.fail(`${file}: unexpected import-equals dependency`);
       }
-      if (ts.isCallExpression(node)) {
-        if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-          const target = node.arguments[0];
-          assert.ok(target && ts.isStringLiteral(target), `${file}: nonliteral import()`);
-          deferred.push(target.text);
-        }
+      if (node.type === "ImportExpression") {
+        const target = node.source;
         assert.ok(
-          !ts.isIdentifier(node.expression) || node.expression.text !== "require",
+          target?.type === "Literal" && typeof target.value === "string",
+          `${file}: nonliteral import()`,
+        );
+        deferred.push(target.value);
+      }
+      if (node.type === "CallExpression") {
+        assert.ok(
+          node.callee.type !== "Identifier" || node.callee.name !== "require",
           `${file}: unexpected require() dependency`,
         );
       }
-      ts.forEachChild(node, visit);
+      for (const value of Object.values(node)) {
+        if (Array.isArray(value)) {
+          for (const child of value) {
+            if (
+              child &&
+              typeof child === "object" &&
+              typeof child.type === "string"
+            ) {
+              visit(child);
+            }
+          }
+        } else if (
+          value &&
+          typeof value === "object" &&
+          typeof value.type === "string"
+        ) {
+          visit(value);
+        }
+      }
     }
-    visit(source);
+    visit(parsed.program);
     assert.deepEqual(eager.sort(), [...expected].sort(), `${file}: eager dependencies`);
     assert.deepEqual(
       deferred.sort(),

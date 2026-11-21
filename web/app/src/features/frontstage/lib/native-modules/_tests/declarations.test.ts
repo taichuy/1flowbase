@@ -1,4 +1,5 @@
-import ts from 'typescript';
+// Monaco virtual-FS typechecking requires the JS TypeScript Compiler API while workspace `typescript` is native TS 7.
+import ts from 'typescript-legacy';
 import { describe, expect, test, vi } from 'vitest';
 
 import { collectNativeModuleDeclarations } from '../../../../../../build/native-module-declarations';

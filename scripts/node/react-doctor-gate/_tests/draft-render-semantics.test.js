@@ -235,12 +235,14 @@ semanticTest('requires current receiver/source evidence and the exact pinned dia
 });
 
 function compile(source) {
-  const fromWeb = createRequire(path.join(ROOT, 'web/package.json'));
+  const fromPageRuntime = createRequire(path.join(ROOT, 'web/packages/page-runtime/package.json'));
   const fromApp = createRequire(path.join(ROOT, 'web/app/package.json'));
-  const ts = fromWeb('typescript');
-  const text = ts.transpileModule(source, { compilerOptions: {
-    module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX,
-  } }).outputText;
+  const { transform } = fromPageRuntime('sucrase');
+  const text = transform(source, {
+    transforms: ['typescript', 'jsx', 'imports'],
+    jsxRuntime: 'automatic',
+    production: true,
+  }).code;
   const module = { exports: {} };
   new Function('require', 'module', 'exports', text)(fromApp, module, module.exports);
   return module.exports;

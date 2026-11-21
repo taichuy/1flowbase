@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import ts from 'typescript';
+// Monaco .d.ts graph resolution requires the JS TypeScript Compiler API while workspace `typescript` is native TS 7.
+import ts from 'typescript-legacy';
 import type {
   CollectedNativeModuleDeclaration,
   NativeDeclarationGraph
