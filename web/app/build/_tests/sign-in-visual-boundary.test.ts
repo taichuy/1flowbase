@@ -1,5 +1,8 @@
 import { expect, test } from 'vitest';
-import { assertSignInVisualBoundary } from '../sign-in-visual-boundary';
+import {
+  assertSignInVisualBoundary,
+  SIGN_IN_BUDGET
+} from '../sign-in-visual-boundary';
 
 const page = '/src/features/auth/pages/SignInPage.tsx';
 const hero = '/src/features/auth/components/HeroAnimation.tsx';
@@ -133,7 +136,7 @@ test('reports actual bytes with React included, and honors base-relative HTML UR
 
 test.each([
   ['JS/CSS count', { extra: 4 }],
-  ['JS/CSS raw bytes', { code: 'x'.repeat(240_001) }],
+  ['JS/CSS raw bytes', { code: 'x'.repeat(SIGN_IN_BUDGET.raw + 1) }],
   ['JS/CSS gzip bytes', { code: noise(145_000) }],
   ['HTML raw bytes', { htmlPadding: 'x'.repeat(20_001) }],
   ['HTML gzip bytes', { htmlPadding: noise(8_000) }],

@@ -205,7 +205,7 @@ test('default shared table lists basic conversation fields across channels with 
       .searchParams.has('instance_id')
   ).toBe(false);
   expect(chatRequests()).toHaveLength(0);
-  await click(screen.getByTitle('2'));
+  await click(screen.getByRole('button', { name: /^(页|Page) 2$/i }));
   await screen.findByText('Bob');
   expect(new URLSearchParams(window.location.search).get('page')).toBe('2');
 });

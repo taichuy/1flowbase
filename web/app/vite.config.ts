@@ -224,8 +224,10 @@ export default defineConfig(({ command, mode }) => {
       needsInterop: [...DEV_CRITICAL_INTEROP_SPECIFIERS]
     },
     build: {
+      // The whole-app import map exceeds the anonymous HTML transfer budget.
+      chunkImportMap: false,
       chunkSizeWarningLimit: 3500,
-      rollupOptions: {
+      rolldownOptions: {
         output: {
           codeSplitting: scenarioCodeSplitting
         }

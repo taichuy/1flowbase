@@ -2,7 +2,7 @@
 
 Issue: https://github.com/taichuy/1flowbase/issues/2019
 
-Pinned patches: `@rc-component/dialog@1.10.0` and `@rc-component/util@1.12.0`.
+Pinned patches: `@rc-component/dialog@1.10.0` and `@rc-component/util@1.14.1`.
 Both ESM (`es`) and CommonJS (`lib`) distributions are patched; package versions
 and public APIs are unchanged.
 

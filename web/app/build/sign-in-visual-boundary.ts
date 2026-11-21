@@ -89,8 +89,10 @@ export function assertSignInVisualBoundary(bundle: Bundle): void {
 export const SIGN_IN_BUDGET = {
   discoveryDepth: 1,
   files: 4,
-  raw: 240_000,
-  gzip: 85_000,
+  // React 19.3.1 increases the existing react-runtime chunk; the anonymous
+  // path still includes the same modules and no new dependency.
+  raw: 275_000,
+  gzip: 90_000,
   htmlRaw: 20_000,
   htmlGzip: 7_000
 } as const;

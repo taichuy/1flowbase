@@ -5,7 +5,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { build, preprocessCSS, resolveConfig } from 'vite';
+import { build } from 'vite';
 import {
   HeroArtwork,
   HeroTagline
@@ -57,23 +57,40 @@ export async function motionDocument(
     ),
     'utf8'
   );
-  // Reuse Vite's installed Lightning CSS pipeline; no optional esbuild install.
-  const styleConfig = await resolveConfig(
-    {
+  // preprocessCSS is deliberately non-minifying in Vite 8.3. Use the public
+  // build pipeline so inline CSS receives the same target-aware minifier as
+  // emitted styles, without importing a transitive dependency or trimming CSS.
+  const styleId = path.join(root, 'sign-in-opening.css');
+  const minifyStyle = async (css: string) => {
+    const result = await build({
       configFile: false,
       root,
+      publicDir: false,
       logLevel: 'silent',
-      css: { transformer: 'lightningcss' },
-      build: { cssMinify: 'lightningcss' }
-    },
-    'build',
-    'production'
-  );
-  const minifyStyle = (css: string) =>
-    preprocessCSS(css, path.join(root, 'sign-in-opening.css'), {
-      ...styleConfig,
-      isProduction: true
+      plugins: [
+        {
+          name: '1flowbase-opening-css',
+          resolveId: (id) => (id === styleId ? styleId : undefined),
+          load: (id) => (id === styleId ? css : undefined)
+        }
+      ],
+      build: {
+        write: false,
+        copyPublicDir: false,
+        cssMinify: 'lightningcss',
+        rolldownOptions: { input: styleId }
+      }
     });
+    const output = Array.isArray(result) ? result[0] : result;
+    if (!('output' in output))
+      throw new Error('Opening CSS build missing output');
+    const style = output.output.find(
+      (item) => item.type === 'asset' && item.fileName.endsWith('.css')
+    );
+    if (!style || style.type !== 'asset')
+      throw new Error('Opening CSS build missing stylesheet');
+    return { code: String(style.source).trimEnd() };
+  };
   const styles = await minifyStyle(`${frameCSS}\n${loadingCSS}`);
   let scene = renderToStaticMarkup(
     <div id={documentSceneId}>
@@ -103,7 +120,7 @@ export async function motionDocument(
   // is redundant. Keep base/reset and failure/retry styles for load failures.
   html = html
     .replace(
-      /\/\* document-skeleton:start \*\/[\s\S]*?\/\* document-skeleton:end \*\//gu,
+      /<style\s+data-document-skeleton(?:="")?[^>]*>[\s\S]*?<\/style>/gu,
       ''
     )
     .replace(

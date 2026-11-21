@@ -49,7 +49,7 @@ describe('ApplicationManagementPanel', () => {
       expect(screen.getAllByRole('checkbox')).toHaveLength(2)
     );
     fireEvent.click(screen.getAllByRole('checkbox')[1]);
-    fireEvent.click(screen.getByTitle('2'));
+    fireEvent.click(screen.getByRole('button', { name: /^(页|Page) 2$/i }));
     await waitFor(() => expect(window.location.search).toContain('page=2'));
     expect(
       screen.getByRole('button', { name: /导出应用（0）/ })

@@ -145,7 +145,7 @@ describe('ThirdPartyMcpTab', () => {
     renderTab();
     await screen.findByText('Connection 1');
     expect(screen.queryByText('Connection 21')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTitle('2'));
+    fireEvent.click(screen.getByRole('button', { name: /^(页|Page) 2$/i }));
     expect(screen.queryByText('Connection 1')).not.toBeInTheDocument();
     const row = screen.getByText('Connection 21').closest('tr')!;
     fireEvent.click(

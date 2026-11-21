@@ -1,0 +1,90 @@
+diff --git a/es/hooks/useStatus.js b/es/hooks/useStatus.js
+index 11713e8..79a1584 100644
+--- a/es/hooks/useStatus.js
++++ b/es/hooks/useStatus.js
+@@ -144,18 +144,27 @@ export default function useStatus(supportMotion, visible, getElement, {
+   // ============================ Status ============================
+   const visibleRef = useRef(null);
+   const pendingVisibleChangeRef = useRef(false);
++  const effectsDisconnectedRef = useRef(false);
+ 
+   // Update with new status
+   useIsomorphicLayoutEffect(() => {
+-    // Activity and Suspense reconnect effects without creating a new instance.
+-    // Keep settled content intact. Restart interrupted motion on the same node
+-    // so its frame queue, end listeners and deadline can be connected again.
+-    if (mountedRef.current && visibleRef.current === visible) {
++    // A retained Frontstage surface must not replay an interrupted transition.
++    // Its frames and deadline were cancelled when Activity hid it.
++    if (mountedRef.current && effectsDisconnectedRef.current) {
++      effectsDisconnectedRef.current = false;
++      if (visibleRef.current !== visible) {
++        pendingVisibleChangeRef.current = true;
++        visibleRef.current = visible;
++        setAsyncVisible(visible);
++      }
+       if (getStatus() !== STATUS_NONE) {
+-        startStep();
++        updateMotionEndStatus();
+       }
+       return;
+     }
++    if (mountedRef.current && visibleRef.current === visible) {
++      return;
++    }
+     pendingVisibleChangeRef.current = true;
+     setAsyncVisible(visible);
+     const isMounted = mountedRef.current;
+@@ -208,6 +217,7 @@ export default function useStatus(supportMotion, visible, getElement, {
+     }
+   }, [motionAppear, motionEnter, motionLeave]);
+   useEffect(() => () => {
++    effectsDisconnectedRef.current = true;
+     clearTimeout(deadlineRef.current);
+   }, []);
+ 
+diff --git a/lib/hooks/useStatus.js b/lib/hooks/useStatus.js
+index 0e15536..1df85e3 100644
+--- a/lib/hooks/useStatus.js
++++ b/lib/hooks/useStatus.js
+@@ -153,18 +153,27 @@ function useStatus(supportMotion, visible, getElement, {
+   // ============================ Status ============================
+   const visibleRef = (0, _react.useRef)(null);
+   const pendingVisibleChangeRef = (0, _react.useRef)(false);
++  const effectsDisconnectedRef = (0, _react.useRef)(false);
+ 
+   // Update with new status
+   (0, _useIsomorphicLayoutEffect.default)(() => {
+-    // Activity and Suspense reconnect effects without creating a new instance.
+-    // Keep settled content intact. Restart interrupted motion on the same node
+-    // so its frame queue, end listeners and deadline can be connected again.
+-    if (mountedRef.current && visibleRef.current === visible) {
++    // A retained Frontstage surface must not replay an interrupted transition.
++    // Its frames and deadline were cancelled when Activity hid it.
++    if (mountedRef.current && effectsDisconnectedRef.current) {
++      effectsDisconnectedRef.current = false;
++      if (visibleRef.current !== visible) {
++        pendingVisibleChangeRef.current = true;
++        visibleRef.current = visible;
++        setAsyncVisible(visible);
++      }
+       if (getStatus() !== _interface.STATUS_NONE) {
+-        startStep();
++        updateMotionEndStatus();
+       }
+       return;
+     }
++    if (mountedRef.current && visibleRef.current === visible) {
++      return;
++    }
+     pendingVisibleChangeRef.current = true;
+     setAsyncVisible(visible);
+     const isMounted = mountedRef.current;
+@@ -217,6 +226,7 @@ function useStatus(supportMotion, visible, getElement, {
+     }
+   }, [motionAppear, motionEnter, motionLeave]);
+   (0, _react.useEffect)(() => () => {
++    effectsDisconnectedRef.current = true;
+     clearTimeout(deadlineRef.current);
+   }, []);
+ 

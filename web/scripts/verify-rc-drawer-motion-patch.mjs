@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const expectedAntdVersion = '6.6.2';
+const expectedAntdVersion = '6.7.1';
 const expectedDrawerVersion = '1.4.2';
 const patchRelativePath = `patches/@rc-component__drawer@${expectedDrawerVersion}.patch`;
 
