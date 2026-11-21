@@ -1,3 +1,4 @@
+mod dependencies;
 mod shared_resources;
 pub use shared_resources::*;
 mod authentication_egress;

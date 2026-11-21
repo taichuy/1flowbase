@@ -133,6 +133,7 @@ async fn lock_managed_desired_state_scopes(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     installation_id: Uuid,
 ) -> Result<()> {
+    lock_managed_dependency_scope(transaction).await?;
     let workspaces: Vec<Uuid> = sqlx::query_scalar("select workspace_id from plugin_contribution_authorization_revisions where installation_id=$1 union select workspace_id from plugin_assignments where installation_id=$1 union select '00000000-0000-0000-0000-000000000000'::uuid from extension_installations where id=$1 and contract_version='1flowbase.extension-bus/v1' and coalesce(metadata_json #>> '{managed_service,scope}' = 'system' or metadata_json -> 'binding_targets' = '[\"system\"]'::jsonb, false) order by workspace_id")
         .bind(installation_id).fetch_all(&mut **transaction).await?;
     for workspace in workspaces {
@@ -619,6 +620,8 @@ impl PluginRepository for PgControlPlaneStore {
         }
         let mut transaction = self.pool().begin().await?;
         lock_managed_desired_state_scopes(&mut transaction, input.installation_id).await?;
+        guard_managed_desired_state(&mut transaction, input.installation_id, input.desired_state)
+            .await?;
         let row = sqlx::query(
             r#"
             update extension_installations
@@ -687,6 +690,18 @@ impl PluginRepository for PgControlPlaneStore {
     ) -> Result<bool> {
         let mut transaction = self.pool().begin().await?;
         lock_managed_desired_state_scopes(&mut transaction, input.installation_id).await?;
+        // A stale rollback is a no-op, not a new lifecycle request. Validate only a matching CAS.
+        let matches: bool = sqlx::query_scalar("select exists(select 1 from extension_installations where id=$1 and updated_at=$2 and desired_state=$3)")
+            .bind(input.installation_id).bind(input.expected_updated_at).bind(input.expected_desired_state.as_str())
+            .fetch_one(&mut *transaction).await?;
+        if matches {
+            guard_managed_desired_state(
+                &mut transaction,
+                input.installation_id,
+                input.restore_desired_state,
+            )
+            .await?;
+        }
         let changed = sqlx::query("update extension_installations set desired_state=$4,updated_by=$5,updated_at=now() where id=$1 and updated_at=$2 and desired_state=$3 and category='runtime-extensions' and contract_version='1flowbase.extension-bus/v1'")
             .bind(input.installation_id).bind(input.expected_updated_at)
             .bind(input.expected_desired_state.as_str()).bind(input.restore_desired_state.as_str())
@@ -820,6 +835,7 @@ impl PluginRepository for PgControlPlaneStore {
         input: &CreatePluginAssignmentInput,
     ) -> Result<domain::PluginAssignmentRecord> {
         let mut transaction = self.pool().begin().await?;
+        lock_managed_dependency_scope(&mut transaction).await?;
         crate::plugin_contribution_authority_repository::lock_managed_workspace(
             &mut transaction,
             input.workspace_id,
@@ -865,6 +881,7 @@ impl PluginRepository for PgControlPlaneStore {
         input: &CreatePluginAssignmentInput,
     ) -> Result<Option<domain::PluginAssignmentRecord>> {
         let mut transaction = self.pool().begin().await?;
+        lock_managed_dependency_scope(&mut transaction).await?;
         crate::plugin_contribution_authority_repository::lock_managed_workspace(
             &mut transaction,
             input.workspace_id,
@@ -1070,3 +1087,8 @@ impl PluginRepository for PgControlPlaneStore {
 
 #[path = "plugin_repository/artifact_lifecycle.rs"]
 mod artifact_lifecycle;
+
+use artifact_lifecycle::{guard_managed_desired_state, managed_dependency_facts};
+pub(crate) use artifact_lifecycle::{
+    lock_managed_dependency_scope, validate_managed_dependency_switch,
+};
