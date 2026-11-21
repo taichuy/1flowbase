@@ -48,10 +48,6 @@ export function assertSignInVisualBoundary(bundle: Bundle): void {
   const styleRoots = rootsFor(['/node_modules/antd-style/es/index.js']);
   for (const file of signInPreloads(chunks, styleRoots)) {
     for (const id of owners.get(file)!) {
-      // AntD 6.7 Tooltip reads this standalone React context to stay disabled
-      // in table measurement rows. It does not import the Table component.
-      if (id.endsWith('/node_modules/antd/es/table/TableMeasureRowContext.js'))
-        continue;
       if (/\/antd\/es\/(?:table|tour|list)\//u.test(id))
         throw new Error(
           `Sign-in style provider eagerly includes ${id} in ${file}`
@@ -93,8 +89,10 @@ export function assertSignInVisualBoundary(bundle: Bundle): void {
 export const SIGN_IN_BUDGET = {
   discoveryDepth: 1,
   files: 4,
-  raw: 240_000,
-  gzip: 85_000,
+  // React 19.3.1 increases the existing react-runtime chunk; the anonymous
+  // path still includes the same modules and no new dependency.
+  raw: 275_000,
+  gzip: 90_000,
   htmlRaw: 20_000,
   htmlGzip: 7_000
 } as const;
