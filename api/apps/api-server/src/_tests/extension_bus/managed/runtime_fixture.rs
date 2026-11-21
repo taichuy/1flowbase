@@ -19,9 +19,31 @@ impl RuntimeFixture {
         )
     }
 
+    /// Opt in to startup_assembly's actual data/credential HostCall adapters.
+    /// Existing fixture callers keep their original missing-port behavior.
+    pub(crate) fn new_with_managed_host_calls(state: &crate::app_state::ApiState) -> Self {
+        Self::with_artifact_resolver_and_managed_host_calls(
+            state,
+            Arc::new(ApiRuntimeArtifactResolver::new(
+                state.store.clone(),
+                &state.api_node_id,
+                &state.provider_install_root,
+            )),
+            true,
+        )
+    }
+
     pub(crate) fn with_artifact_resolver(
         state: &crate::app_state::ApiState,
         resolver: Arc<dyn runtime_extension_host::RuntimeArtifactResolver>,
+    ) -> Self {
+        Self::with_artifact_resolver_and_managed_host_calls(state, resolver, false)
+    }
+
+    fn with_artifact_resolver_and_managed_host_calls(
+        state: &crate::app_state::ApiState,
+        resolver: Arc<dyn runtime_extension_host::RuntimeArtifactResolver>,
+        managed_host_calls: bool,
     ) -> Self {
         let assembly = crate::extension_bus::assemble_extension_graph_input(
             crate::api_workspace_root().unwrap(),
@@ -48,13 +70,35 @@ impl RuntimeFixture {
         notification_publication
             .activate(Arc::new(store.clone()))
             .unwrap();
-        let host = Arc::new(
+        let host = Arc::new(if managed_host_calls {
+            runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver_plugin_data_and_profile_source(
+                time::OffsetDateTime::now_utc(),
+                resolver,
+                Arc::new(control_plane::plugin_management::ManagedPluginDataService::new(
+                    Arc::new(store.clone()),
+                    Arc::new(store.clone()),
+                )),
+                Arc::new(runtime_profile::RuntimeSampleSource::new(
+                    std::time::Duration::from_secs(1),
+                )),
+            )
+            .unwrap()
+            .with_plugin_credentials(Arc::new(
+                control_plane::plugin_management::ManagedPluginCredentialService::new(
+                    Arc::new(store.clone()),
+                    Arc::new(storage_durable_postgres::PgPluginCredentialRepository::new(
+                        store.pool().clone(),
+                        state.provider_secret_master_key.clone(),
+                    ).unwrap()),
+                ),
+            ))
+        } else {
             runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver(
                 time::OffsetDateTime::now_utc(),
                 resolver,
             )
-            .unwrap(),
-        );
+            .unwrap()
+        });
         host.mark_ready().unwrap();
         let (services, composition) = crate::managed_runtime_assembly::bind_managed_runtime(
             crate::provider_runtime::services_for_current_cfg(
