@@ -1,6 +1,7 @@
 use super::{
     fixture::{Fixture, Preserved},
     inputs::Inputs,
+    loopback_ssh::LoopbackSsh,
 };
 use anyhow::{Context, Result, ensure};
 use axum::http::StatusCode;
@@ -29,7 +30,7 @@ fn succeeded(task: PluginTaskRecord) -> Result<()> {
     );
     Ok(())
 }
-async fn run(f: &Fixture, inputs: &Inputs) -> Result<()> {
+async fn run(f: &Fixture, inputs: &Inputs, ssh: &LoopbackSsh) -> Result<()> {
     let boot = f.generation()?;
     let (monitor, manifest, _) = f.upload(&inputs.monitor).await?;
     let monitor_id = monitor.installation.id;
@@ -72,7 +73,7 @@ async fn run(f: &Fixture, inputs: &Inputs) -> Result<()> {
         f.generation()? != boot,
         "old enable did not publish real host generation"
     );
-    let preserved = Preserved::seed(f, old_id, &old_manifest).await?;
+    let preserved = Preserved::seed(f, old_id, &old_manifest, ssh).await?;
     let old_generation = f.generation()?;
     dependency(
         enable_consumer().await,
@@ -233,7 +234,8 @@ async fn run(f: &Fixture, inputs: &Inputs) -> Result<()> {
         status == StatusCode::OK,
         "real registered consumer API document unavailable"
     );
-    preserved.check_hosts_list(f).await?;
+    preserved.check_hosts_list(f, ssh).await?;
+    preserved.check_monitor_snapshot(f, ssh).await?;
     ensure!(
         f.generation()? == active_generation,
         "readonly HTTP consumer changed serving generation"
@@ -350,13 +352,17 @@ async fn run(f: &Fixture, inputs: &Inputs) -> Result<()> {
 #[ignore = "local-only: requires private genuine archives, fresh BUSINESS builds and explicit loopback test DB"]
 async fn provider_consumer_archives_real_api_host_lifecycle() -> Result<()> {
     let inputs = Inputs::load()?; // Missing private input is a failure, never an early-success skip.
+    let mut ssh = LoopbackSsh::start().await?;
     let f = Fixture::new().await?;
-    let result = tokio::time::timeout(std::time::Duration::from_secs(180), run(&f, &inputs)).await;
+    let result =
+        tokio::time::timeout(std::time::Duration::from_secs(180), run(&f, &inputs, &ssh)).await;
     // Real host shutdown owns all subprocesses, including after a lifecycle assertion error.
     let stopped = f.runtime.host.stop().await;
+    let ssh_cleanup = ssh.stop();
     let cleanup = std::fs::remove_dir_all(&f.state.provider_install_root);
     result.context("bounded archive lifecycle acceptance timed out")??;
     stopped.context("real runtime host shutdown failed")?;
+    ssh_cleanup.context("owned loopback SSH cleanup failed")?;
     cleanup.context("private installed artifact cleanup failed")?;
     Ok(())
 }

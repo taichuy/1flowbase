@@ -1,4 +1,7 @@
-use super::inputs::{Archive, sha};
+use super::{
+    inputs::{Archive, sha},
+    loopback_ssh::LoopbackSsh,
+};
 use crate::_tests::extension_bus::managed_snapshot_tests::RuntimeFixture;
 use crate::{
     managed_publication::ManagedGenerationPublisher, provider_runtime::ApiProviderRuntime,
@@ -33,7 +36,9 @@ pub struct Fixture {
     pub actor: ActorContext,
     pub member: ActorContext,
     cookie: String,
+    csrf: String,
     member_cookie: String,
+    member_csrf: String,
 }
 impl Fixture {
     pub async fn new() -> Result<Self> {
@@ -84,7 +89,7 @@ impl Fixture {
             .composition
             .attach_generation_publisher(Arc::downgrade(&publisher))?;
         let ingress = publisher.ingress();
-        let (cookie, _) =
+        let (cookie, csrf) =
             crate::_tests::support::login_and_capture_cookie(&ingress, &account, &password).await;
         // Reuse the repository session helper; authentication still reloads the actual user,
         // role and console policy through the real HTTP middleware on every request.
@@ -94,6 +99,7 @@ impl Fixture {
             .await?
             .context("member user missing")?;
         let session_id = Uuid::now_v7().to_string();
+        let member_csrf = Uuid::now_v7().to_string();
         crate::_tests::support::seed_session(
             &state,
             SessionRecord {
@@ -103,7 +109,7 @@ impl Fixture {
                 current_workspace_id: member.current_workspace_id,
                 active_role_code: member.effective_display_role.clone(),
                 session_version: user.session_version,
-                csrf_token: Uuid::now_v7().to_string(),
+                csrf_token: member_csrf.clone(),
                 expires_at_unix: time::OffsetDateTime::now_utc().unix_timestamp() + 3600,
             },
         )
@@ -126,7 +132,9 @@ impl Fixture {
             actor,
             member,
             cookie,
+            csrf,
             member_cookie,
+            member_csrf,
         })
     }
     pub fn authority(&self) -> PluginContributionAuthorityService<MainDurableStore> {
@@ -273,10 +281,18 @@ impl Fixture {
                 role_code,
                 groups: vec![RoleConsoleGroupPolicy::custom(
                     ConsolePolicyGroup::plugin("compute-monitor")?,
-                    vec![ConsoleOperationPolicy::simple(
-                        ConsoleOperationId::try_from("compute-monitor.hosts.list")?,
-                        true,
-                    )],
+                    [
+                        "compute-monitor.hosts.list",
+                        "compute-monitor.monitor.snapshot",
+                    ]
+                    .into_iter()
+                    .map(|operation| {
+                        Ok(ConsoleOperationPolicy::simple(
+                            ConsoleOperationId::try_from(operation)?,
+                            true,
+                        ))
+                    })
+                    .collect::<Result<Vec<_>>>()?,
                 )],
             },
         )
@@ -295,21 +311,125 @@ impl Fixture {
         path: &str,
         cookie: Option<&str>,
     ) -> Result<(StatusCode, Value)> {
-        let mut request = Request::builder().uri(path);
+        self.request("GET", path, cookie, None, None).await
+    }
+    pub async fn post(&self, path: &str, body: Value, member: bool) -> Result<(StatusCode, Value)> {
+        let (cookie, csrf) = if member {
+            (&self.member_cookie, &self.member_csrf)
+        } else {
+            (&self.cookie, &self.csrf)
+        };
+        self.request("POST", path, Some(cookie), Some(csrf), Some(body))
+            .await
+    }
+    async fn request(
+        &self,
+        method: &str,
+        path: &str,
+        cookie: Option<&str>,
+        csrf: Option<&str>,
+        body: Option<Value>,
+    ) -> Result<(StatusCode, Value)> {
+        let mut request = Request::builder().method(method).uri(path);
         if let Some(cookie) = cookie {
             request = request.header("cookie", cookie);
         }
-        let response = self
-            .ingress
-            .clone()
-            .oneshot(request.body(Body::empty())?)
-            .await?;
+        if let Some(csrf) = csrf {
+            request = request.header("x-csrf-token", csrf);
+        }
+        let body = match body {
+            Some(body) => {
+                request = request.header("content-type", "application/json");
+                Body::from(body.to_string())
+            }
+            None => Body::empty(),
+        };
+        let response = self.ingress.clone().oneshot(request.body(body)?).await?;
         let status = response.status();
         let bytes = to_bytes(response.into_body(), 1024 * 1024).await?;
         Ok((
             status,
             serde_json::from_slice(&bytes).context("actual HTTP response must be JSON")?,
         ))
+    }
+    async fn mcp(&self, token: &str, name: &str, arguments: Value) -> Result<Value> {
+        let response = self
+            .ingress
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/mcp/compute_monitor")
+                    .header("authorization", format!("Bearer {token}"))
+                    .header("content-type", "application/json")
+                    .header("mcp-protocol-version", "2025-11-25")
+                    .body(Body::from(
+                        json!({"jsonrpc":"2.0","id":2896,"method":"tools/call",
+                "params":{"name":name,"arguments":arguments}})
+                        .to_string(),
+                    ))?,
+            )
+            .await?;
+        let status = response.status();
+        let wire: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await?)?;
+        ensure!(
+            status == StatusCode::OK
+                && wire["error"].is_null()
+                && wire["result"]["isError"] == false,
+            "actual MCP {name} failed: {status}; {wire}"
+        );
+        Ok(wire["result"]["structuredContent"].clone())
+    }
+    pub async fn mcp_snapshot(&self, host: &str) -> Result<Value> {
+        // Use the genuine package's enabled instance/tool. No replacement tool or mock dispatch.
+        let (status, key) = self
+            .post(
+                "/api/console/user-api-keys",
+                json!({"name":"Archive loopback snapshot","expiration_policy":"never"}),
+                false,
+            )
+            .await?;
+        ensure!(
+            status == StatusCode::CREATED,
+            "cannot provision disposable Root MCP key"
+        );
+        let token = key["data"]["token"].as_str().context("MCP token missing")?;
+        let tool_id = "plugin.compute-monitor.monitor_snapshot";
+        let listed = self
+            .mcp(
+                token,
+                "mcp_list",
+                json!({"path":"/compute-monitor","depth":1,"limit":50}),
+            )
+            .await?;
+        ensure!(
+            listed["result"]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|item| item["id"] == tool_id)),
+            "genuine monitor snapshot absent from actual MCP discovery"
+        );
+        let tool = self
+            .mcp(token, "mcp_get", json!({"tool_id":tool_id}))
+            .await?;
+        ensure!(
+            tool["tool_id"] == tool_id
+                && tool["input_schema"]["properties"]["host_id"]["type"] == "string"
+                && tool["input_schema"]["properties"]["sample_interval_ms"]["type"] == "integer"
+                && tool["result_schema"]["properties"]["host_id"]["type"] == "string",
+            "actual MCP schema does not describe the production snapshot target"
+        );
+        ensure!(
+            tool["description_tool_id"].is_null(),
+            "unexpected separate description tool: do not bypass it"
+        );
+        self.mcp(
+            token,
+            "mcp_call",
+            json!({"tool_id":tool_id,"des_id":tool["des_id"],
+            "max_inline_chars":512000,"arguments":{"host_id":host,"sample_interval_ms":250}}),
+        )
+        .await
     }
 }
 
@@ -326,22 +446,28 @@ pub struct Preserved {
     hidden_acl: RecordPermissionPolicy,
     snapshot: Value,
 }
-fn field_value(field: &PluginOwnedField, host: &str, credential: &str) -> PluginDataValue {
+fn field_value(
+    field: &PluginOwnedField,
+    host: &str,
+    credential: &str,
+    ssh: &LoopbackSsh,
+) -> PluginDataValue {
     let text = match field.field_code.as_str() {
         "host_id" => host.to_owned(),
         "credential_id" => credential.to_owned(),
         "address" => "127.0.0.1".into(),
-        "username" => "fixture-only".into(),
-        "auth_type" => "password".into(),
+        "username" => ssh.username.clone(),
+        "auth_type" => "private_key".into(),
+        "fingerprint" => ssh.fingerprint.clone(),
         _ => format!("fixture-{}", field.field_code),
     };
     match field.field_type {
         PluginDataFieldType::String | PluginDataFieldType::Text => PluginDataValue::String(text),
         PluginDataFieldType::Number => PluginDataValue::Number(
             match field.field_code.as_str() {
-                "port" => "22",
+                "port" => return PluginDataValue::Number(ssh.port.to_string()),
                 "timeout_ms" => "30000",
-                "max_output_bytes" => "65536",
+                "max_output_bytes" => "1048576",
                 _ => "12345",
             }
             .into(),
@@ -367,6 +493,7 @@ impl Preserved {
         f: &Fixture,
         id: Uuid,
         manifest: &plugin_framework::PluginManifestV1,
+        ssh: &LoopbackSsh,
     ) -> Result<Self> {
         let host = Uuid::now_v7().to_string();
         let hidden_host = Uuid::now_v7().to_string();
@@ -408,7 +535,7 @@ impl Preserved {
                         .map(|field| {
                             (
                                 field.field_code.clone(),
-                                field_value(field, row_id, &credential_id),
+                                field_value(field, row_id, &credential_id, ssh),
                             )
                         })
                         .collect::<BTreeMap<_, _>>();
@@ -471,8 +598,7 @@ impl Preserved {
             f.runtime.store.pool().clone(),
             f.state.provider_secret_master_key.clone(),
         )?;
-        let secret =
-            json!({"password": Uuid::now_v7().to_string(), "private_key":null,"passphrase":null});
+        let secret = json!({"password":null,"private_key":ssh.private_key()?,"passphrase":null});
         credentials
             .execute_plugin_credential(
                 &credential,
@@ -553,7 +679,7 @@ impl Preserved {
             snapshot,
         })
     }
-    pub async fn check_hosts_list(&self, f: &Fixture) -> Result<()> {
+    pub async fn check_hosts_list(&self, f: &Fixture, ssh: &LoopbackSsh) -> Result<()> {
         let path = "/api/console/managed-services/compute-monitor/hosts?page=1&page_size=50";
         let (status, root) = f.get(path, true).await?;
         ensure!(
@@ -581,9 +707,10 @@ impl Preserved {
         ensure!(
             visible["name"] == "fixture-name"
                 && visible["address"] == "127.0.0.1"
-                && visible["port"] == 22
-                && visible["username"] == "fixture-only"
-                && visible["auth_type"] == "password"
+                && visible["port"] == ssh.port
+                && visible["username"] == ssh.username
+                && visible["auth_type"] == "private_key"
+                && visible["fingerprint"] == ssh.fingerprint
                 && visible["enabled"] == true
                 && visible["credential_configured"] == true,
             "worker did not project original taichuy/ssh provider fields"
@@ -592,11 +719,8 @@ impl Preserved {
             items.iter().all(|row| row.get("credential_id").is_none()
                 && row.get("password").is_none()
                 && row.get("private_key").is_none())
-                && !root.to_string().contains(
-                    self.secret["password"]
-                        .as_str()
-                        .context("seeded password")?
-                ),
+                && !root.to_string().contains("BEGIN OPENSSH PRIVATE KEY")
+                && !root.to_string().contains(&self.credential_id),
             "hosts.list exposed private credential data"
         );
         f.allow_member_hosts_list().await?;
@@ -611,6 +735,80 @@ impl Preserved {
                 && member["data"]["page"] == 1
                 && member["data"]["page_size"] == 50,
             "member must see the granted provider host only; deny must filter rows AND count"
+        );
+        Ok(())
+    }
+    pub async fn check_monitor_snapshot(&self, f: &Fixture, ssh: &LoopbackSsh) -> Result<()> {
+        let path = format!(
+            "/api/console/managed-services/compute-monitor/hosts/{}/monitor/snapshot",
+            self.acl_key.record_id
+        );
+        let body = json!({"sample_interval_ms":250});
+        let before = ssh.sessions()?;
+        // Console operation is allowed, but the historical provider ACL grants view, NOT open.
+        // The same original host must remain denied even after Root populates snapshot cache.
+        for host in [&self.acl_key.record_id, &self.hidden_acl_key.record_id] {
+            let denied_path = format!(
+                "/api/console/managed-services/compute-monitor/hosts/{host}/monitor/snapshot"
+            );
+            let (status, denied) = f.post(&denied_path, body.clone(), true).await?;
+            ensure!(
+                status == StatusCode::FORBIDDEN && denied["code"] == "record_permission_denied",
+                "view-only/hidden member must not read monitor snapshot: {status}; {denied}"
+            );
+        }
+        ensure!(
+            ssh.sessions()? == before,
+            "denied member started SSH commands"
+        );
+        let started = (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64;
+        let (status, response) = f.post(&path, body.clone(), false).await?;
+        ensure!(
+            status == StatusCode::OK,
+            "authenticated Root production worker snapshot failed: {status}; {response}"
+        );
+        ssh.assert_sample(&response["data"], &self.acl_key.record_id, started)?;
+        ensure!(
+            ssh.sessions()? >= before + 2,
+            "HTTP snapshot must execute two real SSH probe commands"
+        );
+        self.no_secrets(&response)?;
+        let (status, denied) = f.post(&path, body, true).await?;
+        ensure!(
+            status == StatusCode::FORBIDDEN && denied["code"] == "record_permission_denied",
+            "Root snapshot/cache bypassed member open ACL: {status}; {denied}"
+        );
+
+        eprintln!(
+            "R6_HTTP_SNAPSHOT: authenticated Root -> genuine worker -> production credential HostCall -> preserved taichuy/ssh credential -> pinned loopback SSH; member open denied before/after cache"
+        );
+        // Allow the production projection's 3 * 250ms TTL to expire. Do not delete host
+        // cache entries or pretend an HTTP cache hit is a fresh MCP credential/SSH call.
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        // This is actual /api/mcp + package discovery/schema/target dispatch, not debug_execute.
+        let started = (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64;
+        let before = ssh.sessions()?;
+        let snapshot = f.mcp_snapshot(&self.acl_key.record_id).await?;
+        ssh.assert_sample(&snapshot, &self.acl_key.record_id, started)?;
+        ensure!(
+            ssh.sessions()? >= before + 2,
+            "MCP snapshot must execute fresh real SSH probes, not reuse an HTTP-only result"
+        );
+        self.no_secrets(&snapshot)?;
+        eprintln!(
+            "R6_MCP_SNAPSHOT: actual package mcp_list/get schema -> mcp_call -> production target -> fresh pinned loopback SSH probes; no credential fields returned"
+        );
+        Ok(())
+    }
+    fn no_secrets(&self, value: &Value) -> Result<()> {
+        let text = value.to_string();
+        ensure!(
+            !text.contains(&self.credential_id)
+                && !text.contains("BEGIN OPENSSH PRIVATE KEY")
+                && !text.contains("credential_id")
+                && !text.contains("private_key")
+                && !text.contains("password"),
+            "snapshot exposed a credential reference or secret"
         );
         Ok(())
     }

@@ -21,10 +21,11 @@ impl RuntimeFixture {
 
     /// Opt in to startup_assembly's actual data/credential HostCall adapters.
     /// Existing fixture callers keep their original missing-port behavior.
+    #[cfg_attr(test, api_test_selection::group(contracts))]
     pub(crate) fn new_with_managed_host_calls(state: &crate::app_state::ApiState) -> Self {
         Self::with_artifact_resolver_and_managed_host_calls(
             state,
-            Arc::new(ApiRuntimeArtifactResolver::new(
+            Arc::new(crate::provider_runtime::ApiRuntimeArtifactResolver::new(
                 state.store.clone(),
                 &state.api_node_id,
                 &state.provider_install_root,
@@ -90,6 +91,11 @@ impl RuntimeFixture {
                         store.pool().clone(),
                         state.provider_secret_master_key.clone(),
                     ).unwrap()),
+                ),
+            ))
+            .with_execution_gate(Arc::new(
+                control_plane::plugin_management::ManagedPluginExecutionGateAuthority::new(
+                    Arc::new(store.clone()),
                 ),
             ))
         } else {

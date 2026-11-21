@@ -22,7 +22,12 @@
 //! ManagedPluginCredentialService, sharing the seeded store/master key. Authenticated root
 //! and member hosts.list cross HTTP -> worker -> HostCall -> original taichuy/ssh rows;
 //! restricted rows test positive/negative member filtering without mutating original ACLs.
-//! No SSH network execution, MCP/UI evidence or QA verdict is claimed by this asset.
+//! R6 extends these SAME preserved rows/credentials to ephemeral pinned-key loopback SSH.
+//! Authenticated Root HTTP snapshot and package MCP list/get/call must execute real worker
+//! PluginCredential HostCalls and two SSH probes each; view-only member snapshot is denied
+//! before/after Root cache population. No mock Host callbacks or fabricated metrics.
+//! Asset only: execution/QA belongs to Root. UI, aggregate/trends, positive nonroot open,
+//! cross-workspace/scope forgery and post-revoke runtime HostCall negatives are NOT covered.
 
 #[path = "plugin_resource_archive_lifecycle/_tests/fixture.rs"]
 mod fixture;
@@ -30,3 +35,6 @@ mod fixture;
 mod inputs;
 #[path = "plugin_resource_archive_lifecycle/_tests/lifecycle.rs"]
 mod lifecycle;
+
+#[path = "plugin_resource_archive_lifecycle/_tests/loopback_ssh.rs"]
+mod loopback_ssh;

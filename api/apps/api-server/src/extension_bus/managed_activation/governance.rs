@@ -2,6 +2,13 @@ use super::*;
 use control_plane::plugin_management::ManagedExecutionGovernancePort;
 use control_plane_contracts::ports::*;
 
+/// Automatic reclamation closes the obsolete snapshot, not every future publication of
+/// the same executable graph. Only an explicit retirement permanently fences that target.
+pub(super) enum SnapshotRetirementMode {
+    Reclamation,
+    Explicit,
+}
+
 pub(super) fn target(
     snapshot: &ManagedWorkspaceSnapshot,
     binding: &ManagedContributionBinding,
@@ -194,7 +201,8 @@ impl ManagedExtensionComposition {
             .into());
         }
         drop(visible);
-        self.retire_snapshots_locked(snapshots, &[]).await?;
+        self.retire_snapshots_locked(snapshots, &[], SnapshotRetirementMode::Explicit)
+            .await?;
         drop(assembly);
         self.execution_state(workspace_id, installation_id, None)
             .await
@@ -205,6 +213,7 @@ impl ManagedExtensionComposition {
         &self,
         snapshots: Vec<Arc<ManagedWorkspaceSnapshot>>,
         removing_installations: &[Uuid],
+        mode: SnapshotRetirementMode,
     ) -> Result<()> {
         let visible = self.snapshots.lock().await;
         if visible.current.values().any(|current| {
@@ -216,12 +225,14 @@ impl ManagedExtensionComposition {
             bail!("managed execution is current");
         }
         let mut retirement_markers = BTreeMap::new();
-        for snapshot in &snapshots {
-            for binding in snapshot.bindings.values() {
-                retirement_markers.insert(
-                    serde_json::to_string(&target(snapshot, binding, self.execution_epoch))?,
-                    snapshot.lifetime.clone(),
-                );
+        if matches!(mode, SnapshotRetirementMode::Explicit) {
+            for snapshot in &snapshots {
+                for binding in snapshot.bindings.values() {
+                    retirement_markers.insert(
+                        serde_json::to_string(&target(snapshot, binding, self.execution_epoch))?,
+                        snapshot.lifetime.clone(),
+                    );
+                }
             }
         }
         let shared_handles = visible
@@ -469,8 +480,12 @@ impl ManagedArtifactRemovalGuard for ManagedExtensionComposition {
                 .cloned()
                 .collect();
             drop(visible);
-            self.retire_snapshots_locked(snapshots, &installation_ids)
-                .await?;
+            self.retire_snapshots_locked(
+                snapshots,
+                &installation_ids,
+                SnapshotRetirementMode::Explicit,
+            )
+            .await?;
             Ok(Box::new((assembly, operation)) as Box<dyn Send + Sync>)
         })
         .await

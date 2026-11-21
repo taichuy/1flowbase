@@ -116,7 +116,14 @@ impl ManagedExtensionComposition {
             }
             // Each full snapshot is independent: one durable backlog must not pin unrelated
             // graphs. The shared retirement path rechecks references and current/shared handles.
-            if let Err(error) = self.retire_snapshots_locked(vec![snapshot], &[]).await {
+            if let Err(error) = self
+                .retire_snapshots_locked(
+                    vec![snapshot],
+                    &[],
+                    governance::SnapshotRetirementMode::Reclamation,
+                )
+                .await
+            {
                 tracing::debug!(%error, "managed retained snapshot remains protected");
             }
         }
