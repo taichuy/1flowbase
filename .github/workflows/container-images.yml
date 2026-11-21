@@ -20,6 +20,7 @@ on:
       - "web/app/package.json"
       - "web/pnpm-lock.yaml"
       - "web/pnpm-workspace.yaml"
+      - "web/.pnpmfile.cjs"
       - "web/packages/page-protocol/**"
       - "web/packages/page-runtime/**"
       - "web/packages/tailwindcss-catalog/**"

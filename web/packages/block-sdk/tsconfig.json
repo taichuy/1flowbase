@@ -1,7 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
       "@1flowbase/page-protocol": ["../page-protocol/dist/index.d.ts"]
     },

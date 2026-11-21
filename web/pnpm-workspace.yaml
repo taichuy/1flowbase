@@ -14,10 +14,12 @@ overrides:
   dompurify: 3.4.16
   fast-uri: 3.1.2
   glob: 10.5.0
+  'i18next>typescript': '*'
   mermaid: 11.16.1
   nanoid: 5.1.16
   postcss: 8.5.25
   protobufjs: 7.5.5
+  'react-i18next>typescript': '*'
   seroval: 1.5.3
   shell-quote: 1.10.0
   ws: 8.21.2

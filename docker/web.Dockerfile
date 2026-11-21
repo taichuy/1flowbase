@@ -7,7 +7,7 @@ WORKDIR /workspace
 ENV PNPM_HOME=/pnpm
 ENV PATH="${PNPM_HOME}:${PATH}"
 
-COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./web/
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml web/.pnpmfile.cjs ./web/
 COPY web/patches ./web/patches
 COPY web/scripts/verify-react-grid-layout-patch.mjs web/scripts/verify-rc-drawer-motion-patch.mjs ./web/scripts/
 COPY web/app/package.json ./web/app/package.json

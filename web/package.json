@@ -43,7 +43,7 @@
     "prettier": "^3.5.3",
     "proper-lockfile": "^4.1.2",
     "turbo": "^2.9.14",
-    "typescript": "^5.8.3",
+    "typescript": "7.0.2",
     "typescript-eslint": "^8.29.0",
     "typescript-legacy": "npm:typescript@5.9.3",
     "vite": "8.3.8",
