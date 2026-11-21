@@ -77,3 +77,5 @@ deploy/*
 .dsh/
 1flowbase-web.tar.gz
 docs/research/*
+.agents/skills/mcp_config.json
+.agents/mcp_config.json
