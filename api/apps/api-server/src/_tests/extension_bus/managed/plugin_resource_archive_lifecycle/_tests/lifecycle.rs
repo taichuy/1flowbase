@@ -30,7 +30,12 @@ fn succeeded(task: PluginTaskRecord) -> Result<()> {
     );
     Ok(())
 }
-async fn run(f: &Fixture, inputs: &Inputs, ssh: &LoopbackSsh) -> Result<()> {
+async fn run(
+    f: &Fixture,
+    inputs: &Inputs,
+    ssh: &LoopbackSsh,
+    browser: Option<&super::browser::BrowserConfig>,
+) -> Result<()> {
     let boot = f.generation()?;
     let (monitor, manifest, _) = f.upload(&inputs.monitor).await?;
     let monitor_id = monitor.installation.id;
@@ -73,7 +78,7 @@ async fn run(f: &Fixture, inputs: &Inputs, ssh: &LoopbackSsh) -> Result<()> {
         f.generation()? != boot,
         "old enable did not publish real host generation"
     );
-    let preserved = Preserved::seed(f, old_id, &old_manifest, ssh).await?;
+    let preserved = Preserved::seed(f, old_id, &old_manifest, ssh, browser.is_none()).await?;
     let old_generation = f.generation()?;
     dependency(
         enable_consumer().await,
@@ -236,6 +241,9 @@ async fn run(f: &Fixture, inputs: &Inputs, ssh: &LoopbackSsh) -> Result<()> {
     );
     preserved.check_hosts_list(f, ssh).await?;
     preserved.check_monitor_snapshot(f, ssh).await?;
+    if let Some(browser) = browser {
+        super::aggregate::accept(f, &preserved, ssh, browser).await?;
+    }
     ensure!(
         f.generation()? == active_generation,
         "readonly HTTP consumer changed serving generation"
@@ -351,11 +359,26 @@ async fn run(f: &Fixture, inputs: &Inputs, ssh: &LoopbackSsh) -> Result<()> {
 #[tokio::test]
 #[ignore = "local-only: requires private genuine archives, fresh BUSINESS builds and explicit loopback test DB"]
 async fn provider_consumer_archives_real_api_host_lifecycle() -> Result<()> {
+    acceptance(None).await
+}
+
+#[tokio::test]
+#[ignore = "R7 local-only: requires genuine archives, loopback DB/SSH and mandatory Root browser script"]
+async fn provider_consumer_archives_authenticated_aggregate_browser_lifecycle() -> Result<()> {
+    // Validate before creating runtimes: R7 can never silently fall back to R6.
+    let browser = super::browser::BrowserConfig::load()?;
+    acceptance(Some(&browser)).await
+}
+
+async fn acceptance(browser: Option<&super::browser::BrowserConfig>) -> Result<()> {
     let inputs = Inputs::load()?; // Missing private input is a failure, never an early-success skip.
     let mut ssh = LoopbackSsh::start().await?;
     let f = Fixture::new().await?;
-    let result =
-        tokio::time::timeout(std::time::Duration::from_secs(180), run(&f, &inputs, &ssh)).await;
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(if browser.is_some() { 420 } else { 180 }),
+        run(&f, &inputs, &ssh, browser),
+    )
+    .await;
     // Real host shutdown owns all subprocesses, including after a lifecycle assertion error.
     let stopped = f.runtime.host.stop().await;
     let ssh_cleanup = ssh.stop();

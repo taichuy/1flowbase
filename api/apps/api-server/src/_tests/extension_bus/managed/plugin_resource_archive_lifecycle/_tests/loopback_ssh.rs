@@ -27,12 +27,12 @@ pub struct LoopbackSsh {
     pub username: String,
     pub fingerprint: String,
 }
-fn identity(pid: u32) -> Option<String> {
+pub(super) fn identity(pid: u32) -> Option<String> {
     let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
     // Fields after comm start at field 3; starttime is field 22.
     Some(stat.rsplit_once(')')?.1.split_whitespace().nth(19)?.into())
 }
-fn observe(pid: u32, owners: &mut BTreeMap<u32, String>) {
+pub(super) fn observe(pid: u32, owners: &mut BTreeMap<u32, String>) {
     let Ok(children) = fs::read_to_string(format!("/proc/{pid}/task/{pid}/children")) else {
         return;
     };
@@ -46,7 +46,7 @@ fn observe(pid: u32, owners: &mut BTreeMap<u32, String>) {
         }
     }
 }
-fn signal_owned(owners: &BTreeMap<u32, String>, signal: i32) {
+pub(super) fn signal_owned(owners: &BTreeMap<u32, String>, signal: i32) {
     for (&pid, start) in owners {
         if identity(pid).as_ref() == Some(start) {
             // Only start-time-checked descendants of our freshly spawned daemon.
@@ -256,6 +256,27 @@ impl LoopbackSsh {
     }
     fn log(&self) -> Result<String> {
         Ok(fs::read_to_string(self.root.join("sshd.log"))?)
+    }
+    /// Observe only our ephemeral server port, not another user's SSH sessions.
+    pub fn established_connections(&self) -> Result<usize> {
+        let mut count = 0;
+        for path in ["/proc/net/tcp", "/proc/net/tcp6"] {
+            let table = fs::read_to_string(path)?;
+            for line in table.lines().skip(1) {
+                let fields: Vec<_> = line.split_whitespace().collect();
+                if fields.get(3) != Some(&"01") {
+                    continue;
+                }
+                let port = fields
+                    .get(1)
+                    .and_then(|address| address.rsplit_once(':'))
+                    .and_then(|(_, port)| u16::from_str_radix(port, 16).ok());
+                if port == Some(self.port) {
+                    count += 1;
+                }
+            }
+        }
+        Ok(count)
     }
     pub fn sessions(&self) -> Result<usize> {
         Ok(self.log()?.matches("Starting session: command").count())

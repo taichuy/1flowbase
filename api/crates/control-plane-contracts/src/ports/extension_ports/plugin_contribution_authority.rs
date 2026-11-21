@@ -158,6 +158,24 @@ pub trait PluginContributionAuthorityRepository: Send + Sync {
         &self,
         subject: &ManagedContributionSubject,
     ) -> Result<Box<dyn ContributionAuthorityLease>>;
+    /// Resource callbacks inspect authority, but do not mutate its grants or selection.
+    /// Readers may overlap; grant/revoke/lifecycle writers must wait for every lease.
+    /// Keep this guard through the actual data/credential operation, including writes.
+    async fn lock_managed_callback_authority(
+        &self,
+        subject: &ManagedContributionSubject,
+    ) -> Result<Box<dyn ContributionAuthorityLease>> {
+        self.lock_contribution_authority(subject).await
+    }
+    /// Same read fence for Host-owned record existence and live-provider observations.
+    async fn lock_installation_resource_authority(
+        &self,
+        installation_id: Uuid,
+        workspace_id: Uuid,
+    ) -> Result<Box<dyn ContributionAuthorityLease>> {
+        self.lock_installation_contribution_authority(installation_id, workspace_id)
+            .await
+    }
     /// Read-only authority guard for authentication HTTP exchanges. Concurrent reads may
     /// overlap; authority writers must wait until every guard is released or dropped.
     /// Consumers only inspect facts and release this guard; they must not commit effects.

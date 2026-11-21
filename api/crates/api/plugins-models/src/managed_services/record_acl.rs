@@ -164,10 +164,7 @@ pub(crate) async fn ensure_active(
 ) -> Result<(), ApiError> {
     let lease = state
         .store
-        .lock_installation_contribution_authority(
-            registration.installation_id,
-            domain::SYSTEM_SCOPE_ID,
-        )
+        .lock_installation_resource_authority(registration.installation_id, domain::SYSTEM_SCOPE_ID)
         .await?;
     ensure_live_registration(registration, lease.as_ref())?;
     lease.release().await?;
@@ -239,10 +236,7 @@ pub(crate) async fn ensure_record(
     };
     let lease = state
         .store
-        .lock_installation_contribution_authority(
-            registration.installation_id,
-            domain::SYSTEM_SCOPE_ID,
-        )
+        .lock_installation_resource_authority(registration.installation_id, domain::SYSTEM_SCOPE_ID)
         .await?;
     ensure_live_registration(registration, lease.as_ref())?;
     let result = state.store.execute(&binding, &request).await;

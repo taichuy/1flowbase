@@ -3,9 +3,7 @@ use super::{
     loopback_ssh::LoopbackSsh,
 };
 use crate::_tests::extension_bus::managed_snapshot_tests::RuntimeFixture;
-use crate::{
-    managed_publication::ManagedGenerationPublisher, provider_runtime::ApiProviderRuntime,
-};
+use crate::{managed_publication::ManagedGenerationPublisher, provider_runtime::ApiProviderRuntime};
 use anyhow::{Context, Result, ensure};
 use axum::{
     Router,
@@ -43,7 +41,9 @@ pub struct Fixture {
 impl Fixture {
     pub async fn new() -> Result<Self> {
         let (initial, _) = crate::_tests::support::test_api_state_with_database_pool_capacity(
-            std::num::NonZeroU32::new(2).unwrap(),
+            // Two live sources each retain consumer authority while using the adapter;
+            // retain one connection for HTTP/session/ACL observation (normal local default).
+            std::num::NonZeroU32::new(5).unwrap(),
         )
         .await;
         let runtime = RuntimeFixture::new_with_managed_host_calls(&initial);
@@ -52,8 +52,7 @@ impl Fixture {
         owned.provider_runtime = runtime.services.clone();
         let state = Arc::new(owned);
         let account = std::env::var("BOOTSTRAP_ROOT_ACCOUNT").unwrap_or_else(|_| "root".into());
-        let password =
-            std::env::var("BOOTSTRAP_ROOT_PASSWORD").unwrap_or_else(|_| "change-me".into());
+        let password = std::env::var("BOOTSTRAP_ROOT_PASSWORD").unwrap_or_else(|_| "change-me".into());
         let id = sqlx::query_scalar("select id from users where account=$1")
             .bind(&account)
             .fetch_one(state.store.pool())
@@ -79,18 +78,13 @@ impl Fixture {
         let member = AuthRepository::load_actor_context_for_user(&state.store, member.id).await?;
         ensure!(!member.is_root, "real nonroot member required");
         let initial_app = crate::app_with_state(state.clone());
-        let publisher = ManagedGenerationPublisher::new(
-            &state,
-            crate::_tests::support::test_config(),
-            vec![],
-            initial_app,
-        )?;
+        let publisher =
+            ManagedGenerationPublisher::new(&state, crate::_tests::support::test_config(), vec![], initial_app)?;
         runtime
             .composition
             .attach_generation_publisher(Arc::downgrade(&publisher))?;
         let ingress = publisher.ingress();
-        let (cookie, csrf) =
-            crate::_tests::support::login_and_capture_cookie(&ingress, &account, &password).await;
+        let (cookie, csrf) = crate::_tests::support::login_and_capture_cookie(&ingress, &account, &password).await;
         // Reuse the repository session helper; authentication still reloads the actual user,
         // role and console policy through the real HTTP middleware on every request.
         let user = state
@@ -147,11 +141,7 @@ impl Fixture {
     pub async fn upload(
         &self,
         a: &Archive,
-    ) -> Result<(
-        InstallPluginResult,
-        plugin_framework::PluginManifestV1,
-        String,
-    )> {
+    ) -> Result<(InstallPluginResult, plugin_framework::PluginManifestV1, String)> {
         let installed = self
             .management
             .install_uploaded_plugin(InstallUploadedPluginCommand {
@@ -163,9 +153,7 @@ impl Fixture {
             .context("actual uploaded archive intake failed")?;
         let i = &installed.installation;
         ensure!(
-            i.organization == a.publisher
-                && i.provider_code == a.code
-                && i.plugin_version == a.version,
+            i.organization == a.publisher && i.provider_code == a.code && i.plugin_version == a.version,
             "archive identity mismatch"
         );
         ensure!(
@@ -202,10 +190,7 @@ impl Fixture {
             "manifest identity mismatch"
         );
         if let Some(expected) = &a.source {
-            ensure!(
-                &source == expected,
-                "manifest differs from approved BUSINESS source"
-            );
+            ensure!(&source == expected, "manifest differs from approved BUSINESS source");
         }
         let runtime_sha = sha(&fs::read(local.join(&manifest.runtime.entry))?);
         if let Some(expected) = &a.runtime_sha {
@@ -230,8 +215,7 @@ impl Fixture {
             .await?
             .context("artifact missing")?;
         ensure!(
-            i.desired_state == PluginDesiredState::ActiveRequested
-                && a.runtime_status == PluginRuntimeStatus::Active,
+            i.desired_state == PluginDesiredState::ActiveRequested && a.runtime_status == PluginRuntimeStatus::Active,
             "real enable did not reach active runtime"
         );
         Ok(())
@@ -250,8 +234,7 @@ impl Fixture {
             .await?
             .context("artifact missing")?;
         ensure!(
-            i.desired_state == PluginDesiredState::Disabled
-                && a.runtime_status == PluginRuntimeStatus::Inactive,
+            i.desired_state == PluginDesiredState::Disabled && a.runtime_status == PluginRuntimeStatus::Inactive,
             "runtime not disabled/inactive"
         );
         Ok(())
@@ -267,12 +250,17 @@ impl Fixture {
             .generation_id())
     }
     pub async fn allow_member_hosts_list(&self) -> Result<()> {
-        let role_code = sqlx::query_scalar(
-            "select code from roles where workspace_id=$1 and is_default_member_role=true",
-        )
-        .bind(self.member.current_workspace_id)
-        .fetch_one(self.runtime.store.pool())
-        .await?;
+        self.allow_member_operations(false).await
+    }
+    pub async fn allow_member_aggregate(&self) -> Result<()> {
+        self.allow_member_operations(true).await
+    }
+    async fn allow_member_operations(&self, aggregate: bool) -> Result<()> {
+        let role_code =
+            sqlx::query_scalar("select code from roles where workspace_id=$1 and is_default_member_role=true")
+                .bind(self.member.current_workspace_id)
+                .fetch_one(self.runtime.store.pool())
+                .await?;
         RoleRepository::replace_role_console_policy(
             &self.runtime.store,
             &ReplaceRoleConsolePolicyInput {
@@ -281,23 +269,37 @@ impl Fixture {
                 role_code,
                 groups: vec![RoleConsoleGroupPolicy::custom(
                     ConsolePolicyGroup::plugin("compute-monitor")?,
-                    [
-                        "compute-monitor.hosts.list",
-                        "compute-monitor.monitor.snapshot",
-                    ]
-                    .into_iter()
-                    .map(|operation| {
-                        Ok(ConsoleOperationPolicy::simple(
-                            ConsoleOperationId::try_from(operation)?,
-                            true,
-                        ))
-                    })
-                    .collect::<Result<Vec<_>>>()?,
+                    ["compute-monitor.hosts.list", "compute-monitor.monitor.snapshot"]
+                        .into_iter()
+                        .chain(
+                            aggregate
+                                .then_some([
+                                    "compute-monitor.monitor.aggregate",
+                                    "compute-monitor.monitor.stream",
+                                    "compute-monitor.monitor.resolve",
+                                ])
+                                .into_iter()
+                                .flatten(),
+                        )
+                        .map(|operation| {
+                            Ok(ConsoleOperationPolicy::simple(
+                                ConsoleOperationId::try_from(operation)?,
+                                true,
+                            ))
+                        })
+                        .collect::<Result<Vec<_>>>()?,
                 )],
             },
         )
         .await?;
         Ok(())
+    }
+    pub fn stream_auth(&self, member: bool) -> (&str, &str) {
+        if member {
+            (&self.member_cookie, &self.member_csrf)
+        } else {
+            (&self.cookie, &self.csrf)
+        }
     }
     pub async fn get(&self, path: &str, authenticated: bool) -> Result<(StatusCode, Value)> {
         self.get_with_cookie(path, authenticated.then_some(self.cookie.as_str()))
@@ -306,11 +308,7 @@ impl Fixture {
     pub async fn get_as_member(&self, path: &str) -> Result<(StatusCode, Value)> {
         self.get_with_cookie(path, Some(&self.member_cookie)).await
     }
-    async fn get_with_cookie(
-        &self,
-        path: &str,
-        cookie: Option<&str>,
-    ) -> Result<(StatusCode, Value)> {
+    async fn get_with_cookie(&self, path: &str, cookie: Option<&str>) -> Result<(StatusCode, Value)> {
         self.request("GET", path, cookie, None, None).await
     }
     pub async fn post(&self, path: &str, body: Value, member: bool) -> Result<(StatusCode, Value)> {
@@ -319,7 +317,10 @@ impl Fixture {
         } else {
             (&self.cookie, &self.csrf)
         };
-        self.request("POST", path, Some(cookie), Some(csrf), Some(body))
+        self.request("POST", path, Some(cookie), Some(csrf), Some(body)).await
+    }
+    pub async fn delete(&self, path: &str) -> Result<(StatusCode, Value)> {
+        self.request("DELETE", path, Some(&self.cookie), Some(&self.csrf), None)
             .await
     }
     async fn request(
@@ -371,12 +372,9 @@ impl Fixture {
             )
             .await?;
         let status = response.status();
-        let wire: Value =
-            serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await?)?;
+        let wire: Value = serde_json::from_slice(&to_bytes(response.into_body(), 1024 * 1024).await?)?;
         ensure!(
-            status == StatusCode::OK
-                && wire["error"].is_null()
-                && wire["result"]["isError"] == false,
+            status == StatusCode::OK && wire["error"].is_null() && wire["result"]["isError"] == false,
             "actual MCP {name} failed: {status}; {wire}"
         );
         Ok(wire["result"]["structuredContent"].clone())
@@ -409,9 +407,7 @@ impl Fixture {
                 .is_some_and(|items| items.iter().any(|item| item["id"] == tool_id)),
             "genuine monitor snapshot absent from actual MCP discovery"
         );
-        let tool = self
-            .mcp(token, "mcp_get", json!({"tool_id":tool_id}))
-            .await?;
+        let tool = self.mcp(token, "mcp_get", json!({"tool_id":tool_id})).await?;
         ensure!(
             tool["tool_id"] == tool_id
                 && tool["input_schema"]["properties"]["host_id"]["type"] == "string"
@@ -446,12 +442,7 @@ pub struct Preserved {
     hidden_acl: RecordPermissionPolicy,
     snapshot: Value,
 }
-fn field_value(
-    field: &PluginOwnedField,
-    host: &str,
-    credential: &str,
-    ssh: &LoopbackSsh,
-) -> PluginDataValue {
+fn field_value(field: &PluginOwnedField, host: &str, credential: &str, ssh: &LoopbackSsh) -> PluginDataValue {
     let text = match field.field_code.as_str() {
         "host_id" => host.to_owned(),
         "credential_id" => credential.to_owned(),
@@ -494,6 +485,7 @@ impl Preserved {
         id: Uuid,
         manifest: &plugin_framework::PluginManifestV1,
         ssh: &LoopbackSsh,
+        pending_recovery: bool,
     ) -> Result<Self> {
         let host = Uuid::now_v7().to_string();
         let hidden_host = Uuid::now_v7().to_string();
@@ -523,11 +515,17 @@ impl Preserved {
                 };
                 // Two provider-owned hosts: one member-view grant and one explicit deny.
                 // Other historical collections retain their original single-row coverage.
-                let row_ids = if collection.collection_code == "ssh_hosts" {
+                // R6 retains an old pending-recovery ledger row through upgrade. R7 uses a
+                // clean historical ledger so later, intentional SSH management does not
+                // legitimately garbage-collect that row. Both retain all historical host rows.
+                let row_ids = if collection.collection_code == "ssh_credential_staging" && !pending_recovery {
+                    vec![]
+                } else if collection.collection_code == "ssh_hosts" {
                     vec![host.as_str(), hidden_host.as_str()]
                 } else {
                     vec![host.as_str()]
                 };
+                let expected_rows = row_ids.len();
                 for row_id in row_ids {
                     let values = collection
                         .fields
@@ -565,18 +563,10 @@ impl Preserved {
                             field: "id".into(),
                             direction: PluginDataOrderDirection::Ascending,
                         }],
-                        page: PluginDataPage {
-                            limit: 3,
-                            offset: 0,
-                        },
+                        page: PluginDataPage { limit: 3, offset: 0 },
                     }],
                 };
                 let response = f.runtime.store.execute(&binding, &read).await?;
-                let expected_rows = if collection.collection_code == "ssh_hosts" {
-                    2
-                } else {
-                    1
-                };
                 ensure!(
                     matches!(&response.results[..], [PluginDataOperationResult::Rows { rows }] if rows.len() == expected_rows),
                     "historical complete rows missing"
@@ -618,11 +608,8 @@ impl Preserved {
             record_id: host,
         };
         let service = RecordPermissionService::new(f.runtime.store.clone());
-        let roles = RecordPermissionRepository::record_permission_effective_role_ids(
-            &f.runtime.store,
-            &f.member,
-        )
-        .await?;
+        let roles =
+            RecordPermissionRepository::record_permission_effective_role_ids(&f.runtime.store, &f.member).await?;
         let role = service
             .roles(&f.actor)
             .await?
@@ -687,9 +674,7 @@ impl Preserved {
             "authenticated Root worker hosts.list failed: {status}"
         );
         let data = &root["data"];
-        let items = data["items"]
-            .as_array()
-            .context("Root hosts.list items missing")?;
+        let items = data["items"].as_array().context("Root hosts.list items missing")?;
         ensure!(
             items.len() == 2 && data["total"] == 2 && data["page"] == 1 && data["page_size"] == 50,
             "Root must see both original provider hosts and exact count"
@@ -699,9 +684,7 @@ impl Preserved {
             .find(|row| row["host_id"] == self.acl_key.record_id)
             .context("Root response lacks original member-visible host")?;
         ensure!(
-            items
-                .iter()
-                .any(|row| row["host_id"] == self.hidden_acl_key.record_id),
+            items.iter().any(|row| row["host_id"] == self.hidden_acl_key.record_id),
             "Root response lacks original member-denied host"
         );
         ensure!(
@@ -748,19 +731,14 @@ impl Preserved {
         // Console operation is allowed, but the historical provider ACL grants view, NOT open.
         // The same original host must remain denied even after Root populates snapshot cache.
         for host in [&self.acl_key.record_id, &self.hidden_acl_key.record_id] {
-            let denied_path = format!(
-                "/api/console/managed-services/compute-monitor/hosts/{host}/monitor/snapshot"
-            );
+            let denied_path = format!("/api/console/managed-services/compute-monitor/hosts/{host}/monitor/snapshot");
             let (status, denied) = f.post(&denied_path, body.clone(), true).await?;
             ensure!(
                 status == StatusCode::FORBIDDEN && denied["code"] == "record_permission_denied",
                 "view-only/hidden member must not read monitor snapshot: {status}; {denied}"
             );
         }
-        ensure!(
-            ssh.sessions()? == before,
-            "denied member started SSH commands"
-        );
+        ensure!(ssh.sessions()? == before, "denied member started SSH commands");
         let started = (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64;
         let (status, response) = f.post(&path, body.clone(), false).await?;
         ensure!(
@@ -800,7 +778,10 @@ impl Preserved {
         );
         Ok(())
     }
-    fn no_secrets(&self, value: &Value) -> Result<()> {
+    pub fn host_ids(&self) -> (&str, &str) {
+        (&self.acl_key.record_id, &self.hidden_acl_key.record_id)
+    }
+    pub fn no_secrets(&self, value: &Value) -> Result<()> {
         let text = value.to_string();
         ensure!(
             !text.contains(&self.credential_id)
@@ -846,9 +827,7 @@ impl Preserved {
             service.get(&f.actor, &self.acl_key).await? == self.acl,
             "original ACL policy changed"
         );
-        service
-            .authorize(&f.member, &self.acl_key, "view", true)
-            .await?;
+        service.authorize(&f.member, &self.acl_key, "view", true).await?;
         ensure!(
             service.get(&f.actor, &self.hidden_acl_key).await? == self.hidden_acl,
             "original hidden-host ACL policy changed"
@@ -862,11 +841,9 @@ impl Preserved {
             ensure!(
                 matches!(
                     denied.downcast_ref::<control_plane_contracts::ControlPlaneContractError>(),
-                    Some(
-                        control_plane_contracts::ControlPlaneContractError::PermissionDenied(
-                            "record_permission_denied"
-                        )
-                    )
+                    Some(control_plane_contracts::ControlPlaneContractError::PermissionDenied(
+                        "record_permission_denied"
+                    ))
                 ),
                 "wrong ACL denial"
             );

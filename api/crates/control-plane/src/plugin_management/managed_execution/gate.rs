@@ -40,7 +40,7 @@ impl PluginExecutionGateAuthority for ManagedPluginExecutionGateAuthority {
             let future = async {
                 let lease = self
                     .authority
-                    .lock_contribution_authority(&binding.subject)
+                    .lock_managed_callback_authority(&binding.subject)
                     .await
                     .map_err(|_| denied())?;
                 let installation = lease.installation(installation_id).ok_or_else(denied)?;

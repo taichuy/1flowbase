@@ -26,8 +26,19 @@
 //! Authenticated Root HTTP snapshot and package MCP list/get/call must execute real worker
 //! PluginCredential HostCalls and two SSH probes each; view-only member snapshot is denied
 //! before/after Root cache population. No mock Host callbacks or fabricated metrics.
-//! Asset only: execution/QA belongs to Root. UI, aggregate/trends, positive nonroot open,
-//! cross-workspace/scope forgery and post-revoke runtime HostCall negatives are NOT covered.
+//! R7 exact target (same prefix as R6):
+//! provider_consumer_archives_authenticated_aggregate_browser_lifecycle
+//! Requires PLUGIN_RESOURCE_BROWSER_SCRIPT (Root-authored Node file, never optional in R7).
+//! Optional PLUGIN_RESOURCE_BROWSER_OUTPUT_DIR must be an owner-private directory; otherwise
+//! a retained private evidence directory is created under TMPDIR. Browser timeout: 180s;
+//! overall R7 lifecycle timeout: 420s. R6 keeps its separate 180s target and assertions.
+//! Real ticket/WS aggregate -> production shared broker -> same managed runtime/HostCalls
+//! checks multiple hosts, cadence changes, selection, ACK, member open denial and cancellation
+//! with SSH socket/probe quiescence BEFORE runtime shutdown. The mandatory subprocess receives
+//! only {api_base_url,visible_host_id,hidden_host_id,expected_hostname,output_dir} on JSON stdin,
+//! must emit R7_BROWSER_ACCEPTANCE and exit0, and owns the business UI/session assertions.
+//! Root owns execution/QA. This asset is NOT a pass report. Positive nonroot open,
+//! cross-workspace/scope forgery and post-revoke runtime HostCall negatives remain outside it.
 
 #[path = "plugin_resource_archive_lifecycle/_tests/fixture.rs"]
 mod fixture;
@@ -38,3 +49,8 @@ mod lifecycle;
 
 #[path = "plugin_resource_archive_lifecycle/_tests/loopback_ssh.rs"]
 mod loopback_ssh;
+
+#[path = "plugin_resource_archive_lifecycle/_tests/aggregate.rs"]
+mod aggregate;
+#[path = "plugin_resource_archive_lifecycle/_tests/browser.rs"]
+mod browser;

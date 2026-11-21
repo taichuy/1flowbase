@@ -75,10 +75,10 @@ impl RuntimeFixture {
             runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver_plugin_data_and_profile_source(
                 time::OffsetDateTime::now_utc(),
                 resolver,
-                Arc::new(control_plane::plugin_management::ManagedPluginDataService::new(
+                Arc::new(ObservedManagedPluginData(control_plane::plugin_management::ManagedPluginDataService::new(
                     Arc::new(store.clone()),
                     Arc::new(store.clone()),
-                )),
+                ))),
                 Arc::new(runtime_profile::RuntimeSampleSource::new(
                     std::time::Duration::from_secs(1),
                 )),
@@ -130,5 +130,27 @@ impl RuntimeFixture {
             composition,
             store,
         }
+    }
+}
+
+// Transparent test-only diagnostic: retain the real authorization and storage result.
+struct ObservedManagedPluginData(control_plane::plugin_management::ManagedPluginDataService);
+impl extension_contracts::PluginDataPort for ObservedManagedPluginData {
+    fn execute<'a>(
+        &'a self,
+        binding: &'a extension_contracts::PluginDataBinding,
+        request: &'a extension_contracts::PluginDataRequest,
+    ) -> extension_contracts::PluginDataFuture<'a> {
+        Box::pin(async move {
+            let result =
+                extension_contracts::PluginDataPort::execute(&self.0, binding, request).await;
+            if let Err(error) = &result {
+                eprintln!(
+                    "R7_HOST_DATA_ERROR: kind={:?} code={} owner={}/{}",
+                    error.kind, error.code, binding.publisher_namespace, binding.plugin_code
+                );
+            }
+            result
+        })
     }
 }

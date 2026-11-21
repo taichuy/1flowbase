@@ -97,6 +97,13 @@ checks the currently enabled provider and its export before resolving physical a
 Both export/import access bounds and the consumer's current grants must permit the
 operation. A disabled or revoked consumer cannot retain access through a cached binding.
 
+Authority observations for resource callbacks, execution-gate checks and record admission
+use compatible shared leases. The lease remains held through the actual resource
+operation; grant/revoke, provider selection and lifecycle writers retain the same exclusive
+fence and wait for every reader. Authority reads do not become authority writes merely
+because the separately authorized data operation writes a provider collection. This lets
+concurrent live sources and per-frame record checks overlap without weakening revocation.
+
 Record admission, capability queries, policy editing and SQL predicates use the resolved
 provider identity and protected resource, but retain the real caller's workspace. Operation
 permissions remain those of the consuming plugin. A frozen registration is rejected if
