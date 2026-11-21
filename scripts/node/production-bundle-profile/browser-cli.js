@@ -20,6 +20,8 @@ const {
   summarizeLifecycleStages,
 } = require("./core.js");
 
+const { allocateDebugPort, captureBrowserNetwork } = require("./browser/network-capture.js");
+
 function optionValue(name, fallback) {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1] : fallback;
@@ -92,9 +94,13 @@ async function main() {
     throw new Error("--cache-state must be cold or warm");
   }
   const playwright = loadPlaywright(repoRoot);
-  const browser = await playwright.chromium.launch(
-    buildChromiumLaunchOptions({ headless: true }),
-  );
+  const debugPort = await allocateDebugPort();
+  const launchOptions = buildChromiumLaunchOptions({ headless: true });
+  const browser = await playwright.chromium.launch({
+    ...launchOptions,
+    args: [...(launchOptions.args ?? []), `--remote-debugging-port=${debugPort}`, '--remote-debugging-address=127.0.0.1'],
+  });
+  const networkCapture = await captureBrowserNetwork(debugPort);
   const pageErrors = [];
   let temporarySession = null;
   let storageStatePath = null;
@@ -129,11 +135,13 @@ async function main() {
         state: "visible",
         timeout: 60_000,
       });
-      await page
-        .waitForLoadState("networkidle", { timeout: 60_000 })
-        .catch(() => {});
       await page.goto("about:blank");
+      // Warmup requests are not warm-measurement requests.
+      requestedAssets.clear();
+      failedAssets.length = 0;
+      pageErrors.length = 0;
     }
+    networkCapture.startMeasurement();
     const startedAt = Date.now();
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.waitForSelector(readySelector, {
@@ -142,9 +150,8 @@ async function main() {
     });
     const readyDurationMs = Date.now() - startedAt;
     const readyAssets = [...requestedAssets];
-    await page
-      .waitForLoadState("networkidle", { timeout: 5_000 })
-      .catch(() => {});
+    // Start the first action at semantic readiness, not after an idle grace
+    // period that lets speculative authoring downloads hide click latency.
     const settledAssets = [...requestedAssets];
     const readyProfile = profileAssetFiles(distDirectory, readyAssets, budget);
     const settledProfile = profileAssetFiles(
@@ -177,9 +184,6 @@ async function main() {
       const readyFiles = [...requestedAssets].filter(
         (asset) => !baselineAssets.has(asset),
       );
-      await page
-        .waitForLoadState("networkidle", { timeout: 5_000 })
-        .catch(() => {});
       const settledMs = Date.now() - interactionStartedAt;
       const settledFiles = [...requestedAssets].filter(
         (asset) => !baselineAssets.has(asset),
@@ -233,6 +237,11 @@ async function main() {
       return {
         lifecycleMarks: Object.fromEntries(
           [
+            "FormInteractive",
+            "SessionReady",
+            "NavigationInteractive",
+            "PageContentReady",
+            "FirstActionReady",
             "ShellReady",
             "RouteDataReady",
             "CanvasVisible",
@@ -286,6 +295,9 @@ async function main() {
       failedAssets,
       pageErrors,
       browserTiming,
+      network: networkCapture.snapshot(),
+      sizeSemantics: "ready/settled gzipBytes are on-disk estimates, not wire bytes or warm transfer; browserTiming.resources are document-only Resource Timing",
+      readinessSemantics: "selector readiness; no networkidle grace before first interaction",
       lifecycle,
       interaction,
     };
@@ -304,6 +316,7 @@ async function main() {
     return result.ok ? 0 : 1;
   } finally {
     try {
+      await networkCapture.dispose();
       await browser.close();
     } finally {
       try {

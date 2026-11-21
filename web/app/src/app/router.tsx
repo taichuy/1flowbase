@@ -42,6 +42,8 @@ import { i18nText } from '../shared/i18n/text';
 import type { RolePermissionTab } from '../features/settings/components/RolePermissionPanel';
 import type { SettingsExtensionCenterCategory } from '../features/settings/api/extensions/extensions';
 import type { NetworkCenterPage } from '../features/settings/pages/network-center/NetworkCenterSection';
+import { prepareApplicationI18n } from '../shared/i18n/app-i18n';
+import { resolveAuthenticatedLocale } from '../shared/i18n/initial-locale';
 import { recoverDevModuleGraph } from './bootstrap/dev-module-recovery';
 
 let applicationDetailPageFlight:
@@ -167,6 +169,12 @@ function ApplicationSectionRoute({
 }
 
 const rootRoute = createRootRoute({
+  beforeLoad: async ({ location }) => {
+    await prepareApplicationI18n(
+      resolveAuthenticatedLocale(useAuthStore.getState().me),
+      location.pathname
+    );
+  },
   component: () => <Outlet />,
   notFoundComponent: NotFoundPage
 });

@@ -1,3 +1,4 @@
+import { startDocumentAuthDiscovery } from '../../api/document-start-discovery';
 import { fetchPublicSystemMetadata } from '@1flowbase/api-client/auth';
 import { getInitialAppLocale } from '../../../../shared/i18n/initial-locale';
 import { auto as enBrand, sign_in as enPage } from '../../i18n/en_US.json';
@@ -8,6 +9,8 @@ import {
   documentSceneId
 } from './document-motion';
 import { startLeafMotion } from './leaf-motion';
+// Start API work in the HTML discovery wave, independent of React and animation.
+startDocumentAuthDiscovery();
 const art = findDocumentArtwork();
 if (art) {
   art.stopMotion = startLeafMotion(

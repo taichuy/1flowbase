@@ -22,7 +22,10 @@ import {
   BlockSourceEditor,
   type BlockSourceEditorDiagnostic
 } from './BlockSourceEditor';
-import type { BlockSourceExtraLib } from './extra-lib';
+import type {
+  BlockSourceDeclarationLoader,
+  BlockSourceExtraLib
+} from './extra-lib';
 import {
   BlockStudioWorkspace,
   type BlockStudioSection
@@ -41,6 +44,7 @@ export interface BlockSourceStudioProps<
   editorNotice?: ReactNode;
   errorMessage?: string | null;
   extraLibs?: readonly BlockSourceExtraLib[];
+  declarationLoader?: BlockSourceDeclarationLoader;
   initialSection: Section;
   loading: boolean;
   open: boolean;
@@ -93,6 +97,7 @@ function BlockSourceStudioWindow<Section extends BlockStudioSection>({
   editorNotice,
   errorMessage,
   extraLibs = EMPTY_EXTRA_LIBS,
+  declarationLoader,
   initialSection,
   loading,
   onChange,
@@ -290,6 +295,7 @@ function BlockSourceStudioWindow<Section extends BlockStudioSection>({
                 ariaLabel={i18nText('frontstage', 'auto.code')}
                 diagnostics={editorDiagnostics}
                 extraLibs={extraLibs}
+                declarationLoader={declarationLoader}
                 height="100%"
                 path={path}
                 readOnly={loading || readOnly || saving}

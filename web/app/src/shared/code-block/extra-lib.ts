@@ -3,3 +3,8 @@ export interface BlockSourceExtraLib {
   filePath: string;
   content: string;
 }
+
+export interface BlockSourceDeclarationLoader {
+  loadForSource(source: string): Promise<readonly BlockSourceExtraLib[]>;
+  loadAll(): Promise<readonly BlockSourceExtraLib[]>;
+}

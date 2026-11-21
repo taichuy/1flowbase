@@ -293,15 +293,14 @@ describe('AppShellFrame', () => {
     expect(useFrontstageDesignModeStore.getState().isDesignMode).toBe(false);
   });
 
-  test('BGP-008 preloads design mode after the critical route grace window', async () => {
+  test('prepares authorized design demand on intent rather than a one-second background timer', async () => {
     await renderShell('/');
-
-    await waitFor(
-      () => {
-        expect(preloadDesignModeDemand).toHaveBeenCalledTimes(1);
-      },
-      { timeout: 2000 }
-    );
+    expect(preloadDesignModeDemand).not.toHaveBeenCalled();
+    const action = screen.getByLabelText('Enter design mode');
+    await act(async () => { action.focus(); });
+    expect(preloadDesignModeDemand).toHaveBeenCalledTimes(1);
+    await domEvents.click(action);
+    expect(useFrontstageDesignModeStore.getState().isDesignMode).toBe(true);
   });
 
   test('renders frontstage design mode button globally on non-frontstage pages without navigating', async () => {

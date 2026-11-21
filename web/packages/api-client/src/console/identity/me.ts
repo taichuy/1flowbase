@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchVoid } from '../../transport';
+import { apiFetch, apiFetchVoid } from '../../transport/json';
 
 export type ConsoleUserMeta = Record<string, unknown>;
 

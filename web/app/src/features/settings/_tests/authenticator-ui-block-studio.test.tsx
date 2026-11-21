@@ -20,6 +20,9 @@ const trialPanelHook = vi.hoisted(() => ({
   render: vi.fn()
 }));
 
+vi.mock('virtual:1flowbase-native-module-declarations', () => ({
+  default: { version: 1, roots: {}, resources: {} }
+}));
 vi.mock(
   '../../frontstage/hooks/use-frontstage-block-catalog',
   () => blockCatalogHook
@@ -88,6 +91,7 @@ vi.mock('@monaco-editor/react', async () => {
           MarkerSeverity: { Error: 8 },
           editor: { setModelMarkers: vi.fn() },
           languages: {
+            registerCompletionItemProvider: vi.fn(() => ({ dispose: vi.fn() })),
             typescript: {
               JsxEmit: { Preserve: 'preserve', ReactJSX: 'react-jsx' },
               ModuleResolutionKind: { NodeJs: 'node-js' },
@@ -185,7 +189,7 @@ describe('LoginEntryUiBlockStudio', () => {
         readOnly={false}
         saving={false}
         selfRegistrationEnabled
-        source="export default function AuthBlock({ ctx }) { return <div>{String(ctx.props.title)}</div>; }"
+        source="import type { BlockContext } from '@1flowbase/block-sdk'; export default function AuthBlock({ ctx }: { ctx: BlockContext }) { return <div>{String(ctx.props.title)}</div>; }"
         workspaceId="workspace-1"
         onClose={vi.fn()}
         onSave={vi.fn()}
@@ -212,10 +216,10 @@ describe('LoginEntryUiBlockStudio', () => {
       expect.stringContaining('interface NativeReactBlockContext'),
       'file:///1flowbase/native-react-context.d.ts'
     );
-    expect(monacoHook.addExtraLib).toHaveBeenCalledWith(
+    await waitFor(() => expect(monacoHook.addExtraLib).toHaveBeenCalledWith(
       expect.stringContaining("declare module '@1flowbase/block-sdk'"),
       'file:///node_modules/@1flowbase/block-sdk/index.d.ts'
-    );
+    ));
     fireEvent.click(screen.getByRole('button', { name: '变量' }));
     expect(resourcePanelHook.render).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -230,6 +230,7 @@ export function LoginEntryUiBlockStudio({
         ) : undefined
       }
       errorMessage={errorMessage}
+      declarationLoader={editorProjection.declarationLoader}
       extraLibs={editorProjection.monacoExtraLibs}
       initialSection="code"
       loading={false}

@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -70,6 +71,22 @@ describe('AuthBootstrap', () => {
     );
     expect(fetchCurrentMe).toHaveBeenCalled();
     expect(useAuthStore.getState().me?.account).toBe('root');
+  });
+
+  test('StrictMode reuses discovery and ignores the abandoned bootstrap effect without providers', async () => {
+    fetchCurrentSession.mockRejectedValue({ status: 401 });
+    render(
+      <StrictMode>
+        <AuthBootstrap>
+          <div>public runtime</div>
+        </AuthBootstrap>
+      </StrictMode>
+    );
+    await waitFor(() =>
+      expect(useAuthStore.getState().sessionStatus).toBe('anonymous')
+    );
+    expect(fetchCurrentSession).toHaveBeenCalledTimes(1);
+    expect(fetchCurrentMe).not.toHaveBeenCalled();
   });
 
   test('marks the app anonymous when session restore returns 401', async () => {

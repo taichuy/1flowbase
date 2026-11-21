@@ -1,7 +1,10 @@
-import type { BlockSourceExtraLib } from '../../../../shared/code-block/extra-lib';
+import type {
+  BlockSourceDeclarationLoader,
+  BlockSourceExtraLib
+} from '../../../../shared/code-block/extra-lib';
 
 import type { NormalizedFrontstageBlockCatalogEntry } from '../block-catalog';
-import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS } from '../native-modules/editor-declarations';
+import { frontstageNativeDeclarationLoader } from '../native-modules/editor-declarations';
 import { FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS } from '../native-modules/registry';
 import { FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS } from './native-react-editor-contract';
 
@@ -9,6 +12,7 @@ export interface FrontstageJsxEditorProjection {
   allowedImportSources: ReadonlySet<string>;
   contextComment: string;
   monacoExtraLibs: BlockSourceExtraLib[];
+  declarationLoader: BlockSourceDeclarationLoader;
 }
 
 export function createFrontstageJsxEditorProjection({
@@ -16,10 +20,7 @@ export function createFrontstageJsxEditorProjection({
 }: {
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
 }): FrontstageJsxEditorProjection {
-  const monacoExtraLibs = [
-    ...FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS,
-    ...FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS
-  ];
+  const monacoExtraLibs = [...FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS];
   return {
     allowedImportSources: new Set(
       FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS.map(
@@ -27,7 +28,8 @@ export function createFrontstageJsxEditorProjection({
       )
     ),
     contextComment: createFrontstageContextComment(),
-    monacoExtraLibs
+    monacoExtraLibs,
+    declarationLoader: frontstageNativeDeclarationLoader
   };
 }
 

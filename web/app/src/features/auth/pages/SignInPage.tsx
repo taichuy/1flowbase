@@ -7,50 +7,60 @@ import {
   useRef,
   useState
 } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useAuthTranslation } from '../lib/auth-i18n';
 
-import { useNavigate } from '@tanstack/react-router';
-import { diagnoseLegacyBlockModuleSource } from '@1flowbase/page-runtime/source-contract';
-import { Alert } from 'antd';
+import {
+  navigatePublicRoute,
+  usePublicLocation
+} from '../lib/anonymous-navigation';
 
-import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
+import { AnonymousLoadingState as LoadingState } from '../components/anonymous-loading/AnonymousLoadingState';
 import { useAuthStore } from '../../../state/auth-store';
 import {
   fetchCurrentMe,
   fetchCurrentSession,
   type PublicLoginEntry
 } from '../api/session';
-import { BuiltinPasswordSignIn } from '../components/BuiltinPasswordSignIn';
+const BuiltinPasswordSignIn = lazy(() =>
+  import('../components/BuiltinPasswordSignIn').then((module) => ({
+    default: module.BuiltinPasswordSignIn
+  }))
+);
 
 import { consumeLoginEntryDiscovery } from '../api/login-entry-discovery';
 import { SignInPanel } from '../components/hero/SignInPanel';
 import { HeroAnimation } from '../components/HeroAnimation';
 
-const PublicAuthBlock = lazy(() =>
-  loadPublicAuthBlock().then((module) => ({
-    default: module.PublicAuthBlock
+import {
+  DefaultPasswordSignIn,
+  matchesDefaultPasswordSource
+} from '../components/default-password/DefaultPasswordSignIn';
+import { useAuthenticatedPrewarm } from '../lib/authenticated-prewarm';
+
+const CustomAuthRuntime = lazy(() =>
+  import('../components/public-runtime/CustomAuthRuntime').then((module) => ({
+    default: module.CustomAuthRuntime
   }))
 );
 
-import {
-  loadPublicAuthBlock,
-  prefetchPublicAuthEntry
-} from '../lib/public-auth-loading';
+import { prefetchPublicAuthEntry } from '../lib/public-auth-loading';
 import { redirectToExternalLogin } from '../lib/external-login';
 import './sign-in-page.css';
-import { useSystemMetadata } from '../../../shared/api/system-metadata';
+import { usePublicSystemMetadata } from '../lib/public-system-metadata';
 
 interface SignInPageProps {
   loginEntryId?: string;
 }
 
 export function SignInPage({ loginEntryId }: SignInPageProps) {
-  const { data: metadata } = useSystemMetadata();
-  const navigate = useNavigate();
-  const { t } = useTranslation('auth');
-  const externalError = new URLSearchParams(window.location.search).get(
-    'auth_error'
-  );
+  const { data: metadata } = usePublicSystemMetadata();
+  const navigate = navigatePublicRoute;
+  const location = usePublicLocation();
+  const { t } = useAuthTranslation();
+  const externalError = new URL(
+    location,
+    window.location.origin
+  ).searchParams.get('auth_error');
   const externalErrorMessages: Record<string, string> = {
     registration_disabled: t('external_auth.registration_disabled'),
     account_too_new: t('external_auth.account_too_new'),
@@ -110,10 +120,24 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
         : (loginEntries.find((item) => item.id === loginEntryId) ?? null),
     [loginEntryId, loginEntries]
   );
-  const selectedInstanceUsesLegacyContract = Boolean(
-    selectedLoginEntry &&
-    diagnoseLegacyBlockModuleSource(selectedLoginEntry.public_ui_block)
+  const isDefaultPassword = useMemo(
+    () =>
+      Boolean(
+        selectedLoginEntry &&
+        matchesDefaultPasswordSource(selectedLoginEntry.public_ui_block)
+      ),
+    [selectedLoginEntry]
   );
+
+  const formHost = useRef<HTMLDivElement>(null);
+  useAuthenticatedPrewarm(formHost, selectedLoginEntry);
+  const authOwner = useMemo(() => ({ active: false }), [selectedLoginEntry]);
+  useEffect(() => {
+    authOwner.active = true;
+    return () => {
+      authOwner.active = false;
+    };
+  }, [authOwner]);
 
   useEffect(() => {
     let active = true;
@@ -170,10 +194,12 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
       effective_display_role: string;
       current_workspace_id: string;
     }) => {
+      if (!authOwner.active) return;
       const [me, currentSession] = await Promise.all([
         fetchCurrentMe(),
         fetchCurrentSession()
       ]);
+      if (!authOwner.active) return;
       setAuthenticated({
         csrfToken: currentSession.csrf_token,
         actor: currentSession.actor,
@@ -182,7 +208,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
       });
       await navigate({ to: '/' });
     },
-    [navigate, setAuthenticated]
+    [authOwner, navigate, setAuthenticated]
   );
 
   return (
@@ -190,99 +216,117 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
       <HeroAnimation
         hide_login_tagline={metadata?.hide_login_tagline !== false}
       />
-      <SignInPanel
-        inert={isStarting}
-        footer={t('sign_in.footer')}
-        filing_html={metadata?.filing_html}
-      >
-        {externalError ? (
-          <Alert
-            showIcon
-            type="error"
-            title={
-              externalErrorMessages[externalError] ?? t('external_auth.failed')
-            }
-          />
-        ) : null}
-        {startFailed ? (
-          <Alert showIcon type="error" title={t('external_auth.failed')} />
-        ) : null}
-        {loading ? <LoadingState compact /> : null}
-        {!loading && selectedLoginEntry?.entry_action === 'external_login' ? (
-          <div className="auth-sign-in-selector">
-            {loginEntrySelector ? (
+      <div ref={formHost} style={{ display: 'contents' }}>
+        <SignInPanel
+          inert={isStarting}
+          footer={t('sign_in.footer')}
+          filing_html={metadata?.filing_html}
+        >
+          {externalError ? (
+            <AuthError>
+              {externalErrorMessages[externalError] ??
+                t('external_auth.failed')}
+            </AuthError>
+          ) : null}
+          {startFailed ? (
+            <AuthError>{t('external_auth.failed')}</AuthError>
+          ) : null}
+          {loading ? <LoadingState compact /> : null}
+          {!loading && selectedLoginEntry?.entry_action === 'external_login' ? (
+            <div className="auth-sign-in-selector">
+              {loginEntrySelector ? (
+                <button
+                  className="auth-sign-in-selector-button"
+                  type="button"
+                  disabled={isStarting}
+                  onClick={requestLoginEntrySelector}
+                >
+                  {t('external_auth.other_methods')}
+                </button>
+              ) : null}
               <button
                 className="auth-sign-in-selector-button"
                 type="button"
                 disabled={isStarting}
-                onClick={requestLoginEntrySelector}
+                aria-busy={startingEntryId === selectedLoginEntry.id}
+                onClick={() => activateLoginEntry(selectedLoginEntry)}
               >
-                {t('external_auth.other_methods')}
+                {selectedLoginEntry.title}
               </button>
-            ) : null}
-            <button
-              className="auth-sign-in-selector-button"
-              type="button"
-              disabled={isStarting}
-              aria-busy={startingEntryId === selectedLoginEntry.id}
-              onClick={() => activateLoginEntry(selectedLoginEntry)}
-            >
-              {selectedLoginEntry.title}
-            </button>
-          </div>
-        ) : null}
-        {!loading && loginEntries.length > 1 && !selectedLoginEntry ? (
-          <div className="auth-sign-in-selector">
-            {loginEntries.map((instance) => (
-              <button
-                key={instance.id}
-                className="auth-sign-in-selector-button"
-                type="button"
-                disabled={isStarting}
-                aria-busy={startingEntryId === instance.id}
-                onPointerEnter={() => {
-                  if (instance.entry_action === 'render_ui')
-                    prefetchPublicAuthEntry(instance.public_ui_block);
-                }}
-                onFocus={() => {
-                  if (instance.entry_action === 'render_ui')
-                    prefetchPublicAuthEntry(instance.public_ui_block);
-                }}
-                onClick={() => activateLoginEntry(instance)}
-              >
-                {instance.title}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {!loading &&
-        selectedLoginEntry?.entry_action === 'render_ui' &&
-        selectedInstanceUsesLegacyContract ? (
-          <BuiltinPasswordSignIn
-            loginEntryId={selectedLoginEntry.id}
-            loginEntrySelector={loginEntrySelector}
-            onAuthenticated={handleAuthenticated}
-          />
-        ) : null}
-        {!loading &&
-        selectedLoginEntry?.entry_action === 'render_ui' &&
-        !selectedInstanceUsesLegacyContract ? (
-          <Suspense fallback={<LoadingState compact />}>
-            <PublicAuthBlock
+            </div>
+          ) : null}
+          {!loading && loginEntries.length > 1 && !selectedLoginEntry ? (
+            <div className="auth-sign-in-selector">
+              {loginEntries.map((instance) => (
+                <button
+                  key={instance.id}
+                  className="auth-sign-in-selector-button"
+                  type="button"
+                  disabled={isStarting}
+                  aria-busy={startingEntryId === instance.id}
+                  onPointerEnter={() => {
+                    if (instance.entry_action === 'render_ui')
+                      prefetchPublicAuthEntry(instance.public_ui_block);
+                  }}
+                  onFocus={() => {
+                    if (instance.entry_action === 'render_ui')
+                      prefetchPublicAuthEntry(instance.public_ui_block);
+                  }}
+                  onClick={() => activateLoginEntry(instance)}
+                >
+                  {instance.title}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {!loading &&
+          selectedLoginEntry?.entry_action === 'render_ui' &&
+          isDefaultPassword ? (
+            <DefaultPasswordSignIn
               key={selectedLoginEntry.id}
               instance={selectedLoginEntry}
               loginEntrySelector={loginEntrySelector}
               onAuthenticated={handleAuthenticated}
             />
-          </Suspense>
-        ) : null}
-        {!loading && (discoveryFailed || loginEntries.length === 0) ? (
-          <BuiltinPasswordSignIn onAuthenticated={handleAuthenticated} />
-        ) : null}
-      </SignInPanel>
+          ) : null}
+          {!loading &&
+          selectedLoginEntry?.entry_action === 'render_ui' &&
+          !isDefaultPassword ? (
+            <Suspense fallback={<LoadingState compact />}>
+              <CustomAuthRuntime
+                key={selectedLoginEntry.id}
+                instance={selectedLoginEntry}
+                loginEntrySelector={loginEntrySelector}
+                onAuthenticated={handleAuthenticated}
+              />
+            </Suspense>
+          ) : null}
+          {!loading && (discoveryFailed || loginEntries.length === 0) ? (
+            <Suspense fallback={<LoadingState compact />}>
+              <BuiltinPasswordSignIn onAuthenticated={handleAuthenticated} />
+            </Suspense>
+          ) : null}
+        </SignInPanel>
+      </div>
       {isStarting ? (
         <LoadingState fullscreen className="auth-sign-in-loading-overlay" />
       ) : null}
+    </div>
+  );
+}
+
+function AuthError({ children }: { children: string }) {
+  return (
+    <div className="auth-sign-in-error" role="alert">
+      <svg
+        aria-hidden="true"
+        viewBox="64 64 896 896"
+        fill="currentColor"
+        fillRule="evenodd"
+      >
+        <path d="M512 64c247.4 0 448 200.6 448 448S759.4 960 512 960 64 759.4 64 512 264.6 64 512 64zm127.98 274.82h-.04l-.08.06L512 466.75 384.14 338.88c-.04-.05-.06-.06-.08-.06a.12.12 0 00-.07 0c-.03 0-.05.01-.09.05l-45.02 45.02a.2.2 0 00-.05.09.12.12 0 000 .07v.02a.27.27 0 00.06.06L466.75 512 338.88 639.86c-.05.04-.06.06-.06.08a.12.12 0 000 .07c0 .03.01.05.05.09l45.02 45.02a.2.2 0 00.09.05.12.12 0 00.07 0c.02 0 .04-.01.08-.05L512 557.25l127.86 127.87c.04.04.06.05.08.05a.12.12 0 00.07 0c.03 0 .05-.01.09-.05l45.02-45.02a.2.2 0 00.05-.09.12.12 0 000-.07v-.02a.27.27 0 00-.05-.06L557.25 512l127.87-127.86c.04-.04.05-.06.05-.08a.12.12 0 000-.07c0-.03-.01-.05-.05-.09l-45.02-45.02a.2.2 0 00-.09-.05.12.12 0 00-.07 0z" />
+      </svg>
+      <span>{children}</span>
     </div>
   );
 }

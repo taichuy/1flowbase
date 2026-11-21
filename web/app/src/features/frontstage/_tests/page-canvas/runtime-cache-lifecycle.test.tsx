@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
+import { selectNavigationQueryScope } from '../../../../state/navigation-query-scope';
 import { useFrontstageRuntimeCacheLifecycle } from '../../hooks/use-frontstage-runtime-cache-lifecycle';
 import {
   FrontstageRuntimeObservationBuffer,
@@ -60,6 +61,36 @@ describe('frontstage runtime cache lifecycle', () => {
     );
     renderHook(() => useFrontstageRuntimeCacheLifecycle(), { wrapper });
     expect(queryClient.getQueryData(key)).toEqual([{ id: 'page-1' }]);
+  });
+
+  test('keeps a new scoped prefetch even if an earlier auth subscriber starts it before lifecycle cleanup', () => {
+    const queryClient = new QueryClient();
+    authenticate('actor-a');
+    const currentKey = () => [
+      'frontstage',
+      'workspace-1',
+      'page-tree',
+      selectNavigationQueryScope(useAuthStore.getState())
+    ];
+    const oldKey = currentKey();
+    queryClient.setQueryData(oldKey, [{ id: 'old-page' }]);
+    const unsubscribe = useAuthStore.subscribe(() => {
+      queryClient.setQueryData(currentKey(), [{ id: 'new-page' }]);
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const hook = renderHook(() => useFrontstageRuntimeCacheLifecycle(), {
+      wrapper
+    });
+    act(() => authenticate('actor-b'));
+    expect(queryClient.getQueryData(currentKey())).toEqual([
+      { id: 'new-page' }
+    ]);
+    expect(queryClient.getQueryData(oldKey)).toBeUndefined();
+    unsubscribe();
+    hook.unmount();
+    queryClient.clear();
   });
 
   test('clears frontstage queries and observations on actor transitions', async () => {

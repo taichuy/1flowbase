@@ -1,38 +1,21 @@
-import { useState, type PropsWithChildren } from 'react';
+import '../../../styles/antd-defaults.css';
+import { useLayoutEffect, useState, type PropsWithChildren } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { I18nextProvider } from 'react-i18next';
 import { AppThemeProvider } from '@1flowbase/ui/app-theme-provider';
-
 import { appI18n } from '../../../shared/i18n/app-i18n';
+import { useAuthLocale } from '../lib/auth-i18n';
 
-import { systemMetadataQueryKey } from '../../../shared/api/system-metadata';
-import { findDocumentArtwork } from './hero/document-motion';
-
-const openingClients = new WeakMap<HTMLElement, QueryClient>();
-function publicQueryClient() {
-  const art = findDocumentArtwork();
-  const existing = art && openingClients.get(art);
-  if (existing) return existing;
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } }
-  });
-  if (art) {
-    openingClients.set(art, client);
-    if (art.metadata) client.setQueryData(systemMetadataQueryKey, art.metadata);
-    else if (art.metadataFlight) {
-      const pending = art.metadataFlight;
-      void client.prefetchQuery({
-        queryKey: systemMetadataQueryKey,
-        queryFn: () => pending,
-        staleTime: 60_000
-      });
-    }
-  }
-  return client;
-}
-
+// Only custom auth and MCP mount this full provider stack. Public metadata is a
+// document promise/state handoff, not a second React Query cache with a TTL.
 export function PublicAuthProviders({ children }: PropsWithChildren) {
-  const [queryClient] = useState(publicQueryClient);
+  const [queryClient] = useState(
+    () => new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  );
+  const locale = useAuthLocale();
+  useLayoutEffect(() => {
+    void appI18n.changeLanguage(locale);
+  }, [locale]);
   return (
     <AppThemeProvider>
       <QueryClientProvider client={queryClient}>

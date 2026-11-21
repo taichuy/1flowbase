@@ -1,4 +1,4 @@
-import { apiFetch } from '../transport';
+import { apiFetch } from '../transport/json';
 
 export interface SystemMetadata {
   logo_url: string;

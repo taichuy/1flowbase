@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchVoid } from '../transport';
+import { apiFetch, apiFetchVoid } from '../transport/json';
 
 export interface ConsoleSessionActor {
   id: string;

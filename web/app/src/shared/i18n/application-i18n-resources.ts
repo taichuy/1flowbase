@@ -1,91 +1,204 @@
-import settingsRecordPermissionsZhHans from '../../features/settings/components/record-permissions/i18n/zh_Hans.json';
-import settingsRecordPermissionsEnUS from '../../features/settings/components/record-permissions/i18n/en_US.json';
-import settingsEventsZhHans from '../../features/settings/pages/events/i18n/zh_Hans.json';
-import settingsEventsEnUS from '../../features/settings/pages/events/i18n/en_US.json';
-import notificationsZhHans from '../../features/notifications/i18n/zh_Hans.json';
-import notificationsEnUS from '../../features/notifications/i18n/en_US.json';
-import settingsSystemTemplatesZhHans from '../../features/settings/components/system-templates/i18n/zh_Hans.json';
-import settingsSystemTemplatesEnUS from '../../features/settings/components/system-templates/i18n/en_US.json';
-import agentFlowZhHans from '../../features/agent-flow/i18n/zh_Hans.json';
-import agentFlowEnUS from '../../features/agent-flow/i18n/en_US.json';
-import appZhHans from '../../app/i18n/zh_Hans.json';
-import appEnUS from '../../app/i18n/en_US.json';
-import appShellZhHans from '../../app-shell/i18n/zh_Hans.json';
-import appShellEnUS from '../../app-shell/i18n/en_US.json';
-import applicationsZhHans from '../../features/applications/i18n/zh_Hans.json';
-import applicationsEnUS from '../../features/applications/i18n/en_US.json';
-import embeddedAppsZhHans from '../../features/embedded-apps/i18n/zh_Hans.json';
-import embeddedAppsEnUS from '../../features/embedded-apps/i18n/en_US.json';
-import frontstageZhHans from '../../features/frontstage/i18n/zh_Hans.json';
-import frontstageEnUS from '../../features/frontstage/i18n/en_US.json';
-import meZhHans from '../../features/me/i18n/zh_Hans.json';
-import meEnUS from '../../features/me/i18n/en_US.json';
-import schemaUiZhHans from '../../shared/schema-ui/v1/i18n/zh_Hans.json';
-import schemaUiEnUS from '../../shared/schema-ui/v1/i18n/en_US.json';
-import settingsApplicationManagementZhHans from '../../features/settings/components/application-management/i18n/zh_Hans.json';
-import settingsApplicationManagementEnUS from '../../features/settings/components/application-management/i18n/en_US.json';
-import settingsSystemBackupsZhHans from '../../features/settings/components/system-backups/i18n/zh_Hans.json';
-import settingsSystemBackupsEnUS from '../../features/settings/components/system-backups/i18n/en_US.json';
-import settingsMcpManagementZhHans from '../../features/settings/components/mcp-management/i18n/zh_Hans.json';
-import settingsMcpManagementEnUS from '../../features/settings/components/mcp-management/i18n/en_US.json';
-import settingsUiManagementZhHans from '../../features/settings/components/ui-management/i18n/zh_Hans.json';
-import settingsUiManagementEnUS from '../../features/settings/components/ui-management/i18n/en_US.json';
-import settingsBillingZhHans from '../../features/settings/components/billing/i18n/zh_Hans.json';
-import settingsBillingEnUS from '../../features/settings/components/billing/i18n/en_US.json';
-import settingsZhHans from '../../features/settings/i18n/zh_Hans.json';
-import settingsEnUS from '../../features/settings/i18n/en_US.json';
-import sharedZhHans from './resources/zh_Hans.json';
-import sharedEnUS from './resources/en_US.json';
-import sharedUiZhHans from '../../shared/ui/i18n/zh_Hans.json';
-import sharedUiEnUS from '../../shared/ui/i18n/en_US.json';
-import workflowZhHans from '../../features/workflow/i18n/zh_Hans.json';
-import workflowEnUS from '../../features/workflow/i18n/en_US.json';
-
-export const applicationTranslationResources = {
-  zh_Hans: {
-    agentFlow: agentFlowZhHans,
-    app: appZhHans,
-    appShell: appShellZhHans,
-    applications: applicationsZhHans,
-    embeddedApps: embeddedAppsZhHans,
-    frontstage: frontstageZhHans,
-    me: meZhHans,
-    notifications: notificationsZhHans,
-    schemaUi: schemaUiZhHans,
-    settingsApplicationManagement: settingsApplicationManagementZhHans,
-    settingsSystemBackups: settingsSystemBackupsZhHans,
-    settingsSystemTemplates: settingsSystemTemplatesZhHans,
-    settingsMcpManagement: settingsMcpManagementZhHans,
-    settingsUiManagement: settingsUiManagementZhHans,
-    settingsBilling: settingsBillingZhHans,
-    settingsEvents: settingsEventsZhHans,
-    settingsRecordPermissions: settingsRecordPermissionsZhHans,
-    settings: settingsZhHans,
-    shared: sharedZhHans,
-    sharedUi: sharedUiZhHans,
-    workflow: workflowZhHans
+// Each import is a locale × namespace boundary. Do not replace this with an
+// eager JSON barrel: the public shell must not download unrelated dictionaries.
+export const applicationTranslationLoaders = {
+  agentFlow: {
+    zh_Hans: () =>
+      import('../../features/agent-flow/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../features/agent-flow/i18n/en_US.json').then(
+        (module) => module.default
+      )
   },
-  en_US: {
-    agentFlow: agentFlowEnUS,
-    app: appEnUS,
-    appShell: appShellEnUS,
-    applications: applicationsEnUS,
-    embeddedApps: embeddedAppsEnUS,
-    frontstage: frontstageEnUS,
-    me: meEnUS,
-    notifications: notificationsEnUS,
-    schemaUi: schemaUiEnUS,
-    settingsApplicationManagement: settingsApplicationManagementEnUS,
-    settingsSystemBackups: settingsSystemBackupsEnUS,
-    settingsSystemTemplates: settingsSystemTemplatesEnUS,
-    settingsMcpManagement: settingsMcpManagementEnUS,
-    settingsUiManagement: settingsUiManagementEnUS,
-    settingsBilling: settingsBillingEnUS,
-    settingsEvents: settingsEventsEnUS,
-    settingsRecordPermissions: settingsRecordPermissionsEnUS,
-    settings: settingsEnUS,
-    shared: sharedEnUS,
-    sharedUi: sharedUiEnUS,
-    workflow: workflowEnUS
+  app: {
+    zh_Hans: () =>
+      import('../../app/i18n/zh_Hans.json').then((module) => module.default),
+    en_US: () =>
+      import('../../app/i18n/en_US.json').then((module) => module.default)
+  },
+  appShell: {
+    zh_Hans: () =>
+      import('../../app-shell/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../app-shell/i18n/en_US.json').then((module) => module.default)
+  },
+  applications: {
+    zh_Hans: () =>
+      import('../../features/applications/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../features/applications/i18n/en_US.json').then(
+        (module) => module.default
+      )
+  },
+  embeddedApps: {
+    zh_Hans: () =>
+      import('../../features/embedded-apps/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../features/embedded-apps/i18n/en_US.json').then(
+        (module) => module.default
+      )
+  },
+  frontstage: {
+    zh_Hans: () =>
+      import('../../features/frontstage/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../features/frontstage/i18n/en_US.json').then(
+        (module) => module.default
+      )
+  },
+  me: {
+    zh_Hans: () =>
+      import('../../features/me/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../features/me/i18n/en_US.json').then(
+        (module) => module.default
+      )
+  },
+  notifications: {
+    zh_Hans: () =>
+      import('../../features/notifications/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../features/notifications/i18n/en_US.json').then(
+        (module) => module.default
+      )
+  },
+  schemaUi: {
+    zh_Hans: () =>
+      import('../../shared/schema-ui/v1/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../shared/schema-ui/v1/i18n/en_US.json').then(
+        (module) => module.default
+      )
+  },
+  settingsApplicationManagement: {
+    zh_Hans: () =>
+      import('../../features/settings/components/application-management/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../features/settings/components/application-management/i18n/en_US.json').then(
+        (module) => module.default
+      )
+  },
+  settingsSystemBackups: {
+    zh_Hans: () =>
+      import('../../features/settings/components/system-backups/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../features/settings/components/system-backups/i18n/en_US.json').then(
+        (module) => module.default
+      )
+  },
+  settingsSystemTemplates: {
+    zh_Hans: () =>
+      import('../../features/settings/components/system-templates/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../features/settings/components/system-templates/i18n/en_US.json').then(
+        (module) => module.default
+      )
+  },
+  settingsMcpManagement: {
+    zh_Hans: () =>
+      import('../../features/settings/components/mcp-management/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../features/settings/components/mcp-management/i18n/en_US.json').then(
+        (module) => module.default
+      )
+  },
+  settingsUiManagement: {
+    zh_Hans: () =>
+      import('../../features/settings/components/ui-management/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../features/settings/components/ui-management/i18n/en_US.json').then(
+        (module) => module.default
+      )
+  },
+  settingsBilling: {
+    zh_Hans: () =>
+      import('../../features/settings/components/billing/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../features/settings/components/billing/i18n/en_US.json').then(
+        (module) => module.default
+      )
+  },
+  settingsEvents: {
+    zh_Hans: () =>
+      import('../../features/settings/pages/events/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../features/settings/pages/events/i18n/en_US.json').then(
+        (module) => module.default
+      )
+  },
+  settingsRecordPermissions: {
+    zh_Hans: () =>
+      import('../../features/settings/components/record-permissions/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../features/settings/components/record-permissions/i18n/en_US.json').then(
+        (module) => module.default
+      )
+  },
+  settings: {
+    zh_Hans: () =>
+      import('../../features/settings/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../features/settings/i18n/en_US.json').then(
+        (module) => module.default
+      )
+  },
+  shared: {
+    zh_Hans: () =>
+      import('./resources/zh_Hans.json').then((module) => module.default),
+    en_US: () =>
+      import('./resources/en_US.json').then((module) => module.default)
+  },
+  sharedUi: {
+    zh_Hans: () =>
+      import('../../shared/ui/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../shared/ui/i18n/en_US.json').then((module) => module.default)
+  },
+  workflow: {
+    zh_Hans: () =>
+      import('../../features/workflow/i18n/zh_Hans.json').then(
+        (module) => module.default
+      ),
+    en_US: () =>
+      import('../../features/workflow/i18n/en_US.json').then(
+        (module) => module.default
+      )
   }
 } as const;
+
+export type ApplicationNamespace = keyof typeof applicationTranslationLoaders;

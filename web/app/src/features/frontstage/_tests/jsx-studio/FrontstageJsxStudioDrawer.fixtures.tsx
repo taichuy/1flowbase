@@ -45,6 +45,9 @@ const templateAuth = vi.hoisted(() => ({
   actor: null,
   me: { permissions: ['settings_feature.access.system.ui-management'] }
 }));
+vi.mock('virtual:1flowbase-native-module-declarations', () => ({
+  default: { version: 1, roots: {}, resources: {} }
+}));
 vi.mock('../../../settings/api/ui-management', () => templateApi);
 vi.mock('../../../../state/auth-store', () => ({
   useAuthStore: (selector: (state: typeof templateAuth) => unknown) =>
@@ -169,6 +172,7 @@ vi.mock('@monaco-editor/react', async () => {
           MarkerSeverity: { Error: 8 },
           editor: { setModelMarkers: monacoHook.setModelMarkers },
           languages: {
+            registerCompletionItemProvider: vi.fn(() => ({ dispose: vi.fn() })),
             typescript: {
               JsxEmit: { Preserve: 'preserve', ReactJSX: 'react-jsx' },
               ModuleResolutionKind: { NodeJs: 'node-js' },

@@ -13,7 +13,9 @@ describe('BGP scenario demand islands', () => {
     const router = await source('src/app/router.tsx');
     const helpMenu = await source('src/app-shell/HelpChromeMenu.tsx');
 
-    expect(bootstrap).toContain("import('../app-shell/AppShellFrame')");
+    const startup = await source('src/app/bootstrap/AuthenticatedStartup.tsx');
+    expect(bootstrap).toContain("import('./bootstrap/AuthenticatedStartup')");
+    expect(startup).toContain("import('../../app-shell/AppShellFrame')");
     expect(router).toContain(
       '/^\\/applications\\/[^/]+(?:\\/|$)/u.test(window.location.pathname)'
     );

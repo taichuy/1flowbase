@@ -1,3 +1,6 @@
+import { queryOptions } from '@tanstack/react-query';
+import { navigationQueryStaleTime } from '../../../state/navigation-query-scope';
+
 import {
   getConsoleNavigation,
   type ConsoleNavigation
@@ -12,4 +15,13 @@ export const settingsConsoleNavigationQueryKey = [
 
 export function fetchSettingsConsoleNavigation(): Promise<SettingsConsoleNavigation> {
   return getConsoleNavigation();
+}
+
+export function settingsConsoleNavigationQueryOptions(scope: string) {
+  return queryOptions({
+    queryKey: [...settingsConsoleNavigationQueryKey, scope],
+    queryFn: fetchSettingsConsoleNavigation,
+    staleTime: navigationQueryStaleTime,
+    retry: false
+  });
 }

@@ -1,3 +1,4 @@
+import path from 'node:path';
 import type { Plugin } from 'vite';
 import { motionDocument } from './sign-in-motion-document';
 
@@ -36,6 +37,7 @@ export function signInStylePreloads(
 // After native motion starts, prepare the application graph without waking the
 // lazy form, the workspace or unrelated public routes.
 export const signInPreloadRoots = [
+  '/src/bootstrap.ts',
   '/src/app/AnonymousAppRuntime.tsx',
   '/src/app/ApplicationRuntimeBootstrap.tsx',
   '/src/main.tsx'
@@ -44,13 +46,30 @@ export const signInPreloadRoots = [
 export function signInResourceHintsPlugin(): Plugin {
   let base: string;
   let root: string;
+  let building = false;
+  const prewarmId = 'virtual:1flowbase-authenticated-preload';
   return {
     name: '1flowbase-sign-in-resource-hints',
-    apply: 'build',
     enforce: 'post',
     configResolved(config) {
       base = config.base;
       root = config.root;
+      building = config.command === 'build';
+    },
+    resolveId(id) {
+      if (id === prewarmId) return '\0' + prewarmId;
+    },
+    load(id) {
+      if (id !== '\0' + prewarmId) return;
+      if (!building)
+        return `export default ${JSON.stringify(`${base}src/app/AuthenticatedAppRuntime.tsx`)};`;
+      const reference = this.emitFile({
+        type: 'chunk',
+        id: path.join(root, 'src/app/AuthenticatedAppRuntime.tsx')
+      });
+      // A URL, not an import: idle modulepreload fetches/parses without evaluating
+      // authenticated providers or initializing i18next in the anonymous state.
+      return `export default import.meta.ROLLUP_FILE_URL_${reference};`;
     },
     generateBundle: {
       order: 'post',
@@ -74,6 +93,35 @@ export function signInResourceHintsPlugin(): Plugin {
           throw new Error(`Missing sign-in preload root: ${root}`);
         });
         const href = (file: string) => `${base}${file}`;
+        // The guarded index has no document-owned hero. Discover its fallback
+        // graph in HTML, not after React mounts. The motion document deliberately
+        // uses the original HTML below: its live artwork needs no second copy.
+        const fallbackRoots = [...chunks]
+          .filter(([, chunk]) =>
+            Object.keys(chunk.modules).some((id) =>
+              id.replaceAll('\\', '/').endsWith('/hero/SignInFallbackHero.tsx')
+            )
+          )
+          .map(([file]) => file);
+        if (fallbackRoots.length) {
+          const fallback = signInPreloads(chunks, fallbackRoots);
+          const resources = [
+            ...fallback.map((file) => ({
+              rel: 'modulepreload',
+              href: href(file)
+            })),
+            ...signInStylePreloads(chunks, fallback).map((file) => ({
+              rel: 'preload',
+              href: href(file),
+              as: 'style'
+            }))
+          ];
+          doc.source = html.replace(
+            '</body>',
+            `<script>if(/^\\/sign-in\\/?$/.test(location.pathname)){for(const r of ${JSON.stringify(resources)}){if(Array.from(document.querySelectorAll('link')).some(l=>l.href===new URL(r.href,document.baseURI).href))continue;const l=document.createElement('link');Object.assign(l,r);l.crossOrigin='';document.head.append(l)}}</script></body>`
+          );
+        }
+
         const visual = signInPreloads(chunks, entries);
         const hints: string[] = [];
         for (const file of signInStylePreloads(chunks, visual)) {

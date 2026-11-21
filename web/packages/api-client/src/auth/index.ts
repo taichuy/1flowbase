@@ -7,7 +7,7 @@ export {
   apiFetch,
   getDefaultApiBaseUrl,
   type ApiBaseUrlLocation
-} from '../transport';
+} from '../transport/json';
 export {
   deleteConsoleSession,
   fetchConsoleSession,

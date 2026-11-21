@@ -1,5 +1,9 @@
 import type { Plugin } from 'vite';
-import { assertSignInVisualBoundary } from './sign-in-visual-boundary';
+import {
+  assertSignInVisualBoundary,
+  assertSignInBudget
+} from './sign-in-visual-boundary';
+import { collectScenarioDemandManifest } from './scenario-demand/manifest';
 
 import { PRODUCT_ANT_DESIGN_ICON_RESOLVED_IDS } from './native-ant-design-icons-modules';
 import {
@@ -11,6 +15,7 @@ const SCENARIO_CHUNK_NAMES = new Set([
   'react-runtime',
   'auth-surface',
   'auth-route',
+  'auth-anonymous',
   'auth-discovery',
   'auth-visual',
   'auth-form',
@@ -96,12 +101,6 @@ export const scenarioCodeSplitting = {
       test: /[\\/]antd[\\/]es[\\/](?:button|input|space)[\\/]index\.js$|[\\/]icons[\\/]es[\\/]icons[\\/]ArrowLeftOutlined\.js$/u,
       priority: 10
     },
-    // Keep the tiny session request runnable before the route graph arrives.
-    {
-      name: 'auth-discovery',
-      test: /[\\/]features[\\/]auth[\\/]api[\\/](?:auth-session-discovery|login-entry-discovery)\.ts$|[\\/]hero[\\/]document-motion\.ts$|vite[\\/]preload-helper(?:\.js)?$/u,
-      priority: 25
-    },
     // antd-style's ShadowRoot provider uses exactly these Ant Design roots.
     // Preserve that provider (including transitive style hooks), without bundling
     // its imports together with unrelated tables, displays and overlays.
@@ -117,11 +116,12 @@ export const scenarioCodeSplitting = {
       test: /[\\/]antd[\\/]es[\\/](?:theme|grid|modal|message|notification|version)[\\/]index\.js$/u,
       priority: 8
     },
-    // Coalesce the route's eager imports; its dynamic form and MCP edges stay lazy.
+    // HTML starts discovery independently. Co-locate the lightweight anonymous
+    // entry; authenticated/MCP/custom imports remain real dynamic boundaries.
     {
-      name: 'auth-route',
-      test: /[\\/]app[\\/]AnonymousAppRuntime\.tsx$/u,
-      priority: 5
+      name: 'auth-anonymous',
+      test: /[\\/]src[\\/](?:bootstrap\.ts|main\.tsx|app[\\/](?:AnonymousAppRuntime|ApplicationRuntimeBootstrap)\.tsx)$|vite[\\/]modulepreload-polyfill(?:\.js)?$/u,
+      priority: 25
     },
     { name: (id: string) => planScenarioChunk(id) ?? null }
   ]
@@ -130,33 +130,32 @@ export const scenarioCodeSplitting = {
 export function scenarioChunkManifestPlugin(): Plugin {
   return {
     name: '1flowbase-scenario-chunk-manifest',
-    generateBundle(_options, bundle) {
-      assertSignInVisualBoundary(bundle);
-      const chunks = Object.values(bundle)
-        .flatMap((chunk) => {
-          if (
-            chunk.type !== 'chunk' ||
-            ![...SCENARIO_CHUNK_NAMES].some(
-              (name) => chunk.name === name || chunk.name.startsWith(`${name}~`)
-            )
+    enforce: 'post',
+    // Vite removes pure-CSS placeholder chunks and transfers their CSS edges
+    // in generateBundle. Record the final graph, not the pre-transformation one.
+    generateBundle: {
+      order: 'post',
+      handler(_options, bundle) {
+        assertSignInVisualBoundary(bundle);
+        const budget = assertSignInBudget(bundle);
+        if (budget)
+          this.emitFile({
+            type: 'asset',
+            fileName: 'sign-in-budget.json',
+            source: JSON.stringify(budget, null, 2)
+          });
+        const manifest = collectScenarioDemandManifest(bundle);
+        const partitions = manifest.chunks.filter((chunk) =>
+          [...SCENARIO_CHUNK_NAMES].some(
+            (name) => chunk.name === name || chunk.name.startsWith(`${name}~`)
           )
-            return [];
-          return [
-            {
-              file: chunk.fileName,
-              name: chunk.name,
-              dynamicImports: [...chunk.dynamicImports].sort(),
-              imports: [...chunk.imports].sort(),
-              moduleCount: Object.keys(chunk.modules).length
-            }
-          ];
-        })
-        .sort((left, right) => left.file.localeCompare(right.file));
-      this.emitFile({
-        type: 'asset',
-        fileName: 'scenario-chunk-manifest.json',
-        source: `${JSON.stringify({ version: 1, partitions: chunks }, null, 2)}\n`
-      });
+        );
+        this.emitFile({
+          type: 'asset',
+          fileName: 'scenario-chunk-manifest.json',
+          source: `${JSON.stringify({ ...manifest, partitions }, null, 2)}\n`
+        });
+      }
     }
   };
 }

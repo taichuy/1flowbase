@@ -7,6 +7,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite';
 
 import { signInResourceHintsPlugin } from './build/sign-in-resource-hints';
+import { staticAssetCompressionPlugin } from './build/static-assets/compression';
 import { publicSignInPlugin } from './build/public-sign-in';
 import { nativeModuleDeclarationsPlugin } from './build/native-module-declarations';
 import {
@@ -132,6 +133,7 @@ export default defineConfig(({ command, mode }) => {
       oneFlowbaseDevRuntimePlugin({ root: process.cwd(), mode, command }),
       pageTreeIconAssetsPlugin({ projectRoot: appRoot }),
       scenarioChunkManifestPlugin(),
+      staticAssetCompressionPlugin(),
       nativeAntDesignEsModulesPlugin(command),
       nativeAntDesignIconsModulesPlugin({
         inventory: nativeAntDesignIconsModuleInventory

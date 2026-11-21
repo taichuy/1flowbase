@@ -3,7 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { profileProductionBundle } = require("./core.js");
+const { profileProductionBundle, profileScenarioBundle } = require("./core.js");
 
 function optionValue(name) {
   const index = process.argv.indexOf(name);
@@ -15,7 +15,8 @@ const distDirectory = path.resolve(
   optionValue("--dist") || path.join(repoRoot, "web/app/dist"),
 );
 const outputPath = optionValue("--output");
-const profile = profileProductionBundle(distDirectory);
+const scene = optionValue("--scene");
+const profile = scene ? profileScenarioBundle(distDirectory, scene) : profileProductionBundle(distDirectory);
 const receipt = `${JSON.stringify(profile, null, 2)}\n`;
 
 if (outputPath) {

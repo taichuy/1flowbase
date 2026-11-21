@@ -67,12 +67,95 @@ test('the actual ShadowRoot style provider cannot drag a table onto the login fo
   ).toThrow('table');
 });
 
-test('session and entry requests do not wait for the UI runtime through a document cleanup helper', () => {
+test('document entry cannot leak a heavy query framework into the anonymous closure', () => {
   expect(() =>
     assertSignInVisualBoundary({
       app: chunk([page, hero]),
       entry: chunk(['/src/bootstrap.ts'], ['ui']),
-      ui: chunk(['/node_modules/react/index.js'])
+      ui: chunk(['/node_modules/@tanstack/react-query/index.js'])
     })
-  ).toThrow('react');
+  ).toThrow('react-query');
+});
+
+function budgetFixture({
+  code = 'export default 1;',
+  extra = 0,
+  preload = true,
+  htmlPadding = ''
+} = {}) {
+  const dependencies = Array.from(
+    { length: extra },
+    (_, i) => `assets/part-${i}.js`
+  );
+  const files = ['assets/app.js', ...dependencies];
+  const html = `<html><head>${preload ? files.map((file) => `<link rel="modulepreload" href="/${file}">`).join('') : ''}</head><body>${htmlPadding}</body></html>`;
+  return {
+    'sign-in-preload.html': { type: 'asset' as const, source: html },
+    'assets/app.js': { ...chunk([page, hero], dependencies), code },
+    ...Object.fromEntries(
+      dependencies.map((file) => [
+        file,
+        { ...chunk([]), code: 'export default 2;' }
+      ])
+    )
+  };
+}
+
+// Stable high-entropy content exercises gzip limits independently of raw limits.
+function noise(length: number) {
+  let state = 1729;
+  return Buffer.from(
+    Array.from({ length }, () => {
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      return state >>> 24;
+    })
+  ).toString('base64');
+}
+
+test('reports actual bytes with React included, and honors base-relative HTML URLs', async () => {
+  const { assertSignInBudget } = await import('../sign-in-visual-boundary');
+  const bundle = budgetFixture({ extra: 1 });
+  bundle['assets/part-0.js'] = {
+    ...chunk(['/node_modules/react-dom/client.js']),
+    code: 'export const react = 1;'
+  };
+  bundle['sign-in-preload.html'].source = bundle[
+    'sign-in-preload.html'
+  ].source.replaceAll('href="/', 'href="/nested/');
+  const budget = assertSignInBudget(bundle)!;
+  expect(budget.files).toHaveLength(2);
+  expect(budget.totals.raw).toBe(
+    Buffer.byteLength('export default 1;export const react = 1;')
+  );
+  expect(budget.discoveryDepth).toBe(1);
+  expect(budget.files.every((file) => file.gzip > 0 && file.br > 0)).toBe(true);
+});
+
+test.each([
+  ['JS/CSS count', { extra: 4 }],
+  ['JS/CSS raw bytes', { code: 'x'.repeat(240_001) }],
+  ['JS/CSS gzip bytes', { code: noise(145_000) }],
+  ['HTML raw bytes', { htmlPadding: 'x'.repeat(20_001) }],
+  ['HTML gzip bytes', { htmlPadding: noise(8_000) }],
+  ['discovery depth', { preload: false }]
+])('rejects a real %s budget violation', async (failure, options) => {
+  const { assertSignInBudget } = await import('../sign-in-visual-boundary');
+  expect(() => assertSignInBudget(budgetFixture(options))).toThrow(failure);
+});
+
+test.each([
+  'antd/es/alert/index.js',
+  '@ant-design/cssinjs/es/index.js',
+  '@tanstack/react-router/dist/index.js',
+  '@tanstack/react-query/dist/index.js',
+  'i18next/dist/index.js',
+  'react-i18next/dist/index.js',
+  'antd-style/es/index.js'
+])('rejects forbidden anonymous framework %s', (module) => {
+  expect(() =>
+    assertSignInVisualBoundary({
+      app: chunk([page, hero], ['heavy']),
+      heavy: chunk(['/node_modules/' + module])
+    })
+  ).toThrow(module);
 });

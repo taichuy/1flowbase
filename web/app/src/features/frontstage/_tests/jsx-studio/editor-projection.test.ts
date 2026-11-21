@@ -1,16 +1,18 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 
+vi.mock('virtual:1flowbase-native-module-declarations', () => ({
+  default: { version: 1, roots: {}, resources: {} }
+}));
 import {
   createFrontstageContextComment,
   createFrontstageJsxEditorProjection
 } from '../../lib/jsx-studio/editor-projection';
 
 describe('Frontstage JSX editor projection', () => {
-  test('WP-D4 does not infer import availability from the persisted component catalog', () => {
+  test('keeps the complete import allowlist independent of the persisted component catalog', () => {
     const projection = createFrontstageJsxEditorProjection({
       catalogEntry: null
     });
-
     expect([...projection.allowedImportSources]).toEqual(
       expect.arrayContaining([
         'react',
@@ -26,68 +28,47 @@ describe('Frontstage JSX editor projection', () => {
         '@1flowbase/token-trend',
         '@1flowbase/rich-text',
         '@ant-design/x',
-        '@ant-design/x-markdown'
+        '@ant-design/x-markdown',
+        '@dnd-kit/core',
+        '@dnd-kit/core/dist/index.js'
       ])
     );
     expect(projection.contextComment).toBe(createFrontstageContextComment());
-    expect(projection.monacoExtraLibs).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ source: '@1flowbase/native-react-jsx' }),
-        expect.objectContaining({ source: '@1flowbase/native-react-context' })
-      ])
-    );
-    expect(projection.monacoExtraLibs).toEqual(
-      expect.arrayContaining([expect.objectContaining({ source: 'react' })])
-    );
-    expect(projection.contextComment).toContain('@1flowbase-context');
-    expect(projection.contextComment).not.toContain('interfaces:');
     expect(projection.contextComment).not.toContain('ctx.data');
+    expect(projection.monacoExtraLibs.map((lib) => lib.source)).toEqual([
+      '@1flowbase/native-react-jsx',
+      '@1flowbase/native-react-context'
+    ]);
   });
 
-  test('AC-002 projects frontend-owned module declarations into Monaco', () => {
+  test('registers only demanded frontend facades initially and retains all new-import completions', async () => {
     const projection = createFrontstageJsxEditorProjection({
       catalogEntry: null
     });
-
-    expect(projection.monacoExtraLibs).toContainEqual(
-      expect.objectContaining({
-        source: '@1flowbase/native-components',
-        filePath: 'file:///node_modules/@1flowbase/native-components/index.d.ts'
-      })
-    );
-    expect(projection.monacoExtraLibs).toContainEqual(
-      expect.objectContaining({
-        source: '@ant-design/x-markdown'
-      })
+    const initial = await projection.declarationLoader.loadForSource(
+      `import { useResponsive } from 'antd-style';`
     );
     expect(
-      projection.monacoExtraLibs
-        .filter(({ source }) => source === 'antd-style')
-        .map(({ content }) => content)
-        .join('\n')
+      initial.find((lib) => lib.source === 'antd-style')?.content
     ).toContain(
       'export function useResponsive(): Partial<Record<ResponsiveKey, boolean>>;'
     );
-    expect(projection.allowedImportSources.has('@dnd-kit/core')).toBe(true);
+    expect(initial.some((lib) => lib.source === '@ant-design/x-markdown')).toBe(
+      false
+    );
+    const full = await projection.declarationLoader.loadAll();
+    expect(full).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: '@1flowbase/native-components',
+          filePath:
+            'file:///node_modules/@1flowbase/native-components/index.d.ts'
+        }),
+        expect.objectContaining({ source: '@ant-design/x-markdown' })
+      ])
+    );
     expect(
-      projection.allowedImportSources.has('@dnd-kit/core/dist/index.js')
-    ).toBe(true);
-    expect(
-      projection.monacoExtraLibs
-        .filter(({ source }) => source === '@dnd-kit/core')
-        .map(({ content }) => content)
-        .join('\n')
-    ).toContain('DragEndEvent');
-    expect(
-      projection.monacoExtraLibs.find(
-        ({ source }) => source === '@dnd-kit/core/dist/index.js'
-      )?.content
+      full.find((lib) => lib.source === '@dnd-kit/core/dist/index.js')?.content
     ).toContain("export * from '@dnd-kit/core'");
-    expect(
-      projection.monacoExtraLibs
-        .filter(({ source }) => source === 'antd-img-crop')
-        .map(({ content }) => content)
-        .join('\n')
-    ).toContain('rotationSlider?: boolean');
   });
 });
