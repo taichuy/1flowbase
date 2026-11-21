@@ -2,7 +2,9 @@
 use super::ManagedServiceRegistration;
 use crate::{app_state::ApiState, error_response::ApiError};
 use control_plane::errors::ControlPlaneError as Error;
-use control_plane_contracts::ports::PluginRepository;
+use control_plane_contracts::ports::{
+    ContributionAuthorityLease, PluginContributionAuthorityRepository,
+};
 use domain::{ActorContext, RecordPermissionKey, RecordPermissionResourceKey};
 use extension_contracts::*;
 use plugin_framework::{
@@ -63,7 +65,7 @@ pub(crate) fn key(
     resource: &ManagedServiceRecordResource,
     record: &str,
 ) -> Result<RecordPermissionKey, ApiError> {
-    let (publisher, plugin, _) = registration.resource_owner();
+    let (publisher, plugin, _) = registration.resource_owner(resource);
     Ok(RecordPermissionKey {
         resource: RecordPermissionResourceKey {
             publisher_namespace: publisher.into(),
@@ -86,7 +88,7 @@ fn id_value(
         PluginDataFieldType::Uuid
     } else {
         registration
-            .data_models
+            .resource_data_models(resource)
             .iter()
             .flat_map(|m| &m.owned_collections)
             .find(|c| c.collection_code == resource.collection_code)
@@ -132,28 +134,43 @@ pub(crate) async fn operation_allowed(
     Ok(authorize_compiled_console_access(&access, actor, &policies))
 }
 /// Reject inactive owners before touching data. The Host picks identity from the frozen registry.
-pub(crate) async fn ensure_active(
-    state: &ApiState,
+fn ensure_live_registration(
     registration: &ManagedServiceRegistration,
+    lease: &dyn ContributionAuthorityLease,
 ) -> Result<(), ApiError> {
-    let current = state
-        .store
-        .get_installation(registration.installation_id)
-        .await?
+    let current = lease
+        .installation(registration.installation_id)
         .ok_or(Error::Conflict("managed_service_inactive"))?;
     if current.desired_state != domain::PluginDesiredState::ActiveRequested
         || current.organization != registration.publisher_namespace
         || current.provider_code != registration.plugin_code
         || current.plugin_version != registration.plugin_version
-        || domain::managed_installation_scope(&current, domain::SYSTEM_SCOPE_ID)
+        || current.contract_version != "1flowbase.extension-bus/v1"
+        || domain::managed_installation_scope(current, domain::DEFAULT_SCOPE_ID)
             != domain::SYSTEM_SCOPE_ID
     {
         return Err(Error::Conflict("managed_service_inactive").into());
     }
-    let resolved = control_plane::plugin_management::installation_shared_resource(&current)?;
-    if resolved != registration.shared_resource.as_ref() {
-        return Err(Error::Conflict("shared_resource_generation_mismatch").into());
+    let resolved =
+        control_plane::plugin_management::resolve_resource_imports(current, lease.installations())?;
+    if resolved != registration.resource_imports {
+        return Err(Error::Conflict("plugin_resource_generation_mismatch").into());
     }
+    Ok(())
+}
+pub(crate) async fn ensure_active(
+    state: &ApiState,
+    registration: &ManagedServiceRegistration,
+) -> Result<(), ApiError> {
+    let lease = state
+        .store
+        .lock_installation_contribution_authority(
+            registration.installation_id,
+            domain::SYSTEM_SCOPE_ID,
+        )
+        .await?;
+    ensure_live_registration(registration, lease.as_ref())?;
+    lease.release().await?;
     let composition = state.provider_runtime.managed_composition()?;
     let snapshot = match state
         .extension_boot_snapshot
@@ -189,7 +206,7 @@ pub(crate) async fn ensure_record(
         return Err(Error::InvalidInput("record_id").into());
     }
     ensure_active(state, registration).await?;
-    let (publisher, plugin, version) = registration.resource_owner();
+    let (publisher, plugin, version) = registration.resource_owner(resource);
     let binding = PluginDataBinding {
         managed_subject: None,
         publisher_namespace: publisher.into(),
@@ -220,11 +237,18 @@ pub(crate) async fn ensure_record(
             }],
         }],
     };
-    let response = state
+    let lease = state
         .store
-        .execute(&binding, &request)
-        .await
-        .map_err(|_| Error::UpstreamUnavailable("record_permission_record_lookup"))?;
+        .lock_installation_contribution_authority(
+            registration.installation_id,
+            domain::SYSTEM_SCOPE_ID,
+        )
+        .await?;
+    ensure_live_registration(registration, lease.as_ref())?;
+    let result = state.store.execute(&binding, &request).await;
+    lease.release().await?;
+    let response =
+        result.map_err(|_| Error::UpstreamUnavailable("record_permission_record_lookup"))?;
     if !matches!(response.results.first(), Some(PluginDataOperationResult::Count {count}) if *count == 1)
     {
         return Err(Error::NotFound("record_permission_record").into());

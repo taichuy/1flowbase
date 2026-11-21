@@ -68,6 +68,11 @@ pub trait ContributionAuthorityLease: Send {
     fn snapshot(&self) -> &PluginContributionAuthoritySnapshot;
     fn snapshots(&self) -> &[PluginContributionAuthoritySnapshot];
     fn installation(&self, installation_id: Uuid) -> Option<&domain::PluginInstallationRecord>;
+    /// Current facts read on this lease's connection. System-workspace leases include the
+    /// provider inventory under the system fence; workspace leases retain their scoped facts.
+    /// Consumer grants remain in snapshot(); provider facts never confer consumer authority.
+    fn installations(&self) -> &std::collections::BTreeMap<Uuid, domain::PluginInstallationRecord>;
+
     /// Reuse this lease's connection. Hold shared channel/binding locks until release/commit;
     /// callers must not borrow another repository connection while the authority lease is held.
     fn load_communication_command_context<'a>(

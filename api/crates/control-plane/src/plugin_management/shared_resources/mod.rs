@@ -1,328 +1,386 @@
-//! Deployment-owned resource delegation. Packages can reference, never define, contracts.
-use anyhow::{bail, ensure, Result};
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::OnceLock,
+//! Live, installation-owned resource exports. No deployment registry or environment fallback.
+use anyhow::{ensure, Result};
+use domain::{PluginDesiredState, PluginInstallationRecord};
+use extension_contracts::{
+    PluginDataBinding, PluginDataOperation, PluginDataRequest, PluginDataTarget,
 };
+use plugin_framework::{
+    PluginDependency, PluginResourceAccess, PluginResourceCollection, PluginResourceExport,
+    PluginResourceImport, PluginResourceRecordBinding,
+};
+use std::collections::{BTreeMap, BTreeSet};
+use uuid::Uuid;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct SharedResourceIdentity {
+/// A frozen API projection, or a descriptor resolved under the caller's authority lease.
+/// Identity is always the actual provider installation, never a consumer alias.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedPluginResource {
+    pub installation_id: Uuid,
     pub publisher_namespace: String,
     pub plugin_code: String,
+    pub plugin_version: String,
+    pub resource_code: String,
+    pub collections: Vec<PluginResourceCollection>,
+    pub record_resources: Vec<PluginResourceRecordBinding>,
+    pub credentials: Option<PluginResourceAccess>,
+    pub data_models: Vec<extension_contracts::PluginDataModelContribution>,
 }
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct SharedRecordResourceBinding {
-    pub collection_code: String,
-    pub id_field: String,
-}
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct SharedResourceContract {
-    pub contract_id: String,
-    pub owner: SharedResourceIdentity,
-    pub schema_version: String,
-    pub participants: BTreeSet<SharedResourceIdentity>,
-    pub collections: BTreeSet<String>,
-    pub record_resources: BTreeSet<String>,
-    pub record_resource_bindings: BTreeMap<String, SharedRecordResourceBinding>,
-    pub credentials: bool,
-}
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(transparent)]
-pub struct SharedResourceRegistry(pub Vec<SharedResourceContract>);
-impl SharedResourceRegistry {
-    pub fn validate(&self) -> Result<()> {
-        let mut ids = BTreeSet::new();
-        let mut owners = BTreeSet::new();
-        for c in &self.0 {
-            ensure!(
-                !c.contract_id.trim().is_empty() && !c.schema_version.trim().is_empty(),
-                "shared_resource_contract_invalid"
-            );
-            ensure!(
-                ids.insert(&c.contract_id) && owners.insert(&c.owner),
-                "shared_resource_contract_duplicate"
-            );
-            ensure!(
-                !c.collections.is_empty() && c.participants.contains(&c.owner),
-                "shared_resource_contract_invalid"
-            );
-            ensure!(
-                c.record_resource_bindings
-                    .keys()
-                    .cloned()
-                    .collect::<BTreeSet<_>>()
-                    == c.record_resources,
-                "shared_resource_record_bindings_mismatch"
-            );
-            ensure!(
-                c.record_resource_bindings
-                    .values()
-                    .all(|binding| c.collections.contains(&binding.collection_code)
-                        && !binding.id_field.trim().is_empty()),
-                "shared_resource_record_binding_invalid"
-            );
-            for identity in c.participants.iter().chain(std::iter::once(&c.owner)) {
-                ensure!(
-                    !identity.publisher_namespace.trim().is_empty()
-                        && !identity.plugin_code.trim().is_empty(),
-                    "shared_resource_identity_invalid"
-                );
-            }
-            ensure!(
-                c.collections
-                    .iter()
-                    .chain(&c.record_resources)
-                    .all(|v| !v.trim().is_empty()),
-                "shared_resource_scope_invalid"
-            );
-        }
-        Ok(())
+fn metadata<T: serde::de::DeserializeOwned>(
+    i: &PluginInstallationRecord,
+    key: &str,
+) -> Result<Vec<T>> {
+    match i.metadata_json.get(key) {
+        None => Ok(Vec::new()),
+        Some(value) => Ok(serde_json::from_value(value.clone())?),
     }
-    pub fn resolve(
-        &self,
-        reference: Option<&str>,
-        publisher: &str,
-        code: &str,
-    ) -> Result<Option<&SharedResourceContract>> {
-        let Some(reference) = reference else {
-            return Ok(None);
-        };
-        let contract = self
-            .0
-            .iter()
-            .find(|c| c.contract_id == reference)
-            .ok_or_else(|| anyhow::anyhow!("shared_resource_contract_unknown"))?;
+}
+fn matches_provider(i: &PluginInstallationRecord, p: &PluginDependency) -> bool {
+    i.organization == p.publisher_namespace && i.provider_code == p.plugin_code
+}
+fn enabled(i: &PluginInstallationRecord) -> bool {
+    i.desired_state == PluginDesiredState::ActiveRequested
+        && i.contract_version == "1flowbase.extension-bus/v1"
+        && domain::managed_installation_scope(i, domain::DEFAULT_SCOPE_ID)
+            == domain::SYSTEM_SCOPE_ID
+}
+fn provider<'a>(
+    p: &PluginDependency,
+    installations: &'a BTreeMap<Uuid, PluginInstallationRecord>,
+) -> Result<&'a PluginInstallationRecord> {
+    let mut candidates = installations
+        .values()
+        .filter(|i| matches_provider(i, p) && enabled(i));
+    let first = candidates
+        .next()
+        .ok_or_else(|| dependency_error("plugin_dependency_unavailable", p, None))?;
+    ensure!(
+        candidates.next().is_none(),
+        dependency_error("plugin_dependency_ambiguous", p, None)
+    );
+    Ok(first)
+}
+fn dependency_error(code: &str, p: &PluginDependency, resource: Option<&str>) -> anyhow::Error {
+    control_plane_contracts::ControlPlaneContractError::PluginDependency {
+        code: code.into(),
+        provider_publisher_namespace: p.publisher_namespace.clone(),
+        provider_plugin_code: p.plugin_code.clone(),
+        resource_code: resource.map(str::to_owned),
+        dependents: Vec::new(),
+    }
+    .into()
+}
+fn intersection(a: PluginResourceAccess, b: PluginResourceAccess) -> PluginResourceAccess {
+    if a == PluginResourceAccess::ReadWrite && b == PluginResourceAccess::ReadWrite {
+        PluginResourceAccess::ReadWrite
+    } else {
+        PluginResourceAccess::ReadOnly
+    }
+}
+pub fn validate_plugin_dependencies(
+    consumer: &PluginInstallationRecord,
+    installations: &BTreeMap<Uuid, PluginInstallationRecord>,
+) -> Result<()> {
+    for dependency in metadata::<PluginDependency>(consumer, "plugin_dependencies")? {
         ensure!(
-            contract.participants.contains(&SharedResourceIdentity {
-                publisher_namespace: publisher.into(),
-                plugin_code: code.into()
-            }),
-            "shared_resource_participant_denied"
+            !matches_provider(consumer, &dependency),
+            dependency_error("plugin_dependency_self", &dependency, None)
         );
-        Ok(Some(contract))
+        provider(&dependency, installations)?;
     }
+    resolve_resource_imports(consumer, installations)?;
+    Ok(())
 }
-impl SharedResourceContract {
-    pub fn validate_schema(
-        &self,
-        models: &[extension_contracts::PluginDataModelContribution],
-    ) -> Result<()> {
-        let mut collections = BTreeSet::new();
-        for model in models {
-            model.validate_additive_v1()?;
-            ensure!(
-                model.extension_fields.is_empty(),
-                "shared_resource_extension_fields_denied"
-            );
-            for collection in &model.owned_collections {
-                ensure!(
-                    collections.insert(collection.collection_code.clone()),
-                    "shared_resource_duplicate_collection"
-                );
-            }
-        }
-        ensure!(
-            collections == self.collections,
-            "shared_resource_schema_collections_mismatch"
-        );
-        Ok(())
-    }
-    pub fn validate_record_resources(
-        &self,
-        resources: &[plugin_framework::ManagedServiceRecordResource],
-    ) -> Result<()> {
-        ensure!(
-            resources
-                .iter()
-                .map(|r| r.resource_code.clone())
-                .collect::<BTreeSet<_>>()
-                == self.record_resources,
-            "shared_resource_record_resources_mismatch"
-        );
-        for resource in resources {
-            let binding = self
-                .record_resource_bindings
-                .get(&resource.resource_code)
-                .ok_or_else(|| anyhow::anyhow!("shared_resource_record_resource_denied"))?;
-            ensure!(
-                binding.collection_code == resource.collection_code
-                    && binding.id_field == resource.id_field,
-                "shared_resource_record_binding_mismatch"
-            );
-        }
-        Ok(())
-    }
-    /// Before the first shared-version projection exists, an omitted nullable legacy
-    /// field must not silently become an inactive/partial shared schema.
-    pub fn validate_existing_schema(
-        &self,
-        models: &[extension_contracts::PluginDataModelContribution],
-        existing: &[crate::ports::ManagedSchemaOwnershipRecord],
-    ) -> Result<()> {
-        use crate::ports::{ManagedSchemaFieldType as T, ManagedSchemaObjectKind};
-        let desired = models
-            .iter()
-            .flat_map(|m| &m.owned_collections)
-            .flat_map(|c| {
-                c.fields
-                    .iter()
-                    .map(move |f| (format!("{}.{}", c.collection_code, f.field_code), f))
-            })
-            .collect::<BTreeMap<_, _>>();
-        let owner = self.schema_owner().stable_id();
-        for field in existing
-            .iter()
-            .filter(|r| r.owner_id == owner && r.object_kind == ManagedSchemaObjectKind::OwnedField)
-        {
-            let Some((collection, _)) = field.logical_name.split_once('.') else {
-                bail!("shared_resource_existing_field_invalid")
-            };
-            if !self.collections.contains(collection) {
-                continue;
-            }
-            let declared = desired
-                .get(&field.logical_name)
-                .ok_or_else(|| anyhow::anyhow!("shared_resource_existing_field_missing"))?;
-            let expected = match declared.field_type {
-                extension_contracts::PluginDataFieldType::String => T::String,
-                extension_contracts::PluginDataFieldType::Text => T::Text,
-                extension_contracts::PluginDataFieldType::Number => T::Number,
-                extension_contracts::PluginDataFieldType::Boolean => T::Boolean,
-                extension_contracts::PluginDataFieldType::Datetime => T::Datetime,
-                extension_contracts::PluginDataFieldType::Json => T::Json,
-                extension_contracts::PluginDataFieldType::Uuid => T::Uuid,
-            };
-            ensure!(
-                field.field_type == Some(expected) && field.nullable == Some(declared.nullable),
-                "shared_resource_existing_field_mismatch"
-            );
-        }
-        Ok(())
-    }
-    pub fn schema_owner(&self) -> plugin_framework::PluginSchemaOwner {
-        plugin_framework::PluginSchemaOwner {
-            publisher_namespace: self.owner.publisher_namespace.clone(),
-            plugin_code: self.owner.plugin_code.clone(),
-            plugin_version: self.schema_version.clone(),
-        }
-    }
-    pub fn data_binding(
-        &self,
-        binding: &extension_contracts::PluginDataBinding,
-        request: &extension_contracts::PluginDataRequest,
-    ) -> Result<extension_contracts::PluginDataBinding> {
-        use extension_contracts::{PluginDataOperation::*, PluginDataTarget};
-        for operation in &request.operations {
-            let target = match operation {
-                Find { target, .. }
-                | FindOne { target, .. }
-                | Count { target, .. }
-                | Insert { target, .. }
-                | Update { target, .. }
-                | Delete { target, .. }
-                | Upsert { target, .. } => target,
-            };
-            let PluginDataTarget::OwnedCollection { collection_code } = target else {
-                bail!("shared_resource_target_denied")
-            };
-            ensure!(
-                self.collections.contains(collection_code),
-                "shared_resource_collection_denied"
-            );
-            for (code, protected) in &self.record_resource_bindings {
-                if protected.collection_code != *collection_code {
-                    continue;
-                }
-                ensure!(
-                    binding
-                        .record_permissions
-                        .as_ref()
-                        .is_some_and(|context| context
-                            .resources
+/// Used before lifecycle mutation, with the same system-workspace fence as runtime reads.
+/// Malformed dependency metadata fails closed by retaining the enabled installation as a blocker.
+pub fn plugin_resource_dependents(
+    target: &PluginInstallationRecord,
+    installations: &BTreeMap<Uuid, PluginInstallationRecord>,
+) -> Vec<String> {
+    let mut dependents: Vec<_> = installations
+        .values()
+        .filter(|i| i.id != target.id && enabled(i))
+        .filter(|i| {
+            let deps = metadata::<PluginDependency>(i, "plugin_dependencies");
+            let imports = metadata::<PluginResourceImport>(i, "resource_imports");
+            match (deps, imports) {
+                (Ok(deps), Ok(imports)) => {
+                    deps.iter().any(|d| matches_provider(target, d))
+                        || imports
                             .iter()
-                            .any(|r| r.resource_code == *code
-                                && r.collection_code == protected.collection_code
-                                && r.id_field == protected.id_field)),
-                    "shared_resource_record_context_required"
-                );
+                            .any(|r| matches_provider(target, &r.provider))
+                }
+                _ => true,
             }
+        })
+        .map(|i| {
+            format!(
+                "{}/{}@{}",
+                i.organization, i.provider_code, i.plugin_version
+            )
+        })
+        .collect();
+    dependents.sort();
+    dependents.dedup();
+    dependents
+}
+/// Pure current-facts resolver; the caller owns serialization and never borrows another connection.
+pub fn resolve_resource_imports(
+    consumer: &PluginInstallationRecord,
+    installations: &BTreeMap<Uuid, PluginInstallationRecord>,
+) -> Result<Vec<ResolvedPluginResource>> {
+    let dependencies = metadata::<PluginDependency>(consumer, "plugin_dependencies")?;
+    let imports = metadata::<PluginResourceImport>(consumer, "resource_imports")?;
+    ensure!(
+        imports.is_empty()
+            || (consumer.contract_version == "1flowbase.extension-bus/v1"
+                && domain::managed_installation_scope(consumer, domain::DEFAULT_SCOPE_ID)
+                    == domain::SYSTEM_SCOPE_ID),
+        "plugin_resource_consumer_scope_denied"
+    );
+    let mut result = Vec::new();
+    let mut collections = BTreeSet::new();
+    let mut records = BTreeSet::new();
+    let mut resources = BTreeSet::new();
+    for import in imports {
+        let error = || {
+            dependency_error(
+                "plugin_resource_import_denied",
+                &import.provider,
+                Some(&import.resource_code),
+            )
+        };
+        ensure!(
+            !matches_provider(consumer, &import.provider)
+                && dependencies.iter().any(|d| d == &import.provider),
+            error()
+        );
+        let owner = provider(&import.provider, installations)?;
+        ensure!(
+            resources.insert((owner.id, import.resource_code.clone())),
+            error()
+        );
+        let exports = metadata::<PluginResourceExport>(owner, "resource_exports")?;
+        let mut exports = exports
+            .iter()
+            .filter(|e| e.resource_code == import.resource_code);
+        let export = exports.next().ok_or_else(error)?;
+        ensure!(exports.next().is_none(), error());
+        let models =
+            metadata::<extension_contracts::PluginDataModelContribution>(owner, "data_models")?;
+        let mut resolved_collections = Vec::new();
+        for requested in &import.collections {
+            ensure!(
+                collections.insert(requested.collection_code.clone()),
+                error()
+            );
+            let mut offered = export
+                .collections
+                .iter()
+                .filter(|c| c.collection_code == requested.collection_code);
+            let offered_collection = offered.next().ok_or_else(error)?;
+            ensure!(
+                offered.next().is_none()
+                    && models
+                        .iter()
+                        .flat_map(|m| &m.owned_collections)
+                        .any(|c| c.collection_code == requested.collection_code),
+                error()
+            );
+            resolved_collections.push(PluginResourceCollection {
+                collection_code: requested.collection_code.clone(),
+                access: intersection(requested.access, offered_collection.access),
+            });
+        }
+        let mut record_resources = Vec::new();
+        for code in &import.record_resources {
+            ensure!(records.insert(code.clone()), error());
+            let mut bindings = export
+                .record_resources
+                .iter()
+                .filter(|r| &r.resource_code == code);
+            let binding = bindings.next().ok_or_else(error)?;
+            ensure!(
+                bindings.next().is_none()
+                    && resolved_collections
+                        .iter()
+                        .any(|c| c.collection_code == binding.collection_code),
+                error()
+            );
+            ensure!(!binding.id_field.is_empty(), error());
+            record_resources.push(binding.clone());
+        }
+        // An ACL-protected exported collection cannot be imported without its original ACL binding.
+        for binding in &export.record_resources {
+            if resolved_collections
+                .iter()
+                .any(|c| c.collection_code == binding.collection_code)
+            {
+                ensure!(record_resources.contains(binding), error());
+            }
+        }
+        let credentials = match &import.credentials {
+            None => None,
+            Some(requested) => Some(intersection(
+                *requested,
+                export.credentials.ok_or_else(error)?,
+            )),
+        };
+        result.push(ResolvedPluginResource {
+            installation_id: owner.id,
+            publisher_namespace: owner.organization.clone(),
+            plugin_code: owner.provider_code.clone(),
+            plugin_version: owner.plugin_version.clone(),
+            resource_code: import.resource_code,
+            collections: resolved_collections,
+            record_resources,
+            credentials,
+            data_models: models,
+        });
+    }
+    Ok(result)
+}
+impl ResolvedPluginResource {
+    pub fn owner(&self) -> (&str, &str, &str) {
+        (
+            &self.publisher_namespace,
+            &self.plugin_code,
+            &self.plugin_version,
+        )
+    }
+    fn permits(&self, collection: &str, write: bool) -> bool {
+        self.collections.iter().any(|c| {
+            c.collection_code == collection
+                && (!write || c.access == PluginResourceAccess::ReadWrite)
+        })
+    }
+    fn protect_records(&self, binding: &PluginDataBinding, collection: &str) -> Result<()> {
+        for protected in self
+            .record_resources
+            .iter()
+            .filter(|r| r.collection_code == collection)
+        {
+            ensure!(
+                binding
+                    .record_permissions
+                    .as_ref()
+                    .is_some_and(|context| context
+                        .resources
+                        .iter()
+                        .any(|r| r.resource_code == protected.resource_code
+                            && r.collection_code == protected.collection_code
+                            && r.id_field == protected.id_field)),
+                "plugin_resource_record_context_required"
+            );
         }
         if let Some(context) = &binding.record_permissions {
             ensure!(
-                context.resources.iter().all(|r| self
-                    .record_resource_bindings
-                    .get(&r.resource_code)
-                    .is_some_and(|protected| protected.collection_code == r.collection_code
-                        && protected.id_field == r.id_field)),
-                "shared_resource_record_resource_denied"
+                context
+                    .resources
+                    .iter()
+                    .filter(|r| r.collection_code == collection)
+                    .all(|r| self
+                        .record_resources
+                        .iter()
+                        .any(|p| p.resource_code == r.resource_code
+                            && p.collection_code == r.collection_code
+                            && p.id_field == r.id_field)),
+                "plugin_resource_record_context_denied"
             );
         }
-        let mut resolved = binding.clone();
-        resolved.publisher_namespace = self.owner.publisher_namespace.clone();
-        resolved.plugin_code = self.owner.plugin_code.clone();
-        resolved.plugin_version = self.schema_version.clone();
-        Ok(resolved)
-    }
-    pub fn credential_binding(
-        &self,
-        binding: &extension_contracts::PluginCredentialBinding,
-    ) -> Result<extension_contracts::PluginCredentialBinding> {
-        ensure!(self.credentials, "shared_resource_credentials_denied");
-        let mut resolved = binding.clone();
-        resolved.publisher_namespace = self.owner.publisher_namespace.clone();
-        resolved.plugin_code = self.owner.plugin_code.clone();
-        resolved.plugin_version = self.schema_version.clone();
-        Ok(resolved)
+        Ok(())
     }
 }
-static REGISTRY: OnceLock<SharedResourceRegistry> = OnceLock::new();
-/// Composition-root configuration, immutable for the process lifetime. No package write path.
-pub fn configure_shared_resources(registry: SharedResourceRegistry) -> Result<()> {
-    registry.validate()?;
-    if let Some(existing) = REGISTRY.get() {
+pub fn resolve_plugin_data_binding(
+    consumer: &PluginInstallationRecord,
+    installations: &BTreeMap<Uuid, PluginInstallationRecord>,
+    binding: &PluginDataBinding,
+    request: &PluginDataRequest,
+) -> Result<PluginDataBinding> {
+    let imports = resolve_resource_imports(consumer, installations)?;
+    let own_models =
+        metadata::<extension_contracts::PluginDataModelContribution>(consumer, "data_models")?;
+    let mut selected: Option<(&str, &str, &str)> = None;
+    for operation in &request.operations {
+        let (target, write) = match operation {
+            PluginDataOperation::Find { target, .. }
+            | PluginDataOperation::FindOne { target, .. }
+            | PluginDataOperation::Count { target, .. } => (target, false),
+            PluginDataOperation::Insert { target, .. }
+            | PluginDataOperation::Update { target, .. }
+            | PluginDataOperation::Delete { target, .. }
+            | PluginDataOperation::Upsert { target, .. } => (target, true),
+        };
+        let PluginDataTarget::OwnedCollection { collection_code } = target else {
+            anyhow::bail!("plugin_resource_target_denied")
+        };
+        let imported = imports.iter().find(|r| {
+            r.collections
+                .iter()
+                .any(|c| &c.collection_code == collection_code)
+        });
+        let owner = if let Some(resource) = imported {
+            ensure!(
+                !own_models
+                    .iter()
+                    .flat_map(|m| &m.owned_collections)
+                    .any(|c| &c.collection_code == collection_code),
+                "plugin_resource_collection_ambiguous"
+            );
+            ensure!(
+                resource.permits(collection_code, write),
+                "plugin_resource_access_denied"
+            );
+            resource.protect_records(binding, collection_code)?;
+            resource.owner()
+        } else {
+            (
+                &*consumer.organization,
+                &*consumer.provider_code,
+                &*consumer.plugin_version,
+            )
+        };
         ensure!(
-            existing == &registry,
-            "shared_resource_registry_already_configured"
+            selected.is_none_or(|prior| prior == owner),
+            "plugin_resource_mixed_owners"
         );
-        return Ok(());
+        selected = Some(owner);
     }
-    REGISTRY
-        .set(registry)
-        .map_err(|_| anyhow::anyhow!("shared_resource_registry_already_configured"))
+    let mut resolved = binding.clone();
+    if let Some((publisher, code, version)) = selected {
+        resolved.publisher_namespace = publisher.into();
+        resolved.plugin_code = code.into();
+        resolved.plugin_version = version.into();
+    }
+    Ok(resolved)
 }
-pub fn shared_resource_registry() -> &'static SharedResourceRegistry {
-    static EMPTY: OnceLock<SharedResourceRegistry> = OnceLock::new();
-    REGISTRY
-        .get()
-        .unwrap_or_else(|| EMPTY.get_or_init(SharedResourceRegistry::default))
-}
-pub fn installation_shared_resource(
-    installation: &domain::PluginInstallationRecord,
-) -> Result<Option<&'static SharedResourceContract>> {
-    shared_resource_registry().resolve_installation(installation)
-}
-impl SharedResourceRegistry {
-    pub fn resolve_installation(
-        &self,
-        installation: &domain::PluginInstallationRecord,
-    ) -> Result<Option<&SharedResourceContract>> {
-        let reference = installation.metadata_json.get("shared_resource_contract");
+pub fn resolve_plugin_credential_binding(
+    consumer: &PluginInstallationRecord,
+    installations: &BTreeMap<Uuid, PluginInstallationRecord>,
+    binding: &extension_contracts::PluginCredentialBinding,
+    request: &extension_contracts::PluginCredentialRequest,
+) -> Result<extension_contracts::PluginCredentialBinding> {
+    let imports = resolve_resource_imports(consumer, installations)?;
+    let mut candidates = imports.iter().filter(|r| r.credentials.is_some());
+    let mut resolved = binding.clone();
+    if let Some(resource) = candidates.next() {
         ensure!(
-            reference.is_none() || reference.is_some_and(|v| v.is_string()),
-            "shared_resource_reference_invalid"
+            candidates.next().is_none(),
+            "plugin_resource_credentials_ambiguous"
         );
-        self.resolve(
-            reference.and_then(serde_json::Value::as_str),
-            &installation.organization,
-            &installation.provider_code,
-        )
+        ensure!(
+            matches!(
+                request,
+                extension_contracts::PluginCredentialRequest::Get { .. }
+            ) || resource.credentials == Some(PluginResourceAccess::ReadWrite),
+            "plugin_resource_credentials_denied"
+        );
+        resolved.publisher_namespace = resource.publisher_namespace.clone();
+        resolved.plugin_code = resource.plugin_code.clone();
+        resolved.plugin_version = resource.plugin_version.clone();
     }
+    Ok(resolved)
 }
 
 #[cfg(test)]
-#[path = "../_tests/shared_resources.rs"]
+#[path = "_tests/resolution.rs"]
 mod tests;

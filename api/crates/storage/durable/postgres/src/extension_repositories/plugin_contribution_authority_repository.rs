@@ -136,6 +136,10 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
     fn installation(&self, installation_id: Uuid) -> Option<&domain::PluginInstallationRecord> {
         self.installations.get(&installation_id)
     }
+    fn installations(&self) -> &std::collections::BTreeMap<Uuid, domain::PluginInstallationRecord> {
+        &self.installations
+    }
+
     fn load_communication_command_context<'a>(
         &'a mut self,
         subject: &'a ManagedContributionSubject,
@@ -690,6 +694,21 @@ async fn locked_installation(
     crate::plugin_repository::map_installation(row)
 }
 
+/// Called only after taking the system managed-workspace fence. Provider lifecycle
+/// writers use the same fence; inventory reads reuse this transaction/connection.
+async fn locked_installations(
+    transaction: &mut Transaction<'_, Postgres>,
+) -> Result<std::collections::BTreeMap<Uuid, domain::PluginInstallationRecord>> {
+    let rows = sqlx::query("select *, artifact_id as provider_code, artifact_version as plugin_version, receipt->>'legacy_manifest_compatibility' as legacy_manifest_compatibility from extension_installations where plugin_id is not null order by id")
+        .fetch_all(&mut **transaction).await?;
+    rows.into_iter()
+        .map(|row| {
+            let installation = crate::plugin_repository::map_installation(row)?;
+            Ok((installation.id, installation))
+        })
+        .collect()
+}
+
 #[async_trait]
 impl PluginContributionAuthorityRepository for PgControlPlaneStore {
     async fn lock_managed_installation_switch(
@@ -783,6 +802,9 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
             installations.insert(id, locked_installation(&mut transaction, id).await?);
             snapshots.push(snapshot(&mut transaction, id, input.workspace_id, None).await?);
         }
+        if system_service {
+            installations.extend(locked_installations(&mut transaction).await?);
+        }
         Ok(Box::new(PgManagedInstallationSwitchLease {
             authority: PgContributionAuthorityLease {
                 lifecycle_observer: self.lifecycle_observer.clone(),
@@ -818,6 +840,9 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         {
             lock_managed_workspace(&mut transaction, workspace).await?;
         }
+        let system_inventory = scopes
+            .iter()
+            .any(|(_, workspace)| *workspace == domain::SYSTEM_SCOPE_ID);
         let mut snapshots = Vec::new();
         let mut installations = std::collections::BTreeMap::new();
         for (installation_id, workspace_id) in scopes {
@@ -827,6 +852,9 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
                 locked_installation(&mut transaction, installation_id).await?,
             );
             snapshots.push(snapshot(&mut transaction, installation_id, workspace_id, None).await?);
+        }
+        if system_inventory {
+            installations.extend(locked_installations(&mut transaction).await?);
         }
         Ok(Box::new(PgContributionAuthorityLease {
             lifecycle_observer: self.lifecycle_observer.clone(),
@@ -848,13 +876,21 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
     ) -> Result<Box<dyn ContributionAuthorityLease>> {
         let mut transaction = begin_locked(self, installation_id, workspace_id).await?;
         let snapshot = snapshot(&mut transaction, installation_id, workspace_id, None).await?;
-        let installation = locked_installation(&mut transaction, installation_id).await?;
+        let installations = if workspace_id == domain::SYSTEM_SCOPE_ID {
+            locked_installations(&mut transaction).await?
+        } else {
+            [(
+                installation_id,
+                locked_installation(&mut transaction, installation_id).await?,
+            )]
+            .into()
+        };
         Ok(Box::new(PgContributionAuthorityLease {
             lifecycle_observer: self.lifecycle_observer.clone(),
             managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots: vec![snapshot],
-            installations: [(installation_id, installation)].into_iter().collect(),
+            installations,
         }))
     }
 
@@ -968,13 +1004,21 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
             Some(subject.contribution_id().as_str()),
         )
         .await?;
-        let installation = locked_installation(&mut transaction, installation_id).await?;
+        let installations = if workspace_id == domain::SYSTEM_SCOPE_ID {
+            locked_installations(&mut transaction).await?
+        } else {
+            [(
+                installation_id,
+                locked_installation(&mut transaction, installation_id).await?,
+            )]
+            .into()
+        };
         Ok(Box::new(PgContributionAuthorityLease {
             lifecycle_observer: self.lifecycle_observer.clone(),
             managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots: vec![snapshot],
-            installations: [(installation_id, installation)].into_iter().collect(),
+            installations,
         }))
     }
 
@@ -992,13 +1036,25 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
             Some(subject.contribution_id().as_str()),
         )
         .await?;
-        let installation = locked_installation(&mut transaction, installation_id).await?;
+        let installations = if workspace_id == domain::SYSTEM_SCOPE_ID {
+            locked_installations(&mut transaction).await?
+        } else {
+            [(
+                installation_id,
+                locked_installation(&mut transaction, installation_id).await?,
+            )]
+            .into()
+        };
         Ok(Box::new(PgContributionAuthorityLease {
             lifecycle_observer: self.lifecycle_observer.clone(),
             managed_operations: self.managed_operations.clone(),
             transaction,
             snapshots: vec![snapshot],
-            installations: [(installation_id, installation)].into_iter().collect(),
+            installations,
         }))
     }
 }
+
+#[cfg(test)]
+#[path = "plugin_contribution_authority_repository/_tests/lease.rs"]
+mod lease_tests;
