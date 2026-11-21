@@ -1,5 +1,5 @@
 //! Live, installation-owned resource exports. No deployment registry or environment fallback.
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use domain::{PluginDesiredState, PluginInstallationRecord};
 use extension_contracts::{
     PluginDataBinding, PluginDataOperation, PluginDataRequest, PluginDataTarget,
@@ -68,13 +68,6 @@ fn dependency_error(code: &str, p: &PluginDependency, resource: Option<&str>) ->
         dependents: Vec::new(),
     }
     .into()
-}
-fn intersection(a: PluginResourceAccess, b: PluginResourceAccess) -> PluginResourceAccess {
-    if a == PluginResourceAccess::ReadWrite && b == PluginResourceAccess::ReadWrite {
-        PluginResourceAccess::ReadWrite
-    } else {
-        PluginResourceAccess::ReadOnly
-    }
 }
 pub fn validate_plugin_dependencies(
     consumer: &PluginInstallationRecord,
@@ -186,10 +179,8 @@ pub fn resolve_resource_imports(
                         .any(|c| c.collection_code == requested.collection_code),
                 error()
             );
-            resolved_collections.push(PluginResourceCollection {
-                collection_code: requested.collection_code.clone(),
-                access: intersection(requested.access, offered_collection.access),
-            });
+            ensure!(offered_collection.access.allows(requested.access), error());
+            resolved_collections.push(requested.clone());
         }
         let mut record_resources = Vec::new();
         for code in &import.record_resources {
@@ -220,10 +211,11 @@ pub fn resolve_resource_imports(
         }
         let credentials = match &import.credentials {
             None => None,
-            Some(requested) => Some(intersection(
-                *requested,
-                export.credentials.ok_or_else(error)?,
-            )),
+            Some(requested) => {
+                let offered = export.credentials.ok_or_else(error)?;
+                ensure!(offered.allows(*requested), error());
+                Some(*requested)
+            }
         };
         result.push(ResolvedPluginResource {
             installation_id: owner.id,

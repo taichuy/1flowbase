@@ -1,6 +1,6 @@
 use super::support::{
-    actor_with_permissions, seed_test_installation, MemoryOfficialPluginSource,
-    MemoryPluginManagementRepository, MemoryProviderRuntime,
+    MemoryOfficialPluginSource, MemoryPluginManagementRepository, MemoryProviderRuntime,
+    actor_with_permissions, seed_test_installation,
 };
 use crate::{
     plugin_management::{
@@ -88,9 +88,11 @@ async fn managed_upgrade_and_enable_replace_the_active_owner_without_preactivati
         };
         // The inert runtime rejects switching. Both real entry points must reach that port,
         // preserving the old owner instead of calling ordinary activation for the target.
-        assert!(error
-            .to_string()
-            .contains("managed installation switching is not configured"));
+        assert!(
+            error
+                .to_string()
+                .contains("managed installation switching is not configured")
+        );
         assert!(runtime.loaded_installations().await.is_empty());
         let installations = repository.list_installations().await.unwrap();
         let active = installations
@@ -120,7 +122,11 @@ async fn managed_upgrade_and_enable_replace_the_active_owner_without_preactivati
 }
 
 fn package(version: &str) -> Vec<u8> {
-    let manifest = format!(
+    package_variant(version, false)
+}
+
+fn package_variant(version: &str, exported: bool) -> Vec<u8> {
+    let mut manifest = format!(
         r#"manifest_version: 2
 plugin_id: managed_fixture
 version: {version}
@@ -172,6 +178,40 @@ managed_service:
       output_schema: {{type: object}}
 "#
     );
+    if exported {
+        manifest = manifest.replace("storage: none", "storage: host_managed");
+        manifest = manifest.replace(
+            "  execution_bindings:\n",
+            r#"      - contribution_id: managed_fixture.data
+        contributor_module_id: managed_fixture
+        point_id: 1flowbase.plugin-data.owned-collection
+        contract_version: 1flowbase.plugin-data-model/v1
+        mode: append
+        required_permissions: [plugin_data.owned.write]
+  execution_bindings:
+    - contribution_id: managed_fixture.data
+      execution_mode: declarative_only
+      runtime: {protocol: stdio_json, entry: manifest.yaml}
+      handler: data
+      payload: {kind: data_models}
+"#,
+        );
+        manifest.push_str(
+            r#"
+data_models:
+  - contribution_version: 1flowbase.plugin-data-model/v1
+    storage_binding: main
+    owned_collections:
+      - collection_code: connections
+        fields: [{field_code: host_id, field_type: string, nullable: false}]
+resource_exports:
+  - resource_code: connections-v1
+    collections:
+      - collection_code: connections
+        access: read_only
+"#,
+        );
+    }
     let encoder = flate2::GzBuilder::new()
         .mtime(0)
         .write(Vec::new(), flate2::Compression::default());
@@ -192,7 +232,7 @@ managed_service:
 #[tokio::test]
 async fn generic_official_system_managed_install_preserves_explicit_activation() {
     use crate::plugin_management::{
-        InstallResolvedOfficialPluginCommand, PluginRiskOverride, PLUGIN_RISK_SIGNATURE_MISSING,
+        InstallResolvedOfficialPluginCommand, PLUGIN_RISK_SIGNATURE_MISSING, PluginRiskOverride,
     };
     use sha2::Digest;
     let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
@@ -256,17 +296,21 @@ async fn generic_official_system_managed_install_preserves_explicit_activation()
         assert_eq!(retry.installation.desired_state, state);
     }
     assert!(runtime.loaded_installations().await.is_empty());
-    assert!(repository
-        .list_assigned_installation_ids()
-        .await
-        .unwrap()
-        .is_empty());
-    assert!(repository
-        .list_tasks()
-        .await
-        .unwrap()
-        .iter()
-        .all(|task| task.task_kind == domain::PluginTaskKind::Install));
+    assert!(
+        repository
+            .list_assigned_installation_ids()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        repository
+            .list_tasks()
+            .await
+            .unwrap()
+            .iter()
+            .all(|task| task.task_kind == domain::PluginTaskKind::Install)
+    );
     std::fs::remove_dir_all(install_root).unwrap();
 }
 
@@ -328,9 +372,11 @@ async fn managed_service_install_and_reupload_preserve_explicit_activation_bound
         .install_extension_node_plugin(command("0.2.0"))
         .await
         .unwrap_err();
-    assert!(upgrade
-        .to_string()
-        .contains("managed_activation_not_configured"));
+    assert!(
+        upgrade
+            .to_string()
+            .contains("managed_activation_not_configured")
+    );
     let upgrade = repository
         .list_installations()
         .await
@@ -349,20 +395,24 @@ async fn managed_service_install_and_reupload_preserve_explicit_activation_bound
         PluginDesiredState::ActiveRequested
     );
     assert!(runtime.loaded_installations().await.is_empty());
-    assert!(repository
-        .list_tasks()
-        .await
-        .unwrap()
-        .iter()
-        .any(
-            |task| task.task_kind == domain::PluginTaskKind::SwitchVersion
-                && task.status == domain::PluginTaskStatus::Failed
-        ));
-    assert!(repository
-        .audit_events()
-        .await
-        .iter()
-        .all(|event| event == "plugin.installed"));
+    assert!(
+        repository
+            .list_tasks()
+            .await
+            .unwrap()
+            .iter()
+            .any(
+                |task| task.task_kind == domain::PluginTaskKind::SwitchVersion
+                    && task.status == domain::PluginTaskStatus::Failed
+            )
+    );
+    assert!(
+        repository
+            .audit_events()
+            .await
+            .iter()
+            .all(|event| event == "plugin.installed")
+    );
     // Every common-service entry fails closed if managed preparation was not composed.
     let error = service
         .enable_plugin(crate::plugin_management::EnablePluginCommand {
@@ -371,9 +421,11 @@ async fn managed_service_install_and_reupload_preserve_explicit_activation_bound
         })
         .await
         .unwrap_err();
-    assert!(error
-        .to_string()
-        .contains("managed_activation_not_configured"));
+    assert!(
+        error
+            .to_string()
+            .contains("managed_activation_not_configured")
+    );
     assert_eq!(
         repository
             .get_installation(upgrade.id)
@@ -443,11 +495,13 @@ async fn boot_reconciles_enabled_system_service_without_workspace_assignment_onl
         .unwrap();
     // A legacy record's storage scope alone must never opt it into system managed activation.
     assert_eq!(legacy.scope_id, domain::SYSTEM_SCOPE_ID);
-    assert!(repository
-        .list_assigned_installation_ids()
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        repository
+            .list_assigned_installation_ids()
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert!(runtime.loaded_installations().await.is_empty());
     service.reconcile_all_installations().await.unwrap();
     assert_eq!(runtime.loaded_installations().await, vec![managed_ids[0]]);
@@ -537,9 +591,11 @@ async fn system_family_switch_selects_enabled_version_without_workspace_assignme
     // The inert fixture runtime intentionally cannot publish: reaching this error proves
     // selection succeeded; the durable task identifies the exact source and system scope.
     let unavailable = service.switch_version(switch()).await.unwrap_err();
-    assert!(unavailable
-        .to_string()
-        .contains("managed installation switching is not configured"));
+    assert!(
+        unavailable
+            .to_string()
+            .contains("managed installation switching is not configured")
+    );
     let task = repository
         .list_tasks()
         .await
@@ -556,11 +612,13 @@ async fn system_family_switch_selects_enabled_version_without_workspace_assignme
         task.detail_json["target_installation_id"],
         ids[1].to_string()
     );
-    assert!(repository
-        .list_assigned_installation_ids()
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        repository
+            .list_assigned_installation_ids()
+            .await
+            .unwrap()
+            .is_empty()
+    );
     repository
         .update_desired_state(&UpdatePluginDesiredStateInput {
             installation_id: ids[1],
@@ -570,9 +628,11 @@ async fn system_family_switch_selects_enabled_version_without_workspace_assignme
         .await
         .unwrap();
     let ambiguous = service.switch_version(switch()).await.unwrap_err();
-    assert!(ambiguous
-        .to_string()
-        .contains("managed_active_installation_ambiguous"));
+    assert!(
+        ambiguous
+            .to_string()
+            .contains("managed_active_installation_ambiguous")
+    );
     std::fs::remove_dir_all(install_root).unwrap();
 }
 
@@ -653,15 +713,19 @@ async fn rejected_managed_enable_restores_only_its_own_selection() {
             })
             .await;
         if activation_fails {
-            assert!(result
-                .unwrap_err()
-                .to_string()
-                .contains("fixture managed candidate rejected"));
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("fixture managed candidate rejected")
+            );
         } else if audit_fails {
-            assert!(result
-                .unwrap_err()
-                .to_string()
-                .contains("fixture audit write rejected"));
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("fixture audit write rejected")
+            );
         } else {
             assert!(result.is_ok());
         }
@@ -697,4 +761,52 @@ async fn rejected_managed_enable_restores_only_its_own_selection() {
         }
         std::fs::remove_dir_all(install_root).unwrap();
     }
+}
+
+#[tokio::test]
+async fn provider_archive_install_persists_verified_schema_for_live_resource_resolution_without_grants()
+ {
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        Uuid::now_v7(),
+        &["plugin_config.configure.all"],
+    ));
+    let install_root =
+        std::env::temp_dir().join(format!("provider-export-install-{}", Uuid::now_v7()));
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    );
+    let receipt = service
+        .install_extension_node_plugin(InstallExtensionNodePluginCommand {
+            actor_user_id: repository.actor.user_id,
+            category: ExtensionCatalogCategory::RuntimeExtensions,
+            file_name: "provider.1flowbasepkg".into(),
+            package_bytes: package_variant("0.1.25", true),
+            source_kind: "uploaded".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        receipt.installation.desired_state,
+        PluginDesiredState::Disabled
+    );
+    assert_eq!(
+        receipt.installation.metadata_json["resource_exports"][0]["resource_code"],
+        "connections-v1"
+    );
+    assert_eq!(
+        receipt.installation.metadata_json["data_models"][0]["owned_collections"][0]["collection_code"],
+        "connections"
+    );
+    assert_eq!(
+        receipt.installation.metadata_json["plugin_dependencies"],
+        serde_json::json!([])
+    );
+    assert_eq!(
+        receipt.installation.metadata_json["resource_imports"],
+        serde_json::json!([])
+    );
+    std::fs::remove_dir_all(install_root).unwrap();
 }

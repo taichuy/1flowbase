@@ -2,12 +2,12 @@ use crate::PgControlPlaneStore;
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane_contracts::{
+    ControlPlaneContractError as Error,
     ports::{
         ContributionAuthorityLease, GrantContributionAuthorizationInput, ManagedInstallationSwitch,
         ManagedInstallationSwitchLease, PluginContributionAuthorityRepository,
         RevokeContributionAuthorizationInput,
     },
-    ControlPlaneContractError as Error,
 };
 use domain::{
     ContributionAuthorizationStatus, PluginContributionAuthoritySnapshot,
@@ -716,6 +716,7 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         input: &ManagedInstallationSwitch,
     ) -> Result<Box<dyn ManagedInstallationSwitchLease>> {
         let mut transaction = self.pool().begin().await?;
+        crate::plugin_repository::lock_managed_dependency_scope(&mut transaction).await?;
         lock_managed_workspace(&mut transaction, input.workspace_id).await?;
         let mut ids = input
             .installation_ids
@@ -769,6 +770,14 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         if artifact.is_none() {
             return Err(Error::Conflict("managed_candidate_artifact_unavailable").into());
         }
+        crate::plugin_repository::validate_managed_dependency_switch(
+            &mut transaction,
+            current.id,
+            target.id,
+            &input.node_id,
+            input.workspace_id,
+        )
+        .await?;
         let active_ids = if system_service {
             sqlx::query_scalar::<_, Uuid>("select id from extension_installations where contract_version='1flowbase.extension-bus/v1' and coalesce(metadata_json #>> '{managed_service,scope}' = 'system' or metadata_json -> 'binding_targets' = '[\"system\"]'::jsonb, false) and desired_state='active_requested'")
                 .fetch_all(&mut *transaction).await?

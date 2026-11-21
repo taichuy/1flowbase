@@ -5,6 +5,9 @@ impl PgControlPlaneStore {
         &self,
         input: &UpsertPluginArtifactInstanceInput,
     ) -> Result<domain::PluginArtifactInstanceRecord> {
+        let mut transaction = self.pool().begin().await?;
+        super::lock_managed_desired_state_scopes(&mut transaction, input.installation_id).await?;
+        let before = managed_dependency_facts(&mut transaction).await?;
         let row = sqlx::query(
             r#"
             insert into extension_artifact_instances (
@@ -67,10 +70,18 @@ impl PgControlPlaneStore {
         .bind(input.checked_at)
         .bind(input.last_error.as_deref())
         .bind(input.is_current)
-        .fetch_one(self.pool())
+        .fetch_one(&mut *transaction)
         .await?;
 
-        map_artifact_instance(row)
+        let artifact = map_artifact_instance(row)?;
+        let after = managed_dependency_facts(&mut transaction).await?;
+        before.guard_write(
+            &after,
+            input.installation_id,
+            input.artifact_status.is_ready(),
+        )?;
+        transaction.commit().await?;
+        Ok(artifact)
     }
 
     pub(super) async fn select_network_egress_current_impl(
@@ -354,13 +365,13 @@ pub(crate) async fn lock_managed_dependency_scope(
 }
 
 #[derive(Clone, Default)]
-pub(super) struct ManagedDependencyFacts {
+pub(crate) struct ManagedDependencyFacts {
     installations: std::collections::BTreeMap<Uuid, domain::PluginInstallationRecord>,
     // Only ready artifacts and actual authorization/selection scopes; never other-node fallback.
     contexts: std::collections::BTreeMap<Uuid, std::collections::BTreeSet<(String, Uuid)>>,
     selected_contexts: std::collections::BTreeMap<Uuid, std::collections::BTreeSet<(String, Uuid)>>,
 }
-pub(super) async fn managed_dependency_facts(
+pub(crate) async fn managed_dependency_facts(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
 ) -> Result<ManagedDependencyFacts> {
     let rows = sqlx::query("select i.*,i.artifact_id as provider_code,i.artifact_version as plugin_version,i.receipt ->> 'legacy_manifest_compatibility' as legacy_manifest_compatibility from extension_installations i where i.plugin_id is not null and i.contract_version='1flowbase.extension-bus/v1'")
@@ -467,31 +478,47 @@ impl ManagedDependencyFacts {
         node: &str,
         workspace: Uuid,
     ) -> Result<&'a domain::PluginInstallationRecord> {
-        let mut providers = self.installations.values().filter(|p| {
-            p.id != consumer.id
-                && dependency_matches(p, dependency)
-                && p.desired_state == domain::PluginDesiredState::ActiveRequested
-                && self.selected_contexts.get(&p.id).is_some_and(|contexts| {
-                    contexts.contains(&(node.to_owned(), domain::SYSTEM_SCOPE_ID))
-                        || (workspace != domain::SYSTEM_SCOPE_ID
-                            && contexts.contains(&(node.to_owned(), workspace)))
-                })
+        let failure =
+            |code| dependency_failure(code, dependency, None, vec![dependency_identity(consumer)]);
+        if dependency_matches(consumer, dependency) {
+            return Err(failure("plugin_dependency_self"));
+        }
+        let candidates: Vec<_> = self
+            .installations
+            .values()
+            .filter(|p| dependency_matches(p, dependency))
+            .collect();
+        if candidates.is_empty() {
+            return Err(failure("plugin_dependency_missing"));
+        }
+        let active: Vec<_> = candidates
+            .into_iter()
+            .filter(|p| p.desired_state == domain::PluginDesiredState::ActiveRequested)
+            .collect();
+        if active.is_empty() {
+            return Err(failure("plugin_dependency_disabled"));
+        }
+        let mut providers = active.iter().copied().filter(|p| {
+            self.selected_contexts.get(&p.id).is_some_and(|contexts| {
+                contexts.contains(&(node.to_owned(), domain::SYSTEM_SCOPE_ID))
+                    || (workspace != domain::SYSTEM_SCOPE_ID
+                        && contexts.contains(&(node.to_owned(), workspace)))
+            })
         });
         let provider = providers.next().ok_or_else(|| {
-            dependency_failure(
-                "plugin_dependency_unavailable",
-                dependency,
-                None,
-                vec![dependency_identity(consumer)],
-            )
+            let ready_here = active.iter().any(|p| {
+                self.contexts
+                    .get(&p.id)
+                    .is_some_and(|contexts| contexts.iter().any(|(n, _)| n == node))
+            });
+            failure(if ready_here {
+                "plugin_dependency_not_selected"
+            } else {
+                "plugin_dependency_not_ready"
+            })
         })?;
-        if providers.next().is_some() || dependency_matches(consumer, dependency) {
-            return Err(dependency_failure(
-                "plugin_dependency_ambiguous",
-                dependency,
-                None,
-                vec![dependency_identity(consumer)],
-            ));
+        if providers.next().is_some() {
+            return Err(failure("plugin_dependency_ambiguous"));
         }
         Ok(provider)
     }
@@ -525,7 +552,7 @@ impl ManagedDependencyFacts {
                 .cloned()
                 .unwrap_or_else(|| imports[0].provider.clone());
             return Err(dependency_failure(
-                "plugin_dependency_unavailable",
+                "plugin_dependency_consumer_not_ready",
                 &dependency,
                 None,
                 vec![dependency_identity(consumer)],
@@ -555,7 +582,14 @@ impl ManagedDependencyFacts {
                 let mut matches = exports
                     .iter()
                     .filter(|e| e.resource_code == import.resource_code);
-                let export = matches.next().ok_or_else(denied)?;
+                let export = matches.next().ok_or_else(|| {
+                    dependency_failure(
+                        "plugin_resource_export_missing",
+                        &import.provider,
+                        Some(&import.resource_code),
+                        vec![dependency_identity(consumer)],
+                    )
+                })?;
                 if matches.next().is_some() {
                     return Err(denied());
                 }
@@ -612,6 +646,108 @@ impl ManagedDependencyFacts {
                     return Err(denied());
                 }
             }
+        }
+        Ok(())
+    }
+    /// Validate the actual SQL projection, including conflict-update identity and node readiness.
+    /// Caller holds the system fence and affected workspace locks for this same transaction.
+    pub(crate) fn guard_write(
+        &self,
+        after: &Self,
+        installation_id: Uuid,
+        validate_written: bool,
+    ) -> Result<()> {
+        if let Some(written) = after.installations.get(&installation_id) {
+            if validate_written
+                && written.desired_state == domain::PluginDesiredState::ActiveRequested
+            {
+                after.validate(written, None)?;
+            }
+        }
+        let old = self.installations.get(&installation_id);
+        let new = after.installations.get(&installation_id);
+        let Some(provider) = old.or(new) else {
+            return Ok(());
+        };
+        let mut blocked = Vec::new();
+        let mut resource = None;
+        for consumer in after.installations.values().filter(|i| {
+            i.id != installation_id
+                && i.desired_state == domain::PluginDesiredState::ActiveRequested
+        }) {
+            if !old
+                .map(|p| self.references(consumer, p))
+                .transpose()?
+                .unwrap_or(false)
+                && !new
+                    .map(|p| after.references(consumer, p))
+                    .transpose()?
+                    .unwrap_or(false)
+            {
+                continue;
+            }
+            let validation = after.validate(consumer, None);
+            // Keeping an export code while changing its record id/collection binding would
+            // silently rebind existing ACLs. Treat that as incompatible even when rights fit.
+            let mut binding_changed = false;
+            if let (Some(old), Some(new)) = (old, new) {
+                let old_exports = dependency_metadata::<extension_contracts::PluginResourceExport>(
+                    old,
+                    "resource_exports",
+                )?;
+                let new_exports = dependency_metadata::<extension_contracts::PluginResourceExport>(
+                    new,
+                    "resource_exports",
+                )?;
+                for import in dependency_metadata::<extension_contracts::PluginResourceImport>(
+                    consumer,
+                    "resource_imports",
+                )?
+                .iter()
+                .filter(|i| dependency_matches(old, &i.provider))
+                {
+                    for code in &import.record_resources {
+                        let before = old_exports
+                            .iter()
+                            .find(|e| e.resource_code == import.resource_code)
+                            .and_then(|e| {
+                                e.record_resources.iter().find(|r| &r.resource_code == code)
+                            });
+                        let after = new_exports
+                            .iter()
+                            .find(|e| e.resource_code == import.resource_code)
+                            .and_then(|e| {
+                                e.record_resources.iter().find(|r| &r.resource_code == code)
+                            });
+                        if before != after {
+                            binding_changed = true;
+                            resource = Some(import.resource_code.clone());
+                        }
+                    }
+                }
+            }
+            if let Err(error) = &validation {
+                if let Some(ControlPlaneError::PluginDependency {
+                    resource_code: Some(code),
+                    ..
+                }) = error.downcast_ref::<ControlPlaneError>()
+                {
+                    resource = Some(code.clone());
+                }
+            }
+            if validation.is_err() || binding_changed {
+                blocked.push(dependency_identity(consumer));
+            }
+        }
+        if !blocked.is_empty() {
+            blocked.sort();
+            blocked.dedup();
+            return Err(dependency_failure(
+                "plugin_dependency_in_use",
+                &installation_dependency(provider),
+                resource.as_deref(),
+                blocked,
+            ));
         }
         Ok(())
     }

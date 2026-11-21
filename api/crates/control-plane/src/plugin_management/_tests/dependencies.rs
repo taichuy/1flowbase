@@ -57,16 +57,65 @@ fn consumer_preflight_accepts_live_exports_without_environment_configuration() {
     let c = consumer();
     validate(&c, &[(p.id, p)].into()).unwrap();
 }
+fn assert_dependency_reason(error: anyhow::Error, expected: &str, resource: Option<&str>) {
+    match error
+        .downcast_ref::<ControlPlaneError>()
+        .expect("structured dependency failure")
+    {
+        ControlPlaneError::PluginDependency {
+            code,
+            provider_publisher_namespace,
+            provider_plugin_code,
+            resource_code,
+            dependents,
+        } => {
+            assert_eq!(code, expected);
+            assert_eq!(provider_publisher_namespace, "fixture.publisher");
+            assert_eq!(provider_plugin_code, "provider");
+            assert_eq!(resource_code.as_deref(), resource);
+            assert_eq!(dependents, &["fixture.publisher/consumer@1.0.0"]);
+        }
+        other => panic!("unexpected error: {other}"),
+    }
+}
 #[test]
-fn consumer_preflight_rejects_missing_disabled_and_wrong_publisher() {
+fn consumer_preflight_preserves_precise_missing_disabled_and_missing_export_reasons() {
     let c = consumer();
-    assert!(validate(&c, &BTreeMap::new()).is_err());
+    assert_dependency_reason(
+        validate(&c, &BTreeMap::new()).unwrap_err(),
+        "plugin_dependency_missing",
+        None,
+    );
     let mut p = provider();
     p.desired_state = domain::PluginDesiredState::Disabled;
-    assert!(validate(&c, &[(p.id, p)].into()).is_err());
+    assert_dependency_reason(
+        validate(&c, &[(p.id, p)].into()).unwrap_err(),
+        "plugin_dependency_disabled",
+        None,
+    );
     let mut p = provider();
     p.organization = "other.publisher".into();
-    assert!(validate(&c, &[(p.id, p)].into()).is_err());
+    assert_dependency_reason(
+        validate(&c, &[(p.id, p)].into()).unwrap_err(),
+        "plugin_dependency_missing",
+        None,
+    );
+    let mut p = provider();
+    p.metadata_json["resource_exports"] = json!([]);
+    assert_dependency_reason(
+        validate(&c, &[(p.id, p)].into()).unwrap_err(),
+        "plugin_resource_export_missing",
+        Some("records"),
+    );
+    let p = provider();
+    let mut next = p.clone();
+    next.id = Uuid::now_v7();
+    next.plugin_version = "2.0.0".into();
+    assert_dependency_reason(
+        validate(&c, &[(p.id, p), (next.id, next)].into()).unwrap_err(),
+        "plugin_dependency_ambiguous",
+        None,
+    );
 }
 #[test]
 fn provider_disable_and_family_removal_report_enabled_consumer_identity() {
@@ -93,8 +142,8 @@ fn provider_disable_and_family_removal_report_enabled_consumer_identity() {
     provider_change_preflight(&p, None, &[p.clone(), c]).unwrap();
 }
 #[test]
-fn provider_version_preflight_accepts_compatible_but_rejects_missing_export_or_changed_acl_identity(
-) {
+fn provider_version_preflight_accepts_compatible_but_rejects_missing_export_or_changed_acl_identity()
+ {
     let p = provider();
     let c = consumer();
     let mut next = p.clone();
@@ -137,11 +186,14 @@ fn lifecycle_rejects_rights_above_export_even_if_runtime_resolution_intersects()
         next.id = Uuid::now_v7();
         next.desired_state = domain::PluginDesiredState::Disabled;
         let old = provider();
-        assert!(provider_change_preflight(
-            &old,
-            Some(&next),
-            &[old.clone(), c.clone(), next.clone()]
-        )
-        .is_err());
+        assert!(
+            provider_change_preflight(&old, Some(&next), &[old.clone(), c.clone(), next.clone()])
+                .is_err()
+        );
     }
+}
+
+#[test]
+fn standalone_provider_has_no_dependency_or_import_requirement() {
+    validate(&provider(), &BTreeMap::new()).unwrap();
 }

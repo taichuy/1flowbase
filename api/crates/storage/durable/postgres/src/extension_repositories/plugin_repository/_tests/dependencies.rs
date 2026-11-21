@@ -93,7 +93,7 @@ fn ac_002_missing_disabled_uninstalled_wrong_publisher_and_other_node_fail_close
     let p = provider();
     assert_dependency(
         facts(&[c.clone()]).validate(&c, None).unwrap_err(),
-        "plugin_dependency_unavailable",
+        "plugin_dependency_missing",
     );
     let mut disabled = p.clone();
     disabled.desired_state = domain::PluginDesiredState::Disabled;
@@ -101,26 +101,29 @@ fn ac_002_missing_disabled_uninstalled_wrong_publisher_and_other_node_fail_close
         facts(&[disabled, c.clone()])
             .validate(&c, None)
             .unwrap_err(),
-        "plugin_dependency_unavailable",
+        "plugin_dependency_disabled",
     );
     let mut wrong = p.clone();
     wrong.organization = "different.publisher".into();
     assert_dependency(
         facts(&[wrong, c.clone()]).validate(&c, None).unwrap_err(),
-        "plugin_dependency_unavailable",
+        "plugin_dependency_missing",
     );
     let mut snapshot = facts(&[p.clone(), c.clone()]);
     snapshot.selected_contexts.remove(&p.id);
     assert_dependency(
         snapshot.validate(&c, None).unwrap_err(),
-        "plugin_dependency_unavailable",
+        "plugin_dependency_not_selected",
     );
+    snapshot
+        .contexts
+        .insert(p.id, [("node-b".into(), domain::SYSTEM_SCOPE_ID)].into());
     snapshot
         .selected_contexts
         .insert(p.id, [("node-b".into(), domain::SYSTEM_SCOPE_ID)].into());
     assert_dependency(
         snapshot.validate(&c, None).unwrap_err(),
-        "plugin_dependency_unavailable",
+        "plugin_dependency_not_ready",
     );
 }
 #[test]
@@ -139,7 +142,11 @@ fn ac_002_absent_export_and_excess_collection_or_credential_access_reject() {
         }
         assert_dependency(
             facts(&[p, c.clone()]).validate(&c, None).unwrap_err(),
-            "plugin_resource_import_denied",
+            if change == 0 {
+                "plugin_resource_export_missing"
+            } else {
+                "plugin_resource_import_denied"
+            },
         );
     }
 }
@@ -150,9 +157,11 @@ fn ac_004_enabled_dependents_block_disable_and_uninstall_but_disabled_upload_doe
     let error = facts(&[p.clone(), c.clone()])
         .guard_removal(&[p.id], None, None)
         .unwrap_err();
-    assert!(error
-        .to_string()
-        .contains("fixture.publisher/consumer@1.0.0"));
+    assert!(
+        error
+            .to_string()
+            .contains("fixture.publisher/consumer@1.0.0")
+    );
     assert_dependency(error, "plugin_dependency_in_use");
     c.desired_state = domain::PluginDesiredState::Disabled;
     facts(&[p.clone(), c])
@@ -212,7 +221,7 @@ fn generic_prerequisite_keeps_publisher_node_and_selected_workspace_identity() {
         .insert(p.id, [("node-a".into(), other)].into());
     assert_dependency(
         snapshot.validate(&c, None).unwrap_err(),
-        "plugin_dependency_unavailable",
+        "plugin_dependency_not_selected",
     );
     snapshot
         .selected_contexts
@@ -224,7 +233,7 @@ fn generic_prerequisite_keeps_publisher_node_and_selected_workspace_identity() {
         .insert(p.id, [("node-a".into(), workspace)].into());
     assert_dependency(
         snapshot.validate(&c, None).unwrap_err(),
-        "plugin_dependency_unavailable",
+        "plugin_dependency_not_selected",
     );
 }
 #[test]
@@ -242,9 +251,11 @@ fn generic_dependency_alone_blocks_removal_and_malformed_metadata_fails_closed()
         "plugin_dependency_in_use",
     );
     c.metadata_json["plugin_dependencies"] = json!({"invalid":true});
-    assert!(facts(&[p.clone(), c])
-        .guard_removal(&[p.id], None, None)
-        .is_err());
+    assert!(
+        facts(&[p.clone(), c])
+            .guard_removal(&[p.id], None, None)
+            .is_err()
+    );
 }
 
 #[test]
@@ -286,4 +297,46 @@ fn compatible_switch_may_reduce_unrequested_rights_and_generic_dependencies_need
     facts(&[p.clone(), c, next.clone()])
         .guard_removal(&[p.id], Some(next.id), None)
         .unwrap();
+}
+
+#[test]
+fn low_level_projection_guards_identity_exports_and_newly_visible_versions() {
+    let p = provider();
+    let c = consumer();
+    let before = facts(&[p.clone(), c.clone()]);
+    for change in 0..4 {
+        let mut after = before.clone();
+        let provider = after.installations.get_mut(&p.id).unwrap();
+        match change {
+            0 => provider.organization = "different.publisher".into(),
+            1 => provider.metadata_json["resource_exports"] = json!([]),
+            2 => {
+                provider.metadata_json["resource_exports"][0]["record_resources"][0]["id_field"] =
+                    json!("other_id")
+            }
+            _ => {
+                after.selected_contexts.remove(&p.id);
+            }
+        }
+        assert_dependency(
+            before.guard_write(&after, p.id, true).unwrap_err(),
+            "plugin_dependency_in_use",
+        );
+    }
+    before.guard_write(&before, p.id, true).unwrap();
+    let mut after = before.clone();
+    let mut next = p.clone();
+    next.id = Uuid::now_v7();
+    next.plugin_version = "2.0.0".into();
+    after.installations.insert(next.id, next.clone());
+    after
+        .contexts
+        .insert(next.id, [("node-a".into(), domain::SYSTEM_SCOPE_ID)].into());
+    after
+        .selected_contexts
+        .insert(next.id, [("node-a".into(), domain::SYSTEM_SCOPE_ID)].into());
+    assert_dependency(
+        before.guard_write(&after, next.id, true).unwrap_err(),
+        "plugin_dependency_in_use",
+    );
 }

@@ -38,21 +38,23 @@ fn fixture() -> (
     PluginDataBinding,
 ) {
     let mut consumer = installation("consumer", "monitor");
-    let mut provider = installation("original", "ssh");
+    let mut provider = installation("taichuy", "ssh");
+    provider.plugin_id = "ssh@0.1.21".into();
+    provider.plugin_version = "0.1.21".into();
     provider.metadata_json["resource_exports"] = json!([{
-        "resource_code":"hosts", "collections":[{"collection_code":"hosts","access":"read_write"}],
-        "record_resources":[{"resource_code":"hosts","collection_code":"hosts","id_field":"host_key"}],
+        "resource_code":"ssh-hosts-v1", "collections":[{"collection_code":"ssh_hosts","access":"read_write"}],
+        "record_resources":[{"resource_code":"hosts","collection_code":"ssh_hosts","id_field":"host_key"}],
         "credentials":"read_write"
     }]);
     provider.metadata_json["data_models"] = json!([{
         "contribution_version":"1flowbase.plugin-data-model/v1", "storage_binding":"main",
-        "owned_collections":[{"collection_code":"hosts","fields":[{"field_code":"host_key","field_type":"string"}]}]
+        "owned_collections":[{"collection_code":"ssh_hosts","fields":[{"field_code":"host_key","field_type":"string"}]}]
     }]);
     consumer.metadata_json["plugin_dependencies"] =
-        json!([{"publisher_namespace":"original","plugin_code":"ssh"}]);
+        json!([{"publisher_namespace":"taichuy","plugin_code":"ssh"}]);
     consumer.metadata_json["resource_imports"] = json!([{
-        "provider":{"publisher_namespace":"original","plugin_code":"ssh"},"resource_code":"hosts",
-        "collections":[{"collection_code":"hosts","access":"read_write"}],"record_resources":["hosts"],"credentials":"read_write"
+        "provider":{"publisher_namespace":"taichuy","plugin_code":"ssh"},"resource_code":"ssh-hosts-v1",
+        "collections":[{"collection_code":"ssh_hosts","access":"read_write"}],"record_resources":["hosts"],"credentials":"read_write"
     }]);
     let binding = PluginDataBinding {
         managed_subject: None,
@@ -72,7 +74,7 @@ fn fixture() -> (
             is_root: false,
             resources: vec![PluginDataRecordResource {
                 resource_code: "hosts".into(),
-                collection_code: "hosts".into(),
+                collection_code: "ssh_hosts".into(),
                 id_field: "host_key".into(),
                 action_code: "read".into(),
                 record_id: Some("original-key".into()),
@@ -83,7 +85,7 @@ fn fixture() -> (
 }
 fn request(write: bool) -> PluginDataRequest {
     let target = PluginDataTarget::OwnedCollection {
-        collection_code: "hosts".into(),
+        collection_code: "ssh_hosts".into(),
     };
     PluginDataRequest {
         idempotency_key: None,
@@ -104,7 +106,7 @@ fn request(write: bool) -> PluginDataRequest {
 fn live_provider_identity_models_and_original_acl_are_preserved() {
     let (consumer, providers, binding) = fixture();
     let resolved = resolve_resource_imports(&consumer, &providers).unwrap();
-    assert_eq!(resolved[0].owner(), ("original", "ssh", "2.4.0"));
+    assert_eq!(resolved[0].owner(), ("taichuy", "ssh", "0.1.21"));
     assert_eq!(
         resolved[0].data_models[0].owned_collections[0].fields[0].field_type,
         PluginDataFieldType::String
@@ -113,9 +115,9 @@ fn live_provider_identity_models_and_original_acl_are_preserved() {
         let bound =
             resolve_plugin_data_binding(&consumer, &providers, &binding, &request(write)).unwrap();
         let mut expected = binding.clone();
-        expected.publisher_namespace = "original".into();
+        expected.publisher_namespace = "taichuy".into();
         expected.plugin_code = "ssh".into();
-        expected.plugin_version = "2.4.0".into();
+        expected.plugin_version = "0.1.21".into();
         assert_eq!(
             bound, expected,
             "only physical owner identity changes, not caller/actor/ACL"
@@ -147,15 +149,57 @@ fn live_provider_identity_models_and_original_acl_are_preserved() {
     forged.record_permissions.as_mut().unwrap().resources[0].id_field = "alias".into();
     assert!(resolve_plugin_data_binding(&consumer, &providers, &forged, &request(false)).is_err());
 }
+fn assert_import_denied(error: anyhow::Error) {
+    match error.downcast_ref::<control_plane_contracts::ControlPlaneContractError>() {
+        Some(control_plane_contracts::ControlPlaneContractError::PluginDependency {
+            code,
+            provider_publisher_namespace,
+            provider_plugin_code,
+            resource_code,
+            ..
+        }) => {
+            assert_eq!(code, "plugin_resource_import_denied");
+            assert_eq!(provider_publisher_namespace, "taichuy");
+            assert_eq!(provider_plugin_code, "ssh");
+            assert_eq!(resource_code.as_deref(), Some("ssh-hosts-v1"));
+        }
+        other => panic!("expected structured import denial, got {other:?}: {error}"),
+    }
+}
 #[test]
-fn read_rights_are_intersection_and_mutations_need_both_sides() {
+fn collection_imports_reject_overrequest_and_preserve_requested_subset() {
     for import in ["read_only", "read_write"] {
         for export in ["read_only", "read_write"] {
             let (mut consumer, mut providers, binding) = fixture();
             consumer.metadata_json["resource_imports"][0]["collections"][0]["access"] =
                 json!(import);
-            providers.values_mut().next().unwrap().metadata_json["resource_exports"][0]
-                ["collections"][0]["access"] = json!(export);
+            providers.values_mut().next().unwrap().metadata_json["resource_exports"][0]["collections"]
+                [0]["access"] = json!(export);
+            if import == "read_write" && export == "read_only" {
+                assert_import_denied(resolve_resource_imports(&consumer, &providers).unwrap_err());
+                assert_import_denied(
+                    validate_plugin_dependencies(&consumer, &providers).unwrap_err(),
+                );
+                for write in [false, true] {
+                    assert_import_denied(
+                        resolve_plugin_data_binding(
+                            &consumer,
+                            &providers,
+                            &binding,
+                            &request(write),
+                        )
+                        .unwrap_err(),
+                    );
+                }
+                continue;
+            }
+            let resolved = resolve_resource_imports(&consumer, &providers).unwrap();
+            assert_eq!(
+                serde_json::to_value(resolved[0].collections[0].access).unwrap(),
+                json!(import),
+                "retain the requested rights, not all exported rights"
+            );
+            assert!(validate_plugin_dependencies(&consumer, &providers).is_ok());
             assert!(
                 resolve_plugin_data_binding(&consumer, &providers, &binding, &request(false))
                     .is_ok()
@@ -163,25 +207,39 @@ fn read_rights_are_intersection_and_mutations_need_both_sides() {
             assert_eq!(
                 resolve_plugin_data_binding(&consumer, &providers, &binding, &request(true))
                     .is_ok(),
-                import == "read_write" && export == "read_write"
+                import == "read_write"
             );
         }
     }
 }
 #[test]
-fn credentials_get_vs_put_delete_use_original_aad_identity_and_intersection() {
+fn credential_imports_reject_overrequest_and_keep_original_owner_for_requested_subset() {
     for import in ["read_only", "read_write"] {
         for export in ["read_only", "read_write"] {
             let (mut consumer, mut providers, _) = fixture();
             consumer.metadata_json["resource_imports"][0]["credentials"] = json!(import);
-            providers.values_mut().next().unwrap().metadata_json["resource_exports"][0]
-                ["credentials"] = json!(export);
+            providers.values_mut().next().unwrap().metadata_json["resource_exports"][0]["credentials"] =
+                json!(export);
+            let overrequest = import == "read_write" && export == "read_only";
+            if overrequest {
+                assert_import_denied(resolve_resource_imports(&consumer, &providers).unwrap_err());
+                assert_import_denied(
+                    validate_plugin_dependencies(&consumer, &providers).unwrap_err(),
+                );
+            } else {
+                let resolved = resolve_resource_imports(&consumer, &providers).unwrap();
+                assert_eq!(
+                    serde_json::to_value(resolved[0].credentials).unwrap(),
+                    json!(import)
+                );
+                assert!(validate_plugin_dependencies(&consumer, &providers).is_ok());
+            }
             let binding = PluginCredentialBinding {
                 installation_id: consumer.id.to_string(),
                 contribution_id: "monitor.read".into(),
-                publisher_namespace: "consumer".into(),
-                plugin_code: "monitor".into(),
-                plugin_version: "1.0".into(),
+                publisher_namespace: consumer.organization.clone(),
+                plugin_code: consumer.provider_code.clone(),
+                plugin_version: consumer.plugin_version.clone(),
                 scope_id: domain::SYSTEM_SCOPE_ID.to_string(),
                 deadline_unix_ms: i64::MAX,
             };
@@ -208,20 +266,32 @@ fn credentials_get_vs_put_delete_use_original_aad_identity_and_intersection() {
             ] {
                 let result =
                     resolve_plugin_credential_binding(&consumer, &providers, &binding, &req);
-                assert_eq!(
-                    result.is_ok(),
-                    !write || (import == "read_write" && export == "read_write")
-                );
+                if overrequest {
+                    assert_import_denied(result.unwrap_err());
+                    continue;
+                }
+                assert_eq!(result.is_ok(), !write || import == "read_write");
                 if let Ok(bound) = result {
                     let mut expected = binding.clone();
-                    expected.publisher_namespace = "original".into();
+                    expected.publisher_namespace = "taichuy".into();
                     expected.plugin_code = "ssh".into();
-                    expected.plugin_version = "2.4.0".into();
+                    expected.plugin_version = "0.1.21".into();
                     assert_eq!(bound, expected);
                 }
             }
         }
     }
+}
+#[test]
+fn disabled_consumer_can_resolve_imports_before_activation() {
+    let (mut consumer, providers, _) = fixture();
+    let expected = resolve_resource_imports(&consumer, &providers).unwrap();
+    consumer.desired_state = PluginDesiredState::Disabled;
+    assert_eq!(
+        resolve_resource_imports(&consumer, &providers).unwrap(),
+        expected
+    );
+    assert!(validate_plugin_dependencies(&consumer, &providers).is_ok());
 }
 #[test]
 fn missing_disabled_ambiguous_and_stale_provider_fail_closed_without_registry() {

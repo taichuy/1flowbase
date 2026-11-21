@@ -65,7 +65,14 @@ pub async fn load_installations(
         )?;
         let code = manifest.plugin_code()?.to_string();
         anyhow::ensure!(
-            code == installation.provider_code
+            ((manifest.resource_exports.is_empty() && manifest.resource_imports.is_empty())
+                || serde_json::to_value(&manifest.data_models)?
+                    == installation
+                        .metadata_json
+                        .get("data_models")
+                        .cloned()
+                        .unwrap_or(serde_json::json!([])))
+                && code == installation.provider_code
                 && manifest.version == installation.plugin_version
                 && manifest.publisher_namespace == installation.organization
                 && serde_json::to_value(&manifest.plugin_dependencies)?

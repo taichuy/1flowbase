@@ -7,8 +7,8 @@ use crate::{
     capability_kind::PluginConsumptionKind,
     error::{FrameworkResult, PluginFrameworkError},
     provider_contract::{
-        CURRENT_PROVIDER_CONTRACT, PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY,
-        PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY,
+        CURRENT_PROVIDER_CONTRACT, PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY,
+        PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY,
         PROVIDER_CONFIGURATION_VALIDATION_CAPABILITY, PROVIDER_COUNT_TOKENS_CAPABILITY,
         PROVIDER_MESSAGE_BLOCKS_REASONING_HISTORY_V1_CAPABILITY,
         PROVIDER_MESSAGE_BLOCKS_REDACTED_REASONING_HISTORY_V1_CAPABILITY,
@@ -254,9 +254,12 @@ pub struct FrontendBlockContributionManifest {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PluginManifestV1 {
-    /// Reference to a deployment-owned resource delegation; never defines an owner.
     #[serde(default)]
-    pub shared_resource_contract: Option<String>,
+    pub plugin_dependencies: Vec<extension_contracts::PluginDependency>,
+    #[serde(default)]
+    pub resource_exports: Vec<extension_contracts::PluginResourceExport>,
+    #[serde(default)]
+    pub resource_imports: Vec<extension_contracts::PluginResourceImport>,
     #[serde(default)]
     pub managed_service: Option<crate::managed_service::ManagedServiceManifest>,
     #[serde(default)]
@@ -424,14 +427,6 @@ fn validate_plugin_manifest(
         ));
     }
 
-    if let Some(reference) = &manifest.shared_resource_contract {
-        validate_non_empty(reference, "shared_resource_contract")?;
-        if manifest.manifest_version != 2 || manifest.managed_service.is_none() {
-            return Err(PluginFrameworkError::invalid_provider_package(
-                "shared_resource_contract requires a managed service",
-            ));
-        }
-    }
     validate_non_empty(&manifest.plugin_id, "plugin_id")?;
     validate_non_empty(&manifest.version, "version")?;
     plugin_code_from_identity(&manifest.plugin_id, &manifest.version)?;
@@ -494,6 +489,7 @@ fn validate_plugin_manifest(
             "settings_pages requires a native HostExtension",
         ));
     }
+    resource_validation::validate_resource_declarations(manifest)?;
     crate::managed_service::validate_managed_service(manifest)?;
     if manifest.manifest_version == 2 {
         return crate::managed_manifest::validate_managed_manifest(manifest);
@@ -1190,3 +1186,6 @@ mod capability_validation;
 
 pub(crate) use capability_validation::validate_node_contributions;
 use capability_validation::*;
+
+#[path = "manifest_v1/resource_validation.rs"]
+mod resource_validation;

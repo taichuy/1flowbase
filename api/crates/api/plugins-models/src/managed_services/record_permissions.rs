@@ -1,5 +1,5 @@
 //! Generic settings API for plugin-declared record permissions.
-use super::{record_acl, ManagedServiceRegistration};
+use super::{ManagedServiceRegistration, record_acl};
 use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 use crate::{
     app_state::ApiState,
@@ -14,14 +14,14 @@ use crate::{
     },
 };
 use axum::{
+    Json,
     extract::{Query, State},
     http::HeaderMap,
-    Json,
 };
 use control_plane::errors::ControlPlaneError as Error;
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::{Arc, Weak};
 
 test_support_item! { pub(crate), [#[derive(Clone, Serialize, Deserialize, utoipa::IntoParams)]
@@ -251,10 +251,21 @@ impl Adapter {
                     // Policies belong to the shared resource identity. Withdraw streams in
                     // every active participant that became denied by this policy revision.
                     for participant in state.console_surface_registry.managed_services() {
-                        let (publisher, plugin, _) = participant.resource_owner();
-                        if publisher == key.resource.publisher_namespace
-                            && plugin == key.resource.plugin_code
-                        {
+                        let shares_resource =
+                            participant
+                                .declaration
+                                .record_resources
+                                .iter()
+                                .any(|candidate| {
+                                    let (publisher, plugin, _) =
+                                        participant.resource_owner(candidate);
+                                    publisher == key.resource.publisher_namespace
+                                        && plugin == key.resource.plugin_code
+                                        && candidate.resource_code == resource.resource_code
+                                        && candidate.collection_code == resource.collection_code
+                                        && candidate.id_field == resource.id_field
+                                });
+                        if shares_resource {
                             super::stream::revoke_record_permissions(
                                 &state,
                                 participant.installation_id,

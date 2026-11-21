@@ -1,7 +1,7 @@
 use super::*;
 use control_plane_contracts::ports::*;
 use domain::{AuditLogRecord, PluginContributionAuthorization};
-use extension_contracts::{extension_bus::*, PluginDataOperationResult, PluginDataResponse};
+use extension_contracts::{PluginDataOperationResult, PluginDataResponse, extension_bus::*};
 use serde_json::json;
 use std::{
     future::Future,
@@ -166,6 +166,14 @@ impl PluginContributionAuthorityRepository for Authority {
             subject.installation_id().as_str(),
             state.installation.id.to_string()
         );
+        assert_eq!(
+            subject.workspace_id().as_str(),
+            state.snapshot.workspace_id.to_string()
+        );
+        assert_eq!(
+            subject.contribution_id().as_str(),
+            state.snapshot.authorizations[0].contribution_id
+        );
         self.held.store(true, Ordering::SeqCst);
         let mut installations = state.providers.clone();
         installations.insert(state.installation.id, state.installation.clone());
@@ -315,18 +323,19 @@ fn fixture() -> (State, PluginDataBinding, PluginDataRequest) {
 fn add_provider(state: &mut State, access: &str) -> Uuid {
     let mut provider = state.installation.clone();
     provider.id = Uuid::now_v7();
-    provider.organization = "original".into();
-    provider.provider_code = "shared_hosts".into();
-    provider.plugin_version = "2.4.0".into();
+    provider.organization = "taichuy".into();
+    provider.provider_code = "ssh".into();
+    provider.plugin_id = "ssh@0.1.21".into();
+    provider.plugin_version = "0.1.21".into();
     provider.metadata_json = json!({
         "managed_service":{"scope":"system"},
         "resource_exports":[{"resource_code":"hosts", "collections":[{"collection_code":"connections","access":access}], "credentials":access}],
         "data_models":[{"contribution_version":"1flowbase.plugin-data-model/v1", "storage_binding":"main", "owned_collections":[{"collection_code":"connections","fields":[{"field_code":"name","field_type":"string"}]}]}]
     });
     state.installation.metadata_json["plugin_dependencies"] =
-        json!([{"publisher_namespace":"original","plugin_code":"shared_hosts"}]);
+        json!([{"publisher_namespace":"taichuy","plugin_code":"ssh"}]);
     state.installation.metadata_json["resource_imports"] = json!([{
-        "provider":{"publisher_namespace":"original","plugin_code":"shared_hosts"}, "resource_code":"hosts",
+        "provider":{"publisher_namespace":"taichuy","plugin_code":"ssh"}, "resource_code":"hosts",
         "collections":[{"collection_code":"connections","access":access}], "credentials":access
     }]);
     let id = provider.id;
@@ -460,9 +469,9 @@ async fn shared_callbacks_remap_only_after_live_caller_grants_and_hold_original_
         ) -> PluginDataFuture<'a> {
             Box::pin(async move {
                 assert!(self.held.load(Ordering::SeqCst));
-                assert_eq!(binding.publisher_namespace, "original");
-                assert_eq!(binding.plugin_code, "shared_hosts");
-                assert_eq!(binding.plugin_version, "2.4.0");
+                assert_eq!(binding.publisher_namespace, "taichuy");
+                assert_eq!(binding.plugin_code, "ssh");
+                assert_eq!(binding.plugin_version, "0.1.21");
                 assert_eq!(
                     binding.managed_subject.as_ref(),
                     Some(&self.original_subject)
@@ -478,7 +487,7 @@ async fn shared_callbacks_remap_only_after_live_caller_grants_and_hold_original_
         }
     }
     let (mut state, binding, request) = fixture();
-    add_provider(&mut state, "read_write");
+    let provider_id = add_provider(&mut state, "read_write");
     let authority = Arc::new(Authority {
         state: Arc::new(tokio::sync::Mutex::new(state)),
         held: Arc::new(AtomicBool::new(false)),
@@ -492,13 +501,47 @@ async fn shared_callbacks_remap_only_after_live_caller_grants_and_hold_original_
     let service = ManagedPluginDataService::new(authority.clone(), inner.clone());
     service.execute(&binding, &request).await.unwrap();
     assert!(!authority.held.load(Ordering::SeqCst));
+    // A provider's grant cannot stand in for the exact consumer's collection grant.
+    authority.state.lock().await.snapshot.authorizations[1].installation_id = provider_id;
+    assert!(service.execute(&binding, &request).await.is_err());
+    authority.state.lock().await.snapshot.authorizations[1].installation_id = Uuid::parse_str(
+        binding
+            .managed_subject
+            .as_ref()
+            .unwrap()
+            .installation_id()
+            .as_str(),
+    )
+    .unwrap();
+    // Even a read callback must reject an import that asks beyond the live export.
+    authority
+        .state
+        .lock()
+        .await
+        .providers
+        .get_mut(&provider_id)
+        .unwrap()
+        .metadata_json["resource_exports"][0]["collections"][0]["access"] = json!("read_only");
+    assert!(service.execute(&binding, &request).await.is_err());
+    assert_eq!(inner.calls.load(Ordering::SeqCst), 1);
+    assert!(!authority.held.load(Ordering::SeqCst));
+    authority.state.lock().await.installation.metadata_json["resource_imports"][0]["collections"]
+        [0]["access"] = json!("read_only");
+    service.execute(&binding, &request).await.unwrap();
+    assert_eq!(inner.calls.load(Ordering::SeqCst), 2);
+    assert!(!authority.held.load(Ordering::SeqCst));
     authority.state.lock().await.snapshot.authorizations[1].status =
         ContributionAuthorizationStatus::Revoked;
     assert!(service.execute(&binding, &request).await.is_err());
     authority.state.lock().await.snapshot.authorizations[1].status =
         ContributionAuthorizationStatus::Active;
     authority.state.lock().await.installation.desired_state = PluginDesiredState::Disabled;
-    assert!(service.execute(&binding, &request).await.is_err());
+    assert_eq!(
+        service.execute(&binding, &request).await.unwrap_err().code,
+        "plugin_data_authority_denied"
+    );
+    assert_eq!(inner.calls.load(Ordering::SeqCst), 2);
+    assert!(!authority.held.load(Ordering::SeqCst));
     authority.state.lock().await.installation.desired_state = PluginDesiredState::ActiveRequested;
     authority
         .state
@@ -510,7 +553,7 @@ async fn shared_callbacks_remap_only_after_live_caller_grants_and_hold_original_
         .unwrap()
         .desired_state = PluginDesiredState::Disabled;
     assert!(service.execute(&binding, &request).await.is_err());
-    assert_eq!(inner.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(inner.calls.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
@@ -523,6 +566,9 @@ async fn shared_credentials_keep_live_consumer_authority_and_read_existing_owner
     struct ExistingCredentials {
         held: Arc<AtomicBool>,
         calls: AtomicUsize,
+        expected_binding: PluginCredentialBinding,
+        // The pre-import owner key, also used by the production credential AAD, excludes version.
+        existing: std::collections::BTreeMap<(String, String, String, String), serde_json::Value>,
     }
     #[async_trait::async_trait]
     impl PluginCredentialRepository for ExistingCredentials {
@@ -532,24 +578,34 @@ async fn shared_credentials_keep_live_consumer_authority_and_read_existing_owner
             request: &PluginCredentialRequest,
         ) -> Result<PluginCredentialResponse, PluginCredentialError> {
             assert!(self.held.load(Ordering::SeqCst));
-            assert_eq!(binding.publisher_namespace, "original");
-            assert_eq!(binding.plugin_code, "shared_hosts");
-            assert_eq!(binding.plugin_version, "2.4.0");
-            assert_eq!(binding.contribution_id, "ssh.list");
-            assert_eq!(binding.scope_id, domain::SYSTEM_SCOPE_ID.to_string());
-            assert_eq!(request.credential_id(), "existing-host");
+            assert_eq!(
+                binding, &self.expected_binding,
+                "only the physical owner changes; consumer installation/contribution/scope/deadline stay exact"
+            );
+            assert!(matches!(request, PluginCredentialRequest::Get { .. }));
+            let key = (
+                binding.publisher_namespace.clone(),
+                binding.plugin_code.clone(),
+                binding.scope_id.clone(),
+                request.credential_id().to_owned(),
+            );
+            let value = self
+                .existing
+                .get(&key)
+                .expect("historical taichuy/ssh owner key must still resolve")
+                .clone();
+            tokio::task::yield_now().await;
+            assert!(self.held.load(Ordering::SeqCst));
             self.calls.fetch_add(1, Ordering::SeqCst);
-            Ok(PluginCredentialResponse {
-                value: Some(json!({"password":"existing-owner-secret"})),
-            })
+            Ok(PluginCredentialResponse { value: Some(value) })
         }
     }
     let (mut state, data_binding, _) = fixture();
-    add_provider(&mut state, "read_write");
+    let provider_id = add_provider(&mut state, "read_write");
     state.installation.metadata_json["managed_service_permissions"]["secrets"] =
         json!("host_managed");
-    state.installation.metadata_json["managed"]["module"]["contributions"][0]
-        ["required_permissions"] = json!(["service.execute", "credential.manage"]);
+    state.installation.metadata_json["managed"]["module"]["contributions"][0]["required_permissions"] =
+        json!(["service.execute", "credential.manage"]);
     state.snapshot.authorizations[1].permission = "credential.manage".into();
     state.snapshot.authorizations[1].permission_contract_id = "plugin-credential".into();
     state.snapshot.authorizations[1].resource_scope = ContributionResourceScope::System;
@@ -567,14 +623,52 @@ async fn shared_credentials_keep_live_consumer_authority_and_read_existing_owner
         held: Arc::new(AtomicBool::new(false)),
         locks: AtomicUsize::new(0),
     });
+    let mut expected_binding = binding.clone();
+    expected_binding.publisher_namespace = "taichuy".into();
+    expected_binding.plugin_code = "ssh".into();
+    expected_binding.plugin_version = "0.1.21".into();
     let repository = Arc::new(ExistingCredentials {
         held: authority.held.clone(),
         calls: AtomicUsize::new(0),
+        expected_binding,
+        // Seed an original SSH credential, not a consumer-created or synthetic shared-owner row.
+        existing: [(
+            (
+                "taichuy".into(),
+                "ssh".into(),
+                domain::SYSTEM_SCOPE_ID.to_string(),
+                "existing-host".into(),
+            ),
+            json!({"password":"existing-owner-secret"}),
+        )]
+        .into(),
     });
     let service = ManagedPluginCredentialService::new(authority.clone(), repository.clone());
     let get = PluginCredentialRequest::Get {
         credential_id: "existing-host".into(),
     };
+    assert_eq!(
+        service.execute(&binding, &get).await.unwrap().value,
+        Some(json!({"password":"existing-owner-secret"}))
+    );
+    assert!(!authority.held.load(Ordering::SeqCst));
+    authority.state.lock().await.snapshot.authorizations[1].installation_id = provider_id;
+    assert!(service.execute(&binding, &get).await.is_err());
+    authority.state.lock().await.snapshot.authorizations[1].installation_id =
+        Uuid::parse_str(&binding.installation_id).unwrap();
+    authority
+        .state
+        .lock()
+        .await
+        .providers
+        .get_mut(&provider_id)
+        .unwrap()
+        .metadata_json["resource_exports"][0]["credentials"] = json!("read_only");
+    assert!(service.execute(&binding, &get).await.is_err());
+    assert_eq!(repository.calls.load(Ordering::SeqCst), 1);
+    assert!(!authority.held.load(Ordering::SeqCst));
+    authority.state.lock().await.installation.metadata_json["resource_imports"][0]["credentials"] =
+        json!("read_only");
     assert_eq!(
         service.execute(&binding, &get).await.unwrap().value,
         Some(json!({"password":"existing-owner-secret"}))
@@ -586,7 +680,10 @@ async fn shared_credentials_keep_live_consumer_authority_and_read_existing_owner
     authority.state.lock().await.snapshot.authorizations[1].status =
         ContributionAuthorizationStatus::Active;
     authority.state.lock().await.installation.desired_state = PluginDesiredState::Disabled;
-    assert!(service.execute(&binding, &get).await.is_err());
+    assert!(matches!(service.execute(&binding, &get).await,
+        Err(error) if error.code == "plugin_credential_authority_denied"));
+    assert_eq!(repository.calls.load(Ordering::SeqCst), 2);
+    assert!(!authority.held.load(Ordering::SeqCst));
     authority.state.lock().await.installation.desired_state = PluginDesiredState::ActiveRequested;
     authority.state.lock().await.installation.metadata_json["resource_imports"][0]["credentials"] =
         json!("read_only");
@@ -602,7 +699,7 @@ async fn shared_credentials_keep_live_consumer_authority_and_read_existing_owner
     ] {
         assert!(service.execute(&binding, &write).await.is_err());
     }
-    assert_eq!(repository.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(repository.calls.load(Ordering::SeqCst), 3);
     authority
         .state
         .lock()
@@ -615,5 +712,5 @@ async fn shared_credentials_keep_live_consumer_authority_and_read_existing_owner
     assert!(service.execute(&binding, &get).await.is_err());
     authority.state.lock().await.providers.clear();
     assert!(service.execute(&binding, &get).await.is_err());
-    assert_eq!(repository.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(repository.calls.load(Ordering::SeqCst), 3);
 }

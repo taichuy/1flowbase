@@ -92,3 +92,7 @@ pub use managed_service_contract::*;
 #[path = "host_services/execution_gate_contract.rs"]
 pub mod execution_gate_contract;
 pub use execution_gate_contract::*;
+
+#[path = "managed_contributions/plugin_resource_contract.rs"]
+pub mod plugin_resource_contract;
+pub use plugin_resource_contract::*;

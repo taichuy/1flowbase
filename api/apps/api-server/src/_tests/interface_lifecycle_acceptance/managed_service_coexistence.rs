@@ -5,7 +5,7 @@ use crate::{
     managed_services::ManagedServiceRegistration,
 };
 use axum::{
-    body::{to_bytes, Body},
+    body::{Body, to_bytes},
     http::{Request, StatusCode},
 };
 use serde_json::json;
@@ -29,18 +29,22 @@ async fn hot_generation_new_service_freezes_against_older_workspace_snapshot() {
     let interface_id = "coexistence.items.list";
     for phase in plugin_framework::extension_bus::MANAGED_INTERFACE_PHASES {
         let point_id = extension_contracts::managed_interface_hook_point_id(interface_id, phase);
-        assert!(!previous
-            .graph
-            .points()
-            .iter()
-            .any(|p| p.descriptor().point_id.as_str() == point_id));
-        assert!(!previous.graph.contribution_receipts().iter().any(|r| r
-            .descriptor()
-            .point_id
-            .as_str()
-            == point_id));
+        assert!(
+            !previous
+                .graph
+                .points()
+                .iter()
+                .any(|p| p.descriptor().point_id.as_str() == point_id)
+        );
+        assert!(
+            !previous.graph.contribution_receipts().iter().any(|r| r
+                .descriptor()
+                .point_id
+                .as_str()
+                == point_id)
+        );
     }
-    let registration = ManagedServiceRegistration { shared_resource: None, publisher_namespace: "test".into(), data_models: Vec::new(),
+    let registration = ManagedServiceRegistration { resource_imports: Vec::new(), publisher_namespace: "test".into(), data_models: Vec::new(),
         display_name: "Fixture plugin".into(), description: "Fixture plugin operations".into(),
         installation_id: uuid::Uuid::now_v7(),
         plugin_code: "coexistence".into(),

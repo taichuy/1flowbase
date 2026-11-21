@@ -1,8 +1,8 @@
 use axum::{
+    Json,
     extract::rejection::JsonRejection,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use control_plane::errors::ControlPlaneError;
 use plugin_framework::error::PluginFrameworkError;
@@ -50,6 +50,28 @@ where
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        if let Some(
+            error @ ControlPlaneError::PluginDependency {
+                code,
+                provider_publisher_namespace,
+                provider_plugin_code,
+                resource_code,
+                dependents,
+            },
+        ) = self.0.downcast_ref::<ControlPlaneError>()
+        {
+            return (StatusCode::CONFLICT, Json(ErrorBody {
+                status: StatusCode::CONFLICT.as_u16(),
+                code: code.clone(),
+                message: error.to_string(),
+                inventory: None,
+                details: Some(serde_json::json!({
+                    "provider": {"publisher_namespace": provider_publisher_namespace, "plugin_code": provider_plugin_code},
+                    "resource_code": resource_code,
+                    "dependents": dependents,
+                })),
+            })).into_response();
+        }
         if let Some(error) = self
             .0
             .downcast_ref::<control_plane::agent_logs::AgentLogsPartialImportError>()
@@ -184,6 +206,9 @@ impl IntoResponse for ApiError {
             Some(ControlPlaneError::PermissionDenied(reason)) => (StatusCode::FORBIDDEN, *reason),
             Some(ControlPlaneError::NotFound(name)) => (StatusCode::NOT_FOUND, *name),
             Some(ControlPlaneError::Conflict(name)) => (StatusCode::CONFLICT, *name),
+            Some(ControlPlaneError::PluginDependency { .. }) => {
+                (StatusCode::CONFLICT, "plugin_dependency")
+            }
             Some(ControlPlaneError::PluginUnavailable) => {
                 (StatusCode::CONFLICT, "plugin_unavailable")
             }
@@ -289,3 +314,7 @@ fn sanitize_error_message(message: &str) -> String {
 #[cfg(test)]
 #[path = "error_response/_tests/node_diagnostics.rs"]
 mod node_diagnostics_tests;
+
+#[cfg(test)]
+#[path = "error_response/_tests/plugin_dependencies.rs"]
+mod plugin_dependency_tests;

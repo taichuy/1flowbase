@@ -250,9 +250,14 @@ fn prepare_installation_commit_blocking(
     manifest: &PluginManifestV1,
     package_catalog: Option<UpsertPluginPackageCatalogProjectionInput>,
 ) -> Result<CommitPluginInstallationInput> {
-    if let Some(reference) = &manifest.shared_resource_contract {
-        installation.metadata_json["shared_resource_contract"] = serde_json::json!(reference);
-    }
+    // Live import resolution reads the verified provider schema from this durable projection.
+    installation.metadata_json["data_models"] = serde_json::to_value(&manifest.data_models)?;
+    installation.metadata_json["plugin_dependencies"] =
+        serde_json::to_value(&manifest.plugin_dependencies)?;
+    installation.metadata_json["resource_exports"] =
+        serde_json::to_value(&manifest.resource_exports)?;
+    installation.metadata_json["resource_imports"] =
+        serde_json::to_value(&manifest.resource_imports)?;
     if let Some(service) = &manifest.managed_service {
         installation.metadata_json["managed_service"] = serde_json::to_value(service)?;
         installation.metadata_json["managed_service_permissions"] = serde_json::json!({"secrets": manifest.permissions.secrets, "storage": manifest.permissions.storage});

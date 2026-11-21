@@ -1,6 +1,7 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use async_trait::async_trait;
 use control_plane_contracts::{
+    ControlPlaneContractError as ControlPlaneError,
     ports::{
         CommitPluginFamilyUninstallInput, CommitPluginInstallationInput,
         CreatePluginAssignmentInput, CreatePluginTaskInput, PluginRepository,
@@ -8,7 +9,6 @@ use control_plane_contracts::{
         UpdatePluginTaskStatusInput, UpsertPluginArtifactInstanceInput,
         UpsertPluginInstallationInput, UpsertPluginPackageCatalogProjectionInput,
     },
-    ControlPlaneContractError as ControlPlaneError,
 };
 use sqlx::Row;
 use uuid::Uuid;
@@ -129,7 +129,7 @@ fn map_catalog_projection(
     })
 }
 
-async fn lock_managed_desired_state_scopes(
+pub(crate) async fn lock_managed_desired_state_scopes(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     installation_id: Uuid,
 ) -> Result<()> {
@@ -207,6 +207,21 @@ impl PluginRepository for PgControlPlaneStore {
         &self,
         input: &UpsertPluginInstallationInput,
     ) -> Result<domain::PluginInstallationRecord> {
+        let mut transaction = self.pool().begin().await?;
+        // The conflict key may resolve to a different id than the caller's proposed id.
+        // Fence before reading that identity, then lock its workspaces before the SQL row lock.
+        lock_managed_dependency_scope(&mut transaction).await?;
+        let existing_id: Option<Uuid> =
+            sqlx::query_scalar("select id from extension_installations where plugin_id=$1")
+                .bind(&input.plugin_id)
+                .fetch_optional(&mut *transaction)
+                .await?;
+        lock_managed_desired_state_scopes(
+            &mut transaction,
+            existing_id.unwrap_or(input.installation_id),
+        )
+        .await?;
+        let before = managed_dependency_facts(&mut transaction).await?;
         let row = sqlx::query(
             r#"
             insert into extension_installations (
@@ -325,10 +340,14 @@ impl PluginRepository for PgControlPlaneStore {
         .bind(input.is_system_reserved)
         .bind(input.actor_user_id)
         .bind(input.actor_user_id)
-        .fetch_one(self.pool())
+        .fetch_one(&mut *transaction)
         .await?;
 
-        map_installation(row)
+        let installation = map_installation(row)?;
+        let after = managed_dependency_facts(&mut transaction).await?;
+        before.guard_write(&after, installation.id, true)?;
+        transaction.commit().await?;
+        Ok(installation)
     }
 
     async fn get_installation(
@@ -546,6 +565,11 @@ impl PluginRepository for PgControlPlaneStore {
     }
 
     async fn delete_installation(&self, installation_id: Uuid) -> Result<()> {
+        let mut transaction = self.pool().begin().await?;
+        lock_managed_desired_state_scopes(&mut transaction, installation_id).await?;
+        managed_dependency_facts(&mut transaction)
+            .await?
+            .guard_removal(&[installation_id], None, None)?;
         let deleted = sqlx::query_scalar::<_, Uuid>(
             r#"
             delete from extension_installations
@@ -554,10 +578,11 @@ impl PluginRepository for PgControlPlaneStore {
             "#,
         )
         .bind(installation_id)
-        .fetch_optional(self.pool())
+        .fetch_optional(&mut *transaction)
         .await?;
 
         if deleted.is_some() {
+            transaction.commit().await?;
             Ok(())
         } else {
             bail!(ControlPlaneError::NotFound("plugin_installation"));
@@ -1088,7 +1113,7 @@ impl PluginRepository for PgControlPlaneStore {
 #[path = "plugin_repository/artifact_lifecycle.rs"]
 mod artifact_lifecycle;
 
-use artifact_lifecycle::{guard_managed_desired_state, managed_dependency_facts};
+use artifact_lifecycle::guard_managed_desired_state;
 pub(crate) use artifact_lifecycle::{
-    lock_managed_dependency_scope, validate_managed_dependency_switch,
+    lock_managed_dependency_scope, managed_dependency_facts, validate_managed_dependency_switch,
 };

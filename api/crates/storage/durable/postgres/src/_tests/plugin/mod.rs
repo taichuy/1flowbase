@@ -2,3 +2,4 @@ mod host_extension_migration_tests;
 mod managed_schema_repository_tests;
 mod plugin_data_repository_tests;
 mod plugin_worker_repository_tests;
+mod resource_provider_compatibility_tests;

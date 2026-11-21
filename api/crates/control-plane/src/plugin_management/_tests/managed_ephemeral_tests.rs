@@ -2,7 +2,7 @@ use control_plane::plugin_management::ManagedPluginEphemeralService;
 use control_plane_contracts::ports::*;
 use domain::*;
 use domain::{AuditLogRecord, PluginContributionAuthorization};
-use extension_contracts::{extension_bus::*, PluginDataOperation, PluginDataResponse};
+use extension_contracts::{PluginDataOperation, PluginDataResponse, extension_bus::*};
 use extension_contracts::{PluginEphemeralBinding, PluginEphemeralPort, PluginEphemeralRequest};
 use serde_json::json;
 use std::sync::Arc;
@@ -24,6 +24,7 @@ struct Authority {
     locks: AtomicUsize,
 }
 struct Lease {
+    installations: std::collections::BTreeMap<Uuid, PluginInstallationRecord>,
     state: tokio::sync::OwnedMutexGuard<State>,
     held: Arc<AtomicBool>,
 }
@@ -41,6 +42,9 @@ impl ContributionAuthorityLease for Lease {
     }
     fn installation(&self, id: Uuid) -> Option<&PluginInstallationRecord> {
         (id == self.state.installation.id).then_some(&self.state.installation)
+    }
+    fn installations(&self) -> &std::collections::BTreeMap<Uuid, PluginInstallationRecord> {
+        &self.installations
     }
     fn load_communication_command_context<'a>(
         &'a mut self,
@@ -167,6 +171,7 @@ impl PluginContributionAuthorityRepository for Authority {
         );
         self.held.store(true, Ordering::SeqCst);
         Ok(Box::new(Lease {
+            installations: [(state.installation.id, state.installation.clone())].into(),
             state,
             held: self.held.clone(),
         }))
@@ -292,12 +297,14 @@ async fn ephemeral_roundtrip_delete_expiry_and_installation_isolation() {
     );
     let (other_state, other_binding) = fixture();
     let other_service = ManagedPluginEphemeralService::new(self::authority(other_state), store);
-    assert!(other_service
-        .execute(&other_binding, &get())
-        .await
-        .unwrap()
-        .value
-        .is_none());
+    assert!(
+        other_service
+            .execute(&other_binding, &get())
+            .await
+            .unwrap()
+            .value
+            .is_none()
+    );
     // Delete in another installation cannot touch the first installation's token.
     let delete = PluginEphemeralRequest::Delete {
         key: "session/token".into(),
@@ -306,19 +313,23 @@ async fn ephemeral_roundtrip_delete_expiry_and_installation_isolation() {
         .execute(&other_binding, &delete)
         .await
         .unwrap();
-    assert!(service
-        .execute(&binding, &get())
-        .await
-        .unwrap()
-        .value
-        .is_some());
+    assert!(
+        service
+            .execute(&binding, &get())
+            .await
+            .unwrap()
+            .value
+            .is_some()
+    );
     service.execute(&binding, &delete).await.unwrap();
-    assert!(service
-        .execute(&binding, &get())
-        .await
-        .unwrap()
-        .value
-        .is_none());
+    assert!(
+        service
+            .execute(&binding, &get())
+            .await
+            .unwrap()
+            .value
+            .is_none()
+    );
     service
         .execute(
             &binding,
@@ -336,12 +347,14 @@ async fn ephemeral_roundtrip_delete_expiry_and_installation_isolation() {
     );
     service.execute(&binding, &put(1)).await.unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    assert!(service
-        .execute(&binding, &get())
-        .await
-        .unwrap()
-        .value
-        .is_none());
+    assert!(
+        service
+            .execute(&binding, &get())
+            .await
+            .unwrap()
+            .value
+            .is_none()
+    );
     assert!(!authority.held.load(Ordering::SeqCst));
 }
 
@@ -436,8 +449,8 @@ async fn execution_gate_requires_live_declared_current_grant_and_exact_installat
     use control_plane::plugin_management::ManagedPluginExecutionGateAuthority;
     use extension_contracts::{PluginExecutionGateAuthority, PluginExecutionGateBinding};
     let (mut state, old) = fixture();
-    state.installation.metadata_json["managed"]["module"]["contributions"][0]
-        ["required_permissions"] = json!(["execution.gate"]);
+    state.installation.metadata_json["managed"]["module"]["contributions"][0]["required_permissions"] =
+        json!(["execution.gate"]);
     state.installation.metadata_json["managed_service_permissions"]["secrets"] = json!("none");
     let mut grant = state.snapshot.authorizations[0].clone();
     grant.permission = "execution.gate".into();

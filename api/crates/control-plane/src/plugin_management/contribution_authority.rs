@@ -126,7 +126,7 @@ impl HostContributionGrantPolicy {
             base16ct::HexDisplay(&sha2::Sha256::digest(
                 [
                     bytes.as_slice(),
-                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2;application-logs/v1;http-egress/v1;plugin-ephemeral/v1;execution-gate/v1;authentication/v1;frontend-block-trusted-host/v1"
+                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2;application-logs/v1;plugin-resource-imports/v1;http-egress/v1;plugin-ephemeral/v1;execution-gate/v1;authentication/v1;frontend-block-trusted-host/v1"
                 ]
                 .concat()
             ))
@@ -259,7 +259,7 @@ impl HostContributionGrantPolicy {
                                 .and_then(serde_json::Value::as_str)
                                 == Some("host_managed")
                     }
-                    "plugin_data.owned.write" => {
+                    "plugin_data.owned.read" | "plugin_data.owned.write" => {
                         request.permission_contract_id == "plugin-data"
                             && matches!(&request.resource_scope, ContributionResourceScope::OwnedCollection { collection_code }
                             if !collection_code.is_empty() && collection_code.len() <= 128 && collection_code.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'))

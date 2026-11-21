@@ -10,6 +10,16 @@ pub enum ControlPlaneContractError {
     NotFound(&'static str),
     #[error("conflict: {0}")]
     Conflict(&'static str),
+    #[error(
+        "plugin dependency {provider_publisher_namespace}/{provider_plugin_code}: {code}; resource={resource_code:?}; enabled dependents={dependents:?}"
+    )]
+    PluginDependency {
+        code: String,
+        provider_publisher_namespace: String,
+        provider_plugin_code: String,
+        resource_code: Option<String>,
+        dependents: Vec<String>,
+    },
     #[error("plugin unavailable")]
     PluginUnavailable,
     #[error("invalid input: {0}")]

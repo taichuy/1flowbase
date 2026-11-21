@@ -40,6 +40,7 @@ pub use data_source_package::*;
 pub use error::*;
 pub use extension_contracts::authentication_contract::*;
 pub use extension_contracts::notification_contract::*;
+pub use extension_contracts::plugin_resource_contract::*;
 pub use extension_package_runtime::managed_manifest::{
     ManagedContributionExecutionBinding, ManagedContributionPayload, ManagedManifest,
 };
@@ -47,33 +48,32 @@ pub use extension_package_runtime::managed_service::*;
 pub use frontend_module_asset::*;
 pub use host_contract::{HostContractCode, RuntimeSlotCode, StorageImplementationKind};
 pub use host_extension_contribution::{
-    parse_host_extension_contribution_manifest, AuthProviderContributionManifest,
-    HostExtensionBootstrapPhase, HostExtensionContributionManifest,
-    HostExtensionInterfaceAuthenticationManifest,
+    AuthProviderContributionManifest, HostExtensionBootstrapPhase,
+    HostExtensionContributionManifest, HostExtensionInterfaceAuthenticationManifest,
     HostExtensionInterfaceAuthenticationPrincipalProfile,
     HostExtensionInterfaceOperationAuditPolicy, HostExtensionInterfaceOperationAuthPolicy,
     HostExtensionInterfaceOperationContractManifest, HostExtensionInterfaceOperationErrorPolicy,
     HostExtensionInterfaceOperationManifest, HostExtensionInterfaceOperationMethod,
     HostExtensionMigrationManifest, HostExtensionNativeEntrypointManifest,
     HostExtensionRouteActionManifest, HostExtensionRouteManifest, HostExtensionWorkerManifest,
-    HostInfrastructureProviderManifest,
+    HostInfrastructureProviderManifest, parse_host_extension_contribution_manifest,
 };
 pub use host_extension_dropin::*;
 pub use host_extension_registry::{HostExtensionRegistry, RegisteredHostExtension};
 pub use installation::*;
 pub use managed_schema::*;
 pub use manifest_v1::{
-    parse_legacy_installed_plugin_manifest, parse_plugin_manifest, resolve_frontend_code_modules,
-    resolve_plugin_frontend_sources, FrontendBlockCodeModuleManifest,
-    FrontendBlockContextContractManifest, FrontendBlockContributionManifest,
-    FrontendBlockPermissionsManifest, FrontendModuleAssetManifest, FrontendModuleAssetRoleManifest,
-    FrontendModuleBindingManifest, LegacyInstalledManifestEligibility,
-    NodeContributionDependencyManifest, NodeContributionManifest, PluginExecutionMode,
-    PluginManifestV1, PluginPermissionManifest, PluginRuntimeLimits, PluginRuntimeManifest,
+    FrontendBlockCodeModuleManifest, FrontendBlockContextContractManifest,
+    FrontendBlockContributionManifest, FrontendBlockPermissionsManifest,
+    FrontendModuleAssetManifest, FrontendModuleAssetRoleManifest, FrontendModuleBindingManifest,
+    LegacyInstalledManifestEligibility, NodeContributionDependencyManifest,
+    NodeContributionManifest, PluginExecutionMode, PluginManifestV1, PluginPermissionManifest,
+    PluginRuntimeLimits, PluginRuntimeManifest, parse_legacy_installed_plugin_manifest,
+    parse_plugin_manifest, resolve_frontend_code_modules, resolve_plugin_frontend_sources,
 };
 pub use network_egress_provider_contract::*;
 pub use network_egress_provider_package::{
-    NetworkEgressProviderDefinition, NetworkEgressProviderPackage, NETWORK_EGRESS_PROVIDER_CONTRACT,
+    NETWORK_EGRESS_PROVIDER_CONTRACT, NetworkEgressProviderDefinition, NetworkEgressProviderPackage,
 };
 pub use package_intake::*;
 pub use provider_contract::*;
@@ -89,5 +89,5 @@ pub fn crate_name() -> &'static str {
 pub mod _tests;
 
 pub use extension_package_runtime::plugin_settings_page::{
-    read_plugin_settings_page_source, validate_plugin_settings_pages, PluginSettingsPageManifest,
+    PluginSettingsPageManifest, read_plugin_settings_page_source, validate_plugin_settings_pages,
 };

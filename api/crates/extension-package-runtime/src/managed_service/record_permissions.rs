@@ -1,5 +1,5 @@
 //! Plugin declaration only. Host supplies actor, workspace and policy evaluation.
-use super::{invalid, ManagedServiceManifest};
+use super::{ManagedServiceManifest, invalid};
 use crate::{FrameworkResult, PluginManifestV1};
 use extension_contracts::PluginDataFieldType;
 use serde::{Deserialize, Serialize};
@@ -120,7 +120,9 @@ pub(super) fn validate_record_permissions(
             || resource.actions.is_empty()
             || resource.actions.len() > 32
         {
-            return Err(invalid("managed record resource requires unique code, collection, identity and action descriptors"));
+            return Err(invalid(
+                "managed record resource requires unique code, collection, identity and action descriptors",
+            ));
         }
         let owned: Vec<_> = manifest
             .data_models
@@ -128,13 +130,21 @@ pub(super) fn validate_record_permissions(
             .flat_map(|model| &model.owned_collections)
             .filter(|collection| collection.collection_code == resource.collection_code)
             .collect();
-        if owned.len() != 1 {
+        let imported = manifest.resource_imports.iter().any(|import| {
+            import.record_resources.contains(&resource.resource_code)
+                && import
+                    .collections
+                    .iter()
+                    .any(|c| c.collection_code == resource.collection_code)
+        });
+        if owned.len() != 1 && !imported {
             return Err(invalid(
                 "managed record resource must reference one plugin-owned collection",
             ));
         }
         // id is the Host-owned nonnullable UUID column for every owned collection.
-        if resource.id_field != "id"
+        if !imported
+            && resource.id_field != "id"
             && !owned[0].fields.iter().any(|field| {
                 field.field_code == resource.id_field
                     && !field.nullable
@@ -159,7 +169,9 @@ pub(super) fn validate_record_permissions(
                 || action.description.trim().is_empty()
                 || action.operation_ids.is_empty()
             {
-                return Err(invalid("managed record actions require unique codes, descriptors and operation references"));
+                return Err(invalid(
+                    "managed record actions require unique codes, descriptors and operation references",
+                ));
             }
             let mut references = BTreeSet::new();
             for id in &action.operation_ids {
@@ -178,7 +190,9 @@ pub(super) fn validate_record_permissions(
                             && binding.action_code == action.action_code
                     })
                 {
-                    return Err(invalid("managed record action operation reference must match its resource and action"));
+                    return Err(invalid(
+                        "managed record action operation reference must match its resource and action",
+                    ));
                 }
             }
         }
@@ -225,7 +239,9 @@ pub(super) fn validate_record_permissions(
                 allow_missing,
             } => {
                 if !schema_string_pointer(&operation.input_schema, pointer, !allow_missing) {
-                    return Err(invalid("managed record selector must reference a schema string with explicit requiredness"));
+                    return Err(invalid(
+                        "managed record selector must reference a schema string with explicit requiredness",
+                    ));
                 }
                 if !["/path/", "/query/", "/body/"]
                     .iter()
@@ -260,7 +276,9 @@ pub(super) fn validate_record_permissions(
                 )
                 || !schema_string_pointer(&operation.output_schema, pointer, true)
             {
-                return Err(invalid("managed response handle requires an open record selector and required output string"));
+                return Err(invalid(
+                    "managed response handle requires an open record selector and required output string",
+                ));
             }
         }
     }

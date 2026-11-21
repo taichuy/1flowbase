@@ -58,16 +58,31 @@ fn validate(
     installations: &BTreeMap<Uuid, domain::PluginInstallationRecord>,
 ) -> Result<()> {
     for dependency in metadata::<PluginDependency>(consumer, "plugin_dependencies")? {
-        let mut providers = installations.values().filter(|candidate| {
-            candidate.desired_state == domain::PluginDesiredState::ActiveRequested
-                && matches_provider(candidate, &dependency)
-        });
-        let first = providers.next();
-        if first.is_none() || providers.next().is_some() || matches_provider(consumer, &dependency)
-        {
+        let candidates: Vec<_> = installations
+            .values()
+            .filter(|candidate| matches_provider(candidate, &dependency))
+            .collect();
+        let active = candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.desired_state == domain::PluginDesiredState::ActiveRequested
+            })
+            .count();
+        let code = if matches_provider(consumer, &dependency) {
+            Some("plugin_dependency_self")
+        } else if candidates.is_empty() {
+            Some("plugin_dependency_missing")
+        } else if active == 0 {
+            Some("plugin_dependency_disabled")
+        } else if active > 1 {
+            Some("plugin_dependency_ambiguous")
+        } else {
+            None
+        };
+        if let Some(code) = code {
             return Err(
                 control_plane_contracts::ControlPlaneContractError::PluginDependency {
-                    code: "plugin_dependency_unavailable".into(),
+                    code: code.into(),
                     provider_publisher_namespace: dependency.publisher_namespace,
                     provider_plugin_code: dependency.plugin_code,
                     resource_code: None,
@@ -75,6 +90,24 @@ fn validate(
                 }
                 .into(),
             );
+        }
+    }
+    for import in metadata::<PluginResourceImport>(consumer, "resource_imports")? {
+        if let Some(provider) = installations.values().find(|candidate| {
+            matches_provider(candidate, &import.provider)
+                && candidate.desired_state == domain::PluginDesiredState::ActiveRequested
+        }) {
+            if !metadata::<plugin_framework::PluginResourceExport>(provider, "resource_exports")?
+                .iter()
+                .any(|export| export.resource_code == import.resource_code)
+            {
+                return Err(dependency_error(
+                    "plugin_resource_export_missing",
+                    provider,
+                    Some(import.resource_code),
+                    vec![identity(consumer)],
+                ));
+            }
         }
     }
     let resolved = super::resolve_resource_imports(consumer, installations)?;
@@ -145,22 +178,68 @@ pub(super) async fn activation_preflight<R: PluginRepository>(
         .filter(|artifact| artifact.artifact_status.is_ready())
         .map(|artifact| (artifact.installation_id, artifact.local_version))
         .collect();
-    let installations = repository
-        .list_installations()
-        .await?
-        .into_iter()
+    let all = repository.list_installations().await?;
+    let ready_here = |candidate: &domain::PluginInstallationRecord| {
+        ready
+            .get(&candidate.id)
+            .and_then(|version| version.as_deref())
+            == Some(candidate.plugin_version.as_str())
+    };
+    let installations: BTreeMap<_, _> = all
+        .iter()
         .filter(|candidate| {
             candidate.contract_version == "1flowbase.extension-bus/v1"
-                && ready
-                    .get(&candidate.id)
-                    .and_then(|version| version.as_deref())
-                    == Some(candidate.plugin_version.as_str())
+                && ready_here(candidate)
                 && (domain::managed_installation_scope(candidate, workspace_id)
                     == domain::SYSTEM_SCOPE_ID
                     || selected.contains(&candidate.id))
         })
+        .cloned()
         .map(|candidate| (candidate.id, candidate))
         .collect();
+    for dependency in &manifest.plugin_dependencies {
+        if installations.values().any(|candidate| {
+            matches_provider(candidate, dependency)
+                && candidate.desired_state == domain::PluginDesiredState::ActiveRequested
+        }) {
+            continue;
+        }
+        let candidates: Vec<_> = all
+            .iter()
+            .filter(|candidate| {
+                candidate.contract_version == "1flowbase.extension-bus/v1"
+                    && matches_provider(candidate, dependency)
+            })
+            .collect();
+        let active: Vec<_> = candidates
+            .iter()
+            .copied()
+            .filter(|candidate| {
+                candidate.desired_state == domain::PluginDesiredState::ActiveRequested
+            })
+            .collect();
+        let code = if matches_provider(&consumer, dependency) {
+            "plugin_dependency_self"
+        } else if candidates.is_empty() {
+            "plugin_dependency_missing"
+        } else if active.is_empty() {
+            "plugin_dependency_disabled"
+        } else if !active.iter().any(|candidate| ready_here(candidate)) {
+            "plugin_dependency_not_ready"
+        } else {
+            "plugin_dependency_not_selected"
+        };
+        return Err(
+            control_plane_contracts::ControlPlaneContractError::PluginDependency {
+                code: code.into(),
+                provider_publisher_namespace: dependency.publisher_namespace.clone(),
+                provider_plugin_code: dependency.plugin_code.clone(),
+                resource_code: None,
+                dependents: vec![identity(&consumer)],
+            }
+            .into(),
+        );
+    }
     validate(&consumer, &installations)
 }
 
