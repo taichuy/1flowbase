@@ -358,9 +358,10 @@ async fn low_level_provider_writers_fence_before_row_locks_and_roll_back_incompa
                 0 => worker.delete_installation(provider.id).await,
                 1 => {
                     let mut input = installation_input(&provider, actor);
-                    // Conflict identity must be resolved from plugin_id, not this proposed id.
+                    // Resolve the persisted conflict id rather than this proposed id. Keep the
+                    // immutable publisher identity valid so SQL reaches the dependency guard.
                     input.installation_id = Uuid::now_v7();
-                    input.organization = "different.publisher".into();
+                    input.metadata_json["resource_exports"] = serde_json::json!([]);
                     worker.upsert_installation(&input).await.map(|_| ())
                 }
                 _ => {
@@ -390,11 +391,15 @@ async fn low_level_provider_writers_fence_before_row_locks_and_roll_back_incompa
             .unwrap()
             .unwrap()
             .unwrap_err();
-        assert!(matches!(error.downcast_ref::<ControlPlaneError>(),
-            Some(ControlPlaneError::PluginDependency { code, dependents, .. })
-                if code == "plugin_dependency_in_use" && dependents == &["fixture.publisher/consumer@1.0.0"]));
+        assert!(
+            matches!(error.downcast_ref::<ControlPlaneError>(),
+                Some(ControlPlaneError::PluginDependency { code, dependents, .. })
+                    if code == "plugin_dependency_in_use" && dependents == &["fixture.publisher/consumer@1.0.0"]),
+            "writer {writer} must reject with the dependency owner error, got {error:#}"
+        );
         let current = store.get_installation(p.id).await.unwrap().unwrap();
         assert_eq!(current.organization, p.organization);
+        assert_eq!(current.metadata_json, p.metadata_json);
         assert_eq!(
             current.desired_state,
             domain::PluginDesiredState::ActiveRequested
