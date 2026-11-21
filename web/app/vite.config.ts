@@ -410,6 +410,18 @@ export default defineConfig(({ command, mode }) => {
           replacement: fileURLToPath(
             new URL('./node_modules/antd/es/index.js', import.meta.url)
           )
+        },
+        {
+          find: /^dayjs\/esm\/index\.js$/,
+          replacement: fileURLToPath(
+            new URL('./node_modules/dayjs/dayjs.min.js', import.meta.url)
+          )
+        },
+        {
+          find: /^dayjs\/esm\/(locale|plugin)\/(.+?)(?:\/index)?\.js$/,
+          replacement: fileURLToPath(
+            new URL('./node_modules/dayjs/$1/$2.js', import.meta.url)
+          )
         }
       ],
       environment: 'jsdom',
