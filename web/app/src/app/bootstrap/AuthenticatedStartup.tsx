@@ -8,6 +8,11 @@ import {
   createApplicationQueryClient,
   startAuthenticatedNavigation
 } from './authenticated-navigation';
+import {
+  claimPrewarmedAuthenticatedQueryClient,
+  commitPrewarmedAuthenticatedQueryClient,
+  startFrontstageStartupPrefetch
+} from './frontstage-startup-prefetch';
 
 const AuthenticatedRuntime = lazy(async () => {
   const [runtimeModule] = await Promise.all([
@@ -22,13 +27,21 @@ const AuthenticatedRuntime = lazy(async () => {
 });
 
 export function AuthenticatedStartup() {
-  const [queryClient] = useState(createApplicationQueryClient);
+  const [queryClient] = useState(
+    () =>
+      claimPrewarmedAuthenticatedQueryClient() ?? createApplicationQueryClient()
+  );
   // Commit the lightweight owner even while the runtime is suspended. Navigation
   // transports run in parallel with shell code/dictionaries, not after its mount.
-  useLayoutEffect(
-    () => startAuthenticatedNavigation(queryClient),
-    [queryClient]
-  );
+  useLayoutEffect(() => {
+    commitPrewarmedAuthenticatedQueryClient(queryClient);
+    const stopNavigation = startAuthenticatedNavigation(queryClient);
+    const stopFrontstagePrefetch = startFrontstageStartupPrefetch(queryClient);
+    return () => {
+      stopFrontstagePrefetch();
+      stopNavigation();
+    };
+  }, [queryClient]);
   return (
     <Suspense fallback={<LoadingState fullscreen />}>
       <AuthenticatedRuntime queryClient={queryClient} />

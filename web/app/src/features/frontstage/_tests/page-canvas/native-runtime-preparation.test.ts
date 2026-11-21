@@ -74,6 +74,42 @@ describe('Frontstage Native React preparation demand', () => {
     expect(resolveFrontstageRuntimePreparationKind(3)).toBe('dormant');
   });
 
+  test('preloads unobserved first-screen slots 1..3 in parallel while keeping slot >= 4 dormant until observed', () => {
+    const values = [0, 1, 2, 3, 4, 5].map((slotIndex) => ({
+      blockId: `slot-${slotIndex}`,
+      slotIndex
+    }));
+
+    expect(
+      createFrontstageRuntimeDemandCandidates(values, {}).map(
+        ({ blockId, priority, preparationKind }) => [
+          blockId,
+          priority,
+          preparationKind
+        ]
+      )
+    ).toEqual([
+      ['slot-0', 1, 'prepare_and_mount_intent'],
+      ['slot-1', 2, 'preload'],
+      ['slot-2', 2, 'preload'],
+      ['slot-3', 2, 'preload']
+    ]);
+
+    const starts: string[] = [];
+    const scheduler = new FrontstageNativePreparationScheduler();
+    scheduler.reconcile(
+      values.map(({ blockId, slotIndex }) =>
+        task(blockId, slotIndex, async () => {
+          starts.push(blockId);
+          return new Promise(() => undefined);
+        })
+      ),
+      {}
+    );
+    expect(starts).toEqual(['slot-0', 'slot-1', 'slot-2', 'slot-3']);
+    scheduler.dispose();
+  });
+
   test('D3-AC-002 rejects a backend digest that does not match source bytes', () => {
     expect(
       frontstageRuntimeSourceMatchesDigest(

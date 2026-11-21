@@ -451,6 +451,169 @@ test('failed return validation retains the runtime behind an error until explici
   );
 });
 
+test('prewarms block source reads while catalogEntries === null and reuses the single flight when catalog resolves', async () => {
+  const basePlan = readPlan(3);
+  const plan: FrontstagePageCanvasBlockCodeReadPlan = {
+    ...basePlan,
+    requests: basePlan.requests.map((request, slotIndex) => ({
+      ...request,
+      slotIndex
+    }))
+  };
+  const artifact = createArtifact();
+  const fetchSource = vi.fn(
+    async (
+      request: FrontstagePageCanvasBlockCodeReadPlan['requests'][number]
+    ): Promise<ConsoleFrontstageBlockNodeCode> => ({
+      block_id: request.blockId,
+      page_id: request.pageId,
+      source_code: SOURCE,
+      source_sha256: null
+    })
+  );
+  const artifactCache = {
+    get: vi.fn(async () => ({ status: 'hit' as const, artifact, tier: 'l2' as const })),
+    put: vi.fn(async () => ({ status: 'stored' as const, byteSize: 1 }))
+  };
+  const moduleRegistryFactory = (): NativeReactModuleRegistry => ({
+    definitions: [],
+    load: vi.fn(async () => ({})),
+    resolveModuleMap: vi.fn(async () => ({})),
+    resolveModuleAssets: vi.fn(async () => [])
+  });
+
+  const { result, rerender } = renderHook(
+    ({ catalogEntries }) =>
+      useFrontstagePageCanvasNativePreparations({
+        actorId: 'actor-1',
+        actorWorkspaceId: 'workspace-1',
+        readPlan: plan,
+        catalogEntries,
+        fetchSource,
+        artifactCache,
+        moduleRegistryFactory
+      }),
+    {
+      initialProps: {
+        catalogEntries: null as
+          | readonly import('../../lib/block-catalog').NormalizedFrontstageBlockCatalogEntry[]
+          | null
+          | undefined
+      }
+    }
+  );
+
+  await waitFor(() => expect(fetchSource).toHaveBeenCalledTimes(3));
+  expect(result.current.preparations.getBlockSnapshot('block-1')).toBeNull();
+
+  rerender({ catalogEntries: undefined });
+
+  await waitFor(() =>
+    expect(
+      ['block-1', 'block-2', 'block-3'].every(
+        (id) =>
+          result.current.preparations.getBlockSnapshot(id)?.status === 'ready'
+      )
+    ).toBe(true)
+  );
+  expect(fetchSource).toHaveBeenCalledTimes(3);
+});
+
+test('passes persisted conditional source from sourceCache on reload while still revalidating ACL/freshness with fetchSource', async () => {
+  const { IDBFactory } = await import('fake-indexeddb');
+  const { sha256Text } = await import('@1flowbase/page-runtime');
+  const { FrontstageNativeBlockSourceCache } = await import(
+    '../../lib/runtime-cache/native-block-source-cache'
+  );
+  const indexedDbFactory = new IDBFactory();
+  const plan = readPlan();
+  const artifact = createArtifact();
+  const verifiedSource: ConsoleFrontstageBlockNodeCode = {
+    block_id: 'block-1',
+    page_id: 'page-1',
+    source_code: SOURCE,
+    source_sha256: sha256Text(SOURCE)
+  };
+  const artifactCache = {
+    get: vi.fn(async () => ({ status: 'hit' as const, artifact, tier: 'l2' as const })),
+    put: vi.fn(async () => ({ status: 'stored' as const, byteSize: 1 }))
+  };
+  const moduleRegistryFactory = (): NativeReactModuleRegistry => ({
+    definitions: [],
+    load: vi.fn(async () => ({})),
+    resolveModuleMap: vi.fn(async () => ({})),
+    resolveModuleAssets: vi.fn(async () => [])
+  });
+
+  const firstFetchSource = vi.fn(async () => verifiedSource);
+  const firstCache = new FrontstageNativeBlockSourceCache({
+    databaseName: 'test-reload-conditional',
+    indexedDbFactory
+  });
+  const { result: firstResult, unmount: unmountFirst } = renderHook(() =>
+    useFrontstagePageCanvasNativePreparations({
+      actorId: 'actor-1',
+      actorWorkspaceId: 'workspace-1',
+      readPlan: plan,
+      sourceCache: firstCache,
+      fetchSource: firstFetchSource,
+      artifactCache,
+      moduleRegistryFactory
+    })
+  );
+  await waitFor(() =>
+    expect(
+      firstResult.current.preparations.getBlockSnapshot('block-1')?.status
+    ).toBe('ready')
+  );
+  expect(firstFetchSource).toHaveBeenCalledWith(
+    plan.requests[0],
+    expect.any(AbortSignal),
+    undefined
+  );
+  unmountFirst();
+
+  // Simulate full browser reload: new hook instance + new cache instance sharing IndexedDB
+  const reloadFetchSource = vi.fn(
+    async (
+      _req: unknown,
+      _signal: AbortSignal,
+      cached?: ConsoleFrontstageBlockNodeCode
+    ) => cached ?? verifiedSource
+  );
+  const reloadedCache = new FrontstageNativeBlockSourceCache({
+    databaseName: 'test-reload-conditional',
+    indexedDbFactory
+  });
+  const { result: secondResult, unmount: unmountSecond } = renderHook(() =>
+    useFrontstagePageCanvasNativePreparations({
+      actorId: 'actor-1',
+      actorWorkspaceId: 'workspace-1',
+      readPlan: plan,
+      sourceCache: reloadedCache,
+      fetchSource: reloadFetchSource,
+      artifactCache,
+      moduleRegistryFactory
+    })
+  );
+  await waitFor(() =>
+    expect(
+      secondResult.current.preparations.getBlockSnapshot('block-1')?.status
+    ).toBe('ready')
+  );
+  expect(reloadFetchSource).toHaveBeenCalledOnce();
+  expect(reloadFetchSource).toHaveBeenCalledWith(
+    plan.requests[0],
+    expect.any(AbortSignal),
+    expect.objectContaining({
+      block_id: 'block-1',
+      source_code: SOURCE,
+      source_sha256: verifiedSource.source_sha256
+    })
+  );
+  unmountSecond();
+});
+
 function readPlan(count = 1): FrontstagePageCanvasBlockCodeReadPlan {
   return {
     workspaceId: 'workspace-1',

@@ -80,7 +80,7 @@ describe('frontstage runtime cache lifecycle', () => {
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
-    const hook = renderHook(() => useFrontstageRuntimeCacheLifecycle(), {
+    const { unmount } = renderHook(() => useFrontstageRuntimeCacheLifecycle(), {
       wrapper
     });
     act(() => authenticate('actor-b'));
@@ -89,7 +89,7 @@ describe('frontstage runtime cache lifecycle', () => {
     ]);
     expect(queryClient.getQueryData(oldKey)).toBeUndefined();
     unsubscribe();
-    hook.unmount();
+    unmount();
     queryClient.clear();
   });
 
@@ -157,6 +157,10 @@ describe('frontstage runtime cache lifecycle', () => {
         deleted: 0
       }))
     };
+    const nativeBlockSourceCache = {
+      deleteActor: vi.fn(async () => ({ deleted: 0 })),
+      pruneWorkspace: vi.fn(async () => ({ deleted: 0 }))
+    };
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
@@ -164,11 +168,16 @@ describe('frontstage runtime cache lifecycle', () => {
     renderHook(
       () =>
         useFrontstageRuntimeCacheLifecycle({
-          nativeReactArtifactCache
+          nativeReactArtifactCache,
+          nativeBlockSourceCache
         }),
       { wrapper }
     );
     expect(nativeReactArtifactCache.pruneWorkspace).toHaveBeenCalledWith({
+      actorId: 'actor-a',
+      workspaceId: 'workspace-1'
+    });
+    expect(nativeBlockSourceCache.pruneWorkspace).toHaveBeenCalledWith({
       actorId: 'actor-a',
       workspaceId: 'workspace-1'
     });
@@ -178,7 +187,14 @@ describe('frontstage runtime cache lifecycle', () => {
       expect(nativeReactArtifactCache.deleteActor).toHaveBeenCalledWith(
         'actor-a'
       );
+      expect(nativeBlockSourceCache.deleteActor).toHaveBeenCalledWith(
+        'actor-a'
+      );
       expect(nativeReactArtifactCache.pruneWorkspace).toHaveBeenLastCalledWith({
+        actorId: 'actor-b',
+        workspaceId: 'workspace-1'
+      });
+      expect(nativeBlockSourceCache.pruneWorkspace).toHaveBeenLastCalledWith({
         actorId: 'actor-b',
         workspaceId: 'workspace-1'
       });
@@ -186,6 +202,9 @@ describe('frontstage runtime cache lifecycle', () => {
     act(() => useAuthStore.getState().setAnonymous());
     await waitFor(() => {
       expect(nativeReactArtifactCache.deleteActor).toHaveBeenLastCalledWith(
+        'actor-b'
+      );
+      expect(nativeBlockSourceCache.deleteActor).toHaveBeenLastCalledWith(
         'actor-b'
       );
     });

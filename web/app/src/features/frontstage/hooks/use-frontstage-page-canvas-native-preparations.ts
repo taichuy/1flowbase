@@ -32,8 +32,13 @@ import {
   createFrontstageNativeReactArtifactCacheKey,
   type FrontstageNativeReactArtifactCache
 } from '../lib/runtime-cache/native-react-artifact-cache';
-import { frontstageNativeReactArtifactCache } from '../lib/runtime-cache/default-cache';
+import type { FrontstageNativeBlockSourceCache } from '../lib/runtime-cache/native-block-source-cache';
 import {
+  frontstageNativeBlockSourceCache,
+  frontstageNativeReactArtifactCache
+} from '../lib/runtime-cache/default-cache';
+import {
+  DEFAULT_FRONTSTAGE_NATIVE_PREPARATION_CONCURRENCY,
   FrontstageNativePreparationScheduler,
   FrontstageNativeSourceReadError,
   prepareFrontstageNativeContribution,
@@ -42,11 +47,24 @@ import {
   type FrontstageNativePreparationTask
 } from '../lib/page-canvas/native-runtime-preparation';
 import type { FrontstagePageCanvasBlockCodeReadPlan } from '../lib/page-canvas/runtime-source';
-import type { FrontstageRuntimeDemandByBlockId } from '../lib/page-canvas/runtime-demand';
+import {
+  createFrontstageRuntimeDemandCandidates,
+  type FrontstageRuntimeDemandByBlockId
+} from '../lib/page-canvas/runtime-demand';
 import { recordFrontstageRuntimeObservation } from '../lib/page-canvas/runtime-observation';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
 
 type NativePreparationSource = ConsoleFrontstageBlockNodeCode;
+type NativePreparationSourceCache = Pick<
+  FrontstageNativeBlockSourceCache,
+  'get' | 'put' | 'delete'
+> &
+  Partial<Pick<FrontstageNativeBlockSourceCache, 'captureWriteEpoch'>>;
+
+interface PrewarmSourceFlight {
+  controller: AbortController;
+  promise: Promise<NativePreparationSource>;
+}
 type NativeComponentEvaluation = Awaited<
   ReturnType<typeof evaluateFrontstageReactArtifact>
 >;
@@ -74,6 +92,7 @@ export interface UseFrontstagePageCanvasNativePreparationsInput {
   maxConcurrent?: number;
   artifactCache?: Pick<FrontstageNativeReactArtifactCache, 'get' | 'put'> &
     Partial<Pick<FrontstageNativeReactArtifactCache, 'captureWriteEpoch'>>;
+  sourceCache?: NativePreparationSourceCache | null;
   fetchSource?: (
     request: FrontstagePageCanvasBlockCodeReadPlan['requests'][number],
     signal: AbortSignal,
@@ -106,23 +125,32 @@ export function useFrontstagePageCanvasNativePreparations({
   readPlan,
   catalogEntries,
   demandsByBlockId,
-  maxConcurrent = 2,
+  maxConcurrent = DEFAULT_FRONTSTAGE_NATIVE_PREPARATION_CONCURRENCY,
   artifactCache = frontstageNativeReactArtifactCache,
+  sourceCache,
   fetchSource = defaultFetchSource,
   compile = compileNativeReactComponentInBrowser,
   moduleRegistryFactory = createFrontstageNativeReactModuleRegistry
 }: UseFrontstagePageCanvasNativePreparationsInput): UseFrontstagePageCanvasNativePreparationsResult {
+  const resolvedSourceCache =
+    sourceCache !== undefined
+      ? sourceCache
+      : fetchSource === defaultFetchSource
+        ? frontstageNativeBlockSourceCache
+        : null;
   const preparationScope = useMemo(
     () => ({
       actorId,
       actorWorkspaceId,
       scheduler: new FrontstageNativePreparationScheduler(maxConcurrent),
       sourceCopies: new Map<string, NativePreparationSource>(),
+      prewarmFlights: new Map<string, PrewarmSourceFlight>(),
       compiledRefreshes: new Map<string, number>()
     }),
     [actorId, actorWorkspaceId, maxConcurrent]
   );
-  const { scheduler, sourceCopies, compiledRefreshes } = preparationScope;
+  const { scheduler, sourceCopies, prewarmFlights, compiledRefreshes } =
+    preparationScope;
   const moduleScope = useMemo(() => {
     const hasFetchedModules = catalogEntries?.some(
       (entry) => entry.raw.code_modules.length
@@ -253,6 +281,18 @@ export function useFrontstagePageCanvasNativePreparations({
         prepare: async (signal, enterStage) => {
           const forceCompile =
             refreshGeneration > (compiledRefreshes.get(request.requestId) ?? 0);
+          const prewarmed = !forceCompile
+            ? prewarmFlights.get(request.requestId)
+            : undefined;
+          if (prewarmed) {
+            prewarmFlights.delete(request.requestId);
+          } else if (forceCompile) {
+            const stalePrewarm = prewarmFlights.get(request.requestId);
+            if (stalePrewarm) {
+              stalePrewarm.controller.abort();
+              prewarmFlights.delete(request.requestId);
+            }
+          }
           const contribution =
             catalogEntries === undefined
               ? undefined
@@ -264,33 +304,22 @@ export function useFrontstagePageCanvasNativePreparations({
           const writeEpoch = artifactCache
             .captureWriteEpoch?.(scopedActorId)
             .catch(() => ({ local: -1, persisted: -1 }));
-          let source: NativePreparationSource;
-          try {
-            source = await fetchSource(
-              request,
-              signal,
-              forceCompile ? undefined : sourceCopies.get(request.requestId)
-            );
-          } catch (error) {
-            throw new FrontstageNativeSourceReadError(error);
-          }
+          const source = prewarmed
+            ? await consumePrewarmSourceFlight(prewarmed, signal)
+            : await readValidatedBlockSource({
+                actorId: scopedActorId,
+                request,
+                signal,
+                forceCompile,
+                fetchSource,
+                sourceCopies,
+                sourceCache: resolvedSourceCache
+              });
           throwIfAborted(signal);
           // A conditional 304 read returns the same validated browser copy.
           // ACL was checked by the backend; the mounted factory needs no work.
           if (!forceCompile && source === preparedSource && preparedCopy)
             return preparedCopy;
-          // The backend digest is the conditional-read contract. Reject corrupt
-          // source before it can become a trusted browser copy or artifact.
-          if (
-            source.source_sha256 &&
-            sha256Text(source.source_code) !== source.source_sha256
-          ) {
-            sourceCopies.delete(request.requestId);
-            throw new Error(
-              'Native React source revision does not match its content.'
-            );
-          }
-          sourceCopies.set(request.requestId, source);
           const legacyDiagnostic = diagnoseLegacyBlockModuleSource(
             source.source_code
           );
@@ -433,8 +462,69 @@ export function useFrontstagePageCanvasNativePreparations({
     modulePolicySha256,
     readPlan,
     refreshGenerationsByRequestId,
+    resolvedSourceCache,
     sourceCopies,
+    prewarmFlights,
     compiledRefreshes
+  ]);
+
+  useLayoutEffect(() => {
+    if (
+      !active ||
+      !scopedActorId ||
+      !readPlan ||
+      scopedWorkspaceId !== readPlan.workspaceId
+    ) {
+      abortPrewarmFlights(prewarmFlights);
+      return;
+    }
+    if (catalogEntries !== null) return;
+
+    const candidates = createFrontstageRuntimeDemandCandidates(
+      readPlan.requests,
+      demandsByBlockId
+    );
+    const activeRequestIds = new Set(
+      candidates.map(({ value }) => value.requestId)
+    );
+    for (const [requestId, flight] of prewarmFlights) {
+      if (!activeRequestIds.has(requestId)) {
+        flight.controller.abort();
+        prewarmFlights.delete(requestId);
+      }
+    }
+    for (const { value: request } of candidates.slice(0, maxConcurrent)) {
+      if (prewarmFlights.has(request.requestId)) continue;
+      const controller = new AbortController();
+      const promise = readValidatedBlockSource({
+        actorId: scopedActorId,
+        request,
+        signal: controller.signal,
+        forceCompile: false,
+        fetchSource,
+        sourceCopies,
+        sourceCache: resolvedSourceCache
+      });
+      const entry: PrewarmSourceFlight = { controller, promise };
+      prewarmFlights.set(request.requestId, entry);
+      void promise.catch(() => {
+        if (prewarmFlights.get(request.requestId) === entry) {
+          prewarmFlights.delete(request.requestId);
+        }
+      });
+    }
+  }, [
+    active,
+    catalogEntries,
+    demandsByBlockId,
+    fetchSource,
+    maxConcurrent,
+    prewarmFlights,
+    readPlan,
+    resolvedSourceCache,
+    scopedActorId,
+    scopedWorkspaceId,
+    sourceCopies
   ]);
 
   useLayoutEffect(() => {
@@ -484,7 +574,13 @@ export function useFrontstagePageCanvasNativePreparations({
       document.removeEventListener('visibilitychange', updateVisibility);
   }, [active, isValidating, validationError, scheduler]);
 
-  useEffect(() => () => scheduler.dispose(), [scheduler]);
+  useEffect(
+    () => () => {
+      abortPrewarmFlights(prewarmFlights);
+      scheduler.dispose();
+    },
+    [prewarmFlights, scheduler]
+  );
 
   useEffect(
     () =>
@@ -497,10 +593,33 @@ export function useFrontstagePageCanvasNativePreparations({
         const request = readPlan.requests.find(
           (entry) => entry.blockId === change.blockId
         );
-        if (request) sourceCopies.delete(request.requestId);
+        if (request) {
+          const flight = prewarmFlights.get(request.requestId);
+          if (flight) {
+            flight.controller.abort();
+            prewarmFlights.delete(request.requestId);
+          }
+          sourceCopies.delete(request.requestId);
+          if (scopedActorId) {
+            void resolvedSourceCache
+              ?.delete({
+                actorId: scopedActorId,
+                workspaceId: request.workspaceId,
+                requestId: request.requestId
+              })
+              .catch(() => undefined);
+          }
+        }
         scheduler.retry(change.blockId);
       }),
-    [readPlan, scheduler, sourceCopies]
+    [
+      prewarmFlights,
+      readPlan,
+      resolvedSourceCache,
+      scheduler,
+      scopedActorId,
+      sourceCopies
+    ]
   );
 
   const retryBlock = useCallback(
@@ -558,6 +677,119 @@ async function defaultFetchSource(
   if (response.status === 'modified') return response.value;
   if (cached?.source_sha256) return cached;
   throw new Error('Source revalidation returned no browser copy.');
+}
+
+function abortPrewarmFlights(
+  prewarmFlights: Map<string, PrewarmSourceFlight>
+): void {
+  for (const flight of prewarmFlights.values()) {
+    flight.controller.abort();
+  }
+  prewarmFlights.clear();
+}
+
+function consumePrewarmSourceFlight(
+  flight: PrewarmSourceFlight,
+  signal: AbortSignal
+): Promise<NativePreparationSource> {
+  if (signal.aborted) {
+    flight.controller.abort();
+    return Promise.reject(
+      signal.reason ?? new DOMException('Preparation aborted.', 'AbortError')
+    );
+  }
+  return new Promise<NativePreparationSource>((resolve, reject) => {
+    const onAbort = () => {
+      flight.controller.abort();
+      reject(
+        signal.reason ?? new DOMException('Preparation aborted.', 'AbortError')
+      );
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    flight.promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      }
+    );
+  });
+}
+
+async function readValidatedBlockSource({
+  actorId,
+  request,
+  signal,
+  forceCompile,
+  fetchSource,
+  sourceCopies,
+  sourceCache
+}: {
+  actorId: string;
+  request: FrontstagePageCanvasBlockCodeReadPlan['requests'][number];
+  signal: AbortSignal;
+  forceCompile: boolean;
+  fetchSource: NonNullable<
+    UseFrontstagePageCanvasNativePreparationsInput['fetchSource']
+  >;
+  sourceCopies: Map<string, NativePreparationSource>;
+  sourceCache: NativePreparationSourceCache | null;
+}): Promise<NativePreparationSource> {
+  const sourceWriteEpoch = sourceCache?.captureWriteEpoch?.(actorId);
+  let cachedSource = forceCompile
+    ? undefined
+    : sourceCopies.get(request.requestId);
+  if (!forceCompile && !cachedSource && sourceCache) {
+    cachedSource = await sourceCache
+      .get({
+        actorId,
+        workspaceId: request.workspaceId,
+        requestId: request.requestId
+      })
+      .catch(() => undefined);
+  }
+  throwIfAborted(signal);
+  let source: NativePreparationSource;
+  try {
+    source = await fetchSource(request, signal, cachedSource);
+  } catch (error) {
+    throw new FrontstageNativeSourceReadError(error);
+  }
+  throwIfAborted(signal);
+  // The backend digest is the conditional-read contract. Reject corrupt
+  // source before it can become a trusted browser copy or artifact.
+  if (
+    source.source_sha256 &&
+    sha256Text(source.source_code) !== source.source_sha256.toLowerCase()
+  ) {
+    sourceCopies.delete(request.requestId);
+    void sourceCache
+      ?.delete({
+        actorId,
+        workspaceId: request.workspaceId,
+        requestId: request.requestId
+      })
+      .catch(() => undefined);
+    throw new Error('Native React source revision does not match its content.');
+  }
+  sourceCopies.set(request.requestId, source);
+  if (source.source_sha256 && sourceCache) {
+    void sourceCache
+      .put(
+        {
+          actorId,
+          workspaceId: request.workspaceId,
+          requestId: request.requestId
+        },
+        source,
+        sourceWriteEpoch
+      )
+      .catch(() => undefined);
+  }
+  return source;
 }
 
 function throwIfAborted(signal: AbortSignal): void {

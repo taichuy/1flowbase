@@ -8,6 +8,7 @@ import { i18nText } from '../../../../shared/i18n/text';
 
 import {
   createFrontstageRuntimeDemandCandidates,
+  resolveFrontstageRuntimeDemand,
   resolveFrontstageRuntimePreparationKind,
   type FrontstageRuntimeDemandByBlockId,
   type FrontstageRuntimeDemandPriority
@@ -170,7 +171,7 @@ interface ScheduledPreparation {
   observedAtMs: number;
 }
 
-const DEFAULT_FRONTSTAGE_NATIVE_PREPARATION_CONCURRENCY = 2;
+export const DEFAULT_FRONTSTAGE_NATIVE_PREPARATION_CONCURRENCY = 4;
 const FRONTSTAGE_NATIVE_INTERACTION_LEASE_MS = 200;
 
 /** Owns one page's bounded Native React preparation queue; React roots belong to P2. */
@@ -250,8 +251,11 @@ export class FrontstageNativePreparationScheduler implements FrontstageNativePre
     }
 
     for (const task of tasks) {
-      const priority =
-        demands?.[task.blockId] ?? (task.slotIndex === 0 ? 1 : 3);
+      const priority = resolveFrontstageRuntimeDemand(
+        demands,
+        task.blockId,
+        task.slotIndex
+      );
       let current = this.scheduled.get(task.blockId);
       if (!current) {
         current = {

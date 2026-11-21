@@ -3,7 +3,7 @@ import {
   navigationQueryStaleTime,
   selectNavigationQueryScope
 } from '../../../state/navigation-query-scope';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, useNavigate } from '@tanstack/react-router';
 import { Result } from 'antd';
 import { Suspense, useEffect, useMemo, useRef } from 'react';
@@ -67,6 +67,7 @@ export function FrontstageWorkspacePage({
   blockInputSearch,
   rootNode
 }: FrontstageWorkspacePageProps) {
+  const queryClient = useQueryClient();
   const navigationScope = useAuthStore(selectNavigationQueryScope);
   const actorId = useAuthStore((state) => state.actor?.id);
   const sessionIdentity = useAuthStore((state) => state.csrfToken);
@@ -130,10 +131,18 @@ export function FrontstageWorkspacePage({
     enabled: Boolean(selectedPageId && blockId),
     retry: false
   });
+  const pageTabsKey = useMemo(
+    () =>
+      selectedPageId
+        ? frontstagePageTabsQueryKey(workspaceId, selectedPageId)
+        : (['frontstage', workspaceId, 'pages', 'unselected', 'tabs'] as const),
+    [selectedPageId, workspaceId]
+  );
+  if (selectedPageId) {
+    queryClient.setQueryDefaults(pageTabsKey, { staleTime: 30_000 });
+  }
   const pageTabsQuery = useQuery({
-    queryKey: selectedPageId
-      ? frontstagePageTabsQueryKey(workspaceId, selectedPageId)
-      : ['frontstage', workspaceId, 'pages', 'unselected', 'tabs'],
+    queryKey: pageTabsKey,
     queryFn: () => {
       if (!selectedPageId) {
         throw new Error('FrontStage page tabs query requires selected page');
@@ -141,6 +150,7 @@ export function FrontstageWorkspacePage({
 
       return fetchFrontstagePageTabs(workspaceId, selectedPageId);
     },
+    staleTime: 30_000,
     enabled: Boolean(selectedPageId),
     retry: false
   });
@@ -157,8 +167,9 @@ export function FrontstageWorkspacePage({
       activeTabIdRef.current ??
       (blockRuntimeAssemblyQuery.isError ? defaultTab?.id : undefined))
     : (tabRef ?? defaultTab?.id);
+  const queryPageId = effectivePageId ?? selectedPageId ?? undefined;
   const shouldLoadPageContent = Boolean(
-    effectivePageId && selectedPageId && tabReference
+    queryPageId && selectedPageId && tabReference
   );
   const pageContentQuery = useQuery({
     queryKey:
@@ -191,22 +202,33 @@ export function FrontstageWorkspacePage({
   useEffect(() => {
     if (resolvedTabId) activeTabIdRef.current = resolvedTabId;
   }, [resolvedTabId]);
+  const matchedTabFromList = tabRef
+    ? pageTabsQuery.data?.find(
+        (tab) => tab.id === tabRef || tab.route_segment === tabRef
+      )
+    : defaultTab;
+  const earlyResolvedTabId = blockId
+    ? (runtimeTarget?.tab_id ??
+      activeTabIdRef.current ??
+      (blockRuntimeAssemblyQuery.isError ? defaultTab?.id : undefined))
+    : matchedTabFromList?.id;
+  const effectiveRootsTabId = resolvedTabId ?? earlyResolvedTabId;
   const blockRootsQuery = useQuery({
     queryKey:
-      selectedPageId && resolvedTabId
+      selectedPageId && effectiveRootsTabId
         ? frontstageBlockTreeQueryKeys.roots(workspaceId, selectedPageId, {
-            tab_id: resolvedTabId
+            tab_id: effectiveRootsTabId
           })
         : ['frontstage', workspaceId, 'pages', 'unselected', 'block-roots'],
     queryFn: () => {
-      if (!selectedPageId || !resolvedTabId) {
+      if (!selectedPageId || !effectiveRootsTabId) {
         throw new Error('Frontstage block roots query requires page and tab');
       }
       return fetchFrontstageBlockRoots(workspaceId, selectedPageId, {
-        tab_id: resolvedTabId
+        tab_id: effectiveRootsTabId
       });
     },
-    enabled: Boolean(selectedPageId && resolvedTabId),
+    enabled: Boolean(selectedPageId && effectiveRootsTabId),
     retry: false
   });
   const resolvedTab = pageContentQuery.data?.tab;

@@ -10,10 +10,19 @@ import {
   type FrontstageBlockCatalogSnapshot
 } from '../api/block-catalog';
 import {
+  createFrontstageBlockCatalogPermissionFingerprint,
+  frontstageBlockCatalogQueryStaleTime
+} from '../api/block-catalog-scope';
+import {
   normalizeFrontstageBlockCatalog,
   type FrontstageBlockCatalogDiagnostic,
   type NormalizedFrontstageBlockCatalogEntry
 } from '../lib/block-catalog';
+
+export {
+  createFrontstageBlockCatalogPermissionFingerprint,
+  frontstageBlockCatalogQueryStaleTime
+};
 
 const emptyCatalog = {
   items: [] as NormalizedFrontstageBlockCatalogEntry[],
@@ -44,9 +53,7 @@ export function useFrontstageBlockCatalog({
   const actor = useAuthStore((state) => state.actor);
   const me = useAuthStore((state) => state.me);
   const permissionFingerprint = me
-    ? `role:${me.effective_display_role}|permissions:${[...me.permissions]
-        .sort()
-        .join(',')}`
+    ? createFrontstageBlockCatalogPermissionFingerprint(me)
     : null;
   const hasCatalogReadContext = Boolean(
     sessionStatus === 'authenticated' &&
@@ -76,6 +83,7 @@ export function useFrontstageBlockCatalog({
     }),
     queryFn: () => fetchFrontstageBlockCatalog(registrationTarget),
     select: selectFrontstageBlockCatalog,
+    staleTime: frontstageBlockCatalogQueryStaleTime,
     enabled: hasCatalogReadContext
   });
 
