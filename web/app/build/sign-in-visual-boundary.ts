@@ -48,6 +48,10 @@ export function assertSignInVisualBoundary(bundle: Bundle): void {
   const styleRoots = rootsFor(['/node_modules/antd-style/es/index.js']);
   for (const file of signInPreloads(chunks, styleRoots)) {
     for (const id of owners.get(file)!) {
+      // AntD 6.7 Tooltip reads this standalone React context to stay disabled
+      // in table measurement rows. It does not import the Table component.
+      if (id.endsWith('/node_modules/antd/es/table/TableMeasureRowContext.js'))
+        continue;
       if (/\/antd\/es\/(?:table|tour|list)\//u.test(id))
         throw new Error(
           `Sign-in style provider eagerly includes ${id} in ${file}`

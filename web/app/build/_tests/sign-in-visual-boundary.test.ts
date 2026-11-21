@@ -67,6 +67,20 @@ test('the actual ShadowRoot style provider cannot drag a table onto the login fo
   ).toThrow('table');
 });
 
+test('only the deferred provider may share the standalone AntD Tooltip context', () => {
+  const context = '/node_modules/antd/es/table/TableMeasureRowContext.js';
+  expect(() =>
+    assertSignInVisualBoundary({
+      app: chunk([page, hero]),
+      style: chunk(['/node_modules/antd-style/es/index.js'], ['tooltip']),
+      tooltip: chunk(['/node_modules/antd/es/tooltip/index.js', context])
+    })
+  ).not.toThrow();
+  expect(() =>
+    assertSignInVisualBoundary({ app: chunk([page, hero, context]) })
+  ).toThrow('TableMeasureRowContext');
+});
+
 test('document entry cannot leak a heavy query framework into the anonymous closure', () => {
   expect(() =>
     assertSignInVisualBoundary({

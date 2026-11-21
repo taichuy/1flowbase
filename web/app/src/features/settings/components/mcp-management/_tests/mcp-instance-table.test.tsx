@@ -45,7 +45,7 @@ describe('McpInstanceTable', () => {
     const { rerender } = render(<McpInstanceTable {...props} />);
     expect(screen.getByText('instance_1')).toBeInTheDocument();
     expect(screen.queryByText('instance_21')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTitle('2'));
+    fireEvent.click(screen.getByRole('button', { name: /^(页|Page) 2$/i }));
     expect(screen.queryByText('instance_1')).not.toBeInTheDocument();
     const row = screen.getByText('instance_21').closest('tr')!;
     fireEvent.click(within(row).getByLabelText('编辑'));

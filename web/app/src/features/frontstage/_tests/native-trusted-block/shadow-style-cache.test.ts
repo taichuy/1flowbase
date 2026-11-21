@@ -22,15 +22,17 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-test('covers both the direct and actual antd transitive icon versions', () => {
-  expect(require('@ant-design/icons/package.json').version).toBe('6.3.4');
-  expect(requireFromAntd('@ant-design/icons/package.json').version).toBe('6.3.2');
-  expect(updateTransitiveIconCSS).not.toBe(updateIconCSS);
+test('resolves the same patched icon version directly and through antd', () => {
+  const directPackage = require.resolve('@ant-design/icons/package.json');
+  expect(require(directPackage).version).toBe('6.3.4');
+  expect(requireFromAntd.resolve('@ant-design/icons/package.json')).toBe(
+    directPackage
+  );
 });
 
 describe.each([
   ['direct icons 6.3.4', updateIconCSS],
-  ['antd transitive icons 6.3.2', updateTransitiveIconCSS],
+  ['antd transitive icons 6.3.4', updateTransitiveIconCSS],
   ['rc-util', updateCSS]
 ] as const)('%s ShadowRoot style ownership', (_name, update) => {
   test('reuses connected containers without placeholder churn and keeps scopes isolated', () => {

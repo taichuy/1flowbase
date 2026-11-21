@@ -506,7 +506,7 @@ describe('TableBlock config and operation lifetimes', () => {
       id === 'A' ? deleted.promise : Promise.resolve()
     );
     const { config, ctx, rerender } = setup();
-    fireEvent.click(screen.getByTitle('3'));
+    fireEvent.click(screen.getByRole('button', { name: /^(页|Page) 3$/i }));
     await waitFor(() =>
       expect(mocks.records).toHaveBeenLastCalledWith(
         expect.anything(),

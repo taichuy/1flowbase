@@ -1,5 +1,39 @@
+diff --git a/es/Dom/dynamicCSS.js b/es/Dom/dynamicCSS.js
+index ad1ea34..803249e 100644
+--- a/es/Dom/dynamicCSS.js
++++ b/es/Dom/dynamicCSS.js
+@@ -1,9 +1,9 @@
+ import canUseDom from "./canUseDom";
+-import contains from "./contains";
+ const APPEND_ORDER = 'data-rc-order';
+ const APPEND_PRIORITY = 'data-rc-priority';
+ const MARK_KEY = `rc-util-key`;
+-const containerCache = new Map();
++// Containers belong to their mounted surfaces; this cache must not retain them.
++let containerCache = new WeakMap();
+ function getMark({
+   mark
+ } = {}) {
+@@ -110,7 +110,7 @@ function syncRealContainer(container, option) {
+   const cachedRealContainer = containerCache.get(container);
+ 
+   // Find real container when not cached or cached container removed
+-  if (!cachedRealContainer || !contains(document, cachedRealContainer)) {
++  if (!cachedRealContainer || !cachedRealContainer.isConnected) {
+     const placeholderStyle = injectCSS('', option);
+     if (!placeholderStyle) {
+       return;
+@@ -127,7 +127,7 @@ function syncRealContainer(container, option) {
+  * manually clear container cache to avoid global cache in unit testes
+  */
+ export function clearContainerCache() {
+-  containerCache.clear();
++  containerCache = new WeakMap();
+ }
+ export function updateCSS(css, key, originOption = {}) {
+   const container = getContainer(originOption);
 diff --git a/es/Dom/focus.js b/es/Dom/focus.js
-index 4969cabc17c476c25d20365028d40c577ffebfe1..0fa0762bf5777718d6d5c929669ac96352b54726 100644
+index 4969cab..0fa0762 100644
 --- a/es/Dom/focus.js
 +++ b/es/Dom/focus.js
 @@ -80,6 +80,22 @@ const ignoredElementMap = new Map();
@@ -93,8 +127,45 @@ index 4969cabc17c476c25d20365028d40c577ffebfe1..0fa0762bf5777718d6d5c929669ac963
      if (focusElements.length === 0) {
        window.removeEventListener('focusin', syncFocus);
        window.removeEventListener('keydown', onWindowKeyDown, true);
+diff --git a/lib/Dom/dynamicCSS.js b/lib/Dom/dynamicCSS.js
+index 3bb3e95..132661f 100644
+--- a/lib/Dom/dynamicCSS.js
++++ b/lib/Dom/dynamicCSS.js
+@@ -8,12 +8,12 @@ exports.injectCSS = injectCSS;
+ exports.removeCSS = removeCSS;
+ exports.updateCSS = updateCSS;
+ var _canUseDom = _interopRequireDefault(require("./canUseDom"));
+-var _contains = _interopRequireDefault(require("./contains"));
+ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+ const APPEND_ORDER = 'data-rc-order';
+ const APPEND_PRIORITY = 'data-rc-priority';
+ const MARK_KEY = `rc-util-key`;
+-const containerCache = new Map();
++// Containers belong to their mounted surfaces; this cache must not retain them.
++let containerCache = new WeakMap();
+ function getMark({
+   mark
+ } = {}) {
+@@ -120,7 +120,7 @@ function syncRealContainer(container, option) {
+   const cachedRealContainer = containerCache.get(container);
+ 
+   // Find real container when not cached or cached container removed
+-  if (!cachedRealContainer || !(0, _contains.default)(document, cachedRealContainer)) {
++  if (!cachedRealContainer || !cachedRealContainer.isConnected) {
+     const placeholderStyle = injectCSS('', option);
+     if (!placeholderStyle) {
+       return;
+@@ -137,7 +137,7 @@ function syncRealContainer(container, option) {
+  * manually clear container cache to avoid global cache in unit testes
+  */
+ function clearContainerCache() {
+-  containerCache.clear();
++  containerCache = new WeakMap();
+ }
+ function updateCSS(css, key, originOption = {}) {
+   const container = getContainer(originOption);
 diff --git a/lib/Dom/focus.js b/lib/Dom/focus.js
-index 840664019cf88c791d01963b921451ee7bffa5d6..c72d05f44a45a08463b5371739731ad15ec7bbb7 100644
+index 8406640..c72d05f 100644
 --- a/lib/Dom/focus.js
 +++ b/lib/Dom/focus.js
 @@ -90,6 +90,22 @@ const ignoredElementMap = new Map();
@@ -188,71 +259,3 @@ index 840664019cf88c791d01963b921451ee7bffa5d6..c72d05f44a45a08463b5371739731ad1
      if (focusElements.length === 0) {
        window.removeEventListener('focusin', syncFocus);
        window.removeEventListener('keydown', onWindowKeyDown, true);
-diff --git a/es/Dom/dynamicCSS.js b/es/Dom/dynamicCSS.js
---- a/es/Dom/dynamicCSS.js
-+++ b/es/Dom/dynamicCSS.js
-@@ -1,3 +1,2 @@
- import canUseDom from "./canUseDom";
--import contains from "./contains";
- const APPEND_ORDER = 'data-rc-order';
-@@ -5,3 +4,4 @@
- const MARK_KEY = `rc-util-key`;
--const containerCache = new Map();
-+// Containers belong to their mounted surfaces; this cache must not retain them.
-+let containerCache = new WeakMap();
- function getMark({
-@@ -106,3 +106,3 @@
-   // Find real container when not cached or cached container removed
--  if (!cachedRealContainer || !contains(document, cachedRealContainer)) {
-+  if (!cachedRealContainer || !cachedRealContainer.isConnected) {
-     const placeholderStyle = injectCSS('', option);
-@@ -120,3 +120,3 @@
- export function clearContainerCache() {
--  containerCache.clear();
-+  containerCache = new WeakMap();
- }
-diff --git a/lib/Dom/dynamicCSS.js b/lib/Dom/dynamicCSS.js
---- a/lib/Dom/dynamicCSS.js
-+++ b/lib/Dom/dynamicCSS.js
-@@ -10,3 +10,2 @@
- var _canUseDom = _interopRequireDefault(require("./canUseDom"));
--var _contains = _interopRequireDefault(require("./contains"));
- function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-@@ -15,3 +14,4 @@
- const MARK_KEY = `rc-util-key`;
--const containerCache = new Map();
-+// Containers belong to their mounted surfaces; this cache must not retain them.
-+let containerCache = new WeakMap();
- function getMark({
-@@ -116,3 +116,3 @@
-   // Find real container when not cached or cached container removed
--  if (!cachedRealContainer || !(0, _contains.default)(document, cachedRealContainer)) {
-+  if (!cachedRealContainer || !cachedRealContainer.isConnected) {
-     const placeholderStyle = injectCSS('', option);
-@@ -130,3 +130,3 @@
- function clearContainerCache() {
--  containerCache.clear();
-+  containerCache = new WeakMap();
- }
-diff --git a/es/hooks/useDelayState.js b/es/hooks/useDelayState.js
---- a/es/hooks/useDelayState.js
-+++ b/es/hooks/useDelayState.js
-@@ -19,6 +19,7 @@
-       delayRef.current = null;
-     }
-   });
-+  React.useEffect(() => cancelPending, [cancelPending]);
-   const setDelayValue = useEvent((nextValue, immediatelyOrDelay) => {
-     const delayConfig = immediatelyOrDelay || {
-       frame: 1
-diff --git a/lib/hooks/useDelayState.js b/lib/hooks/useDelayState.js
---- a/lib/hooks/useDelayState.js
-+++ b/lib/hooks/useDelayState.js
-@@ -28,6 +28,7 @@
-       delayRef.current = null;
-     }
-   });
-+  React.useEffect(() => cancelPending, [cancelPending]);
-   const setDelayValue = (0, _useEvent.default)((nextValue, immediatelyOrDelay) => {
-     const delayConfig = immediatelyOrDelay || {
-       frame: 1

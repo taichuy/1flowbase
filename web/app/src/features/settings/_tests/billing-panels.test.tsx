@@ -473,7 +473,7 @@ describe('billing settings panels', () => {
     expect(await screen.findByText('zero')).toBeInTheDocument();
     expect(screen.getByText('共 41 条 / 3 页，每页 20 条')).toBeInTheDocument();
     expect(billingApi.getSettingsPricingCatalog.mock.calls[0][0]).toMatchObject({ metadata_only: true });
-    fireEvent.click(screen.getByTitle('2'));
+    fireEvent.click(screen.getByRole('button', { name: /^(页|Page) 2$/i }));
     await waitFor(() => expect(rejectNext).toBeDefined());
     expect(screen.getByText('zero')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /安装当前页/ })).toBeDisabled();

@@ -34,6 +34,7 @@ test('only the login document gets a self-starting animation before deferred run
   expect(motion).toContain('/api/public/auth/login-entries');
   expect(page).not.toContain('data-css-hash');
   expect(page).not.toContain('application-bootstrap-shell');
+  expect(page).not.toContain('data-document-skeleton');
   expect(page).toContain('application-bootstrap-failure');
   expect(original).toContain('application-bootstrap-shell');
   expect(Buffer.byteLength(page)).toBeLessThanOrEqual(20000);

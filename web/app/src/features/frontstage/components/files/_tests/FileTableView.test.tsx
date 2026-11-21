@@ -487,7 +487,7 @@ describe('FileTableView', () => {
       };
     });
     await mount(queryClient);
-    await click(await screen.findByTitle('2'));
+    await click(await screen.findByRole('button', { name: /^(页|Page) 2$/i }));
     await screen.findByRole('link', { name: 'second.txt' });
     await click(screen.getByRole('button', { name: /上传文件/ }));
     const dialog = await screen.findByRole('dialog', { name: '上传文件' });

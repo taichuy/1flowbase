@@ -17,10 +17,10 @@
   },
   "dependencies": {
     "@1flowbase/page-protocol": "workspace:*",
-    "antd": "6.6.2",
+    "antd": "6.7.1",
     "echarts": "6.1.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
