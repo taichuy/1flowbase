@@ -61,6 +61,12 @@ test('only content-addressed assets receive immutable cache control, never their
     assert.match(block, /add_header Cache-Control "public, max-age=31536000, immutable";/);
     assert.doesNotMatch(block, /index\.html|immutable" always/);
   }
+  const icon = location('location = /icon.svg {');
+  assert.match(icon, /try_files \$uri =404;/);
+  assert.match(icon, /gzip_static on;/);
+  assert.match(icon, /gzip_vary on;/);
+  assert.match(icon, /add_header Cache-Control "public, max-age=86400";/);
+  assert.doesNotMatch(icon, /immutable|index\.html|always/);
 });
 
 function listen(server) {
@@ -136,6 +142,7 @@ test('native nginx serves the actual repository configuration safely', {
   const payload = Buffer.from('compressible data '.repeat(100));
   put('index.html', guarded);
   put('sign-in-preload.html', anonymous);
+  put('icon.svg', payload);
   put('small.txt', Buffer.alloc(511, 0x61), false);
   put('boundary.txt', Buffer.alloc(512, 0x61), false);
   for (const extension of ['txt', 'css', 'js', 'mjs', 'json', 'svg', 'wasm']) put(`dynamic.${extension}`, payload, false);
@@ -258,6 +265,18 @@ http {
     const unhashed = await request(port, '/assets/unhashed.js');
     assert.equal(unhashed.status, 200);
     assert.doesNotMatch(unhashed.headers['cache-control'] || '', /immutable/);
+    const icon = await request(port, '/icon.svg', { 'Accept-Encoding': 'gzip', Via: '1.1 fixture-proxy' });
+    assert.equal(icon.status, 200);
+    assert.equal(icon.headers['cache-control'], 'public, max-age=86400');
+    assert.doesNotMatch(icon.headers['cache-control'], /immutable/);
+    assert.equal(icon.headers['content-encoding'], 'gzip');
+    assert.ok(vary(icon).has('accept-encoding'));
+    assert.deepEqual(gunzipSync(icon.body), payload);
+    fs.rmSync(path.join(htmlRoot, 'icon.svg'));
+    fs.rmSync(path.join(htmlRoot, 'icon.svg.gz'));
+    const missingIcon = await request(port, '/icon.svg');
+    assert.equal(missingIcon.status, 404);
+    assert.equal(missingIcon.headers['cache-control'], undefined);
   });
 
   await t.test('API/v1 proxy paths and forwarded origin still reach the same upstream', async () => {

@@ -10,13 +10,23 @@ export interface NativeDeclarationIndex {
   resources: Record<string, string>;
 }
 
+const IMMUTABLE_DECLARATION_RESOURCE_RE =
+  /(?:^|\/)assets\/native-declarations\/[a-f0-9]{64}\.json$/u;
+
+function isImmutableDeclarationResourceUrl(url: string): boolean {
+  const pathname = url.split('?')[0] ?? '';
+  return IMMUTABLE_DECLARATION_RESOURCE_RE.test(pathname);
+}
+
 export function createNativeDeclarationLoader(
   index: NativeDeclarationIndex,
   frontendDeclarations: readonly BlockSourceExtraLib[],
   fetchResource: (
     url: string
   ) => Promise<readonly BlockSourceExtraLib[]> = async (url) => {
-    const response = await fetch(url);
+    const response = isImmutableDeclarationResourceUrl(url)
+      ? await fetch(url, { cache: 'force-cache' })
+      : await fetch(url);
     if (!response.ok)
       throw new Error(`Declaration resource failed (${response.status})`);
     return response.json();

@@ -1,5 +1,3 @@
-import { prepareFrontstageStudio } from '../features/frontstage/lib/jsx-studio/studio-demand';
-
 let topbarNavigationDesignerFlight:
   | Promise<typeof import('./TopbarNavigationDesigner')>
   | undefined;
@@ -18,10 +16,7 @@ function loadTopbarNavigationDesigner() {
 }
 
 function preloadDesignModeDemand() {
-  return Promise.all([
-    loadTopbarNavigationDesigner(),
-    prepareFrontstageStudio()
-  ]).then(
+  return loadTopbarNavigationDesigner().then(
     () => undefined,
     () => undefined
   );

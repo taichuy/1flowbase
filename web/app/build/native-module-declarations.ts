@@ -1,3 +1,5 @@
+import { existsSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import type { Plugin, ResolvedConfig } from 'vite';
 
 import {
@@ -83,6 +85,30 @@ export function nativeModuleDeclarationsPlugin(options: Options): Plugin {
           'public, max-age=31536000, immutable'
         );
         response.end(content);
+      });
+    },
+    configurePreviewServer(server) {
+      const distDir = resolve(server.config.root, server.config.build.outDir);
+      const basePrefix = server.config.base.endsWith('/')
+        ? server.config.base
+        : `${server.config.base}/`;
+      const urlPrefix = `${basePrefix}${RESOURCE_PREFIX}`;
+      server.middlewares.use((request, response, next) => {
+        const pathname = request.url?.split('?')[0] ?? '';
+        if (!pathname.startsWith(urlPrefix)) return next();
+        const name = pathname.slice(urlPrefix.length);
+        if (!/^[a-f0-9]{64}\.json$/u.test(name)) return next();
+        const emittedPath = join(distDir, RESOURCE_PREFIX, name);
+        if (!existsSync(emittedPath) || !statSync(emittedPath).isFile()) {
+          response.statusCode = 404;
+          response.end();
+          return;
+        }
+        response.setHeader(
+          'Cache-Control',
+          'public, max-age=31536000, immutable'
+        );
+        return next();
       });
     },
     watchChange() {

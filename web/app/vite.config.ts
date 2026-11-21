@@ -1,10 +1,16 @@
-import { realpathSync } from 'node:fs';
+import { existsSync, realpathSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 
 import { oauthAwareApiProxy } from './vite/oauth-proxy';
 
 import react from '@vitejs/plugin-react';
-import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite';
+import {
+  defineConfig,
+  loadEnv,
+  searchForWorkspaceRoot,
+  type Plugin
+} from 'vite';
 
 import { signInResourceHintsPlugin } from './build/sign-in-resource-hints';
 import { staticAssetCompressionPlugin } from './build/static-assets/compression';
@@ -105,6 +111,56 @@ function parseAllowedOrigins(value?: string) {
   return origins.length > 0 ? origins : undefined;
 }
 
+const PREVIEW_HASHED_VITE_ASSET_RE =
+  /^\/assets\/[^/]+-[A-Za-z0-9_-]{8}\.(?:js|css|html|svg|json|woff2?|ttf|wasm)$/u;
+
+function previewStaticCacheHeadersPlugin(): Plugin {
+  return {
+    name: '1flowbase-preview-static-cache-headers',
+    configurePreviewServer(server) {
+      const distDir = resolve(server.config.root, server.config.build.outDir);
+      const normalizedBase = server.config.base.endsWith('/')
+        ? server.config.base
+        : `${server.config.base}/`;
+      const isExistingFile = (relativePath: string) => {
+        const candidate = join(distDir, relativePath);
+        return existsSync(candidate) && statSync(candidate).isFile();
+      };
+      server.middlewares.use((request, response, next) => {
+        const rawPathname = request.url?.split('?')[0] ?? '/';
+        if (!rawPathname.startsWith(normalizedBase)) return next();
+        const relPath = `/${rawPathname.slice(normalizedBase.length)}`;
+        if (PREVIEW_HASHED_VITE_ASSET_RE.test(relPath)) {
+          if (!isExistingFile(relPath.slice(1))) {
+            response.statusCode = 404;
+            response.end();
+            return;
+          }
+          response.setHeader(
+            'Cache-Control',
+            'public, max-age=31536000, immutable'
+          );
+          return next();
+        }
+        if (relPath === '/icon.svg') {
+          if (!isExistingFile('icon.svg')) {
+            response.statusCode = 404;
+            response.end();
+            return;
+          }
+          response.setHeader('Cache-Control', 'public, max-age=86400');
+          return next();
+        }
+        if (relPath === '/index.html') {
+          response.setHeader('Cache-Control', 'no-cache');
+          return next();
+        }
+        return next();
+      });
+    }
+  };
+}
+
 export default defineConfig(({ command, mode }) => {
   const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
   const isRemoteDebug = mode === 'remote-debug';
@@ -134,6 +190,7 @@ export default defineConfig(({ command, mode }) => {
       pageTreeIconAssetsPlugin({ projectRoot: appRoot }),
       scenarioChunkManifestPlugin(),
       staticAssetCompressionPlugin(),
+      previewStaticCacheHeadersPlugin(),
       nativeAntDesignEsModulesPlugin(command),
       nativeAntDesignIconsModulesPlugin({
         inventory: nativeAntDesignIconsModuleInventory
