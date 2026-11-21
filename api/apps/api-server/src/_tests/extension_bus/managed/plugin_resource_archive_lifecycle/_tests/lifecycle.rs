@@ -365,6 +365,13 @@ async fn provider_consumer_archives_real_api_host_lifecycle() -> Result<()> {
 #[tokio::test]
 #[ignore = "R7 local-only: requires genuine archives, loopback DB/SSH and mandatory Root browser script"]
 async fn provider_consumer_archives_authenticated_aggregate_browser_lifecycle() -> Result<()> {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
+        )
+        .with_test_writer()
+        .try_init();
     // Validate before creating runtimes: R7 can never silently fall back to R6.
     let browser = super::browser::BrowserConfig::load()?;
     acceptance(Some(&browser)).await

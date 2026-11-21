@@ -7,8 +7,8 @@ use extension_contracts::{
     PluginDataTarget, PluginDataValue,
 };
 use sha2::{Digest, Sha256};
-use sqlx::{postgres::PgRow, Postgres, QueryBuilder, Row, Transaction, ValueRef};
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use sqlx::{Postgres, QueryBuilder, Row, Transaction, ValueRef, postgres::PgRow};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;
@@ -1011,7 +1011,7 @@ fn ownership_error(code: &'static str) -> PluginDataError {
     error(PluginDataErrorKind::OwnershipDenied, code, false)
 }
 
-fn storage_error(source: impl std::fmt::Display) -> PluginDataError {
+pub(crate) fn storage_error(source: impl std::fmt::Display) -> PluginDataError {
     tracing::warn!(error = %source, "plugin data storage operation failed");
     error(
         PluginDataErrorKind::StorageUnavailable,

@@ -54,3 +54,6 @@ mod loopback_ssh;
 mod aggregate;
 #[path = "plugin_resource_archive_lifecycle/_tests/browser.rs"]
 mod browser;
+
+#[path = "plugin_resource_archive_lifecycle/_tests/management_authority.rs"]
+mod management_authority;

@@ -62,10 +62,23 @@ impl PluginDataPort for ManagedPluginDataService {
                     .authority
                     .lock_managed_callback_authority(subject)
                     .await
-                    .map_err(|_| denied())?;
+                    .map_err(|error| {
+                        if matches!(
+                            error.downcast_ref::<control_plane_contracts::ControlPlaneContractError>(),
+                            Some(control_plane_contracts::ControlPlaneContractError::PermissionDenied(_))
+                        ) {
+                            return denied();
+                        }
+                        tracing::warn!(%error, "plugin data authority lookup failed");
+                        PluginDataError {
+                            kind: PluginDataErrorKind::StorageUnavailable,
+                            code: "plugin_data_authority_unavailable".into(),
+                            retryable: true,
+                        }
+                    })?;
                 let installation = lease.installation(installation_id).ok_or_else(denied)?;
                 validate_authority(binding, request, installation, lease.snapshot())?;
-                // Preserve the lease across asynchronous storage access; revoke/disable serialize here.
+                // Resolve against live authority; the lease also owns the data transaction.
                 let resolved = super::resolve_plugin_data_binding(
                     installation,
                     lease.installations(),
@@ -73,9 +86,7 @@ impl PluginDataPort for ManagedPluginDataService {
                     request,
                 )
                 .map_err(|_| denied())?;
-                let result = self.inner.execute(&resolved, request).await;
-                lease.release().await.map_err(|_| denied())?;
-                result
+                lease.commit_plugin_data(&resolved, request).await
             })
             .await
             .map_err(|_| deadline())?

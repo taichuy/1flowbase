@@ -202,7 +202,6 @@ pub(crate) async fn ensure_record(
     if record.is_empty() || record.len() > 1024 {
         return Err(Error::InvalidInput("record_id").into());
     }
-    ensure_active(state, registration).await?;
     let (publisher, plugin, version) = registration.resource_owner(resource);
     let binding = PluginDataBinding {
         managed_subject: None,
@@ -239,10 +238,10 @@ pub(crate) async fn ensure_record(
         .lock_installation_resource_authority(registration.installation_id, domain::SYSTEM_SCOPE_ID)
         .await?;
     ensure_live_registration(registration, lease.as_ref())?;
-    let result = state.store.execute(&binding, &request).await;
-    lease.release().await?;
-    let response =
-        result.map_err(|_| Error::UpstreamUnavailable("record_permission_record_lookup"))?;
+    let response = lease.commit_plugin_data(&binding, &request).await.map_err(|error| {
+        tracing::warn!(kind = ?error.kind, code = %error.code, "record permission lookup failed");
+        Error::UpstreamUnavailable("record_permission_record_lookup")
+    })?;
     if !matches!(response.results.first(), Some(PluginDataOperationResult::Count {count}) if *count == 1)
     {
         return Err(Error::NotFound("record_permission_record").into());

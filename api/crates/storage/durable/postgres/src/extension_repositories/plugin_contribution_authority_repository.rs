@@ -14,6 +14,7 @@ use domain::{
     PluginContributionAuthorization,
 };
 use extension_contracts::extension_bus::ManagedContributionSubject;
+use extension_contracts::{PluginDataBinding, PluginDataRequest};
 use sqlx::{Postgres, Row, Transaction};
 use std::{future::Future, pin::Pin};
 use uuid::Uuid;
@@ -138,6 +139,23 @@ impl ContributionAuthorityLease for PgContributionAuthorityLease {
     }
     fn installations(&self) -> &std::collections::BTreeMap<Uuid, domain::PluginInstallationRecord> {
         &self.installations
+    }
+
+    fn commit_plugin_data<'a>(
+        mut self: Box<Self>,
+        binding: &'a PluginDataBinding,
+        request: &'a PluginDataRequest,
+    ) -> extension_contracts::PluginDataFuture<'a>
+    where
+        Self: 'a,
+    {
+        Box::pin(async move {
+            use crate::plugin_data_repository::{execute_request_in_transaction, storage_error};
+            let result =
+                execute_request_in_transaction(&mut self.transaction, binding, request).await?;
+            self.transaction.commit().await.map_err(storage_error)?;
+            Ok(result)
+        })
     }
 
     fn load_communication_command_context<'a>(

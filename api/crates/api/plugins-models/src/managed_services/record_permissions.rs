@@ -3,7 +3,7 @@ use super::{ManagedServiceRegistration, record_acl};
 use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 use crate::{
     app_state::ApiState,
-    error_response::ApiError,
+    error_response::{ApiError, ApiServiceUnavailable},
     response::ApiSuccess,
     routes::{
         console_interface::{
@@ -152,9 +152,19 @@ impl ConsoleInterfacePort<Input, Output> for Adapter {
         input: Input,
     ) -> ConsoleInterfaceFuture<'a, Output> {
         Box::pin(async move {
-            self.execute_inner(principal, input)
-                .await
-                .map_err(ConsoleInterfaceTargetError)
+            self.execute_inner(principal, input).await.map_err(|error| {
+                // Connection acquisition failures are capacity errors, not ACL denials.
+                let error = if matches!(
+                    error.0.downcast_ref::<sqlx::Error>(),
+                    Some(sqlx::Error::PoolTimedOut | sqlx::Error::PoolClosed)
+                ) {
+                    tracing::warn!(error = %error.0, "record permission storage unavailable");
+                    ApiServiceUnavailable("record_permission_storage_unavailable").into()
+                } else {
+                    error
+                };
+                ConsoleInterfaceTargetError(error)
+            })
         })
     }
 }

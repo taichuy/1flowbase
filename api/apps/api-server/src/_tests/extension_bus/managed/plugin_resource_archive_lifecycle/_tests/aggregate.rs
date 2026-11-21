@@ -407,16 +407,24 @@ async fn exercise(
     let management_host_id = created.get("data").unwrap_or(&created)["host_id"]
         .as_str()
         .context("created management host ID missing")?;
-    let browser_result = browser
-        .run(json!({
+    let browser_result = async {
+        let rename = json!({
+            "name":"R7 authority-verified management host", "address":"127.0.0.1",
+            "port":ssh.port, "username":ssh.username, "auth_type":"private_key", "enabled":false,
+            "timeout_ms":30000, "max_output_bytes":1048576, "jump_hosts":[]
+        });
+        super::management_authority::accept(f, &server.base, management_host_id, rename, &browser.output_dir)
+            .await?;
+        browser.run(json!({
             "api_base_url":server.base,
             "visible_host_id":visible,
             "hidden_host_id":hidden,
             "management_host_id":management_host_id,
             "expected_hostname":std::fs::read_to_string("/proc/sys/kernel/hostname")?.trim(),
             "output_dir":browser.output_dir,
-        }))
-        .await;
+        })).await
+    }
+    .await;
     // Always attempt deletion after the subprocess, including browser startup/assertion
     // failures. Retain the original failure; normal deletion uses the same real SSH API.
     let deletion = f

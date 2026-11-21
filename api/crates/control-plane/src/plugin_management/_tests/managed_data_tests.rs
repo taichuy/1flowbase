@@ -19,8 +19,10 @@ struct Authority {
     state: Arc<tokio::sync::Mutex<State>>,
     held: Arc<AtomicBool>,
     locks: AtomicUsize,
+    data: Option<Arc<dyn PluginDataPort>>,
 }
 struct Lease {
+    data: Option<Arc<dyn PluginDataPort>>,
     installations: std::collections::BTreeMap<Uuid, PluginInstallationRecord>,
     state: tokio::sync::OwnedMutexGuard<State>,
     held: Arc<AtomicBool>,
@@ -43,6 +45,17 @@ impl ContributionAuthorityLease for Lease {
     fn installations(&self) -> &std::collections::BTreeMap<Uuid, PluginInstallationRecord> {
         &self.installations
     }
+    fn commit_plugin_data<'a>(
+        self: Box<Self>,
+        binding: &'a PluginDataBinding,
+        request: &'a PluginDataRequest,
+    ) -> PluginDataFuture<'a>
+    where
+        Self: 'a,
+    {
+        Box::pin(async move { self.data.as_ref().unwrap().execute(binding, request).await })
+    }
+
     fn load_communication_command_context<'a>(
         &'a mut self,
         _: &'a ManagedContributionSubject,
@@ -179,6 +192,7 @@ impl PluginContributionAuthorityRepository for Authority {
         installations.insert(state.installation.id, state.installation.clone());
         Ok(Box::new(Lease {
             installations,
+            data: self.data.clone(),
             state,
             held: self.held.clone(),
         }))
@@ -345,14 +359,16 @@ fn add_provider(state: &mut State, access: &str) -> Uuid {
 #[tokio::test]
 async fn managed_callbacks_refresh_authority_hold_lease_and_preserve_legacy_path() {
     let (state, mut binding, request) = fixture();
+    let held = Arc::new(AtomicBool::new(false));
+    let inner = Arc::new(Inner {
+        held: held.clone(),
+        calls: AtomicUsize::new(0),
+    });
     let authority = Arc::new(Authority {
         state: Arc::new(tokio::sync::Mutex::new(state)),
-        held: Arc::new(AtomicBool::new(false)),
+        held,
         locks: AtomicUsize::new(0),
-    });
-    let inner = Arc::new(Inner {
-        held: authority.held.clone(),
-        calls: AtomicUsize::new(0),
+        data: Some(inner.clone()),
     });
     let service = ManagedPluginDataService::new(authority.clone(), inner.clone());
     assert_eq!(
@@ -488,15 +504,17 @@ async fn shared_callbacks_remap_only_after_live_caller_grants_and_hold_original_
     }
     let (mut state, binding, request) = fixture();
     let provider_id = add_provider(&mut state, "read_write");
-    let authority = Arc::new(Authority {
-        state: Arc::new(tokio::sync::Mutex::new(state)),
-        held: Arc::new(AtomicBool::new(false)),
-        locks: AtomicUsize::new(0),
-    });
+    let held = Arc::new(AtomicBool::new(false));
     let inner = Arc::new(SharedInner {
-        held: authority.held.clone(),
+        held: held.clone(),
         calls: AtomicUsize::new(0),
         original_subject: binding.managed_subject.clone().unwrap(),
+    });
+    let authority = Arc::new(Authority {
+        state: Arc::new(tokio::sync::Mutex::new(state)),
+        held,
+        locks: AtomicUsize::new(0),
+        data: Some(inner.clone()),
     });
     let service = ManagedPluginDataService::new(authority.clone(), inner.clone());
     service.execute(&binding, &request).await.unwrap();
@@ -622,6 +640,7 @@ async fn shared_credentials_keep_live_consumer_authority_and_read_existing_owner
         state: Arc::new(tokio::sync::Mutex::new(state)),
         held: Arc::new(AtomicBool::new(false)),
         locks: AtomicUsize::new(0),
+        data: None,
     });
     let mut expected_binding = binding.clone();
     expected_binding.publisher_namespace = "taichuy".into();

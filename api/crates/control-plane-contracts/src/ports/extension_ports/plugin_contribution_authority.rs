@@ -73,6 +73,16 @@ pub trait ContributionAuthorityLease: Send {
     /// Consumer grants remain in snapshot(); provider facts never confer consumer authority.
     fn installations(&self) -> &std::collections::BTreeMap<Uuid, domain::PluginInstallationRecord>;
 
+    /// Execute Host-validated plugin data against this lease's transaction. Authority
+    /// remains fenced until the data and any receipt commit together. No second pool checkout.
+    fn commit_plugin_data<'a>(
+        self: Box<Self>,
+        binding: &'a extension_contracts::PluginDataBinding,
+        request: &'a extension_contracts::PluginDataRequest,
+    ) -> extension_contracts::PluginDataFuture<'a>
+    where
+        Self: 'a;
+
     /// Reuse this lease's connection. Hold shared channel/binding locks until release/commit;
     /// callers must not borrow another repository connection while the authority lease is held.
     fn load_communication_command_context<'a>(

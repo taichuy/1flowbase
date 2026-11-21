@@ -40,6 +40,17 @@ impl ContributionAuthorityLease for Lease {
     fn installations(&self) -> &std::collections::BTreeMap<Uuid, PluginInstallationRecord> {
         &self.installations
     }
+    fn commit_plugin_data<'a>(
+        self: Box<Self>,
+        _: &'a extension_contracts::PluginDataBinding,
+        _: &'a extension_contracts::PluginDataRequest,
+    ) -> extension_contracts::PluginDataFuture<'a>
+    where
+        Self: 'a,
+    {
+        panic!("unexpected plugin data commit")
+    }
+
     fn load_communication_command_context<'a>(
         &'a mut self,
         _: &'a ManagedContributionSubject,
