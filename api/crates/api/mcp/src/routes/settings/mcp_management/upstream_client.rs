@@ -432,6 +432,7 @@ impl McpStreamableHttpClient {
             return Err(McpUpstreamClientError::UnsafeAddress);
         }
 
+        crate::network_egress_client::ensure_rustls_ring_provider();
         let mut builder = Client::builder()
             .connect_timeout(Duration::from_secs(5))
             .timeout(Duration::from_secs(20))

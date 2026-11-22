@@ -20,6 +20,11 @@ async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
 }
 
+fn fixture_http_client() -> reqwest::Client {
+    crate::network_egress_client::ensure_rustls_ring_provider();
+    reqwest::Client::new()
+}
+
 async fn read_fixture_page(
     client: &reqwest::Client,
     url: &str,
@@ -505,7 +510,7 @@ async fn remote_pricing_catalog_validates_v2_rules_duplicates_and_checksums() {
                 }),
             );
         let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-        let result = read_fixture_page(&reqwest::Client::new(), &format!("{base}index.json")).await;
+        let result = read_fixture_page(&fixture_http_client(), &format!("{base}index.json")).await;
         server.abort();
         assert_eq!(
             result.is_ok(),
@@ -566,7 +571,7 @@ async fn pricing_catalog_sync_requires_auth_and_is_idempotent() {
 #[tokio::test]
 async fn pricing_catalog_sync_fetches_all_pages_and_rejects_ungranted_member() {
     let (source_url, source_server) = remote_model_pricing_fixture().await;
-    let template = read_fixture_page(&reqwest::Client::new(), &source_url)
+    let template = read_fixture_page(&fixture_http_client(), &source_url)
         .await
         .unwrap();
     source_server.abort();

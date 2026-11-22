@@ -65,6 +65,7 @@ impl Drop for Server {
     }
 }
 fn server(name: &str, bytes: Vec<u8>, digest: String, version: &str) -> Server {
+    api_server::network_egress_client::ensure_rustls_ring_provider();
     let socket = TcpListener::bind("127.0.0.1:0").unwrap();
     socket.set_nonblocking(true).unwrap();
     let url = format!("http://{}", socket.local_addr().unwrap());

@@ -6,6 +6,11 @@ use control_plane::{
     ports::{NetworkEgressRepository, NetworkEgressSecretResolver, PluginRepository},
 };
 use reqwest::{Client, Proxy};
+
+pub fn ensure_rustls_ring_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 use storage_durable_postgres::MainDurableStore;
 use url::Url;
 use uuid::Uuid;
@@ -231,6 +236,7 @@ impl NetworkEgressHttpClientResolver {
             provider_id,
             lease_id: forward_proxy.lease_id.clone(),
         };
+        ensure_rustls_ring_provider();
         let client = match Client::builder()
             .proxy(
                 Proxy::all(&forward_proxy.http_proxy_url)
@@ -264,6 +270,7 @@ impl NetworkEgressHttpClientResolver {
         selector: domain::NetworkEgressConsumerSelector,
     ) -> Result<NetworkEgressHttpRequestScope> {
         let route_scope = self.acquire(workspace_id, selector).await?;
+        ensure_rustls_ring_provider();
         let client = route_scope
             .as_ref()
             .map(|scope| scope.http_client().clone())
@@ -287,6 +294,7 @@ impl NetworkEgressHttpClientResolver {
                 domain::NetworkEgressConsumerSelector::ManagedPlugin { installation_id },
             )
             .await?;
+        ensure_rustls_ring_provider();
         let mut builder = Client::builder().redirect(reqwest::redirect::Policy::none());
         if let Some(timeout) = timeout {
             builder = builder.connect_timeout(timeout).timeout(timeout);
@@ -319,11 +327,14 @@ impl NetworkEgressHttpClientResolver {
         let route_scope = self.acquire(workspace_id, selector).await?;
         let client = match route_scope.as_ref() {
             Some(scope) => scope.http_client_with_timeouts(connect_timeout, request_timeout)?,
-            None => Client::builder()
-                .connect_timeout(connect_timeout)
-                .timeout(request_timeout)
-                .build()
-                .context("failed to construct direct HTTP client")?,
+            None => {
+                ensure_rustls_ring_provider();
+                Client::builder()
+                    .connect_timeout(connect_timeout)
+                    .timeout(request_timeout)
+                    .build()
+                    .context("failed to construct direct HTTP client")?
+            }
         };
         Ok(NetworkEgressHttpRequestScope {
             client,
@@ -363,6 +374,7 @@ impl NetworkEgressExecutionScope {
         connect_timeout: std::time::Duration,
         request_timeout: std::time::Duration,
     ) -> Result<Client> {
+        ensure_rustls_ring_provider();
         Client::builder()
             .connect_timeout(connect_timeout)
             .timeout(request_timeout)
@@ -391,6 +403,7 @@ impl NetworkEgressExecutionScope {
         timeout: std::time::Duration,
         verify_ssl: bool,
     ) -> Result<orchestration_runtime::execution_engine::HttpRequestClientLease> {
+        ensure_rustls_ring_provider();
         let client = match Client::builder()
             .timeout(timeout)
             .danger_accept_invalid_certs(!verify_ssl)
@@ -459,6 +472,7 @@ fn static_proxy_execution_scope(
             .map_err(|_| anyhow::anyhow!("configured static proxy has an invalid password"))?;
     }
     let http_proxy_url = proxy_url.to_string();
+    ensure_rustls_ring_provider();
     let client = Client::builder()
         .proxy(Proxy::all(&http_proxy_url).context("configured static proxy URL is invalid")?)
         .build()
@@ -486,6 +500,7 @@ mod exchange_network_egress;
 /// Host-owned maintenance client: available before the application/database runtime starts.
 /// Its only consumer is native release metadata and archive download from GitHub.
 pub fn native_release_client() -> Result<Client> {
+    ensure_rustls_ring_provider();
     Client::builder()
         .user_agent("1flowbase-native-updater")
         .https_only(true)
@@ -515,6 +530,7 @@ pub fn native_release_client() -> Result<Client> {
 /// Transport for the native updater's explicit loopback fixture command.
 /// The updater validates the feed and asset origin before making any request.
 pub fn native_release_fixture_client() -> Result<Client> {
+    ensure_rustls_ring_provider();
     Client::builder()
         .no_proxy()
         .timeout(std::time::Duration::from_secs(180))

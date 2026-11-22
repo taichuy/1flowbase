@@ -366,6 +366,7 @@ pub fn app() -> Router {
 }
 
 pub fn app_with_state(state: Arc<ApiState>) -> Router {
+    network_egress_client::ensure_rustls_ring_provider();
     let owner = state.extension_boot_snapshot.as_ref().map(|snapshot| {
         snapshot
             .publish_complete_catalog(&state)
