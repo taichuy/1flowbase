@@ -257,9 +257,15 @@ fn fresh_workspace(work: &Path) -> Result<()> {
 
 fn copy_program(manifest: &Manifest, source: &Path, destination: &Path) -> Result<()> {
     private_dir(destination)?;
-    for name in manifest.roots() {
-        files::copy(&source.join(&name), &destination.join(&name), false)?;
+    let mut dirty_dirs = BTreeSet::new();
+    dirty_dirs.insert(destination.to_path_buf());
+    if let Some(parent) = destination.parent() {
+        dirty_dirs.insert(parent.to_path_buf());
     }
+    for name in manifest.roots() {
+        files::copy_staged(&source.join(&name), &destination.join(&name), &mut dirty_dirs)?;
+    }
+    files::sync_directories(&dirty_dirs, destination)?;
     Ok(())
 }
 fn program_path(target: &Path, name: &str) -> Result<PathBuf> {
@@ -449,9 +455,21 @@ fn install(
     };
     files::json(&target.join(STATE), &state)?;
     let outcome = (|| -> Result<()> {
-        for name in new.files.keys() {
+        let mut dirty_dirs = BTreeSet::new();
+        for (name, expected_hash) in &new.files {
             let destination = program_path(target, name)?;
-            files::replace(&source.join(name), &destination)?;
+            let source_file = source.join(name);
+            if files::matches_managed_file(&source_file, &destination, expected_hash)? {
+                let temporary = files::temporary_path(&destination)?;
+                if temporary.try_exists()? {
+                    files::remove(&temporary)?;
+                    if let Some(parent) = destination.parent() {
+                        files::record_ancestors_within(target, parent, &mut dirty_dirs);
+                    }
+                }
+            } else {
+                files::replace_staged(&source_file, &destination, target, &mut dirty_dirs)?;
+            }
         }
         for name in state
             .managed_files
@@ -459,15 +477,29 @@ fn install(
             .filter(|name| !new.files.contains_key(*name))
         {
             let file = program_path(target, name)?;
+            let mut removed = false;
             if file.exists() {
                 fs::remove_file(&file)?;
+                removed = true;
             }
             let temporary = files::temporary_path(&file)?;
             if temporary.exists() {
                 files::remove(&temporary)?;
+                removed = true;
+            }
+            if removed {
+                if let Some(parent) = file.parent() {
+                    files::record_ancestors_within(target, parent, &mut dirty_dirs);
+                }
             }
         }
-        files::replace(&source.join(manifest::NAME), &target.join(manifest::NAME))?;
+        files::replace_staged(
+            &source.join(manifest::NAME),
+            &target.join(manifest::NAME),
+            target,
+            &mut dirty_dirs,
+        )?;
+        files::sync_directories(&dirty_dirs, target)?;
         new.verify(target)?;
         state.phase = "validating".into();
         files::json(&target.join(STATE), &state)?;
