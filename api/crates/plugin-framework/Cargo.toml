@@ -13,7 +13,6 @@ access-control = { path = "../access-control" }
 base64.workspace = true
 ed25519-dalek = { version = "3.0.0", features = ["pem"] }
 flate2.workspace = true
-jsonschema.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

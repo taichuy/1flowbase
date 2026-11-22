@@ -5,6 +5,8 @@ mod file_template;
 mod model_queries;
 mod naming;
 
+#[cfg(test)]
+pub(crate) use naming::sample_hir as sample_hir_for_test;
 pub use naming::RuntimeTableNamePolicy;
 
 use anyhow::Result;

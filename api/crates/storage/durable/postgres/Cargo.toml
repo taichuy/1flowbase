@@ -24,13 +24,12 @@ zstd.workspace = true
 serde.workspace = true
 percent-encoding.workspace = true
 rand.workspace = true
-rand_regex.workspace = true
 regex-syntax.workspace = true
 storage-durable = { path = "../core" }
 serde_json = { workspace = true, features = ["raw_value"] }
 rust_decimal.workspace = true
 sha2.workspace = true
-sqlx.workspace = true
+sqlx = { workspace = true, features = ["macros"] }
 thiserror.workspace = true
 time.workspace = true
 tokio.workspace = true

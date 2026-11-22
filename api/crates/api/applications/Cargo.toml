@@ -9,12 +9,10 @@ publish=false
 test-support=["api-host-kernel/test-support"]
 [dependencies]
 base16ct.workspace = true
-url.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 axum = { workspace = true, features = ["multipart", "ws"] }
 base64.workspace = true
-flate2.workspace = true
 futures-util.workspace = true
 form_urlencoded = "1.2.2"
 jsonschema.workspace = true
@@ -23,7 +21,6 @@ serde_json.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
 time.workspace = true
-thiserror.workspace = true
 tokio.workspace = true
 tokio-stream = "0.1.19"
 tracing.workspace = true
@@ -40,9 +37,7 @@ extension-contracts = { path = "../../extension-contracts" }
 orchestration-runtime = { path = "../../orchestration-runtime" }
 runtime-core = { path = "../../runtime-core" }
 interface-runtime = { path = "../../interface-runtime" }
-plugin-framework = { path = "../../plugin-framework" }
 storage-durable-postgres = { path = "../../storage/durable/postgres" }
-storage-ephemeral = { path = "../../storage/ephemeral" }
 storage-object = { path = "../../storage/object" }
 [dev-dependencies]
 postgres-test-support={path="../../postgres-test-support"}

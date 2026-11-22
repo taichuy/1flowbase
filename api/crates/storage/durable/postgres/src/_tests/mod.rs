@@ -71,3 +71,6 @@ mod communication_timeline;
 mod event_center_current_identity;
 #[path = "migrations/workspace_schema_readiness.rs"]
 mod workspace_schema_readiness;
+
+#[path = "model_definition_repository/naming_tests.rs"]
+mod naming_tests;

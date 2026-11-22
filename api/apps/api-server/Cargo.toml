@@ -59,13 +59,8 @@ base64.workspace = true
 flate2.workspace = true
 futures-util.workspace = true
 form_urlencoded = "1.2.2"
-hmac.workspace = true
 http-body = "1.1.0"
-hyper = "1"
-hyper-util = { version = "0.1", features = ["tokio"] }
 jsonschema.workspace = true
-rand_core.workspace = true
-regex.workspace = true
 rust_decimal.workspace = true
 reqwest.workspace = true
 serde.workspace = true
@@ -78,11 +73,7 @@ tar.workspace = true
 time.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-# Use Codex's pinned RFC 7692 codec only at the Responses ingress boundary.
-tokio-tungstenite-deflate = { package = "tokio-tungstenite", git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "0e5b2d73aa18dd9f0a50ee9ff199d5aef7594186", default-features = false, features = ["handshake"] }
-tungstenite-deflate = { package = "tungstenite", git = "https://github.com/openai-oss-forks/tungstenite-rs", rev = "4fffad30fe373adbdcffab9545e9e9bf4f2fc19f", default-features = false, features = ["deflate"] }
 tokio-stream = "0.1.19"
-tonic-types.workspace = true
 tower.workspace = true
 tower-http = { workspace = true, features = ["fs"] }
 tracing.workspace = true
@@ -104,7 +95,6 @@ plugin-framework = { path = "../../crates/plugin-framework" }
 storage-durable-postgres = { path = "../../crates/storage/durable/postgres" }
 storage-ephemeral = { path = "../../crates/storage/ephemeral" }
 storage-object = { path = "../../crates/storage/object" }
-observability = { path = "../../crates/observability" }
 runtime-extension-host = { path = "../../crates/runtime-extension-host" }
 runtime-profile = { path = "../../crates/runtime-profile" }
 
@@ -118,6 +108,9 @@ libc = "0.2.190"
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_System_Environment", "Win32_Storage_FileSystem", "Win32_System_JobObjects", "Win32_System_Pipes", "Win32_System_SystemInformation", "Win32_System_Threading"] }
 
 [dev-dependencies]
+hyper = "1"
+hyper-util = { version = "0.1", features = ["tokio"] }
+sqlx = { workspace = true, features = ["macros"] }
 api-console-settings={path="../../crates/api/console-settings",features=["test-support"]}
 api-mcp={path="../../crates/api/mcp",features=["test-support"]}
 api-plugins-models={path="../../crates/api/plugins-models",features=["test-support"]}
@@ -127,7 +120,8 @@ api-public-gateway={path="../../crates/api/public-gateway",features=["test-suppo
 api-server = { path = ".", features = ["test-support"] }
 api-host-kernel = {path="../../crates/api/kernel",features=["test-support"]}
 api-test-selection = { path = "../../crates/api-test-selection" }
-tokio-tungstenite = "0.30.0"
+tokio-tungstenite = "0.29.0"
+tokio-tungstenite-deflate = { package = "tokio-tungstenite", git = "https://github.com/openai-oss-forks/tokio-tungstenite", rev = "0e5b2d73aa18dd9f0a50ee9ff199d5aef7594186", default-features = false, features = ["handshake", "deflate"] }
 serde_yaml = "0.9.34"
 ed25519-dalek = { version = "3.0.0", features = ["pem"] }
 postgres-test-support = { path = "../../crates/postgres-test-support" }

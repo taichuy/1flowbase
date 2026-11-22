@@ -44,10 +44,16 @@ impl IntoResponse for OtlpError {
         let status = self
             .override_status
             .unwrap_or_else(|| self.error.into_response().status());
-        let rpc = tonic_types::pb::Status {
+        #[derive(prost::Message)]
+        struct OtlpRpcStatus {
+            #[prost(int32, tag = "1")]
+            code: i32,
+            #[prost(string, tag = "2")]
+            message: String,
+        }
+        let rpc = OtlpRpcStatus {
             code: 0,
             message: message.into(),
-            details: vec![],
         };
         let bytes = match self.format {
             WireFormat::Protobuf => rpc.encode_to_vec(),

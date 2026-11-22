@@ -32,7 +32,7 @@ members = [
   "crates/observability",
   "crates/postgres-test-support"
 ]
-exclude = ["vendor/tungstenite-0.27.0-openai-memory", "vendor/tungstenite-0.29.0-memory"]
+exclude = ["vendor/tungstenite-0.27.0-openai-memory", "vendor/tungstenite-0.29.0-memory", "vendor/tokio-tungstenite-0.28.0-openai-memory"]
 resolver = "2"
 
 [workspace.package]
@@ -62,7 +62,6 @@ prost = "=0.14.4"
 percent-encoding = "2.3.2"
 rand_core = { version = "0.10.1" }
 rand = "0.10.3"
-rand_regex = { version = "0.19.0", default-features = false }
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls-no-provider", "query", "form", "socks", "stream"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 regex = "1.13.1"
@@ -75,16 +74,15 @@ semver = "1.0.28"
 sha2 = "0.11.1"
 # Keep upstream's sequential default: parallel /proc scans spend more CPU on
 # Rayon scheduling than on our narrow observations (sysinfo issue #1352).
-sysinfo = "0.39.6"
+sysinfo = { version = "0.39.6", default-features = false, features = ["system", "disk", "network", "user"] }
 # The native template transaction owner requires exact savepoint-depth checks.
 sqlx-core = { version = "0.9.0", default-features = false }
-sqlx = { version = "0.9.0", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls-ring", "uuid", "macros", "time", "json", "migrate"] }
+sqlx = { version = "0.9.0", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls-ring", "uuid", "derive", "time", "json", "migrate"] }
 tar = "0.4.46"
 thiserror = "2.0.21"
 time = { version = "0.3.55", features = ["serde", "formatting", "parsing", "macros"] }
 time-tz = "2.0.0"
 tokio = { version = "1.53.3", features = ["full"] }
-tonic-types = { version = "=0.14.6", default-features = false }
 tower = { version = "0.5.3", features = ["util"] }
 tower-http = { version = "0.7.1", features = ["cors", "trace"] }
 tracing = "0.1.44"
@@ -133,9 +131,15 @@ codegen-units = 256
 [profile.test.package.sha2]
 opt-level = 3
 
+[profile.test.package.argon2]
+opt-level = 3
+
 # Preserve both production protocol implementations; only frame buffer owners differ.
 [patch."https://github.com/openai-oss-forks/tungstenite-rs"]
 tungstenite = { path = "vendor/tungstenite-0.27.0-openai-memory" }
+
+[patch."https://github.com/openai-oss-forks/tokio-tungstenite"]
+tokio-tungstenite = { path = "vendor/tokio-tungstenite-0.28.0-openai-memory" }
 
 [patch.crates-io]
 tungstenite = { path = "vendor/tungstenite-0.29.0-memory" }

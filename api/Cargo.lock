@@ -76,14 +76,12 @@ dependencies = [
  "control-plane-contracts",
  "domain",
  "extension-contracts",
- "flate2",
  "form_urlencoded",
  "futures-util",
  "interface-runtime",
  "jsonschema",
  "observability",
  "orchestration-runtime",
- "plugin-framework",
  "postgres-test-support",
  "runtime-core",
  "serde",
@@ -91,14 +89,11 @@ dependencies = [
  "sha2 0.11.1",
  "sqlx",
  "storage-durable-postgres",
- "storage-ephemeral",
  "storage-object",
- "thiserror 2.0.21",
  "time",
  "tokio",
  "tokio-stream",
  "tracing",
- "url",
  "utoipa",
  "uuid",
  "zip 9.0.3",
@@ -121,47 +116,30 @@ dependencies = [
  "control-plane-contracts",
  "domain",
  "extension-contracts",
- "flate2",
- "form_urlencoded",
  "futures-util",
- "hmac",
- "http-body",
  "interface-runtime",
  "jsonschema",
  "libc",
- "opentelemetry-proto",
  "orchestration-runtime",
- "percent-encoding",
  "plugin-framework",
  "postgres-test-support",
- "prost",
  "rand 0.10.3",
  "rand_core 0.10.1",
- "regex",
- "reqwest",
  "runtime-core",
- "runtime-extension-host",
- "runtime-profile",
- "rust_decimal",
  "semver",
  "serde",
  "serde_json",
  "sha2 0.11.1",
- "sqlx",
  "storage-durable-postgres",
  "storage-ephemeral",
  "storage-object",
- "sysinfo",
- "tar",
  "thiserror 2.0.21",
  "time",
  "tokio",
  "tokio-stream",
- "tower",
  "tracing",
  "url",
  "utoipa",
- "utoipa-swagger-ui",
  "uuid",
  "windows-sys 0.61.2",
  "zip 9.0.3",
@@ -215,7 +193,6 @@ version = "0.6.6"
 dependencies = [
  "access-control",
  "anyhow",
- "argon2",
  "async-trait",
  "axum",
  "base16ct",
@@ -227,19 +204,15 @@ dependencies = [
  "flate2",
  "form_urlencoded",
  "futures-util",
- "hmac",
  "http-body",
  "interface-runtime",
  "jsonschema",
  "libc",
  "opentelemetry-proto",
  "orchestration-runtime",
- "percent-encoding",
  "plugin-framework",
  "postgres-test-support",
  "prost",
- "rand 0.10.3",
- "rand_core 0.10.1",
  "regex",
  "reqwest",
  "runtime-core",
@@ -256,7 +229,6 @@ dependencies = [
  "storage-ephemeral",
  "storage-object",
  "sysinfo",
- "tar",
  "thiserror 2.0.21",
  "time",
  "tokio",
@@ -286,8 +258,6 @@ dependencies = [
  "control-plane-contracts",
  "domain",
  "extension-contracts",
- "flate2",
- "form_urlencoded",
  "futures-util",
  "http",
  "interface-runtime",
@@ -296,7 +266,6 @@ dependencies = [
  "percent-encoding",
  "plugin-framework",
  "postgres-test-support",
- "rand 0.10.3",
  "regex",
  "reqwest",
  "runtime-core",
@@ -332,36 +301,26 @@ dependencies = [
  "control-plane-contracts",
  "domain",
  "extension-contracts",
- "flate2",
  "form_urlencoded",
  "futures-util",
  "hmac",
  "http",
  "interface-runtime",
  "jsonschema",
- "orchestration-runtime",
- "percent-encoding",
  "plugin-framework",
  "postgres-test-support",
  "rand 0.10.3",
  "rand_core 0.10.1",
- "regex",
- "reqwest",
  "runtime-core",
- "runtime-extension-host",
  "runtime-profile",
- "semver",
  "serde",
  "serde_json",
  "sha2 0.11.1",
  "sqlx",
  "storage-durable-postgres",
  "storage-ephemeral",
- "tar",
- "thiserror 2.0.21",
  "time",
  "tokio",
- "tower",
  "tracing",
  "url",
  "utoipa",
@@ -383,7 +342,6 @@ dependencies = [
  "control-plane-contracts",
  "domain",
  "extension-contracts",
- "flate2",
  "form_urlencoded",
  "futures-util",
  "http-body",
@@ -409,10 +367,8 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-tungstenite 0.28.0",
- "tokio-tungstenite 0.30.0",
- "tonic-types",
+ "tokio-tungstenite 0.29.0",
  "tracing",
- "tungstenite 0.27.0",
  "url",
  "utoipa",
  "uuid",
@@ -448,14 +404,12 @@ dependencies = [
  "flate2",
  "form_urlencoded",
  "futures-util",
- "hmac",
  "http-body",
  "hyper",
  "hyper-util",
  "interface-runtime",
  "jsonschema",
  "libc",
- "observability",
  "opentelemetry-proto",
  "orchestration-runtime",
  "percent-encoding",
@@ -463,8 +417,6 @@ dependencies = [
  "postgres-test-support",
  "prost",
  "rand 0.10.3",
- "rand_core 0.10.1",
- "regex",
  "reqwest",
  "runtime-core",
  "runtime-extension-host",
@@ -487,13 +439,11 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-tungstenite 0.28.0",
- "tokio-tungstenite 0.30.0",
- "tonic-types",
+ "tokio-tungstenite 0.29.0",
  "tower",
  "tower-http 0.7.1",
  "tracing",
  "tracing-subscriber",
- "tungstenite 0.27.0",
  "url",
  "utoipa",
  "utoipa-swagger-ui",
@@ -2624,26 +2574,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pin-project"
-version = "1.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2466b2336ed02bcdca6b294417127b90ec92038d1d5c4fbeac971a922e0e0924"
-dependencies = [
- "pin-project-internal",
-]
-
-[[package]]
-name = "pin-project-internal"
-version = "1.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c96395f0a926bc13b1c17622aaddda1ecb55d49c8f1bf9777e4d877800a43f8b"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2676,7 +2606,6 @@ dependencies = [
  "extension-contracts",
  "extension-package-runtime",
  "flate2",
- "jsonschema",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -2796,15 +2725,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prost-types"
-version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f94967dc7688f3054c7fac87473ffae4cc4c3904800e2d9f5b857246d8963b0a"
-dependencies = [
- "prost",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2900,16 +2820,6 @@ name = "rand_core"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
-
-[[package]]
-name = "rand_regex"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79e745eeef604742ec751000e44d91cdc0552aacacb2c74bee88cc7685918cfa"
-dependencies = [
- "rand 0.10.3",
- "regex-syntax",
-]
 
 [[package]]
 name = "rand_xorshift"
@@ -3124,7 +3034,6 @@ dependencies = [
  "sysinfo",
  "time",
  "tokio",
- "tokio-util",
  "tracing",
  "uuid",
 ]
@@ -3793,7 +3702,6 @@ dependencies = [
  "percent-encoding",
  "postgres-test-support",
  "rand 0.10.3",
- "rand_regex",
  "regex-syntax",
  "rust_decimal",
  "serde",
@@ -3836,7 +3744,6 @@ dependencies = [
  "hmac",
  "reqwest",
  "rustls",
- "serde",
  "serde_json",
  "sha2 0.11.1",
  "thiserror 2.0.21",
@@ -4153,7 +4060,6 @@ dependencies = [
 [[package]]
 name = "tokio-tungstenite"
 version = "0.28.0"
-source = "git+https://github.com/openai-oss-forks/tokio-tungstenite?rev=0e5b2d73aa18dd9f0a50ee9ff199d5aef7594186#0e5b2d73aa18dd9f0a50ee9ff199d5aef7594186"
 dependencies = [
  "futures-util",
  "log",
@@ -4174,18 +4080,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokio-tungstenite"
-version = "0.30.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17a073bfed563fa236697a068031408a93cd9522e08abf9933ead3e73411bd71"
-dependencies = [
- "futures-util",
- "log",
- "tokio",
- "tungstenite 0.30.0",
-]
-
-[[package]]
 name = "tokio-util"
 version = "0.7.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4195,7 +4089,6 @@ dependencies = [
  "futures-core",
  "futures-sink",
  "pin-project-lite",
- "slab",
  "tokio",
 ]
 
@@ -4227,37 +4120,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baa693a8032d7e1cada7d0041e96126df243179ff061456783ac7f12bda4744c"
 dependencies = [
  "winnow",
-]
-
-[[package]]
-name = "tonic"
-version = "0.14.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac2a5518c70fa84342385732db33fb3f44bc4cc748936eb5833d2df34d6445ef"
-dependencies = [
- "base64 0.22.1",
- "bytes",
- "http",
- "http-body",
- "http-body-util",
- "percent-encoding",
- "pin-project",
- "sync_wrapper",
- "tokio-stream",
- "tower-layer",
- "tower-service",
- "tracing",
-]
-
-[[package]]
-name = "tonic-types"
-version = "0.14.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73ab1b02061f83d519bba3caa167f88f261ef05720ab8ebc954ade70de3348e8"
-dependencies = [
- "prost",
- "prost-types",
- "tonic",
 ]
 
 [[package]]
@@ -4428,22 +4290,6 @@ dependencies = [
  "log",
  "rand 0.9.5",
  "sha1 0.10.7",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "tungstenite"
-version = "0.30.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e48ac77174b19c110a50ab2128b24215ac9cb40e0e12e093fb602d175c569d22"
-dependencies = [
- "bytes",
- "data-encoding",
- "http",
- "httparse",
- "log",
- "rand 0.10.3",
- "sha1 0.11.0",
  "thiserror 2.0.21",
 ]
 
