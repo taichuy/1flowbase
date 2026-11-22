@@ -6,6 +6,7 @@ const path = require('node:path');
 
 const {
   buildBackupPrunePlan,
+  buildTestDatabasePrunePlan,
   buildTestSchemaPrunePlan,
   parseCliArgs,
   runDevDatabaseMaintenance,
@@ -14,6 +15,11 @@ const {
 function schemaNameFromTimestamp(date) {
   const millis = BigInt(date.getTime());
   return `test_${millis.toString(16).padStart(12, '0')}7abc0000000000000000`;
+}
+
+function databaseNameFromTimestamp(date, suffix = '7abc0000000000000000') {
+  const millis = BigInt(date.getTime());
+  return `test_backup_${millis.toString(16).padStart(12, '0')}${suffix}`;
 }
 
 function writeFixtureFile(filePath) {
@@ -29,6 +35,17 @@ test('parseCliArgs defaults to test schema dry-run with conservative retention',
     help: false,
     keep: 20,
     olderThanMs: 3 * 24 * 60 * 60 * 1000,
+  });
+});
+
+test('parseCliArgs supports explicit test-databases command', () => {
+  assert.deepEqual(parseCliArgs(['test-databases', '--older-than', '1h', '--keep', '0']), {
+    apply: false,
+    command: 'test-databases',
+    databaseUrl: null,
+    help: false,
+    keep: 0,
+    olderThanMs: 60 * 60 * 1000,
   });
 });
 
@@ -64,6 +81,68 @@ test('buildTestSchemaPrunePlan keeps recent schemas and newest retained schemas'
   assert.deepEqual(plan.dropSchemas, [schemas[0], schemas[1], schemas[2]]);
   assert.deepEqual(plan.keepSchemas.map((schema) => schema.name), [schemas[3]]);
   assert.deepEqual(plan.skippedSchemaNames, ['public', 'test_not_a_uuid_v7']);
+});
+
+test('buildTestDatabasePrunePlan drops old inactive test_backup_* databases while preserving active backends and active test_tpl_*', () => {
+  const now = new Date('2026-06-15T12:00:00.000Z');
+  const oldLeaked = databaseNameFromTimestamp(new Date('2026-06-01T00:00:00.000Z'), '7abc0000000000000001');
+  const oldActive = databaseNameFromTimestamp(new Date('2026-06-01T01:00:00.000Z'), '7abc0000000000000002');
+  const oldKeptByCount = databaseNameFromTimestamp(new Date('2026-06-10T00:00:00.000Z'), '7abc0000000000000003');
+  const recentBackup = databaseNameFromTimestamp(new Date('2026-06-15T11:30:00.000Z'), '7abc0000000000000004');
+  const activeTemplate = 'test_tpl_0123456789abcdef';
+  const supersededTemplate = 'test_tpl_fedcba9876543210';
+  const crashedUnsealedTemplate = 'test_tpl_0000000000000001';
+
+  const plan = buildTestDatabasePrunePlan({
+    now,
+    databases: [
+      { name: oldLeaked, isTemplate: false, allowConnections: true, activeBackends: 0 },
+      { name: oldActive, isTemplate: false, allowConnections: true, activeBackends: 2 },
+      { name: oldKeptByCount, isTemplate: false, allowConnections: true, activeBackends: 0 },
+      { name: recentBackup, isTemplate: false, allowConnections: true, activeBackends: 0 },
+      {
+        name: activeTemplate,
+        isTemplate: true,
+        allowConnections: false,
+        activeBackends: 0,
+        modifiedAtMs: new Date('2026-06-12T00:00:00.000Z').getTime(),
+      },
+      {
+        name: supersededTemplate,
+        isTemplate: true,
+        allowConnections: false,
+        activeBackends: 0,
+        modifiedAtMs: new Date('2026-06-01T00:00:00.000Z').getTime(),
+      },
+      {
+        name: crashedUnsealedTemplate,
+        isTemplate: false,
+        allowConnections: true,
+        activeBackends: 0,
+        modifiedAtMs: new Date('2026-06-01T00:00:00.000Z').getTime(),
+      },
+      { name: 'test_custom_manual_db', isTemplate: false, allowConnections: true, activeBackends: 0 },
+    ],
+    olderThanMs: 60 * 60 * 1000,
+    keep: 2,
+  });
+
+  assert.deepEqual(plan.dropDatabaseNames, [
+    oldLeaked,
+    crashedUnsealedTemplate,
+    supersededTemplate,
+  ].sort());
+  assert.deepEqual(plan.activeDatabaseNames, [oldActive]);
+  assert.deepEqual(plan.skippedDatabaseNames, ['test_custom_manual_db']);
+  assert.equal(
+    plan.keepDatabases.some((entry) => entry.name === activeTemplate),
+    true,
+    'newest active test_tpl_* template must stay preserved even with olderThan=1h'
+  );
+  assert.equal(
+    plan.dropDatabases.find((entry) => entry.name === supersededTemplate)?.isTemplate,
+    true
+  );
 });
 
 test('runDevDatabaseMaintenance refuses production and non-local database URLs', () => {
@@ -172,6 +251,57 @@ test('AC-001: runDevDatabaseMaintenance drops large test schema plans in bounded
   assert.equal(droppedBatches.length, 25);
   assert.equal(droppedBatches.every((batch) => batch.length === 1), true);
   assert.deepEqual(droppedBatches.flat(), [...schemaNames].sort());
+});
+
+test('AC-001: runDevDatabaseMaintenance prunes leaked test_backup_* databases alongside test-schemas and via test-databases without leaking credentials', () => {
+  const now = new Date('2026-06-15T12:00:00.000Z');
+  const leakedDb = databaseNameFromTimestamp(new Date('2026-06-15T09:00:00.000Z'), '7abc0000000000000010');
+  const activeDb = databaseNameFromTimestamp(new Date('2026-06-15T09:30:00.000Z'), '7abc0000000000000011');
+  const activeTpl = 'test_tpl_1122334455667788';
+  const psqlCalls = [];
+
+  const status = runDevDatabaseMaintenance({
+    now,
+    options: parseCliArgs([
+      'test-schemas',
+      '--database-url',
+      'postgres://postgres:super-secret-pw@127.0.0.1:35432/1flowbase',
+      '--older-than',
+      '1h',
+      '--keep',
+      '0',
+      '--apply',
+    ]),
+    sourceEnv: { API_ENV: 'development' },
+    runPsqlCommand(_cmd, args, opts) {
+      psqlCalls.push({ args, env: opts.env });
+      const sql = args[args.length - 1];
+      if (sql.includes('from pg_namespace')) {
+        return { status: 0, stdout: '', stderr: '' };
+      }
+      if (sql.includes('from pg_database')) {
+        return {
+          status: 0,
+          stdout: [
+            `${leakedDb}|0|1|0|1781514000000`,
+            `${activeDb}|0|1|1|1781515800000`,
+            `${activeTpl}|1|0|0|1781500000000`,
+          ].join('\n'),
+          stderr: '',
+        };
+      }
+      return { status: 0, stdout: 'DROP DATABASE\n', stderr: '' };
+    },
+    writeStdout() {},
+  });
+
+  assert.equal(status, 0);
+  assert.equal(psqlCalls.length, 3);
+  for (const call of psqlCalls) {
+    assert.doesNotMatch(call.args.join(' '), /super-secret-pw/u);
+    assert.equal(call.env.PGPASSWORD, 'super-secret-pw');
+  }
+  assert.match(psqlCalls[2].args[psqlCalls[2].args.length - 1], new RegExp(`drop database if exists "${leakedDb}"`, 'u'));
 });
 
 test('buildBackupPrunePlan keeps active postgres and recent backup directories', () => {
