@@ -23,6 +23,7 @@ pub struct FrontendBlockCodeModule {
     pub binding: FrontendModuleBinding,
     #[serde(default)]
     pub assets: Vec<FrontendModuleAsset>,
+    #[serde(default)]
     pub type_declarations: String,
 }
 

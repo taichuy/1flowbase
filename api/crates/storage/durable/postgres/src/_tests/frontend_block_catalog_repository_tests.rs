@@ -356,6 +356,43 @@ async fn frontend_block_catalog_repository_lists_builtin_and_assigned_workspace_
         entries[0].code_modules[0].assets[0].role,
         domain::FrontendModuleAssetRole::BrowserModule
     );
+    assert_eq!(
+        entries[0].code_modules[0].type_declarations,
+        "export declare function defineBlock(): unknown;"
+    );
+
+    let runtime_entries = FrontendBlockCatalogRepository::list_workspace_frontend_blocks_runtime(
+        &store,
+        "test-node",
+        workspace.id,
+    )
+    .await
+    .unwrap();
+    assert_eq!(runtime_entries.len(), 1);
+    assert_eq!(runtime_entries[0].contribution_code, "hero_banner");
+    assert_eq!(runtime_entries[0].code_modules.len(), 1);
+    assert_eq!(
+        runtime_entries[0].code_modules[0].source,
+        "@1flowbase/block-sdk"
+    );
+    assert_eq!(
+        runtime_entries[0].code_modules[0].exports,
+        vec!["blockSdkVersion"]
+    );
+    assert_eq!(
+        runtime_entries[0].code_modules[0].binding,
+        domain::FrontendModuleBinding::Fetched
+    );
+    assert_eq!(
+        runtime_entries[0].code_modules[0].assets[0].role,
+        domain::FrontendModuleAssetRole::BrowserModule
+    );
+    assert!(
+        runtime_entries[0].code_modules[0]
+            .type_declarations
+            .is_empty(),
+        "runtime workspace catalog query must strip inline type_declarations inside PostgreSQL"
+    );
 
     let code_modules_column = sqlx::query(
         r#"

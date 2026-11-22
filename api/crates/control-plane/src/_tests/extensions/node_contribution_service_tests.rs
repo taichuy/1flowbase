@@ -120,7 +120,7 @@ impl MemoryNodeContributionRepository {
     fn with_console_operation(mut self, group_id: &str, operation_id: &str) -> Self {
         let group = domain::ConsolePolicyGroup::other(group_id)
             .expect("plugin catalog policy group must be valid");
-        self.console_policies = vec![domain::RoleConsolePolicy::new(
+        self.console_policies.push(domain::RoleConsolePolicy::new(
             Uuid::now_v7(),
             vec![domain::RoleConsoleGroupPolicy::custom(
                 group,
@@ -130,7 +130,7 @@ impl MemoryNodeContributionRepository {
                     true,
                 )],
             )],
-        )];
+        ));
         self
     }
 }
@@ -1233,4 +1233,104 @@ fn mixed_system_service_frontend_retains_explicit_assignment_and_durable_authori
         resolver.resolve(wrong_scope),
         FrontendContributionResolution::Disabled(_)
     ));
+}
+
+#[tokio::test]
+async fn frontend_block_type_declarations_deduplicate_active_modules_and_enforce_operation_policy()
+{
+    let workspace_id = Uuid::now_v7();
+    let denied_repository =
+        MemoryNodeContributionRepository::new(actor_with_permissions(workspace_id, &[]), vec![])
+            .with_console_operation("other.frontend-blocks", "frontend_blocks.view");
+    assert!(FrontendBlockCatalogService::new(
+        denied_repository,
+        "test-node",
+        frontend_contribution_graph(),
+    )
+    .unwrap()
+    .list_frontend_block_type_declarations(ListFrontendBlockCatalogQuery {
+        actor_user_id: Uuid::now_v7(),
+    })
+    .await
+    .is_err());
+
+    let repository =
+        MemoryNodeContributionRepository::new(actor_with_permissions(workspace_id, &[]), vec![])
+            .with_console_operation("other.frontend-blocks", "frontend_blocks.view")
+            .with_console_operation(
+                "other.frontend-blocks",
+                "frontend_blocks.type_declarations.view",
+            );
+    let mut active = frontend_candidate(workspace_id, "1.0.0");
+    active.catalog_entry.code_modules = vec![
+        domain::FrontendBlockCodeModule {
+            source: "@fixture/calendar".into(),
+            version: "1.0.0".into(),
+            exports: vec!["Calendar".into()],
+            binding: domain::FrontendModuleBinding::Fetched,
+            assets: vec![],
+            type_declarations: "declare module '@fixture/calendar' { export const Calendar: any; }\n"
+                .into(),
+        },
+        domain::FrontendBlockCodeModule {
+            source: "react".into(),
+            version: "19.2.5".into(),
+            exports: vec!["useState".into()],
+            binding: domain::FrontendModuleBinding::Host,
+            assets: vec![],
+            type_declarations: "   ".into(),
+        },
+    ];
+    let mut sibling = active.catalog_entry.clone();
+    sibling.contribution_code = "agenda".into();
+    let mut unassigned = frontend_candidate(workspace_id, "1.0.0");
+    unassigned.catalog_entry.code_modules = vec![domain::FrontendBlockCodeModule {
+        source: "@fixture/secret".into(),
+        version: "1.0.0".into(),
+        exports: vec!["Secret".into()],
+        binding: domain::FrontendModuleBinding::Fetched,
+        assets: vec![],
+        type_declarations: "declare module '@fixture/secret' {}".into(),
+    }];
+    {
+        let mut state = repository.frontend.write().await;
+        state.installations = vec![active.installation.clone(), unassigned.installation.clone()];
+        state.artifacts = vec![active.artifact.clone(), unassigned.artifact.clone()];
+        state.assignments = vec![active.assignment.clone().unwrap()];
+        state.blocks = vec![
+            active.catalog_entry.clone(),
+            sibling,
+            unassigned.catalog_entry,
+        ];
+    }
+    let service =
+        FrontendBlockCatalogService::new(repository, "test-node", frontend_contribution_graph())
+            .unwrap();
+    let runtime_view = service
+        .list_frontend_blocks(ListFrontendBlockCatalogQuery {
+            actor_user_id: Uuid::now_v7(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(runtime_view.entries.len(), 2);
+    assert!(runtime_view.entries.iter().all(|binding| {
+        binding
+            .catalog_entry
+            .code_modules
+            .iter()
+            .all(|module| module.type_declarations.is_empty())
+    }));
+
+    let declarations = service
+        .list_frontend_block_type_declarations(ListFrontendBlockCatalogQuery {
+            actor_user_id: Uuid::now_v7(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(declarations.entries.len(), 1);
+    assert_eq!(declarations.entries[0].source, "@fixture/calendar");
+    assert_eq!(
+        declarations.entries[0].type_declarations,
+        "declare module '@fixture/calendar' { export const Calendar: any; }"
+    );
 }

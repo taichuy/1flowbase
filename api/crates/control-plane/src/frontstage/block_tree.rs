@@ -508,7 +508,7 @@ where
             ))?;
         let entries = self
             .repository
-            .list_workspace_frontend_blocks(node_id, workspace_id)
+            .list_workspace_frontend_blocks_runtime(node_id, workspace_id)
             .await?;
         let entry = entries
             .into_iter()

@@ -1,11 +1,28 @@
-import type { ConsolePluginSettingsCodeModule } from '@1flowbase/api-client';
+import type {
+  ConsoleFrontendBlockRuntimeCodeModule,
+  ConsolePluginSettingsCodeModule
+} from '@1flowbase/api-client';
 import {
   sha256Bytes,
   type NativeReactFrontendModuleRegistration,
   type NativeReactModuleRegistry
 } from '@1flowbase/page-runtime/browser';
 
-type Asset = ConsolePluginSettingsCodeModule['assets'][number];
+export type FetchedFrontendCodeModuleInput =
+  ConsoleFrontendBlockRuntimeCodeModule & {
+    type_declarations?: ConsolePluginSettingsCodeModule['type_declarations'];
+  };
+
+type Asset = FetchedFrontendCodeModuleInput['assets'][number];
+
+function hasInvalidTypeDeclarations(
+  module: FetchedFrontendCodeModuleInput
+): boolean {
+  return (
+    typeof module.type_declarations === 'string' &&
+    !module.type_declarations.trim()
+  );
+}
 
 /** Each page epoch owns its authenticated fetches and module/style flights. */
 export function createFetchedNativeReactModuleRegistry({
@@ -17,11 +34,11 @@ export function createFetchedNativeReactModuleRegistry({
   createObjectURL = (blob) => URL.createObjectURL(blob),
   revokeObjectURL = (url) => URL.revokeObjectURL(url)
 }: {
-  modules: readonly ConsolePluginSettingsCodeModule[];
+  modules: readonly FetchedFrontendCodeModuleInput[];
   /** Optional per-fetched-module dependencies, preserving verified plugin ownership. */
   hostBindingsByModule?: ReadonlyMap<
     string,
-    readonly ConsolePluginSettingsCodeModule[]
+    readonly FetchedFrontendCodeModuleInput[]
   >;
   hostRegistryFactory: (
     registrations: readonly NativeReactFrontendModuleRegistration[]
@@ -60,12 +77,12 @@ export function createFetchedNativeReactModuleRegistry({
     assertCurrent();
     return bytes;
   };
-  const validateHostBinding = (module: ConsolePluginSettingsCodeModule) => {
+  const validateHostBinding = (module: FetchedFrontendCodeModuleInput) => {
     const exports = hostExportsBySource.get(module.source);
     if (
       module.binding !== 'host' ||
       !module.version.trim() ||
-      !module.type_declarations.trim() ||
+      hasInvalidTypeDeclarations(module) ||
       !exports ||
       module.assets.length ||
       !module.exports.length ||
@@ -97,7 +114,7 @@ export function createFetchedNativeReactModuleRegistry({
     if (
       !module.source.trim() ||
       !module.version.trim() ||
-      !module.type_declarations.trim() ||
+      hasInvalidTypeDeclarations(module) ||
       sources.has(module.source) ||
       !module.exports.length ||
       new Set(module.exports).size !== module.exports.length ||

@@ -1,12 +1,16 @@
 import {
   getDefaultApiBaseUrl,
+  listConsoleFrontendBlockTypeDeclarations,
   listConsoleFrontendBlocks,
   type ApiBaseUrlLocation,
-  type FrontendUiRegistrationTarget,
-  type ConsoleFrontendBlockCatalogEntry
+  type ConsoleFrontendBlockCatalogEntry,
+  type ConsoleFrontendBlockTypeDeclaration,
+  type FrontendUiRegistrationTarget
 } from '@1flowbase/api-client';
 
 export type FrontstageBlockCatalogEntry = ConsoleFrontendBlockCatalogEntry;
+export type FrontstageBlockTypeDeclaration =
+  ConsoleFrontendBlockTypeDeclaration;
 
 export interface FrontstageBlockCatalogSnapshot {
   entries: FrontstageBlockCatalogEntry[];
@@ -15,6 +19,11 @@ export interface FrontstageBlockCatalogSnapshot {
 export const frontstageBlockCatalogQueryKeyPrefix = [
   'frontstage',
   'block-catalog'
+] as const;
+
+export const frontstageBlockTypeDeclarationsQueryKeyPrefix = [
+  'frontstage',
+  'block-type-declarations'
 ] as const;
 
 export function frontstageBlockCatalogQueryKey({
@@ -34,6 +43,23 @@ export function frontstageBlockCatalogQueryKey({
     actorId,
     permissionFingerprint,
     ...(registrationTarget ? [{ registration_target: registrationTarget }] : [])
+  ] as const;
+}
+
+export function frontstageBlockTypeDeclarationsQueryKey({
+  workspaceId,
+  actorId,
+  permissionFingerprint
+}: {
+  workspaceId: string;
+  actorId: string;
+  permissionFingerprint: string;
+}) {
+  return [
+    ...frontstageBlockTypeDeclarationsQueryKeyPrefix,
+    workspaceId,
+    actorId,
+    permissionFingerprint
   ] as const;
 }
 
@@ -58,4 +84,12 @@ export async function fetchFrontstageBlockCatalog(
         : undefined
     )
   };
+}
+
+export function fetchFrontstageBlockTypeDeclarations(): Promise<
+  FrontstageBlockTypeDeclaration[]
+> {
+  return listConsoleFrontendBlockTypeDeclarations(
+    getFrontstageBlockCatalogApiBaseUrl()
+  );
 }

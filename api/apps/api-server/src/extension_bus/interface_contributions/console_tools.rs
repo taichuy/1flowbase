@@ -38,7 +38,10 @@ pub(super) fn contributions(
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-frontend-blocks",
-            &["frontend_blocks.view"],
+            &[
+                "frontend_blocks.type_declarations.view",
+                "frontend_blocks.view",
+            ],
             &["api-server.console-frontend-blocks"],
             crate::routes::frontend_block_catalog::compile_registry(
                 crate::routes::frontend_block_catalog::FrontendBlockDependencies {

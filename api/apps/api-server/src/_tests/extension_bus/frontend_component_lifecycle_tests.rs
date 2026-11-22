@@ -400,8 +400,15 @@ fn native_fetched_modules_are_verified_and_catalog_wire_preserves_settings_modul
     let json = serde_json::to_value(response).unwrap();
     assert_eq!(
         json["code_modules"],
-        serde_json::to_value(&modules).unwrap()
+        serde_json::json!([{
+            "source": modules[0].source,
+            "version": modules[0].version,
+            "exports": modules[0].exports,
+            "binding": modules[0].binding,
+            "assets": modules[0].assets,
+        }])
     );
+    assert!(json["code_modules"][0].get("type_declarations").is_none());
     assert_eq!(json["code_modules"][0]["binding"], "fetched");
     assert!(json["code_modules"][0]["assets"][0].get("url").is_none());
     assert!(json["code_modules"][0]["assets"][0]

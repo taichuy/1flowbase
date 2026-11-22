@@ -77,7 +77,13 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
         ],
     ),
     core_simple_other("other.data-sources", &["data_sources.secret.rotate"]),
-    core_simple_other("other.frontend-blocks", &["frontend_blocks.view"]),
+    core_simple_other(
+        "other.frontend-blocks",
+        &[
+            "frontend_blocks.type_declarations.view",
+            "frontend_blocks.view",
+        ],
+    ),
     core_authenticated_other(
         "other.frontstage",
         &[

@@ -12,6 +12,7 @@ import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import { isForbiddenResponseError } from '../../lib/api-errors';
+import { useFrontstageBlockTypeDeclarations } from '../../hooks/use-frontstage-block-type-declarations';
 import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../lib/jsx-studio/context-injection';
 import {
@@ -131,12 +132,28 @@ export function FrontstageJsxStudioDrawer({
     activeTab.error !== null &&
     'status' in activeTab.error &&
     activeTab.error.status === 404;
+  const effectiveCatalogEntries = useMemo(
+    () =>
+      catalogEntries.length > 0
+        ? catalogEntries
+        : activeCatalogEntry
+          ? [activeCatalogEntry]
+          : EMPTY_CATALOG_ENTRIES,
+    [activeCatalogEntry, catalogEntries]
+  );
+  const typeDeclarations = useFrontstageBlockTypeDeclarations({
+    workspaceId,
+    open,
+    catalogEntries: effectiveCatalogEntries
+  });
   const projection = useMemo(
     () =>
       createFrontstageJsxEditorProjection({
-        catalogEntry: activeCatalogEntry
+        catalogEntry: activeCatalogEntry,
+        catalogEntries: effectiveCatalogEntries,
+        typeDeclarations: typeDeclarations.items
       }),
-    [activeCatalogEntry]
+    [activeCatalogEntry, effectiveCatalogEntries, typeDeclarations.items]
   );
   const monacoExtraLibs = projection.monacoExtraLibs;
   const blockCreateDefaults = useMemo(() => {

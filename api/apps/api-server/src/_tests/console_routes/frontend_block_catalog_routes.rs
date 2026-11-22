@@ -1,5 +1,6 @@
 use crate::_tests::support::{
-    login_and_capture_cookie, test_api_state_with_database_url, test_config,
+    create_member, create_role, login_and_capture_cookie, replace_member_roles,
+    test_api_state_with_database_url, test_config,
 };
 use crate::extension_bus::SnapshotAssembly;
 use crate::provider_runtime::ApiProviderRuntime;
@@ -761,6 +762,12 @@ async fn frontend_block_catalog_route_lists_assigned_workspace_blocks() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()["cache-control"],
+        "private, no-cache"
+    );
+    let etag = response.headers()["etag"].to_str().unwrap().to_owned();
+    assert!(etag.starts_with('"') && etag.ends_with('"'));
     let payload: Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     let entries = payload["data"].as_array().unwrap();
@@ -783,6 +790,8 @@ async fn frontend_block_catalog_route_lists_assigned_workspace_blocks() {
     assert_eq!(entry["code_template_language"].as_str(), Some("tsx"));
     assert_eq!(entry["code_modules"].as_array().unwrap().len(), 2);
     assert_eq!(entry["code_modules"][0]["binding"], "fetched");
+    assert!(entry["code_modules"][0].get("type_declarations").is_none());
+    assert!(entry["code_modules"][1].get("type_declarations").is_none());
     assert_eq!(
         entry["code_modules"][0]["assets"][0]["sha256"],
         "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
@@ -806,6 +815,28 @@ async fn frontend_block_catalog_route_lists_assigned_workspace_blocks() {
         entry["context_contract"]["primitives"][0].as_str(),
         Some("text")
     );
+
+    let revalidated = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/frontend-blocks")
+                .header("cookie", &cookie)
+                .header("if-none-match", format!("\"stale\", {etag}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(revalidated.status(), StatusCode::NOT_MODIFIED);
+    assert_eq!(
+        revalidated.headers()["cache-control"],
+        "private, no-cache"
+    );
+    assert_eq!(revalidated.headers()["etag"], etag);
+    assert!(to_bytes(revalidated.into_body(), usize::MAX)
+        .await
+        .unwrap()
+        .is_empty());
 }
 
 #[tokio::test]
@@ -860,4 +891,154 @@ async fn isolated_catalog_projects_its_entry_asset_without_module_dependencies()
         isolated["isolated_entry_asset"]["sha256"],
         "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
     );
+}
+
+#[tokio::test]
+async fn frontend_block_type_declarations_route_deduplicates_enforces_acl_and_revalidates_etag() {
+    let (app, database_url) = test_frontend_block_app_with_database_url().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    seed_frontend_block(&database_url, false, true).await;
+    let assigned_id = seed_frontend_block(&database_url, true, true).await;
+
+    let pool = PgPool::connect(&database_url).await.unwrap();
+    sqlx::query(
+        r#"
+        insert into frontend_block_catalog (
+            id, installation_id, provider_code, plugin_id, plugin_version, contribution_code,
+            title, runtime, entry, context_contract, permission_network, permission_storage,
+            permission_secrets, ui_capabilities, code_template, code_template_version, code_template_language, code_modules
+        )
+        select
+            $1, installation_id, provider_code, plugin_id, plugin_version, 'hero_footer',
+            'Hero Footer', runtime, entry, context_contract, permission_network, permission_storage,
+            permission_secrets, ui_capabilities, code_template, code_template_version, code_template_language, code_modules
+        from frontend_block_catalog
+        where installation_id = $2 and contribution_code = 'hero_banner'
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(assigned_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let catalog_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/frontend-blocks")
+                .header("cookie", &root_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(catalog_response.status(), StatusCode::OK);
+    let catalog_payload: Value = serde_json::from_slice(
+        &to_bytes(catalog_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(catalog_payload["data"].as_array().unwrap().len(), 2);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/frontend-blocks/type-declarations")
+                .header("cookie", &root_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()["cache-control"],
+        "private, no-cache"
+    );
+    let etag = response.headers()["etag"].to_str().unwrap().to_owned();
+    assert!(etag.starts_with('"') && etag.ends_with('"'));
+    let payload: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let items = payload["data"].as_array().unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(
+        items
+            .iter()
+            .map(|item| item["source"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["@acme/native-components", "@acme/runtime-utils"]
+    );
+    assert!(items
+        .iter()
+        .all(|item| item["installation_id"] == assigned_id.to_string()));
+    assert_eq!(
+        items[0]["type_declarations"],
+        "declare module '@acme/native-components' {}"
+    );
+    assert_eq!(
+        items[1]["type_declarations"],
+        "declare module '@acme/runtime-utils' { export function useRuntimeValue(): string; }"
+    );
+
+    let revalidated = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/frontend-blocks/type-declarations")
+                .header("cookie", &root_cookie)
+                .header("if-none-match", format!("W/{etag}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(revalidated.status(), StatusCode::NOT_MODIFIED);
+    assert_eq!(
+        revalidated.headers()["cache-control"],
+        "private, no-cache"
+    );
+    assert_eq!(revalidated.headers()["etag"], etag);
+    assert!(to_bytes(revalidated.into_body(), usize::MAX)
+        .await
+        .unwrap()
+        .is_empty());
+
+    create_role(&app, &root_cookie, &root_csrf, "no_block_types").await;
+    let member_id = create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "restricted-block-types-reader",
+        "temp-pass",
+    )
+    .await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &member_id,
+        &["no_block_types"],
+    )
+    .await;
+    let (member_cookie, _) =
+        login_and_capture_cookie(&app, "restricted-block-types-reader", "temp-pass").await;
+
+    let denied = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/frontend-blocks/type-declarations")
+                .header("cookie", &member_cookie)
+                .header("if-none-match", &etag)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+    let denied_payload: Value =
+        serde_json::from_slice(&to_bytes(denied.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(denied_payload["code"], "console_operation_permission_denied");
 }

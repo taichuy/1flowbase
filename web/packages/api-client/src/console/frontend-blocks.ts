@@ -1,5 +1,4 @@
 import { apiFetch, apiFetchBlob } from '../transport';
-import type { ConsolePluginSettingsCodeModule } from './administration/ui-management';
 
 export interface ConsoleFrontendBlockContextContract {
   primitives: string[];
@@ -36,6 +35,29 @@ export type FrontendUiRegistrationTarget =
   | 'component'
   | 'code_template';
 
+export interface ConsoleFrontendBlockRuntimeCodeModule {
+  source: string;
+  version: string;
+  exports: string[];
+  binding: 'host' | 'fetched';
+  assets: {
+    path: string;
+    role: 'browser_module' | 'shadow_style' | 'support';
+    media_type: string;
+    sha256: string;
+  }[];
+}
+
+export interface ConsoleFrontendBlockTypeDeclaration {
+  installation_id: string;
+  plugin_id: string;
+  plugin_version: string;
+  source: string;
+  version: string;
+  binding: 'host' | 'fetched';
+  type_declarations: string;
+}
+
 export interface ConsoleFrontendBlockCatalogEntry {
   registration_targets?: FrontendUiRegistrationTarget[];
   custom_block_id?: string | null;
@@ -50,7 +72,7 @@ export interface ConsoleFrontendBlockCatalogEntry {
   code_template?: string | null;
   code_template_version?: string | null;
   code_template_language?: 'jsx' | 'tsx' | null;
-  code_modules: ConsolePluginSettingsCodeModule[];
+  code_modules: ConsoleFrontendBlockRuntimeCodeModule[];
   isolated_entry_asset?: {
     media_type: string;
     sha256: string;
@@ -83,6 +105,16 @@ export function listConsoleFrontendBlocks(
     path: query?.registration_target
       ? `/api/console/frontend-blocks?${new URLSearchParams({ registration_target: query.registration_target })}`
       : '/api/console/frontend-blocks',
+    method: 'GET',
+    baseUrl
+  });
+}
+
+export function listConsoleFrontendBlockTypeDeclarations(
+  baseUrl?: string
+): Promise<ConsoleFrontendBlockTypeDeclaration[]> {
+  return apiFetch<ConsoleFrontendBlockTypeDeclaration[]>({
+    path: '/api/console/frontend-blocks/type-declarations',
     method: 'GET',
     baseUrl
   });

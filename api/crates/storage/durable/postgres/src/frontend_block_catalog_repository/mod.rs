@@ -178,6 +178,62 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
         rows.into_iter().map(map_catalog_row).collect()
     }
 
+    async fn list_workspace_frontend_blocks_runtime(
+        &self,
+        node_id: &str,
+        workspace_id: Uuid,
+    ) -> Result<Vec<domain::FrontendBlockCatalogEntry>> {
+        let rows = sqlx::query(
+            r#"
+            select
+                reg.installation_id,
+                reg.provider_code,
+                reg.plugin_id,
+                reg.plugin_version,
+                reg.contribution_code,
+                reg.title,
+                reg.runtime,
+                reg.entry,
+                reg.code_template,
+                reg.code_template_version,
+                reg.code_template_language,
+                coalesce(
+                    (
+                        select jsonb_agg(elem.value - 'type_declarations' order by elem.ord)
+                        from jsonb_array_elements(reg.code_modules) with ordinality as elem(value, ord)
+                    ),
+                    '[]'::jsonb
+                ) as code_modules,
+                reg.context_contract,
+                reg.permission_network,
+                reg.permission_storage,
+                reg.permission_secrets,
+                reg.ui_capabilities, reg.ui_registration, reg.block_registration
+            from frontend_block_catalog reg
+            inner join extension_installations installation
+                on installation.id = reg.installation_id
+            inner join extension_artifact_instances artifact
+                on artifact.installation_id = installation.id
+               and artifact.node_id = $1
+            left join plugin_assignments pa
+                on pa.workspace_id = $2
+               and pa.installation_id = reg.installation_id
+            where (installation.source_kind = 'builtin'
+               or pa.installation_id is not null)
+              and installation.verification_status = 'valid'
+              and artifact.artifact_status = 'ready'
+              and artifact.availability_status = 'available'
+            order by reg.title asc, reg.contribution_code asc
+            "#,
+        )
+        .bind(node_id)
+        .bind(workspace_id)
+        .fetch_all(self.pool())
+        .await?;
+
+        rows.into_iter().map(map_catalog_row).collect()
+    }
+
     async fn list_system_frontend_blocks(
         &self,
         node_id: &str,

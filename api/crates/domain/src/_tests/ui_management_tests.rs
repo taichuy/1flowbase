@@ -125,3 +125,37 @@ fn plugin_component_complete_source_can_own_all_imports_without_changing_other_o
         Ok(UiComponentRecordOrigin::Plugin)
     );
 }
+
+#[test]
+fn frontend_block_runtime_code_module_deserializes_without_type_declarations() {
+    let projected: crate::FrontendBlockCodeModule = serde_json::from_value(serde_json::json!({
+        "source": "@fixture/calendar",
+        "version": "1.2.0",
+        "exports": ["Calendar"],
+        "binding": "fetched",
+        "assets": [{
+            "path": "browser-assets/calendar.js",
+            "role": "browser_module",
+            "media_type": "text/javascript; charset=utf-8",
+            "sha256": "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
+        }]
+    }))
+    .unwrap();
+    assert_eq!(projected.source, "@fixture/calendar");
+    assert_eq!(projected.type_declarations, "");
+    assert_eq!(projected.resolved_type_declarations(), "");
+
+    let full: crate::FrontendBlockCodeModule = serde_json::from_value(serde_json::json!({
+        "source": "@fixture/calendar",
+        "version": "1.2.0",
+        "exports": ["Calendar"],
+        "binding": "fetched",
+        "assets": [],
+        "type_declarations": "declare module '@fixture/calendar' {}\n  "
+    }))
+    .unwrap();
+    assert_eq!(
+        full.resolved_type_declarations(),
+        "declare module '@fixture/calendar' {}"
+    );
+}

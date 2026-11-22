@@ -154,6 +154,21 @@ describe('settings page fetched native modules', () => {
       })
     ).toThrow();
     expect(() =>
+      make({ modules: [{ ...module, type_declarations: '   ' }] })
+    ).toThrow('Invalid frontend module declaration');
+    const runtimeModule = {
+      source: module.source,
+      version: module.version,
+      exports: module.exports,
+      binding: module.binding,
+      assets: module.assets
+    };
+    const runtimeLoader = make({ modules: [runtimeModule] });
+    expect(runtimeLoader.registry.definitions).toEqual([
+      { module_source: module.source, exports: module.exports }
+    ]);
+    runtimeLoader.dispose();
+    expect(() =>
       make({
         hostRegistryFactory: (entries) =>
           createNativeReactModuleRegistry([

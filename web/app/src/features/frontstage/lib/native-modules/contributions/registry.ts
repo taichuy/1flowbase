@@ -1,5 +1,6 @@
 import {
   fetchConsoleFrontendModuleAsset,
+  type ConsoleFrontendBlockRuntimeCodeModule,
   type ConsolePluginSettingsCodeModule
 } from '@1flowbase/api-client';
 import {
@@ -11,7 +12,9 @@ import type { NormalizedFrontstageBlockCatalogEntry } from '../../block-catalog'
 import { createFrontstageNativeReactModuleRegistry } from '../registry';
 import { getFrontstageBlockCatalogApiBaseUrl } from '../../../api/block-catalog';
 
-type Module = ConsolePluginSettingsCodeModule;
+type Module = ConsoleFrontendBlockRuntimeCodeModule & {
+  type_declarations?: ConsolePluginSettingsCodeModule['type_declarations'];
+};
 export interface ContributionModuleInventory {
   modules: Module[];
   hostBindingsByModule: ReadonlyMap<string, readonly Module[]>;
