@@ -438,6 +438,7 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("members.enable", "system.members"),
     settings("members.list", "system.members"),
     settings("billing.pricing_rules.list", "system.model-providers"),
+    settings("billing.pricing_targets.list", "system.model-providers"),
     settings("billing.pricing_rules.create", "system.model-providers"),
     settings("billing.pricing_rules.update", "system.model-providers"),
     settings("billing.pricing_rules.delete", "system.model-providers"),

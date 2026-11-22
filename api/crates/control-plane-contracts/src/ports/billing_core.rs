@@ -18,6 +18,42 @@ pub struct PricingRulesPage {
 }
 
 #[derive(Debug, Clone)]
+pub struct ListPricingTargetProvidersInput {
+    pub provider_query: Option<String>,
+    pub at: OffsetDateTime,
+    pub page_size: i64,
+    pub offset: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PricingTargetProviderSummary {
+    pub provider_code: String,
+    pub model_count: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct PricingTargetProvidersPage {
+    pub items: Vec<PricingTargetProviderSummary>,
+    pub total_count: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ListPricingTargetModelsInput {
+    pub provider_code: String,
+    pub upstream_model_id_query: Option<String>,
+    pub at: OffsetDateTime,
+    pub page_size: i64,
+    pub offset: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct PricingTargetModelsPage {
+    pub model_ids: Vec<String>,
+    pub rules: Vec<PricingRule>,
+    pub total_count: i64,
+}
+
+#[derive(Debug, Clone)]
 pub struct UpsertPricingRuleInput {
     pub rule: PricingRule,
 }
@@ -210,6 +246,19 @@ pub trait BillingRepository: Send + Sync {
         &self,
         input: &ListPricingRulesInput,
     ) -> anyhow::Result<PricingRulesPage>;
+    async fn list_pricing_target_providers(
+        &self,
+        input: &ListPricingTargetProvidersInput,
+    ) -> anyhow::Result<PricingTargetProvidersPage>;
+    async fn list_pricing_target_models(
+        &self,
+        input: &ListPricingTargetModelsInput,
+    ) -> anyhow::Result<PricingTargetModelsPage>;
+    async fn list_pricing_rules_for_targets(
+        &self,
+        targets: &[(String, String)],
+        at: OffsetDateTime,
+    ) -> anyhow::Result<Vec<PricingRule>>;
     async fn get_pricing_rule(&self, id: Uuid) -> anyhow::Result<Option<PricingRule>>;
     async fn match_pricing_rules(
         &self,

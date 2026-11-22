@@ -6,6 +6,7 @@ use utoipa::OpenApi;
 #[derive(OpenApi)]
 #[openapi(paths(
     super::list_pricing_rules,
+    super::list_pricing_targets,
     super::create_pricing_rule,
     super::update_pricing_rule,
     super::delete_pricing_rule,
@@ -57,6 +58,7 @@ fn billing_openapi_declares_all_existing_operation_identities_and_query_location
     let base = "/api/console/settings/billing";
     let expected = [
         ("get", "/pricing-rules", "billing.pricing_rules.list"),
+        ("get", "/pricing-targets", "billing.pricing_targets.list"),
         ("post", "/pricing-rules", "billing.pricing_rules.create"),
         (
             "patch",
@@ -124,6 +126,7 @@ fn billing_openapi_declares_all_existing_operation_identities_and_query_location
     }
     for suffix in [
         "/pricing-rules",
+        "/pricing-targets",
         "/pricing-catalog",
         "/credit-accounts",
         "/credit-ledger",
@@ -226,6 +229,36 @@ fn billing_pricing_documents_preserve_rfc3339_fields_and_existing_tuple_timestam
     assert!(wire["effective_from"].is_string());
     assert_eq!(wire["created_at"].as_array().unwrap().len(), 9);
     assert_eq!(wire["updated_at"].as_array().unwrap().len(), 9);
+
+    let target = PricingTargetResponse::try_from(
+        body_to_rule(
+            crate::model_pricing_catalog::builtin_pricing_rules()
+                .unwrap()
+                .into_iter()
+                .next()
+                .unwrap(),
+            Uuid::now_v7(),
+            None,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let targets_page = PricingTargetsPageResponse {
+        providers: vec![PricingTargetProviderResponse {
+            provider_code: "zero".into(),
+            model_count: 1,
+        }],
+        providers_total_count: 1,
+        items: vec![target.clone()],
+        total_count: 1,
+        page: 1,
+        page_size: 20,
+        selected_target: Some(target),
+    };
+    let targets_wire = assert_wire_schema::<PricingTargetsPageResponse>(&targets_page);
+    assert_eq!(targets_wire["providers"][0]["provider_code"], "zero");
+    assert_eq!(targets_wire["items"][0]["upstream_model_id"], "any");
+    assert_eq!(targets_wire["selected_target"]["provider_code"], "zero");
 }
 
 #[test]

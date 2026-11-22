@@ -571,17 +571,8 @@ pub(super) fn to_option_response(
 pub(super) fn to_options_view_response(
     locale_meta: LocaleMetaResponse,
     options: ModelProviderOptionsView,
-    pricing_targets: Vec<ModelProviderPricingTargetResponse>,
+    priced_models: HashSet<(String, String)>,
 ) -> ModelProviderOptionsResponse {
-    let priced_models = pricing_targets
-        .iter()
-        .map(|target| {
-            (
-                target.provider_code.clone(),
-                target.upstream_model_id.clone(),
-            )
-        })
-        .collect::<HashSet<_>>();
     ModelProviderOptionsResponse {
         locale_meta,
         i18n_catalog: i18n_catalog_to_value(options.i18n_catalog),
@@ -590,6 +581,6 @@ pub(super) fn to_options_view_response(
             .into_iter()
             .map(|option| to_option_response(option, &priced_models))
             .collect(),
-        pricing_targets,
+        pricing_targets: Vec::new(),
     }
 }

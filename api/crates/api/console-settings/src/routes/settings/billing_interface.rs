@@ -1,14 +1,15 @@
 use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 mod managed_projection;
 
-use std::{sync::Arc, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use control_plane::{
+    billing::PricingRule,
     errors::ControlPlaneError,
     ports::{
         BillingRepository, CacheStore, CreditAccountRecord, CreditCommandInput,
         CreditTransactionRecord, ListCreditLedgerInput, ListPricingRulesInput,
-        UpsertPricingRuleInput,
+        ListPricingTargetModelsInput, ListPricingTargetProvidersInput, UpsertPricingRuleInput,
     },
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
@@ -19,7 +20,8 @@ use uuid::Uuid;
 use super::billing::{
     body_to_rule, invalidate_pricing_rules_cache, CreditCommandBody, ImportCatalogBody, PageQuery,
     PricingCatalogPageResponse, PricingCatalogQuery, PricingRuleBody, PricingRuleQuery,
-    PricingRuleResponse, PricingRulesPageResponse,
+    PricingRuleResponse, PricingRulesPageResponse, PricingTargetProviderResponse,
+    PricingTargetResponse, PricingTargetsPageResponse, PricingTargetsQuery,
 };
 use crate::{
     error_response::ApiError,
@@ -35,6 +37,8 @@ use crate::{
 pub enum BillingInput {
     #[serde(serialize_with = "json_contract::query")]
     ListPricingRules(PricingRuleQuery),
+    #[serde(serialize_with = "json_contract::query")]
+    ListPricingTargets(PricingTargetsQuery),
     #[serde(serialize_with = "json_contract::body")]
     CreatePricingRule(PricingRuleBody),
     UpdatePricingRule {
@@ -86,6 +90,7 @@ pub enum BillingInput {
 #[serde(untagged)]
 pub enum BillingOutput {
     PricingRules(PricingRulesPageResponse),
+    PricingTargets(PricingTargetsPageResponse),
     PricingRule(PricingRuleResponse),
     Deleted(Value),
     PricingCatalog(PricingCatalogPageResponse),
@@ -195,6 +200,129 @@ impl BillingAdapter {
                     total_count: result.total_count,
                     page,
                     page_size,
+                }))
+            }
+            BillingInput::ListPricingTargets(query) => {
+                let page = query.page.unwrap_or(1).max(1);
+                let page_size = query.page_size.unwrap_or(20).clamp(1, 100);
+                let offset = (page - 1) * page_size;
+                let now = time::OffsetDateTime::now_utc();
+                let provider_code = query
+                    .provider_code
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_owned);
+                let Some(provider_code) = provider_code else {
+                    let provider_query = query
+                        .provider_query
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_owned);
+                    let result = self
+                        .0
+                        .store
+                        .list_pricing_target_providers(&ListPricingTargetProvidersInput {
+                            provider_query,
+                            at: now,
+                            page_size,
+                            offset,
+                        })
+                        .await?;
+                    return Ok(BillingOutput::PricingTargets(PricingTargetsPageResponse {
+                        providers: result
+                            .items
+                            .into_iter()
+                            .map(|item| PricingTargetProviderResponse {
+                                provider_code: item.provider_code,
+                                model_count: item.model_count,
+                            })
+                            .collect(),
+                        providers_total_count: result.total_count,
+                        items: Vec::new(),
+                        total_count: 0,
+                        page,
+                        page_size,
+                        selected_target: None,
+                    }));
+                };
+
+                let upstream_model_id_query = query
+                    .upstream_model_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_owned);
+                let result = self
+                    .0
+                    .store
+                    .list_pricing_target_models(&ListPricingTargetModelsInput {
+                        provider_code: provider_code.clone(),
+                        upstream_model_id_query,
+                        at: now,
+                        page_size,
+                        offset,
+                    })
+                    .await?;
+                let mut grouped = BTreeMap::<String, Vec<PricingRule>>::new();
+                for rule in result.rules {
+                    grouped
+                        .entry(rule.upstream_model_id.clone())
+                        .or_default()
+                        .push(rule);
+                }
+                let mut items = Vec::with_capacity(result.model_ids.len());
+                for model_id in result.model_ids {
+                    let Some(candidate_rules) = grouped.remove(&model_id) else {
+                        continue;
+                    };
+                    let Some(rule) =
+                        control_plane::billing::choose_pricing_rule(candidate_rules, now)?
+                    else {
+                        continue;
+                    };
+                    items.push(PricingTargetResponse::try_from(rule)?);
+                }
+
+                let selected_model_id = query
+                    .selected_model_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_owned);
+                let selected_target = match selected_model_id {
+                    None => None,
+                    Some(model_id) => {
+                        if let Some(found) = items
+                            .iter()
+                            .find(|item| item.upstream_model_id == model_id)
+                        {
+                            Some(found.clone())
+                        } else {
+                            let exact_rules = self
+                                .0
+                                .store
+                                .list_pricing_rules_for_targets(
+                                    &[(provider_code.clone(), model_id)],
+                                    now,
+                                )
+                                .await?;
+                            control_plane::billing::choose_pricing_rule(exact_rules, now)?
+                                .map(PricingTargetResponse::try_from)
+                                .transpose()?
+                        }
+                    }
+                };
+
+                Ok(BillingOutput::PricingTargets(PricingTargetsPageResponse {
+                    providers: Vec::new(),
+                    providers_total_count: 0,
+                    items,
+                    total_count: result.total_count,
+                    page,
+                    page_size,
+                    selected_target,
                 }))
             }
             BillingInput::CreatePricingRule(body) => {
@@ -396,6 +524,13 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         binding_id: "http.console.settings.billing.pricing-rules.list.v1",
         method: "GET",
         path: "/api/console/settings/billing/pricing-rules",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "billing.pricing_targets.list",
+        binding_id: "http.console.settings.billing.pricing-targets.list.v1",
+        method: "GET",
+        path: "/api/console/settings/billing/pricing-targets",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {

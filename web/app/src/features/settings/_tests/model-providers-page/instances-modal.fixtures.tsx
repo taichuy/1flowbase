@@ -133,6 +133,10 @@ const consoleNavigationApi = vi.hoisted(() => ({
   fetchSettingsConsoleNavigation: vi.fn()
 }));
 
+const billingApi = vi.hoisted(() => ({
+  listSettingsPricingTargets: vi.fn()
+}));
+
 vi.mock('../../api/identity-access/members', () => membersApi);
 vi.mock('../../api/identity-access/roles', () => rolesApi);
 vi.mock('../../api/identity-access/permissions', () => permissionsApi);
@@ -142,6 +146,13 @@ vi.mock('../../api/extensions/plugins', () => pluginsApi);
 vi.mock('../../api/system-runtime', () => systemRuntimeApi);
 vi.mock('../../api/file-management', () => fileManagementApi);
 vi.mock('../../api/console-navigation', () => consoleNavigationApi);
+vi.mock('../../api/billing', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../api/billing')>();
+  return {
+    ...actual,
+    listSettingsPricingTargets: billingApi.listSettingsPricingTargets
+  };
+});
 vi.mock('@scalar/api-reference-react', () => ({
   ApiReferenceReact: () => <div data-testid="settings-page-scalar">Scalar</div>
 }));
@@ -283,8 +294,78 @@ beforeEach(() => {
   modelProvidersApi.fetchSettingsModelProviderInstances.mockResolvedValue(
     buildSettingsModelProviderInstances()
   );
-  modelProvidersApi.fetchSettingsModelProviderOptions.mockResolvedValue(
-    buildSettingsModelProviderOptions()
+  const optionsFixture = buildSettingsModelProviderOptions();
+  modelProvidersApi.fetchSettingsModelProviderOptions.mockResolvedValue({
+    ...optionsFixture,
+    pricing_targets: []
+  });
+  billingApi.listSettingsPricingTargets.mockImplementation(
+    async (filter: {
+      provider_code?: string;
+      provider_query?: string;
+      upstream_model_id?: string;
+      selected_model_id?: string;
+      page?: number;
+      page_size?: number;
+    } = {}) => {
+      const targets = optionsFixture.pricing_targets;
+      const page = filter.page ?? 1;
+      const pageSize = filter.page_size ?? 20;
+      const offset = (page - 1) * pageSize;
+      if (!filter.provider_code) {
+        const counts = new Map<string, number>();
+        for (const target of targets) {
+          if (
+            filter.provider_query &&
+            !target.provider_code
+              .toLowerCase()
+              .includes(filter.provider_query.toLowerCase())
+          ) {
+            continue;
+          }
+          counts.set(
+            target.provider_code,
+            (counts.get(target.provider_code) ?? 0) + 1
+          );
+        }
+        const providers = Array.from(counts.entries()).map(
+          ([provider_code, model_count]) => ({ provider_code, model_count })
+        );
+        return {
+          providers: providers.slice(offset, offset + pageSize),
+          providers_total_count: providers.length,
+          items: [],
+          total_count: 0,
+          page,
+          page_size: pageSize,
+          selected_target: null
+        };
+      }
+      const providerTargets = targets.filter(
+        (target) => target.provider_code === filter.provider_code
+      );
+      const filtered = filter.upstream_model_id
+        ? providerTargets.filter((target) =>
+            target.upstream_model_id
+              .toLowerCase()
+              .includes(filter.upstream_model_id!.toLowerCase())
+          )
+        : providerTargets;
+      const selected_target = filter.selected_model_id
+        ? (providerTargets.find(
+            (target) => target.upstream_model_id === filter.selected_model_id
+          ) ?? null)
+        : null;
+      return {
+        providers: [],
+        providers_total_count: 0,
+        items: filtered.slice(offset, offset + pageSize),
+        total_count: filtered.length,
+        page,
+        page_size: pageSize,
+        selected_target
+      };
+    }
   );
   modelProvidersApi.fetchSettingsModelProviderMainInstance.mockResolvedValue(
     buildMainInstanceSettings()

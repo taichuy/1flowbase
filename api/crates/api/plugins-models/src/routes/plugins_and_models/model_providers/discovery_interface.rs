@@ -1,7 +1,10 @@
 use crate::openapi_interface::json_contract::{JsonApiInput, JsonApiOutput};
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashSet},
+    sync::Arc,
+};
 
-use control_plane::ports::{BillingRepository, CacheStore, ListPricingRulesInput};
+use control_plane::ports::{BillingRepository, CacheStore};
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use storage_durable_postgres::MainDurableStore;
 
@@ -241,29 +244,26 @@ impl ProviderDiscoveryAdapter {
         .with_routing_cache_store(self.0.cache_store.clone())
     }
 
-    async fn pricing_targets(&self) -> Result<Vec<ModelProviderPricingTargetResponse>, ApiError> {
-        let mut offset = 0;
-        let mut rules = Vec::new();
-        loop {
-            let page = self
-                .0
-                .store
-                .list_pricing_rules(&ListPricingRulesInput {
-                    provider_code: None,
-                    upstream_model_id: None,
-                    enabled: Some(true),
-                    source_kind: None,
-                    page_size: 500,
-                    offset,
-                })
-                .await?;
-            let len = page.items.len();
-            rules.extend(page.items);
-            offset += len as i64;
-            if len < 500 || offset >= page.total_count {
-                break;
+    async fn priced_models(
+        &self,
+        options: &ModelProviderOptionsView,
+    ) -> Result<HashSet<(String, String)>, ApiError> {
+        let mut requested = HashSet::new();
+        for provider in &options.providers {
+            for group in &provider.model_groups {
+                requested.insert((provider.provider_code.clone(), group.model_id.clone()));
             }
         }
+        if requested.is_empty() {
+            return Ok(HashSet::new());
+        }
+        let targets = requested.into_iter().collect::<Vec<_>>();
+        let now = time::OffsetDateTime::now_utc();
+        let rules = self
+            .0
+            .store
+            .list_pricing_rules_for_targets(&targets, now)
+            .await?;
         let mut grouped = BTreeMap::<(String, String), Vec<PricingRule>>::new();
         for rule in rules {
             grouped
@@ -271,41 +271,13 @@ impl ProviderDiscoveryAdapter {
                 .or_default()
                 .push(rule);
         }
-        let now = time::OffsetDateTime::now_utc();
-        let mut targets = Vec::new();
-        for rules in grouped.into_values() {
-            let Some(rule) = control_plane::billing::choose_pricing_rule(rules, now)? else {
-                continue;
-            };
-            targets.push(ModelProviderPricingTargetResponse {
-                provider_code: rule.provider_code,
-                upstream_model_id: rule.upstream_model_id,
-                input_token_unit_size: rule.input_token_unit_size,
-                input_token_unit_price: rule.input_token_unit_price.to_string(),
-                output_token_unit_size: rule.output_token_unit_size,
-                output_token_unit_price: rule.output_token_unit_price.to_string(),
-                cache_hit_token_unit_size: rule.cache_hit_token_unit_size,
-                cache_hit_token_unit_price: rule.cache_hit_token_unit_price.to_string(),
-                cache_write_token_unit_size: rule.cache_write_token_unit_size,
-                cache_write_token_unit_price: rule.cache_write_token_unit_price.to_string(),
-                effective_from: format_time(rule.effective_from)?,
-                effective_to: format_optional_time(rule.effective_to)?,
-                timezone: rule.timezone,
-                weekday_mask: rule.weekday_mask,
-                local_time_start: rule.local_time_start.map(|value| value.to_string()),
-                local_time_end: rule.local_time_end.map(|value| value.to_string()),
-
-                rules: rule.rules,
-            });
+        let mut priced = HashSet::new();
+        for (key, candidate_rules) in grouped {
+            if control_plane::billing::choose_pricing_rule(candidate_rules, now)?.is_some() {
+                priced.insert(key);
+            }
         }
-        targets.sort_by_key(|target| {
-            (
-                target.provider_code != domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE,
-                target.provider_code.clone(),
-                target.upstream_model_id.clone(),
-            )
-        });
-        Ok(targets)
+        Ok(priced)
     }
 
     async fn execute_inner(
@@ -351,10 +323,11 @@ impl ProviderDiscoveryAdapter {
                     .service(&actor, settings, operation)
                     .options(actor.user_id, requested_locales(&locale_meta))
                     .await?;
+                let priced_models = self.priced_models(&options).await?;
                 Ok(ProviderDiscoveryOutput::Options(to_options_view_response(
                     locale_meta,
                     options,
-                    self.pricing_targets().await?,
+                    priced_models,
                 )))
             }
         }

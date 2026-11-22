@@ -63,6 +63,59 @@ impl InterfaceContract for BillingInput {
                     ]),
                 ),
             ]),
+            Self::ListPricingTargets(_field_0) => mp::object_value([
+                (
+                    "variant",
+                    serde_json::Value::String("ListPricingTargets".to_owned()),
+                ),
+                (
+                    "0",
+                    mp::object_value([
+                        (
+                            "provider_code",
+                            match (_field_0).provider_code.as_ref() {
+                                Some(item) => mp::text(item)?,
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                        (
+                            "provider_query",
+                            match (_field_0).provider_query.as_ref() {
+                                Some(item) => mp::text(item)?,
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                        (
+                            "upstream_model_id",
+                            match (_field_0).upstream_model_id.as_ref() {
+                                Some(item) => mp::text(item)?,
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                        (
+                            "selected_model_id",
+                            match (_field_0).selected_model_id.as_ref() {
+                                Some(item) => mp::text(item)?,
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                        (
+                            "page",
+                            match (_field_0).page.as_ref() {
+                                Some(item) => serde_json::json!(*(item)),
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                        (
+                            "page_size",
+                            match (_field_0).page_size.as_ref() {
+                                Some(item) => serde_json::json!(*(item)),
+                                None => serde_json::Value::Null,
+                            },
+                        ),
+                    ]),
+                ),
+            ]),
             Self::CreatePricingRule(_field_0) => mp::object_value([
                 (
                     "variant",

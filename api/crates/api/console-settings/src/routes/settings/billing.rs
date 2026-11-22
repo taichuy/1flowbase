@@ -166,6 +166,91 @@ pub struct PricingRulesPageResponse {
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema, serde::Serialize)]
 #[into_params(parameter_in = Query)]
+pub struct PricingTargetsQuery {
+    /// Exact organization/provider code to list effective model pricing targets for.
+    /// When omitted, returns paginated distinct organizations in `providers`.
+    pub(crate) provider_code: Option<String>,
+    /// Case-insensitive substring filter on `provider_code` when listing organizations.
+    pub(crate) provider_query: Option<String>,
+    /// Case-insensitive substring filter on `upstream_model_id` within `provider_code`.
+    pub(crate) upstream_model_id: Option<String>,
+    /// Optional exact `upstream_model_id` within `provider_code` resolved into `selected_target`.
+    pub(crate) selected_model_id: Option<String>,
+    pub(crate) page: Option<i64>,
+    pub(crate) page_size: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PricingTargetProviderResponse {
+    pub provider_code: String,
+    pub model_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PricingTargetResponse {
+    pub provider_code: String,
+    pub upstream_model_id: String,
+    pub input_token_unit_size: i64,
+    pub input_token_unit_price: String,
+    pub output_token_unit_size: i64,
+    pub output_token_unit_price: String,
+    pub cache_hit_token_unit_size: i64,
+    pub cache_hit_token_unit_price: String,
+    pub cache_write_token_unit_size: i64,
+    pub cache_write_token_unit_price: String,
+    pub effective_from: String,
+    pub effective_to: Option<String>,
+    pub timezone: String,
+    pub weekday_mask: i16,
+    pub local_time_start: Option<String>,
+    pub local_time_end: Option<String>,
+    #[schema(value_type = Vec<Object>)]
+    pub rules: Value,
+}
+
+impl TryFrom<PricingRule> for PricingTargetResponse {
+    type Error = ApiError;
+
+    fn try_from(rule: PricingRule) -> Result<Self, Self::Error> {
+        use time::format_description::well_known::Rfc3339;
+        Ok(Self {
+            provider_code: rule.provider_code,
+            upstream_model_id: rule.upstream_model_id,
+            input_token_unit_size: rule.input_token_unit_size,
+            input_token_unit_price: rule.input_token_unit_price.to_string(),
+            output_token_unit_size: rule.output_token_unit_size,
+            output_token_unit_price: rule.output_token_unit_price.to_string(),
+            cache_hit_token_unit_size: rule.cache_hit_token_unit_size,
+            cache_hit_token_unit_price: rule.cache_hit_token_unit_price.to_string(),
+            cache_write_token_unit_size: rule.cache_write_token_unit_size,
+            cache_write_token_unit_price: rule.cache_write_token_unit_price.to_string(),
+            effective_from: rule.effective_from.format(&Rfc3339)?,
+            effective_to: rule
+                .effective_to
+                .map(|value| value.format(&Rfc3339))
+                .transpose()?,
+            timezone: rule.timezone,
+            weekday_mask: rule.weekday_mask,
+            local_time_start: rule.local_time_start.map(|value| value.to_string()),
+            local_time_end: rule.local_time_end.map(|value| value.to_string()),
+            rules: rule.rules,
+        })
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PricingTargetsPageResponse {
+    pub(crate) providers: Vec<PricingTargetProviderResponse>,
+    pub(crate) providers_total_count: i64,
+    pub(crate) items: Vec<PricingTargetResponse>,
+    pub(crate) total_count: i64,
+    pub(crate) page: i64,
+    pub(crate) page_size: i64,
+    pub(crate) selected_target: Option<PricingTargetResponse>,
+}
+
+#[derive(Debug, Deserialize, IntoParams, ToSchema, serde::Serialize)]
+#[into_params(parameter_in = Query)]
 pub struct PricingCatalogQuery {
     /// Return counts without downloading pricing rule pages.
     pub(crate) metadata_only: Option<bool>,
@@ -273,6 +358,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             .post(
                 create_pricing_rule,
                 ConsoleOperation("billing.pricing_rules.create".into()),
+            ),
+        )
+        .route(
+            "/settings/billing/pricing-targets",
+            console_get(
+                list_pricing_targets,
+                ConsoleOperation("billing.pricing_targets.list".into()),
             ),
         )
         .route(
@@ -399,6 +491,35 @@ pub async fn list_pricing_rules(
     };
     Ok(Json(ApiSuccess::new(response)))
 }
+
+#[utoipa::path(
+    get,
+    path = "/api/console/settings/billing/pricing-targets",
+    operation_id = "billing.pricing_targets.list",
+    summary = "List billing pricing targets",
+    description = "Progressively list billing pricing organizations and effective model pricing targets.",
+    params(PricingTargetsQuery),
+    responses((status = 200, body = PricingTargetsPageResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 500, body = crate::error_response::ErrorBody))
+)]
+pub async fn list_pricing_targets(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Query(q): Query<PricingTargetsQuery>,
+) -> Result<Json<ApiSuccess<PricingTargetsPageResponse>>, ApiError> {
+    let super::billing_interface::BillingOutput::PricingTargets(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.billing.pricing-targets.list.v1",
+        super::billing_interface::BillingInput::ListPricingTargets(q),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
+}
+
 #[utoipa::path(
     post,
     path = "/api/console/settings/billing/pricing-rules",

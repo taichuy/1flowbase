@@ -792,6 +792,7 @@ pub(crate) fn production_interface_contributions(
             "api-server.console-billing",
             &[
                 "billing.pricing_rules.list",
+                "billing.pricing_targets.list",
                 "billing.pricing_rules.create",
                 "billing.pricing_rules.update",
                 "billing.pricing_rules.delete",

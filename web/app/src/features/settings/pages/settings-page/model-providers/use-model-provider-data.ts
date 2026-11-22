@@ -85,7 +85,6 @@ export function useModelProviderData({
   const families = familiesQuery.data ?? EMPTY_PLUGIN_FAMILIES;
   const officialCatalogEntries = officialCatalogQuery.data?.entries ?? [];
   const providerOptions = optionsQuery.data?.providers;
-  const pricingTargets = optionsQuery.data?.pricing_targets ?? [];
   const officialSourceMeta = officialCatalogQuery.data
     ? {
         sourceKind: officialCatalogQuery.data.source_kind,
@@ -279,7 +278,6 @@ export function useModelProviderData({
     familiesByProviderCode,
     instancesByProviderCode,
     providerOptionsByProviderCode,
-    pricingTargets,
     drawerInstance,
     editingInstance,
     drawerModelCatalog: drawerModelsQuery.data ?? null,

@@ -7,7 +7,9 @@ use control_plane_contracts::{
     ports::{
         BillingRepository, CreditAccountRecord, CreditCommandInput, CreditReservation,
         CreditTransactionRecord, ListCreditLedgerInput, ListPricingRulesInput,
-        ModelBillingAdmission, ModelBillingAdmissionInput, PricingRulesPage, ReserveCreditInput,
+        ListPricingTargetModelsInput, ListPricingTargetProvidersInput, ModelBillingAdmission,
+        ModelBillingAdmissionInput, PricingRulesPage, PricingTargetModelsPage,
+        PricingTargetProviderSummary, PricingTargetProvidersPage, ReserveCreditInput,
         SettleCreditInput, UpsertPricingRuleInput,
     },
     ControlPlaneContractError as ControlPlaneError,
@@ -592,6 +594,157 @@ impl BillingRepository for PgControlPlaneStore {
         }
         let total_count = count.build_query_scalar().fetch_one(self.pool()).await?;
         Ok(PricingRulesPage { items, total_count })
+    }
+
+    async fn list_pricing_target_providers(
+        &self,
+        input: &ListPricingTargetProvidersInput,
+    ) -> Result<PricingTargetProvidersPage> {
+        let mut query = QueryBuilder::<Postgres>::new(
+            "select provider_code, count(distinct upstream_model_id)::bigint as model_count              from model_pricing_rules where enabled = true              and effective_from <= ",
+        );
+        query.push_bind(input.at);
+        query.push(" and (effective_to is null or effective_to > ");
+        query.push_bind(input.at);
+        query.push(")");
+        if let Some(provider_query) = &input.provider_query {
+            query
+                .push(" and provider_code ilike ")
+                .push_bind(format!("%{provider_query}%"));
+        }
+        query.push(
+            " group by provider_code               order by (provider_code <> 'zero'), provider_code asc               limit ",
+        );
+        query.push_bind(input.page_size.clamp(1, 500));
+        query.push(" offset ").push_bind(input.offset.max(0));
+        let rows = query.build().fetch_all(self.pool()).await?;
+        let mut items = Vec::with_capacity(rows.len());
+        for row in rows {
+            items.push(PricingTargetProviderSummary {
+                provider_code: row.try_get("provider_code")?,
+                model_count: row.try_get("model_count")?,
+            });
+        }
+
+        let mut count = QueryBuilder::<Postgres>::new(
+            "select count(distinct provider_code)::bigint              from model_pricing_rules where enabled = true              and effective_from <= ",
+        );
+        count.push_bind(input.at);
+        count.push(" and (effective_to is null or effective_to > ");
+        count.push_bind(input.at);
+        count.push(")");
+        if let Some(provider_query) = &input.provider_query {
+            count
+                .push(" and provider_code ilike ")
+                .push_bind(format!("%{provider_query}%"));
+        }
+        let total_count = count.build_query_scalar().fetch_one(self.pool()).await?;
+        Ok(PricingTargetProvidersPage { items, total_count })
+    }
+
+    async fn list_pricing_target_models(
+        &self,
+        input: &ListPricingTargetModelsInput,
+    ) -> Result<PricingTargetModelsPage> {
+        let mut model_query = QueryBuilder::<Postgres>::new(
+            "select distinct upstream_model_id              from model_pricing_rules where provider_code = ",
+        );
+        model_query.push_bind(&input.provider_code);
+        model_query.push(" and enabled = true and effective_from <= ");
+        model_query.push_bind(input.at);
+        model_query.push(" and (effective_to is null or effective_to > ");
+        model_query.push_bind(input.at);
+        model_query.push(")");
+        if let Some(model_filter) = &input.upstream_model_id_query {
+            model_query
+                .push(" and upstream_model_id ilike ")
+                .push_bind(format!("%{model_filter}%"));
+        }
+        model_query.push(" order by upstream_model_id asc limit ");
+        model_query.push_bind(input.page_size.clamp(1, 500));
+        model_query.push(" offset ").push_bind(input.offset.max(0));
+        let model_ids: Vec<String> = model_query
+            .build_query_scalar()
+            .fetch_all(self.pool())
+            .await?;
+
+        let mut count = QueryBuilder::<Postgres>::new(
+            "select count(distinct upstream_model_id)::bigint              from model_pricing_rules where provider_code = ",
+        );
+        count.push_bind(&input.provider_code);
+        count.push(" and enabled = true and effective_from <= ");
+        count.push_bind(input.at);
+        count.push(" and (effective_to is null or effective_to > ");
+        count.push_bind(input.at);
+        count.push(")");
+        if let Some(model_filter) = &input.upstream_model_id_query {
+            count
+                .push(" and upstream_model_id ilike ")
+                .push_bind(format!("%{model_filter}%"));
+        }
+        let total_count = count.build_query_scalar().fetch_one(self.pool()).await?;
+
+        let rules = if model_ids.is_empty() {
+            Vec::new()
+        } else {
+            let rows = sqlx::query(sqlx::AssertSqlSafe(
+                PRICING_SELECT.to_owned()
+                    + r#"
+                where provider_code = $1
+                  and upstream_model_id = any($2)
+                  and enabled = true
+                  and effective_from <= $3
+                  and (effective_to is null or effective_to > $3)
+                order by upstream_model_id asc, priority desc, effective_from desc, id"#,
+            ))
+            .bind(&input.provider_code)
+            .bind(&model_ids)
+            .bind(input.at)
+            .fetch_all(self.pool())
+            .await?;
+            rows.into_iter()
+                .map(pricing_rule)
+                .collect::<Result<Vec<_>>>()?
+        };
+
+        Ok(PricingTargetModelsPage {
+            model_ids,
+            rules,
+            total_count,
+        })
+    }
+
+    async fn list_pricing_rules_for_targets(
+        &self,
+        targets: &[(String, String)],
+        at: OffsetDateTime,
+    ) -> Result<Vec<PricingRule>> {
+        if targets.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut provider_codes = Vec::with_capacity(targets.len());
+        let mut model_ids = Vec::with_capacity(targets.len());
+        for (provider_code, upstream_model_id) in targets {
+            provider_codes.push(provider_code.as_str());
+            model_ids.push(upstream_model_id.as_str());
+        }
+        let rows = sqlx::query(sqlx::AssertSqlSafe(
+            PRICING_SELECT.to_owned()
+                + r#"
+            where (provider_code, upstream_model_id) in (
+                    select * from unnest($1::text[], $2::text[])
+                  )
+              and enabled = true
+              and effective_from <= $3
+              and (effective_to is null or effective_to > $3)
+            order by provider_code asc, upstream_model_id asc, priority desc, effective_from desc, id"#,
+        ))
+        .bind(&provider_codes)
+        .bind(&model_ids)
+        .bind(at)
+        .fetch_all(self.pool())
+        .await?;
+        rows.into_iter().map(pricing_rule).collect()
     }
 
     async fn get_pricing_rule(&self, id: Uuid) -> Result<Option<PricingRule>> {

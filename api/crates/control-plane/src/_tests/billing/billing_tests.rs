@@ -109,6 +109,28 @@ impl BillingRepository for RecordingBillingRepository {
         unreachable!("credit command service fixture does not list pricing rules")
     }
 
+    async fn list_pricing_target_providers(
+        &self,
+        _input: &control_plane_contracts::ports::ListPricingTargetProvidersInput,
+    ) -> anyhow::Result<control_plane_contracts::ports::PricingTargetProvidersPage> {
+        unreachable!("credit command service fixture does not list pricing target providers")
+    }
+
+    async fn list_pricing_target_models(
+        &self,
+        _input: &control_plane_contracts::ports::ListPricingTargetModelsInput,
+    ) -> anyhow::Result<control_plane_contracts::ports::PricingTargetModelsPage> {
+        unreachable!("credit command service fixture does not list pricing target models")
+    }
+
+    async fn list_pricing_rules_for_targets(
+        &self,
+        _targets: &[(String, String)],
+        _at: OffsetDateTime,
+    ) -> anyhow::Result<Vec<PricingRule>> {
+        unreachable!("credit command service fixture does not query pricing rules by target")
+    }
+
     async fn get_pricing_rule(&self, _id: Uuid) -> anyhow::Result<Option<PricingRule>> {
         unreachable!("credit command service fixture does not read pricing rules")
     }

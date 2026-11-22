@@ -653,3 +653,303 @@ async fn pricing_catalog_sync_fetches_all_pages_and_rejects_ungranted_member() {
     assert_eq!(response_json(response).await["data"]["total_count"], 2);
     server.abort();
 }
+
+#[tokio::test]
+async fn pricing_targets_progressively_pages_providers_models_selected_target_and_enforces_rbac() {
+    let app = crate::_tests::support::test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let member_id = create_member(&app, &cookie, &csrf, "targets-member", "temp-pass").await;
+    let (member_cookie, _) = login_and_capture_cookie(&app, "targets-member", "temp-pass").await;
+
+    // Unauthenticated -> 401; ungranted member -> 403
+    let unauth = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/billing/pricing-targets")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unauth.status(), StatusCode::UNAUTHORIZED);
+
+    let forbidden = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/billing/pricing-targets")
+                .header("cookie", &member_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(forbidden.status(), StatusCode::FORBIDDEN);
+
+    // Custom role granted ONLY billing.pricing_targets.list -> 200 on pricing-targets, 403 on pricing-rules
+    crate::_tests::support::create_role(&app, &cookie, &csrf, "pricing_targets_only").await;
+    let policy_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/console/settings/roles/pricing_targets_only/console-policy")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "groups": [{
+                            "kind": "settings_feature",
+                            "group_id": "system.model-providers",
+                            "enabled": true,
+                            "strategy": "custom",
+                            "operations": [{
+                                "kind": "simple",
+                                "operation_id": "billing.pricing_targets.list",
+                                "enabled": true
+                            }]
+                        }]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(policy_resp.status(), StatusCode::NO_CONTENT);
+    crate::_tests::support::replace_member_roles(
+        &app,
+        &cookie,
+        &csrf,
+        &member_id,
+        &["pricing_targets_only"],
+    )
+    .await;
+    let (granted_member_cookie, _) =
+        login_and_capture_cookie(&app, "targets-member", "temp-pass").await;
+    let granted_targets = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/billing/pricing-targets")
+                .header("cookie", &granted_member_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(granted_targets.status(), StatusCode::OK);
+    let sibling_forbidden = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/billing/pricing-rules")
+                .header("cookie", &granted_member_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(sibling_forbidden.status(), StatusCode::FORBIDDEN);
+
+    // Seed organizations: acme (3 enabled models, 1 multi-priority model, 1 disabled model), zeta (1 model)
+    for (provider, model, input_price, priority, enabled) in [
+        ("acme", "model-a", "1.0", 0, true),
+        ("acme", "model-b", "2.0", 0, true),
+        ("acme", "model-b", "2.5", 10, true),
+        ("acme", "model-c", "3.0", 0, true),
+        ("acme", "model-disabled", "9.9", 0, false),
+        ("zeta", "zeta-1", "4.0", 0, true),
+    ] {
+        let created = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/console/settings/billing/pricing-rules")
+                    .header("content-type", "application/json")
+                    .header("cookie", &cookie)
+                    .header("x-csrf-token", &csrf)
+                    .body(Body::from(
+                        json!({
+                            "provider_code": provider,
+                            "upstream_model_id": model,
+                            "input_token_unit_size": 1000000,
+                            "input_token_unit_price": input_price,
+                            "output_token_unit_size": 1000000,
+                            "output_token_unit_price": "5",
+                            "cache_hit_token_unit_size": 1000000,
+                            "cache_hit_token_unit_price": "0.1",
+                            "cache_write_token_unit_size": 1000000,
+                            "cache_write_token_unit_price": "0.2",
+                            "currency_code": "USD",
+                            "effective_from": "2026-01-01T00:00:00Z",
+                            "effective_to": null,
+                            "timezone": "UTC",
+                            "weekday_mask": 127,
+                            "local_time_start": null,
+                            "local_time_end": null,
+                            "priority": priority,
+                            "enabled": enabled,
+                            "rules": [],
+                            "source_kind": "manual",
+                            "extensions": {}
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(created.status(), StatusCode::OK);
+    }
+
+    // Settings options endpoint must NOT dump pricing_targets
+    let options = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/model-providers/options")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(options.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(options).await["data"]["pricing_targets"],
+        json!([])
+    );
+
+    // Stage 1: progressive organizations list (zero first, then alphabetical, paginated)
+    let stage1_p1 = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/billing/pricing-targets?page=1&page_size=2")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stage1_p1.status(), StatusCode::OK);
+    let s1 = response_json(stage1_p1).await;
+    assert_eq!(s1["data"]["providers_total_count"], 3);
+    assert_eq!(s1["data"]["providers"].as_array().unwrap().len(), 2);
+    assert_eq!(s1["data"]["providers"][0]["provider_code"], "zero");
+    assert_eq!(s1["data"]["providers"][0]["model_count"], 1);
+    assert_eq!(s1["data"]["providers"][1]["provider_code"], "acme");
+    assert_eq!(s1["data"]["providers"][1]["model_count"], 3);
+    assert_eq!(s1["data"]["items"], json!([]));
+    assert_eq!(s1["data"]["total_count"], 0);
+    assert!(s1["data"]["selected_target"].is_null());
+
+    // Stage 1 with provider_query filter
+    let stage1_search = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/billing/pricing-targets?provider_query=zet&page=1&page_size=10")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stage1_search.status(), StatusCode::OK);
+    let s1_search = response_json(stage1_search).await;
+    assert_eq!(s1_search["data"]["providers_total_count"], 1);
+    assert_eq!(s1_search["data"]["providers"][0]["provider_code"], "zeta");
+
+    // Stage 2: models within exact provider_code (paginated, disabled excluded, higher priority chosen)
+    let stage2_p1 = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/billing/pricing-targets?provider_code=acme&page=1&page_size=2")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stage2_p1.status(), StatusCode::OK);
+    let s2 = response_json(stage2_p1).await;
+    assert_eq!(s2["data"]["providers"], json!([]));
+    assert_eq!(s2["data"]["providers_total_count"], 0);
+    assert_eq!(s2["data"]["total_count"], 3);
+    assert_eq!(s2["data"]["items"].as_array().unwrap().len(), 2);
+    assert_eq!(s2["data"]["items"][0]["upstream_model_id"], "model-a");
+    assert_eq!(s2["data"]["items"][1]["upstream_model_id"], "model-b");
+    assert_eq!(
+        Decimal::from_str(s2["data"]["items"][1]["input_token_unit_price"].as_str().unwrap())
+            .unwrap(),
+        Decimal::from_str("2.5").unwrap()
+    );
+
+    // Stage 2: selected_model_id resolves exact off-page target; non-existent returns null
+    let stage2_selected = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/billing/pricing-targets?provider_code=acme&selected_model_id=model-c&page=1&page_size=1")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stage2_selected.status(), StatusCode::OK);
+    let s2_sel = response_json(stage2_selected).await;
+    assert_eq!(s2_sel["data"]["items"].as_array().unwrap().len(), 1);
+    assert_eq!(s2_sel["data"]["items"][0]["upstream_model_id"], "model-a");
+    assert_eq!(s2_sel["data"]["selected_target"]["provider_code"], "acme");
+    assert_eq!(
+        s2_sel["data"]["selected_target"]["upstream_model_id"],
+        "model-c"
+    );
+    assert_eq!(
+        Decimal::from_str(
+            s2_sel["data"]["selected_target"]["input_token_unit_price"]
+                .as_str()
+                .unwrap()
+        )
+        .unwrap(),
+        Decimal::from_str("3.0").unwrap()
+    );
+
+    let stage2_missing = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/billing/pricing-targets?provider_code=acme&selected_model_id=does-not-exist&page=1&page_size=1")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stage2_missing.status(), StatusCode::OK);
+    assert!(response_json(stage2_missing).await["data"]["selected_target"].is_null());
+
+    // Stage 2: upstream_model_id substring filter
+    let stage2_filter = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/billing/pricing-targets?provider_code=acme&upstream_model_id=model-c&page=1&page_size=10")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stage2_filter.status(), StatusCode::OK);
+    let s2_flt = response_json(stage2_filter).await;
+    assert_eq!(s2_flt["data"]["total_count"], 1);
+    assert_eq!(s2_flt["data"]["items"][0]["upstream_model_id"], "model-c");
+}
