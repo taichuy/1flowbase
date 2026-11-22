@@ -1,4 +1,4 @@
-use std::{io, sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use control_plane_contracts::ports::{PublishedPlanCache, PublishedPlanLoader};
@@ -6,8 +6,7 @@ use domain::CompiledPlanRecord;
 use moka::future::Cache;
 use uuid::Uuid;
 
-const MAX_WEIGHT_BYTES: u64 = 32 * 1024 * 1024;
-const TTL: Duration = Duration::from_secs(5 * 60);
+use super::published_cache_support::{build_published_cache, get_or_load_cached};
 
 #[derive(Clone)]
 pub struct MokaPublishedPlanCache {
@@ -23,37 +22,11 @@ impl Default for MokaPublishedPlanCache {
 impl MokaPublishedPlanCache {
     pub fn new() -> Self {
         Self {
-            plans: Cache::builder()
-                .max_capacity(MAX_WEIGHT_BYTES)
-                .time_to_live(TTL)
-                .weigher(|_, plan: &Arc<CompiledPlanRecord>| {
-                    let mut bytes = ByteCounter::default();
-                    let _ = serde_json::to_writer(&mut bytes, &plan.plan);
-                    bytes.0.min(u32::MAX as u64) as u32
-                })
-                .build(),
+            plans: build_published_cache(|plan: &CompiledPlanRecord, bytes| {
+                let _ = serde_json::to_writer(bytes, &plan.plan);
+            }),
         }
     }
-}
-
-#[derive(Default)]
-struct ByteCounter(u64);
-
-impl io::Write for ByteCounter {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.0 = self.0.saturating_add(bytes.len() as u64);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-enum LoadFailure {
-    Missing,
-    Repository(anyhow::Error),
 }
 
 #[async_trait]
@@ -63,22 +36,6 @@ impl PublishedPlanCache for MokaPublishedPlanCache {
         compiled_plan_id: Uuid,
         loader: PublishedPlanLoader,
     ) -> anyhow::Result<Option<Arc<CompiledPlanRecord>>> {
-        match self
-            .plans
-            .try_get_with(compiled_plan_id, async move {
-                match loader().await {
-                    Ok(Some(plan)) => Ok(Arc::new(plan)),
-                    Ok(None) => Err(LoadFailure::Missing),
-                    Err(error) => Err(LoadFailure::Repository(error)),
-                }
-            })
-            .await
-        {
-            Ok(plan) => Ok(Some(plan)),
-            Err(error) => match error.as_ref() {
-                LoadFailure::Missing => Ok(None),
-                LoadFailure::Repository(source) => Err(anyhow::anyhow!("{source:#}")),
-            },
-        }
+        get_or_load_cached(&self.plans, compiled_plan_id, loader).await
     }
 }

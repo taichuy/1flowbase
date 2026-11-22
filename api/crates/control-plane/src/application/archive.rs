@@ -30,7 +30,6 @@ use crate::{
 };
 
 pub const APPLICATION_ARCHIVE_SCHEMA_VERSION: &str = "1flowbase.application-archive/v1";
-const MAX_APPLICATION_ARCHIVE_ENTRIES: usize = 100;
 
 #[derive(Debug, Clone)]
 pub struct ExportApplicationArchiveCommand {
@@ -129,9 +128,7 @@ where
         &self,
         command: ExportApplicationArchiveCommand,
     ) -> Result<ApplicationArchivePackage> {
-        if command.application_ids.is_empty()
-            || command.application_ids.len() > MAX_APPLICATION_ARCHIVE_ENTRIES
-        {
+        if command.application_ids.is_empty() {
             return Err(ControlPlaneError::InvalidInput("application_ids").into());
         }
         let unique_ids = command

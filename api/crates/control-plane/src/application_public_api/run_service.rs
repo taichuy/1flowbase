@@ -67,7 +67,6 @@ pub(crate) use run_input::{
 };
 use run_input::{freeze_run_input_environment, generate_external_conversation_id};
 
-const APPLICATION_PUBLIC_CONVERSATION_HISTORY_LIMIT: i64 = 50;
 const PUBLIC_RUN_IDEMPOTENCY_FINGERPRINT: &str = "public_run_idempotency_fingerprint";
 const PUBLIC_PROVIDER_TRANSPORT_SUMMARY: &str = "public_provider_transport";
 const PUBLISHED_RUN_CANCELLED_ERROR_CODE: &str = "cancelled";
@@ -796,7 +795,7 @@ where
                         api_key_id,
                         external_user,
                         external_conversation_id,
-                        limit: APPLICATION_PUBLIC_CONVERSATION_HISTORY_LIMIT,
+                        limit: i64::MAX,
                     },
                 )
                 .await

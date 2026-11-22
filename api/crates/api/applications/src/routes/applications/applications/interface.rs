@@ -70,6 +70,434 @@ pub enum ApplicationsInput {
     },
 }
 
+mod mp_helpers {
+    use serde_json::{json, Value};
+    use uuid::Uuid;
+
+    use super::{
+        collector_projection, collector_projection_schema, ApplicationCatalogResponse,
+        ApplicationDetailResponse, ApplicationJsDependencySelectionResponse,
+        ApplicationSummaryResponse, ApplicationTypeDto, ApplicationsInput, ApplicationsOutput,
+        CreateApplicationBody, WorkflowExtensionHttpMethodBody, WorkflowExtensionResponseModeBody,
+        WorkflowTriggerTypeDto,
+    };
+    use crate::extension_bus::managed_projection as mp;
+    use crate::routes::applications_group::applications::{
+        ApplicationApiCapabilityStatusResponse as ApiCap,
+        ApplicationApiInvokeRoutingModeResponse as RouteMode,
+        ApplicationApiSectionStatusResponse as ApiStatus, ApplicationTagResponse,
+    };
+
+    const MAX_ITEMS: usize = 32;
+    const APP_TYPES: &[&str] = &["AgentFlow", "AgentLogs", "Workflow"];
+    const TRIGGER_TYPES: &[&str] = &["Extension", "Schedule", "Event"];
+    const HTTP_METHODS: &[&str] = &["Get", "Post", "Put", "Patch", "Delete", "Head", "Options"];
+
+    macro_rules! obj_s {
+        ($($k:literal : $v:expr),* $(,)?) => { mp::object_schema([$(($k, $v)),*]) };
+    }
+    macro_rules! obj_v {
+        ($($k:literal : $v:expr),* $(,)?) => { mp::object_value([$(($k, $v)),*]) };
+    }
+
+    fn tag_s(t: &str) -> Value {
+        obj_s! { "variant": mp::tag_schema(t) }
+    }
+    fn tag_v(t: &str) -> Value {
+        obj_v! { "variant": Value::String(t.to_owned()) }
+    }
+    fn enum_s(tags: &[&str]) -> Value {
+        mp::union_schema(tags.iter().copied().map(tag_s).collect())
+    }
+    fn bytes_s() -> Value {
+        obj_s! { "byte_count": mp::count_schema() }
+    }
+    fn bytes_v(v: &str) -> Value {
+        obj_v! { "byte_count": json!(v.len()) }
+    }
+    fn opt_s(s: Value) -> Value {
+        json!({"anyOf": [s, {"type": "null"}]})
+    }
+    fn opt_bytes_v(v: Option<&str>) -> Value {
+        v.map_or(Value::Null, bytes_v)
+    }
+    fn opt_text_v(v: Option<&str>) -> Option<Value> {
+        v.map_or(Some(Value::Null), mp::text)
+    }
+    fn arr_s(items: Value) -> Value {
+        json!({"type": "array", "maxItems": MAX_ITEMS, "items": items})
+    }
+    fn arr_v<T>(items: &[T], f: impl Fn(&T) -> Option<Value>) -> Option<Value> {
+        const MAX_ARRAY_JSON_BYTES: usize = 60 * 1024;
+        let mut out = Vec::with_capacity(items.len().min(MAX_ITEMS));
+        let mut approx_bytes = 2usize;
+        for item in items.iter().take(MAX_ITEMS) {
+            let projected = f(item)?;
+            let item_bytes = serde_json::to_vec(&projected).ok()?.len() + 1;
+            if !out.is_empty() && approx_bytes + item_bytes > MAX_ARRAY_JSON_BYTES {
+                break;
+            }
+            approx_bytes += item_bytes;
+            out.push(projected);
+        }
+        Some(Value::Array(out))
+    }
+    fn var_s(t: &str, v: Value) -> Value {
+        obj_s! { "variant": mp::tag_schema(t), "0": v }
+    }
+    fn var_v(t: &str, v: Value) -> Value {
+        obj_v! { "variant": Value::String(t.to_owned()), "0": v }
+    }
+    fn id_s(t: &str) -> Value {
+        obj_s! { "variant": mp::tag_schema(t), "application_id": mp::text_schema() }
+    }
+    fn id_v(t: &str, id: &Uuid) -> Value {
+        obj_v! { "variant": Value::String(t.to_owned()), "application_id": Value::String(id.to_string()) }
+    }
+    fn body_s(t: &str, b: Value) -> Value {
+        obj_s! { "variant": mp::tag_schema(t), "application_id": mp::text_schema(), "body": b }
+    }
+    fn body_v(t: &str, id: &Uuid, b: Value) -> Value {
+        obj_v! { "variant": Value::String(t.to_owned()), "application_id": Value::String(id.to_string()), "body": b }
+    }
+
+    fn app_type_v(v: &ApplicationTypeDto) -> Value {
+        tag_v(match v {
+            ApplicationTypeDto::AgentLogs => "AgentLogs",
+            ApplicationTypeDto::AgentFlow => "AgentFlow",
+            ApplicationTypeDto::Workflow => "Workflow",
+        })
+    }
+    fn trigger_v(v: &WorkflowTriggerTypeDto) -> Value {
+        tag_v(match v {
+            WorkflowTriggerTypeDto::Extension => "Extension",
+            WorkflowTriggerTypeDto::Schedule => "Schedule",
+            WorkflowTriggerTypeDto::Event => "Event",
+        })
+    }
+    fn tags_v(tags: &[ApplicationTagResponse]) -> Option<Value> {
+        arr_v(tags, |t| {
+            Some(obj_v! { "id": mp::text(&t.id)?, "name": bytes_v(&t.name) })
+        })
+    }
+    fn js_dep_s() -> Value {
+        obj_s! {
+            "application_id": mp::text_schema(), "installation_id": mp::text_schema(),
+            "provider_code": mp::text_schema(), "plugin_id": mp::text_schema(),
+            "plugin_version": mp::text_schema(), "alias": bytes_s(), "package": bytes_s(),
+            "version": mp::text_schema(), "target": bytes_s(), "artifact_path": bytes_s(),
+            "artifact_hash": bytes_s(), "integrity": bytes_s(),
+            "permissions": obj_s! { "network": bytes_s(), "filesystem": bytes_s(), "env": bytes_s() },
+        }
+    }
+    fn js_dep_v(i: &ApplicationJsDependencySelectionResponse) -> Option<Value> {
+        let p = &i.permissions;
+        Some(obj_v! {
+            "application_id": mp::text(&i.application_id)?, "installation_id": mp::text(&i.installation_id)?,
+            "provider_code": mp::text(&i.provider_code)?, "plugin_id": mp::text(&i.plugin_id)?,
+            "plugin_version": mp::text(&i.plugin_version)?, "alias": bytes_v(&i.alias), "package": bytes_v(&i.package),
+            "version": mp::text(&i.version)?, "target": bytes_v(&i.target), "artifact_path": bytes_v(&i.artifact_path),
+            "artifact_hash": bytes_v(&i.artifact_hash), "integrity": bytes_v(&i.integrity),
+            "permissions": obj_v! { "network": bytes_v(&p.network), "filesystem": bytes_v(&p.filesystem), "env": bytes_v(&p.env) },
+        })
+    }
+
+    pub(super) fn input_schema() -> Value {
+        let trig_cfg = obj_s! {
+            "cron": opt_s(bytes_s()), "timezone": opt_s(bytes_s()),
+            "input_payload": opt_s(mp::json_summary_schema()), "subpath": opt_s(bytes_s()),
+            "http_method": opt_s(enum_s(HTTP_METHODS)), "response_mode": opt_s(enum_s(&["Sync", "Async"])),
+        };
+        let create = obj_s! {
+            "application_type": enum_s(APP_TYPES), "workflow_trigger_type": opt_s(enum_s(TRIGGER_TYPES)),
+            "workflow_trigger_config": opt_s(trig_cfg), "name": bytes_s(), "description": bytes_s(),
+            "icon": opt_s(bytes_s()), "icon_type": opt_s(mp::text_schema()), "icon_background": opt_s(bytes_s()),
+        };
+        let patch = obj_s! {
+            "name": bytes_s(), "description": bytes_s(), "tag_ids": arr_s(mp::text_schema()),
+            "icon": opt_s(bytes_s()), "icon_type": opt_s(mp::text_schema()), "icon_background": opt_s(bytes_s()),
+        };
+        let env_var = obj_s! { "name": bytes_s(), "value_type": mp::text_schema(), "value": mp::json_summary_schema(), "description": bytes_s() };
+        let js_body = obj_s! { "installation_id": mp::text_schema(), "alias": bytes_s(), "target": bytes_s() };
+        mp::union_schema(vec![
+            tag_s("List"),
+            tag_s("Catalog"),
+            var_s("Create", create),
+            var_s("CreateTag", obj_s! { "name": bytes_s() }),
+            id_s("Get"),
+            body_s("Patch", patch),
+            id_s("Delete"),
+            id_s("ListEnvironmentVariables"),
+            body_s(
+                "ReplaceEnvironmentVariables",
+                obj_s! { "variables": arr_s(env_var) },
+            ),
+            id_s("ListJsDependencies"),
+            body_s("ReplaceJsDependency", js_body),
+        ])
+    }
+
+    fn project_create(b: &CreateApplicationBody) -> Option<Value> {
+        let trig_cfg = match b.workflow_trigger_config.as_ref() {
+            Some(cfg) => {
+                let method = cfg.http_method.as_ref().map_or(Value::Null, |m| {
+                    tag_v(match m {
+                        WorkflowExtensionHttpMethodBody::Get => "Get",
+                        WorkflowExtensionHttpMethodBody::Post => "Post",
+                        WorkflowExtensionHttpMethodBody::Put => "Put",
+                        WorkflowExtensionHttpMethodBody::Patch => "Patch",
+                        WorkflowExtensionHttpMethodBody::Delete => "Delete",
+                        WorkflowExtensionHttpMethodBody::Head => "Head",
+                        WorkflowExtensionHttpMethodBody::Options => "Options",
+                    })
+                });
+                let mode = cfg.response_mode.as_ref().map_or(Value::Null, |m| {
+                    tag_v(match m {
+                        WorkflowExtensionResponseModeBody::Sync => "Sync",
+                        WorkflowExtensionResponseModeBody::Async => "Async",
+                    })
+                });
+                obj_v! {
+                    "cron": opt_bytes_v(cfg.cron.as_deref()), "timezone": opt_bytes_v(cfg.timezone.as_deref()),
+                    "input_payload": cfg.input_payload.as_ref().map_or(Value::Null, mp::json_summary),
+                    "subpath": opt_bytes_v(cfg.subpath.as_deref()), "http_method": method, "response_mode": mode,
+                }
+            }
+            None => Value::Null,
+        };
+        Some(var_v(
+            "Create",
+            obj_v! {
+                "application_type": app_type_v(&b.application_type),
+                "workflow_trigger_type": b.workflow_trigger_type.as_ref().map_or(Value::Null, trigger_v),
+                "workflow_trigger_config": trig_cfg,
+                "name": bytes_v(&b.name), "description": bytes_v(&b.description),
+                "icon": opt_bytes_v(b.icon.as_deref()), "icon_type": opt_text_v(b.icon_type.as_deref())?,
+                "icon_background": opt_bytes_v(b.icon_background.as_deref()),
+            },
+        ))
+    }
+
+    pub(super) fn project_input(input: &ApplicationsInput) -> Option<Value> {
+        Some(match input {
+            ApplicationsInput::List => tag_v("List"),
+            ApplicationsInput::Catalog { .. } => tag_v("Catalog"),
+            ApplicationsInput::Create(b) => project_create(b)?,
+            ApplicationsInput::CreateTag(b) => {
+                var_v("CreateTag", obj_v! { "name": bytes_v(&b.name) })
+            }
+            ApplicationsInput::Get { application_id } => id_v("Get", application_id),
+            ApplicationsInput::Patch {
+                application_id,
+                body: b,
+            } => body_v(
+                "Patch",
+                application_id,
+                obj_v! {
+                    "name": bytes_v(&b.name), "description": bytes_v(&b.description),
+                    "tag_ids": arr_v(&b.tag_ids, |s| mp::text(s))?,
+                    "icon": opt_bytes_v(b.icon.as_deref()), "icon_type": opt_text_v(b.icon_type.as_deref())?,
+                    "icon_background": opt_bytes_v(b.icon_background.as_deref()),
+                },
+            ),
+            ApplicationsInput::Delete { application_id } => id_v("Delete", application_id),
+            ApplicationsInput::ListEnvironmentVariables { application_id } => {
+                id_v("ListEnvironmentVariables", application_id)
+            }
+            ApplicationsInput::ReplaceEnvironmentVariables {
+                application_id,
+                body,
+            } => {
+                let vars = arr_v(&body.variables, |v| {
+                    Some(obj_v! {
+                        "name": bytes_v(&v.name), "value_type": mp::text(&v.value_type)?,
+                        "value": mp::json_summary(&v.value), "description": bytes_v(&v.description),
+                    })
+                })?;
+                body_v(
+                    "ReplaceEnvironmentVariables",
+                    application_id,
+                    obj_v! { "variables": vars },
+                )
+            }
+            ApplicationsInput::ListJsDependencies { application_id } => {
+                id_v("ListJsDependencies", application_id)
+            }
+            ApplicationsInput::ReplaceJsDependency {
+                application_id,
+                body: b,
+            } => body_v(
+                "ReplaceJsDependency",
+                application_id,
+                obj_v! {
+                    "installation_id": mp::text(&b.installation_id)?, "alias": bytes_v(&b.alias), "target": bytes_v(&b.target),
+                },
+            ),
+        })
+    }
+
+    pub(super) fn output_schema() -> Value {
+        let tag_item = obj_s! { "id": mp::text_schema(), "name": bytes_s() };
+        let summary = obj_s! {
+            "id": mp::text_schema(), "application_type": enum_s(APP_TYPES),
+            "name": bytes_s(), "description": bytes_s(), "icon": opt_s(bytes_s()),
+            "icon_type": opt_s(mp::text_schema()), "icon_background": opt_s(bytes_s()),
+            "created_by": bytes_s(), "updated_at": mp::text_schema(), "tags": arr_s(tag_item.clone()),
+        };
+        let sections = obj_s! {
+            "orchestration": obj_s! {
+                "status": mp::text_schema(), "subject_kind": bytes_s(), "subject_status": bytes_s(),
+                "current_subject_id": opt_s(mp::text_schema()), "current_draft_id": opt_s(mp::text_schema()),
+            },
+            "api": obj_s! {
+                "status": enum_s(&["Active", "Planned", "Available", "Unavailable"]),
+                "invoke_routing_mode": enum_s(&["ApiKeyBoundApplication", "PublishedWorkflowOperation", "NotAvailable"]),
+                "invoke_path_template": opt_s(bytes_s()),
+                "api_capability_status": enum_s(&["Enabled", "Disabled", "NotPublished", "Available", "Unavailable"]),
+            },
+            "logs": obj_s! {
+                "status": mp::text_schema(), "runs_capability_status": bytes_s(),
+                "run_object_kind": bytes_s(), "log_retention_status": bytes_s(),
+            },
+            "monitoring": obj_s! {
+                "status": mp::text_schema(), "metrics_capability_status": bytes_s(),
+                "metrics_object_kind": bytes_s(), "tracing_config_status": bytes_s(),
+            },
+        };
+        let detail = obj_s! {
+            "id": mp::text_schema(), "application_type": enum_s(APP_TYPES),
+            "workflow_trigger_type": opt_s(enum_s(TRIGGER_TYPES)),
+            "name": bytes_s(), "description": bytes_s(), "icon": opt_s(bytes_s()),
+            "icon_type": opt_s(mp::text_schema()), "icon_background": opt_s(bytes_s()),
+            "created_by": bytes_s(), "updated_at": mp::text_schema(), "tags": arr_s(tag_item), "sections": sections,
+        };
+        let tag_cat = obj_s! { "id": mp::text_schema(), "name": bytes_s(), "application_count": json!({"type": "integer"}) };
+        let catalog = obj_s! {
+            "collectors": collector_projection_schema(),
+            "types": arr_s(obj_s! { "value": enum_s(APP_TYPES), "label": bytes_s() }),
+            "workflow_triggers": arr_s(obj_s! { "value": enum_s(TRIGGER_TYPES), "label": bytes_s() }),
+            "tags": arr_s(tag_cat.clone()),
+        };
+        let env_var = obj_s! {
+            "name": bytes_s(), "value_type": mp::text_schema(), "value": mp::json_summary_schema(),
+            "description": bytes_s(), "updated_at": mp::text_schema(),
+        };
+        mp::union_schema(vec![
+            var_s("Applications", arr_s(summary)),
+            var_s("Catalog", catalog),
+            var_s("Application", detail),
+            var_s("Tag", tag_cat),
+            var_s("EnvironmentVariables", arr_s(env_var)),
+            var_s("JsDependencies", arr_s(js_dep_s())),
+            var_s("JsDependency", js_dep_s()),
+            tag_s("NoContent"),
+        ])
+    }
+
+    fn project_summary(i: &ApplicationSummaryResponse) -> Option<Value> {
+        Some(obj_v! {
+            "id": mp::text(&i.id)?, "application_type": app_type_v(&i.application_type),
+            "name": bytes_v(&i.name), "description": bytes_v(&i.description),
+            "icon": opt_bytes_v(i.icon.as_deref()), "icon_type": opt_text_v(i.icon_type.as_deref())?,
+            "icon_background": opt_bytes_v(i.icon_background.as_deref()),
+            "created_by": bytes_v(&i.created_by), "updated_at": mp::text(&i.updated_at)?, "tags": tags_v(&i.tags)?,
+        })
+    }
+
+    fn project_catalog(cat: &ApplicationCatalogResponse) -> Option<Value> {
+        Some(obj_v! {
+            "collectors": collector_projection(&cat.collectors)?,
+            "types": arr_v(&cat.types, |t| Some(obj_v! { "value": app_type_v(&t.value), "label": bytes_v(&t.label) }))?,
+            "workflow_triggers": arr_v(&cat.workflow_triggers, |t| Some(obj_v! { "value": trigger_v(&t.value), "label": bytes_v(&t.label) }))?,
+            "tags": arr_v(&cat.tags, |t| Some(obj_v! { "id": mp::text(&t.id)?, "name": bytes_v(&t.name), "application_count": json!(t.application_count) }))?,
+        })
+    }
+
+    fn project_detail(d: &ApplicationDetailResponse) -> Option<Value> {
+        let (orch, api, logs, mon) = (
+            &d.sections.orchestration,
+            &d.sections.api,
+            &d.sections.logs,
+            &d.sections.monitoring,
+        );
+        let api_status = tag_v(match &api.status {
+            ApiStatus::Active => "Active",
+            ApiStatus::Planned => "Planned",
+            ApiStatus::Available => "Available",
+            ApiStatus::Unavailable => "Unavailable",
+        });
+        let routing = tag_v(match &api.invoke_routing_mode {
+            RouteMode::ApiKeyBoundApplication => "ApiKeyBoundApplication",
+            RouteMode::PublishedWorkflowOperation => "PublishedWorkflowOperation",
+            RouteMode::NotAvailable => "NotAvailable",
+        });
+        let cap = tag_v(match &api.api_capability_status {
+            ApiCap::Enabled => "Enabled",
+            ApiCap::Disabled => "Disabled",
+            ApiCap::NotPublished => "NotPublished",
+            ApiCap::Available => "Available",
+            ApiCap::Unavailable => "Unavailable",
+        });
+        let sections = obj_v! {
+            "orchestration": obj_v! {
+                "status": mp::text(&orch.status)?, "subject_kind": bytes_v(&orch.subject_kind),
+                "subject_status": bytes_v(&orch.subject_status),
+                "current_subject_id": opt_text_v(orch.current_subject_id.as_deref())?,
+                "current_draft_id": opt_text_v(orch.current_draft_id.as_deref())?,
+            },
+            "api": obj_v! {
+                "status": api_status, "invoke_routing_mode": routing,
+                "invoke_path_template": opt_bytes_v(api.invoke_path_template.as_deref()), "api_capability_status": cap,
+            },
+            "logs": obj_v! {
+                "status": mp::text(&logs.status)?, "runs_capability_status": bytes_v(&logs.runs_capability_status),
+                "run_object_kind": bytes_v(&logs.run_object_kind), "log_retention_status": bytes_v(&logs.log_retention_status),
+            },
+            "monitoring": obj_v! {
+                "status": mp::text(&mon.status)?, "metrics_capability_status": bytes_v(&mon.metrics_capability_status),
+                "metrics_object_kind": bytes_v(&mon.metrics_object_kind), "tracing_config_status": bytes_v(&mon.tracing_config_status),
+            },
+        };
+        Some(obj_v! {
+            "id": mp::text(&d.id)?, "application_type": app_type_v(&d.application_type),
+            "workflow_trigger_type": d.workflow_trigger_type.as_ref().map_or(Value::Null, trigger_v),
+            "name": bytes_v(&d.name), "description": bytes_v(&d.description),
+            "icon": opt_bytes_v(d.icon.as_deref()), "icon_type": opt_text_v(d.icon_type.as_deref())?,
+            "icon_background": opt_bytes_v(d.icon_background.as_deref()),
+            "created_by": bytes_v(&d.created_by), "updated_at": mp::text(&d.updated_at)?,
+            "tags": tags_v(&d.tags)?, "sections": sections,
+        })
+    }
+
+    pub(super) fn project_output(output: &ApplicationsOutput) -> Option<Value> {
+        Some(match output {
+            ApplicationsOutput::Applications(items) => {
+                var_v("Applications", arr_v(items, project_summary)?)
+            }
+            ApplicationsOutput::Catalog(cat) => var_v("Catalog", project_catalog(cat)?),
+            ApplicationsOutput::Application(d) => var_v("Application", project_detail(d)?),
+            ApplicationsOutput::Tag(t) => var_v(
+                "Tag",
+                obj_v! { "id": mp::text(&t.id)?, "name": bytes_v(&t.name), "application_count": json!(t.application_count) },
+            ),
+            ApplicationsOutput::EnvironmentVariables(items) => var_v(
+                "EnvironmentVariables",
+                arr_v(items, |v| {
+                    Some(obj_v! {
+                        "name": bytes_v(&v.name), "value_type": mp::text(&v.value_type)?,
+                        "value": mp::json_summary(&v.value), "description": bytes_v(&v.description), "updated_at": mp::text(&v.updated_at)?,
+                    })
+                })?,
+            ),
+            ApplicationsOutput::JsDependencies(items) => {
+                var_v("JsDependencies", arr_v(items, js_dep_v)?)
+            }
+            ApplicationsOutput::JsDependency(item) => var_v("JsDependency", js_dep_v(item)?),
+            ApplicationsOutput::NoContent => tag_v("NoContent"),
+        })
+    }
+}
+
 impl InterfaceContract for ApplicationsInput {
     fn event_projection_schema() -> Option<serde_json::Value> {
         Some(event_projection::input_schema())
@@ -78,147 +506,10 @@ impl InterfaceContract for ApplicationsInput {
         event_projection::input(self)
     }
     fn managed_projection_schema() -> Option<serde_json::Value> {
-        use crate::extension_bus::managed_projection as mp;
-        Some(mp::union_schema(vec![
-            mp::object_schema([("variant", mp::tag_schema("List"))]),
-            mp::object_schema([("variant", mp::tag_schema("Catalog"))]),
-            mp::object_schema([
-                ("variant", mp::tag_schema("Create")),
-                (
-                    "0",
-                    mp::object_schema([
-                        (
-                            "application_type",
-                            mp::union_schema(vec![
-                                mp::object_schema([("variant", mp::tag_schema("AgentFlow"))]),
-                                mp::object_schema([("variant", mp::tag_schema("AgentLogs"))]),
-                                mp::object_schema([("variant", mp::tag_schema("Workflow"))]),
-                            ]),
-                        ),
-                        (
-                            "workflow_trigger_type",
-                            serde_json::json!({"anyOf": [mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("Extension"))]), mp::object_schema([("variant",mp::tag_schema("Schedule"))]), mp::object_schema([("variant",mp::tag_schema("Event"))])]), {"type":"null"}]}),
-                        ),
-                        (
-                            "workflow_trigger_config",
-                            serde_json::json!({"anyOf": [mp::object_schema([("cron",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("timezone",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("input_payload",serde_json::json!({"anyOf": [mp::json_summary_schema(), {"type":"null"}]})), ("subpath",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("http_method",serde_json::json!({"anyOf": [mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("Get"))]), mp::object_schema([("variant",mp::tag_schema("Post"))]), mp::object_schema([("variant",mp::tag_schema("Put"))]), mp::object_schema([("variant",mp::tag_schema("Patch"))]), mp::object_schema([("variant",mp::tag_schema("Delete"))]), mp::object_schema([("variant",mp::tag_schema("Head"))]), mp::object_schema([("variant",mp::tag_schema("Options"))])]), {"type":"null"}]})), ("response_mode",serde_json::json!({"anyOf": [mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("Sync"))]), mp::object_schema([("variant",mp::tag_schema("Async"))])]), {"type":"null"}]}))]), {"type":"null"}]}),
-                        ),
-                        (
-                            "name",
-                            mp::object_schema([("byte_count", mp::count_schema())]),
-                        ),
-                        (
-                            "description",
-                            mp::object_schema([("byte_count", mp::count_schema())]),
-                        ),
-                        (
-                            "icon",
-                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
-                        ),
-                        (
-                            "icon_type",
-                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
-                        ),
-                        (
-                            "icon_background",
-                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
-                        ),
-                    ]),
-                ),
-            ]),
-            mp::object_schema([
-                ("variant", mp::tag_schema("CreateTag")),
-                (
-                    "0",
-                    mp::object_schema([(
-                        "name",
-                        mp::object_schema([("byte_count", mp::count_schema())]),
-                    )]),
-                ),
-            ]),
-            mp::object_schema([
-                ("variant", mp::tag_schema("Get")),
-                ("application_id", mp::text_schema()),
-            ]),
-            mp::object_schema([
-                ("variant", mp::tag_schema("Patch")),
-                ("application_id", mp::text_schema()),
-                (
-                    "body",
-                    mp::object_schema([
-                        (
-                            "name",
-                            mp::object_schema([("byte_count", mp::count_schema())]),
-                        ),
-                        (
-                            "description",
-                            mp::object_schema([("byte_count", mp::count_schema())]),
-                        ),
-                        (
-                            "tag_ids",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::text_schema()}),
-                        ),
-                        (
-                            "icon",
-                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
-                        ),
-                        (
-                            "icon_type",
-                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
-                        ),
-                        (
-                            "icon_background",
-                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
-                        ),
-                    ]),
-                ),
-            ]),
-            mp::object_schema([
-                ("variant", mp::tag_schema("Delete")),
-                ("application_id", mp::text_schema()),
-            ]),
-            mp::object_schema([
-                ("variant", mp::tag_schema("ListEnvironmentVariables")),
-                ("application_id", mp::text_schema()),
-            ]),
-            mp::object_schema([
-                ("variant", mp::tag_schema("ReplaceEnvironmentVariables")),
-                ("application_id", mp::text_schema()),
-                (
-                    "body",
-                    mp::object_schema([(
-                        "variables",
-                        serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("name",mp::object_schema([("byte_count",mp::count_schema())])), ("value_type",mp::text_schema()), ("value",mp::json_summary_schema()), ("description",mp::object_schema([("byte_count",mp::count_schema())]))])}),
-                    )]),
-                ),
-            ]),
-            mp::object_schema([
-                ("variant", mp::tag_schema("ListJsDependencies")),
-                ("application_id", mp::text_schema()),
-            ]),
-            mp::object_schema([
-                ("variant", mp::tag_schema("ReplaceJsDependency")),
-                ("application_id", mp::text_schema()),
-                (
-                    "body",
-                    mp::object_schema([
-                        ("installation_id", mp::text_schema()),
-                        (
-                            "alias",
-                            mp::object_schema([("byte_count", mp::count_schema())]),
-                        ),
-                        (
-                            "target",
-                            mp::object_schema([("byte_count", mp::count_schema())]),
-                        ),
-                    ]),
-                ),
-            ]),
-        ]))
+        Some(mp_helpers::input_schema())
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
-        use crate::extension_bus::managed_projection as mp;
-        Some(match self {Self::List => mp::object_value([("variant",serde_json::Value::String("List".to_owned()))]), Self::Catalog { .. } => mp::object_value([("variant",serde_json::Value::String("Catalog".to_owned()))]), Self::Create(_field_0) => mp::object_value([("variant",serde_json::Value::String("Create".to_owned())), ("0",mp::object_value([("application_type",match &(_field_0).application_type {crate::routes::applications_group::applications::ApplicationTypeDto::AgentLogs => mp::object_value([("variant",serde_json::Value::String("AgentLogs".to_owned()))]), crate::routes::applications_group::applications::ApplicationTypeDto::AgentFlow => mp::object_value([("variant",serde_json::Value::String("AgentFlow".to_owned()))]), crate::routes::applications_group::applications::ApplicationTypeDto::Workflow => mp::object_value([("variant",serde_json::Value::String("Workflow".to_owned()))])}), ("workflow_trigger_type",match (_field_0).workflow_trigger_type.as_ref() { Some(item) => match item {crate::routes::applications_group::applications::WorkflowTriggerTypeDto::Extension => mp::object_value([("variant",serde_json::Value::String("Extension".to_owned()))]), crate::routes::applications_group::applications::WorkflowTriggerTypeDto::Schedule => mp::object_value([("variant",serde_json::Value::String("Schedule".to_owned()))]), crate::routes::applications_group::applications::WorkflowTriggerTypeDto::Event => mp::object_value([("variant",serde_json::Value::String("Event".to_owned()))])}, None => serde_json::Value::Null }), ("workflow_trigger_config",match (_field_0).workflow_trigger_config.as_ref() { Some(item) => mp::object_value([("cron",match (item).cron.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("timezone",match (item).timezone.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("input_payload",match (item).input_payload.as_ref() { Some(item) => mp::json_summary(item), None => serde_json::Value::Null }), ("subpath",match (item).subpath.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("http_method",match (item).http_method.as_ref() { Some(item) => match item {crate::routes::applications_group::application_api::WorkflowExtensionHttpMethodBody::Get => mp::object_value([("variant",serde_json::Value::String("Get".to_owned()))]), crate::routes::applications_group::application_api::WorkflowExtensionHttpMethodBody::Post => mp::object_value([("variant",serde_json::Value::String("Post".to_owned()))]), crate::routes::applications_group::application_api::WorkflowExtensionHttpMethodBody::Put => mp::object_value([("variant",serde_json::Value::String("Put".to_owned()))]), crate::routes::applications_group::application_api::WorkflowExtensionHttpMethodBody::Patch => mp::object_value([("variant",serde_json::Value::String("Patch".to_owned()))]), crate::routes::applications_group::application_api::WorkflowExtensionHttpMethodBody::Delete => mp::object_value([("variant",serde_json::Value::String("Delete".to_owned()))]), crate::routes::applications_group::application_api::WorkflowExtensionHttpMethodBody::Head => mp::object_value([("variant",serde_json::Value::String("Head".to_owned()))]), crate::routes::applications_group::application_api::WorkflowExtensionHttpMethodBody::Options => mp::object_value([("variant",serde_json::Value::String("Options".to_owned()))])}, None => serde_json::Value::Null }), ("response_mode",match (item).response_mode.as_ref() { Some(item) => match item {crate::routes::applications_group::application_api::WorkflowExtensionResponseModeBody::Sync => mp::object_value([("variant",serde_json::Value::String("Sync".to_owned()))]), crate::routes::applications_group::application_api::WorkflowExtensionResponseModeBody::Async => mp::object_value([("variant",serde_json::Value::String("Async".to_owned()))])}, None => serde_json::Value::Null })]), None => serde_json::Value::Null }), ("name",mp::object_value([("byte_count",serde_json::json!((_field_0).name.len()))])), ("description",mp::object_value([("byte_count",serde_json::json!((_field_0).description.len()))])), ("icon",match (_field_0).icon.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("icon_type",match (_field_0).icon_type.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("icon_background",match (_field_0).icon_background.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]))]), Self::CreateTag(_field_0) => mp::object_value([("variant",serde_json::Value::String("CreateTag".to_owned())), ("0",mp::object_value([("name",mp::object_value([("byte_count",serde_json::json!((_field_0).name.len()))]))]))]), Self::Get {application_id: _field_application_id, .. } => mp::object_value([("variant",serde_json::Value::String("Get".to_owned())), ("application_id",serde_json::Value::String((_field_application_id).to_string()))]), Self::Patch {application_id: _field_application_id, body: _field_body, .. } => mp::object_value([("variant",serde_json::Value::String("Patch".to_owned())), ("application_id",serde_json::Value::String((_field_application_id).to_string())), ("body",mp::object_value([("name",mp::object_value([("byte_count",serde_json::json!((_field_body).name.len()))])), ("description",mp::object_value([("byte_count",serde_json::json!((_field_body).description.len()))])), ("tag_ids",{ if (_field_body).tag_ids.len() > 32 { return None; } serde_json::Value::Array((_field_body).tag_ids.iter().map(|item| mp::text(item)).collect::<Option<Vec<_>>>()?) }), ("icon",match (_field_body).icon.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("icon_type",match (_field_body).icon_type.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("icon_background",match (_field_body).icon_background.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null })]))]), Self::Delete {application_id: _field_application_id, .. } => mp::object_value([("variant",serde_json::Value::String("Delete".to_owned())), ("application_id",serde_json::Value::String((_field_application_id).to_string()))]), Self::ListEnvironmentVariables {application_id: _field_application_id, .. } => mp::object_value([("variant",serde_json::Value::String("ListEnvironmentVariables".to_owned())), ("application_id",serde_json::Value::String((_field_application_id).to_string()))]), Self::ReplaceEnvironmentVariables {application_id: _field_application_id, body: _field_body, .. } => mp::object_value([("variant",serde_json::Value::String("ReplaceEnvironmentVariables".to_owned())), ("application_id",serde_json::Value::String((_field_application_id).to_string())), ("body",mp::object_value([("variables",{ if (_field_body).variables.len() > 32 { return None; } serde_json::Value::Array((_field_body).variables.iter().map(|item| Some(mp::object_value([("name",mp::object_value([("byte_count",serde_json::json!((item).name.len()))])), ("value_type",mp::text(&(item).value_type)?), ("value",mp::json_summary(&(item).value)), ("description",mp::object_value([("byte_count",serde_json::json!((item).description.len()))]))]))).collect::<Option<Vec<_>>>()?) })]))]), Self::ListJsDependencies {application_id: _field_application_id, .. } => mp::object_value([("variant",serde_json::Value::String("ListJsDependencies".to_owned())), ("application_id",serde_json::Value::String((_field_application_id).to_string()))]), Self::ReplaceJsDependency {application_id: _field_application_id, body: _field_body, .. } => mp::object_value([("variant",serde_json::Value::String("ReplaceJsDependency".to_owned())), ("application_id",serde_json::Value::String((_field_application_id).to_string())), ("body",mp::object_value([("installation_id",mp::text(&(_field_body).installation_id)?), ("alias",mp::object_value([("byte_count",serde_json::json!((_field_body).alias.len()))])), ("target",mp::object_value([("byte_count",serde_json::json!((_field_body).target.len()))]))]))])})
+        mp_helpers::project_input(self)
     }
 
     const CONTRACT_ID: &'static str = "console-applications-input";
@@ -248,310 +539,10 @@ impl InterfaceContract for ApplicationsOutput {
         event_projection::output(self)
     }
     fn managed_projection_schema() -> Option<serde_json::Value> {
-        use crate::extension_bus::managed_projection as mp;
-        Some(mp::union_schema(vec![
-            mp::object_schema([
-                ("variant", mp::tag_schema("Applications")),
-                (
-                    "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("application_type",mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("AgentFlow"))]), mp::object_schema([("variant",mp::tag_schema("Workflow"))])])), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("description",mp::object_schema([("byte_count",mp::count_schema())])), ("icon",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("icon_type",serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]})), ("icon_background",serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]})), ("created_by",mp::object_schema([("byte_count",mp::count_schema())])), ("updated_at",mp::text_schema()), ("tags",serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())]))])}))])}),
-                ),
-            ]),
-            mp::object_schema([
-                ("variant", mp::tag_schema("Catalog")),
-                (
-                    "0",
-                    mp::object_schema([
-                        ("collectors", collector_projection_schema()),
-                        (
-                            "types",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("value",mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("AgentFlow"))]), mp::object_schema([("variant",mp::tag_schema("Workflow"))])])), ("label",mp::object_schema([("byte_count",mp::count_schema())]))])}),
-                        ),
-                        (
-                            "workflow_triggers",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("value",mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("Extension"))]), mp::object_schema([("variant",mp::tag_schema("Schedule"))]), mp::object_schema([("variant",mp::tag_schema("Event"))])])), ("label",mp::object_schema([("byte_count",mp::count_schema())]))])}),
-                        ),
-                        (
-                            "tags",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())])), ("application_count",serde_json::json!({"type":"integer"}))])}),
-                        ),
-                    ]),
-                ),
-            ]),
-            mp::object_schema([
-                ("variant", mp::tag_schema("Application")),
-                (
-                    "0",
-                    mp::object_schema([
-                        ("id", mp::text_schema()),
-                        (
-                            "application_type",
-                            mp::union_schema(vec![
-                                mp::object_schema([("variant", mp::tag_schema("AgentFlow"))]),
-                                mp::object_schema([("variant", mp::tag_schema("AgentLogs"))]),
-                                mp::object_schema([("variant", mp::tag_schema("Workflow"))]),
-                            ]),
-                        ),
-                        (
-                            "workflow_trigger_type",
-                            serde_json::json!({"anyOf": [mp::union_schema(vec![mp::object_schema([("variant",mp::tag_schema("Extension"))]), mp::object_schema([("variant",mp::tag_schema("Schedule"))]), mp::object_schema([("variant",mp::tag_schema("Event"))])]), {"type":"null"}]}),
-                        ),
-                        (
-                            "name",
-                            mp::object_schema([("byte_count", mp::count_schema())]),
-                        ),
-                        (
-                            "description",
-                            mp::object_schema([("byte_count", mp::count_schema())]),
-                        ),
-                        (
-                            "icon",
-                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
-                        ),
-                        (
-                            "icon_type",
-                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
-                        ),
-                        (
-                            "icon_background",
-                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
-                        ),
-                        (
-                            "created_by",
-                            mp::object_schema([("byte_count", mp::count_schema())]),
-                        ),
-                        ("updated_at", mp::text_schema()),
-                        (
-                            "tags",
-                            serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("id",mp::text_schema()), ("name",mp::object_schema([("byte_count",mp::count_schema())]))])}),
-                        ),
-                        (
-                            "sections",
-                            mp::object_schema([
-                                (
-                                    "orchestration",
-                                    mp::object_schema([
-                                        ("status", mp::text_schema()),
-                                        (
-                                            "subject_kind",
-                                            mp::object_schema([("byte_count", mp::count_schema())]),
-                                        ),
-                                        (
-                                            "subject_status",
-                                            mp::object_schema([("byte_count", mp::count_schema())]),
-                                        ),
-                                        (
-                                            "current_subject_id",
-                                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
-                                        ),
-                                        (
-                                            "current_draft_id",
-                                            serde_json::json!({"anyOf": [mp::text_schema(), {"type":"null"}]}),
-                                        ),
-                                    ]),
-                                ),
-                                (
-                                    "api",
-                                    mp::object_schema([
-                                        (
-                                            "status",
-                                            mp::union_schema(vec![
-                                                mp::object_schema([(
-                                                    "variant",
-                                                    mp::tag_schema("Active"),
-                                                )]),
-                                                mp::object_schema([(
-                                                    "variant",
-                                                    mp::tag_schema("Planned"),
-                                                )]),
-                                                mp::object_schema([(
-                                                    "variant",
-                                                    mp::tag_schema("Available"),
-                                                )]),
-                                                mp::object_schema([(
-                                                    "variant",
-                                                    mp::tag_schema("Unavailable"),
-                                                )]),
-                                            ]),
-                                        ),
-                                        (
-                                            "invoke_routing_mode",
-                                            mp::union_schema(vec![
-                                                mp::object_schema([(
-                                                    "variant",
-                                                    mp::tag_schema("ApiKeyBoundApplication"),
-                                                )]),
-                                                mp::object_schema([(
-                                                    "variant",
-                                                    mp::tag_schema("PublishedWorkflowOperation"),
-                                                )]),
-                                                mp::object_schema([(
-                                                    "variant",
-                                                    mp::tag_schema("NotAvailable"),
-                                                )]),
-                                            ]),
-                                        ),
-                                        (
-                                            "invoke_path_template",
-                                            serde_json::json!({"anyOf": [mp::object_schema([("byte_count",mp::count_schema())]), {"type":"null"}]}),
-                                        ),
-                                        (
-                                            "api_capability_status",
-                                            mp::union_schema(vec![
-                                                mp::object_schema([(
-                                                    "variant",
-                                                    mp::tag_schema("Enabled"),
-                                                )]),
-                                                mp::object_schema([(
-                                                    "variant",
-                                                    mp::tag_schema("Disabled"),
-                                                )]),
-                                                mp::object_schema([(
-                                                    "variant",
-                                                    mp::tag_schema("NotPublished"),
-                                                )]),
-                                                mp::object_schema([(
-                                                    "variant",
-                                                    mp::tag_schema("Available"),
-                                                )]),
-                                                mp::object_schema([(
-                                                    "variant",
-                                                    mp::tag_schema("Unavailable"),
-                                                )]),
-                                            ]),
-                                        ),
-                                    ]),
-                                ),
-                                (
-                                    "logs",
-                                    mp::object_schema([
-                                        ("status", mp::text_schema()),
-                                        (
-                                            "runs_capability_status",
-                                            mp::object_schema([("byte_count", mp::count_schema())]),
-                                        ),
-                                        (
-                                            "run_object_kind",
-                                            mp::object_schema([("byte_count", mp::count_schema())]),
-                                        ),
-                                        (
-                                            "log_retention_status",
-                                            mp::object_schema([("byte_count", mp::count_schema())]),
-                                        ),
-                                    ]),
-                                ),
-                                (
-                                    "monitoring",
-                                    mp::object_schema([
-                                        ("status", mp::text_schema()),
-                                        (
-                                            "metrics_capability_status",
-                                            mp::object_schema([("byte_count", mp::count_schema())]),
-                                        ),
-                                        (
-                                            "metrics_object_kind",
-                                            mp::object_schema([("byte_count", mp::count_schema())]),
-                                        ),
-                                        (
-                                            "tracing_config_status",
-                                            mp::object_schema([("byte_count", mp::count_schema())]),
-                                        ),
-                                    ]),
-                                ),
-                            ]),
-                        ),
-                    ]),
-                ),
-            ]),
-            mp::object_schema([
-                ("variant", mp::tag_schema("Tag")),
-                (
-                    "0",
-                    mp::object_schema([
-                        ("id", mp::text_schema()),
-                        (
-                            "name",
-                            mp::object_schema([("byte_count", mp::count_schema())]),
-                        ),
-                        ("application_count", serde_json::json!({"type":"integer"})),
-                    ]),
-                ),
-            ]),
-            mp::object_schema([
-                ("variant", mp::tag_schema("EnvironmentVariables")),
-                (
-                    "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("name",mp::object_schema([("byte_count",mp::count_schema())])), ("value_type",mp::text_schema()), ("value",mp::json_summary_schema()), ("description",mp::object_schema([("byte_count",mp::count_schema())])), ("updated_at",mp::text_schema())])}),
-                ),
-            ]),
-            mp::object_schema([
-                ("variant", mp::tag_schema("JsDependencies")),
-                (
-                    "0",
-                    serde_json::json!({"type":"array","maxItems":32,"items":mp::object_schema([("application_id",mp::text_schema()), ("installation_id",mp::text_schema()), ("provider_code",mp::text_schema()), ("plugin_id",mp::text_schema()), ("plugin_version",mp::text_schema()), ("alias",mp::object_schema([("byte_count",mp::count_schema())])), ("package",mp::object_schema([("byte_count",mp::count_schema())])), ("version",mp::text_schema()), ("target",mp::object_schema([("byte_count",mp::count_schema())])), ("artifact_path",mp::object_schema([("byte_count",mp::count_schema())])), ("artifact_hash",mp::object_schema([("byte_count",mp::count_schema())])), ("integrity",mp::object_schema([("byte_count",mp::count_schema())])), ("permissions",mp::object_schema([("network",mp::object_schema([("byte_count",mp::count_schema())])), ("filesystem",mp::object_schema([("byte_count",mp::count_schema())])), ("env",mp::object_schema([("byte_count",mp::count_schema())]))]))])}),
-                ),
-            ]),
-            mp::object_schema([
-                ("variant", mp::tag_schema("JsDependency")),
-                (
-                    "0",
-                    mp::object_schema([
-                        ("application_id", mp::text_schema()),
-                        ("installation_id", mp::text_schema()),
-                        ("provider_code", mp::text_schema()),
-                        ("plugin_id", mp::text_schema()),
-                        ("plugin_version", mp::text_schema()),
-                        (
-                            "alias",
-                            mp::object_schema([("byte_count", mp::count_schema())]),
-                        ),
-                        (
-                            "package",
-                            mp::object_schema([("byte_count", mp::count_schema())]),
-                        ),
-                        ("version", mp::text_schema()),
-                        (
-                            "target",
-                            mp::object_schema([("byte_count", mp::count_schema())]),
-                        ),
-                        (
-                            "artifact_path",
-                            mp::object_schema([("byte_count", mp::count_schema())]),
-                        ),
-                        (
-                            "artifact_hash",
-                            mp::object_schema([("byte_count", mp::count_schema())]),
-                        ),
-                        (
-                            "integrity",
-                            mp::object_schema([("byte_count", mp::count_schema())]),
-                        ),
-                        (
-                            "permissions",
-                            mp::object_schema([
-                                (
-                                    "network",
-                                    mp::object_schema([("byte_count", mp::count_schema())]),
-                                ),
-                                (
-                                    "filesystem",
-                                    mp::object_schema([("byte_count", mp::count_schema())]),
-                                ),
-                                (
-                                    "env",
-                                    mp::object_schema([("byte_count", mp::count_schema())]),
-                                ),
-                            ]),
-                        ),
-                    ]),
-                ),
-            ]),
-            mp::object_schema([("variant", mp::tag_schema("NoContent"))]),
-        ]))
+        Some(mp_helpers::output_schema())
     }
     fn project_for_managed_hook(&self) -> Option<serde_json::Value> {
-        use crate::extension_bus::managed_projection as mp;
-        Some(match self {Self::Applications(_field_0) => mp::object_value([("variant",serde_json::Value::String("Applications".to_owned())), ("0",{ if (_field_0).len() > 32 { return None; } serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value([("id",mp::text(&(item).id)?), ("application_type",match &(item).application_type {crate::routes::applications_group::applications::ApplicationTypeDto::AgentLogs => mp::object_value([("variant",serde_json::Value::String("AgentLogs".to_owned()))]), crate::routes::applications_group::applications::ApplicationTypeDto::AgentFlow => mp::object_value([("variant",serde_json::Value::String("AgentFlow".to_owned()))]), crate::routes::applications_group::applications::ApplicationTypeDto::Workflow => mp::object_value([("variant",serde_json::Value::String("Workflow".to_owned()))])}), ("name",mp::object_value([("byte_count",serde_json::json!((item).name.len()))])), ("description",mp::object_value([("byte_count",serde_json::json!((item).description.len()))])), ("icon",match (item).icon.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("icon_type",match (item).icon_type.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("icon_background",match (item).icon_background.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("created_by",mp::object_value([("byte_count",serde_json::json!((item).created_by.len()))])), ("updated_at",mp::text(&(item).updated_at)?), ("tags",{ if (item).tags.len() > 32 { return None; } serde_json::Value::Array((item).tags.iter().map(|item| Some(mp::object_value([("id",mp::text(&(item).id)?), ("name",mp::object_value([("byte_count",serde_json::json!((item).name.len()))]))]))).collect::<Option<Vec<_>>>()?) })]))).collect::<Option<Vec<_>>>()?) })]), Self::Catalog(_field_0) => mp::object_value([("variant",serde_json::Value::String("Catalog".to_owned())), ("0",mp::object_value([("collectors",collector_projection(&(_field_0).collectors)?), ("types",{ if (_field_0).types.len() > 32 { return None; } serde_json::Value::Array((_field_0).types.iter().map(|item| Some(mp::object_value([("value",match &(item).value {crate::routes::applications_group::applications::ApplicationTypeDto::AgentLogs => mp::object_value([("variant",serde_json::Value::String("AgentLogs".to_owned()))]), crate::routes::applications_group::applications::ApplicationTypeDto::AgentFlow => mp::object_value([("variant",serde_json::Value::String("AgentFlow".to_owned()))]), crate::routes::applications_group::applications::ApplicationTypeDto::Workflow => mp::object_value([("variant",serde_json::Value::String("Workflow".to_owned()))])}), ("label",mp::object_value([("byte_count",serde_json::json!((item).label.len()))]))]))).collect::<Option<Vec<_>>>()?) }), ("workflow_triggers",{ if (_field_0).workflow_triggers.len() > 32 { return None; } serde_json::Value::Array((_field_0).workflow_triggers.iter().map(|item| Some(mp::object_value([("value",match &(item).value {crate::routes::applications_group::applications::WorkflowTriggerTypeDto::Extension => mp::object_value([("variant",serde_json::Value::String("Extension".to_owned()))]), crate::routes::applications_group::applications::WorkflowTriggerTypeDto::Schedule => mp::object_value([("variant",serde_json::Value::String("Schedule".to_owned()))]), crate::routes::applications_group::applications::WorkflowTriggerTypeDto::Event => mp::object_value([("variant",serde_json::Value::String("Event".to_owned()))])}), ("label",mp::object_value([("byte_count",serde_json::json!((item).label.len()))]))]))).collect::<Option<Vec<_>>>()?) }), ("tags",{ if (_field_0).tags.len() > 32 { return None; } serde_json::Value::Array((_field_0).tags.iter().map(|item| Some(mp::object_value([("id",mp::text(&(item).id)?), ("name",mp::object_value([("byte_count",serde_json::json!((item).name.len()))])), ("application_count",serde_json::json!((item).application_count))]))).collect::<Option<Vec<_>>>()?) })]))]), Self::Application(_field_0) => mp::object_value([("variant",serde_json::Value::String("Application".to_owned())), ("0",mp::object_value([("id",mp::text(&(_field_0).id)?), ("application_type",match &(_field_0).application_type {crate::routes::applications_group::applications::ApplicationTypeDto::AgentLogs => mp::object_value([("variant",serde_json::Value::String("AgentLogs".to_owned()))]), crate::routes::applications_group::applications::ApplicationTypeDto::AgentFlow => mp::object_value([("variant",serde_json::Value::String("AgentFlow".to_owned()))]), crate::routes::applications_group::applications::ApplicationTypeDto::Workflow => mp::object_value([("variant",serde_json::Value::String("Workflow".to_owned()))])}), ("workflow_trigger_type",match (_field_0).workflow_trigger_type.as_ref() { Some(item) => match item {crate::routes::applications_group::applications::WorkflowTriggerTypeDto::Extension => mp::object_value([("variant",serde_json::Value::String("Extension".to_owned()))]), crate::routes::applications_group::applications::WorkflowTriggerTypeDto::Schedule => mp::object_value([("variant",serde_json::Value::String("Schedule".to_owned()))]), crate::routes::applications_group::applications::WorkflowTriggerTypeDto::Event => mp::object_value([("variant",serde_json::Value::String("Event".to_owned()))])}, None => serde_json::Value::Null }), ("name",mp::object_value([("byte_count",serde_json::json!((_field_0).name.len()))])), ("description",mp::object_value([("byte_count",serde_json::json!((_field_0).description.len()))])), ("icon",match (_field_0).icon.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("icon_type",match (_field_0).icon_type.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("icon_background",match (_field_0).icon_background.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("created_by",mp::object_value([("byte_count",serde_json::json!((_field_0).created_by.len()))])), ("updated_at",mp::text(&(_field_0).updated_at)?), ("tags",{ if (_field_0).tags.len() > 32 { return None; } serde_json::Value::Array((_field_0).tags.iter().map(|item| Some(mp::object_value([("id",mp::text(&(item).id)?), ("name",mp::object_value([("byte_count",serde_json::json!((item).name.len()))]))]))).collect::<Option<Vec<_>>>()?) }), ("sections",mp::object_value([("orchestration",mp::object_value([("status",mp::text(&(_field_0).sections.orchestration.status)?), ("subject_kind",mp::object_value([("byte_count",serde_json::json!((_field_0).sections.orchestration.subject_kind.len()))])), ("subject_status",mp::object_value([("byte_count",serde_json::json!((_field_0).sections.orchestration.subject_status.len()))])), ("current_subject_id",match (_field_0).sections.orchestration.current_subject_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null }), ("current_draft_id",match (_field_0).sections.orchestration.current_draft_id.as_ref() { Some(item) => mp::text(item)?, None => serde_json::Value::Null })])), ("api",mp::object_value([("status",match &(_field_0).sections.api.status {crate::routes::applications_group::applications::ApplicationApiSectionStatusResponse::Active => mp::object_value([("variant",serde_json::Value::String("Active".to_owned()))]), crate::routes::applications_group::applications::ApplicationApiSectionStatusResponse::Planned => mp::object_value([("variant",serde_json::Value::String("Planned".to_owned()))]), crate::routes::applications_group::applications::ApplicationApiSectionStatusResponse::Available => mp::object_value([("variant",serde_json::Value::String("Available".to_owned()))]), crate::routes::applications_group::applications::ApplicationApiSectionStatusResponse::Unavailable => mp::object_value([("variant",serde_json::Value::String("Unavailable".to_owned()))])}), ("invoke_routing_mode",match &(_field_0).sections.api.invoke_routing_mode {crate::routes::applications_group::applications::ApplicationApiInvokeRoutingModeResponse::ApiKeyBoundApplication => mp::object_value([("variant",serde_json::Value::String("ApiKeyBoundApplication".to_owned()))]), crate::routes::applications_group::applications::ApplicationApiInvokeRoutingModeResponse::PublishedWorkflowOperation => mp::object_value([("variant",serde_json::Value::String("PublishedWorkflowOperation".to_owned()))]), crate::routes::applications_group::applications::ApplicationApiInvokeRoutingModeResponse::NotAvailable => mp::object_value([("variant",serde_json::Value::String("NotAvailable".to_owned()))])}), ("invoke_path_template",match (_field_0).sections.api.invoke_path_template.as_ref() { Some(item) => mp::object_value([("byte_count",serde_json::json!((item).len()))]), None => serde_json::Value::Null }), ("api_capability_status",match &(_field_0).sections.api.api_capability_status {crate::routes::applications_group::applications::ApplicationApiCapabilityStatusResponse::Enabled => mp::object_value([("variant",serde_json::Value::String("Enabled".to_owned()))]), crate::routes::applications_group::applications::ApplicationApiCapabilityStatusResponse::Disabled => mp::object_value([("variant",serde_json::Value::String("Disabled".to_owned()))]), crate::routes::applications_group::applications::ApplicationApiCapabilityStatusResponse::NotPublished => mp::object_value([("variant",serde_json::Value::String("NotPublished".to_owned()))]), crate::routes::applications_group::applications::ApplicationApiCapabilityStatusResponse::Available => mp::object_value([("variant",serde_json::Value::String("Available".to_owned()))]), crate::routes::applications_group::applications::ApplicationApiCapabilityStatusResponse::Unavailable => mp::object_value([("variant",serde_json::Value::String("Unavailable".to_owned()))])})])), ("logs",mp::object_value([("status",mp::text(&(_field_0).sections.logs.status)?), ("runs_capability_status",mp::object_value([("byte_count",serde_json::json!((_field_0).sections.logs.runs_capability_status.len()))])), ("run_object_kind",mp::object_value([("byte_count",serde_json::json!((_field_0).sections.logs.run_object_kind.len()))])), ("log_retention_status",mp::object_value([("byte_count",serde_json::json!((_field_0).sections.logs.log_retention_status.len()))]))])), ("monitoring",mp::object_value([("status",mp::text(&(_field_0).sections.monitoring.status)?), ("metrics_capability_status",mp::object_value([("byte_count",serde_json::json!((_field_0).sections.monitoring.metrics_capability_status.len()))])), ("metrics_object_kind",mp::object_value([("byte_count",serde_json::json!((_field_0).sections.monitoring.metrics_object_kind.len()))])), ("tracing_config_status",mp::object_value([("byte_count",serde_json::json!((_field_0).sections.monitoring.tracing_config_status.len()))]))]))]))]))]), Self::Tag(_field_0) => mp::object_value([("variant",serde_json::Value::String("Tag".to_owned())), ("0",mp::object_value([("id",mp::text(&(_field_0).id)?), ("name",mp::object_value([("byte_count",serde_json::json!((_field_0).name.len()))])), ("application_count",serde_json::json!((_field_0).application_count))]))]), Self::EnvironmentVariables(_field_0) => mp::object_value([("variant",serde_json::Value::String("EnvironmentVariables".to_owned())), ("0",{ if (_field_0).len() > 32 { return None; } serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value([("name",mp::object_value([("byte_count",serde_json::json!((item).name.len()))])), ("value_type",mp::text(&(item).value_type)?), ("value",mp::json_summary(&(item).value)), ("description",mp::object_value([("byte_count",serde_json::json!((item).description.len()))])), ("updated_at",mp::text(&(item).updated_at)?)]))).collect::<Option<Vec<_>>>()?) })]), Self::JsDependencies(_field_0) => mp::object_value([("variant",serde_json::Value::String("JsDependencies".to_owned())), ("0",{ if (_field_0).len() > 32 { return None; } serde_json::Value::Array((_field_0).iter().map(|item| Some(mp::object_value([("application_id",mp::text(&(item).application_id)?), ("installation_id",mp::text(&(item).installation_id)?), ("provider_code",mp::text(&(item).provider_code)?), ("plugin_id",mp::text(&(item).plugin_id)?), ("plugin_version",mp::text(&(item).plugin_version)?), ("alias",mp::object_value([("byte_count",serde_json::json!((item).alias.len()))])), ("package",mp::object_value([("byte_count",serde_json::json!((item).package.len()))])), ("version",mp::text(&(item).version)?), ("target",mp::object_value([("byte_count",serde_json::json!((item).target.len()))])), ("artifact_path",mp::object_value([("byte_count",serde_json::json!((item).artifact_path.len()))])), ("artifact_hash",mp::object_value([("byte_count",serde_json::json!((item).artifact_hash.len()))])), ("integrity",mp::object_value([("byte_count",serde_json::json!((item).integrity.len()))])), ("permissions",mp::object_value([("network",mp::object_value([("byte_count",serde_json::json!((item).permissions.network.len()))])), ("filesystem",mp::object_value([("byte_count",serde_json::json!((item).permissions.filesystem.len()))])), ("env",mp::object_value([("byte_count",serde_json::json!((item).permissions.env.len()))]))]))]))).collect::<Option<Vec<_>>>()?) })]), Self::JsDependency(_field_0) => mp::object_value([("variant",serde_json::Value::String("JsDependency".to_owned())), ("0",mp::object_value([("application_id",mp::text(&(_field_0).application_id)?), ("installation_id",mp::text(&(_field_0).installation_id)?), ("provider_code",mp::text(&(_field_0).provider_code)?), ("plugin_id",mp::text(&(_field_0).plugin_id)?), ("plugin_version",mp::text(&(_field_0).plugin_version)?), ("alias",mp::object_value([("byte_count",serde_json::json!((_field_0).alias.len()))])), ("package",mp::object_value([("byte_count",serde_json::json!((_field_0).package.len()))])), ("version",mp::text(&(_field_0).version)?), ("target",mp::object_value([("byte_count",serde_json::json!((_field_0).target.len()))])), ("artifact_path",mp::object_value([("byte_count",serde_json::json!((_field_0).artifact_path.len()))])), ("artifact_hash",mp::object_value([("byte_count",serde_json::json!((_field_0).artifact_hash.len()))])), ("integrity",mp::object_value([("byte_count",serde_json::json!((_field_0).integrity.len()))])), ("permissions",mp::object_value([("network",mp::object_value([("byte_count",serde_json::json!((_field_0).permissions.network.len()))])), ("filesystem",mp::object_value([("byte_count",serde_json::json!((_field_0).permissions.filesystem.len()))])), ("env",mp::object_value([("byte_count",serde_json::json!((_field_0).permissions.env.len()))]))]))]))]), Self::NoContent => mp::object_value([("variant",serde_json::Value::String("NoContent".to_owned()))])})
+        mp_helpers::project_output(self)
     }
 
     const CONTRACT_ID: &'static str = "console-applications-output";
@@ -827,84 +818,100 @@ impl ConsoleInterfacePort<ApplicationsInput, ApplicationsOutput> for Application
     }
 }
 
+const fn decl(
+    interface_id: &'static str,
+    binding_id: &'static str,
+    method: &'static str,
+    path: &'static str,
+    mutating: bool,
+) -> ConsoleInterfaceDeclaration<'static> {
+    ConsoleInterfaceDeclaration {
+        interface_id,
+        binding_id,
+        method,
+        path,
+        mutating,
+    }
+}
+
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
-    ConsoleInterfaceDeclaration {
-        interface_id: "applications.list",
-        binding_id: "http.console.applications.list.v1",
-        method: "GET",
-        path: "/api/console/applications",
-        mutating: false,
-    },
-    ConsoleInterfaceDeclaration {
-        interface_id: "applications.create",
-        binding_id: "http.console.applications.create.v1",
-        method: "POST",
-        path: "/api/console/applications",
-        mutating: true,
-    },
-    ConsoleInterfaceDeclaration {
-        interface_id: "applications.get",
-        binding_id: "http.console.applications.get.v1",
-        method: "GET",
-        path: "/api/console/applications/:id",
-        mutating: false,
-    },
-    ConsoleInterfaceDeclaration {
-        interface_id: "applications.update",
-        binding_id: "http.console.applications.update.v1",
-        method: "PATCH",
-        path: "/api/console/applications/:id",
-        mutating: true,
-    },
-    ConsoleInterfaceDeclaration {
-        interface_id: "applications.delete",
-        binding_id: "http.console.applications.delete.v1",
-        method: "DELETE",
-        path: "/api/console/applications/:id",
-        mutating: true,
-    },
-    ConsoleInterfaceDeclaration {
-        interface_id: "applications.catalog.get",
-        binding_id: "http.console.applications.catalog.get.v1",
-        method: "GET",
-        path: "/api/console/applications/catalog",
-        mutating: false,
-    },
-    ConsoleInterfaceDeclaration {
-        interface_id: "applications.tags.create",
-        binding_id: "http.console.applications.tags.create.v1",
-        method: "POST",
-        path: "/api/console/applications/tags",
-        mutating: true,
-    },
-    ConsoleInterfaceDeclaration {
-        interface_id: "applications.environment-variables.list",
-        binding_id: "http.console.applications.environment-variables.list.v1",
-        method: "GET",
-        path: "/api/console/applications/:id/environment-variables",
-        mutating: false,
-    },
-    ConsoleInterfaceDeclaration {
-        interface_id: "applications.environment-variables.replace",
-        binding_id: "http.console.applications.environment-variables.replace.v1",
-        method: "PUT",
-        path: "/api/console/applications/:id/environment-variables",
-        mutating: true,
-    },
-    ConsoleInterfaceDeclaration {
-        interface_id: "applications.js-dependencies.list",
-        binding_id: "http.console.applications.js-dependencies.list.v1",
-        method: "GET",
-        path: "/api/console/applications/:id/js-dependencies",
-        mutating: false,
-    },
-    ConsoleInterfaceDeclaration {
-        interface_id: "applications.js-dependencies.replace",
-        binding_id: "http.console.applications.js-dependencies.replace.v1",
-        method: "PUT",
-        path: "/api/console/applications/:id/js-dependencies",
-        mutating: true,
-    },
+    decl(
+        "applications.list",
+        "http.console.applications.list.v1",
+        "GET",
+        "/api/console/applications",
+        false,
+    ),
+    decl(
+        "applications.create",
+        "http.console.applications.create.v1",
+        "POST",
+        "/api/console/applications",
+        true,
+    ),
+    decl(
+        "applications.get",
+        "http.console.applications.get.v1",
+        "GET",
+        "/api/console/applications/:id",
+        false,
+    ),
+    decl(
+        "applications.update",
+        "http.console.applications.update.v1",
+        "PATCH",
+        "/api/console/applications/:id",
+        true,
+    ),
+    decl(
+        "applications.delete",
+        "http.console.applications.delete.v1",
+        "DELETE",
+        "/api/console/applications/:id",
+        true,
+    ),
+    decl(
+        "applications.catalog.get",
+        "http.console.applications.catalog.get.v1",
+        "GET",
+        "/api/console/applications/catalog",
+        false,
+    ),
+    decl(
+        "applications.tags.create",
+        "http.console.applications.tags.create.v1",
+        "POST",
+        "/api/console/applications/tags",
+        true,
+    ),
+    decl(
+        "applications.environment-variables.list",
+        "http.console.applications.environment-variables.list.v1",
+        "GET",
+        "/api/console/applications/:id/environment-variables",
+        false,
+    ),
+    decl(
+        "applications.environment-variables.replace",
+        "http.console.applications.environment-variables.replace.v1",
+        "PUT",
+        "/api/console/applications/:id/environment-variables",
+        true,
+    ),
+    decl(
+        "applications.js-dependencies.list",
+        "http.console.applications.js-dependencies.list.v1",
+        "GET",
+        "/api/console/applications/:id/js-dependencies",
+        false,
+    ),
+    decl(
+        "applications.js-dependencies.replace",
+        "http.console.applications.js-dependencies.replace.v1",
+        "PUT",
+        "/api/console/applications/:id/js-dependencies",
+        true,
+    ),
 ];
 
 pub fn compile_registry(
@@ -1123,6 +1130,116 @@ mod tests {
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
     }
+
+    #[test]
+    fn managed_hook_projection_validates_forty_agent_logs_and_agent_flow_applications() {
+        use crate::routes::applications_group::applications::{
+            ApplicationEnvironmentVariableBody, ApplicationTagResponse,
+        };
+        use extension_contracts::ManagedProjectionContract;
+
+        let output_contract = ManagedProjectionContract {
+            contract_id: ApplicationsOutput::CONTRACT_ID.into(),
+            contract_version: ApplicationsOutput::CONTRACT_VERSION.into(),
+            schema: ApplicationsOutput::managed_projection_schema().unwrap(),
+        }
+        .compile_for_registration()
+        .unwrap();
+
+        let applications = (0..40)
+            .map(|index| ApplicationSummaryResponse {
+                id: Uuid::from_u128((index + 1) as u128).to_string(),
+                application_type: match index % 3 {
+                    0 => ApplicationTypeDto::AgentLogs,
+                    1 => ApplicationTypeDto::AgentFlow,
+                    _ => ApplicationTypeDto::Workflow,
+                },
+                name: format!("App {index}"),
+                description: format!("Description {index}"),
+                icon: None,
+                icon_type: None,
+                icon_background: None,
+                created_by: "owner".into(),
+                updated_at: "2026-08-02T00:00:00Z".into(),
+                tags: (0..if index == 0 { 36 } else { 2 })
+                    .map(|tag_idx| ApplicationTagResponse {
+                        id: Uuid::from_u128((1_000 + tag_idx) as u128).to_string(),
+                        name: format!("tag-{tag_idx}"),
+                    })
+                    .collect(),
+            })
+            .collect();
+
+        let projected_apps = ApplicationsOutput::Applications(applications)
+            .project_for_managed_hook()
+            .expect("40 applications must project bounded hook preview instead of failing");
+        assert_eq!(projected_apps["0"].as_array().unwrap().len(), 32);
+        assert_eq!(
+            projected_apps["0"][0]["application_type"],
+            serde_json::json!({"variant": "AgentLogs"})
+        );
+        assert_eq!(
+            projected_apps["0"][1]["application_type"],
+            serde_json::json!({"variant": "AgentFlow"})
+        );
+        assert_eq!(projected_apps["0"][0]["tags"].as_array().unwrap().len(), 32);
+        output_contract.validate(&projected_apps).unwrap();
+
+        let projected_catalog = ApplicationsOutput::Catalog(ApplicationCatalogResponse {
+            collectors: Vec::new(),
+            types: vec![
+                ApplicationTypeOptionResponse {
+                    value: ApplicationTypeDto::AgentFlow,
+                    label: "Agent Flow".into(),
+                },
+                ApplicationTypeOptionResponse {
+                    value: ApplicationTypeDto::Workflow,
+                    label: "Workflow".into(),
+                },
+                ApplicationTypeOptionResponse {
+                    value: ApplicationTypeDto::AgentLogs,
+                    label: "Agent Logs".into(),
+                },
+            ],
+            workflow_triggers: Vec::new(),
+            tags: Vec::new(),
+        })
+        .project_for_managed_hook()
+        .unwrap();
+        output_contract.validate(&projected_catalog).unwrap();
+
+        let input_contract = ManagedProjectionContract {
+            contract_id: ApplicationsInput::CONTRACT_ID.into(),
+            contract_version: ApplicationsInput::CONTRACT_VERSION.into(),
+            schema: ApplicationsInput::managed_projection_schema().unwrap(),
+        }
+        .compile_for_registration()
+        .unwrap();
+
+        let projected_env_input = ApplicationsInput::ReplaceEnvironmentVariables {
+            application_id: Uuid::from_u128(1),
+            body: ReplaceApplicationEnvironmentVariablesBody {
+                variables: (0..40)
+                    .map(|idx| ApplicationEnvironmentVariableBody {
+                        name: format!("VAR_{idx}"),
+                        value_type: "string".into(),
+                        value: serde_json::json!("v"),
+                        description: String::new(),
+                    })
+                    .collect(),
+            },
+        }
+        .project_for_managed_hook()
+        .expect("40 environment variables must project bounded hook preview");
+        assert_eq!(
+            projected_env_input["body"]["variables"]
+                .as_array()
+                .unwrap()
+                .len(),
+            32
+        );
+        input_contract.validate(&projected_env_input).unwrap();
+    }
 }
 
 #[cfg(test)]
@@ -1290,93 +1407,33 @@ impl crate::openapi_interface::contract::ApiInput for ApplicationsInput {
         &self,
         operation: &crate::openapi_interface::contract::ApiOperationContext,
     ) -> Result<serde_json::Value, std::sync::Arc<str>> {
-        Ok(match self {
-            Self::List => crate::routes::applications_group::event_projection::request(
-                operation,
-                serde_json::json!({}),
-                serde_json::json!({}),
-                serde_json::Value::Null,
-            ),
-            Self::Catalog { .. } => crate::routes::applications_group::event_projection::request(
-                operation,
-                serde_json::json!({}),
-                serde_json::json!({}),
-                serde_json::Value::Null,
-            ),
-            Self::Create(body) => crate::routes::applications_group::event_projection::request(
-                operation,
-                serde_json::json!({}),
-                serde_json::json!({}),
-                crate::openapi_interface::contract::to_value(body)?,
-            ),
-            Self::CreateTag(body) => crate::routes::applications_group::event_projection::request(
-                operation,
-                serde_json::json!({}),
-                serde_json::json!({}),
-                crate::openapi_interface::contract::to_value(body)?,
-            ),
-            Self::Get { application_id } => {
-                crate::routes::applications_group::event_projection::request(
-                    operation,
-                    serde_json::json!({"application_id":application_id}),
-                    serde_json::json!({}),
-                    serde_json::Value::Null,
-                )
-            }
+        use crate::openapi_interface::contract::to_value;
+        use crate::routes::applications_group::event_projection::{environment_body, request};
+        let empty = || serde_json::json!({});
+        let id_path = |id: &Uuid| serde_json::json!({"application_id": id});
+        let null = serde_json::Value::Null;
+        let (path_params, body) = match self {
+            Self::List | Self::Catalog { .. } => (empty(), null),
+            Self::Create(body) => (empty(), to_value(body)?),
+            Self::CreateTag(body) => (empty(), to_value(body)?),
+            Self::Get { application_id }
+            | Self::Delete { application_id }
+            | Self::ListEnvironmentVariables { application_id }
+            | Self::ListJsDependencies { application_id } => (id_path(application_id), null),
             Self::Patch {
                 application_id,
                 body,
-            } => crate::routes::applications_group::event_projection::request(
-                operation,
-                serde_json::json!({"application_id":application_id}),
-                serde_json::json!({}),
-                crate::openapi_interface::contract::to_value(body)?,
-            ),
-            Self::Delete { application_id } => {
-                crate::routes::applications_group::event_projection::request(
-                    operation,
-                    serde_json::json!({"application_id":application_id}),
-                    serde_json::json!({}),
-                    serde_json::Value::Null,
-                )
-            }
-            Self::ListEnvironmentVariables { application_id } => {
-                crate::routes::applications_group::event_projection::request(
-                    operation,
-                    serde_json::json!({"application_id":application_id}),
-                    serde_json::json!({}),
-                    serde_json::Value::Null,
-                )
-            }
+            } => (id_path(application_id), to_value(body)?),
             Self::ReplaceEnvironmentVariables {
                 application_id,
                 body,
-            } => crate::routes::applications_group::event_projection::request(
-                operation,
-                serde_json::json!({"application_id":application_id}),
-                serde_json::json!({}),
-                crate::openapi_interface::contract::to_value(
-                    &crate::routes::applications_group::event_projection::environment_body(body),
-                )?,
-            ),
-            Self::ListJsDependencies { application_id } => {
-                crate::routes::applications_group::event_projection::request(
-                    operation,
-                    serde_json::json!({"application_id":application_id}),
-                    serde_json::json!({}),
-                    serde_json::Value::Null,
-                )
-            }
+            } => (id_path(application_id), to_value(&environment_body(body))?),
             Self::ReplaceJsDependency {
                 application_id,
                 body,
-            } => crate::routes::applications_group::event_projection::request(
-                operation,
-                serde_json::json!({"application_id":application_id}),
-                serde_json::json!({}),
-                crate::openapi_interface::contract::to_value(body)?,
-            ),
-        })
+            } => (id_path(application_id), to_value(body)?),
+        };
+        Ok(request(operation, path_params, empty(), body))
     }
 }
 

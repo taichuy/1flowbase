@@ -14,26 +14,10 @@ impl ApplicationRuntimeReadsAdapter {
         let sort_by = normalize_application_run_sort_by(query.sort_by.as_deref()).to_string();
         let sort_order =
             normalize_application_run_sort_order(query.sort_order.as_deref()).to_string();
-        let refresh_cache = should_refresh_application_run_logs(query.cache_mode.as_deref());
-        let cache_key = application_log_cache::summary_page_cache_key(
-            actor.current_workspace_id,
-            application_id,
-            &query,
-            page,
-            page_size,
-            &sort_by,
-            &sort_order,
+        let _ = (
+            &self.cache,
+            should_refresh_application_run_logs(query.cache_mode.as_deref()),
         );
-        if !refresh_cache {
-            if let Some(cached) = application_log_cache::read::<FlowRunSummaryPageResponse>(
-                self.cache.as_ref(),
-                &cache_key,
-            )
-            .await
-            {
-                return Ok(cached);
-            }
-        }
         let runs_page = <_ as OrchestrationRuntimeRepository>::list_application_run_logs_page(
             &self.store,
             application_id,
@@ -98,15 +82,6 @@ impl ApplicationRuntimeReadsAdapter {
             page: runs_page.page,
             page_size: runs_page.page_size,
         };
-        if application_log_cache::summary_page_cacheable(&response) {
-            application_log_cache::write(
-                self.cache.as_ref(),
-                &cache_key,
-                &response,
-                application_log_cache::summary_page_cache_ttl(page),
-            )
-            .await;
-        }
         Ok(response)
     }
 

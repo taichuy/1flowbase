@@ -425,8 +425,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
             let operation = provider_transport
                 .as_ref()
                 .map(|transport| transport.operation);
-            let run = ApplicationNativeRunService::new(dependencies.native.store.clone())
-                .with_last_used_cache(dependencies.native.cache_store.clone())
+            let run = compatibility_native_run_service(&dependencies.native)
                 .create_native_run_for_actor(actor.clone(), request, protocol)
                 .await
                 .map_err(native::native_error)
@@ -499,8 +498,7 @@ impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
                     let operation = provider_transport
                         .as_ref()
                         .map(|transport| transport.operation);
-                    let run = ApplicationNativeRunService::new(dependencies.native.store.clone())
-                        .with_last_used_cache(dependencies.native.cache_store.clone())
+                    let run = compatibility_native_run_service(&dependencies.native)
                         .create_native_run_for_actor(actor.clone(), request, protocol)
                         .await
                         .map_err(native::native_error)
@@ -1298,6 +1296,15 @@ async fn clear_local_summary_predecessor_provider_state(
             );
         }
     }
+}
+
+fn compatibility_native_run_service(
+    dependencies: &native::ApplicationNativeRunDependencies,
+) -> ApplicationNativeRunService<storage_durable_postgres::MainDurableStore> {
+    ApplicationNativeRunService::new(dependencies.store.clone())
+        .with_last_used_cache(dependencies.cache_store.clone())
+        .with_published_plan_cache(dependencies.published_plan_cache.clone())
+        .with_published_publication_cache(dependencies.published_publication_cache.clone())
 }
 
 pub(crate) fn application_actor(principal: &ApplicationPrincipal) -> ApplicationApiKeyActor {

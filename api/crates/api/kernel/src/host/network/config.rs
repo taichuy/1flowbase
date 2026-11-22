@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use axum::http::HeaderValue;
 use domain::ApplicationBuild;
 use serde::Deserialize;
@@ -333,7 +333,7 @@ impl ApiConfig {
             database_pool_max_connections: parse_positive_u32(
                 "API_DATABASE_POOL_MAX_CONNECTIONS",
                 map.get("API_DATABASE_POOL_MAX_CONNECTIONS"),
-                5,
+                default_database_pool_max_connections(),
             )?,
             plugin_upload_max_bytes: parse_positive_usize(
                 "API_PLUGIN_UPLOAD_MAX_BYTES",
@@ -782,6 +782,15 @@ fn parse_bool_flag(key: &str, value: Option<&String>, default: bool) -> Result<b
     }
 }
 
+fn default_database_pool_max_connections() -> u32 {
+    std::thread::available_parallelism()
+        .map(|n| (n.get() as u32 * 2).clamp(10, 32))
+        .unwrap_or(16)
+}
+
+#[cfg(test)]
+#[path = "config/_tests/database_pool.rs"]
+mod database_pool_tests;
 #[cfg(test)]
 #[path = "config/_tests/plugin_resources.rs"]
 mod plugin_resource_tests;
