@@ -81,7 +81,7 @@ impl ApplicationPublicConversationRepository for PgControlPlaneStore {
         &self,
         input: &ListApplicationPublicConversationMessagesInput,
     ) -> Result<Vec<ApplicationPublicConversationMessageRecord>> {
-        let limit = input.limit.clamp(1, 200);
+        let limit = input.limit.max(1);
         let hidden_internal_run_filter = hidden_anthropic_claude_code_internal_run_sql("runs");
         // SQL safety: The internal-run filter uses a fixed alias; conversation identifiers and limits remain bound.
         let rows = sqlx::query(sqlx::AssertSqlSafe(format!(

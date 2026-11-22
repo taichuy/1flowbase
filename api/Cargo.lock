@@ -2446,6 +2446,7 @@ dependencies = [
  "regex",
  "reqwest",
  "runtime-core",
+ "rustls",
  "serde",
  "serde_json",
  "sha2 0.11.1",

@@ -188,7 +188,10 @@ fn api_config_uses_expected_cookie_defaults() {
 
     assert_eq!(config.cookie_name, "flowbase_console_session");
     assert_eq!(config.session_ttl_days, 7);
-    assert_eq!(config.database_pool_max_connections, 5);
+    let expected_pool_max = std::thread::available_parallelism()
+        .map(|parallelism| (parallelism.get() as u32 * 2).clamp(10, 32))
+        .unwrap_or(16);
+    assert_eq!(config.database_pool_max_connections, expected_pool_max);
 }
 
 #[test]
