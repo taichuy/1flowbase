@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
-const { collectRustBackendFindings, scanRustSource, main } = require('../core.js');
+const { collectRustBackendFindings, computeReviewTargetSha256, scanRustSource, main } = require('../core.js');
 
 const sourceFile = 'api/crates/host/src/reader.rs';
 const callerFile = 'api/crates/host/src/admission.rs';
@@ -146,46 +146,99 @@ test('formal repository reviews all bind source and distinct evidence without hi
     assert.equal(ids.has(entry.id), false);
     ids.add(entry.id);
     assert.equal(Object.hasOwn(entry, 'line'), false);
-    assert.equal(sha256(fs.readFileSync(path.join(root, entry.file))), entry.source_sha256);
+    const sourceContent = fs.readFileSync(path.join(root, entry.file), 'utf8');
+    assert.equal(computeReviewTargetSha256(sourceContent, entry.source_anchor), entry.source_sha256, entry.file);
+    assert.equal(
+      computeReviewTargetSha256(sourceContent.replace(/\r?\n/gu, '\r\n'), entry.source_anchor),
+      entry.source_sha256,
+      `${entry.file} (CRLF)`
+    );
     assert.ok(entry.evidence.length > 0);
     assert.ok(entry.evidence.some((evidence) => evidence.file !== entry.file));
     for (const evidence of entry.evidence) {
       assert.ok(evidence.reason.trim());
-      assert.equal(sha256(fs.readFileSync(path.join(root, evidence.file))), evidence.sha256);
+      const evidenceContent = fs.readFileSync(path.join(root, evidence.file), 'utf8');
+      assert.equal(computeReviewTargetSha256(evidenceContent, evidence.anchor), evidence.sha256, evidence.file);
+      assert.equal(
+        computeReviewTargetSha256(evidenceContent.replace(/\r?\n/gu, '\r\n'), evidence.anchor),
+        evidence.sha256,
+        `${evidence.file} (CRLF)`
+      );
     }
   }
 });
 
-
-test('model-provider JSON reviews retain exact source evidence after the Plugins owner move', (t) => {
+test('model-provider response mapping converts i18n catalogs without unwrap or baseline exceptions', () => {
   const repoRoot = path.resolve(__dirname, '../../../..');
   const baseline = JSON.parse(fs.readFileSync(path.join(repoRoot, 'scripts/node/check-rust-backend/baseline.json'), 'utf8'));
-  const entries = baseline.allowedFindings.filter(entry => ['json-model-provider-catalog', 'json-model-provider-options'].includes(entry.id));
-  assert.equal(entries.length, 2);
+  assert.equal(
+    baseline.allowedFindings.some(entry => ['json-model-provider-catalog', 'json-model-provider-options'].includes(entry.id)),
+    false
+  );
   const file = 'api/crates/api/plugins-models/src/routes/plugins_and_models/model_providers/response_mapping.rs';
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-json-reviews-'));
+  const content = fs.readFileSync(path.join(repoRoot, file), 'utf8');
+  assert.deepEqual(scanRustSource({ relativePath: file, content }), []);
+});
+
+test('CRLF checkouts apply all formal repository reviews identically to LF checkouts', (t) => {
+  const repoRoot = path.resolve(__dirname, '../../../..');
+  const baseline = JSON.parse(fs.readFileSync(path.join(repoRoot, 'scripts/node/check-rust-backend/baseline.json'), 'utf8'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'crlf-baseline-reviews-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  function write(relative, bytes) {
-    fs.mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
-    fs.writeFileSync(path.join(root, relative), bytes);
-  }
-  for (const entry of entries) {
-    assert.equal(entry.file, file);
-    for (const [source, hash] of [[entry.file, entry.source_sha256], ...entry.evidence.map(item => [item.file, item.sha256])]) {
-      const bytes = fs.readFileSync(path.join(repoRoot, source));
-      assert.equal(sha256(bytes), hash, source);
-      write(source, bytes);
+  const writeCrlf = (relative, text) => {
+    const target = path.join(root, relative);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, text.replace(/\r?\n/gu, '\r\n'), 'utf8');
+  };
+  for (const entry of baseline.allowedFindings) {
+    for (const file of [entry.file, ...entry.evidence.map(item => item.file)]) {
+      writeCrlf(file, fs.readFileSync(path.join(repoRoot, file), 'utf8'));
     }
   }
-  write('scripts/node/check-rust-backend/baseline.json', JSON.stringify({ ...baseline, allowedFindings: entries }));
-  const current = collectRustBackendFindings({ repoRoot: root, includeSuppressed: true });
-  assert.deepEqual(current.filter(item => item.suppressed).map(item => item.reviewId).sort(), entries.map(entry => entry.id).sort());
-  assert.deepEqual(current.filter(item => /^(?:invalid|retired)-baseline-review$/u.test(item.rule)), []);
-  const former = 'api/apps/api-server/src/routes/plugins_and_models/model_providers/response_mapping.rs';
-  write(former, fs.readFileSync(path.join(root, file)));
-  const formerFindings = collectRustBackendFindings({ repoRoot: root, includeSuppressed: true }).filter(item => item.file === former && item.rule === 'no-production-escape');
-  assert.equal(formerFindings.length, 2);
-  assert.equal(formerFindings.every(item => !item.suppressed), true);
+  writeCrlf('scripts/node/check-rust-backend/baseline.json', JSON.stringify(baseline, null, 2));
+  const findings = collectRustBackendFindings({ repoRoot: root, includeSuppressed: true });
+  assert.deepEqual(findings.filter(item => /^(?:invalid|retired)-baseline-review$/u.test(item.rule)), []);
+  assert.deepEqual(
+    findings.filter(item => item.suppressed).map(item => item.reviewId).sort(),
+    baseline.allowedFindings.map(entry => entry.id).sort()
+  );
+  assert.equal(findings.some(item => !item.suppressed && item.severity === 'error'), false);
+});
+
+test('anchor-scoped reviews tolerate unrelated multi-file edits while failing closed on anchor mutations', (t) => {
+  const f = fixture(t);
+  const sourceAnchor = source.trim();
+  const callerAnchor = caller.trim();
+  f.write(sourceFile, `pub fn unrelated_helper() -> usize { 1 }\n${source}`);
+  f.write(callerFile, `pub fn unrelated_caller_helper() {}\n${caller}`);
+  f.baseline([{
+    ...f.review,
+    source_anchor: sourceAnchor,
+    source_sha256: sha256(sourceAnchor),
+    evidence: [{
+      file: callerFile,
+      anchor: callerAnchor,
+      sha256: sha256(callerAnchor),
+      reason: 'actual offload caller',
+    }],
+  }]);
+  let findings = collectRustBackendFindings({ repoRoot: f.root, includeSuppressed: true });
+  assert.equal(original(findings).suppressed, true);
+  assert.deepEqual(findings.filter(item => item.rule === 'invalid-baseline-review'), []);
+
+  // Unrelated edits outside the anchored items in both files do not break the review.
+  f.write(sourceFile, `pub fn unrelated_helper() -> usize { 42 }\n${source}\npub fn extra() {}\n`);
+  f.write(callerFile, `pub fn unrelated_caller_helper() { let _x = 9; }\n${caller}\n// extra footer\n`);
+  findings = collectRustBackendFindings({ repoRoot: f.root, includeSuppressed: true });
+  assert.equal(original(findings).suppressed, true);
+  assert.deepEqual(findings.filter(item => item.rule === 'invalid-baseline-review'), []);
+
+  // Mutating the reviewed caller boundary fails closed immediately.
+  f.write(callerFile, 'async fn admit() { read(); }\n');
+  findings = collectRustBackendFindings({ repoRoot: f.root, includeSuppressed: true });
+  assert.equal(original(findings).suppressed, false);
+  assert.ok(findings.some(item => item.rule === 'invalid-baseline-review'
+    && item.reviewProblems.some(problem => problem.includes(`SHA256 changed: ${callerFile}`))));
 });
 
 test('host construction and managed hashing reviews reject changed runtime boundaries', (t) => {
@@ -201,10 +254,10 @@ test('host construction and managed hashing reviews reject changed runtime bound
     fs.writeFileSync(path.join(root, file), bytes);
   }
   for (const entry of entries) {
-    for (const [file, hash] of [[entry.file, entry.source_sha256],
-      ...entry.evidence.map(item => [item.file, item.sha256])]) {
+    for (const [file, hash, anchor] of [[entry.file, entry.source_sha256, entry.source_anchor],
+      ...entry.evidence.map(item => [item.file, item.sha256, item.anchor])]) {
       const bytes = fs.readFileSync(path.join(repoRoot, file));
-      assert.equal(sha256(bytes), hash, file);
+      assert.equal(computeReviewTargetSha256(bytes, anchor), hash, file);
       write(file, bytes);
     }
   }

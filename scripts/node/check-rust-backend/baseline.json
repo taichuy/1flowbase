@@ -2,86 +2,30 @@
   "version": "rust-backend-reviews/v1",
   "allowedFindings": [
     {
-      "id": "json-model-provider-catalog",
-      "rule": "no-production-escape",
-      "file": "api/crates/api/plugins-models/src/routes/plugins_and_models/model_providers/response_mapping.rs",
-      "snippet": "i18n_catalog: serde_json::to_value(catalog.i18n_catalog).unwrap(),",
-      "reason": "to_catalog_view_response converts catalog.i18n_catalog, whose exact type is BTreeMap<String, BTreeMap<String, serde_json::Value>>. It has string keys and already-representable JSON values, with no custom fallible serializer.",
-      "source_sha256": "9527e27187226610364c7c29fcc332d67cbad103af22e0597f6e9029f04e4b77",
-      "evidence": [
-        {
-          "file": "api/crates/control-plane/src/presentation_catalogs/i18n.rs",
-          "sha256": "d49bdb2036377fab5d09f32adefb030acfd52185e8f0b811c906e2e6d61e1d66",
-          "reason": "I18nCatalog alias fixes both map-key layers to String and the leaf to serde_json::Value."
-        },
-        {
-          "file": "api/crates/control-plane/src/model_provider.rs",
-          "sha256": "83ed33451151eec14e75273065ca017f414a0e67bda3cb45a417235ea69c31a5",
-          "reason": "ModelProviderCatalogView and ModelProviderOptionsView fields use the exact I18nCatalog alias."
-        },
-        {
-          "file": "api/crates/control-plane/src/model_provider/catalog.rs",
-          "sha256": "8193e70b1fa3776a9d325904d2cce27e8e84d6211827cee4630883f83dc40824",
-          "reason": "Catalog and options builders populate the typed catalog through the existing i18n merge helpers."
-        },
-        {
-          "file": "api/crates/control-plane/src/model_provider/instance_lifecycle.rs",
-          "sha256": "7430019aeab66287716ac3b9d893c23442e20a041e4f6655440c75c3f332520f",
-          "reason": "Private responsibility extraction from api/crates/control-plane/src/model_provider.rs preserves the reviewed behavior: create_instance, update_instance, resolve_preview_state, validate_instance. ModelProviderCatalogView and ModelProviderOptionsView fields use the exact I18nCatalog alias."
-        }
-      ]
-    },
-    {
-      "id": "json-model-provider-options",
-      "rule": "no-production-escape",
-      "file": "api/crates/api/plugins-models/src/routes/plugins_and_models/model_providers/response_mapping.rs",
-      "snippet": "i18n_catalog: serde_json::to_value(options.i18n_catalog).unwrap(),",
-      "reason": "to_options_view_response converts options.i18n_catalog, whose exact type is BTreeMap<String, BTreeMap<String, serde_json::Value>>. It has string keys and already-representable JSON values, with no custom fallible serializer.",
-      "source_sha256": "9527e27187226610364c7c29fcc332d67cbad103af22e0597f6e9029f04e4b77",
-      "evidence": [
-        {
-          "file": "api/crates/control-plane/src/presentation_catalogs/i18n.rs",
-          "sha256": "d49bdb2036377fab5d09f32adefb030acfd52185e8f0b811c906e2e6d61e1d66",
-          "reason": "I18nCatalog alias fixes both map-key layers to String and the leaf to serde_json::Value."
-        },
-        {
-          "file": "api/crates/control-plane/src/model_provider.rs",
-          "sha256": "83ed33451151eec14e75273065ca017f414a0e67bda3cb45a417235ea69c31a5",
-          "reason": "ModelProviderCatalogView and ModelProviderOptionsView fields use the exact I18nCatalog alias."
-        },
-        {
-          "file": "api/crates/control-plane/src/model_provider/catalog.rs",
-          "sha256": "8193e70b1fa3776a9d325904d2cce27e8e84d6211827cee4630883f83dc40824",
-          "reason": "Catalog and options builders populate the typed catalog through the existing i18n merge helpers."
-        },
-        {
-          "file": "api/crates/control-plane/src/model_provider/instance_lifecycle.rs",
-          "sha256": "7430019aeab66287716ac3b9d893c23442e20a041e4f6655440c75c3f332520f",
-          "reason": "Private responsibility extraction from api/crates/control-plane/src/model_provider.rs preserves the reviewed behavior: create_instance, update_instance, resolve_preview_state, validate_instance. ModelProviderCatalogView and ModelProviderOptionsView fields use the exact I18nCatalog alias."
-        }
-      ]
-    },
-    {
       "id": "internal-data-source-ciphertext",
       "rule": "no-sensitive-serialize",
       "file": "api/crates/domain/src/data_source.rs",
       "snippet": "pub encrypted_secret_json: serde_json::Value,",
       "reason": "DataSourceSecretRecord serializes encrypted persistence data, not a public credential response: encrypted_secret_json is created by encrypt_secret_json before storage, and API responses select explicit non-secret fields.",
-      "source_sha256": "f7465a8f1b157e2e7385a8446bbfa2ea49549da5f990101dd42fb34b437ab95d",
+      "source_anchor": "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\npub struct DataSourceSecretRecord {\n    pub data_source_instance_id: Uuid,\n    pub secret_ref: String,\n    pub encrypted_secret_json: serde_json::Value,\n    pub secret_version: i32,\n    pub updated_at: OffsetDateTime,\n}",
+      "source_sha256": "9bf99e52c969b1511bbf224178c3624ece21edb0e87d1ac9bad9e682ca269423",
       "evidence": [
         {
           "file": "api/crates/storage/durable/postgres/src/data_source_repository/mod.rs",
-          "sha256": "1d3357fc7081fc19511a7430d30b7bd24e0dcd622297b28b56dcdcedf09e94d5",
+          "anchor": "    async fn upsert_secret(\n        &self,\n        input: &UpsertDataSourceSecretInput,\n    ) -> Result<domain::DataSourceSecretRecord> {\n        let encrypted_secret_json =\n            encrypt_secret_json(&input.plaintext_secret_json, &input.master_key)?;\n        let row = sqlx::query(",
+          "sha256": "a46d2338c8eaf2890748214d9c3491fa458b1dfd2d4d5ba94a928e6b0b67f5c6",
           "reason": "upsert_secret/rotation encrypt plaintext before SQL binding; record mapper returns ciphertext representation."
         },
         {
           "file": "api/crates/storage/durable/postgres/src/secret_crypto/mod.rs",
-          "sha256": "54b747dbdfb554a398e27aa606acd4fba8bfca8b2f7f9bb5d922dc839b9771d1",
+          "anchor": "pub(crate) fn encrypt_secret_json(secret_json: &Value, master_key: &str) -> Result<Value> {\n    encrypt_secret_json_with_aad(secret_json, master_key, &[])\n}\n\npub(crate) fn encrypt_secret_json_with_aad(\n    secret_json: &Value,\n    master_key: &str,\n    associated_data: &[u8],\n) -> Result<Value> {\n    if master_key.is_empty() {\n        bail!(ControlPlaneError::InvalidInput(\n            \"provider_secret_master_key\"\n        ));\n    }\n",
+          "sha256": "f10707767e35caf9142841e98e84149c6e26dad7b522490b8ec970ac2768388f",
           "reason": "encrypt_secret_json returns algorithm/nonce/ciphertext envelope; plaintext requires the master-key decrypt path."
         },
         {
           "file": "api/crates/api/plugins-models/src/routes/plugins_and_models/data_sources.rs",
-          "sha256": "87796232226abbe3996c8432b3c8deea72b0cc26d02f289d60ea7ea2baa5b42a",
+          "anchor": "#[derive(Debug, Serialize, ToSchema)]\n#[serde(tag = \"kind\", rename_all = \"snake_case\")]\npub enum DataSourceBackendResponse {\n    Core {\n        durable_backend: String,\n    },\n    RuntimeExtension {\n        installation_id: String,\n        source_code: String,\n        #[schema(value_type = Object)]\n        config_json: serde_json::Value,\n        secret_ref: Option<String>,\n        secret_version: Option<i32>,\n        catalog_refresh_status: Option<String>,\n        catalog_last_error_message: Option<String>,\n        catalog_refreshed_at: Option<String>,\n    },\n}\n\n#[derive(Debug, Serialize, ToSchema)]\npub struct DataSourceResponse {\n    pub id: String,\n    pub display_name: String,\n    pub status: String,\n    pub enabled: bool,\n    pub fixed: bool,\n    pub default_data_model_status: String,\n    pub capabilities: DataSourceCapabilitiesResponse,\n    pub backend: DataSourceBackendResponse,\n}",
+          "sha256": "a372062a148393f714a6ba2608b618a85b40e91a0a4fdcb408893f29e8d17b0d",
           "reason": "Explicit data-source response types and mappers do not expose encrypted_secret_json or serialize DataSourceSecretRecord as a public response."
         }
       ]
@@ -92,27 +36,26 @@
       "file": "api/crates/domain/src/model_provider.rs",
       "snippet": "pub encrypted_secret_json: serde_json::Value,",
       "reason": "ModelProviderSecretRecord is the internal encrypted repository record. Upsert/rotation encrypt before persistence; public instance DTO has configured presentation fields and no encrypted_secret_json.",
-      "source_sha256": "c759f7efe2567c6aeb325b95dd22f3229f464d8998466b225865dc1af425d2ed",
+      "source_anchor": "#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]\npub struct ModelProviderSecretRecord {\n    pub provider_instance_id: Uuid,\n    pub encrypted_secret_json: serde_json::Value,\n    pub secret_version: i32,\n    pub updated_at: OffsetDateTime,\n}",
+      "source_sha256": "65719a84068de290001d7280ae7aeece85fe98be32f2532da03e1eefc01c0f43",
       "evidence": [
         {
           "file": "api/crates/storage/durable/postgres/src/model_provider_repository.rs",
-          "sha256": "4ea683ae187acd33353e1dcc3202f54f514176f00dfe34007b9da9b4ed4bbc56",
+          "anchor": "    async fn upsert_secret(\n        &self,\n        input: &UpsertModelProviderSecretInput,\n    ) -> Result<domain::ModelProviderSecretRecord> {\n        let encrypted_secret_json =\n            encrypt_secret_json(&input.plaintext_secret_json, &input.master_key)?;\n        let row = sqlx::query(",
+          "sha256": "06809bb760c7ecb6663297828adfa5bcc02ba9d55f77e11e3aa503152b9454c7",
           "reason": "Secret upsert and rotation call encrypt_secret_json before SQL binding; decrypt is explicit on secret retrieval."
         },
         {
           "file": "api/crates/storage/durable/postgres/src/secret_crypto/mod.rs",
-          "sha256": "54b747dbdfb554a398e27aa606acd4fba8bfca8b2f7f9bb5d922dc839b9771d1",
+          "anchor": "pub(crate) fn encrypt_secret_json(secret_json: &Value, master_key: &str) -> Result<Value> {\n    encrypt_secret_json_with_aad(secret_json, master_key, &[])\n}\n\npub(crate) fn encrypt_secret_json_with_aad(\n    secret_json: &Value,\n    master_key: &str,\n    associated_data: &[u8],\n) -> Result<Value> {\n    if master_key.is_empty() {\n        bail!(ControlPlaneError::InvalidInput(\n            \"provider_secret_master_key\"\n        ));\n    }\n",
+          "sha256": "f10707767e35caf9142841e98e84149c6e26dad7b522490b8ec970ac2768388f",
           "reason": "Encryption returns an algorithm/nonce/ciphertext envelope, not serialized plaintext."
         },
         {
           "file": "api/crates/api/plugins-models/src/routes/plugins_and_models/model_providers/dto.rs",
-          "sha256": "9a81c7a0b2f37cbabb166f2322d2f52bf2b13f0036c190b1a22a49e671f56a62",
+          "anchor": "#[derive(Debug, Serialize, ToSchema)]\npub struct ModelProviderInstanceResponse {\n    pub id: String,\n    pub installation_id: String,\n    pub provider_code: String,\n    pub protocol: String,\n    pub display_name: String,\n    pub status: String,\n    pub included_in_main: bool,\n    #[schema(value_type = Object)]\n    pub config_json: serde_json::Value,\n    pub configured_models: Vec<ConfiguredModelResponse>,\n    pub enabled_model_ids: Vec<String>,\n    pub catalog_refresh_status: Option<String>,\n    pub catalog_last_error_message: Option<String>,\n    pub catalog_refreshed_at: Option<String>,",
+          "sha256": "9016e3b0a8738c34084d63ed4bef1fe6281d26f88255859b425fff87e3591359",
           "reason": "ModelProviderInstanceResponse is explicit and omits encrypted_secret_json; it does not serialize the secret persistence record."
-        },
-        {
-          "file": "api/crates/storage/durable/postgres/src/model_provider_repository/catalog_entries.rs",
-          "sha256": "04fbc35a55e3577aa4270b55b8cfeb6945d7728e2db4aceb4c79a173fe262608",
-          "reason": "Private responsibility extraction from api/crates/storage/durable/postgres/src/model_provider_repository.rs preserves the reviewed behavior: create_catalog_source, create_catalog_sync_run, upsert_catalog_entry, list_catalog_entries, list_catalog_entries_for_provider_instance. Secret upsert and rotation call encrypt_secret_json before SQL binding; decrypt is explicit on secret retrieval."
         }
       ]
     },
@@ -122,11 +65,13 @@
       "file": "api/crates/control-plane/src/mcp_oauth/mod.rs",
       "snippet": "token_hash: String,",
       "reason": "Private Approval persistence payload is serialized only into McpOAuthRepository state. token_hash is a one-way approval-token hash, checked with browser/request bindings and atomically consumed; AuthorizationView, VerificationView and TokenResponse do not expose this field.",
-      "source_sha256": "3573dc04a21d1bfed9de857832b7b943975f1231ab8ba46cf1dbc72247e294c1",
+      "source_anchor": "#[derive(Serialize, Deserialize)]\nstruct Approval {\n    request_hash: String,\n    browser_hash: String,\n    grant_id: Uuid,\n    token_hash: String,\n}",
+      "source_sha256": "909590123b7e4c05d491c6849537f7700884998f188afd23f11e012f29143fd7",
       "evidence": [
         {
           "file": "api/crates/storage/durable/postgres/src/integration_repositories/mcp_oauth_repository.rs",
-          "sha256": "aa0e4a65900152c19a6bdf254122d21ac593c2b4ac1359b476ba3fe2c994c6d3",
+          "anchor": "    async fn oauth_get(&self, kind: &str, hash: &str) -> anyhow::Result<Option<Value>> {\n        Ok(sqlx::query_scalar(\"select payload from mcp_oauth_state where kind=$1 and token_hash=$2 and (expires_at is null or expires_at>now())\")\n            .bind(kind).bind(hash).fetch_optional(self.pool()).await?)\n    }\n    async fn oauth_consume(\n        &self,\n        kind: &str,\n        hash: &str,\n        expected: &Value,\n    ) -> anyhow::Result<bool> {\n        Ok(sqlx::query(\"delete from mcp_oauth_state where kind=$1 and token_hash=$2 and payload=$3 and expires_at>now()\")\n            .bind(kind).bind(hash).bind(expected).execute(self.pool()).await?.rows_affected()==1)\n    }",
+          "sha256": "6648920c30a5f10fa54e4d63e3ad132385d4b8051b96a5d2df13133bcc532a6e",
           "reason": "oauth_put/get/consume implement expiring internal state storage and expected-value one-time consumption, distinct from public OAuth DTO projection."
         }
       ]
@@ -137,27 +82,26 @@
       "file": "api/crates/runtime-profile/src/fingerprint.rs",
       "snippet": "std::fs::read_to_string(path)",
       "reason": "read_first_non_empty reads fixed machine-id paths during RuntimeProfileCollector construction. collect() reuses the stored host_fingerprint; runtime profile requests do not call this detector.",
-      "source_sha256": "8a849abad79fbd4d673f12b3fe429cc23621f70ddecd1f6acfd22266b3f86c68",
+      "source_anchor": "fn read_first_non_empty(paths: &[&str]) -> Option<String> {\n    paths.iter().find_map(|path| {\n        std::fs::read_to_string(path)\n            .ok()\n            .map(|value| value.trim().to_string())\n            .filter(|value| !value.is_empty())\n    })\n}",
+      "source_sha256": "84c3d881ce37c675e24736123bd51deee3dcb19907f947216c66ec402008b219",
       "evidence": [
         {
           "file": "api/crates/runtime-profile/src/profile.rs",
-          "sha256": "00dc6e6193a3fc54c8556e3da8ed48adb04b03ed40010746acde7be1a8b3f8ac",
+          "anchor": "    pub fn collect(&self) -> Result<RuntimeProfile> {\n        let metrics = self.sample_source.collect()?.metrics.clone();\n        Ok(RuntimeProfile {\n            host_fingerprint: self.host_fingerprint.clone(),\n            platform: self.platform.clone(),\n            cpu: RuntimeCpu {\n                logical_count: metrics.cpu.logical_count,\n            },\n            memory: RuntimeMemory::from_bytes(\n                metrics.memory.total_bytes,\n                metrics.memory.available_bytes,\n                metrics.memory.process_bytes,\n            ),\n            uptime_seconds: System::uptime(),\n            started_at: self.process_start,\n            captured_at: metrics.captured_at,\n            service: self.service.clone(),\n            service_version: self.service_version.clone(),\n            service_status: self.service_status.clone(),\n            metrics,\n        })\n    }",
+          "sha256": "17baab3dc49f5663a27660211f610e8a840496e2c4e516db05baa839b753b49e",
           "reason": "new_with_sample_source calls detect_host_fingerprint once; collect clones stored host_fingerprint."
         },
         {
           "file": "api/crates/api/kernel/src/host/runtime_profile_client/mod.rs",
-          "sha256": "66216512013409381a5888020053fc1f1b399ef60fde4d52e87f57dac5d03b30",
+          "anchor": "impl HostApiRuntimeProfileCollector {\n    pub fn new(process_started_at: OffsetDateTime) -> Result<Self> {\n        Self::new_with_sample_source(process_started_at, Arc::new(RuntimeSampleSource::default()))\n    }\n    pub fn new_with_sample_source(\n        process_started_at: OffsetDateTime,\n        sample_source: Arc<RuntimeSampleSource>,\n    ) -> Result<Self> {\n        Ok(Self {\n            collector: Arc::new(RuntimeProfileCollector::new_with_sample_source(\n                \"api-server\",",
+          "sha256": "08c530a0ac79b456b144bc00092956b8534b4bcdb2c315920667fab14c034b27",
           "reason": "HostApiRuntimeProfileCollector constructs a shared collector and collects through that instance."
         },
         {
           "file": "api/crates/runtime-extension-host/src/runtime_host.rs",
-          "sha256": "14c2b702d63dbcc068cda86638fb88cf8cfea2491ec390104f9b6a7ee8ecb485",
+          "anchor": "        let profile = RuntimeProfileCollector::new_with_sample_source(\n            \"runtime-extension-host\",\n            env!(\"CARGO_PKG_VERSION\"),\n            process_started_at,\n            \"ok\",\n            sample_source,\n        )\n        .map_err(|error| RuntimeBackendError::Execution {\n            target_id: \"runtime-extension-host\".to_string(),\n            message: error.to_string(),\n        })?;\n        Ok(Self {\n            provider_host,\n            capability_host,\n            managed_workers: Arc::new(\n                RwLock::new(crate::managed_worker::ManagedWorkers::default()),\n            ),\n            data_source_host,\n            network_egress_host: Arc::new(RwLock::new(NetworkEgressHost::default())),\n            provider_distribution_host: Arc::new(RwLock::new(ProviderDistributionHost::default())),\n            profile: Arc::new(profile),\n            lifecycle: Arc::new(StdRwLock::new(RuntimeBackendLifecycle::Starting)),",
+          "sha256": "0deadba3a1b09cae915fc81bc0a076028b77d975f563705d6dd22f1be7c05043",
           "reason": "RuntimeExtensionHost constructs and stores a collector at host construction, rather than constructing per profile request."
-        },
-        {
-          "file": "api/crates/runtime-extension-host/src/runtime_host/capability_port.rs",
-          "sha256": "16f2c51375f6451af871b3f33dacd63bdd88865f145bb29da5ad4292c7e6fdc8",
-          "reason": "Private responsibility extraction from api/crates/runtime-extension-host/src/runtime_host.rs preserves the reviewed behavior: impl_item. RuntimeExtensionHost constructs and stores a collector at host construction, rather than constructing per profile request."
         }
       ]
     },
@@ -167,17 +111,14 @@
       "file": "api/crates/runtime-extension-host/src/managed_worker/binding.rs",
       "snippet": "let bytes = match std::fs::read(&self.runtime_executable) {",
       "reason": "LoadedManagedBinding::verify_executable performs a blocking immutable-artifact read and fingerprint check. RuntimeExtensionHost::verify_managed_executable moves the owned binding into spawn_blocking under the existing hash-budget permit before managed admission.",
-      "source_sha256": "6b4e57dc4eb1adb9df55157857fa5581499b1e6d370fd6a3ebd9166ea7e81d38",
+      "source_anchor": "    pub(crate) fn verify_executable(&self) -> extension_package_runtime::FrameworkResult<()> {\n        let started = std::time::Instant::now();\n        tracing::debug!(\n            contribution_id = self.contribution.contribution_id.as_str(),\n            status = \"started\",\n            \"managed executable verification\"\n        );\n        let bytes = match std::fs::read(&self.runtime_executable) {\n            Ok(bytes) => bytes,\n            Err(_) => {\n                tracing::debug!(\n                    contribution_id = self.contribution.contribution_id.as_str(),\n                    elapsed_us = started.elapsed().as_micros() as u64,\n                    status = \"read_failed\",\n                    \"managed executable verification\"\n                );\n                return Err(super::invalid(\"frozen managed executable is unavailable\"));\n            }",
+      "source_sha256": "f0533b383dfd2971669e13e58341b4fd27f0db5dc0bd734f4ca8aff136c5b9c2",
       "evidence": [
         {
           "file": "api/crates/runtime-extension-host/src/runtime_host.rs",
-          "sha256": "14c2b702d63dbcc068cda86638fb88cf8cfea2491ec390104f9b6a7ee8ecb485",
+          "anchor": "    async fn verify_managed_executable(\n        &self,\n        handle: &extension_contracts::ManagedExecutionHandle,\n    ) -> Result<(), RuntimeBackendError> {\n        let hash_permit = self.admit_managed_hash()?;\n        let binding = self\n            .managed_workers\n            .read()\n            .await\n            .executable_for_handle(handle)\n            .map_err(RuntimeBackendError::from)?;\n        tokio::task::spawn_blocking(move || {\n            let _permit = hash_permit;\n            binding.verify_executable()\n        })\n        .await\n        .map_err(|_| {\n            RuntimeBackendError::from(\n                extension_package_runtime::PluginFrameworkError::invalid_provider_package(\n                    \"managed executable validation unavailable\",\n                ),\n            )\n        })?\n        .map_err(RuntimeBackendError::from)",
+          "sha256": "2e058d31907ed829a9835cbe29392e14d23af727790354e70656955877be8288",
           "reason": "verify_managed_executable obtains the hash permit, resolves the frozen binding, then calls binding.verify_executable only inside tokio::task::spawn_blocking; managed calls await it."
-        },
-        {
-          "file": "api/crates/runtime-extension-host/src/runtime_host/capability_port.rs",
-          "sha256": "16f2c51375f6451af871b3f33dacd63bdd88865f145bb29da5ad4292c7e6fdc8",
-          "reason": "Private responsibility extraction from api/crates/runtime-extension-host/src/runtime_host.rs preserves the reviewed behavior: impl_item. verify_managed_executable obtains the hash permit, resolves the frozen binding, then calls binding.verify_executable only inside tokio::task::spawn_blocking; managed calls await it."
         }
       ]
     },
@@ -187,27 +128,20 @@
       "file": "api/crates/control-plane/src/plugin_management/install/plugin_settings_templates.rs",
       "snippet": "&std::fs::read_to_string(&native_path)",
       "reason": "prepare_settings_templates native declaration read is part of prepare_installation_commit_blocking. The async prepare_installation_commit wrapper owns its inputs and invokes this body via run_preparation -> spawn_blocking; all install call sites await preparation before publish.",
-      "source_sha256": "655b8d35e342fb6bede5815af3e377075b9930ce2b44ea4c0279155ca8af866b",
+      "source_anchor": "pub(super) fn prepare_settings_templates(\n    package_root: &Path,\n    manifest: &PluginManifestV1,\n) -> Result<Vec<PluginSettingsTemplateInput>> {\n    if manifest.settings_pages.is_empty() {\n        return Ok(Vec::new());\n    }\n    if manifest.managed_service.is_some() {\n        return super::projections::load_plugin_settings_templates(manifest, package_root);\n    }\n    let native_path = package_root.join(&manifest.runtime.entry);\n    let native = plugin_framework::parse_host_extension_contribution_manifest(\n        &std::fs::read_to_string(&native_path)\n            .with_context(|| format!(\"read native declaration {}\", native_path.display()))?,\n    )?;\n    native.validate_package_settings_pages(manifest)?;\n    super::projections::load_plugin_settings_templates(manifest, package_root)\n}\n\n// Preparation only reads the staging path and builds owned commit input. Await\n// validation and asset reads before publishing; detached reads cannot commit.\npub(super) async fn prepare_installation_commit(\n    package_root: &Path,\n    node_id: &str,\n    installation: super::PreparedPluginInstallationInput,\n    manifest: &PluginManifestV1,\n    package_catalog: Option<super::UpsertPluginPackageCatalogProjectionInput>,\n) -> Result<super::CommitPluginInstallationInput> {\n    let package_root = package_root.to_path_buf();\n    let node_id = node_id.to_owned();\n    let manifest = manifest.clone();\n    run_preparation(move || {\n        super::prepare_installation_commit_blocking(\n            &package_root,\n            &node_id,\n            installation,\n            &manifest,\n            package_catalog,\n        )\n    })\n    .await\n}\n\nasync fn run_preparation<T: Send + 'static>(\n    prepare: impl FnOnce() -> Result<T> + Send + 'static,\n) -> Result<T> {\n    tokio::task::spawn_blocking(prepare)\n        .await\n        .context(\"plugin installation preparation task failed\")?\n}",
+      "source_sha256": "63a737dc2d14bcbb39bd896376bf08cb1e9d08af53b23ec05a6931530c4e1205",
       "evidence": [
         {
           "file": "api/crates/control-plane/src/plugin_management/install.rs",
-          "sha256": "37103bd6d65a543ddfa0ebe4c25a8a9ca6cb1e999a87cd0f872d67b02612b13b",
+          "anchor": "    let settings_templates =\n        plugin_settings_templates::prepare_settings_templates(package_root, manifest)?;\n    // Resolve from the staged package, after comparing the original native declarations.\n    // Projections persist source text; neither the signed YAML nor file paths become UI data.\n    let mut resolved_manifest = manifest.clone();\n    plugin_framework::resolve_plugin_frontend_sources(package_root, &mut resolved_manifest)\n        .map_err(map_framework_error)?;",
+          "sha256": "2642fa9a7d44377688f4292f250513496a1b6699f1e453fb1a1f1bf872862612",
           "reason": "Seven install call sites await the async preparation wrapper; the private blocking body calls prepare_settings_templates and only constructs owned commit input before publish_installation."
         },
         {
           "file": "api/crates/control-plane/src/plugin_management/install/projections.rs",
-          "sha256": "e4b34c11d5c199e1b7529d57af2f65513698ec9429e01af79963ff0c8ba0da19",
+          "anchor": "pub(super) fn load_plugin_settings_templates(\n    manifest: &PluginManifestV1,\n    package_root: &std::path::Path,\n) -> anyhow::Result<Vec<control_plane_contracts::ports::PluginSettingsTemplateInput>> {\n    manifest\n        .settings_pages\n        .iter()\n        .map(|page| {\n            Ok(\n                control_plane_contracts::ports::PluginSettingsTemplateInput {\n                    feature_id: page.feature_id.clone(),\n                    contribution_code: page.contribution_code.clone(),\n                    source: plugin_framework::read_plugin_settings_page_source(package_root, page)?,\n                    language: domain::UiCodeTemplateLanguage::try_from(page.language.as_str())?,\n                },\n            )\n        })",
+          "sha256": "99d0f20eafde74e02fe6a556e95dee24237f001c3d95319264987449f157d210",
           "reason": "load_plugin_settings_templates reads immutable page sources as part of the same blocking preparation; no installation publication or API response happens in this helper."
-        },
-        {
-          "file": "api/crates/control-plane/src/plugin_management/install/installation_commit.rs",
-          "sha256": "9546fb367997505161ed7c190ce65340ee0aba94443d41427eeda2037eb564fc",
-          "reason": "Private responsibility extraction from api/crates/control-plane/src/plugin_management/install.rs preserves the reviewed behavior: install_plugin_with_metadata. Seven install call sites await the async preparation wrapper; the private blocking body calls prepare_settings_templates and only constructs owned commit input before publish_installation."
-        },
-        {
-          "file": "api/crates/control-plane/src/plugin_management/install/plugin_settings_templates.rs",
-          "sha256": "655b8d35e342fb6bede5815af3e377075b9930ce2b44ea4c0279155ca8af866b",
-          "reason": "prepare_installation_commit owns its inputs and awaits run_preparation; run_preparation awaits tokio::task::spawn_blocking around the private preparation body."
         }
       ]
     },
@@ -217,11 +151,13 @@
       "file": "api/crates/runtime-extension-host/src/provider_host/session_workers/shared_capacity.rs",
       "snippet": "let status = std::fs::read_to_string(format!(\"/proc/{pid}/status\")).ok()?;",
       "reason": "rss_bytes is called by injected sampling closures on spawn_blocking, before the shared accounting lock. Admission samples known PIDs on the blocking pool under the existing request deadline; permit Drop transfers its ticket to PendingRelease and schedules blocking RSS observation before IO-free release/notify. No process IO occurs in the executor thread or capacity lock.",
-      "source_sha256": "fbe7c469de0eafaa85c0f9d34ba3cc6e0951dc54821160f2e772531e162e28bf",
+      "source_anchor": "fn rss_bytes(pid: u32) -> Option<u64> {\n    #[cfg(target_os = \"linux\")]\n    {\n        let status = std::fs::read_to_string(format!(\"/proc/{pid}/status\")).ok()?;\n        status.lines().find_map(|line| {\n            line.strip_prefix(\"VmRSS:\")\n                .and_then(|value| value.split_whitespace().next())\n                .and_then(|value| value.parse::<u64>().ok())\n                .and_then(|value| value.checked_mul(1024))\n        })\n    }",
+      "source_sha256": "5e9b5fd876c893d695a905be8886e32be9f4bda712d96a1658ef174a6a1f9940",
       "evidence": [
         {
           "file": "api/crates/runtime-extension-host/src/provider_host/session_workers.rs",
-          "sha256": "b07024f4961f0f430921e9a05e6e57016b6a5a6ed500960c6d6eebb19e425335",
+          "anchor": "pub(super) async fn acquire_shared_invocation(\n    workers: &ProviderWorkerRegistry,\n    worker: &ProviderWorkerHandle,\n    request: &ProviderStdioRequest,\n    deadline: tokio::time::Instant,\n) -> FrameworkResult<SharedInvocationPermit> {\n    let capacity = lock_provider_worker_registry(workers)?\n        .shared_capacity\n        .clone();\n    let pid = worker\n        .snapshot()?\n        .pid\n        .ok_or_else(|| transport_binding_error(\"shared worker has no process\"))?;\n    let bytes = serde_json::to_vec(request)\n        .map_err(|error| PluginFrameworkError::invalid_provider_contract(error.to_string()))?\n        .len();\n    capacity.acquire(pid, bytes, deadline).await\n}",
+          "sha256": "9019b9d1fb95fee0e0c9cb06e1efba6af06f8e276bf78a77e54910d14175a286",
           "reason": "acquire_shared_invocation computes request identity/size and awaits SharedWorkerCapacity::acquire; it does not call rss_bytes directly or perform sampling under its registry lock."
         }
       ]

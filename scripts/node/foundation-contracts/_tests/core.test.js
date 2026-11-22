@@ -154,20 +154,26 @@ test('AC-002 keeps mcp_result outside the core operations and only adds continua
   );
 });
 
-test('mcp gateway fast pack uses Cargo default test parallelism', () => {
-  const plan = buildFoundationPlan({
-    changedFiles: ['api/crates/api/mcp/src/routes/mcp_protocol.rs'],
+test('backend fast packs select explicit Cargo targets instead of compiling all api-server targets', () => {
+  const mcpPlan = buildFoundationPlan({
+    changedFiles: ['api/crates/api/mcp/src/routes/mcp_protocol/result_delivery.rs'],
   });
-  const command = plan.packs['mcp-gateway'].fast.find(
-    (item) => item.id === 'mcp-core-list-get-call'
+  assert.deepEqual(
+    mcpPlan.packs['mcp-gateway'].fast.find((item) => item.id === 'mcp-core-list-get-call').args,
+    ['test', '-p', 'api-server', '--test', 'api_private_contracts', 'mcp_protocol_routes']
+  );
+  assert.deepEqual(
+    mcpPlan.packs['mcp-gateway'].fast.find((item) => item.id === 'mcp-result-continuation').args,
+    ['test', '-p', 'storage-durable-postgres', '--lib', 'mcp_result_receipt_repository_tests']
   );
 
-  assert.deepEqual(command.args, [
-    'test',
-    '-p',
-    'api-server',
-    'mcp_protocol_routes',
-  ]);
+  const appPlan = buildFoundationPlan({ foundation: 'application-backend' });
+  assert.deepEqual(
+    appPlan.packs['application-backend'].fast.find(
+      (item) => item.id === 'application-backend-model-definition-api'
+    ).args,
+    ['test', '-p', 'api-server', '--test', 'api_application', 'model_definition_routes_']
+  );
 });
 
 test('AC-007/009 receipt requires candidate identity and warnings stay advisory', () => {
@@ -332,7 +338,7 @@ test('current MCP implementation and shared catalog owners retain the MCP fast p
     assert.deepEqual(plan.packs['mcp-gateway'].triggerReasons, [`changed: ${changedFile}`]);
     assert.deepEqual(plan.packs['mcp-gateway'].full, baseline.full);
     assert.deepEqual(plan.packs['mcp-gateway'].fast.find(item => item.id === 'mcp-core-list-get-call').args,
-      ['test', '-p', 'api-server', 'mcp_protocol_routes']);
+      ['test', '-p', 'api-server', '--test', 'api_private_contracts', 'mcp_protocol_routes']);
   }
   // Former paths remain useful for changed-file advice, including deletions.
   assert.deepEqual(buildFoundationPlan({ changedFiles: ['api/apps/api-server/src/routes/mcp_protocol.rs'] }).selectedFoundations, ['mcp-gateway']);

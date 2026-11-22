@@ -127,3 +127,45 @@ test('fast pack stops at the failed command and closes its log when spawn throws
   assert.throws(() => fs.fstatSync(logFd), /EBADF/u);
   assert.equal(buildContractReceipt({ candidateSha, plan, componentResults: [receipt] }).status, 'failed');
 });
+
+test('runFastPack applies verify runtime Cargo jobs, test threads, and test-profile incremental env', (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'foundation-cargo-budget-'));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const plan = buildFoundationPlan({ foundation: 'mcp-gateway' });
+  const spawned = [];
+
+  const receipt = runFastPack({
+    repoRoot,
+    candidateSha,
+    plan,
+    foundation: 'mcp-gateway',
+    env: { CARGO_INCREMENTAL: '1', EXISTING_VAR: 'kept' },
+    runtimeConfig: {
+      backend: { cargoJobs: 3, cargoTestThreads: 2, incremental: true },
+    },
+    spawnSyncImpl(command, args, options) {
+      spawned.push({ command, args, env: options.env });
+      fs.writeSync(options.stdio[1], passedOutput);
+      return { status: 0 };
+    },
+  });
+
+  assert.equal(receipt.status, 'passed');
+  assert.equal(spawned.length, 1);
+  assert.deepEqual(spawned[0].args, [
+    'test',
+    '-p',
+    'api-server',
+    '--test',
+    'api_private_contracts',
+    'mcp_protocol_routes',
+    '--jobs',
+    '3',
+    '--',
+    '--test-threads=2',
+  ]);
+  assert.equal(spawned[0].env.CARGO_BUILD_JOBS, '3');
+  assert.equal(spawned[0].env.CARGO_PROFILE_TEST_INCREMENTAL, 'true');
+  assert.equal(Object.hasOwn(spawned[0].env, 'CARGO_INCREMENTAL'), false);
+  assert.equal(spawned[0].env.EXISTING_VAR, 'kept');
+});

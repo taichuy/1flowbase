@@ -1,3 +1,4 @@
+const { spawnSync } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -125,8 +126,89 @@ function readLocalVerifyConfig(repoRoot) {
   }
 }
 
-function getHeavyVerifyLockDir(repoRoot) {
+const GIT_COMMON_DIR_LOCK_SUBDIR = path.join(
+  "test-governance",
+  "locks",
+  "heavy-verify",
+);
+const gitCommonDirCache = new Map();
+
+function resolveGitCommonDirFromMetadata(repoRoot, dotGitPath, stat) {
+  try {
+    if (stat.isDirectory()) {
+      return fs.realpathSync(dotGitPath);
+    }
+    if (!stat.isFile()) {
+      return null;
+    }
+    const raw = fs.readFileSync(dotGitPath, "utf8").trim();
+    if (!raw.startsWith("gitdir:")) {
+      return null;
+    }
+    const gitDir = path.resolve(repoRoot, raw.slice("gitdir:".length).trim());
+    const commonDirFile = path.join(gitDir, "commondir");
+    if (fs.existsSync(commonDirFile)) {
+      const commonRel = fs.readFileSync(commonDirFile, "utf8").trim();
+      if (commonRel) {
+        return fs.realpathSync(path.resolve(gitDir, commonRel));
+      }
+    }
+    return fs.existsSync(gitDir) ? fs.realpathSync(gitDir) : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveGitCommonDir(repoRoot) {
+  const dotGitPath = path.join(repoRoot, ".git");
+  let stat;
+  try {
+    stat = fs.statSync(dotGitPath);
+  } catch {
+    return null;
+  }
+  const cacheKey = path.resolve(repoRoot);
+  const cached = gitCommonDirCache.get(cacheKey);
+  if (cached && cached.ino === stat.ino && fs.existsSync(cached.commonDir)) {
+    return cached.commonDir;
+  }
+  try {
+    const result = spawnSync("git", ["rev-parse", "--git-common-dir"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    if (
+      result.status === 0 &&
+      typeof result.stdout === "string" &&
+      result.stdout.trim() !== ""
+    ) {
+      const commonDir = fs.realpathSync(
+        path.resolve(repoRoot, result.stdout.trim()),
+      );
+      gitCommonDirCache.set(cacheKey, { ino: stat.ino, commonDir });
+      return commonDir;
+    }
+  } catch {
+    // Fall back to direct .git metadata parsing if git CLI is unavailable.
+  }
+  const fallback = resolveGitCommonDirFromMetadata(repoRoot, dotGitPath, stat);
+  if (fallback) {
+    gitCommonDirCache.set(cacheKey, { ino: stat.ino, commonDir: fallback });
+  }
+  return fallback;
+}
+
+function resolveHeavyVerifyLockPath(repoRoot) {
+  const commonDir = resolveGitCommonDir(repoRoot);
+  if (commonDir) {
+    return path.join(commonDir, GIT_COMMON_DIR_LOCK_SUBDIR);
+  }
   return path.join(repoRoot, HEAVY_VERIFY_LOCK_DIR);
+}
+
+function getHeavyVerifyLockDir(repoRoot) {
+  return resolveHeavyVerifyLockPath(repoRoot);
 }
 
 function getHeavyVerifyLockOwnerPath(repoRoot) {
@@ -733,5 +815,6 @@ module.exports = {
   loadVerifyRuntimeConfig,
   main,
   readHeavyVerifyLockOwner,
+  resolveHeavyVerifyLockPath,
   withHeavyVerifyLock,
 };

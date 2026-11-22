@@ -729,7 +729,7 @@ test("structure hard limits preserve early warnings and exact vendor ownership",
     writeFile(repoRoot, "web/app/src/early.ts", source(1200));
     writeFile(repoRoot, "web/app/src/boundary.ts", source(1500));
     writeFile(repoRoot, "web/app/src/too_large.ts", source(1501));
-    writeFile(repoRoot, "api/vendor/upstream/source.rs", "// upstream\n".repeat(1501));
+    writeFile(repoRoot, "api/vendor/upstream/source.rs", "// TODO: upstream\n" + "// upstream\n".repeat(1501));
     writeFile(repoRoot, "api/crates/vendor_named/src/source.rs", "// first party\n".repeat(1501));
     for (const [directory, count] of [["at_limit", 15], ["over_limit", 16]]) {
       for (let index = 0; index < count; index += 1) {
@@ -742,7 +742,7 @@ test("structure hard limits preserve early warnings and exact vendor ownership",
     assert.equal(size.get("web/app/src/early.ts"), "warning");
     assert.equal(size.get("web/app/src/boundary.ts"), "warning");
     assert.equal(size.get("web/app/src/too_large.ts"), "error");
-    assert.equal(size.get("api/vendor/upstream/source.rs"), "warning");
+    assert.equal(findings.some(({ file }) => file.startsWith("api/vendor/")), false);
     assert.equal(size.get("api/crates/vendor_named/src/source.rs"), "error");
     assert.deepEqual(findings.filter(({ rule }) => rule === "directory-pressure")
       .map(({ file, severity }) => [file, severity]), [["web/app/src/over_limit", "error"]]);
@@ -751,8 +751,9 @@ test("structure hard limits preserve early warnings and exact vendor ownership",
   }
 });
 
-test('moved API owners cannot construct outbound clients outside the exact Host allowlist', () => {
+test('all production Rust owners under api/apps and api/crates reject unallowlisted reqwest::Client construction while skipping tests', () => {
   for (const relativePath of [
+    'api/apps/api-server/src/bin/unowned.rs',
     'api/crates/api/kernel/src/contracts/unowned.rs',
     'api/crates/api/public-gateway/src/routes/application_public_api/unowned.rs',
     'api/crates/api/applications/src/routes/applications/unowned.rs',
@@ -760,23 +761,45 @@ test('moved API owners cannot construct outbound clients outside the exact Host 
     'api/crates/api/mcp/src/routes/mcp_protocol/unowned.rs',
     'api/crates/api/plugins-models/src/routes/plugins_and_models/unowned.rs',
     'api/crates/api/console-interaction/src/routes/terminal/unowned.rs',
+    'api/crates/control-plane/src/unowned.rs',
+    'api/crates/domain/src/unowned.rs',
+    'api/crates/orchestration-runtime/src/unowned.rs',
+    'api/crates/runtime-extension-host/src/unowned.rs',
+    'api/crates/storage/durable/postgres/src/unowned.rs',
+    'api/crates/storage/object/src/drivers/unowned.rs',
   ]) {
     const findings = scanSourceFile({ relativePath, content: 'let client = reqwest::Client::new();\n' });
-    assert.equal(findings.some((item) => item.rule === 'unowned-outbound-http-client'), true);
+    assert.equal(findings.some((item) => item.rule === 'unowned-outbound-http-client'), true, relativePath);
+  }
+  for (const testRelativePath of [
+    'api/crates/control-plane/src/_tests/fixture.rs',
+    'api/crates/control-plane/tests/fixture.rs',
+    'api/crates/runtime-extension-sdk/src/_tests.rs',
+    'api/crates/control-plane-postgres-tests/src/lib.rs',
+  ]) {
+    const findings = scanSourceFile({ relativePath: testRelativePath, content: 'let client = reqwest::Client::new();\n' });
+    assert.equal(findings.some((item) => item.rule === 'unowned-outbound-http-client'), false, testRelativePath);
   }
 });
 
-
-test('MCP outbound exception follows the exact implementation without retaining its Root facade', () => {
+test('outbound HTTP client owner allowlist stays narrow, documented, and tied to existing files', () => {
+  const repoRoot = path.resolve(__dirname, '../../../..');
   const current = 'api/crates/api/mcp/src/routes/settings/mcp_management/upstream_client.rs';
-  assert.equal(OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST.size, 3);
+  const rustfs = 'api/crates/storage/object/src/drivers/rustfs.rs';
+  assert.equal(OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST.size, 5);
   assert.equal(OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST.get(current),
     'Third-party MCP endpoints require DNS pinning and SSRF enforcement before connection');
-  assert.equal(fs.existsSync(path.resolve(__dirname, '../../../..', current)), true);
+  assert.ok(OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST.get(rustfs)?.includes('S3'));
+  for (const [allowedPath, reason] of OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST.entries()) {
+    assert.ok(reason.trim().length > 0, allowedPath);
+    assert.equal(fs.existsSync(path.join(repoRoot, allowedPath)), true, allowedPath);
+  }
   for (const [relativePath, rejected] of [
     [current, false],
+    [rustfs, false],
     ['api/apps/api-server/src/routes/settings/mcp_management/upstream_client.rs', true],
     ['api/crates/api/mcp/src/routes/settings/mcp_management/other_client.rs', true],
+    ['api/crates/storage/object/src/drivers/local.rs', true],
   ]) {
     const findings = scanSourceFile({ relativePath, content: 'let client = reqwest::Client::new();\n' });
     assert.equal(findings.some(item => item.rule === 'unowned-outbound-http-client'), rejected, relativePath);
