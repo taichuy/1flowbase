@@ -67,6 +67,15 @@ pub async fn connect_with_pool_settings(
     Ok(pool)
 }
 
+pub fn is_pool_unavailable_error(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        matches!(
+            cause.downcast_ref::<sqlx::Error>(),
+            Some(sqlx::Error::PoolTimedOut | sqlx::Error::PoolClosed)
+        )
+    })
+}
+
 #[cfg(test)]
 #[path = "_tests/mod.rs"]
 mod tests;

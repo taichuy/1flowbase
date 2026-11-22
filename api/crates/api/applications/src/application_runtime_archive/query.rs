@@ -1,30 +1,15 @@
 use std::collections::HashMap;
 
-use sqlx::Row;
+use control_plane_contracts::ports::RunArchiveRepository;
 use uuid::Uuid;
 
 pub(crate) async fn load_node_run_error_payloads(
     store: &storage_durable_postgres::MainDurableStore,
     run_id: Uuid,
 ) -> Result<HashMap<String, serde_json::Value>, crate::error_response::ApiError> {
-    let rows = sqlx::query(
-        r#"
-        select id, error_payload
-        from node_run_records
-        where flow_run_id = $1
-          and error_payload is not null
-        "#,
-    )
-    .bind(run_id)
-    .fetch_all(store.pool())
-    .await?;
+    let rows = <_ as RunArchiveRepository>::list_node_run_error_payloads(store, run_id).await?;
     Ok(rows
         .into_iter()
-        .map(|row| {
-            (
-                row.get::<Uuid, _>("id").to_string(),
-                row.get::<serde_json::Value, _>("error_payload"),
-            )
-        })
+        .map(|(id, error_payload)| (id.to_string(), error_payload))
         .collect())
 }

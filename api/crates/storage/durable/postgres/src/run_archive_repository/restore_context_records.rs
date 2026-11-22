@@ -1,13 +1,23 @@
-use super::*;
+use anyhow::Result;
+use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
+use serde_json::Value;
+use uuid::Uuid;
 
-pub(in super::super) async fn insert_canonical_contents_from_archive(
+use super::restore_records::{
+    archive_json_i64, archive_json_string, archive_json_value_or_object, archive_optional_uuid,
+    archive_required_string, archive_uuid, insert_import_mapping, parse_archive_time,
+    remap_source_item_refs,
+};
+use super::ArchiveRestoreIdMaps;
+
+pub(super) async fn insert_canonical_contents_from_archive(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     job_id: Uuid,
     scope_id: Uuid,
     application_id: Uuid,
     id_maps: &mut ArchiveRestoreIdMaps,
-    contents: &[serde_json::Value],
-) -> Result<(), ApiError> {
+    contents: &[Value],
+) -> Result<()> {
     for content in contents {
         let source_id = archive_uuid(content, "id", "canonical_content_id")?;
         let proposed_id = *id_maps
@@ -49,7 +59,7 @@ pub(in super::super) async fn insert_canonical_contents_from_archive(
             Some(id) => id,
             None => {
                 let (id, stored_payload, stored_byte_size) =
-                    sqlx::query_as::<_, (Uuid, serde_json::Value, i64)>(
+                    sqlx::query_as::<_, (Uuid, Value, i64)>(
                         "select id, content, byte_size from runtime_canonical_contents where application_id = $1 and content_hash = $2",
                     )
                     .bind(application_id)
@@ -77,15 +87,15 @@ pub(in super::super) async fn insert_canonical_contents_from_archive(
     Ok(())
 }
 
-pub(in super::super) async fn insert_context_projections_from_archive(
+pub(super) async fn insert_context_projections_from_archive(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     job_id: Uuid,
     scope_id: Uuid,
     application_id: Uuid,
     target_run_id: Uuid,
     id_maps: &ArchiveRestoreIdMaps,
-    projections: &[serde_json::Value],
-) -> Result<(), ApiError> {
+    projections: &[Value],
+) -> Result<()> {
     for projection in projections {
         let source_projection_id = archive_uuid(projection, "id", "context_projection_id")?;
         let target_projection_id = *id_maps
@@ -119,30 +129,12 @@ pub(in super::super) async fn insert_context_projections_from_archive(
         sqlx::query(
             r#"
             insert into runtime_context_projections (
-                id,
-                scope_id,
-                application_id,
-                flow_run_id,
-                node_run_id,
-                llm_turn_span_id,
-                projection_kind,
-                merge_stage_ref,
-                source_transcript_ref,
-                source_item_refs,
-                compaction_event_id,
-                summary_version,
-                model_input_ref,
-                model_input_hash,
-                compacted_summary_ref,
-                previous_projection_id,
-                token_estimate,
-                provider_continuation_metadata,
-                context_sequence,
-                transition_kind,
-                transition_actor,
-                declared_compaction_provenance,
-                actual_content_id,
-                created_at
+                id, scope_id, application_id, flow_run_id, node_run_id, llm_turn_span_id,
+                projection_kind, merge_stage_ref, source_transcript_ref, source_item_refs,
+                compaction_event_id, summary_version, model_input_ref, model_input_hash,
+                compacted_summary_ref, previous_projection_id, token_estimate,
+                provider_continuation_metadata, context_sequence, transition_kind,
+                transition_actor, declared_compaction_provenance, actual_content_id, created_at
             ) values (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
                 $12, $13, $14, $15, null, $16, $17, $18, $19, $20, $21, $22, $23
@@ -225,11 +217,7 @@ pub(in super::super) async fn insert_context_projections_from_archive(
             continue;
         };
         sqlx::query(
-            r#"
-            update runtime_context_projections
-            set previous_projection_id = $2
-            where id = $1
-            "#,
+            "update runtime_context_projections set previous_projection_id = $2 where id = $1",
         )
         .bind(*target_projection_id)
         .bind(*target_previous_projection_id)
@@ -240,14 +228,14 @@ pub(in super::super) async fn insert_context_projections_from_archive(
     Ok(())
 }
 
-pub(in super::super) async fn insert_invocation_context_bindings_from_archive(
+pub(super) async fn insert_invocation_context_bindings_from_archive(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     scope_id: Uuid,
     application_id: Uuid,
     target_run_id: Uuid,
     id_maps: &ArchiveRestoreIdMaps,
-    bindings: &[serde_json::Value],
-) -> Result<(), ApiError> {
+    bindings: &[Value],
+) -> Result<()> {
     for binding in bindings {
         let source_span_id = archive_uuid(binding, "invocation_span_id", "invocation_span_id")?;
         let source_context_id = archive_uuid(binding, "context_version_id", "context_version_id")?;
@@ -283,15 +271,15 @@ pub(in super::super) async fn insert_invocation_context_bindings_from_archive(
     Ok(())
 }
 
-pub(in super::super) async fn insert_recovery_history_from_archive(
+pub(super) async fn insert_recovery_history_from_archive(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     job_id: Uuid,
     scope_id: Uuid,
     application_id: Uuid,
     target_run_id: Uuid,
     id_maps: &ArchiveRestoreIdMaps,
-    records: &[serde_json::Value],
-) -> Result<(), ApiError> {
+    records: &[Value],
+) -> Result<()> {
     for record in records {
         let source_id = archive_uuid(record, "id", "recovery_history_id")?;
         let target_id = Uuid::now_v7();

@@ -92,7 +92,7 @@ const OUTBOUND_HTTP_CLIENT_OWNER_ALLOWLIST = new Map([
   ],
   [
     "api/crates/orchestration-runtime/src/execution_engine/http_request.rs",
-    "Temporary WP-D3-2 coordination allowlist pending migration of workflow HTTP request node to RuntimeExecutionPort Network Egress client",
+    "Workflow HTTP request node owns shared direct-egress fallback clients and opt-in TLS verification override when Network Egress resolves to direct",
   ],
 ]);
 

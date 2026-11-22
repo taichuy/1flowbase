@@ -1,58 +1,9 @@
-use super::*;
+use anyhow::Result;
+use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use uuid::Uuid;
 
-pub(super) async fn rebuild_imported_run_trace_projections(
-    store: &storage_durable_postgres::MainDurableStore,
-    application_id: Uuid,
-    run_mappings: &[(String, Uuid)],
-    trace_rebuilder: &dyn crate::runtime_ports::TraceProjectionRebuildPort,
-) -> Vec<serde_json::Value> {
-    let mut warnings = Vec::new();
-    for (source_run_id, target_run_id) in run_mappings {
-        if let Err(error) = trace_rebuilder
-            .rebuild(store, application_id, *target_run_id)
-            .await
-        {
-            warnings.push(serde_json::json!({
-                "code": "trace_projection_rebuild_failed",
-                "source_run_id": source_run_id,
-                "target_run_id": target_run_id.to_string(),
-                "message": error.to_string()
-            }));
-        }
-    }
-    warnings
-}
-
-pub(super) async fn update_run_archive_import_job_projection_warnings(
-    store: &storage_durable_postgres::MainDurableStore,
-    job_id: Uuid,
-    run_mappings: &[(String, Uuid)],
-    warnings: Vec<serde_json::Value>,
-) -> Result<(), ApiError> {
-    let result_payload = serde_json::json!({
-        "source_to_target_run_ids": run_mappings
-            .iter()
-            .map(|(source_run_id, target_run_id)| serde_json::json!({
-                "source_run_id": source_run_id,
-                "target_run_id": target_run_id.to_string()
-            }))
-            .collect::<Vec<_>>(),
-        "warnings": warnings
-    });
-    sqlx::query(
-        r#"
-        update run_archive_import_jobs
-        set result_payload = $2,
-            updated_at = now()
-        where id = $1
-        "#,
-    )
-    .bind(job_id)
-    .bind(result_payload)
-    .execute(store.pool())
-    .await?;
-    Ok(())
-}
+use super::ArchiveRestoreIdMaps;
 
 pub(super) async fn insert_runtime_spans_from_archive(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -61,7 +12,7 @@ pub(super) async fn insert_runtime_spans_from_archive(
     target_run_id: Uuid,
     id_maps: &ArchiveRestoreIdMaps,
     spans: &[serde_json::Value],
-) -> Result<(), ApiError> {
+) -> Result<()> {
     for span in spans {
         let source_span_id = archive_uuid(span, "id", "runtime_span_id")?;
         let target_span_id = *id_maps
@@ -165,7 +116,7 @@ pub(super) async fn insert_model_failover_attempts_from_archive(
     target_run_id: Uuid,
     id_maps: &ArchiveRestoreIdMaps,
     attempts: &[serde_json::Value],
-) -> Result<(), ApiError> {
+) -> Result<()> {
     for attempt in attempts {
         let source_attempt_id = archive_uuid(attempt, "id", "model_failover_attempt_id")?;
         let target_attempt_id = *id_maps
@@ -279,7 +230,7 @@ pub(super) async fn insert_usage_ledger_from_archive(
     target_run_id: Uuid,
     id_maps: &ArchiveRestoreIdMaps,
     usage: &serde_json::Value,
-) -> Result<(), ApiError> {
+) -> Result<()> {
     let source_usage_id = archive_uuid(usage, "id", "usage_ledger_id")?;
     let target_usage_id = *id_maps
         .usage_ledger
@@ -392,7 +343,7 @@ pub(super) async fn insert_runtime_event_from_archive(
     target_run_id: Uuid,
     id_maps: &ArchiveRestoreIdMaps,
     event: &serde_json::Value,
-) -> Result<(), ApiError> {
+) -> Result<()> {
     let source_event_id = archive_uuid(event, "id", "runtime_event_id")?;
     let target_event_id = *id_maps
         .runtime_events
@@ -480,7 +431,7 @@ pub(super) async fn link_model_failover_attempt_usage_from_archive(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     id_maps: &ArchiveRestoreIdMaps,
     attempts: &[serde_json::Value],
-) -> Result<(), ApiError> {
+) -> Result<()> {
     for attempt in attempts {
         let Some(source_usage_ledger_id) = archive_optional_uuid(attempt, "usage_ledger_id") else {
             continue;
@@ -517,7 +468,7 @@ pub(super) async fn insert_runtime_items_from_archive(
     target_run_id: Uuid,
     id_maps: &ArchiveRestoreIdMaps,
     items: &[serde_json::Value],
-) -> Result<(), ApiError> {
+) -> Result<()> {
     for item in items {
         let source_item_id = archive_uuid(item, "id", "runtime_item_id")?;
         let target_item_id = *id_maps
@@ -604,7 +555,7 @@ pub(super) async fn insert_resume_claims_from_archive(
     target_run_id: Uuid,
     id_maps: &ArchiveRestoreIdMaps,
     claims: &[serde_json::Value],
-) -> Result<(), ApiError> {
+) -> Result<()> {
     for claim in claims {
         let source_id = archive_uuid(claim, "id", "resume_claim_id")?;
         let target_id = Uuid::now_v7();
@@ -693,7 +644,7 @@ pub(super) async fn insert_capability_invocations_from_archive(
     target_run_id: Uuid,
     id_maps: &ArchiveRestoreIdMaps,
     invocations: &[serde_json::Value],
-) -> Result<(), ApiError> {
+) -> Result<()> {
     for invocation in invocations {
         let source_invocation_id = archive_uuid(invocation, "id", "capability_invocation_id")?;
         let target_invocation_id = Uuid::now_v7();
@@ -782,7 +733,7 @@ pub(super) async fn insert_import_mapping(
     entity_kind: &str,
     source_id: &str,
     target_id: Uuid,
-) -> Result<(), ApiError> {
+) -> Result<()> {
     sqlx::query(
         r#"
         insert into run_archive_import_mappings (
@@ -814,7 +765,7 @@ pub(super) async fn insert_import_mapping(
 pub(super) fn preassign_archive_ids(
     records: &[serde_json::Value],
     invalid_field: &'static str,
-) -> Result<std::collections::HashMap<Uuid, Uuid>, ApiError> {
+) -> Result<std::collections::HashMap<Uuid, Uuid>> {
     let mut ids = std::collections::HashMap::with_capacity(records.len());
     for record in records {
         let source_id = archive_uuid(record, "id", invalid_field)?;
@@ -825,25 +776,25 @@ pub(super) fn preassign_archive_ids(
     Ok(ids)
 }
 
-fn archive_uuid(
+pub(super) fn archive_uuid(
     value: &serde_json::Value,
     field: &str,
     invalid_field: &'static str,
-) -> Result<Uuid, ApiError> {
+) -> Result<Uuid> {
     archive_json_string(value, field)
         .and_then(|value| Uuid::parse_str(&value).ok())
         .ok_or(ControlPlaneError::InvalidInput(invalid_field).into())
 }
 
-fn archive_optional_uuid(value: &serde_json::Value, field: &str) -> Option<Uuid> {
+pub(super) fn archive_optional_uuid(value: &serde_json::Value, field: &str) -> Option<Uuid> {
     archive_json_string(value, field).and_then(|value| Uuid::parse_str(&value).ok())
 }
 
-fn archive_required_string(
+pub(super) fn archive_required_string(
     value: &serde_json::Value,
     field: &str,
     invalid_field: &'static str,
-) -> Result<String, ApiError> {
+) -> Result<String> {
     archive_json_string(value, field).ok_or(ControlPlaneError::InvalidInput(invalid_field).into())
 }
 
@@ -853,12 +804,12 @@ pub(super) fn archive_json_string(value: &serde_json::Value, field: &str) -> Opt
         serde_json::Value::String(text) => Some(text.clone()),
         value => serde_json::from_value::<OffsetDateTime>(value.clone())
             .ok()
-            .map(application_logs::format_time)
+            .and_then(|dt| dt.format(&Rfc3339).ok())
             .or_else(|| Some(value.to_string())),
     }
 }
 
-fn archive_json_i64(value: &serde_json::Value, field: &str) -> Option<i64> {
+pub(super) fn archive_json_i64(value: &serde_json::Value, field: &str) -> Option<i64> {
     value.get(field).and_then(|value| {
         value
             .as_i64()
@@ -885,7 +836,10 @@ fn optional_archive_json_value(
     }
 }
 
-fn archive_json_value_or_object(value: &serde_json::Value, field: &str) -> serde_json::Value {
+pub(super) fn archive_json_value_or_object(
+    value: &serde_json::Value,
+    field: &str,
+) -> serde_json::Value {
     value
         .get(field)
         .filter(|value| !value.is_null())
@@ -893,7 +847,7 @@ fn archive_json_value_or_object(value: &serde_json::Value, field: &str) -> serde
         .unwrap_or_else(|| serde_json::json!({}))
 }
 
-fn remap_source_item_refs(
+pub(super) fn remap_source_item_refs(
     value: serde_json::Value,
     item_id_map: &std::collections::HashMap<Uuid, Uuid>,
 ) -> serde_json::Value {
@@ -919,17 +873,15 @@ fn remap_source_item_refs(
     }
 }
 
-pub(super) fn parse_archive_time(value: &str) -> Result<OffsetDateTime, ApiError> {
-    OffsetDateTime::parse(value, &Rfc3339).map_err(ApiError::from)
+pub(super) fn parse_archive_time(value: &str) -> Result<OffsetDateTime> {
+    OffsetDateTime::parse(value, &Rfc3339).map_err(anyhow::Error::from)
 }
 
-pub(super) fn parse_optional_archive_time(
-    value: Option<&str>,
-) -> Result<Option<OffsetDateTime>, ApiError> {
+pub(super) fn parse_optional_archive_time(value: Option<&str>) -> Result<Option<OffsetDateTime>> {
     value.map(parse_archive_time).transpose()
 }
 
-pub(super) fn parse_flow_run_status(value: &str) -> Result<domain::FlowRunStatus, ApiError> {
+pub(super) fn parse_flow_run_status(value: &str) -> Result<domain::FlowRunStatus> {
     match value {
         "queued" => Ok(domain::FlowRunStatus::Queued),
         "running" => Ok(domain::FlowRunStatus::Running),
@@ -943,11 +895,3 @@ pub(super) fn parse_flow_run_status(value: &str) -> Result<domain::FlowRunStatus
         _ => Err(ControlPlaneError::InvalidInput("flow_run_status").into()),
     }
 }
-
-#[path = "records/context_records.rs"]
-mod context_records;
-
-pub(super) use context_records::insert_canonical_contents_from_archive;
-pub(super) use context_records::insert_context_projections_from_archive;
-pub(super) use context_records::insert_invocation_context_bindings_from_archive;
-pub(super) use context_records::insert_recovery_history_from_archive;

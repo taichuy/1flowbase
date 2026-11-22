@@ -69,7 +69,8 @@ pub mod ui_management_repository;
 pub mod workspace_repository;
 
 pub use connection::{
-    connect, connect_with_max_connections, connect_with_pool_settings, PgPoolSettings,
+    connect, connect_with_max_connections, connect_with_pool_settings, is_pool_unavailable_error,
+    PgPoolSettings,
 };
 pub use model_definition_repository::RuntimeTableNamePolicy;
 pub use native_sql::execute_native_sql;
@@ -130,3 +131,5 @@ mod record_permissions_repository;
 
 #[path = "integration_repositories/workflow_run_identity_repository.rs"]
 mod workflow_run_identity_repository;
+
+pub mod run_archive_repository;

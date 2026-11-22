@@ -1,4 +1,4 @@
-use super::{connect_with_pool_settings, PgPoolSettings};
+use super::{connect_with_pool_settings, is_pool_unavailable_error, PgPoolSettings};
 use anyhow::Result;
 use futures_util::TryStreamExt;
 use sqlx::{Acquire, PgPool, Row, Value, ValueRef};
@@ -162,4 +162,15 @@ async fn database_error_and_failed_transaction_do_not_poison_pool() -> Result<()
     assert_eq!(result, 42);
     pool.close().await;
     Ok(())
+}
+
+#[test]
+fn is_pool_unavailable_error_detects_pool_capacity_failures_without_matching_query_errors() {
+    let timed_out = anyhow::Error::new(sqlx::Error::PoolTimedOut);
+    let closed = anyhow::Error::new(sqlx::Error::PoolClosed).context("acquire connection");
+    let row_not_found = anyhow::Error::new(sqlx::Error::RowNotFound);
+
+    assert!(is_pool_unavailable_error(&timed_out));
+    assert!(is_pool_unavailable_error(&closed));
+    assert!(!is_pool_unavailable_error(&row_not_found));
 }
