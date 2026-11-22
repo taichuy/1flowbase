@@ -123,6 +123,9 @@ pub enum PluginDataFilterOperator {
     GreaterThanOrEqual,
     IsNull,
     IsNotNull,
+    /// Host-only, typed by the resolved PostgreSQL field (UUID or text).
+    #[serde(skip)]
+    In,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -123,15 +123,24 @@ pub(crate) async fn operation_allowed(
     actor: &ActorContext,
     op: &ManagedServiceOperation,
 ) -> Result<bool, ApiError> {
-    use crate::middleware::require_settings_feature_permission::*;
-    let access =
-        compiled_console_route_access(&state.console_operation_registry, &op.method, &op.path)
-            .map_err(Error::PermissionDenied)?;
     let policies = state
         .console_policy_reader
         .load_role_console_policies_for_user(actor)
         .await?;
-    Ok(authorize_compiled_console_access(&access, actor, &policies))
+    operation_allowed_with_policies(state, actor, op, &policies)
+}
+
+pub(super) fn operation_allowed_with_policies(
+    state: &ApiState,
+    actor: &ActorContext,
+    op: &ManagedServiceOperation,
+    policies: &[domain::RoleConsolePolicy],
+) -> Result<bool, ApiError> {
+    use crate::middleware::require_settings_feature_permission::*;
+    let access =
+        compiled_console_route_access(&state.console_operation_registry, &op.method, &op.path)
+            .map_err(Error::PermissionDenied)?;
+    Ok(authorize_compiled_console_access(&access, actor, policies))
 }
 /// Reject inactive owners before touching data. The Host picks identity from the frozen registry.
 fn ensure_live_registration(
@@ -199,9 +208,35 @@ pub(crate) async fn ensure_record(
     resource: &ManagedServiceRecordResource,
     record: &str,
 ) -> Result<(), ApiError> {
-    if record.is_empty() || record.len() > 1024 {
-        return Err(Error::InvalidInput("record_id").into());
+    ensure_records(state, registration, actor, resource, &[record])
+        .await
+        .map(|_| ())
+}
+
+pub(crate) async fn ensure_records(
+    state: &ApiState,
+    registration: &ManagedServiceRegistration,
+    actor: &ActorContext,
+    resource: &ManagedServiceRecordResource,
+    records: &[impl AsRef<str>],
+) -> Result<Vec<String>, ApiError> {
+    let mut ids = Vec::with_capacity(records.len());
+    let mut invalid = None;
+    for record in records {
+        match canonical_record_id(registration, resource, record.as_ref()) {
+            Ok(id) => ids.push(id),
+            Err(error) => {
+                // Earlier IDs still take precedence over a later malformed ID.
+                invalid = Some(error);
+                break;
+            }
+        }
     }
+    if ids.is_empty() {
+        return invalid.map_or(Ok(ids), Err);
+    }
+    let unique = ids.iter().collect::<std::collections::BTreeSet<_>>();
+    let expected = unique.len() as u64;
     let (publisher, plugin, version) = registration.resource_owner(resource);
     let binding = PluginDataBinding {
         managed_subject: None,
@@ -219,7 +254,6 @@ pub(crate) async fn ensure_record(
         // This Host-only existence lookup is separate from the user's row authorization below.
         record_permissions: None,
     };
-    let value = id_value(registration, resource, record)?;
     let request = PluginDataRequest {
         idempotency_key: None,
         operations: vec![PluginDataOperation::Count {
@@ -228,8 +262,8 @@ pub(crate) async fn ensure_record(
             },
             filters: vec![PluginDataFilter {
                 field: resource.id_field.clone(),
-                operator: PluginDataFilterOperator::Equal,
-                value: Some(value),
+                operator: PluginDataFilterOperator::In,
+                value: Some(PluginDataValue::Json(serde_json::json!(unique))),
             }],
         }],
     };
@@ -242,11 +276,11 @@ pub(crate) async fn ensure_record(
         tracing::warn!(kind = ?error.kind, code = %error.code, "record permission lookup failed");
         Error::UpstreamUnavailable("record_permission_record_lookup")
     })?;
-    if !matches!(response.results.first(), Some(PluginDataOperationResult::Count {count}) if *count == 1)
+    if !matches!(response.results.first(), Some(PluginDataOperationResult::Count {count}) if *count == expected)
     {
         return Err(Error::NotFound("record_permission_record").into());
     }
-    Ok(())
+    invalid.map_or(Ok(ids), Err)
 }
 fn selector_value<'a>(
     payload: &'a Value,

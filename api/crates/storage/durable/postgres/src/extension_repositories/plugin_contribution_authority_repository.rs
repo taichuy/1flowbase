@@ -727,6 +727,45 @@ async fn locked_installations(
         .collect()
 }
 
+// Shared reads need full metadata only for the authority subject. Keep missing
+// keys distinct from explicit JSON nulls, including inside exported definitions.
+async fn read_system_resource_installations(
+    transaction: &mut Transaction<'_, Postgres>,
+    installation_id: Uuid,
+) -> Result<std::collections::BTreeMap<Uuid, domain::PluginInstallationRecord>> {
+    let rows = sqlx::query(r#"
+        select id, scope_id, category, organization, artifact_id as provider_code, plugin_id,
+               artifact_version as plugin_version, contract_version, protocol, display_name,
+               source_kind, trust_level, verification_status, desired_state, expected_checksum,
+               signature_status, signature_algorithm, signing_key_id,
+               receipt->>'legacy_manifest_compatibility' as legacy_manifest_compatibility,
+               is_system_reserved, created_by, updated_by, created_at, updated_at,
+               case when id = $1 then metadata_json else coalesce((
+                   select jsonb_object_agg(key, value) from (values
+                       ('plugin_dependencies', metadata_json->'plugin_dependencies'),
+                       ('resource_imports', metadata_json->'resource_imports'),
+                       ('resource_exports', metadata_json->'resource_exports'),
+                       ('data_models', metadata_json->'data_models'),
+                       ('binding_targets', metadata_json->'binding_targets'),
+                       ('managed_service', case when jsonb_typeof(metadata_json->'managed_service') = 'object'
+                           then jsonb_build_object('scope', metadata_json #> '{managed_service,scope}') end)
+                   ) as projection(key, value) where value is not null
+               ), '{}'::jsonb) end as metadata_json
+        from extension_installations
+        where plugin_id is not null and (id = $1 or desired_state = 'active_requested')
+        order by id
+    "#)
+    .bind(installation_id)
+    .fetch_all(&mut **transaction)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            let installation = crate::plugin_repository::map_installation(row)?;
+            Ok((installation.id, installation))
+        })
+        .collect()
+}
+
 async fn read_resource_authority(
     store: &PgControlPlaneStore,
     installation_id: Uuid,
@@ -749,7 +788,7 @@ async fn read_resource_authority(
     )
     .await?;
     let installations = if workspace_id == domain::SYSTEM_SCOPE_ID {
-        locked_installations(&mut transaction).await?
+        read_system_resource_installations(&mut transaction, installation_id).await?
     } else {
         [(
             installation_id,

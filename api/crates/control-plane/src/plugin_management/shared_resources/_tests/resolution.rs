@@ -362,3 +362,30 @@ fn missing_dependency_unimported_records_duplicate_aliases_and_mixed_owners_are_
     providers.get_mut(&consumer.id).unwrap().desired_state = PluginDesiredState::Disabled;
     assert!(plugin_resource_dependents(&owner, &providers).is_empty());
 }
+
+#[test]
+fn shared_read_provider_projection_resolves_the_same_imports_as_full_inventory() {
+    let (consumer, mut inventory, _) = fixture();
+    let provider_id = *inventory.keys().next().unwrap();
+    let provider = inventory.get_mut(&provider_id).unwrap();
+    provider.metadata_json["managed_service"]["operations"] = json!([{"unrelated":"payload"}]);
+    let mut history = provider.clone();
+    history.id = Uuid::now_v7();
+    history.desired_state = PluginDesiredState::Disabled;
+    history.metadata_json["resource_exports"] = json!("invalid historic data");
+    inventory.insert(history.id, history.clone());
+    let full = resolve_resource_imports(&consumer, &inventory).unwrap();
+    assert_eq!(full[0].installation_id, provider_id);
+
+    inventory.remove(&history.id);
+    let provider = inventory.get_mut(&provider_id).unwrap();
+    provider.metadata_json = json!({
+        "managed_service":{"scope":"system"},
+        "resource_exports":provider.metadata_json["resource_exports"],
+        "data_models":provider.metadata_json["data_models"],
+    });
+    assert_eq!(
+        resolve_resource_imports(&consumer, &inventory).unwrap(),
+        full
+    );
+}

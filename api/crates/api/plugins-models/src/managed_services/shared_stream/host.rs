@@ -1,7 +1,7 @@
 use super::super::{
+    ManagedServiceRegistration,
     interface::{ManagedServiceInput, ManagedServiceOutput},
     stream::{StreamEvent, StreamInput},
-    ManagedServiceRegistration,
 };
 use super::{
     authority,
@@ -18,14 +18,14 @@ use interface_runtime::{
     CompiledInterfaceRegistry, InterfaceContract, InvocationEnvelope, UserPrincipal,
 };
 use plugin_framework::{ManagedServiceOperation, ManagedServiceRecordSelector};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 
 pub(super) struct ManagedSource {
     pub state: Arc<ApiState>,
-    pub registration: ManagedServiceRegistration,
-    pub operation: ManagedServiceOperation,
+    pub registration: Arc<ManagedServiceRegistration>,
+    pub operation: Arc<ManagedServiceOperation>,
     pub key: SourceKey,
 }
 pub(super) struct SharedPreparation;
@@ -158,11 +158,13 @@ pub(super) fn record_payload(
 impl ManagedSource {
     pub fn new(
         state: Arc<ApiState>,
-        registration: ManagedServiceRegistration,
-        operation: ManagedServiceOperation,
+        registration: impl Into<Arc<ManagedServiceRegistration>>,
+        operation: impl Into<Arc<ManagedServiceOperation>>,
         principal: &UserPrincipal,
         payload: &Value,
     ) -> Result<Self, ApiError> {
+        let registration = registration.into();
+        let operation = operation.into();
         let permission = operation
             .record_permission
             .as_ref()
@@ -388,6 +390,15 @@ impl SourceBackend for ManagedSource {
             self.invalidate(revision).await?;
         }
         Ok(())
+    }
+    async fn cached(&self, revision: &str) -> Result<Option<Value>, ApiError> {
+        Ok(cache::get(
+            self.state.infrastructure.ephemeral_kv_store().as_ref(),
+            &self.key,
+            revision,
+        )
+        .await?
+        .filter(|event| self.ready(event)))
     }
     async fn invalidate(&self, revision: &str) -> Result<(), ApiError> {
         cache::invalidate(

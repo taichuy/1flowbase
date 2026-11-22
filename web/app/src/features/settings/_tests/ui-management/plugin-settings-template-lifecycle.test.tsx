@@ -22,6 +22,7 @@ import {
   vi
 } from 'vitest';
 
+const compile = vi.hoisted(() => vi.fn());
 const api = vi.hoisted(() => ({
   fetchConsolePluginSettingsPage: vi.fn(),
   fetchConsoleUiTemplates: vi.fn(),
@@ -47,7 +48,10 @@ vi.mock(
       }: {
         source: string;
         moduleDefinitions: unknown;
-      }) => compileNativeReactComponent(source, moduleDefinitions)
+      }) => {
+        compile(source);
+        return compileNativeReactComponent(source, moduleDefinitions);
+      }
     };
   }
 );
@@ -111,6 +115,7 @@ import {
   loadApplicationI18nResources
 } from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
+import { pluginSettingsPageQueryOptions } from '../../api/ui-management';
 import { CodeTemplatesTab } from '../../components/ui-management/CodeTemplatesTab';
 import { SettingsExtensionCenterSection } from '../../pages/settings-page/SettingsExtensionCenterSection';
 import { PluginSettingsPage } from '../../pages/settings-page/PluginSettingsPage';
@@ -169,6 +174,56 @@ describe('AC-009/012 plugin settings published page', () => {
     });
   });
   afterEach(cleanupSurface);
+  test('mounts the plugin settings container in viewport fill mode so overflow scrolls inside the surface body', async () => {
+    api.fetchConsolePluginSettingsPage.mockResolvedValue(page);
+    await renderPage();
+    expect(screen.getByTestId('settings-section-surface')).toHaveClass(
+      'settings-section-surface--fill'
+    );
+  });
+  test('mounts an already prepared epoch synchronously and recompiles new revisions and versions', async () => {
+    const current = { ...page, route_id: 'plugin.acme.prepared-cache' };
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } }
+    });
+    const options = pluginSettingsPageQueryOptions(current.route_id);
+    client.setQueryData(options.queryKey, current);
+    const mount = () =>
+      render(
+        <App>
+          <QueryClientProvider client={client}>
+            <PluginSettingsPage route_id={current.route_id} />
+          </QueryClientProvider>
+        </App>
+      );
+    const contents = () =>
+      screen.getByTestId('plugin-settings-page').shadowRoot?.textContent;
+    const first = mount();
+    await waitFor(() => expect(contents()).toContain('Published preferences'));
+    expect(compile).toHaveBeenCalledTimes(1);
+    first.unmount();
+
+    const second = mount();
+    expect(second.container.querySelector('.ant-spin')).toBeNull();
+    expect(contents()).toContain('Published preferences');
+    expect(compile).toHaveBeenCalledTimes(1);
+    second.unmount();
+
+    client.setQueryData(options.queryKey, { ...current, revision: 3 });
+    const revision = mount();
+    await waitFor(() => expect(contents()).toContain('Published preferences'));
+    expect(compile).toHaveBeenCalledTimes(2);
+    revision.unmount();
+
+    client.setQueryData(options.queryKey, {
+      ...current,
+      revision: 3,
+      applied_plugin_version: '1.1.0'
+    });
+    mount();
+    await waitFor(() => expect(contents()).toContain('Published preferences'));
+    expect(compile).toHaveBeenCalledTimes(3);
+  });
   test('publishes the active language and updates mounted plugins without a user locale preference', async () => {
     api.fetchConsolePluginSettingsPage.mockResolvedValue({
       ...page,

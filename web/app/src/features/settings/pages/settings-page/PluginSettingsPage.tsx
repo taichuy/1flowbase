@@ -28,20 +28,44 @@ function pageRenderEpoch(page: ConsolePluginSettingsPage) {
   return `${page.route_id}:${page.template_id}:${page.applied_plugin_version}:${page.revision}`;
 }
 
+type PreparedPage = Extract<NativeReactSourcePreparationResult, { ok: true }>;
+const preparedPages = new Map<string, PreparedPage>();
+const preparedPageLimit = 16;
+
+function preparationKey(page: ConsolePluginSettingsPage) {
+  // The module manifest includes content digests and the declarations used to compile.
+  return JSON.stringify([
+    pageRenderEpoch(page),
+    page.source,
+    page.code_modules
+  ]);
+}
+
+function rememberPreparedPage(key: string, prepared: PreparedPage) {
+  preparedPages.delete(key);
+  preparedPages.set(key, prepared);
+  if (preparedPages.size > preparedPageLimit) {
+    const oldest = preparedPages.keys().next();
+    if (!oldest.done) preparedPages.delete(oldest.value);
+  }
+}
+
 export function PluginSettingsPage({ route_id }: { route_id: string }) {
   const { t } = useTranslation('settings');
   const query = useQuery(pluginSettingsPageQueryOptions(route_id));
+  const cacheKey = query.data ? preparationKey(query.data) : null;
   return (
-    <SettingsSectionSurface>
+    <SettingsSectionSurface heightMode="fill">
       {query.isError ? (
         <Alert
           type="error"
           showIcon
           title={t('auto.plugin_settings_page_failed')}
         />
-      ) : query.data ? (
+      ) : query.data && cacheKey !== null ? (
         <PublishedPluginSettingsPage
-          key={pageRenderEpoch(query.data)}
+          key={cacheKey}
+          cacheKey={cacheKey}
           page={query.data}
         />
       ) : (
@@ -52,8 +76,10 @@ export function PluginSettingsPage({ route_id }: { route_id: string }) {
 }
 
 function PublishedPluginSettingsPage({
-  page
+  page,
+  cacheKey
 }: {
+  cacheKey: string;
   page: ConsolePluginSettingsPage;
 }) {
   const { t, i18n } = useTranslation('settings');
@@ -61,8 +87,9 @@ function PublishedPluginSettingsPage({
   const actor = useAuthStore((state) => state.actor);
   const me = useAuthStore((state) => state.me);
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
-  const [prepared, setPrepared] =
-    useState<NativeReactSourcePreparationResult | null>(null);
+  const [prepared, setPrepared] = useState<PreparedPage | null>(
+    () => preparedPages.get(cacheKey) ?? null
+  );
   const [failed, setFailed] = useState(false);
   const renderEpoch = pageRenderEpoch(page);
   const plan = useMemo<NativeTrustedBlockPreparePlan>(
@@ -98,9 +125,13 @@ function PublishedPluginSettingsPage({
   );
 
   useEffect(() => {
+    const cached = preparedPages.get(cacheKey);
+    if (cached) {
+      rememberPreparedPage(cacheKey, cached);
+      setPrepared(cached);
+      return;
+    }
     let current = true;
-    setPrepared(null);
-    setFailed(false);
     let loader: ReturnType<typeof createFetchedNativeReactModuleRegistry>;
     try {
       loader = createFetchedNativeReactModuleRegistry({
@@ -125,18 +156,27 @@ function PublishedPluginSettingsPage({
       registryFactory: () => loader.registry
     })
       .then((result) => {
-        if (current) setPrepared(result);
+        if (!current) return;
+        if (!result.ok) {
+          setFailed(true);
+          return;
+        }
+        // Resolved components and stylesheet bytes are independent of the loader's
+        // in-flight requests and temporary import URLs after preparation completes.
+        rememberPreparedPage(cacheKey, result);
+        setPrepared(result);
       })
       .catch(() => {
         if (current) setFailed(true);
-      });
+      })
+      .finally(() => loader.dispose());
     return () => {
       current = false;
       loader.dispose();
     };
-  }, [page, renderEpoch]);
+  }, [page, cacheKey, renderEpoch]);
 
-  if (failed || prepared?.ok === false) {
+  if (failed) {
     return (
       <Alert
         type="error"
@@ -149,7 +189,7 @@ function PublishedPluginSettingsPage({
     <>
       <div ref={setRoot} data-testid="plugin-settings-page" />
       {!prepared ? <Spin /> : null}
-      {prepared?.ok && root ? (
+      {prepared && root ? (
         <FrontstageNativeTrustedBlockPortalHost
           root={root}
           renderEpoch={renderEpoch}

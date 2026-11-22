@@ -1,5 +1,5 @@
 //! Generic settings API for plugin-declared record permissions.
-use super::{record_acl, ManagedServiceRegistration};
+use super::{ManagedServiceRegistration, record_acl};
 use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 use crate::{
     app_state::ApiState,
@@ -14,14 +14,14 @@ use crate::{
     },
 };
 use axum::{
+    Json,
     extract::{Query, State},
     http::HeaderMap,
-    Json,
 };
 use control_plane::errors::ControlPlaneError as Error;
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::{Arc, Weak};
 
 test_support_item! { pub(crate), [#[derive(Clone, Serialize, Deserialize, utoipa::IntoParams)]
@@ -189,6 +189,10 @@ impl Adapter {
                 let registration = registration(&state, &body.plugin_code)?;
                 record_acl::ensure_active(&state, registration).await?;
                 let resource = record_acl::resource(registration, &body.resource_code)?;
+                let policies = state
+                    .console_policy_reader
+                    .load_role_console_policies_for_user(actor)
+                    .await?;
                 let mut eligible = Vec::new();
                 for action in &resource.actions {
                     for id in &action.operation_ids {
@@ -198,25 +202,31 @@ impl Adapter {
                             .iter()
                             .find(|op| &op.interface_id == id)
                             .ok_or(Error::Conflict("record_permission_operation"))?;
-                        if record_acl::operation_allowed(&state, actor, op).await? {
+                        if record_acl::operation_allowed_with_policies(
+                            &state, actor, op, &policies,
+                        )? {
                             eligible.push(action.action_code.clone());
                             break;
                         }
                     }
                 }
-                let mut items = Vec::new();
-                for id in body.record_ids {
-                    record_acl::ensure_record(&state, registration, actor, resource, &id).await?;
-                    items.push(
-                        service
-                            .capabilities(
-                                actor,
-                                &record_acl::key(registration, actor, resource, &id)?,
-                                &eligible,
-                            )
-                            .await?,
-                    );
-                }
+                let ids = record_acl::ensure_records(
+                    &state,
+                    registration,
+                    actor,
+                    resource,
+                    &body.record_ids,
+                )
+                .await?;
+                let (publisher, plugin, _) = registration.resource_owner(resource);
+                let resource = domain::RecordPermissionResourceKey {
+                    publisher_namespace: publisher.into(),
+                    plugin_code: plugin.into(),
+                    resource_code: resource.resource_code.clone(),
+                };
+                let items = service
+                    .capabilities_batch(actor, &resource, &ids, &eligible)
+                    .await?;
                 Ok(Output(json!({"items":items})))
             }
             input => {

@@ -1,16 +1,17 @@
 use super::{broker::*, cache};
 use crate::{error_response::ApiError, managed_services::stream::StreamEvent};
 use interface_runtime::UserPrincipal;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
 };
 use tokio::sync::{mpsc, oneshot, watch};
+mod admission;
 mod lifecycle;
 mod snapshot_cache;
 
@@ -23,6 +24,8 @@ struct Started {
 }
 struct Fake {
     denied: Mutex<BTreeSet<uuid::Uuid>>,
+    snapshot: Mutex<Option<(String, Value)>>,
+    reads: AtomicUsize,
     starts: Mutex<Vec<Started>>,
     active: AtomicUsize,
     max_active: AtomicUsize,
@@ -34,6 +37,8 @@ impl Fake {
     fn new() -> Arc<Self> {
         Arc::new(Self {
             denied: Mutex::default(),
+            snapshot: Mutex::default(),
+            reads: AtomicUsize::new(0),
             starts: Mutex::default(),
             active: AtomicUsize::new(0),
             max_active: AtomicUsize::new(0),
@@ -155,6 +160,16 @@ impl SourceBackend for Arc<Fake> {
     }
     async fn cache(&self, _: &str, _: u64, _: &Value) -> Result<(), ApiError> {
         Ok(())
+    }
+    async fn cached(&self, revision: &str) -> Result<Option<Value>, ApiError> {
+        self.reads.fetch_add(1, Ordering::SeqCst);
+        Ok(self
+            .snapshot
+            .lock()
+            .unwrap()
+            .as_ref()
+            .filter(|(key, _)| key == revision)
+            .map(|(_, event)| event.clone()))
     }
     async fn invalidate(&self, _: &str) -> Result<(), ApiError> {
         Ok(())

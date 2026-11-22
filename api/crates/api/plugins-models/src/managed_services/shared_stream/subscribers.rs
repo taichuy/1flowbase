@@ -1,7 +1,7 @@
 use super::super::{
-    interface::ManagedServiceOutput,
-    stream::{StreamEvent, FRAME_BYTES},
     ManagedServiceRegistration,
+    interface::{ManagedServiceOutput, Operation},
+    stream::{FRAME_BYTES, StreamEvent},
 };
 use super::{
     broker::{self, Lease, Member, Notice},
@@ -13,13 +13,14 @@ use crate::{
     routes::console_interface::ConsoleInterfaceTargetError,
 };
 use control_plane::errors::ControlPlaneError as Error;
+use futures_util::{StreamExt, stream};
 use interface_runtime::{
     InterfaceEventStream, InterfaceStreamPublisher, InterfaceStreamTerminal, UserPrincipal,
 };
 use plugin_framework::ManagedServiceOperation;
 use runtime_core::runtime_backend::{RuntimeManagedDuplex, RuntimeManagedDuplexEvent};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
@@ -93,8 +94,16 @@ fn viewer(lease: Lease, record: String, latest: watch::Sender<Latest>) -> Viewer
     let (stop, mut stopping) = watch::channel(false);
     let observer = lease.clone();
     let mut notices = lease.entry.notices.subscribe();
+    let initial = notices.borrow_and_update().clone();
+    if initial.sequence > 0 {
+        notify(&latest, &record, &initial);
+    }
     let task = tokio::spawn(async move {
         loop {
+            tokio::select! {
+                _ = stopping.changed() => break,
+                result = notices.changed() => if result.is_err() { break; },
+            }
             let notice = notices.borrow_and_update().clone();
             let authorized = tokio::select! {
                 _ = stopping.changed() => break,
@@ -105,23 +114,17 @@ fn viewer(lease: Lease, record: String, latest: watch::Sender<Latest>) -> Viewer
                 denied(&latest, &record);
                 break;
             }
-            if notice.sequence > 0 {
-                notify(&latest, &record, &notice);
-            }
-            tokio::select! {
-                _ = stopping.changed() => break,
-                result = notices.changed() => if result.is_err() { break; },
-            }
+            notify(&latest, &record, &notice);
         }
     });
     Viewer { lease, stop, task }
 }
 struct Session {
     state: Arc<ApiState>,
-    registration: ManagedServiceRegistration,
+    registration: Arc<ManagedServiceRegistration>,
     principal: UserPrincipal,
     operation: ManagedServiceOperation,
-    source: ManagedServiceOperation,
+    source: Arc<ManagedServiceOperation>,
     aggregate: bool,
     payload: Value,
     viewers: BTreeMap<String, Viewer>,
@@ -141,94 +144,148 @@ impl Session {
         }
         Ok(())
     }
-    async fn replace(&mut self, records: Vec<Desired>) {
+    fn candidate(&self, record: &Desired) -> Result<(ManagedSource, Value), ApiError> {
+        let mut payload = if self.aggregate {
+            host::record_payload(&self.source, &record.record_id, record.interval_ms)?
+        } else {
+            let mut payload = self.payload.clone();
+            let interval = &self
+                .source
+                .stream
+                .as_ref()
+                .and_then(|s| s.shared_source.as_ref())
+                .ok_or(Error::Conflict("managed_service_shared_source"))?
+                .interval_pointer;
+            host::set_pointer(&mut payload, interval, json!(record.interval_ms))?;
+            payload
+        };
+        let source = ManagedSource::new(
+            self.state.clone(),
+            self.registration.clone(),
+            self.source.clone(),
+            &self.principal,
+            &payload,
+        )?;
+        host::set_pointer(
+            &mut payload,
+            host::record_pointer(&self.source)?,
+            json!(source.key.record),
+        )?;
+        Ok((source, payload))
+    }
+
+    async fn replace(
+        &mut self,
+        records: Vec<Desired>,
+        sent: &mut BTreeMap<String, u64>,
+    ) -> Admissions {
         let mut keep = BTreeSet::new();
-        for record in records {
-            let admitted = async {
-                let mut payload = if self.aggregate {
-                    host::record_payload(&self.source, &record.record_id, record.interval_ms)?
-                } else {
-                    let mut payload = self.payload.clone();
-                    let interval = &self
-                        .source
-                        .stream
-                        .as_ref()
-                        .and_then(|s| s.shared_source.as_ref())
-                        .ok_or(Error::Conflict("managed_service_shared_source"))?
-                        .interval_pointer;
-                    host::set_pointer(&mut payload, interval, json!(record.interval_ms))?;
-                    payload
-                };
-                let source = Arc::new(ManagedSource::new(
-                    self.state.clone(),
-                    self.registration.clone(),
-                    self.source.clone(),
-                    &self.principal,
-                    &payload,
-                )?);
-                host::set_pointer(
-                    &mut payload,
-                    host::record_pointer(&self.source)?,
-                    json!(source.key.record),
-                )?;
-                let _inspection = broker::inspection(&source.key).lock_owned().await;
-                let principal = source.admit(&self.principal, &payload).await?;
-                let revision = source.resolve(&principal, &payload).await?;
-                let record_id = source.key.record.clone();
-                let member = Member {
-                    principal,
-                    payload,
-                    interval: record.interval_ms,
-                };
-                let updated = self
-                    .viewers
-                    .get(&record_id)
-                    .is_some_and(|viewer| viewer.lease.update(member.clone(), revision.clone()));
-                if !updated {
-                    if let Some(old) = self.viewers.remove(&record_id) {
-                        old.stop().await;
-                    }
-                    let lease = broker::join(source.key.clone(), source, member, revision).await?;
-                    self.viewers.insert(
-                        record_id.clone(),
-                        viewer(lease, record_id.clone(), self.latest.clone()),
-                    );
+        let mut invalid = Vec::new();
+        let mut candidates = Vec::new();
+        // UUID aliases share one Viewer; the last requested interval wins.
+        for record in records.into_iter().rev() {
+            match self.candidate(&record) {
+                Ok((source, payload)) if keep.insert(source.key.record.clone()) => {
+                    let previous = self
+                        .viewers
+                        .get(&source.key.record)
+                        .map(|v| v.lease.clone());
+                    candidates.push((source, payload, record.interval_ms, previous));
                 }
-                Ok::<_, ApiError>(record_id)
-            }
-            .await;
-            match admitted {
-                Ok(record) => {
-                    keep.insert(record);
-                }
-                Err(_) => {
-                    denied(&self.latest, &record.record_id);
-                }
+                Ok(_) => {}
+                Err(_) => invalid.push(record.record_id),
             }
         }
-        let remove = self
-            .viewers
-            .keys()
-            .filter(|id| !keep.contains(*id))
-            .cloned()
-            .collect::<Vec<_>>();
-        for id in remove {
-            if let Some(viewer) = self.viewers.remove(&id) {
-                viewer.stop().await;
-            }
-            self.latest.send_modify(|values| {
-                if values.get(&id).is_some_and(|notice| notice.error.is_none()) {
-                    values.remove(&id);
+        candidates.reverse();
+        let removed = std::mem::take(&mut self.viewers)
+            .into_iter()
+            .filter_map(|(id, viewer)| {
+                if keep.contains(&id) {
+                    self.viewers.insert(id, viewer);
+                    None
+                } else {
+                    Some(viewer.stop())
                 }
             });
+        futures_util::future::join_all(removed).await;
+        self.latest
+            .send_modify(|values| values.retain(|id, _| keep.contains(id)));
+        sent.retain(|id, _| keep.contains(id));
+        for id in invalid {
+            denied(&self.latest, &id);
+        }
+        let principal = self.principal.clone();
+        concurrent_admissions(candidates.into_iter().map(
+            move |(source, payload, interval, previous)| {
+                let principal = principal.clone();
+                async move {
+                    let id = source.key.record.clone();
+                    let result = async {
+                        let _inspection = broker::inspection(&source.key).lock_owned().await;
+                        let principal = source.admit(&principal, &payload).await?;
+                        let revision = source.resolve(&principal, &payload).await?;
+                        let member = Member {
+                            principal,
+                            payload,
+                            interval,
+                        };
+                        if previous
+                            .is_some_and(|lease| lease.update(member.clone(), revision.clone()))
+                        {
+                            return Ok(None);
+                        }
+                        broker::join_admitted(
+                            source.key.clone(),
+                            Arc::new(source),
+                            member,
+                            revision,
+                        )
+                        .await
+                        .map(Some)
+                    }
+                    .await;
+                    (id, result)
+                }
+            },
+        ))
+        .boxed()
+    }
+
+    async fn attach(
+        &mut self,
+        id: String,
+        admitted: Result<Option<Lease>, ApiError>,
+        sent: &mut BTreeMap<String, u64>,
+    ) {
+        if matches!(admitted, Ok(None)) {
+            return;
+        }
+        if let Some(old) = self.viewers.remove(&id) {
+            old.stop().await;
+        }
+        self.latest.send_modify(|values| {
+            values.remove(&id);
+        });
+        sent.remove(&id);
+        match admitted {
+            Ok(Some(lease)) => {
+                self.viewers
+                    .insert(id.clone(), viewer(lease, id, self.latest.clone()));
+            }
+            Err(_) => denied(&self.latest, &id),
+            Ok(None) => unreachable!(),
         }
     }
+
     async fn stop(&mut self) {
-        for (_, viewer) in std::mem::take(&mut self.viewers) {
-            viewer.stop().await;
-        }
+        futures_util::future::join_all(
+            std::mem::take(&mut self.viewers)
+                .into_values()
+                .map(Viewer::stop),
+        )
+        .await;
     }
-    async fn initial(&mut self) -> Result<(), ApiError> {
+    fn initial(&self) -> Result<Vec<Desired>, ApiError> {
         let records = if self.aggregate {
             desired(
                 self.payload
@@ -246,30 +303,31 @@ impl Session {
                 interval_ms: host::interval(&self.source, &self.payload)?,
             }]
         };
-        self.replace(records).await;
-        Ok(())
+        Ok(records)
     }
-    async fn set(&mut self, value: Value) -> Result<(), ApiError> {
+    async fn set(&self, value: Value) -> Result<Option<Vec<Desired>>, ApiError> {
         self.authorize_outer().await?;
-        if self.aggregate {
-            if value.get("type").and_then(Value::as_str) != Some("set") {
-                return Err(Error::InvalidInput("managed_service_set").into());
-            }
-            self.replace(desired(
+        match (self.aggregate, value.get("type").and_then(Value::as_str)) {
+            (true, Some("set")) => Ok(Some(desired(
                 value
                     .get("records")
                     .ok_or(Error::InvalidInput("managed_service_records"))?,
-            )?)
-            .await;
-        } else {
-            if value.get("type").and_then(Value::as_str) != Some("close") {
-                return Err(Error::InvalidInput("managed_service_stream_input").into());
-            }
-            self.replace(Vec::new()).await;
+            )?)),
+            (false, Some("close")) => Ok(None),
+            (true, _) => Err(Error::InvalidInput("managed_service_set").into()),
+            (false, _) => Err(Error::InvalidInput("managed_service_stream_input").into()),
         }
-        Ok(())
     }
 }
+type Admissions = stream::BoxStream<'static, (String, Result<Option<Lease>, ApiError>)>;
+
+pub(super) fn concurrent_admissions<F: std::future::Future>(
+    admissions: impl IntoIterator<Item = F>,
+) -> impl futures_util::Stream<Item = F::Output> {
+    // This limits only in-flight work, never the subscription's record count.
+    stream::iter(admissions).buffer_unordered(16)
+}
+
 async fn emit(
     publisher: &InterfaceStreamPublisher<
         StreamEvent,
@@ -295,7 +353,7 @@ pub(in crate::managed_services) async fn subscribe(
     state: Arc<ApiState>,
     registration: ManagedServiceRegistration,
     principal: UserPrincipal,
-    operation: ManagedServiceOperation,
+    compiled: Arc<Operation>,
     payload: Value,
     duplex: RuntimeManagedDuplex,
     mut cancel: watch::Receiver<bool>,
@@ -306,6 +364,7 @@ pub(in crate::managed_services) async fn subscribe(
     if principal.authenticated_session().is_none() {
         return Err(Error::PermissionDenied("cookie_session_required").into());
     }
+    let operation = compiled.declaration.clone();
     let aggregate_id = operation
         .stream
         .as_ref()
@@ -315,111 +374,73 @@ pub(in crate::managed_services) async fn subscribe(
         &registration,
         aggregate_id.unwrap_or(&operation.interface_id),
     )?;
-    let event_validator = jsonschema::validator_for(
-        &operation
-            .stream
-            .as_ref()
-            .ok_or(Error::InvalidInput("managed_service_stream"))?
-            .event_schema,
-    )?;
+    let event_validator = compiled
+        .event
+        .clone()
+        .ok_or(Error::InvalidInput("managed_service_stream"))?;
     let (publisher, stream) = interface_runtime::interface_stream_channel(16);
     let latest = watch::channel(Latest::new()).0;
     let mut changes = latest.subscribe();
     let mut session = Session {
         state,
-        registration,
+        registration: Arc::new(registration),
         principal,
         operation,
-        source,
+        source: Arc::new(source),
         aggregate,
         payload,
         viewers: BTreeMap::new(),
         latest,
     };
     tokio::spawn(async move {
-        let initialize = tokio::select! {_ = cancel.changed() => Err(ApiError::from(Error::Conflict("managed_service_stream_cancelled"))),result=session.initial()=>result};
         let mut sent = BTreeMap::new();
         let mut close_requested = false;
-        if initialize.is_ok() {
-            loop {
-                if tokio::select! {_ = cancel.changed()=>true,result=session.authorize_outer()=>result.is_err()}
-                {
-                    break;
-                }
-                let values = changes.borrow_and_update().clone();
-                let mut closed = false;
-                for (record, notice) in values {
-                    if sent.get(&record) == Some(&notice.sequence) {
-                        continue;
-                    }
-                    sent.insert(record.clone(), notice.sequence);
-                    let authorized = if let Some(viewer) = session.viewers.get(&record) {
-                        tokio::select! {_ = cancel.changed()=>{closed=true;false},result=viewer.lease.authorize()=>result.is_ok()}
-                    } else {
-                        false
-                    };
-                    if closed {
-                        break;
-                    }
-                    if authorized {
-                        if let Some(event) = notice.event {
-                            let event = if aggregate {
-                                json!({"type":"source","record_id":record,"event":event})
-                            } else {
-                                event
-                            };
-                            if !emit(&publisher, &event_validator, event, &mut cancel).await {
-                                closed = true;
-                                break;
-                            }
-                        }
-                    }
-                    if notice.error.is_some() || !authorized {
-                        if !aggregate
-                            && authorized
-                            && notice.error == Some("managed_service_source_retrying")
-                        {
-                            continue;
-                        }
-                        if !aggregate {
-                            closed = true;
-                            break;
-                        }
-                        let error = notice
-                            .error
-                            .unwrap_or("managed_service_subscription_denied");
-                        let event = if aggregate {
-                            json!({"type":"subscription_error","record_id":record,"error_code":error})
-                        } else {
-                            json!({"type":"error","error_code":error})
-                        };
-                        if !emit(&publisher, &event_validator, event, &mut cancel).await {
-                            closed = true;
-                            break;
-                        }
-                        if !authorized {
-                            if let Some(viewer) = session.viewers.remove(&record) {
-                                viewer.stop().await;
-                            }
-                        }
-                    }
-                }
-                if closed {
-                    break;
-                }
+        if let Ok(initial) = session.initial() {
+            let mut admissions = session.replace(initial, &mut sent).await.fuse();
+            'session: loop {
                 let input = async { duplex.input.lock().await.recv().await };
                 tokio::select! {
                     _ = cancel.changed() => break,
-                    result = changes.changed() => if result.is_err() {break;},
-                    value = input => match value {
-                        Some(value) => {
-                            let closing=!aggregate && value.get("type").and_then(Value::as_str)==Some("close");
-                            if tokio::select! {_ = cancel.changed()=>true,result=session.set(value)=>result.is_err()} {break;}
-                            if closing {close_requested=true;break;}
-                            sent.retain(|record,_|session.viewers.contains_key(record));
+                    value = input => {
+                        let Some(value) = value else { break; };
+                        // Dropping this generation cancels pending futures and drops any
+                        // undispatched leases before the new membership is installed.
+                        drop(admissions);
+                        let records = tokio::select! {
+                            _ = cancel.changed() => break,
+                            result = session.set(value) => result,
+                        };
+                        match records {
+                            Ok(Some(records)) => admissions = session.replace(records, &mut sent).await.fuse(),
+                            Ok(None) => { close_requested = true; break; }
+                            Err(_) => break,
                         }
-                        None => break,
-                    }
+                    },
+                    result = changes.changed() => {
+                        if result.is_err() { break; }
+                        let values = changes.borrow_and_update().clone();
+                        if tokio::select! { _ = cancel.changed()=>true, result=session.authorize_outer()=>result.is_err() } { break; }
+                        for (record, notice) in values {
+                            if sent.get(&record) == Some(&notice.sequence) { continue; }
+                            sent.insert(record.clone(), notice.sequence);
+                            if let Some(event) = notice.event {
+                                let event = if aggregate { json!({"type":"source","record_id":record,"event":event}) } else { event };
+                                if !emit(&publisher, &event_validator, event, &mut cancel).await { break 'session; }
+                            }
+                            if let Some(error) = notice.error {
+                                if !aggregate {
+                                    if error == "managed_service_source_retrying" { continue; }
+                                    break 'session;
+                                }
+                                let event = json!({"type":"subscription_error","record_id":record,"error_code":error});
+                                if !emit(&publisher, &event_validator, event, &mut cancel).await { break 'session; }
+                                if error == "managed_service_subscription_denied" {
+                                    if let Some(viewer) = session.viewers.remove(&record) { viewer.stop().await; }
+                                }
+                            }
+                        }
+                    },
+                    Some((id, admitted)) = admissions.next() => session.attach(id, admitted, &mut sent).await,
                 }
             }
         }

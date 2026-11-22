@@ -9,7 +9,7 @@ use std::{
     pin::Pin,
     sync::{Arc, Mutex, OnceLock, Weak},
 };
-use tokio::sync::{mpsc, watch, Mutex as AsyncMutex};
+use tokio::sync::{Mutex as AsyncMutex, mpsc, watch};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub(super) struct SourceKey {
@@ -51,6 +51,9 @@ pub(super) trait SourceBackend: Send + Sync {
         cancel: watch::Receiver<bool>,
     ) -> Result<Producer, ApiError>;
     async fn cache(&self, revision: &str, interval: u64, event: &Value) -> Result<(), ApiError>;
+    async fn cached(&self, _revision: &str) -> Result<Option<Value>, ApiError> {
+        Ok(None)
+    }
     async fn invalidate(&self, revision: &str) -> Result<(), ApiError>;
 }
 #[derive(Clone)]
@@ -242,16 +245,40 @@ impl Lease {
             .await
     }
 }
+#[cfg(test)]
 pub(super) async fn join(
     key: SourceKey,
     backend: Arc<dyn SourceBackend>,
     mut member: Member,
     revision: String,
 ) -> Result<Lease, ApiError> {
-    super::cache::ttl_ms(member.interval)?;
     member.principal = backend
         .authorize(&member.principal, &member.payload)
         .await?;
+    let _inspection = inspection(&key).lock_owned().await;
+    join_admitted(key, backend, member, revision).await
+}
+
+/// The caller must hold the source inspection guard and have admitted `member`.
+pub(super) async fn join_admitted(
+    key: SourceKey,
+    backend: Arc<dyn SourceBackend>,
+    member: Member,
+    revision: String,
+) -> Result<Lease, ApiError> {
+    super::cache::ttl_ms(member.interval)?;
+    // Look up before inserting a lease so cancellation never leaves an undriven entry.
+    let seed = if active(&key).is_none() {
+        match backend.cached(&revision).await {
+            Ok(event) => event,
+            Err(error) => {
+                tracing::warn!(error = %error.0, "shared source snapshot unavailable");
+                None
+            }
+        }
+    } else {
+        None
+    };
     let id = uuid::Uuid::now_v7();
     let (entry, created) = {
         let mut all = registry().lock().unwrap_or_else(|e| e.into_inner());
@@ -268,7 +295,16 @@ pub(super) async fn join(
                     retired: false,
                 }),
                 signal: watch::channel(0).0,
-                notices: watch::channel(Notice::default()).0,
+                notices: watch::channel(match seed {
+                    Some(event) => Notice {
+                        sequence: 1,
+                        revision: revision.clone(),
+                        event: Some(event),
+                        error: None,
+                    },
+                    None => Notice::default(),
+                })
+                .0,
                 finished: watch::channel(false).0,
             });
             all.entries.insert(key, entry.clone());

@@ -37,10 +37,22 @@ impl SocketSession {
         context: SocketSessionTestContext,
         transport: SocketSessionTestTransport,
     ) -> Self {
+        let client_validator = Arc::new(
+            jsonschema::validator_for(
+                &context
+                    .operation
+                    .stream
+                    .as_ref()
+                    .expect("test stream")
+                    .input_schema,
+            )
+            .map_err(|error| error.to_string()),
+        );
         Self {
             state: context.state,
             generation: context.generation,
             operation: context.operation,
+            client_validator,
             headers: context.headers,
             session: context.session,
             installation: context.installation,
