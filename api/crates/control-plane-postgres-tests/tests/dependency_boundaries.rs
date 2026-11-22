@@ -370,7 +370,7 @@ fn protocol_layers_use_explicit_adapters_without_sql_or_runtime_host() {
         api.join("crates/api/mcp/src"),
         api.join("crates/api/plugins-models/src"),
         api.join("crates/api/console-interaction/src"),
-        api.join("crates/api/console-settings/src/routes"),
+        api.join("crates/api/console-settings/src"),
     ] {
         assert!(
             directory.exists(),

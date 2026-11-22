@@ -133,12 +133,7 @@ impl RootSystemBackupRuntime {
             .map_err(|_| SystemBackupRuntimeError::Key)?,
         );
         let postgres_toolchain = match postgres_toolchain {
-            Some(toolchain)
-                if toolchain
-                    .verify_server_compatibility(store.pool())
-                    .await
-                    .is_ok() =>
-            {
+            Some(toolchain) if store.verify_postgres_toolchain(&toolchain).await.is_ok() => {
                 Some(toolchain)
             }
             _ => None,
@@ -156,7 +151,7 @@ impl RootSystemBackupRuntime {
         let (preflight, recovery) = if let Some(toolchain) = postgres_toolchain.as_ref() {
             let target_probe = Arc::new(
                 ApiRecoveryTargetProbe::new(
-                    store.pool().clone(),
+                    store.clone(),
                     application_build.clone(),
                     &config.provider_secret_master_key,
                     &config.system_backup_repository_root,
@@ -178,9 +173,8 @@ impl RootSystemBackupRuntime {
             (None, None)
         };
 
-        let selective = Arc::new(storage_durable_postgres::PgSelectiveBackupRepository::new(
-            store.pool().clone(),
-        ));
+        let selective =
+            Arc::new(storage_durable_postgres::PgSelectiveBackupRepository::from_store(&store));
         let selective_service = control_plane::system_backup::SelectiveSystemBackupService::new(
             selective.clone(),
             service.clone(),
@@ -558,14 +552,17 @@ impl RootSystemBackupRuntime {
             .postgres_toolchain
             .as_ref()
             .ok_or(SystemBackupRuntimeError::PostgreSqlToolchainUnavailable)?;
-        postgres_toolchain
-            .verify_server_compatibility(self.store.pool())
+        self.store
+            .verify_postgres_toolchain(postgres_toolchain)
             .await
             .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
-        let migration_head = storage_durable_postgres::migration_head(self.store.pool())
+        let migration_head = self
+            .store
+            .migration_head()
             .await
             .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
-        storage_durable_postgres::managed_schema_backup_inventory(self.store.pool())
+        self.store
+            .managed_schema_backup_inventory()
             .await
             .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
         let mut sources: Vec<Arc<dyn BackupComponentSource>> = vec![Arc::new(

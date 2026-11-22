@@ -478,12 +478,8 @@ async fn read_response_body(
     })
 }
 
-pub(crate) fn ensure_rustls_ring_provider() {
-    let _ = rustls::crypto::ring::default_provider().install_default();
-}
-
 fn fallback_http_client(verify_ssl: bool, direct: bool) -> Result<Client> {
-    ensure_rustls_ring_provider();
+    crate::ensure_rustls_ring_provider();
     if verify_ssl {
         return shared_verified_http_client(direct);
     }
@@ -504,7 +500,7 @@ fn shared_verified_http_client(direct: bool) -> Result<Client> {
     if let Some(client) = slot.get() {
         return Ok(client.clone());
     }
-    ensure_rustls_ring_provider();
+    crate::ensure_rustls_ring_provider();
     let builder = Client::builder();
     let builder = if direct { builder.no_proxy() } else { builder };
     let client = builder.build().context("failed to build HTTP client")?;

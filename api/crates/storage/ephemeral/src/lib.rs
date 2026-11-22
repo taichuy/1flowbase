@@ -14,7 +14,6 @@ pub use local::{
     ReadThroughCachePolicy,
 };
 pub use memory::MemoryLeaseStore;
-pub use memory::MemorySessionStore;
 pub use memory::MemoryWakeupSignalBus;
 pub use memory::{MemoryKvStore, MemoryProviderTransportStore};
 pub use wakeup_signal::WakeupSignalBus;

@@ -24,7 +24,8 @@ use plugin_framework::{
 };
 use uuid::Uuid;
 
-use crate::_tests::support::{password_hash, MemorySessionStore};
+use crate::_tests::support::password_hash;
+use storage_ephemeral::MokaSessionStore;
 
 #[path = "auth_provider_instance/external_login.rs"]
 mod external_login;
@@ -413,7 +414,7 @@ async fn password_local_login_accepts_legacy_phc_and_rejects_wrong_password() {
     );
     let kernel = AuthKernel::new(
         repository.clone(),
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
     );
 
     let login = kernel
@@ -470,7 +471,7 @@ async fn password_local_entries_share_the_local_credential_connection() {
     );
     let kernel = AuthKernel::new(
         repository.clone(),
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
     );
 
     kernel
@@ -506,7 +507,7 @@ async fn external_provider_cannot_replace_the_password_local_credential_verifier
         })]);
     let kernel = AuthKernel::with_registry(
         repository,
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
         registry,
     );
 
@@ -534,7 +535,7 @@ async fn password_local_login_rejects_a_non_local_connection() {
     let repository = InstanceAwareAuthRepository::new(vec![login_entry], user);
     let kernel = AuthKernel::new(
         repository.clone(),
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
     );
 
     let result = kernel
@@ -573,7 +574,7 @@ async fn auth_kernel_rejects_provider_claim_from_another_authenticator_instance(
         })]);
     let kernel = AuthKernel::with_registry(
         repository,
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
         registry,
     );
 
@@ -616,7 +617,7 @@ async fn auth_kernel_resolves_only_a_bound_verified_external_identity() {
         })]);
     let kernel = AuthKernel::with_registry(
         repository,
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
         registry,
     );
 
@@ -649,7 +650,7 @@ async fn auth_kernel_does_not_merge_an_unbound_external_email() {
         })]);
     let kernel = AuthKernel::with_registry(
         repository,
-        SessionIssuer::new(MemorySessionStore::default(), 7),
+        SessionIssuer::new(MokaSessionStore::default(), 7),
         registry,
     );
 

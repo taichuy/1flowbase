@@ -35,6 +35,10 @@ pub struct PgControlPlaneStore {
 }
 
 impl PgControlPlaneStore {
+    pub async fn close(&self) {
+        self.pool.close().await;
+    }
+
     pub fn new(pool: PgPool) -> Self {
         Self {
             pool,

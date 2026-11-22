@@ -26,5 +26,9 @@ pub fn crate_name() -> &'static str {
     "orchestration-runtime"
 }
 
+pub(crate) fn ensure_rustls_ring_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 #[cfg(test)]
 pub mod _tests;

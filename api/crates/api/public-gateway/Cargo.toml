@@ -48,5 +48,6 @@ storage-durable-postgres = { path = "../../storage/durable/postgres" }
 storage-ephemeral = { path = "../../storage/ephemeral" }
 storage-object = { path = "../../storage/object" }
 [dev-dependencies]
+api-host-kernel = { path = "../kernel", features = ["test-support"] }
 postgres-test-support={path="../../postgres-test-support"}
 tokio-tungstenite = "0.29.0"

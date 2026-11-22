@@ -198,7 +198,7 @@ async fn portable_bundle_bootstraps_a_fresh_database_without_the_original_enviro
     let target_store = storage_durable_postgres::MainDurableStore::new(target_pool.clone());
     let restored_login = AuthKernel::new(
         target_store.clone(),
-        SessionIssuer::new(MemorySessionStore::new("portable-restored-login"), 7),
+        SessionIssuer::new(MokaSessionStore::new("portable-restored-login", 128), 7),
     )
     .login(LoginCommand {
         login_entry_id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
@@ -211,7 +211,7 @@ async fn portable_bundle_bootstraps_a_fresh_database_without_the_original_enviro
     assert!(
         AuthKernel::new(
             target_store.clone(),
-            SessionIssuer::new(MemorySessionStore::new("portable-fresh-login"), 7),
+            SessionIssuer::new(MokaSessionStore::new("portable-fresh-login", 128), 7),
         )
         .login(LoginCommand {
             login_entry_id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,

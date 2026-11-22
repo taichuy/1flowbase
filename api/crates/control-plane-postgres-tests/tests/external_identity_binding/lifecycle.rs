@@ -28,7 +28,7 @@ async fn external_member(
     let result = AuthKernel::new(
         store.clone(),
         SessionIssuer::new(
-            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            MokaSessionStore::new(format!("auth-methods-{}", Uuid::now_v7()), 128),
             7,
         ),
     )
@@ -62,7 +62,7 @@ async fn canonical_subject_crosses_connections_but_never_authorities() {
     let kernel = AuthKernel::new(
         store.clone(),
         SessionIssuer::new(
-            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            MokaSessionStore::new(format!("auth-methods-{}", Uuid::now_v7()), 128),
             7,
         ),
     );
@@ -161,7 +161,7 @@ async fn unlink_reserves_owner_blocks_signup_and_only_explicit_owner_binding_res
     let kernel = AuthKernel::new(
         store.clone(),
         SessionIssuer::new(
-            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            MokaSessionStore::new(format!("auth-methods-{}", Uuid::now_v7()), 128),
             7,
         ),
     );
@@ -315,7 +315,7 @@ async fn methods_view_preserves_dto_order_and_unlink_counterexamples() {
     let kernel = AuthKernel::new(
         store.clone(),
         SessionIssuer::new(
-            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            MokaSessionStore::new(format!("auth-methods-{}", Uuid::now_v7()), 128),
             7,
         ),
     );
@@ -470,7 +470,7 @@ async fn parallel_unlinks_keep_one_live_method_and_ignore_sentinel_contact_and_i
     let kernel = AuthKernel::new(
         store.clone(),
         SessionIssuer::new(
-            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            MokaSessionStore::new(format!("auth-methods-{}", Uuid::now_v7()), 128),
             7,
         ),
     );
@@ -574,7 +574,7 @@ async fn initial_password_requires_live_owned_binding_creates_account_and_authen
     let kernel = AuthKernel::new(
         store.clone(),
         SessionIssuer::new(
-            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            MokaSessionStore::new(format!("auth-methods-{}", Uuid::now_v7()), 128),
             7,
         ),
     );
@@ -640,7 +640,7 @@ async fn initial_password_requires_live_owned_binding_creates_account_and_authen
     let kernel = AuthKernel::new(
         store.clone(),
         SessionIssuer::new(
-            MemorySessionStore::new(format!("auth-methods-{}", Uuid::now_v7())),
+            MokaSessionStore::new(format!("auth-methods-{}", Uuid::now_v7()), 128),
             7,
         ),
     );

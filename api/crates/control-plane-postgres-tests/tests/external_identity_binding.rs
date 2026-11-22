@@ -3,7 +3,7 @@ use control_plane::{
     ports::AuthRepository,
 };
 use domain::{ExternalIdentityClaim, VerifiedExternalIdentity};
-use storage_ephemeral::MemorySessionStore;
+use storage_ephemeral::MokaSessionStore;
 use uuid::Uuid;
 
 fn base_database_url() -> String {
@@ -101,7 +101,7 @@ async fn explicit_external_binding_is_audited_idempotent_and_conflict_safe() {
     let identity = verified_identity(connection_id);
     let kernel = AuthKernel::new(
         store.clone(),
-        SessionIssuer::new(MemorySessionStore::new("external-binding-test"), 7),
+        SessionIssuer::new(MokaSessionStore::new("external-binding-test", 128), 7),
     );
 
     let first = kernel
@@ -221,7 +221,7 @@ async fn external_first_registration_creates_only_member_and_existing_login_igno
     );
     let kernel = AuthKernel::new(
         store.clone(),
-        SessionIssuer::new(MemorySessionStore::new("external-registration-test"), 7),
+        SessionIssuer::new(MokaSessionStore::new("external-registration-test", 128), 7),
     );
     let result = kernel
         .complete_external_login(CompleteExternalLoginCommand {
@@ -348,7 +348,7 @@ async fn concurrent_external_registration_is_one_atomic_identity_and_email_canno
     let kernel = AuthKernel::new(
         store.clone(),
         SessionIssuer::new(
-            MemorySessionStore::new("external-registration-concurrency"),
+            MokaSessionStore::new("external-registration-concurrency", 128),
             7,
         ),
     );
@@ -493,7 +493,7 @@ async fn external_profile_account_collisions_are_atomic_and_invalid_hints_fall_b
     let entry = external_entry(&store).await;
     let kernel = AuthKernel::new(
         store.clone(),
-        SessionIssuer::new(MemorySessionStore::new("external-profile-collision"), 7),
+        SessionIssuer::new(MokaSessionStore::new("external-profile-collision", 128), 7),
     );
     let login = |subject: &str, profile| CompleteExternalLoginCommand {
         login_entry_id: entry.id,

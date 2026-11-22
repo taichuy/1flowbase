@@ -45,7 +45,7 @@ use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions},
     Connection, PgConnection, Row,
 };
-use storage_ephemeral::memory::MemorySessionStore;
+use storage_ephemeral::MokaSessionStore;
 use time::{Duration, OffsetDateTime};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use uuid::Uuid;

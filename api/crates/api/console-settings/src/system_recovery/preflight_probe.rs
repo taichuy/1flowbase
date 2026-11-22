@@ -12,14 +12,13 @@ use domain::{
     ApplicationBuild, BackupCompatibilityTarget, KeyFingerprint, SYSTEM_BACKUP_FORMAT_VERSION,
 };
 use sha2::{Digest, Sha256};
-use sqlx::PgPool;
 use storage_durable_postgres::{
-    current_migration_head, supported_migration_heads, PostgreSqlToolchain,
+    current_migration_head, supported_migration_heads, MainDurableStore, PostgreSqlToolchain,
 };
 use sysinfo::Disks;
 
 pub struct ApiRecoveryTargetProbe {
-    pool: PgPool,
+    store: MainDurableStore,
     application_build: ApplicationBuild,
     master_key_fingerprint: KeyFingerprint,
     repository_root: PathBuf,
@@ -30,7 +29,7 @@ pub struct ApiRecoveryTargetProbe {
 
 impl ApiRecoveryTargetProbe {
     pub fn new(
-        pool: PgPool,
+        store: MainDurableStore,
         application_build: ApplicationBuild,
         provider_secret_master_key: &str,
         repository_root: impl Into<PathBuf>,
@@ -45,7 +44,7 @@ impl ApiRecoveryTargetProbe {
         let master_key_fingerprint = KeyFingerprint::try_from(fingerprint)
             .map_err(|_| RecoveryPreflightError::TargetProbe)?;
         Ok(Self {
-            pool,
+            store,
             application_build,
             master_key_fingerprint,
             repository_root: repository_root.into(),
@@ -64,17 +63,15 @@ impl RecoveryTargetProbe for ApiRecoveryTargetProbe {
         let supported_source_migration_heads =
             supported_migration_heads().map_err(|_| RecoveryPreflightError::TargetProbe)?;
         let postgres_toolchain_compatible = self
-            .postgres_toolchain
-            .verify_server_compatibility(&self.pool)
+            .store
+            .verify_postgres_toolchain(&self.postgres_toolchain)
             .await
             .is_ok();
-        let postgres_restore_privileges = sqlx::query_scalar::<_, bool>(
-            "select rolsuper or (has_database_privilege(current_user, current_database(), 'CREATE') and pg_has_role(current_user, 'pg_write_all_data', 'MEMBER')) from pg_roles where rolname = current_user",
-        )
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|_| RecoveryPreflightError::TargetProbe)?
-        .unwrap_or(false);
+        let postgres_restore_privileges = self
+            .store
+            .has_postgres_restore_privileges()
+            .await
+            .map_err(|_| RecoveryPreflightError::TargetProbe)?;
         let snapshot = self.maintenance.snapshot();
         Ok(RecoveryTargetSnapshot {
             compatibility: BackupCompatibilityTarget {

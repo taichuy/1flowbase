@@ -173,7 +173,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.1",
- "sqlx",
  "storage-durable-postgres",
  "storage-ephemeral",
  "storage-object",

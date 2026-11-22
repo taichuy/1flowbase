@@ -384,7 +384,7 @@ async fn http_preview_uses_and_releases_host_proxy_client() {
         *captured.lock().unwrap() = String::from_utf8_lossy(&headers).into_owned();
         stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 14\r\nConnection: close\r\n\r\n{\"host\":true}\n").await.unwrap();
     });
-    crate::execution_engine::http_request::ensure_rustls_ring_provider();
+    crate::ensure_rustls_ring_provider();
     let released = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let invoker = HttpPreviewInvoker {
         lease: Mutex::new(Some(crate::execution_engine::HttpRequestClientLease::new(
@@ -422,7 +422,7 @@ async fn http_preview_uses_and_releases_host_proxy_client() {
 #[tokio::test]
 async fn http_preview_preserves_egress_denial_and_releases_client_on_execution_error() {
     for deny in [true, false] {
-        crate::execution_engine::http_request::ensure_rustls_ring_provider();
+        crate::ensure_rustls_ring_provider();
         let released = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let invoker = HttpPreviewInvoker {
             lease: Mutex::new(Some(crate::execution_engine::HttpRequestClientLease::new(

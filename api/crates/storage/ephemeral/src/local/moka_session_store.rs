@@ -16,6 +16,12 @@ pub struct MokaSessionStore {
     kv: MokaCacheStore,
 }
 
+impl Default for MokaSessionStore {
+    fn default() -> Self {
+        Self::new("sessions", 4_096)
+    }
+}
+
 impl MokaSessionStore {
     pub fn new(namespace: impl Into<String>, max_capacity: u64) -> Self {
         Self {
