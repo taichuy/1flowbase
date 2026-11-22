@@ -93,6 +93,33 @@ url = "2.5.8"
 uuid = { version = "1.28.0", features = ["serde", "v7"] }
 zip = { version = "9.0.3", default-features = false, features = ["deflate"] }
 
+[profile.release]
+strip = "debuginfo"
+
+# Protocol crates are I/O-bound HTTP/OpenAPI glue (~200k LOC of axum/utoipa/serde).
+# Keep runtime, crypto, storage, and orchestration hot paths at default opt-level = 3,
+# while avoiding O3 codegen blowup on route/schema glue crates.
+[profile.release.package.api-console-interaction]
+opt-level = 1
+
+[profile.release.package.api-console-settings]
+opt-level = 1
+
+[profile.release.package.api-applications]
+opt-level = 1
+
+[profile.release.package.api-plugins-models]
+opt-level = 1
+
+[profile.release.package.api-mcp]
+opt-level = 1
+
+[profile.release.package.api-public-gateway]
+opt-level = 1
+
+[profile.release.package.api-host-kernel]
+opt-level = 2
+
 [profile.dev]
 debug = 1
 

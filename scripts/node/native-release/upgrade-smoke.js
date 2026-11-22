@@ -24,8 +24,16 @@ async function smoke(stage, evidence) {
   const candidate = path.join(evidence, 'new package');
   const suffix = process.platform === 'win32' ? '.exe' : '';
   const executable = `1flowbase${suffix}`;
+  function clonePackageStage(source, destination) {
+    if (process.platform === 'darwin' && !fs.existsSync(path.join(source, 'data'))) {
+      const cloned = spawnSync('cp', ['-cR', source, destination], { stdio: 'ignore' });
+      if (cloned.status === 0) return;
+      fs.rmSync(destination, { recursive: true, force: true });
+    }
+    fs.cpSync(source, destination, { recursive: true, filter: entry => entry !== path.join(source, 'data') });
+  }
   for (const root of [target, candidate]) {
-    fs.cpSync(stage, root, { recursive: true, filter: source => source !== path.join(stage, 'data') });
+    clonePackageStage(stage, root);
     assert.ok(!fs.existsSync(path.join(root, 'data')));
     fs.copyFileSync(path.join(root, '.env.example'), path.join(root, '.env'));
   }
