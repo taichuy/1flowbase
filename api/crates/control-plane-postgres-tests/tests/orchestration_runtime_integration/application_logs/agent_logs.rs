@@ -727,7 +727,7 @@ async fn agent_logs_equal_sequence_pages_are_lossless_and_cancelled_is_not_succe
 
 #[tokio::test]
 async fn agent_logs_migration_preserves_native_task_and_flow_ownership() {
-    let db = isolated_database().await;
+    let db = unmigrated_database().await;
     let store = PgControlPlaneStore::new(db.connect().await.unwrap());
     let before = sqlx::migrate!("../storage/durable/postgres/migrations")
         .iter()

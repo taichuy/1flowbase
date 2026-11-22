@@ -51,6 +51,12 @@ async fn isolated_database() -> postgres_test_support::PostgresTestSchema {
         .unwrap()
 }
 
+async fn unmigrated_database() -> postgres_test_support::PostgresTestSchema {
+    postgres_test_support::PostgresTestSchema::create(&base_database_url())
+        .await
+        .unwrap()
+}
+
 async fn root_tenant_id(store: &PgControlPlaneStore) -> Uuid {
     sqlx::query_scalar("select id from tenants where code = 'root-tenant'")
         .fetch_one(store.pool())

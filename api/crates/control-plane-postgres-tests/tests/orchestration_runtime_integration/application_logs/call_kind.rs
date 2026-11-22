@@ -253,7 +253,7 @@ async fn issue_2034_compaction_calls_stay_in_task_with_separate_count() {
 // operation; the constant invocation_count placeholder becomes a generated contribution.
 #[tokio::test]
 async fn issue_2034_migration_backfills_call_kind_and_retires_placeholder_column() {
-    let pool = isolated_database().await.connect().await.unwrap();
+    let pool = unmigrated_database().await.connect().await.unwrap();
     let prior = Migrator {
         migrations: Cow::Owned(
             sqlx::migrate!("../storage/durable/postgres/migrations")
