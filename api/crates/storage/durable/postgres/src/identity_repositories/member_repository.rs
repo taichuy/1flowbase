@@ -12,7 +12,8 @@ use control_plane_contracts::{
     },
     ControlPlaneContractError as ControlPlaneError,
 };
-use domain::{ActorContext, AuditLogRecord};
+use domain::{ActorContext, AuditLogRecord, WorkspaceMembershipStatus};
+use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::{
@@ -25,6 +26,7 @@ use crate::{
         is_root_user, primary_workspace_id, tenant_id_for_workspace, workspace_id_for_user,
         PgControlPlaneStore,
     },
+    workspace_governance_repository::map_unique_conflict,
 };
 
 #[async_trait]
@@ -151,6 +153,75 @@ impl MemberRepository for PgControlPlaneStore {
         &self,
         input: &CreateMemberInput,
     ) -> Result<domain::UserRecord> {
+        // This legacy entry point already carries the requested workspace explicitly.
+        let tenant_id = tenant_id_for_workspace(self.pool(), input.workspace_id).await?;
+        let actor = self
+            .load_actor_context(input.actor_user_id, tenant_id, input.workspace_id, None)
+            .await?;
+        self.create_member_with_default_role_in_scope(&actor, input)
+            .await
+    }
+
+    async fn update_member_profile(&self, input: &UpdateMemberInput) -> Result<domain::UserRecord> {
+        let actor =
+            MemberRepository::load_actor_context_for_user(self, input.actor_user_id).await?;
+        self.update_member_profile_in_scope(&actor, input).await
+    }
+
+    async fn disable_member(&self, actor_user_id: Uuid, target_user_id: Uuid) -> Result<()> {
+        let actor = MemberRepository::load_actor_context_for_user(self, actor_user_id).await?;
+        self.disable_member_in_scope(&actor, target_user_id).await
+    }
+
+    async fn enable_member(&self, actor_user_id: Uuid, target_user_id: Uuid) -> Result<()> {
+        let actor = MemberRepository::load_actor_context_for_user(self, actor_user_id).await?;
+        self.enable_member_in_scope(&actor, target_user_id).await
+    }
+
+    async fn delete_member(&self, actor_user_id: Uuid, target_user_id: Uuid) -> Result<()> {
+        let actor = MemberRepository::load_actor_context_for_user(self, actor_user_id).await?;
+        self.delete_member_in_scope(&actor, target_user_id).await
+    }
+
+    async fn reset_member_password(
+        &self,
+        actor_user_id: Uuid,
+        target_user_id: Uuid,
+        password_hash: &str,
+    ) -> Result<()> {
+        let actor = MemberRepository::load_actor_context_for_user(self, actor_user_id).await?;
+        self.reset_member_password_in_scope(&actor, target_user_id, password_hash)
+            .await
+    }
+
+    async fn create_member_with_default_role_in_scope(
+        &self,
+        actor: &ActorContext,
+        input: &CreateMemberInput,
+    ) -> Result<domain::UserRecord> {
+        if actor.user_id != input.actor_user_id || actor.current_workspace_id != input.workspace_id
+        {
+            return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());
+        }
+        self.verify_workspace_access(
+            actor.user_id,
+            actor.tenant_id,
+            actor.current_workspace_id,
+            actor.is_root,
+        )
+        .await?;
+        let mut tx = self.pool().begin().await?;
+        let identity_exists: bool = sqlx::query_scalar(
+            "select exists(select 1 from users where account = $1 or email = $2 or phone = $3)",
+        )
+        .bind(&input.account)
+        .bind(&input.email)
+        .bind(&input.phone)
+        .fetch_one(&mut *tx)
+        .await?;
+        if identity_exists {
+            return Err(ControlPlaneError::Conflict("member_account_exists_use_invitation").into());
+        }
         let default_role: (Uuid, String, Uuid) = sqlx::query_as(
             r#"
             select id, code, scope_id
@@ -162,22 +233,20 @@ impl MemberRepository for PgControlPlaneStore {
             "#,
         )
         .bind(input.workspace_id)
-        .fetch_optional(self.pool())
+        .fetch_optional(&mut *tx)
         .await?
         .ok_or(ControlPlaneError::NotFound("default_member_role"))?;
         let user_id = Uuid::now_v7();
-        let mut tx = self.pool().begin().await?;
-
         sqlx::query(
             r#"
             insert into users (
                 id, account, email, phone, password_hash, name, nickname, avatar_url, introduction,
                 default_display_role, email_login_enabled, phone_login_enabled, status, session_version,
-                created_by, updated_by
+                created_by, updated_by, managed_by_tenant_id
             )
             values (
                 $1, $2, $3, $4, $5, $6, $7, null, $8,
-                $9, $10, $11, 'active', 1, $12, $12
+                $9, $10, $11, 'active', 1, $12, $12, $13
             )
             "#,
         )
@@ -193,14 +262,15 @@ impl MemberRepository for PgControlPlaneStore {
         .bind(input.email_login_enabled)
         .bind(input.phone_login_enabled)
         .bind(input.actor_user_id)
+        .bind(actor.tenant_id)
         .execute(&mut *tx)
-        .await?;
+        .await
+        .map_err(|error| map_unique_conflict(error.into(), "member_account_exists_use_invitation"))?;
 
         sqlx::query(
             r#"
-            insert into workspace_memberships (id, workspace_id, user_id, introduction, created_by, updated_by)
-            values ($1, $2, $3, $4, $5, $5)
-            on conflict (workspace_id, user_id) do nothing
+            insert into workspace_memberships (id, workspace_id, user_id, introduction, created_by, updated_by, status)
+            values ($1, $2, $3, $4, $5, $5, 'active')
             "#,
         )
         .bind(Uuid::now_v7())
@@ -219,7 +289,8 @@ impl MemberRepository for PgControlPlaneStore {
             input.phone.as_deref(),
             Some(input.actor_user_id),
         )
-        .await?;
+        .await
+        .map_err(|error| map_unique_conflict(error, "member_account_exists_use_invitation"))?;
 
         sqlx::query(
             r#"
@@ -243,8 +314,17 @@ impl MemberRepository for PgControlPlaneStore {
             .ok_or_else(|| anyhow!("member missing after creation"))
     }
 
-    async fn update_member_profile(&self, input: &UpdateMemberInput) -> Result<domain::UserRecord> {
+    async fn update_member_profile_in_scope(
+        &self,
+        actor: &ActorContext,
+        input: &UpdateMemberInput,
+    ) -> Result<domain::UserRecord> {
+        if actor.user_id != input.actor_user_id {
+            return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());
+        }
         let mut tx = self.pool().begin().await?;
+        let target = lock_member(&mut tx, actor, input.user_id).await?;
+        target.ensure_identity_editable(actor)?;
         let row = sqlx::query(
             r#"
             update users
@@ -285,118 +365,99 @@ impl MemberRepository for PgControlPlaneStore {
         map_user_row(self.pool(), row).await
     }
 
-    async fn disable_member(&self, actor_user_id: Uuid, target_user_id: Uuid) -> Result<()> {
-        if is_root_user(self.pool(), target_user_id).await? {
-            return Err(ControlPlaneError::PermissionDenied("root_user_immutable").into());
-        }
-
-        let result = sqlx::query(
-            r#"
-            update users
-            set status = 'disabled',
-                session_version = session_version + 1,
-                updated_by = $2,
-                updated_at = now()
-            where id = $1
-            "#,
+    async fn disable_member_in_scope(
+        &self,
+        actor: &ActorContext,
+        target_user_id: Uuid,
+    ) -> Result<()> {
+        set_membership_status(
+            self,
+            actor,
+            target_user_id,
+            WorkspaceMembershipStatus::Disabled,
         )
-        .bind(target_user_id)
-        .bind(actor_user_id)
-        .execute(self.pool())
-        .await?;
-
-        if result.rows_affected() == 0 {
-            return Err(ControlPlaneError::NotFound("user").into());
-        }
-
-        Ok(())
+        .await
     }
 
-    async fn enable_member(&self, actor_user_id: Uuid, target_user_id: Uuid) -> Result<()> {
-        let result = sqlx::query(
-            r#"
-            update users
-            set status = 'active',
-                session_version = session_version + 1,
-                updated_by = $2,
-                updated_at = now()
-            where id = $1
-            "#,
+    async fn enable_member_in_scope(
+        &self,
+        actor: &ActorContext,
+        target_user_id: Uuid,
+    ) -> Result<()> {
+        set_membership_status(
+            self,
+            actor,
+            target_user_id,
+            WorkspaceMembershipStatus::Active,
         )
-        .bind(target_user_id)
-        .bind(actor_user_id)
-        .execute(self.pool())
-        .await?;
-
-        if result.rows_affected() == 0 {
-            return Err(ControlPlaneError::NotFound("user").into());
-        }
-
-        Ok(())
+        .await
     }
 
-    async fn delete_member(&self, actor_user_id: Uuid, target_user_id: Uuid) -> Result<()> {
-        if is_root_user(self.pool(), target_user_id).await? {
-            return Err(ControlPlaneError::PermissionDenied("root_user_immutable").into());
-        }
-        if actor_user_id == target_user_id {
+    async fn delete_member_in_scope(
+        &self,
+        actor: &ActorContext,
+        target_user_id: Uuid,
+    ) -> Result<()> {
+        let mut tx = self.pool().begin().await?;
+        let target = lock_member(&mut tx, actor, target_user_id).await?;
+        target.ensure_not_root()?;
+        if actor.user_id == target_user_id {
             return Err(ControlPlaneError::PermissionDenied("member_self_delete_forbidden").into());
         }
 
-        let result = sqlx::query("delete from users where id = $1")
-            .bind(target_user_id)
-            .execute(self.pool())
-            .await
-            .map_err(|err| {
-                if matches!(
-                    err.as_database_error().and_then(|db| db.code()).as_deref(),
-                    Some("23503")
-                ) {
-                    anyhow::Error::from(ControlPlaneError::Conflict(
-                        "member_has_referenced_resources",
-                    ))
-                } else {
-                    anyhow::Error::from(err)
-                }
-            })?;
-
-        if result.rows_affected() == 0 {
-            return Err(ControlPlaneError::NotFound("user").into());
+        if target.has_other_workspace
+            || (!actor.is_root && target.is_managed_by_other_tenant(actor))
+        {
+            let workspace_id = actor.current_workspace_id;
+            for query in [
+                "delete from user_department_bindings where user_id = $1 and scope_id = $2",
+                "delete from user_role_bindings where user_id = $1 and scope_id = $2",
+                "update api_keys set enabled = false, updated_at = now() where creator_user_id = $1
+                   and scope_id = $2 and scope_kind = 'workspace' and key_kind = 'user_api_key' and enabled",
+                "delete from workspace_memberships where user_id = $1 and workspace_id = $2",
+            ] {
+                sqlx::query(query).bind(target_user_id).bind(workspace_id).execute(&mut *tx).await?;
+            }
+        } else {
+            sqlx::query("delete from users where id = $1")
+                .bind(target_user_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|err| {
+                    if err.as_database_error().and_then(|db| db.code()).as_deref() == Some("23503")
+                    {
+                        anyhow::Error::from(ControlPlaneError::Conflict(
+                            "member_has_referenced_resources",
+                        ))
+                    } else {
+                        anyhow::Error::from(err)
+                    }
+                })?;
         }
-
+        tx.commit().await?;
         Ok(())
     }
 
-    async fn reset_member_password(
+    async fn reset_member_password_in_scope(
         &self,
-        actor_user_id: Uuid,
+        actor: &ActorContext,
         target_user_id: Uuid,
         password_hash: &str,
     ) -> Result<()> {
-        if is_root_user(self.pool(), target_user_id).await? {
-            return Err(ControlPlaneError::PermissionDenied("root_user_immutable").into());
-        }
-
-        let result = sqlx::query(
-            r#"
-            update users
-            set password_hash = $2,
-                session_version = session_version + 1,
-                updated_by = $3,
-                updated_at = now()
-            where id = $1
-            "#,
+        let mut tx = self.pool().begin().await?;
+        let target = lock_member(&mut tx, actor, target_user_id).await?;
+        target.ensure_not_root()?;
+        target.ensure_identity_editable(actor)?;
+        sqlx::query(
+            "update users set password_hash = $2, session_version = session_version + 1,
+                updated_by = $3, updated_at = now() where id = $1",
         )
         .bind(target_user_id)
         .bind(password_hash)
-        .bind(actor_user_id)
-        .execute(self.pool())
+        .bind(actor.user_id)
+        .execute(&mut *tx)
         .await?;
-
-        if result.rows_affected() == 0 {
-            return Err(ControlPlaneError::NotFound("user").into());
-        }
-
+        tx.commit().await?;
         Ok(())
     }
 
@@ -507,7 +568,8 @@ impl MemberRepository for PgControlPlaneStore {
             select
               u.id, u.account, u.email, u.phone, u.password_hash, u.name, u.nickname, u.avatar_url,
               u.introduction, u.preferred_locale, u.meta, u.default_display_role, u.email_login_enabled, u.phone_login_enabled,
-              u.status, u.session_version
+              case when u.status = 'disabled' or tm.status = 'disabled' then 'disabled' else 'active' end as status,
+              u.session_version
             from workspace_memberships tm
             join users u on u.id = tm.user_id
             where tm.workspace_id = $1
@@ -532,4 +594,92 @@ impl MemberRepository for PgControlPlaneStore {
     async fn append_audit_log(&self, event: &AuditLogRecord) -> Result<()> {
         AuthRepository::append_audit_log(self, event).await
     }
+}
+
+struct LockedMember {
+    is_root: bool,
+    managed_by_tenant_id: Option<Uuid>,
+    has_other_workspace: bool,
+    has_other_tenant: bool,
+}
+
+impl LockedMember {
+    fn ensure_not_root(&self) -> Result<()> {
+        if self.is_root {
+            return Err(ControlPlaneError::PermissionDenied("root_user_immutable").into());
+        }
+        Ok(())
+    }
+
+    fn is_managed_by_other_tenant(&self, actor: &ActorContext) -> bool {
+        self.managed_by_tenant_id
+            .is_some_and(|tenant_id| tenant_id != actor.tenant_id)
+    }
+
+    fn ensure_identity_editable(&self, actor: &ActorContext) -> Result<()> {
+        if !actor.is_root && (self.has_other_tenant || self.is_managed_by_other_tenant(actor)) {
+            return Err(
+                ControlPlaneError::PermissionDenied("member_identity_externally_owned").into(),
+            );
+        }
+        Ok(())
+    }
+}
+
+async fn lock_member(
+    tx: &mut Transaction<'_, Postgres>,
+    actor: &ActorContext,
+    target_user_id: Uuid,
+) -> Result<LockedMember> {
+    // Lock the global identity before reading memberships, matching the grant
+    // path so ownership checks and single-space deletion cannot race a grant.
+    let managed_by_tenant_id: Option<Uuid> = sqlx::query_scalar(
+        "select u.managed_by_tenant_id from users u
+         where u.id = $1 and exists (select 1 from workspace_memberships wm where wm.user_id = u.id and wm.workspace_id = $2)
+         for update of u",
+    ).bind(target_user_id).bind(actor.current_workspace_id).fetch_optional(&mut **tx).await?
+        .ok_or(ControlPlaneError::NotFound("user"))?;
+    let (is_root, has_membership, has_other_workspace, has_other_tenant): (bool, bool, bool, bool) = sqlx::query_as(
+        "select exists(select 1 from user_role_bindings b join roles r on r.id = b.role_id
+                        where b.user_id = $1 and r.scope_kind = 'system' and r.code = 'root'),
+                count(*) filter (where w.id = $2 and w.tenant_id = $3) > 0,
+                count(*) filter (where w.id <> $2) > 0,
+                count(*) filter (where w.tenant_id <> $3) > 0
+         from workspace_memberships wm join workspaces w on w.id = wm.workspace_id where wm.user_id = $1",
+    ).bind(target_user_id).bind(actor.current_workspace_id).bind(actor.tenant_id).fetch_one(&mut **tx).await?;
+    if !has_membership {
+        return Err(ControlPlaneError::NotFound("user").into());
+    }
+    Ok(LockedMember {
+        is_root,
+        managed_by_tenant_id,
+        has_other_workspace,
+        has_other_tenant,
+    })
+}
+
+async fn set_membership_status(
+    store: &PgControlPlaneStore,
+    actor: &ActorContext,
+    target_user_id: Uuid,
+    status: WorkspaceMembershipStatus,
+) -> Result<()> {
+    let mut tx = store.pool().begin().await?;
+    let target = lock_member(&mut tx, actor, target_user_id).await?;
+    target.ensure_not_root()?;
+    if status == WorkspaceMembershipStatus::Disabled && actor.user_id == target_user_id {
+        return Err(ControlPlaneError::PermissionDenied("member_self_disable_forbidden").into());
+    }
+    sqlx::query(
+        "update workspace_memberships set status = $3, updated_by = $4, updated_at = now()
+         where workspace_id = $1 and user_id = $2 and status <> $3",
+    )
+    .bind(actor.current_workspace_id)
+    .bind(target_user_id)
+    .bind(status.as_str())
+    .bind(actor.user_id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(())
 }

@@ -47,7 +47,8 @@
         "updated_by",
         "updated_at",
         "preferred_locale",
-        "meta"
+        "meta",
+        "managed_by_tenant_id"
       ]
     },
     "roles": {

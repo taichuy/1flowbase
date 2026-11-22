@@ -408,3 +408,5 @@ async fn workspace_console_settings_order_is_durable_and_revision_guarded() {
     .await;
     assert!(stale.is_err());
 }
+
+mod governance_lifecycle;

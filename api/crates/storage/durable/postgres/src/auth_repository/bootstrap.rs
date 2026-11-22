@@ -186,7 +186,7 @@ impl BootstrapRepository for PgControlPlaneStore {
                   is_root = true,
                   is_hidden = true,
                   updated_at = now()
-            returning id, code, name, is_root, is_hidden
+            returning id, code, name, is_root, is_hidden, status, cell_id
             "#,
         )
         .bind(tenant_id)
@@ -195,13 +195,7 @@ impl BootstrapRepository for PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
-        Ok(TenantRecord {
-            id: row.get("id"),
-            code: row.get("code"),
-            name: row.get("name"),
-            is_root: row.get("is_root"),
-            is_hidden: row.get("is_hidden"),
-        })
+        crate::workspace_governance_repository::map_tenant(&row)
     }
 
     async fn root_workspace_requires_official_catalog_seed(

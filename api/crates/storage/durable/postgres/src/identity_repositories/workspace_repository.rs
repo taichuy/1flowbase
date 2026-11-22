@@ -55,11 +55,13 @@ impl WorkspaceRepository for PgControlPlaneStore {
                 r#"
                 select w.id, w.tenant_id, w.name, w.logo_url, w.introduction
                 from workspaces w
+                join tenants t on t.id = w.tenant_id and t.status = 'active'
                 where exists (
                   select 1
                   from workspace_memberships wm
                   where wm.workspace_id = w.id
                     and wm.user_id = $1
+                    and wm.status = 'active'
                 )
                 order by lower(w.name), w.created_at asc, w.id asc
                 "#,
@@ -93,12 +95,14 @@ impl WorkspaceRepository for PgControlPlaneStore {
                 r#"
                 select w.id, w.tenant_id, w.name, w.logo_url, w.introduction
                 from workspaces w
+                join tenants t on t.id = w.tenant_id and t.status = 'active'
                 where w.id = $2
                   and exists (
                     select 1
                     from workspace_memberships wm
                     where wm.workspace_id = w.id
                       and wm.user_id = $1
+                    and wm.status = 'active'
                   )
                 "#,
             )

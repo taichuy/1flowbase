@@ -130,3 +130,6 @@ pub use record_permissions::*;
 #[path = "integration_ports/workflow_run_identity.rs"]
 pub mod workflow_run_identity;
 pub use workflow_run_identity::*;
+
+pub mod workspace_governance;
+pub use workspace_governance::*;

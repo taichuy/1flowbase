@@ -608,7 +608,7 @@ async fn replace_member_roles_normalizes_codes_and_replaces_workspace_roles() {
 }
 
 #[tokio::test]
-async fn member_status_and_password_updates_reject_root_and_bump_session_version() {
+async fn member_status_is_workspace_local_and_password_reset_bumps_session_version() {
     let (store, workspace_id, actor_user_id) = bootstrapped_store().await;
     let member = create_member(&store, workspace_id, actor_user_id, "carol").await;
 
@@ -624,15 +624,24 @@ async fn member_status_and_password_updates_reject_root_and_bump_session_version
         .await
         .unwrap();
 
-    let updated: (String, i64, String) =
-        sqlx::query_as("select status, session_version, password_hash from users where id = $1")
-            .bind(member.id)
-            .fetch_one(store.pool())
-            .await
-            .unwrap();
+    let updated: (String, i64, String, String) = sqlx::query_as(
+        "select u.status, u.session_version, u.password_hash, wm.status
+                        from users u join workspace_memberships wm on wm.user_id = u.id
+                        where u.id = $1 and wm.workspace_id = $2",
+    )
+    .bind(member.id)
+    .bind(workspace_id)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
     assert_eq!(
         updated,
-        ("disabled".to_string(), 3, "new-member-hash".to_string())
+        (
+            "active".to_string(),
+            2,
+            "new-member-hash".to_string(),
+            "disabled".to_string()
+        )
     );
 
     let root_disable = <PgControlPlaneStore as MemberRepository>::disable_member(

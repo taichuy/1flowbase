@@ -63,6 +63,14 @@ where
             return Err(ControlPlaneError::NotAuthenticated.into());
         }
 
+        let target_workspace = self
+            .workspace_repository
+            .get_accessible_workspace(command.actor_user_id, command.target_workspace_id)
+            .await?
+            .ok_or(ControlPlaneError::PermissionDenied(
+                "workspace_access_denied",
+            ))?;
+
         if command.target_workspace_id == current_session.current_workspace_id {
             let actor = self
                 .auth_repository
@@ -79,14 +87,6 @@ where
                 session: current_session,
             });
         }
-
-        let target_workspace = self
-            .workspace_repository
-            .get_accessible_workspace(command.actor_user_id, command.target_workspace_id)
-            .await?
-            .ok_or(ControlPlaneError::PermissionDenied(
-                "workspace_access_denied",
-            ))?;
 
         let actor = self
             .auth_repository

@@ -206,7 +206,7 @@ where
             .ok_or(ControlPlaneError::NotAuthenticated)?;
         let application = self
             .repository
-            .get_application(api_key.scope_id, application_id)
+            .get_application_for_api_key(api_key.tenant_id, api_key.scope_id, application_id)
             .await?
             .ok_or(ControlPlaneError::NotAuthenticated)?;
         if !matches!(

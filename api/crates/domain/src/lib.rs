@@ -190,7 +190,10 @@ pub use runtime_observability::{
     RuntimeItemRecord, RuntimeItemStatus, RuntimeSpanKind, RuntimeSpanRecord, RuntimeSpanStatus,
     RuntimeTrustLevel, UsageLedgerRecord, UsageLedgerStatus,
 };
-pub use scope::{ScopeContext, TenantRecord, WorkspaceRecord, DEFAULT_SCOPE_ID, SYSTEM_SCOPE_ID};
+pub use scope::{
+    ScopeContext, TenantRecord, TenantStatus, WorkspaceMembershipStatus, WorkspaceRecord,
+    DEFAULT_SCOPE_ID, SYSTEM_SCOPE_ID,
+};
 pub use system_backup::*;
 pub use system_defaults::{
     DefaultUpgradePolicy, DEFAULT_AUTO_INCLUDE_NEW_PROVIDER_INSTANCES,

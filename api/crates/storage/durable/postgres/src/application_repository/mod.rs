@@ -52,6 +52,7 @@ async fn find_application(
     application_id: Uuid,
     actor_user_id: Option<Uuid>,
     visibility: ApplicationVisibility,
+    api_key_tenant_id: Option<Uuid>,
 ) -> Result<Option<domain::ApplicationRecord>> {
     let visibility_value = match visibility {
         ApplicationVisibility::Own => "own",
@@ -60,6 +61,7 @@ async fn find_application(
     let row = sqlx::query(
         r#"
         select
+            t.status as tenant_status,
             a.id,
             a.workspace_id,
             a.application_type,
@@ -91,6 +93,8 @@ async fn find_application(
             active_publication.id as active_publication_id,
             coalesce(tags.tags, '[]'::jsonb) as tags
         from applications a
+        join workspaces w on w.id = a.workspace_id
+        join tenants t on t.id = w.tenant_id
         left join flows f on f.application_id = a.id
         left join flow_drafts fd on fd.flow_id = f.id
         left join lateral (
@@ -112,16 +116,24 @@ async fn find_application(
         where a.workspace_id = $1
           and a.id = $2
           and ($3::uuid is null or $4 = 'all' or a.created_by = $3)
+          and ($5::uuid is null or t.id = $5)
         "#,
     )
     .bind(workspace_id)
     .bind(application_id)
     .bind(actor_user_id)
     .bind(visibility_value)
+    .bind(api_key_tenant_id)
     .fetch_optional(pool)
     .await?;
 
-    row.map(map_application_record).transpose()
+    row.map(|row| {
+        if api_key_tenant_id.is_some() && row.try_get::<String, _>("tenant_status")? != "active" {
+            return Err(ControlPlaneError::PermissionDenied("tenant_suspended").into());
+        }
+        map_application_record(row)
+    })
+    .transpose()
 }
 
 #[async_trait]
@@ -779,6 +791,24 @@ impl ApplicationRepository for PgControlPlaneStore {
             application_id,
             None,
             ApplicationVisibility::All,
+            None,
+        )
+        .await
+    }
+
+    async fn get_application_for_api_key(
+        &self,
+        tenant_id: Uuid,
+        workspace_id: Uuid,
+        application_id: Uuid,
+    ) -> Result<Option<domain::ApplicationRecord>> {
+        find_application(
+            self.pool(),
+            workspace_id,
+            application_id,
+            None,
+            ApplicationVisibility::All,
+            Some(tenant_id),
         )
         .await
     }
@@ -796,6 +826,7 @@ impl ApplicationRepository for PgControlPlaneStore {
             application_id,
             Some(actor_user_id),
             visibility,
+            None,
         )
         .await
     }

@@ -570,12 +570,21 @@ pub(crate) async fn tenant_id_for_workspace(pool: &PgPool, workspace_id: Uuid) -
 }
 
 pub(crate) async fn workspace_id_for_user(pool: &PgPool, user_id: Uuid) -> Result<Uuid> {
-    if let Some(workspace_id) = sqlx::query_scalar(
+    Ok(default_scope_for_user(pool, user_id).await?.workspace_id)
+}
+
+pub(crate) async fn default_scope_for_user(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<domain::ScopeContext> {
+    if let Some((tenant_id, workspace_id)) = sqlx::query_as(
         r#"
-        select workspace_id
-        from workspace_memberships
-        where user_id = $1
-        order by created_at asc
+        select w.tenant_id, wm.workspace_id
+        from workspace_memberships wm
+        join workspaces w on w.id = wm.workspace_id
+        join tenants t on t.id = w.tenant_id
+        where wm.user_id = $1 and wm.status = 'active' and t.status = 'active'
+        order by wm.created_at asc, wm.id asc
         limit 1
         "#,
     )
@@ -583,10 +592,19 @@ pub(crate) async fn workspace_id_for_user(pool: &PgPool, user_id: Uuid) -> Resul
     .fetch_optional(pool)
     .await?
     {
-        Ok(workspace_id)
-    } else {
-        primary_workspace_id(pool).await
+        return Ok(domain::ScopeContext {
+            tenant_id,
+            workspace_id,
+        });
     }
+    if !is_root_user(pool, user_id).await? {
+        return Err(ControlPlaneError::PermissionDenied("no_accessible_workspace").into());
+    }
+    let workspace_id = primary_workspace_id(pool).await?;
+    Ok(domain::ScopeContext {
+        tenant_id: tenant_id_for_workspace(pool, workspace_id).await?,
+        workspace_id,
+    })
 }
 
 pub(crate) async fn is_root_user(pool: &PgPool, user_id: Uuid) -> Result<bool> {

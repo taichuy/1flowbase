@@ -65,6 +65,8 @@ pub use secret_crypto::AuthenticationSecretCipher;
 pub mod system_backup;
 pub mod system_recovery;
 pub mod ui_management_repository;
+#[path = "identity_repositories/workspace_governance_repository.rs"]
+mod workspace_governance_repository;
 #[path = "identity_repositories/workspace_repository.rs"]
 pub mod workspace_repository;
 

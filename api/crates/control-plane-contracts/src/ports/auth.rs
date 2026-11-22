@@ -138,6 +138,17 @@ pub struct WorkspaceBootstrapResult {
 
 #[async_trait]
 pub trait AuthRepository: Send + Sync {
+    /// Check session scope against persisted workspace, tenant and membership state.
+    /// Adapters without lifecycle state must not report access as verified.
+    async fn verify_workspace_access(
+        &self,
+        _user_id: Uuid,
+        _tenant_id: Uuid,
+        _workspace_id: Uuid,
+        _is_root: bool,
+    ) -> anyhow::Result<()> {
+        Err(crate::ControlPlaneContractError::PermissionDenied("workspace_access_denied").into())
+    }
     async fn find_authentication_connection(
         &self,
         id: Uuid,
@@ -523,6 +534,52 @@ pub trait MemberRepository: Send + Sync {
         target_user_id: Uuid,
         password_hash: &str,
     ) -> anyhow::Result<()>;
+    // Scoped entry points for MemberService. Retain the older call shapes for
+    // existing repository callers; durable adapters must enforce this scope.
+    async fn create_member_with_default_role_in_scope(
+        &self,
+        _actor: &ActorContext,
+        input: &CreateMemberInput,
+    ) -> anyhow::Result<UserRecord> {
+        self.create_member_with_default_role(input).await
+    }
+    async fn update_member_profile_in_scope(
+        &self,
+        _actor: &ActorContext,
+        input: &UpdateMemberInput,
+    ) -> anyhow::Result<UserRecord> {
+        self.update_member_profile(input).await
+    }
+    async fn disable_member_in_scope(
+        &self,
+        actor: &ActorContext,
+        target_user_id: Uuid,
+    ) -> anyhow::Result<()> {
+        self.disable_member(actor.user_id, target_user_id).await
+    }
+    async fn enable_member_in_scope(
+        &self,
+        actor: &ActorContext,
+        target_user_id: Uuid,
+    ) -> anyhow::Result<()> {
+        self.enable_member(actor.user_id, target_user_id).await
+    }
+    async fn delete_member_in_scope(
+        &self,
+        actor: &ActorContext,
+        target_user_id: Uuid,
+    ) -> anyhow::Result<()> {
+        self.delete_member(actor.user_id, target_user_id).await
+    }
+    async fn reset_member_password_in_scope(
+        &self,
+        actor: &ActorContext,
+        target_user_id: Uuid,
+        password_hash: &str,
+    ) -> anyhow::Result<()> {
+        self.reset_member_password(actor.user_id, target_user_id, password_hash)
+            .await
+    }
     async fn replace_member_roles(
         &self,
         actor_user_id: Uuid,

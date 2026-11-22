@@ -32,8 +32,8 @@ use crate::{
         workspace_mapper::{PgWorkspaceMapper, StoredWorkspaceRow},
     },
     repositories::{
-        decode_role_scope_kind, tenant_id_for_workspace, PgControlPlaneStore, ROOT_TENANT_CODE,
-        ROOT_TENANT_ID, ROOT_TENANT_NAME,
+        decode_role_scope_kind, PgControlPlaneStore, ROOT_TENANT_CODE, ROOT_TENANT_ID,
+        ROOT_TENANT_NAME,
     },
 };
 
@@ -191,14 +191,30 @@ async fn upsert_role_templates(
     roles: impl IntoIterator<Item = domain::RoleTemplate>,
 ) -> Result<()> {
     let mut tx = pool.begin().await?;
-    // Share publication order with catalog synchronization, including workspaces created
-    // after boot. Acquire this before writing roles to avoid a table-lock inversion.
+    lock_console_permission_catalog(&mut tx).await?;
+    seed_role_templates(&mut tx, workspace_id, roles, false).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+// Must precede writes to roles (and, for provisioning, creation of the workspace).
+pub(crate) async fn lock_console_permission_catalog(
+    tx: &mut Transaction<'_, Postgres>,
+) -> Result<()> {
     sqlx::query(
         "select initialized from console_permission_catalog_sync where singleton = true for update",
     )
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut **tx)
     .await?;
+    Ok(())
+}
 
+pub(crate) async fn seed_role_templates(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace_id: Uuid,
+    roles: impl IntoIterator<Item = domain::RoleTemplate>,
+    strict: bool,
+) -> Result<()> {
     for role in roles {
         let scope_kind = match role.scope_kind {
             RoleScopeKind::System => "system",
@@ -212,8 +228,10 @@ async fn upsert_role_templates(
         let system_kind =
             matches!(role.scope_kind, RoleScopeKind::System).then_some(role.code.as_str());
 
-        let inserted_role_id: Option<Uuid> = sqlx::query_scalar(
-            r#"
+        macro_rules! insert_role_sql {
+            ($conflict:literal) => {
+                concat!(
+                    r#"
             insert into roles (
                 id,
                 scope_id,
@@ -229,32 +247,40 @@ async fn upsert_role_templates(
                 system_kind
             )
             values ($1, $2, $3, $4, $5, $6, '', $7, $8, $9, $10, $11)
-            on conflict do nothing
-            returning id
             "#,
-        )
-        .bind(Uuid::now_v7())
-        .bind(match role.scope_kind {
-            RoleScopeKind::System => domain::SYSTEM_SCOPE_ID,
-            RoleScopeKind::Workspace => workspace_id,
-        })
-        .bind(scope_kind)
-        .bind(scoped_workspace_id)
-        .bind(&role.code)
-        .bind(&role.name)
-        .bind(role.is_builtin)
-        .bind(role.is_editable)
-        .bind(role.auto_grant_new_permissions)
-        .bind(role.is_default_member_role)
-        .bind(system_kind)
-        .fetch_optional(&mut *tx)
-        .await?;
+                    $conflict,
+                    " returning id"
+                )
+            };
+        }
+        let statement = if strict {
+            insert_role_sql!("")
+        } else {
+            insert_role_sql!("on conflict do nothing")
+        };
+        let inserted_role_id: Option<Uuid> = sqlx::query_scalar(statement)
+            .bind(Uuid::now_v7())
+            .bind(match role.scope_kind {
+                RoleScopeKind::System => domain::SYSTEM_SCOPE_ID,
+                RoleScopeKind::Workspace => workspace_id,
+            })
+            .bind(scope_kind)
+            .bind(scoped_workspace_id)
+            .bind(&role.code)
+            .bind(&role.name)
+            .bind(role.is_builtin)
+            .bind(role.is_editable)
+            .bind(role.auto_grant_new_permissions)
+            .bind(role.is_default_member_role)
+            .bind(system_kind)
+            .fetch_optional(&mut **tx)
+            .await?;
 
         let role_id: Uuid = match role.scope_kind {
             RoleScopeKind::System => {
                 sqlx::query_scalar("select id from roles where scope_kind = 'system' and code = $1")
                     .bind(&role.code)
-                    .fetch_one(&mut *tx)
+                    .fetch_one(&mut **tx)
                     .await?
             }
             RoleScopeKind::Workspace => sqlx::query_scalar(
@@ -262,13 +288,13 @@ async fn upsert_role_templates(
             )
             .bind(workspace_id)
             .bind(&role.code)
-            .fetch_one(&mut *tx)
+            .fetch_one(&mut **tx)
             .await?,
         };
 
         if inserted_role_id.is_some() {
             if role.scope_kind == RoleScopeKind::Workspace && role.code == "admin" {
-                crate::role_repository::seed_admin_console_policy(&mut tx, role_id).await?;
+                crate::role_repository::seed_admin_console_policy(tx, role_id).await?;
             }
             for permission_code in role.permissions {
                 sqlx::query(
@@ -284,7 +310,7 @@ async fn upsert_role_templates(
                 .bind(Uuid::now_v7())
                 .bind(role_id)
                 .bind(permission_code)
-                .execute(&mut *tx)
+                .execute(&mut **tx)
                 .await?;
             }
         }
@@ -309,11 +335,10 @@ async fn upsert_role_templates(
         .bind(role_id)
         .bind(can_all)
         .bind(default_scope)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
     }
 
-    tx.commit().await?;
     Ok(())
 }
 
@@ -514,31 +539,43 @@ impl AuthRepository for PgControlPlaneStore {
     }
 
     async fn default_scope_for_user(&self, user_id: Uuid) -> Result<ScopeContext> {
-        if let Some(row) = sqlx::query(
+        crate::repositories::default_scope_for_user(self.pool(), user_id).await
+    }
+
+    async fn verify_workspace_access(
+        &self,
+        user_id: Uuid,
+        tenant_id: Uuid,
+        workspace_id: Uuid,
+        is_root: bool,
+    ) -> Result<()> {
+        let (tenant_status, has_access): (String, bool) = sqlx::query_as(
             r#"
-            select t.tenant_id, tm.workspace_id as workspace_id
-            from workspace_memberships tm
-            join workspaces t on t.id = tm.workspace_id
-            where tm.user_id = $1
-            order by tm.created_at asc
-            limit 1
+            select t.status, $4 or exists (
+                select 1 from workspace_memberships wm
+                where wm.workspace_id = w.id and wm.user_id = $1 and wm.status = 'active'
+            )
+            from workspaces w
+            join tenants t on t.id = w.tenant_id
+            where w.id = $3 and w.tenant_id = $2
             "#,
         )
         .bind(user_id)
+        .bind(tenant_id)
+        .bind(workspace_id)
+        .bind(is_root)
         .fetch_optional(self.pool())
         .await?
-        {
-            return Ok(ScopeContext {
-                tenant_id: row.get("tenant_id"),
-                workspace_id: row.get("workspace_id"),
-            });
+        .ok_or(ControlPlaneError::PermissionDenied(
+            "workspace_access_denied",
+        ))?;
+        if tenant_status != "active" {
+            return Err(ControlPlaneError::PermissionDenied("tenant_suspended").into());
         }
-
-        let workspace_id = crate::repositories::primary_workspace_id(self.pool()).await?;
-        Ok(ScopeContext {
-            tenant_id: tenant_id_for_workspace(self.pool(), workspace_id).await?,
-            workspace_id,
-        })
+        if !has_access {
+            return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());
+        }
+        Ok(())
     }
 
     async fn load_actor_context(
@@ -551,12 +588,13 @@ impl AuthRepository for PgControlPlaneStore {
         if let Some(actor) = self.actor_override(user_id, tenant_id, workspace_id, display_role)? {
             return Ok(actor);
         }
-        let codes: Vec<String> = sqlx::query_scalar(
+        let codes: Vec<(String, bool)> = sqlx::query_as(
             r#"
-            select r.code
+            select r.code, r.scope_kind = 'system'
             from user_role_bindings urb
             join roles r on r.id = urb.role_id
             where urb.user_id = $1 and (r.scope_kind = 'system' or r.workspace_id = $2)
+              and (r.code <> 'root' or r.scope_kind = 'system')
             order by r.scope_kind asc, r.code asc
             "#,
         )
@@ -565,10 +603,13 @@ impl AuthRepository for PgControlPlaneStore {
         .fetch_all(self.pool())
         .await?;
 
+        let is_root = codes.iter().any(|(code, system)| *system && code == "root");
+        self.verify_workspace_access(user_id, tenant_id, workspace_id, is_root)
+            .await?;
         let effective_display_role = display_role
-            .filter(|candidate| codes.iter().any(|code| code == *candidate))
+            .filter(|candidate| codes.iter().any(|(code, _)| code == *candidate))
             .map(str::to_string)
-            .or_else(|| codes.first().cloned())
+            .or_else(|| codes.first().map(|(code, _)| code.clone()))
             .unwrap_or_else(|| "member".to_string());
 
         if effective_display_role == "root" {
@@ -612,14 +653,15 @@ impl AuthRepository for PgControlPlaneStore {
         workspace_id: Uuid,
         role_code: &str,
     ) -> Result<ActorContext> {
-        let role: Option<(Uuid, String)> = sqlx::query_as(
+        let role: Option<String> = sqlx::query_scalar(
             r#"
-            select r.id, r.code
+            select r.code
             from user_role_bindings urb
             join roles r on r.id = urb.role_id
             where urb.user_id = $1
               and r.code = $2
               and (r.scope_kind = 'system' or r.workspace_id = $3)
+              and (r.code <> 'root' or r.scope_kind = 'system')
             limit 1
             "#,
         )
@@ -628,9 +670,10 @@ impl AuthRepository for PgControlPlaneStore {
         .bind(workspace_id)
         .fetch_optional(self.pool())
         .await?;
-        let (_role_id, bound_role_code) =
-            role.ok_or(ControlPlaneError::InvalidInput("role_code"))?;
+        let bound_role_code = role.ok_or(ControlPlaneError::InvalidInput("role_code"))?;
 
+        self.verify_workspace_access(user_id, tenant_id, workspace_id, bound_role_code == "root")
+            .await?;
         if bound_role_code == "root" {
             return Ok(ActorContext::root_in_scope(
                 user_id,
