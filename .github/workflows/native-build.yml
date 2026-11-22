@@ -510,7 +510,7 @@ jobs:
 
   promote:
     needs: [select, build, verify-macos-x64, source-tests]
-    if: ${{ inputs.target != 'windows-x64' && needs.build.result == 'success' && needs.source-tests.result == 'success' && (needs.verify-macos-x64.result == 'success' || needs.verify-macos-x64.result == 'skipped') }}
+    if: ${{ !cancelled() && inputs.target != 'windows-x64' && needs.select.result == 'success' && needs.build.result == 'success' && needs.source-tests.result == 'success' && (((inputs.target == 'macos-x64' || inputs.target == 'all') && needs.verify-macos-x64.result == 'success') || (inputs.target != 'macos-x64' && inputs.target != 'all' && needs.verify-macos-x64.result == 'skipped')) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8

@@ -259,15 +259,30 @@ test('Unix archives avoid duplicate release builds, cross-compile macos-x64 on A
   const condition = promote.match(/if: \$\{\{ (.+) \}\}/)[1]
     .replace(/needs\.verify-macos-x64/g, 'needs["verify-macos-x64"]')
     .replace(/needs\.source-tests/g, 'needs["source-tests"]');
-  const canPromote = new Function('inputs', 'needs', `return (${condition});`);
+  assert.match(condition, /\balways\(\)|\bcancelled\(\)/);
+  const canPromote = new Function('inputs', 'needs', 'cancelled', `return (${condition});`);
   for (const target of ['all', 'macos-x64', 'linux-x64', 'linux-arm64', 'macos-arm64', 'windows-x64']) {
-    for (const built of ['success', 'failure', 'skipped', 'cancelled']) {
-      for (const verified of ['success', 'failure', 'skipped', 'cancelled']) {
-        for (const tested of ['success', 'failure', 'skipped', 'cancelled']) {
-          assert.equal(
-            canPromote({ target }, { build: { result: built }, 'verify-macos-x64': { result: verified }, 'source-tests': { result: tested } }),
-            target !== 'windows-x64' && built === 'success' && tested === 'success' && (verified === 'success' || verified === 'skipped')
-          );
+    for (const selected of ['success', 'failure']) {
+      for (const built of ['success', 'failure', 'skipped', 'cancelled']) {
+        for (const verified of ['success', 'failure', 'skipped', 'cancelled']) {
+          for (const tested of ['success', 'failure', 'skipped', 'cancelled']) {
+            for (const isCancelled of [false, true]) {
+              assert.equal(
+                canPromote(
+                  { target },
+                  { select: { result: selected }, build: { result: built }, 'verify-macos-x64': { result: verified }, 'source-tests': { result: tested } },
+                  () => isCancelled
+                ),
+                !isCancelled &&
+                  target !== 'windows-x64' &&
+                  selected === 'success' &&
+                  built === 'success' &&
+                  tested === 'success' &&
+                  (((target === 'macos-x64' || target === 'all') && verified === 'success') ||
+                    (target !== 'macos-x64' && target !== 'all' && verified === 'skipped'))
+              );
+            }
+          }
         }
       }
     }
