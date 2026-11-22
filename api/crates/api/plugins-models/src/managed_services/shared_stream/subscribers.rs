@@ -34,22 +34,36 @@ struct Desired {
     interval_ms: u64,
 }
 #[derive(Clone, Default)]
-struct ViewerNotice {
+pub(super) struct ViewerNotice {
     sequence: u64,
     event: Option<Value>,
     error: Option<&'static str>,
 }
 type Latest = BTreeMap<String, ViewerNotice>;
-struct Viewer {
+pub(super) struct Viewer {
+    seed: Option<Value>,
     lease: Arc<Lease>,
     stop: watch::Sender<bool>,
     task: tokio::task::JoinHandle<()>,
 }
 impl Viewer {
-    async fn stop(self) {
+    pub(super) async fn stop(self) {
         let _ = self.stop.send(true);
         let _ = self.task.await;
         self.lease.leave().await;
+    }
+
+    pub(super) fn take_events(&mut self, notice: &mut ViewerNotice) -> [Option<Value>; 2] {
+        let seed = self.seed.take();
+        // Sequence 1 is the broker's copy of this same seed, not a separate event.
+        let event = notice
+            .event
+            .take()
+            .filter(|_| seed.is_none() || notice.sequence != 1);
+        let seed = seed.filter(|_| {
+            notice.error.is_none() && self.lease.entry.notices.borrow().seed_replayable
+        });
+        [seed, event]
     }
 }
 fn desired(value: &Value) -> Result<Vec<Desired>, ApiError> {
@@ -89,7 +103,8 @@ fn denied(latest: &watch::Sender<Latest>, record: &str) {
         );
     });
 }
-fn viewer(lease: Lease, record: String, latest: watch::Sender<Latest>) -> Viewer {
+pub(super) fn viewer(mut lease: Lease, record: String, latest: watch::Sender<Latest>) -> Viewer {
+    let seed = lease.seed.take();
     let lease = Arc::new(lease);
     let (stop, mut stopping) = watch::channel(false);
     let observer = lease.clone();
@@ -117,7 +132,12 @@ fn viewer(lease: Lease, record: String, latest: watch::Sender<Latest>) -> Viewer
             notify(&latest, &record, &notice);
         }
     });
-    Viewer { lease, stop, task }
+    Viewer {
+        seed,
+        lease,
+        stop,
+        task,
+    }
 }
 struct Session {
     state: Arc<ApiState>,
@@ -420,12 +440,29 @@ pub(in crate::managed_services) async fn subscribe(
                         if result.is_err() { break; }
                         let values = changes.borrow_and_update().clone();
                         if tokio::select! { _ = cancel.changed()=>true, result=session.authorize_outer()=>result.is_err() } { break; }
-                        for (record, notice) in values {
+                        for (record, mut notice) in values {
                             if sent.get(&record) == Some(&notice.sequence) { continue; }
                             sent.insert(record.clone(), notice.sequence);
-                            if let Some(event) = notice.event {
-                                let event = if aggregate { json!({"type":"source","record_id":record,"event":event}) } else { event };
-                                if !emit(&publisher, &event_validator, event, &mut cancel).await { break 'session; }
+                            let [seed, event] = match session.viewers.get_mut(&record) {
+                                Some(viewer) => viewer.take_events(&mut notice),
+                                None => [None, notice.event.take()],
+                            };
+                            let project = |event| {
+                                if aggregate { json!({"type":"source","record_id":record,"event":event}) } else { event }
+                            };
+                            if let Some(seed) = seed {
+                                // A replay waiting for channel capacity must still yield to a
+                                // newer ready event, revision or error before it is enqueued.
+                                let mut source = session.viewers[&record].lease.entry.notices.subscribe();
+                                let accepted = tokio::select! {
+                                    biased;
+                                    _ = source.wait_for(|notice| !notice.seed_replayable) => true,
+                                    result = emit(&publisher, &event_validator, project(seed), &mut cancel) => result,
+                                };
+                                if !accepted { break 'session; }
+                            }
+                            if let Some(event) = event {
+                                if !emit(&publisher, &event_validator, project(event), &mut cancel).await { break 'session; }
                             }
                             if let Some(error) = notice.error {
                                 if !aggregate {

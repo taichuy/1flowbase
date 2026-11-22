@@ -168,6 +168,14 @@ pub trait PluginContributionAuthorityRepository: Send + Sync {
         &self,
         subject: &ManagedContributionSubject,
     ) -> Result<Box<dyn ContributionAuthorityLease>>;
+    /// Read-only admission for one frozen contribution, fenced against grant, revoke,
+    /// and lifecycle changes. Does not require the provider installation inventory.
+    async fn lock_contribution_execution_authority(
+        &self,
+        subject: &ManagedContributionSubject,
+    ) -> Result<Box<dyn ContributionAuthorityLease>> {
+        self.lock_contribution_authority(subject).await
+    }
     /// Resource callbacks inspect authority, but do not mutate its grants or selection.
     /// Readers may overlap; grant/revoke/lifecycle writers must wait for every lease.
     /// Keep this guard through the actual data/credential operation, including writes.

@@ -248,3 +248,113 @@ async fn system_resource_authority_filters_history_and_projects_provider_metadat
     disabled_subject.release().await.unwrap();
     pool.close().await;
 }
+
+#[tokio::test]
+async fn execution_leases_overlap_and_hold_the_exclusive_writer_fence() {
+    use extension_contracts::extension_bus::{
+        ContributionId, ManagedInstallationId, ManagedWorkspaceId,
+    };
+    use std::time::Duration;
+
+    let url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into());
+    let database = postgres_test_support::PostgresTestSchema::create(&url)
+        .await
+        .unwrap();
+    let pool = database.connect().await.unwrap();
+    crate::run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool.clone());
+    let tenant = store.upsert_root_tenant().await.unwrap();
+    let workspace = store
+        .upsert_workspace(tenant.id, "execution authority")
+        .await
+        .unwrap();
+    let actor = store
+        .upsert_root_user(
+            workspace.id,
+            "root",
+            "root@example.com",
+            "fixture",
+            "Root",
+            "Root",
+        )
+        .await
+        .unwrap();
+    let target = install(&store, actor.id, "target").await;
+    let provider = install(&store, actor.id, "provider").await;
+    let history = install(&store, actor.id, "history").await;
+    sqlx::query("update extension_installations set desired_state='disabled' where id=$1")
+        .bind(history.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let subject = ManagedContributionSubject::new(
+        ManagedInstallationId::new(target.id.to_string()).unwrap(),
+        ManagedWorkspaceId::new(domain::SYSTEM_SCOPE_ID.to_string()).unwrap(),
+        ContributionId::new("fixture.execute").unwrap(),
+    );
+    store
+        .lock_contribution_authority(&subject)
+        .await
+        .unwrap()
+        .release()
+        .await
+        .unwrap();
+
+    let (first, second, callback) = tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::try_join!(
+            store.lock_contribution_execution_authority(&subject),
+            store.lock_contribution_execution_authority(&subject),
+            store.lock_managed_callback_authority(&subject),
+        )
+    })
+    .await
+    .expect("execution and resource callback readers must overlap")
+    .unwrap();
+    for lease in [&first, &second] {
+        assert_eq!(lease.snapshot().installation_id, target.id);
+        assert_eq!(lease.installations().len(), 1);
+        assert_eq!(
+            lease.installation(target.id).unwrap().metadata_json,
+            target.metadata_json
+        );
+        assert!(lease.installation(provider.id).is_none());
+        assert!(lease.installation(history.id).is_none());
+    }
+    assert!(callback.installation(provider.id).is_some());
+    callback.release().await.unwrap();
+
+    let writer = tokio::spawn(async move { store.lock_contribution_authority(&subject).await });
+    let writer_waits = || async {
+        sqlx::query_scalar::<_, bool>(
+            "select exists (select from pg_locks where locktype='advisory' and mode='ExclusiveLock'
+             and not granted and database=(select oid from pg_database where datname=current_database()))",
+        ).fetch_one(&pool).await.unwrap()
+    };
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !writer_waits().await {
+            assert!(!writer.is_finished(), "writer crossed both readers");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("writer must queue on the workspace advisory lock");
+    first.release().await.unwrap();
+    assert!(
+        writer_waits().await,
+        "writer must still wait for the second reader"
+    );
+    drop(second);
+    let lease = tokio::time::timeout(Duration::from_secs(5), writer)
+        .await
+        .expect("last reader drop must unblock the writer")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        lease.installations().len(),
+        3,
+        "exclusive inventory remains complete"
+    );
+    lease.release().await.unwrap();
+    pool.close().await;
+}

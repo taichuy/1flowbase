@@ -1088,6 +1088,37 @@ impl PluginContributionAuthorityRepository for PgControlPlaneStore {
         Ok(snapshot)
     }
 
+    async fn lock_contribution_execution_authority(
+        &self,
+        subject: &ManagedContributionSubject,
+    ) -> Result<Box<dyn ContributionAuthorityLease>> {
+        let installation_id = Uuid::parse_str(subject.installation_id().as_str())?;
+        let workspace_id = Uuid::parse_str(subject.workspace_id().as_str())?;
+        let mut transaction = self.pool().begin().await?;
+        lock_scope_for(
+            &mut transaction,
+            installation_id,
+            workspace_id,
+            AuthorityLockMode::SharedRead,
+        )
+        .await?;
+        let snapshot = snapshot(
+            &mut transaction,
+            installation_id,
+            workspace_id,
+            Some(subject.contribution_id().as_str()),
+        )
+        .await?;
+        let installation = locked_installation(&mut transaction, installation_id).await?;
+        Ok(Box::new(PgContributionAuthorityLease {
+            lifecycle_observer: self.lifecycle_observer.clone(),
+            managed_operations: self.managed_operations.clone(),
+            transaction,
+            snapshots: vec![snapshot],
+            installations: [(installation_id, installation)].into(),
+        }))
+    }
+
     async fn lock_managed_callback_authority(
         &self,
         subject: &ManagedContributionSubject,

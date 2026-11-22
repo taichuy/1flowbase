@@ -56,7 +56,7 @@ impl PluginEphemeralPort for ManagedPluginEphemeralService {
                 async {
                     let lease = self
                         .authority
-                        .lock_contribution_authority(&subject)
+                        .lock_managed_callback_authority(&subject)
                         .await
                         .map_err(|_| denied())?;
                     let installation = lease.installation(installation_id).ok_or_else(denied)?;

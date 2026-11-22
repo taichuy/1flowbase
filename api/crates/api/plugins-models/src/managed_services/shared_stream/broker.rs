@@ -37,7 +37,9 @@ pub(super) struct Producer {
 }
 #[async_trait::async_trait]
 pub(super) trait SourceBackend: Send + Sync {
-    fn ready(&self, event: &Value) -> bool;
+    fn is_ready(&self, _event: &Value) -> bool {
+        true
+    }
     async fn authorize(
         &self,
         principal: &UserPrincipal,
@@ -68,6 +70,8 @@ pub(super) struct Notice {
     pub revision: String,
     pub event: Option<Value>,
     pub error: Option<&'static str>,
+    // Sticky across coalesced notices: once superseded, a cold seed cannot return.
+    pub seed_replayable: bool,
 }
 struct Core {
     members: BTreeMap<uuid::Uuid, Member>,
@@ -193,6 +197,7 @@ pub(in crate::managed_services) async fn revoke_record_permissions(
 pub(super) struct Lease {
     pub entry: Arc<Entry>,
     pub id: uuid::Uuid,
+    pub seed: Option<Value>,
 }
 impl Drop for Lease {
     fn drop(&mut self) {
@@ -295,12 +300,13 @@ pub(super) async fn join_admitted(
                     retired: false,
                 }),
                 signal: watch::channel(0).0,
-                notices: watch::channel(match seed {
+                notices: watch::channel(match &seed {
                     Some(event) => Notice {
                         sequence: 1,
                         revision: revision.clone(),
-                        event: Some(event),
+                        event: Some(event.clone()),
                         error: None,
+                        seed_replayable: true,
                     },
                     None => Notice::default(),
                 })
@@ -322,6 +328,7 @@ pub(super) async fn join_admitted(
                 core.revision = revision;
                 entry.notices.send_modify(|notice| {
                     notice.sequence += 1;
+                    notice.seed_replayable = false;
                     notice.event = None;
                     notice.error = None;
                     notice.revision = core.revision.clone();
@@ -331,11 +338,16 @@ pub(super) async fn join_admitted(
         }
         (entry, created)
     };
-    entry.wake();
+    let lease = Lease {
+        entry,
+        id,
+        seed: if created { seed } else { None },
+    };
+    lease.entry.wake();
     if created {
-        tokio::spawn(entry.clone().drive());
+        tokio::spawn(lease.entry.clone().drive());
     }
-    Ok(Lease { entry, id })
+    Ok(lease)
 }
 #[derive(Clone, PartialEq, Eq)]
 struct Configuration {
@@ -350,6 +362,7 @@ impl Entry {
             core.revision = revision.to_owned();
             self.notices.send_modify(|notice| {
                 notice.sequence += 1;
+                notice.seed_replayable = false;
                 notice.revision = revision.to_owned();
                 notice.event = None;
                 notice.error = None;
@@ -388,6 +401,12 @@ impl Entry {
     fn publish(&self, revision: &str, event: Option<Value>, error: Option<&'static str>) {
         self.notices.send_modify(|notice| {
             notice.sequence += 1;
+            notice.seed_replayable = notice.seed_replayable
+                && notice.revision == revision
+                && error.is_none()
+                && !event
+                    .as_ref()
+                    .is_some_and(|event| self.backend.is_ready(event));
             notice.revision = revision.to_owned();
             notice.event = event;
             notice.error = error;
@@ -526,6 +545,7 @@ impl Entry {
                 failures = failures.saturating_add(1);
                 self.notices.send_modify(|notice| {
                     notice.sequence += 1;
+                    notice.seed_replayable = false;
                     notice.revision = configuration.revision.clone();
                     notice.error = Some("managed_service_source_retrying");
                     notice.event = None;
@@ -543,12 +563,13 @@ impl Entry {
                 let _ = self.backend.invalidate(&configuration.revision).await;
                 self.notices.send_modify(|notice| {
                     notice.sequence += 1;
+                    notice.seed_replayable = false;
                     notice.revision = configuration.revision.clone();
                     notice.error = Some("managed_service_source_stopped");
                     if notice
                         .event
                         .as_ref()
-                        .is_some_and(|event| self.backend.ready(event))
+                        .is_some_and(|event| self.backend.is_ready(event))
                     {
                         notice.event = None;
                     }

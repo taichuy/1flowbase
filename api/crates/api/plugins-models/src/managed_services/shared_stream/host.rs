@@ -284,8 +284,8 @@ impl ManagedSource {
 }
 #[async_trait::async_trait]
 impl SourceBackend for ManagedSource {
-    fn ready(&self, event: &Value) -> bool {
-        ManagedSource::ready(self, event)
+    fn is_ready(&self, event: &Value) -> bool {
+        self.ready(event)
     }
     async fn authorize(
         &self,
