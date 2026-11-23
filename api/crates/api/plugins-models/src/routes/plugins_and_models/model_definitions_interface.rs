@@ -165,10 +165,11 @@ struct ModelDefinitionsAdapter {
 impl ModelDefinitionsAdapter {
     fn settings_service(
         &self,
+        actor: &domain::ActorContext,
         operation_id: &'static str,
     ) -> crate::app_state::ApiModelDefinitionService {
         ModelDefinitionService::for_console_operation(
-            self.dependencies.store.clone(),
+            self.dependencies.store.for_actor(actor.clone()),
             domain::ConsolePolicyGroup::settings_feature("system.data-models")
                 .expect("compiled data-model settings group must be valid"),
             operation_id,
@@ -177,10 +178,11 @@ impl ModelDefinitionsAdapter {
 
     fn mutation_service(
         &self,
+        actor: &domain::ActorContext,
         operation_id: &'static str,
     ) -> crate::app_state::ApiModelDefinitionMutationService {
         ModelDefinitionMutationService::for_console_operation(
-            self.dependencies.store.clone(),
+            self.dependencies.store.for_actor(actor.clone()),
             self.dependencies.runtime_registry_sync.clone(),
             domain::ConsolePolicyGroup::settings_feature("system.data-models")
                 .expect("compiled data-model settings group must be valid"),
@@ -213,7 +215,7 @@ impl ModelDefinitionsAdapter {
         match input {
             ModelDefinitionsInput::List { query, locale } => {
                 let mut models = self
-                    .settings_service(access_control::MODEL_DEFINITIONS_LIST_OPERATION_ID)
+                    .settings_service(actor, access_control::MODEL_DEFINITIONS_LIST_OPERATION_ID)
                     .list_models(user_id)
                     .await?;
                 if let Some(data_source_id) = query.data_source_id.as_deref() {
@@ -241,7 +243,7 @@ impl ModelDefinitionsAdapter {
                     .preferred_locale;
                 let locale = locale.resolve(preferred_locale);
                 let resolver = CatalogResolver::new(
-                    self.dependencies.store.clone(),
+                    self.dependencies.store.for_actor(actor.clone()),
                     self.dependencies.bootstrap_workspace_id,
                 );
                 for model in &mut models {
@@ -312,7 +314,7 @@ impl ModelDefinitionsAdapter {
             }
             ModelDefinitionsInput::ListAgentFlowOptions => {
                 let models = ModelDefinitionService::for_console_operation(
-                    self.dependencies.store.clone(),
+                    self.dependencies.store.for_actor(actor.clone()),
                     domain::ConsolePolicyGroup::other("other.agent-flow")
                         .expect("compiled agent-flow policy group must be valid"),
                     "agent_flow.data_model_options.list",
@@ -328,7 +330,7 @@ impl ModelDefinitionsAdapter {
             }
             ModelDefinitionsInput::Create(body) => {
                 let model = self
-                    .mutation_service(access_control::MODEL_DEFINITIONS_CREATE_OPERATION_ID)
+                    .mutation_service(actor, access_control::MODEL_DEFINITIONS_CREATE_OPERATION_ID)
                     .create_model(CreateModelDefinitionCommand {
                         bound_storage_id: body.bound_storage_id,
                         actor_user_id: user_id,
@@ -353,7 +355,10 @@ impl ModelDefinitionsAdapter {
             }
             ModelDefinitionsInput::AdvisorFindings { model_id } => {
                 let findings = self
-                    .settings_service(access_control::MODEL_DEFINITIONS_ADVISOR_VIEW_OPERATION_ID)
+                    .settings_service(
+                        actor,
+                        access_control::MODEL_DEFINITIONS_ADVISOR_VIEW_OPERATION_ID,
+                    )
                     .advisor_findings(user_id, helpers::parse_uuid(&model_id, "model_id")?)
                     .await?;
                 Ok(ModelDefinitionsOutput::AdvisorFindings(
@@ -365,7 +370,7 @@ impl ModelDefinitionsAdapter {
             }
             ModelDefinitionsInput::ListScopeGrants { model_id } => {
                 let grants = self
-                    .settings_service(access_control::MODEL_SCOPE_GRANTS_LIST_OPERATION_ID)
+                    .settings_service(actor, access_control::MODEL_SCOPE_GRANTS_LIST_OPERATION_ID)
                     .list_scope_grants(user_id, helpers::parse_uuid(&model_id, "model_id")?)
                     .await?;
                 Ok(ModelDefinitionsOutput::ScopeGrants(
@@ -376,15 +381,18 @@ impl ModelDefinitionsAdapter {
                 let model_id = helpers::parse_uuid(&model_id, "model_id")?;
                 let requested_status =
                     body.status.as_deref().map(parse_model_status).transpose()?;
-                let mutation =
-                    self.mutation_service(access_control::MODEL_DEFINITIONS_UPDATE_OPERATION_ID);
+                let mutation = self
+                    .mutation_service(actor, access_control::MODEL_DEFINITIONS_UPDATE_OPERATION_ID);
                 let mut model = None;
                 if body.title.is_some()
                     || body.description.is_some()
                     || body.external_table_id.is_some()
                 {
                     let current = self
-                        .settings_service(access_control::MODEL_DEFINITIONS_UPDATE_OPERATION_ID)
+                        .settings_service(
+                            actor,
+                            access_control::MODEL_DEFINITIONS_UPDATE_OPERATION_ID,
+                        )
                         .get_model(user_id, model_id)
                         .await?;
                     model = Some(
@@ -424,7 +432,7 @@ impl ModelDefinitionsAdapter {
                 model_id,
                 confirmed,
             } => {
-                self.mutation_service(access_control::MODEL_DEFINITIONS_DELETE_OPERATION_ID)
+                self.mutation_service(actor, access_control::MODEL_DEFINITIONS_DELETE_OPERATION_ID)
                     .delete_model(DeleteModelDefinitionCommand {
                         actor_user_id: user_id,
                         model_id: helpers::parse_uuid(&model_id, "model_id")?,
@@ -437,9 +445,12 @@ impl ModelDefinitionsAdapter {
                 let models = if body.filter_by_tk.is_some() {
                     Vec::new()
                 } else {
-                    self.settings_service(access_control::MODEL_DEFINITIONS_DELETE_OPERATION_ID)
-                        .list_models(user_id)
-                        .await?
+                    self.settings_service(
+                        actor,
+                        access_control::MODEL_DEFINITIONS_DELETE_OPERATION_ID,
+                    )
+                    .list_models(user_id)
+                    .await?
                 };
                 let model_ids = select_batch_ids(
                     models,
@@ -452,7 +463,7 @@ impl ModelDefinitionsAdapter {
                     |model| model.id,
                 )?;
                 let deleted_ids = self
-                    .mutation_service(access_control::MODEL_DEFINITIONS_DELETE_OPERATION_ID)
+                    .mutation_service(actor, access_control::MODEL_DEFINITIONS_DELETE_OPERATION_ID)
                     .batch_delete_models(BatchDeleteModelDefinitionsCommand {
                         actor_user_id: user_id,
                         model_ids,
@@ -468,7 +479,7 @@ impl ModelDefinitionsAdapter {
             ModelDefinitionsInput::CreateField { model_id, body } => {
                 let model_id = helpers::parse_uuid(&model_id, "model_id")?;
                 let field = self
-                    .mutation_service(access_control::MODEL_FIELDS_CREATE_OPERATION_ID)
+                    .mutation_service(actor, access_control::MODEL_FIELDS_CREATE_OPERATION_ID)
                     .add_field(AddModelFieldCommand {
                         actor_user_id: user_id,
                         model_id,
@@ -492,7 +503,7 @@ impl ModelDefinitionsAdapter {
                     })
                     .await?;
                 let model = self
-                    .settings_service(access_control::MODEL_FIELDS_CREATE_OPERATION_ID)
+                    .settings_service(actor, access_control::MODEL_FIELDS_CREATE_OPERATION_ID)
                     .get_model(user_id, model_id)
                     .await?;
                 Ok(ModelDefinitionsOutput::Field(to_model_field_response(
@@ -506,7 +517,7 @@ impl ModelDefinitionsAdapter {
             } => {
                 let model_id = helpers::parse_uuid(&model_id, "model_id")?;
                 let field = self
-                    .mutation_service(access_control::MODEL_FIELDS_UPDATE_OPERATION_ID)
+                    .mutation_service(actor, access_control::MODEL_FIELDS_UPDATE_OPERATION_ID)
                     .update_field(UpdateModelFieldCommand {
                         actor_user_id: user_id,
                         model_id,
@@ -523,7 +534,7 @@ impl ModelDefinitionsAdapter {
                     })
                     .await?;
                 let model = self
-                    .settings_service(access_control::MODEL_FIELDS_UPDATE_OPERATION_ID)
+                    .settings_service(actor, access_control::MODEL_FIELDS_UPDATE_OPERATION_ID)
                     .get_model(user_id, model_id)
                     .await?;
                 Ok(ModelDefinitionsOutput::Field(to_model_field_response(
@@ -535,7 +546,7 @@ impl ModelDefinitionsAdapter {
                 field_id,
                 confirmed,
             } => {
-                self.mutation_service(access_control::MODEL_FIELDS_DELETE_OPERATION_ID)
+                self.mutation_service(actor, access_control::MODEL_FIELDS_DELETE_OPERATION_ID)
                     .delete_field(DeleteModelFieldCommand {
                         actor_user_id: user_id,
                         model_id: helpers::parse_uuid(&model_id, "model_id")?,
@@ -547,7 +558,10 @@ impl ModelDefinitionsAdapter {
             }
             ModelDefinitionsInput::CreateScopeGrant { model_id, body } => {
                 let grant = self
-                    .settings_service(access_control::MODEL_SCOPE_GRANTS_CREATE_OPERATION_ID)
+                    .settings_service(
+                        actor,
+                        access_control::MODEL_SCOPE_GRANTS_CREATE_OPERATION_ID,
+                    )
                     .create_scope_grant(CreateScopeDataModelGrantCommand {
                         actor_user_id: user_id,
                         scope_kind: parse_scope_kind(&body.scope_kind)?,
@@ -575,7 +589,10 @@ impl ModelDefinitionsAdapter {
                     .into());
                 }
                 let grant = self
-                    .settings_service(access_control::MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID)
+                    .settings_service(
+                        actor,
+                        access_control::MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID,
+                    )
                     .update_scope_grant(UpdateScopeDataModelGrantCommand {
                         actor_user_id: user_id,
                         data_model_id: helpers::parse_uuid(&model_id, "model_id")?,

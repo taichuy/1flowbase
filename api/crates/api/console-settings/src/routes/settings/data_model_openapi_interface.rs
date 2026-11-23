@@ -77,7 +77,7 @@ impl ConsoleInterfacePort<DataModelOpenApiInput, DataModelOpenApiOutput>
             })?;
             let model =
                 control_plane::model_definition::ModelDefinitionService::for_console_operation(
-                    self.store.clone(),
+                    self.store.for_actor(principal.actor().clone()),
                     domain::ConsolePolicyGroup::settings_feature("system.data-models")
                         .expect("compiled data-model settings group must be valid"),
                     access_control::MODEL_DEFINITIONS_OPENAPI_VIEW_OPERATION_ID,

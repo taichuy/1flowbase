@@ -1101,3 +1101,159 @@ async fn data_source_routes_map_resource_to_model_returns_external_mapping_and_r
             && model["source_kind"].as_str() == Some("external_source")
     }));
 }
+
+#[tokio::test]
+async fn switched_admin_uses_active_workspace_for_model_definitions_and_data_sources() {
+    use crate::_tests::support::{create_member, replace_member_roles};
+    use axum::Router;
+    use control_plane_contracts::ports::{
+        GrantWorkspaceMembershipInput, ProvisionWorkspaceInput, ProvisionWorkspaceTenant,
+        WorkspaceGovernanceRepository,
+    };
+
+    async fn request(
+        app: &Router,
+        cookie: &str,
+        csrf: &str,
+        method: &str,
+        path: &str,
+        body: Option<Value>,
+    ) -> (StatusCode, Value) {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(path)
+                    .header("cookie", cookie)
+                    .header("x-csrf-token", csrf)
+                    .header("content-type", "application/json")
+                    .body(body.map_or_else(Body::empty, |body| Body::from(body.to_string())))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        (status, serde_json::from_slice(&body).unwrap())
+    }
+
+    const MODELS: &str = "/api/console/settings/data-models/model-definitions";
+    const SOURCES: &str = "/api/console/settings/data-models/data-sources";
+    let package = create_fixture_package();
+    let (state, _) = test_api_state_with_database_url().await;
+    let workspace_a = state.bootstrap_workspace_id;
+    let app = crate::app_with_state_and_config(state.clone(), &test_config());
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let user = create_member(&app, &root_cookie, &root_csrf, "model-admin", "change-me").await;
+    replace_member_roles(&app, &root_cookie, &root_csrf, &user, &["admin"]).await;
+    let workspace_b = state
+        .store
+        .provision_workspace(&ProvisionWorkspaceInput {
+            tenant: ProvisionWorkspaceTenant::New {
+                code: "customer-models".into(),
+                name: "Customer Models".into(),
+            },
+            workspace_name: "Customer Models".into(),
+            introduction: String::new(),
+            logo_url: None,
+            actor_user_id: None,
+            role_templates: access_control::bootstrap_role_templates(),
+            initial_member: None,
+        })
+        .await
+        .unwrap()
+        .workspace
+        .id;
+    state
+        .store
+        .grant_or_activate_workspace_membership(&GrantWorkspaceMembershipInput {
+            workspace_id: workspace_b,
+            user_id: user.parse().unwrap(),
+            role_codes: vec!["admin".into()],
+            actor_user_id: None,
+        })
+        .await
+        .unwrap();
+    let (cookie, csrf) = login_and_capture_cookie(&app, "model-admin", "change-me").await;
+    let model_input = |code: &str| {
+        Some(json!({
+            "scope_kind": "workspace", "template_provider": "core", "template_code": "general",
+            "template_version": "v1", "code": code, "title": code, "status": "published",
+        }))
+    };
+    let (status, model_a) =
+        request(&app, &cookie, &csrf, "POST", MODELS, model_input("model_a")).await;
+    assert_eq!(status, StatusCode::CREATED, "{model_a}");
+    assert_eq!(model_a["data"]["scope_id"], workspace_a.to_string());
+    assert_eq!(model_a["data"]["status"], "published");
+    let model_a = model_a["data"]["id"].as_str().unwrap();
+    let installation_id = seed_data_source_installation(&state, package.path()).await;
+    let (status, source) = request(&app, &cookie, &csrf, "POST", SOURCES, Some(json!({
+        "source_code": "fixture_data_source", "display_name": "Source A", "installation_id": installation_id,
+        "config_json": {"client_id": "fixture"}, "secret_json": {"client_secret": "route-secret-echo"},
+    }))).await;
+    assert_eq!(status, StatusCode::CREATED, "{source}");
+    let source_id: uuid::Uuid = source["data"]["id"].as_str().unwrap().parse().unwrap();
+    assert_eq!(source["data"]["default_data_model_status"], "published");
+
+    let (status, switched) = request(
+        &app,
+        &cookie,
+        &csrf,
+        "POST",
+        "/api/console/session/actions/switch-workspace",
+        Some(json!({"workspace_id": workspace_b})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{switched}");
+    assert_eq!(
+        switched["data"]["actor"]["current_workspace_id"],
+        workspace_b.to_string()
+    );
+    assert_eq!(switched["data"]["actor"]["effective_display_role"], "admin");
+    let csrf = switched["data"]["csrf_token"].as_str().unwrap();
+
+    let (status, model_b) =
+        request(&app, &cookie, csrf, "POST", MODELS, model_input("model_b")).await;
+    assert_eq!(status, StatusCode::CREATED, "{model_b}");
+    assert_eq!(model_b["data"]["scope_id"], workspace_b.to_string());
+    assert_eq!(model_b["data"]["status"], "published");
+    let model_b = model_b["data"]["id"].as_str().unwrap();
+    for (path, id_field) in [
+        (MODELS, "id"),
+        ("/api/console/models/agent-flow-options", "modelId"),
+        ("/api/console/settings/roles/data-model-options", "id"),
+    ] {
+        let (status, body) = request(&app, &cookie, csrf, "GET", path, None).await;
+        assert_eq!(status, StatusCode::OK, "{path}: {body}");
+        let models = body["data"].as_array().unwrap();
+        assert!(
+            models.iter().any(|model| model[id_field] == model_b),
+            "{path} must include model_b"
+        );
+        assert!(
+            !models.iter().any(|model| model[id_field] == model_a),
+            "{path} must exclude model_a"
+        );
+    }
+    for (id, expected) in [(model_b, StatusCode::OK), (model_a, StatusCode::NOT_FOUND)] {
+        let path = format!("{MODELS}/{id}/openapi.json");
+        let (status, body) = request(&app, &cookie, csrf, "GET", &path, None).await;
+        assert_eq!(status, expected, "{path}: {body}");
+    }
+    let (status, error) = request(
+        &app,
+        &cookie,
+        csrf,
+        "PATCH",
+        &format!("{SOURCES}/{source_id}/defaults"),
+        Some(json!({"default_data_model_status": "draft"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{error}");
+    let persisted: String = sqlx::query_scalar(
+        "select default_data_model_status from data_source_instances where workspace_id = $1 and id = $2",
+    ).bind(workspace_a).bind(source_id).fetch_one(state.store.pool()).await.unwrap();
+    assert_eq!(persisted, "published");
+}

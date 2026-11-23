@@ -194,7 +194,7 @@ impl RoleAccessAdapter {
         match input {
             RoleAccessInput::ListDataModelOptions => {
                 let models = ModelDefinitionService::for_console_operation(
-                    self.store.clone(),
+                    self.store.for_actor(actor.clone()),
                     domain::ConsolePolicyGroup::settings_feature("system.roles")
                         .expect("compiled roles settings group must be valid"),
                     "roles.data_model_options.list",
