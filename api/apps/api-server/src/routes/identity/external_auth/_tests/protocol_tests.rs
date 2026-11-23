@@ -113,6 +113,7 @@ fn external_auth_safe_projections_compile_without_exporting_credential_canaries(
         authorization_url: format!("https://provider.example/authorize?state={SECRET}"),
     };
     let public_input = projection(&interface::PublicInput::Start {
+        invitation_token: None,
         login_entry_id: entry_id,
     });
     let public_output = projection(&interface::PublicOutput::Authorization(output()));

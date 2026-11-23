@@ -40,6 +40,7 @@ async fn bound_external_identity_needs_neither_email_registration_nor_eligibilit
     );
     let result = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity: identity(entry.connection_id),
             registration_eligible: false,
@@ -68,6 +69,7 @@ async fn external_completion_rejects_unknown_closed_registration_and_ineligible_
         );
         let error = kernel
             .complete_external_login(CompleteExternalLoginCommand {
+                invitation_token: None,
                 login_entry_id: entry.id,
                 identity: identity(entry.connection_id),
                 registration_eligible: eligible,
@@ -88,6 +90,7 @@ async fn external_completion_rejects_connection_mismatch_and_disabled_entry_or_u
     );
     let error = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity: identity(OTHER_EXTERNAL_AUTHENTICATOR_ID),
             registration_eligible: true,
@@ -108,6 +111,7 @@ async fn external_completion_rejects_connection_mismatch_and_disabled_entry_or_u
     );
     let error = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity: identity(entry.connection_id),
             registration_eligible: true,
@@ -126,6 +130,7 @@ async fn external_completion_rejects_connection_mismatch_and_disabled_entry_or_u
     );
     let error = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity: identity(entry.connection_id),
             registration_eligible: true,

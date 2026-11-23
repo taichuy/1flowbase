@@ -201,6 +201,7 @@ async fn portable_bundle_bootstraps_a_fresh_database_without_the_original_enviro
         SessionIssuer::new(MokaSessionStore::new("portable-restored-login", 128), 7),
     )
     .login(LoginCommand {
+        invitation_token: None,
         login_entry_id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
         identifier: "root".to_owned(),
         password: "stopped-server-password".to_owned(),
@@ -214,6 +215,7 @@ async fn portable_bundle_bootstraps_a_fresh_database_without_the_original_enviro
             SessionIssuer::new(MokaSessionStore::new("portable-fresh-login", 128), 7),
         )
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
             identifier: "root".to_owned(),
             password: "fresh-root-password".to_owned(),

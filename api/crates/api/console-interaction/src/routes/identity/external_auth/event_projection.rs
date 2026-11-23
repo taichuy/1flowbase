@@ -11,7 +11,7 @@ impl ApiInput for PublicInput {
     }
     fn project_document_input(&self, _: &ApiOperationContext) -> Result<Value, Arc<str>> {
         match self {
-            Self::Start { login_entry_id } => {
+            Self::Start { login_entry_id, .. } => {
                 Ok(json!({"query":{"login_entry_id":login_entry_id}}))
             }
             Self::Complete(_) => Err(Arc::from(

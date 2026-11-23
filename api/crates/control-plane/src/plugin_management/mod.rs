@@ -590,3 +590,6 @@ pub use client_collector::*;
 
 #[cfg(test)]
 pub(crate) use client_collector::_tests::collector_fixture_archive;
+
+mod managed_workspace_governance;
+pub use managed_workspace_governance::ManagedWorkspaceGovernanceService;

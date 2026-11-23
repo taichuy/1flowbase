@@ -54,6 +54,22 @@ where
         &self,
         command: SwitchWorkspaceCommand,
     ) -> Result<SwitchWorkspaceResult> {
+        self.switch_workspace_inner(command, false).await
+    }
+
+    /// Invitation redemption rotates the CSRF credential even for an existing membership.
+    pub async fn switch_workspace_after_invitation(
+        &self,
+        command: SwitchWorkspaceCommand,
+    ) -> Result<SwitchWorkspaceResult> {
+        self.switch_workspace_inner(command, true).await
+    }
+
+    async fn switch_workspace_inner(
+        &self,
+        command: SwitchWorkspaceCommand,
+        rotate_csrf: bool,
+    ) -> Result<SwitchWorkspaceResult> {
         let current_session = self
             .session_store
             .get(&command.session_id)
@@ -82,10 +98,12 @@ where
                 )
                 .await?;
 
-            return Ok(SwitchWorkspaceResult {
-                actor,
-                session: current_session,
-            });
+            let mut session = current_session;
+            if rotate_csrf {
+                session.csrf_token = Uuid::now_v7().to_string();
+                self.session_store.put(session.clone()).await?;
+            }
+            return Ok(SwitchWorkspaceResult { actor, session });
         }
 
         let actor = self

@@ -1,3 +1,4 @@
+use control_plane::ports::AuthRepository;
 use std::future::Future;
 
 use axum::http::HeaderMap;
@@ -126,6 +127,15 @@ pub async fn require_session(
     headers: &HeaderMap,
 ) -> Result<RequestContext, ApiError> {
     if let Ok(context) = SERVER_DELEGATED_REQUEST_CONTEXT.try_with(Clone::clone) {
+        state
+            .store
+            .verify_workspace_access(
+                context.actor.user_id,
+                context.actor.tenant_id,
+                context.actor.current_workspace_id,
+                context.actor.is_root,
+            )
+            .await?;
         return apply_console_policy_permissions(state, context).await;
     }
 
@@ -173,6 +183,15 @@ pub async fn require_session(
             session.tenant_id,
             session.current_workspace_id,
             Some(&session.active_role_code),
+        )
+        .await?;
+    state
+        .store
+        .verify_workspace_access(
+            actor.user_id,
+            session.tenant_id,
+            actor.current_workspace_id,
+            actor.is_root,
         )
         .await?;
     if actor.effective_display_role != session.active_role_code {

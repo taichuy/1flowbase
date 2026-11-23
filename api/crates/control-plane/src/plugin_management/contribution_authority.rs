@@ -100,6 +100,13 @@ impl HostContributionGrantPolicy {
             point_contract_version: extension_contracts::AUTHENTICATION_CONTRACT_V1,
             resource_scope: ContributionResourceScope::System,
         });
+        rules.push(HostContributionPermissionRule {
+            point_id: extension_contracts::WORKSPACE_POLICY_POINT.into(),
+            permission: extension_contracts::WORKSPACE_POLICY_PERMISSION.into(),
+            permission_contract_id: extension_contracts::WORKSPACE_POLICY_CONTRACT_ID,
+            point_contract_version: extension_contracts::WORKSPACE_POLICY_CONTRACT_V1,
+            resource_scope: ContributionResourceScope::System,
+        });
         // Only this Boot Core-owned frontend point may delegate trusted host mounting.
         // Workspace assignment and durable authority remain enforced by their existing owners.
         rules.push(HostContributionPermissionRule {
@@ -126,7 +133,7 @@ impl HostContributionGrantPolicy {
             base16ct::HexDisplay(&sha2::Sha256::digest(
                 [
                     bytes.as_slice(),
-                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2;application-logs/v1;plugin-resource-imports/v1;http-egress/v1;plugin-ephemeral/v1;execution-gate/v1;authentication/v1;frontend-block-trusted-host/v1"
+                    b"canonical-interface-managed-hook/v1;managed-event-schema/v2;application-logs/v1;plugin-resource-imports/v1;http-egress/v1;plugin-ephemeral/v1;execution-gate/v1;authentication/v1;workspace-governance/v1;workspace-policy/v1;frontend-block-trusted-host/v1"
                 ]
                 .concat()
             ))
@@ -213,7 +220,12 @@ impl HostContributionGrantPolicy {
                     ) | ("network.http.request", "http-egress")
                 );
         }
-        if contribution.point_id.as_str() == plugin_framework::MANAGED_SERVICE_POINT {
+        let is_policy =
+            contribution.point_id.as_str() == extension_contracts::WORKSPACE_POLICY_POINT;
+        if is_policy
+            || contribution.point_id.as_str() == plugin_framework::MANAGED_SERVICE_POINT
+        {
+            use extension_contracts::*;
             let is_system =
                 domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
                     == domain::SYSTEM_SCOPE_ID;
@@ -221,23 +233,32 @@ impl HostContributionGrantPolicy {
                 && contribution.contract_version.as_str() == "1"
                 && request.permission_contract_version == "1"
                 && match request.permission.as_str() {
-                    "service.execute" => {
+                    WORKSPACE_POLICY_PERMISSION if is_policy => {
+                        request.permission_contract_id == WORKSPACE_POLICY_CONTRACT_ID
+                            && request.resource_scope == ContributionResourceScope::System
+                    }
+                    WORKSPACE_GOVERNANCE_READ_PERMISSION
+                    | WORKSPACE_GOVERNANCE_MANAGE_PERMISSION => {
+                        request.permission_contract_id == WORKSPACE_GOVERNANCE_CONTRACT_ID
+                            && request.resource_scope == ContributionResourceScope::System
+                    }
+                    "service.execute" if !is_policy => {
                         request.permission_contract_id == "managed-service"
                             && request.resource_scope == ContributionResourceScope::System
                     }
-                    "file.read.content" => {
+                    "file.read.content" if !is_policy => {
                         request.permission_contract_id == "file-read"
                             && request.resource_scope == ContributionResourceScope::System
                     }
-                    "file.import.resource" => {
+                    "file.import.resource" if !is_policy => {
                         request.permission_contract_id == "file-import"
                             && request.resource_scope == ContributionResourceScope::System
                     }
-                    "application.logs.read" | "application.logs.import" => {
+                    "application.logs.read" | "application.logs.import" if !is_policy => {
                         request.permission_contract_id == "application-logs"
                             && request.resource_scope == ContributionResourceScope::System
                     }
-                    "network.http.request" => {
+                    "network.http.request" if !is_policy => {
                         request.permission_contract_id == "http-egress"
                             && request.resource_scope == ContributionResourceScope::System
                     }
@@ -245,7 +266,7 @@ impl HostContributionGrantPolicy {
                         request.permission_contract_id == "execution-gate"
                             && request.resource_scope == ContributionResourceScope::System
                     }
-                    "credential.manage" | "ephemeral.manage" => {
+                    "credential.manage" | "ephemeral.manage" if !is_policy => {
                         request.permission_contract_id
                             == if request.permission == "ephemeral.manage" {
                                 "plugin-ephemeral"

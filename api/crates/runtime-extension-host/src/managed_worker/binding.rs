@@ -113,3 +113,26 @@ fn actor_workspace_context(
 #[cfg(test)]
 #[path = "../_tests/host_services/managed_record_call_context.rs"]
 mod record_context_tests;
+
+/// Project a caller only if both host-owned identity sources agree. System
+/// calls without an authenticated caller cannot acquire one by setting actor_id.
+pub(super) fn workspace_governance_caller(
+    principal: &runtime_core::runtime_backend::RuntimeExecutionPrincipal,
+) -> Option<extension_contracts::WorkspaceGovernanceCallerDto> {
+    let actor = &principal.caller.as_ref()?.actor;
+    let user_id = actor.user_id.to_string();
+    if principal.actor_id.as_deref() != Some(user_id.as_str()) {
+        return None;
+    }
+    Some(extension_contracts::WorkspaceGovernanceCallerDto {
+        user_id,
+        tenant_id: actor.tenant_id.to_string(),
+        current_workspace_id: actor.current_workspace_id.to_string(),
+        is_root: actor.is_root,
+        effective_display_role: actor.effective_display_role.clone(),
+    })
+}
+
+#[cfg(test)]
+#[path = "../_tests/host_services/workspace_governance_caller.rs"]
+mod workspace_governance_caller_tests;

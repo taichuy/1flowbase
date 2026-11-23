@@ -161,3 +161,22 @@ fn root_2014_r3_probe_explicit_protocol_selection() {
     ))
     .is_err());
 }
+
+#[test]
+fn workspace_policy_requires_system_runtime_and_multiplex_binding() {
+    let raw = MANAGED
+        .replace("binding_targets: [workspace]", "binding_targets: [system]")
+        .replace("acme.compute/v1", "1\n        required_permissions: [workspace.policy.decide, workspace.governance.read, execution.gate]")
+        .replace("point_id: acme.compute", "point_id: 1flowbase.workspace.policy")
+        .replace("protocol: stdio_json\n", "protocol: stdio_json_multiplex_v1\n")
+        .replace("        protocol: stdio_json_multiplex_v1\n        entry: ui/render.json", "        protocol: stdio_json\n        entry: ui/render.json");
+    parse_plugin_manifest(&raw).expect("standalone system policy with typed callbacks");
+    for broken in [
+        raw.replace("binding_targets: [system]", "binding_targets: [workspace]"),
+        raw.replace("stdio_json_multiplex_v1", "stdio_json"),
+        raw.replace("workspace.policy.decide, ", ""),
+        raw.replace("execution.gate", "network.http.request"),
+    ] {
+        assert!(parse_plugin_manifest(&broken).is_err());
+    }
+}

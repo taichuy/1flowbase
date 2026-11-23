@@ -2,6 +2,7 @@ use super::*;
 use crate::ports::{CreateExternalRegisteredMemberInput, ExternalRegistrationRepository};
 
 pub struct CompleteExternalLoginCommand {
+    pub invitation_token: Option<String>,
     pub login_entry_id: Uuid,
     pub identity: domain::VerifiedExternalIdentity,
     pub registration_eligible: bool,
@@ -37,6 +38,8 @@ impl<
         {
             return Err(ControlPlaneError::NotAuthenticated.into());
         }
+        let invitation = validate_invitation_token(command.invitation_token.as_deref())?;
+        let mut registered_scope = None;
         let user = match self
             .repository
             .find_external_identity_binding(&command.identity)
@@ -53,39 +56,96 @@ impl<
                 .await?
                 .ok_or(ControlPlaneError::NotAuthenticated)?,
             None => {
-                let email = external_registration_email(
-                    &entry,
-                    &command.identity,
-                    command.registration_eligible,
-                )?;
-                let audit = audit_log(
-                    None,
-                    None,
-                    "user",
-                    None,
-                    "member.external_registered",
-                    serde_json::json!({
-                        "connection_id": entry.connection_id,
-                        "authority_namespace": command.identity.authority_namespace(),
-                        "subject_type": command.identity.subject_type(),
-                        "subject_value": command.identity.subject_value(),
-                        "issuer": command.identity.issuer(), "realm": command.identity.realm(),
-                    }),
-                );
-                self.repository
-                    .create_external_registered_member(&CreateExternalRegisteredMemberInput {
-                        account: external_registration_account(command.identity.profile()),
-                        name: external_registration_text(command.identity.profile(), "name"),
-                        nickname: external_registration_text(
-                            command.identity.profile(),
-                            "nickname",
-                        ),
-                        avatar_url: external_registration_avatar(command.identity.profile()),
-                        identity: command.identity,
-                        email,
-                        audit,
-                    })
-                    .await?
+                let profile = command.identity.profile();
+                let mut registered = None;
+                if let Some(policy) = &self.workspace_policy {
+                    // Provider eligibility and verified email are independent of the login entry toggle.
+                    if command.registration_eligible {
+                        let email = verified_registration_email(&command.identity)?;
+                        if let Some(decision) = policy
+                            .resolve_registration(
+                                RegistrationHints {
+                                    account: external_registration_account(profile),
+                                    email: email.clone(),
+                                    name: external_registration_text(profile, "name"),
+                                    nickname: external_registration_text(profile, "nickname"),
+                                },
+                                invitation,
+                            )
+                            .await?
+                        {
+                            let account = external_registration_account(profile)
+                                .unwrap_or_else(|| format!("external-{}", Uuid::now_v7()));
+                            let name = external_registration_text(profile, "name")
+                                .unwrap_or_else(|| account.clone());
+                            let nickname = external_registration_text(profile, "nickname")
+                                .unwrap_or_else(|| name.clone());
+                            let (id, scope) = policy.register(decision, control_plane_contracts::ports::NewGovernanceUser {
+                                account, email, name, nickname, avatar_url: external_registration_avatar(profile),
+                                credential: control_plane_contracts::ports::GovernanceUserCredential::External(command.identity.clone()),
+                            }).await?;
+                            registered_scope = Some(scope);
+                            registered = Some(
+                                self.repository
+                                    .find_user_by_id(id)
+                                    .await?
+                                    .ok_or(ControlPlaneError::NotAuthenticated)?,
+                            );
+                        }
+                    }
+                }
+                if let Some(user) = registered {
+                    user
+                } else {
+                    if invitation.is_some() {
+                        return Err(ControlPlaneError::PermissionDenied(
+                            "invitation_unsupported",
+                        )
+                        .into());
+                    }
+                    let email = external_registration_email(
+                        &entry,
+                        &command.identity,
+                        command.registration_eligible,
+                    )?;
+                    let audit = audit_log(
+                        None,
+                        None,
+                        "user",
+                        None,
+                        "member.external_registered",
+                        serde_json::json!({
+                            "connection_id": entry.connection_id,
+                            "authority_namespace": command.identity.authority_namespace(),
+                            "subject_type": command.identity.subject_type(),
+                            "subject_value": command.identity.subject_value(),
+                            "issuer": command.identity.issuer(), "realm": command.identity.realm(),
+                        }),
+                    );
+                    self.repository
+                        .create_external_registered_member(
+                            &CreateExternalRegisteredMemberInput {
+                                account: external_registration_account(
+                                    command.identity.profile(),
+                                ),
+                                name: external_registration_text(
+                                    command.identity.profile(),
+                                    "name",
+                                ),
+                                nickname: external_registration_text(
+                                    command.identity.profile(),
+                                    "nickname",
+                                ),
+                                avatar_url: external_registration_avatar(
+                                    command.identity.profile(),
+                                ),
+                                identity: command.identity,
+                                email,
+                                audit,
+                            },
+                        )
+                        .await?
+                }
             }
         };
         // An entry may have been disabled while provider verification or registration ran.
@@ -105,7 +165,11 @@ impl<
             .find_user_by_id(user.id)
             .await?
             .ok_or(ControlPlaneError::NotAuthenticated)?;
-        self.finish_login(user).await
+        if registered_scope.is_some() {
+            self.finish_login_in_scope(user, registered_scope).await
+        } else {
+            self.finish_login_with_invitation(user, invitation).await
+        }
     }
 }
 
@@ -125,6 +189,10 @@ fn external_registration_email(
     if !eligible {
         return Err(ControlPlaneError::PermissionDenied("external_registration_ineligible").into());
     }
+    verified_registration_email(identity)
+}
+
+fn verified_registration_email(identity: &domain::VerifiedExternalIdentity) -> Result<String> {
     let email = identity
         .profile()
         .get("email")

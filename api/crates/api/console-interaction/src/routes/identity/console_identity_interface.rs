@@ -40,6 +40,7 @@ enum ConsoleIdentityInput {
     DeleteSession,
     RevokeAllSessions,
     SwitchWorkspace { workspace_id: String },
+    RedeemWorkspaceInvitation { invitation_token: String },
     SwitchRole { role_code: String },
     GetMe,
     PatchMe(me::PatchMeBody),
@@ -67,6 +68,7 @@ impl InterfaceContract for ConsoleIdentityInput {
                 ("variant", mp::tag_schema("SwitchRole")),
                 ("role_code", mp::text_schema()),
             ]),
+            mp::object_schema([("variant", mp::tag_schema("RedeemWorkspaceInvitation"))]),
             mp::object_schema([("variant", mp::tag_schema("GetMe"))]),
             mp::object_schema([
                 ("variant", mp::tag_schema("PatchMe")),
@@ -159,6 +161,9 @@ impl InterfaceContract for ConsoleIdentityInput {
                 ),
                 ("workspace_id", mp::text(_field_workspace_id)?),
             ]),
+            Self::RedeemWorkspaceInvitation { .. } => mp::object_value([(
+                "variant", serde_json::Value::String("RedeemWorkspaceInvitation".into()),
+            )]),
             Self::SwitchRole {
                 role_code: _field_role_code,
                 ..
@@ -340,17 +345,20 @@ pub trait ConsoleIdentityPort: Send + Sync + 'static {
 }
 
 struct ConsoleIdentityAdapter {
+    workspace_policy: api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime,
     store: MainDurableStore,
     session_store: Arc<dyn SessionStore>,
     cookie_name: String,
 }
 
 pub fn console_identity_port(
+    workspace_policy: api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime,
     store: MainDurableStore,
     session_store: Arc<dyn SessionStore>,
     cookie_name: String,
 ) -> Arc<dyn ConsoleIdentityPort> {
     Arc::new(ConsoleIdentityAdapter {
+        workspace_policy,
         store,
         session_store,
         cookie_name,
@@ -376,6 +384,38 @@ impl ConsoleIdentityAdapter {
             .find_user_by_id(principal.actor().user_id)
             .await?
             .ok_or_else(|| control_plane::errors::ControlPlaneError::NotAuthenticated.into())
+    }
+
+    async fn switch_workspace(
+        &self,
+        current_session: domain::SessionRecord,
+        user: &domain::UserRecord,
+        workspace_id: Uuid,
+        invitation_redeemed: bool,
+    ) -> Result<ConsoleIdentityOutput, ApiError> {
+        let service = WorkspaceSessionService::new(
+            self.store.clone(),
+            self.store.clone(),
+            Arc::clone(&self.session_store),
+        );
+        let command = SwitchWorkspaceCommand {
+            actor_user_id: user.id,
+            session_id: current_session.session_id,
+            target_workspace_id: workspace_id,
+        };
+        let result = if invitation_redeemed {
+            service.switch_workspace_after_invitation(command).await?
+        } else {
+            service.switch_workspace(command).await?
+        };
+        Ok(ConsoleIdentityOutput::Session(
+            session::to_session_response(
+                user,
+                &result.actor,
+                &result.session,
+                &self.cookie_name,
+            ),
+        ))
     }
 
     async fn execute_inner(
@@ -416,26 +456,27 @@ impl ConsoleIdentityAdapter {
                 let workspace_id = Uuid::parse_str(&workspace_id).map_err(|_| {
                     control_plane::errors::ControlPlaneError::InvalidInput("workspace_id")
                 })?;
-                let result = WorkspaceSessionService::new(
-                    self.store.clone(),
-                    self.store.clone(),
-                    Arc::clone(&self.session_store),
-                )
-                .switch_workspace(SwitchWorkspaceCommand {
-                    actor_user_id: actor.user_id,
-                    session_id: current_session.session_id,
-                    target_workspace_id: workspace_id,
-                })
-                .await?;
                 let user = self.user(principal).await?;
-                Ok(ConsoleIdentityOutput::Session(
-                    session::to_session_response(
-                        &user,
-                        &result.actor,
-                        &result.session,
-                        &self.cookie_name,
-                    ),
-                ))
+                self.switch_workspace(current_session, &user, workspace_id, false)
+                    .await
+            }
+            ConsoleIdentityInput::RedeemWorkspaceInvitation { invitation_token } => {
+                use control_plane::{
+                    auth::{redeem_workspace_invitation, validate_invitation_token},
+                    errors::ControlPlaneError,
+                };
+                let current_session = self.authenticated_session(principal).await?;
+                let token = validate_invitation_token(Some(&invitation_token))?
+                    .ok_or(ControlPlaneError::InvalidInput("invitation_token"))?;
+                let user = self.user(principal).await?;
+                let workspace_id =
+                    redeem_workspace_invitation(&self.workspace_policy, &user, token)
+                        .await?
+                        .ok_or(ControlPlaneError::PermissionDenied(
+                            "invitation_unsupported",
+                        ))?;
+                self.switch_workspace(current_session, &user, workspace_id, true)
+                    .await
             }
             ConsoleIdentityInput::SwitchRole { role_code } => {
                 let current_session = self.authenticated_session(principal).await?;
@@ -666,6 +707,13 @@ const DECLARATIONS: &[Declaration] = &[
         binding_id: "http.console.identity.session.revoke-all.v1",
         method: "POST",
         path: "/api/console/session/actions/revoke-all",
+        mutating: true,
+    },
+    Declaration {
+        interface_id: "console.workspaces.invitations.redeem",
+        binding_id: "http.console.workspaces.invitations.redeem.v1",
+        method: "POST",
+        path: "/api/console/workspaces/invitations/redeem",
         mutating: true,
     },
     Declaration {

@@ -169,6 +169,7 @@ fn assert_safe_frame(input: ManagedInterfaceInput) -> Value {
 fn root_2014_ac_004_schema_identity_and_secret_negatives() {
     let id = Uuid::new_v4();
     let input = PublicSignInInput::test_new(LoginCommand {
+        invitation_token: None,
         login_entry_id: id,
         identifier: SECRET.into(),
         password: SECRET.into(),
@@ -351,6 +352,7 @@ fn root_2014_r3_probe_reference_binding_and_projection() {
     use extension_contracts::{ManagedInterfaceProtocol, ManagedInterfaceReferenceInput};
     use runtime_core::runtime_backend::RuntimeManagedHookInput;
     let input = PublicSignInInput::test_new(LoginCommand {
+        invitation_token: None,
         login_entry_id: Uuid::new_v4(),
         identifier: SECRET.into(),
         password: SECRET.into(),

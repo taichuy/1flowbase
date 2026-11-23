@@ -46,6 +46,10 @@ impl HostContributionGrantPolicy {
                     "network.http.request" => Some("http-egress"),
                     "credential.manage" => Some("plugin-credential"),
                     "ephemeral.manage" => Some("plugin-ephemeral"),
+                    extension_contracts::WORKSPACE_GOVERNANCE_READ_PERMISSION
+                    | extension_contracts::WORKSPACE_GOVERNANCE_MANAGE_PERMISSION => {
+                        Some(extension_contracts::WORKSPACE_GOVERNANCE_CONTRACT_ID)
+                    }
                     "execution.gate" => Some("execution-gate"),
                     "event.subscribe" | "event.publish" => Some("managed-event"),
                     "plugin_data.owned.write" => Some("plugin-data"),

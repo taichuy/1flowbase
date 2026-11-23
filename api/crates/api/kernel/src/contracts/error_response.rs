@@ -50,6 +50,27 @@ where
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        if let Some(error) = self
+            .0
+            .downcast_ref::<control_plane::auth::WorkspacePolicyRejection>()
+        {
+            let status = if error.conflict {
+                StatusCode::CONFLICT
+            } else {
+                StatusCode::FORBIDDEN
+            };
+            return (
+                status,
+                Json(ErrorBody {
+                    status: status.as_u16(),
+                    code: error.code.clone(),
+                    message: error.to_string(),
+                    inventory: None,
+                    details: None,
+                }),
+            )
+                .into_response();
+        }
         if let Some(
             error @ ControlPlaneError::PluginDependency {
                 code,

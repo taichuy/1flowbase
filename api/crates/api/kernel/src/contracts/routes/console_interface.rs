@@ -153,12 +153,20 @@ struct ConsoleServerStreamHandler<I, S, O> {
 }
 
 struct ConsoleProtocolAdmissionPort {
+    workspace_policy: crate::workspace_policy_runtime::WorkspacePolicyRuntime,
+    store: storage_durable_postgres::MainDurableStore,
     result: std::sync::Mutex<Option<Result<(), ApiError>>>,
 }
 
 impl ConsoleProtocolAdmissionPort {
-    fn new(admission: crate::extension_bus::ConsoleProtocolAdmission) -> Self {
+    fn new(
+        state: &ApiState,
+        admission: crate::extension_bus::ConsoleProtocolAdmission,
+    ) -> Self {
         Self {
+            workspace_policy:
+                crate::workspace_policy_runtime::WorkspacePolicyRuntime::from_state(state),
+            store: state.store.clone(),
             result: std::sync::Mutex::new(Some(admission.into_result())),
         }
     }
@@ -172,7 +180,7 @@ impl InterfaceTargetAdmissionPort for ConsoleProtocolAdmissionPort {
 
     fn admit(
         &self,
-        _request: InterfaceTargetAdmissionRequest,
+        request: InterfaceTargetAdmissionRequest,
     ) -> InterfaceTargetAdmissionFuture<'_> {
         let result = self
             .result
@@ -183,7 +191,47 @@ impl InterfaceTargetAdmissionPort for ConsoleProtocolAdmissionPort {
         Box::pin(async move {
             result.map_err(|error| {
                 InterfaceTargetAdmissionError::with_source("console_protocol_admission", error)
-            })
+            })?;
+            let interface_id = request.binding().binding_id().as_str();
+            if matches!(
+                interface_id,
+                "http.console.members.create.v1" | "http.console.applications.create.v1"
+            ) {
+                async {
+                    let principal = request.principal();
+                    let denied = control_plane::errors::ControlPlaneError::PermissionDenied(
+                        "workspace_access_denied",
+                    );
+                    let workspace_id = principal.workspace_id().ok_or(denied)?;
+                    let actor_id = principal
+                        .user_id()
+                        .ok_or(control_plane::errors::ControlPlaneError::NotAuthenticated)?;
+                    let tenant_id = self
+                        .store
+                        .get_workspace(workspace_id)
+                        .await?
+                        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                            "workspace",
+                        ))?
+                        .tenant_id;
+                    crate::workspace_policy_runtime::admit_workspace_operation(
+                        &self.workspace_policy,
+                        tenant_id,
+                        workspace_id,
+                        actor_id,
+                        interface_id,
+                    )
+                    .await
+                }
+                .await
+                .map_err(|error| {
+                    InterfaceTargetAdmissionError::with_source(
+                        "workspace_policy_admission",
+                        ApiError::from(error),
+                    )
+                })?;
+            }
+            Ok(())
         })
     }
 }
@@ -814,7 +862,7 @@ pub fn console_invocation_kernel(
     crate::routes::host_infrastructure::interface_operation::invocation_kernel_with_admission(
         Arc::clone(&state.console_policy_reader),
         Arc::clone(&state.console_operation_registry),
-        Arc::new(ConsoleProtocolAdmissionPort::new(admission)),
+        Arc::new(ConsoleProtocolAdmissionPort::new(state, admission)),
     )
 }
 

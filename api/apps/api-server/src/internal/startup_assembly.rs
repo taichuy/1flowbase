@@ -207,6 +207,8 @@ pub(super) async fn app_and_runtime_host_from_config(
                     store.pool().clone(), config.provider_secret_master_key.clone(),
                 )?),
             ),
+        )).with_workspace_governance(Arc::new(
+            control_plane::plugin_management::ManagedWorkspaceGovernanceService::new(Arc::new(store.clone()), Arc::new(store.clone())),
         )).with_execution_gate(Arc::new(
             control_plane::plugin_management::ManagedPluginExecutionGateAuthority::new(Arc::new(store.clone())),
         )).with_plugin_ephemeral(Arc::new(

@@ -3,6 +3,7 @@ use storage_ephemeral::MokaCacheStore;
 
 fn fixture(browser: &str) -> Transaction {
     Transaction {
+        invitation_token: None,
         login_entry_id: Uuid::new_v4(),
         connection_id: Uuid::new_v4(),
         auth_type: "github".into(),
@@ -103,4 +104,17 @@ fn binding_requires_original_unexpired_session_and_same_actor() {
     session.session_id = original;
     session.user_id = Uuid::new_v4();
     assert!(!binding_matches(&binding, &session, &actor, 500));
+}
+
+#[test]
+fn invitation_start_parameters_are_bounded_and_not_ambiguous() {
+    let entry = uuid::Uuid::nil();
+    let raw = format!("login_entry_id={entry}&invitation_token=inv_test-123");
+    assert_eq!(
+        super::super::start_parameters(Some(&raw)).unwrap(),
+        (entry, Some("inv_test-123".into()))
+    );
+    for suffix in ["&invitation_token=other", "%0A", "%2F"] {
+        assert!(super::super::start_parameters(Some(&format!("{raw}{suffix}"))).is_err());
+    }
 }

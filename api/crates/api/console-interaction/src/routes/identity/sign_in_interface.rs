@@ -157,6 +157,7 @@ pub trait PublicSignInPort: Send + Sync + 'static {
 }
 
 struct PublicSignInAdapter {
+    workspace_policy: api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime,
     store: MainDurableStore,
     session_store: Arc<dyn SessionStore>,
     session_ttl_days: i64,
@@ -169,12 +170,14 @@ impl PublicSignInPort for PublicSignInAdapter {
         let session_store = Arc::clone(&self.session_store);
         let session_ttl_days = self.session_ttl_days;
         let registry = Arc::clone(&self.authenticator_registry);
+        let policy = self.workspace_policy.identity_context(store.clone());
         Box::pin(async move {
             AuthKernel::with_registry(
                 store,
                 SessionIssuer::new(session_store, session_ttl_days),
                 registry.as_ref().clone(),
             )
+            .with_workspace_policy(policy)
             .login(input.0)
             .await
             .map(PublicSignInOutput)
@@ -325,12 +328,14 @@ pub fn compile_registry(
 }
 
 pub fn public_sign_in_port(
+    workspace_policy: api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime,
     store: MainDurableStore,
     session_store: Arc<dyn SessionStore>,
     session_ttl_days: i64,
     authenticator_registry: Arc<AuthenticatorRegistry>,
 ) -> Arc<dyn PublicSignInPort> {
     Arc::new(PublicSignInAdapter {
+        workspace_policy,
         store,
         session_store,
         session_ttl_days,

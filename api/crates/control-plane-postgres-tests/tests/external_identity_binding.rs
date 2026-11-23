@@ -225,6 +225,7 @@ async fn external_first_registration_creates_only_member_and_existing_login_igno
     );
     let result = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity: identity.clone(),
             registration_eligible: true,
@@ -292,6 +293,7 @@ async fn external_first_registration_creates_only_member_and_existing_login_igno
     );
     let again = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity: no_email.clone(),
             registration_eligible: false,
@@ -314,6 +316,7 @@ async fn external_first_registration_creates_only_member_and_existing_login_igno
     store.upsert_login_entry(&entry).await.unwrap();
     let error = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity: no_email.clone(),
             registration_eligible: false,
@@ -331,6 +334,7 @@ async fn external_first_registration_creates_only_member_and_existing_login_igno
         .unwrap();
     let error = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity: no_email,
             registration_eligible: false,
@@ -359,6 +363,7 @@ async fn concurrent_external_registration_is_one_atomic_identity_and_email_canno
     );
     let error = kernel
         .complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity: conflict_identity.clone(),
             registration_eligible: true,
@@ -388,11 +393,13 @@ async fn concurrent_external_registration_is_one_atomic_identity_and_email_canno
     );
     let (first, second) = tokio::join!(
         kernel.complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity: identity.clone(),
             registration_eligible: true
         }),
         kernel.complete_external_login(CompleteExternalLoginCommand {
+            invitation_token: None,
             login_entry_id: entry.id,
             identity: identity.clone(),
             registration_eligible: true
@@ -496,6 +503,7 @@ async fn external_profile_account_collisions_are_atomic_and_invalid_hints_fall_b
         SessionIssuer::new(MokaSessionStore::new("external-profile-collision", 128), 7),
     );
     let login = |subject: &str, profile| CompleteExternalLoginCommand {
+        invitation_token: None,
         login_entry_id: entry.id,
         identity: registration_identity(entry.connection_id, subject, profile),
         registration_eligible: true,

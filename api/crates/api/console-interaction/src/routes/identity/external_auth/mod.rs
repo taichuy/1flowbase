@@ -159,15 +159,27 @@ fn unique_query(raw: Option<&str>) -> Result<BTreeMap<String, String>, ApiError>
 
 test_support_item! { , []
 fn start_entry_id(raw: Option<&str>) -> Result<Uuid, ApiError> {
+    start_parameters(raw).map(|(entry, _)| entry)
+}
+}
+
+fn start_parameters(raw: Option<&str>) -> Result<(Uuid, Option<String>), ApiError> {
     let query = unique_query(raw)?;
-    if query.len() != 1 {
+    if query
+        .keys()
+        .any(|key| !matches!(key.as_str(), "login_entry_id" | "invitation_token"))
+    {
         return Err(transaction::denied());
     }
-    query
+    let entry = query
         .get("login_entry_id")
         .and_then(|id| Uuid::parse_str(id).ok())
-        .ok_or_else(transaction::denied)
-}
+        .ok_or_else(transaction::denied)?;
+    let token = control_plane::auth::validate_invitation_token(
+        query.get("invitation_token").map(String::as_str),
+    )
+    .map_err(|_| transaction::denied())?;
+    Ok((entry, token.map(str::to_owned)))
 }
 
 fn no_store(response: &mut Response) {
@@ -184,14 +196,17 @@ fn no_store(response: &mut Response) {
 /// Start external sign-in.
 ///
 /// Start a browser-bound external authentication transaction for an enabled login entry.
-#[utoipa::path(get, path = "/api/public/auth/external/start", operation_id = "public.auth.external.start", params(("login_entry_id" = Uuid, Query)), responses((status = 303)))]
+#[utoipa::path(get, path = "/api/public/auth/external/start", operation_id = "public.auth.external.start", params(("login_entry_id" = Uuid, Query), ("invitation_token" = Option<String>, Query)), responses((status = 303)))]
 pub async fn start(State(state): State<Arc<ApiState>>, RawQuery(raw): RawQuery) -> Response {
     let result = async {
-        let login_entry_id = start_entry_id(raw.as_deref())?;
+        let (login_entry_id, invitation_token) = start_parameters(raw.as_deref())?;
         let PublicOutput::Authorization(prepared) = interface::invoke_public(
             &state,
             interface::START_BINDING,
-            PublicInput::Start { login_entry_id },
+            PublicInput::Start {
+                login_entry_id,
+                invitation_token,
+            },
         )
         .await?
         else {
@@ -266,6 +281,7 @@ test_support_item! { pub(crate), [/// Resources for starting external authentica
 ]
 struct ExternalAuthentication {
     pub(crate) runtime: crate::authentication_runtime::AuthenticationRuntime,
+    pub(crate) workspace_policy: api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime,
     pub(crate) cache: Arc<dyn control_plane::ports::CacheStore>,
     cookie_secure: bool,
 }
@@ -276,6 +292,7 @@ impl ExternalAuthentication {
         fn from_state(state: &ApiState) -> Self {
             Self {
                 runtime: crate::authentication_runtime::AuthenticationRuntime::from_state(state),
+                workspace_policy: api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime::from_state(state),
                 cache: state.infrastructure.cache_store(),
                 cookie_secure: state.cookie_secure,
             }
@@ -289,7 +306,7 @@ async fn begin(
     entry: LoginEntryRecord,
     binding: Option<BindingIntent>,
 ) -> Result<(CookieJar, String), ApiError> {
-    begin_for_purpose(state, entry, binding, transaction::Purpose::Bind).await
+    begin_with_invitation(state, entry, binding, transaction::Purpose::Bind, None).await
 }
 }
 
@@ -299,6 +316,17 @@ async fn begin_for_purpose(
     entry: LoginEntryRecord,
     binding: Option<BindingIntent>,
     purpose: transaction::Purpose,
+) -> Result<(CookieJar, String), ApiError> {
+    begin_with_invitation(state, entry, binding, purpose, None).await
+}
+}
+
+async fn begin_with_invitation(
+    state: &ExternalAuthentication,
+    entry: LoginEntryRecord,
+    binding: Option<BindingIntent>,
+    purpose: transaction::Purpose,
+    invitation_token: Option<String>,
 ) -> Result<(CookieJar, String), ApiError> {
     validate_entry(&entry)?;
     let provider =
@@ -318,6 +346,7 @@ async fn begin_for_purpose(
     let verifier = transaction::random_token();
     let challenge = transaction::challenge(&verifier);
     let transaction = Transaction {
+        invitation_token,
         login_entry_id: entry.id,
         connection_id: entry.connection_id,
         auth_type: entry.auth_type.clone(),
@@ -362,10 +391,10 @@ async fn begin_for_purpose(
         .build();
     Ok((CookieJar::new().add(cookie), value))
 }
-}
 
 test_support_item! { pub(super), []
 struct VerifiedCallback {
+    invitation_token: Option<String>,
     login_entry_id: Uuid,
     identity: VerifiedExternalIdentity,
     registration_eligible: bool,
@@ -627,12 +656,18 @@ async fn verify_callback(
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false);
     let registration_eligible = if binding_actor.is_none()
-        && registration_enabled
         && state
             .store
             .find_external_identity_binding(&identity)
             .await?
             .is_none()
+        && (registration_enabled
+            || api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime::from_state(
+                state,
+            )
+            .public_onboarding_mode()
+            .await?
+            .is_some())
     {
         match provider
             .invoke(
@@ -670,6 +705,7 @@ async fn verify_callback(
             .await?,
     );
     Ok(VerifiedCallback {
+        invitation_token: transaction.invitation_token,
         login_entry_id: entry.id,
         identity,
         registration_eligible,

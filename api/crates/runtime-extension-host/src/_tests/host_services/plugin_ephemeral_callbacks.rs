@@ -58,6 +58,7 @@ pub(super) fn context(port: Arc<Ephemeral>) -> ProviderHostCallContext {
         http_egress: None,
         file_import: None,
         execution_gate: None,
+        workspace_governance: None,
         plugin_ephemeral: Some((binding, port)),
         plugin_credentials: None,
     }

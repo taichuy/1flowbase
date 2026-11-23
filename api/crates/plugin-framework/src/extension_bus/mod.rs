@@ -28,3 +28,5 @@ pub use notification_plan::*;
 
 mod authentication_plan;
 pub use authentication_plan::*;
+mod workspace_policy_plan;
+pub use workspace_policy_plan::*;

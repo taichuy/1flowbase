@@ -141,6 +141,7 @@ pub(crate) fn production_interface_contributions(
         Arc::downgrade(owner),
     ));
     let public_login_entries = crate::routes::auth::public_login_entries_port(
+        api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime::from_state(state),
         state.store.clone(),
         Arc::clone(&state.authenticator_registry),
         state.bootstrap_workspace_id,
@@ -148,6 +149,7 @@ pub(crate) fn production_interface_contributions(
         state.provider_install_root.clone(),
     );
     let public_sign_in = crate::routes::sign_in_interface::public_sign_in_port(
+        api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime::from_state(state),
         state.store.clone(),
         Arc::clone(&state.session_store),
         state.session_ttl_days,
@@ -158,11 +160,13 @@ pub(crate) fn production_interface_contributions(
         state.bootstrap_workspace_id,
     );
     let public_sign_up = crate::routes::auth::public_sign_up_port(
+        api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime::from_state(state),
         state.store.clone(),
         Arc::clone(&state.session_store),
         state.session_ttl_days,
     );
     let console_identity = crate::routes::console_identity_interface::console_identity_port(
+        api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime::from_state(state),
         state.store.clone(),
         Arc::clone(&state.session_store),
         state.cookie_name.clone(),
@@ -411,6 +415,7 @@ pub(crate) fn production_interface_contributions(
                 "console.identity.session.delete",
                 "console.identity.session.revoke-all",
                 "console.identity.session.switch-workspace",
+                "console.workspaces.invitations.redeem",
                 "console.identity.session.switch-role",
                 "console.identity.me.get",
                 "console.identity.me.patch",

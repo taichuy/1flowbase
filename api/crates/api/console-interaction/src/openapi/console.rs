@@ -69,6 +69,7 @@ struct Paths84;
     crate::routes::session::delete_session,
     crate::routes::session::revoke_all_sessions,
     crate::routes::session::switch_workspace,
+    crate::routes::session::redeem_invitation,
     crate::routes::session::switch_active_role,
 ))]
 struct Paths91;
@@ -222,6 +223,7 @@ struct Schemas84;
 #[derive(OpenApi)]
 #[openapi(components(schemas(
     crate::routes::session::SwitchWorkspaceBody,
+    crate::routes::session::RedeemWorkspaceInvitationBody,
     crate::routes::session::SwitchActiveRoleBody,
     crate::routes::session::AvailableRoleResponse,
     crate::routes::session::SessionResponse,

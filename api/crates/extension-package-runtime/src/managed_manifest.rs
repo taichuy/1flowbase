@@ -190,6 +190,39 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
             ));
         }
     }
+    let mut policies = module
+        .contributions
+        .iter()
+        .filter(|c| c.point_id.as_str() == extension_contracts::WORKSPACE_POLICY_POINT);
+    let policy = policies.next();
+    let policy_id = policy.map(|policy| &policy.contribution_id);
+    if let Some(policy) = policy {
+        use extension_contracts::*;
+        if policies.next().is_some()
+            || manifest.module_kind() != ModuleKind::Runtime
+            || manifest.binding_targets != ["system"]
+            || policy.contract_version.as_str() != WORKSPACE_POLICY_CONTRACT_V1
+            || policy.mode != ContributionMode::Append
+            || !policy
+                .required_permissions
+                .iter()
+                .any(|p| p.as_str() == WORKSPACE_POLICY_PERMISSION)
+            || policy.required_permissions.iter().any(|p| {
+                p.as_str() != WORKSPACE_POLICY_PERMISSION
+                    && !is_workspace_policy_callback_permission(p.as_str())
+            })
+            || !managed.execution_bindings.iter().any(|binding| {
+                binding.contribution_id == policy.contribution_id
+                    && binding.execution_mode == PluginExecutionMode::ProcessPerCall
+                    && binding.runtime.protocol == STDIO_JSON_MULTIPLEX_V1
+                    && binding.payload.is_none()
+            })
+        {
+            return Err(invalid(
+                "workspace policy requires one managed system runtime extension multiplex binding",
+            ));
+        }
+    }
     let mut points = BTreeSet::new();
     for point in &module.extension_points {
         if point.owner_module_id != module.module_id || !points.insert(&point.point_id) {
@@ -417,6 +450,7 @@ pub(crate) fn validate_managed_manifest(manifest: &PluginManifestV1) -> Framewor
         };
         if (binding.runtime.protocol != expected_protocol
             && !((manifest.managed_service.is_some()
+                || policy_id == Some(&binding.contribution_id)
                 || matches!(
                     binding.payload,
                     Some(

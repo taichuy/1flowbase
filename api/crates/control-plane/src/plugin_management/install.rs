@@ -260,6 +260,14 @@ fn prepare_installation_commit_blocking(
         serde_json::to_value(&manifest.resource_imports)?;
     if let Some(service) = &manifest.managed_service {
         installation.metadata_json["managed_service"] = serde_json::to_value(service)?;
+    }
+    let policy_uses_data = manifest.managed.as_ref().is_some_and(|managed| {
+        managed.module.contributions.iter().any(|contribution| {
+            contribution.point_id.as_str() == extension_contracts::WORKSPACE_POLICY_POINT
+                && contribution.required_permissions.iter().any(|permission| permission.as_str() == "plugin_data.owned.write")
+        })
+    });
+    if manifest.managed_service.is_some() || policy_uses_data {
         installation.metadata_json["managed_service_permissions"] = serde_json::json!({"secrets": manifest.permissions.secrets, "storage": manifest.permissions.storage});
     }
     installation.metadata_json["communication_commands"] =

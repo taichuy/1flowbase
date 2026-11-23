@@ -419,6 +419,7 @@ async fn password_local_login_accepts_legacy_phc_and_rejects_wrong_password() {
 
     let login = kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
             identifier: "root".to_string(),
             password: fixture["password"]["plaintext"]
@@ -433,6 +434,7 @@ async fn password_local_login_accepts_legacy_phc_and_rejects_wrong_password() {
 
     let rejected = kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
             identifier: "root".to_string(),
             password: "incorrect-legacy-password".to_string(),
@@ -476,6 +478,7 @@ async fn password_local_entries_share_the_local_credential_connection() {
 
     kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
             identifier: "root".to_string(),
             password: "change-me".to_string(),
@@ -513,6 +516,7 @@ async fn external_provider_cannot_replace_the_password_local_credential_verifier
 
     kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
             identifier: "root".to_string(),
             password: "change-me".to_string(),
@@ -540,6 +544,7 @@ async fn password_local_login_rejects_a_non_local_connection() {
 
     let result = kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
             identifier: "root".to_string(),
             password: "change-me".to_string(),
@@ -580,6 +585,7 @@ async fn auth_kernel_rejects_provider_claim_from_another_authenticator_instance(
 
     let result = kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: PARTNER_EXTERNAL_AUTHENTICATOR_ID,
             identifier: "root@example.com".to_string(),
             password: "ignored".to_string(),
@@ -623,6 +629,7 @@ async fn auth_kernel_resolves_only_a_bound_verified_external_identity() {
 
     let result = kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: PARTNER_EXTERNAL_AUTHENTICATOR_ID,
             identifier: "ignored".to_string(),
             password: "ignored".to_string(),
@@ -656,6 +663,7 @@ async fn auth_kernel_does_not_merge_an_unbound_external_email() {
 
     let result = kernel
         .login(LoginCommand {
+            invitation_token: None,
             login_entry_id: PARTNER_EXTERNAL_AUTHENTICATOR_ID,
             identifier: "root@example.com".to_string(),
             password: "ignored".to_string(),

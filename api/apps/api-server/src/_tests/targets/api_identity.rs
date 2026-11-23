@@ -21,3 +21,6 @@ mod settings_feature_members_routes;
 mod settings_feature_roles_routes;
 #[path = "../identity_routes/workspace_routes.rs"]
 mod workspace_routes;
+
+#[path = "../identity_routes/workspace_policy/routes.rs"]
+mod workspace_policy_routes;

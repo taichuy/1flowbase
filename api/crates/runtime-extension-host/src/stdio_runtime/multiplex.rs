@@ -862,6 +862,28 @@ async fn execute_callback(
     context: Option<ProviderHostCallContext>,
 ) -> Value {
     match service {
+        MultiplexHostService::WorkspaceGovernanceV1 => {
+            let result = async {
+                let (binding, port) = context
+                    .and_then(|context| context.workspace_governance)
+                    .ok_or_else(|| {
+                        extension_contracts::HostServiceError::new(
+                            "workspace_governance_not_granted",
+                        )
+                    })?;
+                let request = serde_json::from_value(request).map_err(|_| {
+                    extension_contracts::HostServiceError::new(
+                        "workspace_governance_request_invalid",
+                    )
+                })?;
+                port.execute(&binding, &request).await
+            }
+            .await;
+            match result {
+                Ok(result) => serde_json::json!({"result": result}),
+                Err(error) => serde_json::json!({"error": error}),
+            }
+        }
         MultiplexHostService::PluginExecutionGateV1 => {
             let result = match context.and_then(|context| context.execution_gate) {
                 Some(gate) => gate.execute(request).await,
@@ -1140,3 +1162,7 @@ mod ephemeral_tests;
 #[cfg(test)]
 #[path = "../_tests/host_services/execution_gate_dispatch.rs"]
 mod execution_gate_dispatch;
+
+#[cfg(test)]
+#[path = "../_tests/host_services/workspace_governance_callbacks.rs"]
+mod workspace_governance_callbacks;

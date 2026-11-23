@@ -679,7 +679,13 @@ fn validate_execution_runtime_pair(manifest: &PluginManifestV1) -> FrameworkResu
         && manifest.execution_mode != PluginExecutionMode::StatefulProviderWorker
         && !((manifest.managed_service.is_some()
             || !manifest.notification_types.is_empty()
-            || !manifest.authentication_providers.is_empty())
+            || !manifest.authentication_providers.is_empty()
+            || (manifest.manifest_version == 2
+                && manifest.managed.as_ref().is_some_and(|managed| {
+                    managed.module.contributions.iter().any(|item| {
+                        item.point_id.as_str() == extension_contracts::WORKSPACE_POLICY_POINT
+                    })
+                })))
             && manifest.execution_mode == PluginExecutionMode::ProcessPerCall)
     {
         return Err(PluginFrameworkError::invalid_provider_package(

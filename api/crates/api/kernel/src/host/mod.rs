@@ -22,3 +22,5 @@ pub mod runtime_execution;
 pub mod runtime_profile_client;
 #[path = "runtime_registry_sync/mod.rs"]
 pub mod runtime_registry_sync;
+
+pub mod workspace_policy_runtime;

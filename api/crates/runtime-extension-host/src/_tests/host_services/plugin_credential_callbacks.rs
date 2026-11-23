@@ -60,6 +60,7 @@ pub(super) fn context(port: Arc<Credentials>) -> ProviderHostCallContext {
         file_import: None,
         plugin_credentials: Some((binding, port)),
         execution_gate: None,
+        workspace_governance: None,
         plugin_ephemeral: None,
     }
 }

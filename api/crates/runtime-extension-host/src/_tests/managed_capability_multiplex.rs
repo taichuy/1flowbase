@@ -113,6 +113,7 @@ sys.stdin.read()
         plugin_data,
         plugin_credentials: None,
         execution_gate: None,
+        workspace_governance: None,
         plugin_ephemeral: None,
         file_import: None,
         file_read: None,
