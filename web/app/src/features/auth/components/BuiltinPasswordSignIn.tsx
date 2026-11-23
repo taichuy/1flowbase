@@ -11,12 +11,14 @@ interface BuiltinPasswordSignInProps {
   loginEntryId?: string;
   loginEntrySelector?: { request: () => void } | null;
   onAuthenticated: (session: PasswordSignInResponse) => void | Promise<void>;
+  invitationToken?: string;
 }
 
 export function BuiltinPasswordSignIn({
   loginEntryId,
   loginEntrySelector = null,
-  onAuthenticated
+  onAuthenticated,
+  invitationToken
 }: BuiltinPasswordSignInProps) {
   const { t } = useAuthTranslation();
   const [identifier, setIdentifier] = useState('');
@@ -42,11 +44,13 @@ export function BuiltinPasswordSignIn({
     const attempt = generation.current;
     setPending(true);
     setFailed(false);
+    const normalizedToken = invitationToken?.trim();
     try {
       const session = await signInWithPassword({
         login_entry_id: loginEntryId,
         identifier,
-        password
+        password,
+        ...(normalizedToken ? { invitation_token: normalizedToken } : {})
       });
       if (attempt === generation.current) await onAuthenticated(session);
     } catch {

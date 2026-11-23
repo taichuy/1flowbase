@@ -6,7 +6,10 @@
     "fallback_password_label": "密码",
     "fallback_submit": "登录",
     "fallback_title": "欢迎",
-    "footer": "Powered by 1flowbase"
+    "footer": "Powered by 1flowbase",
+    "invitation_detected": "已识别工作空间邀请，登录或注册后将自动加入对应空间。",
+    "invitation_code_label": "邀请码",
+    "invitation_code_placeholder": "输入邀请码以注册或加入工作空间（已有账号直接登录可留空）"
   },
   "mcp_oauth": {
     "title": "授权 MCP 连接",
@@ -41,7 +44,9 @@
     "user_disabled": "此本地账号已停用，请联系管理员。",
     "failed": "GitHub 登录未完成，请重试或选择其他登录方式。",
     "other_methods": "其他登录方式",
-    "identity_unlinked": "该 GitHub 身份已解绑。请使用其他方式登录原本站账号，再到个人资料 → 安全设置 → GitHub 恢复绑定；不会自动创建新账号。"
+    "identity_unlinked": "该 GitHub 身份已解绑。请使用其他方式登录原本站账号，再到个人资料 → 安全设置 → GitHub 恢复绑定；不会自动创建新账号。",
+    "invitation_required": "当前仅开放受邀注册，请通过有效的工作空间邀请链接发起注册。",
+    "invitation_invalid": "该工作空间邀请链接无效、已过期或已达使用上限。"
   },
   "auto": {
     "product_tagline": "对话即是壁垒，AI应用原生底座"

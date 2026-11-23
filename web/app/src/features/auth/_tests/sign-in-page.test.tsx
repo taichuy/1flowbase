@@ -584,3 +584,68 @@ test('the hide switch removes the fixed login tagline while keeping sign-in and 
     systemMetadata.hide_login_tagline = false;
   }
 });
+
+test('AC-002 ?invite= enables invited registration and forwards invitationToken to external OAuth', async () => {
+  const githubEntry = {
+    ...passwordInstance,
+    id: 'auth-github',
+    auth_type: 'github-oauth',
+    entry_action: 'external_login' as const,
+    is_builtin: false,
+    title: 'GitHub',
+    sort_order: 10
+  };
+  fetchLoginEntries.mockResolvedValue({
+    default_login_entry_id: passwordInstance.id,
+    onboarding_mode: 'invite_only',
+    login_entries: [passwordInstance, githubEntry]
+  });
+  window.history.pushState({}, '', '/sign-in?invite=inv_team_42');
+
+  const view = render(<SignInPage loginEntryId={passwordInstance.id} />);
+  expect(
+    await screen.findByTestId('sign-in-invitation-banner')
+  ).toBeVisible();
+  await waitFor(() =>
+    expect(renderedBlocks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: passwordInstance.id,
+        public_variables: { self_registration_enabled: true }
+      }),
+      true
+    )
+  );
+
+  view.rerender(<SignInPage />);
+  fireEvent.click(await screen.findByRole('button', { name: 'GitHub' }));
+  expect(externalRedirect).toHaveBeenCalledWith(
+    'auth-github',
+    undefined,
+    'inv_team_42'
+  );
+});
+
+test('AC-002 invite_only mode exposes manual invitation code field when URL has no ?invite', async () => {
+  fetchLoginEntries.mockResolvedValue({
+    default_login_entry_id: passwordInstance.id,
+    onboarding_mode: 'invite_only',
+    login_entries: [passwordInstance]
+  });
+  window.history.pushState({}, '', '/sign-in');
+
+  render(<SignInPage />);
+  const inviteInput = await screen.findByLabelText(/邀请码|Invitation code/i);
+  expect(inviteInput).toBeVisible();
+  expect(renderedBlocks).toHaveBeenCalledWith(passwordInstance, false);
+
+  fireEvent.change(inviteInput, { target: { value: 'inv_manual_99' } });
+  await waitFor(() =>
+    expect(renderedBlocks).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        id: passwordInstance.id,
+        public_variables: { self_registration_enabled: true }
+      }),
+      false
+    )
+  );
+});

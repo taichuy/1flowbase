@@ -416,3 +416,52 @@ test('stable capability owners preserve local state; replacing only the callback
   expect(replacementCallback).not.toHaveBeenCalled();
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
+
+test('attaches invitation_token to sign-in and sign-up without changing official password source', async () => {
+  vi.mocked(apiFetch).mockResolvedValue(session);
+  const onAuthenticated = vi.fn();
+  render(
+    <DefaultPasswordSignIn
+      instance={entry({ self_registration_enabled: true })}
+      invitationToken="inv_alpha_secret"
+      onAuthenticated={onAuthenticated}
+    />
+  );
+
+  fillSignIn();
+  submit();
+  expect(apiFetch).toHaveBeenCalledWith(
+    expect.objectContaining({
+      path: '/api/public/auth/sign-in',
+      body: {
+        login_entry_id: 'password-local',
+        identifier: 'alice',
+        password: 'secret',
+        invitation_token: 'inv_alpha_secret'
+      }
+    })
+  );
+  await waitFor(() => expect(onAuthenticated).toHaveBeenCalledTimes(1));
+
+  fireEvent.click(screen.getByRole('button', { name: 'Create an account' }));
+  fireEvent.change(screen.getByLabelText('Account'), {
+    target: { value: 'invited-user' }
+  });
+  fireEvent.change(screen.getByLabelText('Email'), {
+    target: { value: 'invited@example.com' }
+  });
+  submit();
+  expect(apiFetch).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      path: '/api/public/auth/sign-up',
+      body: {
+        login_entry_id: 'password-local',
+        account: 'invited-user',
+        email: 'invited@example.com',
+        password: 'secret',
+        invitation_token: 'inv_alpha_secret'
+      }
+    })
+  );
+  await waitFor(() => expect(onAuthenticated).toHaveBeenCalledTimes(2));
+});

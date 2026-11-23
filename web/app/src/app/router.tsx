@@ -77,6 +77,13 @@ const HomeRedirect = lazy(() =>
     default: module.HomeRedirect
   }))
 );
+const AuthenticatedSignInRedirect = lazy(() =>
+  import('../features/auth/pages/AuthenticatedSignInRedirect').then(
+    (module) => ({
+      default: module.AuthenticatedSignInRedirect
+    })
+  )
+);
 const FrontstageWorkspacePage = lazy(() =>
   import('../features/frontstage/pages/FrontstageWorkspacePage').then(
     (module) => ({ default: module.FrontstageWorkspacePage })
@@ -189,13 +196,32 @@ const shellRoute = createRoute({
 const homeRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/',
-  component: () => (
-    <RouteGuard routeId="home">
-      <LazyRouteBoundary>
-        <HomeRedirect />
-      </LazyRouteBoundary>
-    </RouteGuard>
-  )
+  validateSearch: (
+    search: Record<string, unknown>
+  ): { invite?: string } => ({
+    ...(typeof search.invite === 'string' && search.invite.trim().length > 0
+      ? { invite: search.invite.trim() }
+      : {})
+  }),
+  component: () => {
+    const { invite } = homeRoute.useSearch();
+    if (invite) {
+      return (
+        <Navigate
+          to="/sign-in"
+          search={{ login_entry_id: undefined, invite }}
+          replace
+        />
+      );
+    }
+    return (
+      <RouteGuard routeId="home">
+        <LazyRouteBoundary>
+          <HomeRedirect />
+        </LazyRouteBoundary>
+      </RouteGuard>
+    );
+  }
 });
 
 const applicationIndexRoute = createRoute({
@@ -820,14 +846,28 @@ const frontstageSlugPageTabRoute = createRoute({
 const signInRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/sign-in',
-  validateSearch: (search: Record<string, unknown>) => ({
-    login_entry_id:
-      typeof search.login_entry_id === 'string' &&
-      search.login_entry_id.trim().length > 0
-        ? search.login_entry_id
-        : undefined
+  validateSearch: (
+    search: Record<string, unknown>
+  ): { login_entry_id?: string; invite?: string } => ({
+    ...(typeof search.login_entry_id === 'string' &&
+    search.login_entry_id.trim().length > 0
+      ? { login_entry_id: search.login_entry_id }
+      : {}),
+    ...(typeof search.invite === 'string' && search.invite.trim().length > 0
+      ? { invite: search.invite.trim() }
+      : {})
   }),
-  component: () => <Navigate to="/" replace />
+  component: () => {
+    const { invite } = signInRoute.useSearch();
+    if (!invite) {
+      return <Navigate to="/" replace />;
+    }
+    return (
+      <LazyRouteBoundary>
+        <AuthenticatedSignInRedirect invite={invite} />
+      </LazyRouteBoundary>
+    );
+  }
 });
 
 const mcpAuthorizeRoute = createRoute({

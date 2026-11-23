@@ -19,7 +19,8 @@ import { useAuthStore } from '../../../state/auth-store';
 import {
   fetchCurrentMe,
   fetchCurrentSession,
-  type PublicLoginEntry
+  type PublicLoginEntry,
+  type PublicOnboardingMode
 } from '../api/session';
 const BuiltinPasswordSignIn = lazy(() =>
   import('../components/BuiltinPasswordSignIn').then((module) => ({
@@ -50,17 +51,20 @@ import { usePublicSystemMetadata } from '../lib/public-system-metadata';
 
 interface SignInPageProps {
   loginEntryId?: string;
+  inviteToken?: string;
 }
 
-export function SignInPage({ loginEntryId }: SignInPageProps) {
+export function SignInPage({ loginEntryId, inviteToken }: SignInPageProps) {
   const { data: metadata } = usePublicSystemMetadata();
   const navigate = navigatePublicRoute;
   const location = usePublicLocation();
   const { t } = useAuthTranslation();
-  const externalError = new URL(
-    location,
-    window.location.origin
-  ).searchParams.get('auth_error');
+  const locationUrl = new URL(location, window.location.origin);
+  const externalError = locationUrl.searchParams.get('auth_error');
+  const urlInviteToken =
+    inviteToken?.trim() ||
+    locationUrl.searchParams.get('invite')?.trim() ||
+    undefined;
   const externalErrorMessages: Record<string, string> = {
     registration_disabled: t('external_auth.registration_disabled'),
     account_too_new: t('external_auth.account_too_new'),
@@ -73,16 +77,28 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
     entry_unavailable: t('external_auth.entry_unavailable'),
     provider_unavailable: t('external_auth.provider_unavailable'),
     session_expired: t('external_auth.session_expired'),
-    user_disabled: t('external_auth.user_disabled')
+    user_disabled: t('external_auth.user_disabled'),
+    invitation_required: t('external_auth.invitation_required'),
+    invitation_invalid: t('external_auth.invitation_invalid'),
+    invitation_expired: t('external_auth.invitation_invalid'),
+    invitation_exhausted: t('external_auth.invitation_invalid'),
+    invitation_revoked: t('external_auth.invitation_invalid'),
+    invitation_email_mismatch: t('external_auth.invitation_invalid')
   };
   const setAuthenticated = useAuthStore((state) => state.setAuthenticated);
   const [loginEntries, setLoginEntries] = useState<PublicLoginEntry[]>([]);
+  const [onboardingMode, setOnboardingMode] = useState<
+    PublicOnboardingMode | undefined
+  >(undefined);
+  const [manualInviteCode, setManualInviteCode] = useState('');
   const [loading, setLoading] = useState(true);
   const [discoveryFailed, setDiscoveryFailed] = useState(false);
   const [startingEntryId, setStartingEntryId] = useState<string | null>(null);
   const [startFailed, setStartFailed] = useState(false);
   const startingRef = useRef(false);
   const isStarting = startingEntryId !== null;
+  const effectiveInviteToken =
+    urlInviteToken || manualInviteCode.trim() || undefined;
 
   useEffect(() => {
     const reset = () => {
@@ -101,7 +117,11 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
         setStartingEntryId(entry.id);
         setStartFailed(false);
         try {
-          redirectToExternalLogin(entry.id);
+          if (effectiveInviteToken) {
+            redirectToExternalLogin(entry.id, undefined, effectiveInviteToken);
+          } else {
+            redirectToExternalLogin(entry.id);
+          }
         } catch {
           startingRef.current = false;
           setStartingEntryId(null);
@@ -111,7 +131,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
         void navigate({ to: '/sign-in', search: { login_entry_id: entry.id } });
       }
     },
-    [navigate]
+    [effectiveInviteToken, navigate]
   );
   const selectedLoginEntry = useMemo(
     () =>
@@ -120,17 +140,35 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
         : (loginEntries.find((item) => item.id === loginEntryId) ?? null),
     [loginEntryId, loginEntries]
   );
+  const hasInviteToken = Boolean(effectiveInviteToken);
+  const effectiveLoginEntry = useMemo(() => {
+    if (!selectedLoginEntry) return null;
+    if (
+      (hasInviteToken || onboardingMode === 'personal_workspace') &&
+      selectedLoginEntry.auth_type === 'password-local' &&
+      selectedLoginEntry.public_variables.self_registration_enabled !== true
+    ) {
+      return {
+        ...selectedLoginEntry,
+        public_variables: {
+          ...selectedLoginEntry.public_variables,
+          self_registration_enabled: true
+        }
+      };
+    }
+    return selectedLoginEntry;
+  }, [hasInviteToken, onboardingMode, selectedLoginEntry]);
   const isDefaultPassword = useMemo(
     () =>
       Boolean(
-        selectedLoginEntry &&
-        matchesDefaultPasswordSource(selectedLoginEntry.public_ui_block)
+        effectiveLoginEntry &&
+        matchesDefaultPasswordSource(effectiveLoginEntry.public_ui_block)
       ),
-    [selectedLoginEntry]
+    [effectiveLoginEntry]
   );
 
   const formHost = useRef<HTMLDivElement>(null);
-  useAuthenticatedPrewarm(formHost, selectedLoginEntry);
+  useAuthenticatedPrewarm(formHost, effectiveLoginEntry);
   const authOwner = useMemo(() => ({ active: false }), [selectedLoginEntry]);
   useEffect(() => {
     authOwner.active = true;
@@ -145,11 +183,13 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
       .then((payload) => {
         if (!active) return;
         setLoginEntries(payload.login_entries);
+        setOnboardingMode(payload.onboarding_mode);
         setDiscoveryFailed(false);
       })
       .catch(() => {
         if (!active) return;
         setLoginEntries([]);
+        setOnboardingMode(undefined);
         setDiscoveryFailed(true);
       })
       .finally(() => {
@@ -222,6 +262,29 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
           footer={t('sign_in.footer')}
           filing_html={metadata?.filing_html}
         >
+          {urlInviteToken ? (
+            <div
+              className="auth-sign-in-invite-banner"
+              data-testid="sign-in-invitation-banner"
+              role="status"
+            >
+              <span>{t('sign_in.invitation_detected')}</span>
+            </div>
+          ) : null}
+          {!loading && onboardingMode === 'invite_only' && !urlInviteToken ? (
+            <label className="auth-sign-in-invite-field">
+              <span className="auth-sign-in-invite-label">
+                {t('sign_in.invitation_code_label')}
+              </span>
+              <input
+                autoComplete="off"
+                className="auth-sign-in-invite-input"
+                placeholder={t('sign_in.invitation_code_placeholder')}
+                value={manualInviteCode}
+                onChange={(event) => setManualInviteCode(event.target.value)}
+              />
+            </label>
+          ) : null}
           {externalError ? (
             <AuthError>
               {externalErrorMessages[externalError] ??
@@ -232,7 +295,7 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
             <AuthError>{t('external_auth.failed')}</AuthError>
           ) : null}
           {loading ? <LoadingState compact /> : null}
-          {!loading && selectedLoginEntry?.entry_action === 'external_login' ? (
+          {!loading && effectiveLoginEntry?.entry_action === 'external_login' ? (
             <div className="auth-sign-in-selector">
               {loginEntrySelector ? (
                 <button
@@ -248,14 +311,14 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
                 className="auth-sign-in-selector-button"
                 type="button"
                 disabled={isStarting}
-                aria-busy={startingEntryId === selectedLoginEntry.id}
-                onClick={() => activateLoginEntry(selectedLoginEntry)}
+                aria-busy={startingEntryId === effectiveLoginEntry.id}
+                onClick={() => activateLoginEntry(effectiveLoginEntry)}
               >
-                {selectedLoginEntry.title}
+                {effectiveLoginEntry.title}
               </button>
             </div>
           ) : null}
-          {!loading && loginEntries.length > 1 && !selectedLoginEntry ? (
+          {!loading && loginEntries.length > 1 && !effectiveLoginEntry ? (
             <div className="auth-sign-in-selector">
               {loginEntries.map((instance) => (
                 <button
@@ -280,30 +343,35 @@ export function SignInPage({ loginEntryId }: SignInPageProps) {
             </div>
           ) : null}
           {!loading &&
-          selectedLoginEntry?.entry_action === 'render_ui' &&
+          effectiveLoginEntry?.entry_action === 'render_ui' &&
           isDefaultPassword ? (
             <DefaultPasswordSignIn
-              key={selectedLoginEntry.id}
-              instance={selectedLoginEntry}
+              key={effectiveLoginEntry.id}
+              instance={effectiveLoginEntry}
               loginEntrySelector={loginEntrySelector}
               onAuthenticated={handleAuthenticated}
+              invitationToken={effectiveInviteToken}
             />
           ) : null}
           {!loading &&
-          selectedLoginEntry?.entry_action === 'render_ui' &&
+          effectiveLoginEntry?.entry_action === 'render_ui' &&
           !isDefaultPassword ? (
             <Suspense fallback={<LoadingState compact />}>
               <CustomAuthRuntime
-                key={selectedLoginEntry.id}
-                instance={selectedLoginEntry}
+                key={effectiveLoginEntry.id}
+                instance={effectiveLoginEntry}
                 loginEntrySelector={loginEntrySelector}
                 onAuthenticated={handleAuthenticated}
+                invitationToken={effectiveInviteToken}
               />
             </Suspense>
           ) : null}
           {!loading && (discoveryFailed || loginEntries.length === 0) ? (
             <Suspense fallback={<LoadingState compact />}>
-              <BuiltinPasswordSignIn onAuthenticated={handleAuthenticated} />
+              <BuiltinPasswordSignIn
+                onAuthenticated={handleAuthenticated}
+                invitationToken={effectiveInviteToken}
+              />
             </Suspense>
           ) : null}
         </SignInPanel>

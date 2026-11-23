@@ -15,12 +15,15 @@ import { redirectToExternalLogin } from '../lib/external-login';
 export function createPublicAuthInputs(
   loginEntryId: string,
   publicVariables: Record<string, unknown>,
-  authenticatorSelectionAvailable = false
+  authenticatorSelectionAvailable = false,
+  invitationToken?: string
 ): Record<string, unknown> {
+  const normalizedToken = invitationToken?.trim();
   return {
     login_entry_id: loginEntryId,
     authenticator_selection_available: authenticatorSelectionAvailable,
-    public_variables: publicVariables
+    public_variables: publicVariables,
+    ...(normalizedToken ? { invitation_token: normalizedToken } : {})
   };
 }
 
@@ -41,6 +44,7 @@ export function createPublicAuthNativeBlockContextCapabilities(input: {
   reportDiagnostic?(diagnostic: NativeBlockContextCapabilityDiagnostic): void;
   loginEntryId?: string;
   redirect?(url: string): void;
+  invitationToken?: string;
 }) {
   const capabilities = createNativeBlockContextCapabilities({
     requestId: input.requestId,
@@ -50,7 +54,12 @@ export function createPublicAuthNativeBlockContextCapabilities(input: {
     interfaceHandler:
       input.interfaceHandler ??
       ((effect) =>
-        dispatchPublicAuthApi(effect.method, effect.path, effect.request)),
+        dispatchPublicAuthApi(
+          effect.method,
+          effect.path,
+          effect.request,
+          input.invitationToken
+        )),
     emitEvent: input.emitEvent,
     observeApiCall: input.observeApiCall,
     reportDiagnostic: input.reportDiagnostic
@@ -62,7 +71,16 @@ export function createPublicAuthNativeBlockContextCapabilities(input: {
         if (!input.isCurrentInstance() || !input.loginEntryId) {
           throw new Error('This authentication entry is no longer active.');
         }
-        redirectToExternalLogin(input.loginEntryId, input.redirect);
+        const normalizedToken = input.invitationToken?.trim();
+        if (normalizedToken) {
+          redirectToExternalLogin(
+            input.loginEntryId,
+            input.redirect,
+            normalizedToken
+          );
+        } else {
+          redirectToExternalLogin(input.loginEntryId, input.redirect);
+        }
       }
     }
   };
@@ -95,7 +113,8 @@ export function createPublicAuthPreviewCapabilityHandlers(): PublicAuthPreviewCa
 export async function dispatchPublicAuthApi(
   method: string,
   path: string,
-  request: unknown
+  request: unknown,
+  invitationToken?: string
 ): Promise<unknown> {
   const normalizedUrl = new URL(path, 'http://public-auth.local');
   if (
@@ -111,10 +130,19 @@ export async function dispatchPublicAuthApi(
   const queryString = query
     ? new URLSearchParams(toStringRecord(query)).toString()
     : '';
+  const normalizedInvitationToken = invitationToken?.trim();
+  const body =
+    normalizedInvitationToken &&
+    method.toUpperCase() === 'POST' &&
+    (normalizedUrl.pathname === '/api/public/auth/sign-in' ||
+      normalizedUrl.pathname === '/api/public/auth/sign-up') &&
+    isRecord(options.body)
+      ? { ...options.body, invitation_token: normalizedInvitationToken }
+      : options.body;
   return apiFetch({
     path: `${normalizedUrl.pathname}${queryString ? `?${queryString}` : normalizedUrl.search}`,
     method,
-    body: options.body,
+    body,
     headers: isRecord(options.headers)
       ? toStringRecord(options.headers)
       : undefined,

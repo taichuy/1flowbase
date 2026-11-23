@@ -7,7 +7,7 @@ import type { PublicAuthBlockProps } from '../PublicAuthBlock';
 
 export type DefaultPasswordSignInProps = Pick<
   PublicAuthBlockProps,
-  'instance' | 'loginEntrySelector' | 'onAuthenticated'
+  'instance' | 'loginEntrySelector' | 'onAuthenticated' | 'invitationToken'
 >;
 
 /** Only the capabilities exercised by the unchanged official password source.
@@ -15,8 +15,14 @@ export type DefaultPasswordSignInProps = Pick<
  * PublicAuthBlock's interface handler; do not import their framework runtime.
  */
 export function createDefaultPasswordContext(
-  { instance, loginEntrySelector, onAuthenticated }: DefaultPasswordSignInProps,
-  isCurrentInstance: () => boolean
+  {
+    instance,
+    loginEntrySelector,
+    onAuthenticated,
+    invitationToken
+  }: DefaultPasswordSignInProps,
+  isCurrentInstance: () => boolean,
+  getInvitationToken: () => string | undefined = () => invitationToken
 ) {
   const requireCurrentInstance = () => {
     if (!isCurrentInstance()) {
@@ -44,10 +50,20 @@ export function createDefaultPasswordContext(
             'Public authentication Block requested a forbidden API path.'
           );
         }
+        const normalizedInvitationToken = getInvitationToken()?.trim();
+        const body =
+          normalizedInvitationToken &&
+          (url.pathname === '/api/public/auth/sign-in' ||
+            url.pathname === '/api/public/auth/sign-up') &&
+          typeof request?.body === 'object' &&
+          request.body !== null &&
+          !Array.isArray(request.body)
+            ? { ...request.body, invitation_token: normalizedInvitationToken }
+            : request?.body;
         const response = await apiFetch<TResponse>({
           method: 'POST',
           path: `${url.pathname}${url.search}`,
-          body: request?.body,
+          body,
           baseUrl: getAuthApiBaseUrl()
         });
         // The existing host awaits its captured callback INSIDE the interface

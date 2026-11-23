@@ -19,6 +19,7 @@ export function PublicRouterProvider() {
   const signIn = /^\/sign-in\/?$/.test(url.pathname);
   const mcp = /^\/mcp\/authorize\/?$/.test(url.pathname);
   const loginEntryId = url.searchParams.get('login_entry_id') ?? undefined;
+  const inviteToken = url.searchParams.get('invite') ?? undefined;
   const requestId = url.searchParams.get('request_id') ?? undefined;
   useEffect(() => {
     if (mcp) discardDocumentScene();
@@ -34,6 +35,7 @@ export function PublicRouterProvider() {
   return (
     <SignInPage
       loginEntryId={loginEntryId?.trim() ? loginEntryId : undefined}
+      inviteToken={inviteToken?.trim() ? inviteToken.trim() : undefined}
     />
   );
 }

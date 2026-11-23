@@ -80,3 +80,63 @@
   flex: 1;
   min-width: 0;
 }
+
+.auth-sign-in-invite-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(0, 171, 115, 0.24);
+  border-radius: 12px;
+  background: rgba(230, 247, 242, 0.78);
+  color: #008f5f;
+  font:
+    13px / 1.5 'IBM Plex Sans',
+    'Segoe UI',
+    sans-serif;
+}
+
+.auth-sign-in-invite-field {
+  display: grid;
+  gap: 6px;
+}
+
+.auth-sign-in-invite-label {
+  color: #55645d;
+  font:
+    500 13px / 1.4 'IBM Plex Sans',
+    'Segoe UI',
+    sans-serif;
+}
+
+.auth-sign-in-invite-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid #d5ddd8;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #16211d;
+  font:
+    13px / 1.4 'SFMono-Regular',
+    Menlo,
+    Monaco,
+    Consolas,
+    'Liberation Mono',
+    monospace;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.auth-sign-in-invite-input::placeholder {
+  color: #7b8982;
+  font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+}
+
+.auth-sign-in-invite-input:focus-visible {
+  outline: none;
+  border-color: #00ab73;
+  box-shadow: 0 0 0 2px rgba(0, 171, 115, 0.16);
+}

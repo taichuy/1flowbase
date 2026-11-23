@@ -2,20 +2,30 @@ import {
   deleteConsoleSession as requestDeleteConsoleSession,
   fetchConsoleMe as requestFetchConsoleMe,
   fetchConsoleSession as requestFetchConsoleSession,
+  fetchConsoleWorkspaces as requestFetchConsoleWorkspaces,
   fetchPublicLoginEntries as requestFetchPublicLoginEntries,
   getDefaultApiBaseUrl,
+  redeemConsoleWorkspaceInvitation as requestRedeemConsoleWorkspaceInvitation,
   signInWithPassword as requestSignInWithPassword,
   switchConsoleSessionRole as requestSwitchConsoleSessionRole,
+  switchConsoleSessionWorkspace as requestSwitchConsoleSessionWorkspace,
   type ApiBaseUrlLocation,
   type ConsoleMe,
   type ConsoleSessionSnapshot,
+  type ConsoleWorkspaceSummary,
   type PasswordSignInInput,
   type PasswordSignInResponse,
   type PublicLoginEntry,
-  type PublicLoginEntriesResponse
+  type PublicLoginEntriesResponse,
+  type PublicOnboardingMode
 } from '@1flowbase/api-client/auth';
 
-export type { PasswordSignInResponse, PublicLoginEntry };
+export type {
+  ConsoleWorkspaceSummary,
+  PasswordSignInResponse,
+  PublicLoginEntry,
+  PublicOnboardingMode
+};
 
 const loginEntryFlights = new Map<
   string,
@@ -99,4 +109,30 @@ export function switchActiveRole(
   baseUrl = getAuthApiBaseUrl()
 ): Promise<ConsoleSessionSnapshot> {
   return requestSwitchConsoleSessionRole(roleCode, csrfToken, baseUrl);
+}
+
+export function fetchAccessibleWorkspaces(
+  baseUrl = getAuthApiBaseUrl()
+): Promise<ConsoleWorkspaceSummary[]> {
+  return requestFetchConsoleWorkspaces(baseUrl);
+}
+
+export function switchWorkspace(
+  workspaceId: string,
+  csrfToken: string,
+  baseUrl = getAuthApiBaseUrl()
+): Promise<ConsoleSessionSnapshot> {
+  return requestSwitchConsoleSessionWorkspace(workspaceId, csrfToken, baseUrl);
+}
+
+export function redeemWorkspaceInvitation(
+  invitationToken: string,
+  csrfToken: string,
+  baseUrl = getAuthApiBaseUrl()
+): Promise<ConsoleSessionSnapshot> {
+  return requestRedeemConsoleWorkspaceInvitation(
+    invitationToken,
+    csrfToken,
+    baseUrl
+  );
 }

@@ -1,9 +1,12 @@
-import { waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { App } from 'antd';
 import type { MenuProps } from 'antd';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ConsoleMe, ConsoleSessionActor } from '@1flowbase/api-client';
 
 import { resetAuthStore, useAuthStore } from '../../state/auth-store';
+import { AccountMenu } from '../AccountMenu';
 import {
   createAccountMenuClickHandler,
   selectAccountLabel
@@ -11,7 +14,11 @@ import {
 import { createAccountMenuItems } from '../account-menu-items';
 
 const sessionApi = vi.hoisted(() => ({
-  signOut: vi.fn()
+  fetchAccessibleWorkspaces: vi.fn(),
+  fetchCurrentMe: vi.fn(),
+  signOut: vi.fn(),
+  switchActiveRole: vi.fn(),
+  switchWorkspace: vi.fn()
 }));
 
 vi.mock('../../features/auth/api/session', () => sessionApi);
@@ -47,7 +54,12 @@ function menuClick(
 
 beforeEach(() => {
   resetAuthStore();
+  sessionApi.fetchAccessibleWorkspaces.mockReset();
+  sessionApi.fetchCurrentMe.mockReset();
   sessionApi.signOut.mockReset();
+  sessionApi.switchActiveRole.mockReset();
+  sessionApi.switchWorkspace.mockReset();
+  sessionApi.fetchAccessibleWorkspaces.mockResolvedValue([]);
   sessionApi.signOut.mockResolvedValue(undefined);
 });
 
@@ -121,6 +133,87 @@ describe('createAccountMenuItems', () => {
       { key: 'role:manager', label: 'Manager', disabled: false }
     ]);
   });
+
+  test('AC-002 hides workspace submenu when <= 1 workspace is accessible and shows it when > 1', () => {
+    const singleItems =
+      createAccountMenuItems(
+        'Ada',
+        [],
+        'admin',
+        null,
+        [
+          {
+            id: 'workspace-1',
+            name: 'Alpha Workspace',
+            logo_url: null,
+            introduction: '',
+            is_current: true
+          }
+        ],
+        'workspace-1'
+      ) ?? [];
+    const singleChildren = Reflect.get(
+      singleItems[0] ?? {},
+      'children'
+    ) as Array<Record<string, unknown>>;
+    expect(
+      singleChildren.some((item) => item?.key === 'active-workspace')
+    ).toBe(false);
+
+    const multiItems =
+      createAccountMenuItems(
+        'Ada',
+        [],
+        'admin',
+        null,
+        [
+          {
+            id: 'workspace-1',
+            name: 'Alpha Workspace',
+            logo_url: null,
+            introduction: '',
+            is_current: true
+          },
+          {
+            id: 'workspace-2',
+            name: 'Beta Workspace',
+            logo_url: null,
+            introduction: '',
+            is_current: false
+          }
+        ],
+        'workspace-1'
+      ) ?? [];
+    const multiChildren = Reflect.get(multiItems[0] ?? {}, 'children') as Array<
+      Record<string, unknown>
+    >;
+    const workspaceSubmenu = multiChildren.find(
+      (item) => item?.key === 'active-workspace'
+    );
+    expect(workspaceSubmenu).toBeDefined();
+    const workspaceOptions = Reflect.get(
+      workspaceSubmenu ?? {},
+      'children'
+    ) as Array<Record<string, unknown>>;
+    expect(
+      workspaceOptions.map((option) => ({
+        key: option.key,
+        label: option.label,
+        disabled: option.disabled
+      }))
+    ).toEqual([
+      {
+        key: 'workspace:workspace-1',
+        label: 'Alpha Workspace',
+        disabled: true
+      },
+      {
+        key: 'workspace:workspace-2',
+        label: 'Beta Workspace',
+        disabled: false
+      }
+    ]);
+  });
 });
 
 describe('AccountMenuBase', () => {
@@ -174,5 +267,90 @@ describe('AccountMenuBase', () => {
       expect(navigateTo).toHaveBeenCalledWith('/sign-in');
     });
     expect(useAuthStore.getState().sessionStatus).toBe('anonymous');
+  });
+
+  test('AC-002 switches workspace, refreshes me and csrf, clears query cache, and returns home', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } }
+    });
+    queryClient.setQueryData(['stale-workspace-data'], { items: [1] });
+    useAuthStore.getState().setAuthenticated({
+      csrfToken: 'csrf-token',
+      actor,
+      me: buildMe(),
+      availableRoles: [{ code: 'admin', name: 'Admin', scope_kind: 'workspace' }]
+    });
+    sessionApi.fetchAccessibleWorkspaces.mockResolvedValue([
+      {
+        id: 'workspace-1',
+        name: 'Alpha Workspace',
+        logo_url: null,
+        introduction: '',
+        is_current: true
+      },
+      {
+        id: 'workspace-2',
+        name: 'Beta Workspace',
+        logo_url: null,
+        introduction: '',
+        is_current: false
+      }
+    ]);
+    sessionApi.switchWorkspace.mockResolvedValue({
+      actor: {
+        id: 'user-1',
+        account: 'root',
+        effective_display_role: 'member',
+        current_workspace_id: 'workspace-2'
+      },
+      session: {
+        id: 'session-1',
+        user_id: 'user-1',
+        tenant_id: 'tenant-2',
+        current_workspace_id: 'workspace-2',
+        active_role_code: 'member'
+      },
+      available_roles: [
+        { code: 'member', name: 'Member', scope_kind: 'workspace' }
+      ],
+      active_role_permissions: ['applications.read'],
+      csrf_token: 'csrf-token-ws2',
+      cookie_name: 'flowbase_console_session'
+    });
+    sessionApi.fetchCurrentMe.mockResolvedValue(
+      buildMe({
+        effective_display_role: 'member',
+        permissions: ['applications.read']
+      })
+    );
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <App>
+          <AccountMenu />
+        </App>
+      </QueryClientProvider>
+    );
+
+    await waitFor(() =>
+      expect(sessionApi.fetchAccessibleWorkspaces).toHaveBeenCalledTimes(1)
+    );
+    fireEvent.mouseEnter(screen.getByLabelText('Root User'));
+    const workspaceSubmenu = await screen.findByText('工作空间');
+    fireEvent.mouseEnter(workspaceSubmenu);
+    const betaOption = await screen.findByText('Beta Workspace');
+    fireEvent.click(betaOption);
+
+    await waitFor(() => {
+      expect(sessionApi.switchWorkspace).toHaveBeenCalledWith(
+        'workspace-2',
+        'csrf-token'
+      );
+      expect(useAuthStore.getState().csrfToken).toBe('csrf-token-ws2');
+      expect(useAuthStore.getState().actor?.current_workspace_id).toBe(
+        'workspace-2'
+      );
+    });
+    expect(queryClient.getQueryData(['stale-workspace-data'])).toBeUndefined();
   });
 });

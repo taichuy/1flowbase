@@ -17,7 +17,8 @@ export function matchesDefaultPasswordSource(source: string): boolean {
 export function DefaultPasswordSignIn({
   instance,
   loginEntrySelector = null,
-  onAuthenticated
+  onAuthenticated,
+  invitationToken
 }: DefaultPasswordSignInProps) {
   const matches = useMemo(
     () => matchesDefaultPasswordSource(instance.public_ui_block),
@@ -52,6 +53,7 @@ export function DefaultPasswordSignIn({
       instance={instance}
       loginEntrySelector={loginEntrySelector}
       onAuthenticated={onAuthenticated}
+      invitationToken={invitationToken}
     />
   );
 }
@@ -59,9 +61,12 @@ export function DefaultPasswordSignIn({
 function PasswordInstance({
   instance,
   loginEntrySelector,
-  onAuthenticated
+  onAuthenticated,
+  invitationToken
 }: DefaultPasswordSignInProps) {
   const active = useRef(false);
+  const invitationTokenRef = useRef(invitationToken);
+  invitationTokenRef.current = invitationToken;
   useLayoutEffect(() => {
     active.current = true;
     return () => {
@@ -72,7 +77,8 @@ function PasswordInstance({
     () =>
       createDefaultPasswordContext(
         { instance, loginEntrySelector, onAuthenticated },
-        () => active.current
+        () => active.current,
+        () => invitationTokenRef.current
       ),
     [instance, loginEntrySelector, onAuthenticated]
   );

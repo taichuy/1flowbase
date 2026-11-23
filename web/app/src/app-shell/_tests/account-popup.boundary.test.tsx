@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { render, screen, within } from '@testing-library/react';
 import { Menu } from 'antd';
+import type { MenuProps } from 'antd';
 import { describe, expect, test } from 'vitest';
 
 import '../../styles/tokens.css';
@@ -72,5 +73,46 @@ describe('account popup layout', () => {
     expect(popupItemRule).not.toContain('line-height: 1.25;');
     expect(appShellCss).toContain('.app-shell-account-popup .ant-menu-title-content');
     expect(appShellCss).toContain('line-height: inherit;');
+  });
+
+  test('multi-workspace submenu keeps native vertical menu row sizing', async () => {
+    const items =
+      createAccountMenuItems(
+        'Ada',
+        [{ code: 'admin', name: 'Admin', scope_kind: 'workspace' }],
+        'admin',
+        null,
+        [
+          {
+            id: 'workspace-1',
+            name: 'Alpha Workspace',
+            logo_url: null,
+            introduction: '',
+            is_current: true
+          },
+          {
+            id: 'workspace-2',
+            name: 'Beta Workspace',
+            logo_url: null,
+            introduction: '',
+            is_current: false
+          }
+        ],
+        'workspace-1'
+      ) ?? [];
+    const children = Reflect.get(items[0] ?? {}, 'children') as MenuProps['items'];
+
+    render(
+      <div className="app-shell-account-popup">
+        <Menu mode="vertical" selectable={false} items={children} />
+      </div>
+    );
+
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getByText('工作空间')).toBeInTheDocument();
+    const [profileItem] = within(menu).getAllByRole('menuitem');
+    const styles = window.getComputedStyle(profileItem);
+    expect(styles.display).toBe('block');
+    expect(styles.height).toBe(styles.lineHeight);
   });
 });

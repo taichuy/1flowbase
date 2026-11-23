@@ -31,7 +31,7 @@ export function navigatePublicRoute({
   replace = false
 }: {
   to: '/' | '/sign-in';
-  search?: { login_entry_id?: string };
+  search?: { login_entry_id?: string; invite?: string };
   replace?: boolean;
 }) {
   // Entry selection changes just the entry; language and external-auth feedback
@@ -42,6 +42,11 @@ export function navigatePublicRoute({
     if (search?.login_entry_id)
       url.searchParams.set('login_entry_id', search.login_entry_id);
     else url.searchParams.delete('login_entry_id');
+    if (search && 'invite' in search) {
+      if (search.invite?.trim())
+        url.searchParams.set('invite', search.invite.trim());
+      else url.searchParams.delete('invite');
+    }
   }
   window.history[replace ? 'replaceState' : 'pushState'](
     null,

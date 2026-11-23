@@ -14,6 +14,7 @@ export function CustomAuthRuntime(props: PublicAuthBlockProps) {
         loginEntryId={props.instance.id}
         loginEntrySelector={props.loginEntrySelector}
         onAuthenticated={props.onAuthenticated}
+        invitationToken={props.invitationToken}
       />
     );
   }
