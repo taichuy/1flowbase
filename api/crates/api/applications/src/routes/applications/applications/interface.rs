@@ -769,7 +769,7 @@ impl ApplicationsAdapter {
             }
             ApplicationsInput::ListJsDependencies { application_id } => {
                 Ok(ApplicationsOutput::JsDependencies(
-                    ApplicationJsDependencyService::new(self.store.clone())
+                    ApplicationJsDependencyService::new(self.store.for_actor(actor.clone()))
                         .list_application_js_dependency_selections(actor.user_id, application_id)
                         .await?
                         .into_iter()
@@ -785,17 +785,18 @@ impl ApplicationsAdapter {
                     .installation_id
                     .parse::<Uuid>()
                     .map_err(|_| ControlPlaneError::InvalidInput("installation_id"))?;
-                let selection = ApplicationJsDependencyService::new(self.store.clone())
-                    .replace_application_js_dependency_selection(
-                        ReplaceApplicationJsDependencySelectionCommand {
-                            actor_user_id: actor.user_id,
-                            application_id,
-                            installation_id,
-                            alias: body.alias,
-                            target: body.target,
-                        },
-                    )
-                    .await?;
+                let selection =
+                    ApplicationJsDependencyService::new(self.store.for_actor(actor.clone()))
+                        .replace_application_js_dependency_selection(
+                            ReplaceApplicationJsDependencySelectionCommand {
+                                actor_user_id: actor.user_id,
+                                application_id,
+                                installation_id,
+                                alias: body.alias,
+                                target: body.target,
+                            },
+                        )
+                        .await?;
                 Ok(ApplicationsOutput::JsDependency(
                     super::to_application_js_dependency_selection(selection),
                 ))

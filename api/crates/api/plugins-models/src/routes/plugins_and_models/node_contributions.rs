@@ -394,7 +394,7 @@ impl
                 .await
                 .map_err(ApiError)
                 .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
-            let catalog = ApplicationNodeCatalogService::new(self.0.clone())
+            let catalog = ApplicationNodeCatalogService::new(self.0.for_actor(actor.clone()))
                 .list_application_nodes(ListApplicationNodesQuery {
                     actor_user_id: actor.user_id,
                     application_type: application.application_type,

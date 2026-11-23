@@ -50,6 +50,44 @@ async fn seed_instance(
 }
 
 #[tokio::test]
+async fn lists_instances_in_switched_workspace_instead_of_the_default() {
+    let actor_in_a = actor();
+    let mut actor_in_b = actor_in_a.clone();
+    actor_in_b.current_workspace_id = Uuid::now_v7();
+    let repository = InMemoryDataSourceRepository::with_actor(actor_in_a.clone());
+    seed_instance(
+        &repository,
+        actor_in_a.current_workspace_id,
+        actor_in_a.user_id,
+        DataSourceInstanceStatus::Ready,
+    )
+    .await;
+    let instance_in_b = seed_instance(
+        &repository,
+        actor_in_b.current_workspace_id,
+        actor_in_b.user_id,
+        DataSourceInstanceStatus::Ready,
+    )
+    .await;
+    let service = DataSourceService::for_data_model_settings(
+        repository.for_actor(actor_in_b.clone()),
+        StubDataSourceRuntime::ready(),
+        "test-master-key",
+    );
+
+    let instances = service
+        .list_instances(actor_in_b.user_id, actor_in_b.current_workspace_id)
+        .await
+        .unwrap();
+    assert_eq!(instances.len(), 1);
+    assert_eq!(instances[0].instance.id, instance_in_b.id);
+    assert!(service
+        .list_instances(actor_in_b.user_id, actor_in_a.current_workspace_id)
+        .await
+        .is_err());
+}
+
+#[tokio::test]
 async fn ac_005_data_source_view_own_filters_instance_enumeration_and_resource_reads() {
     let actor_user_id = user_id();
     let peer_user_id = Uuid::from_u128(0x301);

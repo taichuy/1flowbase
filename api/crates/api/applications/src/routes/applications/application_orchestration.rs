@@ -851,10 +851,10 @@ async fn to_response_with(
     bootstrap_workspace_id: Uuid,
     locale: &domain::CatalogLocale,
     state: domain::FlowEditorState,
-    actor_user_id: Uuid,
+    actor: &domain::ActorContext,
 ) -> Result<OrchestrationStateResponse, ApiError> {
-    let analysis = control_plane::flow::FlowService::new(store.clone())
-        .analyze_editor_state(actor_user_id, &state)
+    let analysis = control_plane::flow::FlowService::new(store.for_actor(actor.clone()))
+        .analyze_editor_state(actor.user_id, &state)
         .await?;
     let messages =
         referenced_messages_with(store, bootstrap_workspace_id, locale, &state.draft.document)
@@ -983,6 +983,7 @@ async fn to_import_response_with(
     bootstrap_workspace_id: Uuid,
     locale: &domain::CatalogLocale,
     imported: ImportAgentFlowTemplateResult,
+    actor: &domain::ActorContext,
 ) -> Result<ImportAgentFlowTemplateResponse, ApiError> {
     Ok(ImportAgentFlowTemplateResponse {
         application: AgentFlowTemplateImportedApplicationResponse {
@@ -1004,7 +1005,7 @@ async fn to_import_response_with(
             bootstrap_workspace_id,
             locale,
             imported.orchestration,
-            imported.application.created_by,
+            actor,
         )
         .await?,
         preview: to_template_preview_response(imported.preview),

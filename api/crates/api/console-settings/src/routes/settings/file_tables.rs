@@ -367,7 +367,7 @@ impl FileTablesAdapter {
         let actor = principal.actor();
         match input {
             FileTablesInput::List { locale } => {
-                let mut tables = FileTableService::new(self.store.clone())
+                let mut tables = FileTableService::new(self.store.for_actor(actor.clone()))
                     .list_tables(actor.user_id)
                     .await?;
                 let preferred_locale = self
@@ -395,7 +395,7 @@ impl FileTablesAdapter {
                 Ok(FileTablesOutput::List(responses))
             }
             FileTablesInput::Create(body) => {
-                let created = FileTableService::new(self.store.clone())
+                let created = FileTableService::new(self.store.for_actor(actor.clone()))
                     .create_table(CreateFileTableCommand {
                         bound_storage_id: body.bound_storage_id,
                         actor_user_id: actor.user_id,
@@ -412,7 +412,7 @@ impl FileTablesAdapter {
                 file_table_id,
                 body,
             } => {
-                let updated = FileTableService::new(self.store.clone())
+                let updated = FileTableService::new(self.store.for_actor(actor.clone()))
                     .bind_storage(BindFileTableStorageCommand {
                         actor_user_id: actor.user_id,
                         file_table_id: parse_uuid(&file_table_id, "file_table_id")?,
@@ -424,7 +424,7 @@ impl FileTablesAdapter {
                 ))
             }
             FileTablesInput::Delete { file_table_id } => {
-                FileTableService::new(self.store.clone())
+                FileTableService::new(self.store.for_actor(actor.clone()))
                     .delete_table(DeleteFileTableCommand {
                         actor_user_id: actor.user_id,
                         file_table_id: parse_uuid(&file_table_id, "file_table_id")?,

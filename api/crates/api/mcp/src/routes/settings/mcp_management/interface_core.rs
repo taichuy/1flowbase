@@ -54,7 +54,7 @@ impl McpCoreAdapter {
         input: McpCoreInput,
     ) -> Result<McpCoreOutput, ApiError> {
         let actor = principal.actor();
-        let service = McpManagementService::new(self.0.store.clone());
+        let service = McpManagementService::new(self.0.store.for_actor(actor.clone()));
         match input {
             McpCoreInput::GetCredential(instance_id) => {
                 let api_key = service

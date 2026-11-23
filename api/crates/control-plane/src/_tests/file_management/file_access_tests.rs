@@ -7,8 +7,10 @@ use anyhow::Result;
 use async_trait::async_trait;
 use control_plane::_tests::support::MemoryFileManagementRepository;
 use control_plane::{
+    errors::ControlPlaneError,
     file_management::{
-        FileAccessKey, FileAccessService, FileUploadService, FileUploadTarget, UploadFileCommand,
+        BindFileTableStorageCommand, DeleteFileTableCommand, FileAccessKey, FileAccessService,
+        FileTableService, FileUploadService, FileUploadTarget, UploadFileCommand,
     },
     ports::{EphemeralKvStore, FileManagementRepository},
 };
@@ -21,7 +23,8 @@ use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 use super::file_management_upload_tests::{
-    actor_in_workspace, model_definition, runtime_engine_for_model, scope_grant, temp_root,
+    actor_in_workspace, model_definition, runtime_engine_and_records_for_model,
+    runtime_engine_for_model, scope_grant, temp_root,
 };
 
 #[derive(Default)]
@@ -53,6 +56,157 @@ impl EphemeralKvStore for TestKv {
     async fn increment_counter(&self, _: &str, _: i64, _: Option<Duration>) -> Result<i64> {
         anyhow::bail!("unused")
     }
+}
+
+#[tokio::test]
+async fn switched_actor_cannot_use_explicit_file_tables_in_the_previous_workspace() {
+    let mut actor_in_a = actor_in_workspace(Uuid::now_v7());
+    actor_in_a.is_root = true;
+    let mut actor_in_b = actor_in_a.clone();
+    actor_in_b.current_workspace_id = Uuid::now_v7();
+    let workspace_a = actor_in_a.current_workspace_id;
+    let repository = MemoryFileManagementRepository::new(actor_in_a.clone());
+    let repository_in_b = repository.for_actor(actor_in_b.clone());
+    let root = temp_root("switched-file-table");
+    let storage_id = Uuid::now_v7();
+    let now = OffsetDateTime::now_utc();
+    repository
+        .insert_file_storage(FileStorageRecord {
+            id: storage_id,
+            code: "local".into(),
+            title: "Local".into(),
+            driver_type: "local".into(),
+            enabled: true,
+            is_default: true,
+            config_json: json!({"root_path":root}),
+            rule_json: json!({}),
+            health_status: FileStorageHealthStatus::Ready,
+            last_health_error: None,
+            created_by: actor_in_a.user_id,
+            updated_by: actor_in_a.user_id,
+            created_at: now,
+            updated_at: now,
+        })
+        .await;
+    let mut model = model_definition(
+        Uuid::now_v7(),
+        DataModelScopeKind::System,
+        SYSTEM_SCOPE_ID,
+        "workspace_files",
+    );
+    model.template_code = domain::file_management::FILE_DATA_MODEL_TEMPLATE_CODE.into();
+    repository.insert_model_definition(model.clone());
+    repository.insert_scope_grant(scope_grant(model.id, workspace_a));
+    // A grant on the underlying system model does not grant access to A's file table.
+    repository.insert_scope_grant(scope_grant(model.id, actor_in_b.current_workspace_id));
+    let mut table = FileTableRecord {
+        id: Uuid::now_v7(),
+        scope_kind: FileTableScopeKind::Workspace,
+        scope_id: workspace_a,
+        model_definition_id: model.id,
+        bound_storage_id: Some(storage_id),
+        is_builtin: false,
+        is_default: false,
+        status: "disabled".into(),
+        code: model.code.clone(),
+        title: "Workspace files".into(),
+        created_by: actor_in_a.user_id,
+        updated_by: actor_in_a.user_id,
+        created_at: now,
+        updated_at: now,
+    };
+    repository.insert_file_table(table.clone()).await;
+    let (engine, records) = runtime_engine_and_records_for_model(&model);
+    let drivers = Arc::new(storage_object::builtin_driver_registry());
+    let command = |actor| UploadFileCommand {
+        actor,
+        target: FileUploadTarget::Table(table.id),
+        original_filename: "workspace.txt".into(),
+        content_type: Some("text/plain".into()),
+        bytes: b"workspace A contents".to_vec(),
+    };
+    let upload_in_a = FileUploadService::new(repository.clone(), drivers.clone(), engine.clone());
+    let inactive_upload = upload_in_a.upload(command(actor_in_a.clone())).await;
+    assert_file_table_not_found(inactive_upload.unwrap_err());
+    assert_eq!(records.record_count(&model.code), 0);
+    assert!(!root.exists());
+
+    table.status = "active".into();
+    repository.insert_file_table(table.clone()).await;
+    let uploaded = upload_in_a
+        .upload(command(actor_in_a.clone()))
+        .await
+        .unwrap();
+    let record_id = Uuid::parse_str(uploaded.record["id"].as_str().unwrap()).unwrap();
+    let access_in_a = FileAccessService::new(
+        repository.clone(),
+        drivers.clone(),
+        engine.clone(),
+        Arc::new(TestKv::default()),
+    );
+    assert!(access_in_a
+        .metadata(actor_in_a, table.id, record_id)
+        .await
+        .is_ok());
+
+    let upload_in_b =
+        FileUploadService::new(repository_in_b.clone(), drivers.clone(), engine.clone());
+    assert_file_table_not_found(
+        upload_in_b
+            .upload(command(actor_in_b.clone()))
+            .await
+            .unwrap_err(),
+    );
+    assert_eq!(records.record_count(&model.code), 1);
+    let access_in_b = FileAccessService::new(
+        repository_in_b.clone(),
+        drivers,
+        engine,
+        Arc::new(TestKv::default()),
+    );
+    assert_file_table_not_found(
+        access_in_b
+            .read(actor_in_b.clone(), table.id, record_id)
+            .await
+            .err()
+            .unwrap(),
+    );
+
+    let table_service = FileTableService::new(repository_in_b);
+    assert_file_table_not_found(
+        table_service
+            .bind_storage(BindFileTableStorageCommand {
+                actor_user_id: actor_in_b.user_id,
+                file_table_id: table.id,
+                bound_storage_id: None,
+            })
+            .await
+            .unwrap_err(),
+    );
+    assert_file_table_not_found(
+        table_service
+            .delete_table(DeleteFileTableCommand {
+                actor_user_id: actor_in_b.user_id,
+                file_table_id: table.id,
+            })
+            .await
+            .unwrap_err(),
+    );
+    assert_eq!(
+        repository.get_file_table(table.id).await.unwrap(),
+        Some(table)
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+fn assert_file_table_not_found(error: anyhow::Error) {
+    assert!(
+        matches!(
+            error.downcast_ref::<ControlPlaneError>(),
+            Some(ControlPlaneError::NotFound("file_table"))
+        ),
+        "expected file table not found, got {error:#}",
+    );
 }
 
 #[tokio::test]

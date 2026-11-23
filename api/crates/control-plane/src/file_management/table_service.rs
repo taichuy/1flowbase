@@ -75,6 +75,12 @@ where
         if !actor.is_root {
             return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
         }
+        super::visible_file_table(
+            &self.repository,
+            command.file_table_id,
+            actor.current_workspace_id,
+        )
+        .await?;
         self.ensure_binding_available(command.bound_storage_id)
             .await?;
 
@@ -98,6 +104,12 @@ where
         if !actor.is_root {
             return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
         }
+        super::visible_file_table(
+            &self.repository,
+            command.file_table_id,
+            actor.current_workspace_id,
+        )
+        .await?;
 
         self.repository
             .delete_file_table(&DeleteFileTableInput {

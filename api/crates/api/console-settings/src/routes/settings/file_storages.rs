@@ -394,7 +394,7 @@ impl FileStoragesAdapter {
                 ))
             }
             FileStoragesInput::Create(body) => Ok(FileStoragesOutput::Item(to_response(
-                FileStorageService::new(self.store.clone())
+                FileStorageService::new(self.store.for_actor(actor.clone()))
                     .create_storage(CreateFileStorageCommand {
                         actor_user_id: actor.user_id,
                         code: body.code,
@@ -411,7 +411,7 @@ impl FileStoragesAdapter {
                 file_storage_id,
                 body,
             } => Ok(FileStoragesOutput::Item(to_response(
-                FileStorageService::new(self.store.clone())
+                FileStorageService::new(self.store.for_actor(actor.clone()))
                     .update_storage(UpdateFileStorageCommand {
                         actor_user_id: actor.user_id,
                         file_storage_id: parse_uuid(&file_storage_id, "file_storage_id")?,
@@ -424,7 +424,7 @@ impl FileStoragesAdapter {
                     .await?,
             ))),
             FileStoragesInput::Delete { file_storage_id } => {
-                FileStorageService::new(self.store.clone())
+                FileStorageService::new(self.store.for_actor(actor.clone()))
                     .delete_storage(DeleteFileStorageCommand {
                         actor_user_id: actor.user_id,
                         file_storage_id: parse_uuid(&file_storage_id, "file_storage_id")?,

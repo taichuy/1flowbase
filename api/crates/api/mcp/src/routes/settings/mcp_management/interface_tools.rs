@@ -363,7 +363,7 @@ impl McpToolsAdapter {
         input: McpToolsInput,
     ) -> Result<McpToolsOutput, ApiError> {
         let actor = principal.actor();
-        let service = McpManagementService::new(self.0.store.clone());
+        let service = McpManagementService::new(self.0.store.for_actor(actor.clone()));
         match input {
             McpToolsInput::List => {
                 let snapshot = service.read_catalog_for_actor(actor).await?;

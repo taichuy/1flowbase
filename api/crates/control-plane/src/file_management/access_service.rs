@@ -96,11 +96,9 @@ where
         file_table_id: Uuid,
         record_id: Uuid,
     ) -> Result<serde_json::Value> {
-        let table = self
-            .repository
-            .get_file_table(file_table_id)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("file_table"))?;
+        let table =
+            super::visible_file_table(&self.repository, file_table_id, actor.current_workspace_id)
+                .await?;
         if table.status != "active" {
             return Err(ControlPlaneError::NotFound("file_table").into());
         }

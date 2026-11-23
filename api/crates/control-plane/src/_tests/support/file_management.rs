@@ -57,6 +57,13 @@ impl MemoryFileManagementRepository {
         }
     }
 
+    pub fn for_actor(&self, actor: ActorContext) -> Self {
+        Self {
+            actor,
+            ..self.clone()
+        }
+    }
+
     pub fn insert_file_record(&self, table: Uuid, record: serde_json::Value) {
         let id = Uuid::parse_str(record["id"].as_str().unwrap()).unwrap();
         self.file_records

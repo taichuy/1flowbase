@@ -151,12 +151,15 @@ struct LoadedSource {
 }
 
 impl McpBundlesAdapter {
-    fn service(&self) -> McpManagementService<storage_durable_postgres::MainDurableStore> {
-        McpManagementService::new(self.0.store.clone())
+    fn service(
+        &self,
+        principal: &UserPrincipal,
+    ) -> McpManagementService<storage_durable_postgres::MainDurableStore> {
+        McpManagementService::new(self.0.store.for_actor(principal.actor().clone()))
     }
 
     async fn authorize(&self, principal: &UserPrincipal) -> Result<(), ApiError> {
-        self.service()
+        self.service(principal)
             .authorize_bundle_management(principal.actor().user_id)
             .await?;
         Ok(())
@@ -340,7 +343,7 @@ impl McpBundlesAdapter {
         let source = self.load_source(actor.current_workspace_id, body).await?;
         let catalog = self.catalog(principal).await?;
         let preview = self
-            .service()
+            .service(principal)
             .preview_bundle(PreviewMcpBundleCommand {
                 actor_user_id: actor.user_id,
                 package: source.package,
@@ -351,7 +354,7 @@ impl McpBundlesAdapter {
         Ok(match source.kind {
             LoadedSourceKind::Installed(id) => {
                 let imported = self
-                    .service()
+                    .service(principal)
                     .extension_bundle_is_imported(actor.user_id, id)
                     .await?;
                 let status = if preview.effect_summary.changes > 0 {
@@ -411,7 +414,7 @@ impl McpBundlesAdapter {
         };
         let catalog = self.catalog(principal).await?;
         let source = self.load_source(actor.current_workspace_id, body).await?;
-        let service = self.service();
+        let service = self.service(principal);
         if let LoadedSourceKind::Installed(id) = source.kind {
             let preview = service
                 .preview_bundle(PreviewMcpBundleCommand {
@@ -518,7 +521,7 @@ impl McpBundlesAdapter {
             McpBundlesInput::Export(body) => {
                 self.authorize(principal).await?;
                 let package = self
-                    .service()
+                    .service(principal)
                     .export_bundle(ExportMcpBundleCommand {
                         actor_user_id: actor.user_id,
                         organization: body.organization,
@@ -555,7 +558,7 @@ impl McpBundlesAdapter {
                     }
                 };
                 let exported = self
-                    .service()
+                    .service(principal)
                     .export_instance_bundle(ExportMcpInstanceBundleCommand {
                         actor_user_id: actor.user_id,
                         instance_id,
@@ -590,7 +593,7 @@ impl McpBundlesAdapter {
                 self.authorize(principal).await?;
                 let package = Self::parse(bytes).await?;
                 Ok(McpBundlesOutput::Preview(
-                    self.service()
+                    self.service(principal)
                         .preview_bundle(PreviewMcpBundleCommand {
                             actor_user_id: actor.user_id,
                             package,
@@ -604,7 +607,7 @@ impl McpBundlesAdapter {
                 self.authorize(principal).await?;
                 let package = Self::parse(bytes).await?;
                 Ok(McpBundlesOutput::Import(
-                    self.service()
+                    self.service(principal)
                         .import_bundle(ImportMcpBundleCommand {
                             actor_user_id: actor.user_id,
                             package,
@@ -649,7 +652,7 @@ impl McpBundlesAdapter {
                 )
                 .await?;
                 Ok(McpBundlesOutput::Preview(
-                    self.service()
+                    self.service(principal)
                         .preview_bundle(PreviewMcpBundleCommand {
                             actor_user_id: actor.user_id,
                             package,
@@ -673,7 +676,7 @@ impl McpBundlesAdapter {
                 )
                 .await?;
                 Ok(McpBundlesOutput::Import(
-                    self.service()
+                    self.service(principal)
                         .import_bundle(ImportMcpBundleCommand {
                             actor_user_id: actor.user_id,
                             package,

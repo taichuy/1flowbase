@@ -212,8 +212,12 @@ impl DocsAdapter {
         &self,
         principal: &UserPrincipal,
     ) -> Result<Vec<domain::ModelDefinitionRecord>, ApiError> {
-        runtime_data_model_docs::ready_models_with(self.0.store.clone(), principal.actor().user_id)
-            .await
+        let actor = principal.actor();
+        runtime_data_model_docs::ready_models_with(
+            self.0.store.for_actor(actor.clone()),
+            actor.user_id,
+        )
+        .await
     }
 
     async fn execute_inner(
@@ -293,9 +297,10 @@ impl DocsAdapter {
                 let parsed = runtime_data_model_docs::parse_operation_id(&operation_id)
                     .map_err(|_| ControlPlaneError::InvalidInput("operation_id"))?;
                 if let Some((model_id, operation_code)) = parsed {
+                    let actor = principal.actor();
                     let Some(model) = runtime_data_model_docs::ready_model_with(
-                        self.0.store.clone(),
-                        principal.actor().user_id,
+                        self.0.store.for_actor(actor.clone()),
+                        actor.user_id,
                         model_id,
                     )
                     .await?

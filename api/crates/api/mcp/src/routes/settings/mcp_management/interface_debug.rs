@@ -133,7 +133,7 @@ impl McpDebugAdapter {
         input: McpDebugInput,
     ) -> Result<McpDebugOutput, ApiError> {
         let actor = principal.actor();
-        McpManagementService::new(self.0.store.clone())
+        McpManagementService::new(self.0.store.for_actor(actor.clone()))
             .authorize_debug_execute(actor.user_id)
             .await?;
         let interface_entry =
