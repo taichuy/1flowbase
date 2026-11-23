@@ -1,4 +1,4 @@
-import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
+import { useConsoleOperationAccess, useProjectedConsoleOperationAccess } from '../../../../state/console-operation-access';
 import { useEffect, useMemo, useState } from 'react';
 
 import { Select, Space, Table, Tag, Typography } from 'antd';
@@ -103,7 +103,8 @@ export function DataModelFormDrawer({
   const [storages, setStorages] = useState<SettingsFileStorage[]>([]);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [boundStorageId, setBoundStorageId] = useState<string | null>(null);
-  const canViewStorages = can('file_storages.list');
+  const canUseHostOperation = useProjectedConsoleOperationAccess();
+  const canViewStorages = canUseHostOperation('file_storages.list');
   const isFileTemplate =
     selectedTemplate !== null &&
     dataModelTemplateIdentity(selectedTemplate) === 'core/file/v1';

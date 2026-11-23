@@ -10,6 +10,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json, Router,
 };
+use control_plane::errors::ControlPlaneError;
 use control_plane::file_management::{
     project_builtin_file_table_title, BindFileTableStorageCommand, CreateFileTableCommand,
     DeleteFileTableCommand, FileTableService, FileTableWithStorageTitle,
@@ -395,6 +396,12 @@ impl FileTablesAdapter {
                 Ok(FileTablesOutput::List(responses))
             }
             FileTablesInput::Create(body) => {
+                // Creating a table is workspace-local; choosing a host storage explicitly is not.
+                if body.bound_storage_id.is_some()
+                    && actor.current_workspace_id != self.bootstrap_workspace_id
+                {
+                    return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
+                }
                 let created = FileTableService::new(self.store.for_actor(actor.clone()))
                     .create_table(CreateFileTableCommand {
                         bound_storage_id: body.bound_storage_id,
@@ -412,6 +419,9 @@ impl FileTablesAdapter {
                 file_table_id,
                 body,
             } => {
+                if actor.current_workspace_id != self.bootstrap_workspace_id {
+                    return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
+                }
                 let updated = FileTableService::new(self.store.for_actor(actor.clone()))
                     .bind_storage(BindFileTableStorageCommand {
                         actor_user_id: actor.user_id,

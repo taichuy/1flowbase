@@ -3,6 +3,8 @@
 pub mod application;
 #[path = "../_tests/crate_split_contract_baseline.rs"]
 pub mod crate_split_contract_baseline;
+#[path = "../routes/identity/external_auth/_tests/verifier_fixture.rs"]
+pub mod external_auth_verifier;
 mod resources;
 #[path = "../_tests/support/mod.rs"]
 pub mod support;

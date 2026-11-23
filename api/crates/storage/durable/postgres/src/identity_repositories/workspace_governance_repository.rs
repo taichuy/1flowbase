@@ -559,16 +559,19 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
                    coalesce((select jsonb_agg(jsonb_build_object(
                        'user_id', u.id, 'account', u.account, 'email', u.email, 'name', u.name,
                        'status', u.status, 'managed_by_tenant_id', u.managed_by_tenant_id
-                   ) order by u.account, u.id)
+                   ) order by (w.id = $1 and lower(u.account) = 'root') desc, u.account, u.id)
                    from workspace_memberships wm join users u on u.id = wm.user_id
                    where wm.workspace_id = w.id and wm.status = 'active' and u.status = 'active'
                      and exists (select 1 from user_role_bindings b join roles r on r.id = b.role_id
-                                 where b.user_id = u.id and r.workspace_id = w.id and r.scope_kind = 'workspace' and r.code = 'admin')
+                                 where b.user_id = u.id and (
+                                     (r.workspace_id = w.id and r.scope_kind = 'workspace' and r.code = 'admin')
+                                     or (w.id = $1 and r.scope_kind = 'system' and r.code = 'root')
+                                 ))
                    ), '[]'::jsonb) as admins
             from tenants t left join workspaces w on w.tenant_id = t.id
             order by t.code, t.id, lower(w.name), w.id
             "#,
-        ).fetch_all(self.pool()).await?;
+        ).bind(bootstrap).fetch_all(self.pool()).await?;
         let mut summaries: Vec<TenantWorkspaceGovernanceSummary> = Vec::new();
         for row in rows {
             let tenant_id = row.try_get("id")?;

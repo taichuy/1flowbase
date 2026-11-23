@@ -17,7 +17,7 @@ import {
   type UpdateSettingsFileStorageInput
 } from '../api/file-management';
 import { useAuthStore } from '../../../state/auth-store';
-import { useConsoleOperationAccess } from '../../../state/console-operation-access';
+import { useProjectedConsoleOperationAccess } from '../../../state/console-operation-access';
 import { i18nText } from '../../../shared/i18n/text';
 
 type DrawerMode = 'create' | 'view' | 'edit';
@@ -125,7 +125,7 @@ export function FileStorageDrawer({
   const [submitting, setSubmitting] = useState(false);
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const isView = mode === 'view';
-  const can = useConsoleOperationAccess();
+  const can = useProjectedConsoleOperationAccess();
   const isRoot = useAuthStore((state) => state.actor?.effective_display_role === 'root');
   const canWrite = isRoot && !isView && can(mode === 'create' ? 'file_storages.create' : 'file_storages.update');
 

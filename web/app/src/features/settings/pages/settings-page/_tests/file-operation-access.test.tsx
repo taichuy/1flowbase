@@ -90,3 +90,13 @@ test('create-only operation leaves lists closed and permits table creation', asy
   expect(api.fetchSettingsFileStorages).not.toHaveBeenCalled();
   expect(api.fetchSettingsFileTables).not.toHaveBeenCalled();
 });
+
+
+test('root without projected host operations sees only workspace file tables', async () => {
+  show([], 'root');
+  const row = await screen.findByRole('row', { name: /uploads.*Uploads/ });
+  expect(within(row).getByText('Shared storage')).toBeInTheDocument();
+  expect(screen.queryByRole('tab', { name: '存储配置' })).not.toBeInTheDocument();
+  expect(within(row).queryByRole('button', { name: /编辑/ })).not.toBeInTheDocument();
+  expect(api.fetchSettingsFileStorages).not.toHaveBeenCalled();
+});

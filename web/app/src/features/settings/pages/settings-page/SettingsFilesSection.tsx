@@ -1,5 +1,5 @@
 import { FileManagementPanel } from '../../components/FileManagementPanel';
-import { useConsoleOperationAccess } from '../../../../state/console-operation-access';
+import { useConsoleOperationAccess, useProjectedConsoleOperationAccess } from '../../../../state/console-operation-access';
 
 export function SettingsFilesSection({
   isRoot
@@ -8,7 +8,8 @@ export function SettingsFilesSection({
   permissions: string[];
 }) {
   const can = useConsoleOperationAccess();
-  const canViewStorages = can('file_storages.list');
+  const canUseHostOperation = useProjectedConsoleOperationAccess();
+  const canViewStorages = canUseHostOperation('file_storages.list');
   const canViewTables = can('file_tables.list');
   const canCreateTables = can('file_tables.create');
 

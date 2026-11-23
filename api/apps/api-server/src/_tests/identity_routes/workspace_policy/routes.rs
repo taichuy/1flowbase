@@ -445,3 +445,156 @@ async fn disabled_membership_and_suspended_scopes_immediately_block_cookie_and_p
         }
     }
 }
+
+#[tokio::test]
+async fn external_oauth_callback_registration_rejected_has_no_signup_effects() {
+    use control_plane::ports::SessionStore;
+    use std::sync::atomic::AtomicUsize;
+
+    #[derive(Default)]
+    struct RejectRegistration(AtomicUsize);
+
+    #[async_trait::async_trait]
+    impl WorkspacePolicyPort for RejectRegistration {
+        async fn decide(
+            &self,
+            request: WorkspacePolicyRequest,
+        ) -> anyhow::Result<Option<WorkspacePolicyResponse>> {
+            Ok(Some(match request {
+                WorkspacePolicyRequest::InspectPublicPolicy => {
+                    WorkspacePolicyResponse::PublicPolicy {
+                        onboarding_mode: WorkspaceOnboardingModeDto::Reject,
+                    }
+                }
+                WorkspacePolicyRequest::ResolveRegistration {
+                    email,
+                    invitation_token,
+                    ..
+                } => {
+                    assert_eq!(email, "new-external@example.com");
+                    assert!(invitation_token.is_none());
+                    self.0.fetch_add(1, Ordering::SeqCst);
+                    WorkspacePolicyResponse::RegistrationDecision {
+                        decision: WorkspaceRegistrationDecisionDto::Deny {
+                            reason_code: "registration_rejected".into(),
+                        },
+                    }
+                }
+                _ => panic!("unexpected workspace policy request"),
+            }))
+        }
+    }
+
+    struct SessionWrites {
+        inner: Arc<dyn SessionStore>,
+        puts: AtomicUsize,
+    }
+
+    #[async_trait::async_trait]
+    impl SessionStore for SessionWrites {
+        async fn put(&self, record: domain::SessionRecord) -> anyhow::Result<()> {
+            self.puts.fetch_add(1, Ordering::SeqCst);
+            self.inner.put(record).await
+        }
+        async fn get(&self, id: &str) -> anyhow::Result<Option<domain::SessionRecord>> {
+            self.inner.get(id).await
+        }
+        async fn delete(&self, id: &str) -> anyhow::Result<()> {
+            self.inner.delete(id).await
+        }
+        async fn touch(&self, id: &str, expiry: i64) -> anyhow::Result<()> {
+            self.inner.touch(id, expiry).await
+        }
+    }
+
+    async fn signup_counts(store: &MainDurableStore) -> (i64, i64) {
+        sqlx::query_as(
+            "select (select count(*) from users), (select count(*) from workspace_memberships)",
+        )
+        .fetch_one(store.pool())
+        .await
+        .unwrap()
+    }
+
+    let (initial, _host, entry, _) =
+        api_server::test_support::external_auth_verifier::installed_verifier_fixture().await;
+    let mut state = (*initial).clone();
+    let policy = Arc::new(RejectRegistration::default());
+    state.provider_runtime = Arc::new(
+        state
+            .provider_runtime
+            .as_ref()
+            .clone()
+            .with_workspace_policy_fixture(policy.clone()),
+    );
+    let sessions = Arc::new(SessionWrites {
+        inner: state.session_store.clone(),
+        puts: AtomicUsize::new(0),
+    });
+    state.session_store = sessions.clone();
+    let state = Arc::new(state);
+    let app = crate::app_with_state_and_config(state.clone(), &default_test_config());
+    let before = signup_counts(&state.store).await;
+
+    let start = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/public/auth/external/start?login_entry_id={}",
+                    entry.id
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(start.status(), StatusCode::SEE_OTHER);
+    let location = start.headers()["location"].to_str().unwrap();
+    assert!(
+        location.starts_with("https://provider.example/"),
+        "{location}"
+    );
+    let provider_url = url::Url::parse(location).unwrap();
+    let transaction_state = provider_url
+        .query_pairs()
+        .find(|(key, _)| key == "state")
+        .unwrap()
+        .1;
+    let transaction_cookie = start.headers()["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap();
+    let query = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("state", &transaction_state)
+        .append_pair("code", "new_external_identity")
+        .finish();
+    let callback = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/public/auth/external/callback?{query}"))
+                .header("cookie", transaction_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(callback.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        callback.headers()["location"],
+        "/sign-in?auth_error=registration_disabled"
+    );
+    let session_prefix = format!("{}=", state.cookie_name);
+    assert!(
+        callback
+            .headers()
+            .get_all("set-cookie")
+            .iter()
+            .all(|header| { !header.to_str().unwrap().starts_with(&session_prefix) })
+    );
+    assert_eq!(policy.0.load(Ordering::SeqCst), 1);
+    assert_eq!(sessions.puts.load(Ordering::SeqCst), 0);
+    assert_eq!(signup_counts(&state.store).await, before);
+}

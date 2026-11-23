@@ -192,9 +192,10 @@ Use the configured test database account.
 既有建库、schema 和扩展权限，并能连接维护库 `postgres` 进行 owner 析构清理。
 清理失败会记录错误；使用测试数据库账号。
 
-The full private test suite also uses the existing trusted-origin and SDK-worker
-fixtures. Keep the CI fixture value `API_AUTH_PUBLIC_ORIGIN=https://auth-fixture.example`
-and prepare the required worker artifacts before the cases that consume them. The
+The `api_identity` OAuth callback test and the full private test suite use the trusted
+origin `API_AUTH_PUBLIC_ORIGIN=https://auth-fixture.example`. The callback uses a
+local verifier fixture and does not contact the provider. Prepare SDK worker
+artifacts before running the private tests that consume them. The
 repository's `scripts/node/plugin-composition-test-batch/runner.js` owns the existing
 plugin-composition worker preparation; the verification report records the four worker
 examples used for the full library run. Let Cargo set `CARGO_MANIFEST_DIR` for each

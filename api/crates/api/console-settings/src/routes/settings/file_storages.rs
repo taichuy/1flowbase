@@ -11,6 +11,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json, Router,
 };
+use control_plane::errors::ControlPlaneError;
 use control_plane::file_management::{
     CreateFileStorageCommand, DeleteFileStorageCommand, FileStorageService,
     UpdateFileStorageCommand,
@@ -365,6 +366,9 @@ impl FileStoragesAdapter {
         input: FileStoragesInput,
     ) -> Result<FileStoragesOutput, ApiError> {
         let actor = principal.actor();
+        if actor.current_workspace_id != self.bootstrap_workspace_id {
+            return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
+        }
         match input {
             FileStoragesInput::List { locale } => {
                 let mut storages = FileStorageService::new(self.store.for_actor(actor.clone()))

@@ -835,3 +835,104 @@ async fn flat_governance_is_atomic_and_workspace_status_is_independent() {
         assert_eq!(tenant_status, status.as_str());
     }
 }
+
+#[tokio::test]
+async fn bootstrap_admin_summary_includes_protected_system_root_only_where_applicable() {
+    let store = store().await;
+    let tenant = store.upsert_root_tenant().await.unwrap();
+    let bootstrap = store
+        .upsert_workspace(tenant.id, "1flowbase")
+        .await
+        .unwrap()
+        .id;
+    control_plane_test_support::upsert_permission_catalog(&store)
+        .await
+        .unwrap();
+    control_plane_test_support::upsert_builtin_roles(&store, bootstrap)
+        .await
+        .unwrap();
+    let root = store
+        .upsert_root_user(
+            bootstrap,
+            "root",
+            "root@example.com",
+            "test-hash",
+            "Root",
+            "Root",
+        )
+        .await
+        .unwrap();
+
+    async fn admins(store: &PgControlPlaneStore, workspace_id: Uuid) -> Vec<String> {
+        store
+            .list_tenants_and_workspaces()
+            .await
+            .unwrap()
+            .into_iter()
+            .flat_map(|tenant| tenant.workspaces)
+            .find(|workspace| workspace.workspace.record.id == workspace_id)
+            .unwrap()
+            .admins
+            .into_iter()
+            .map(|admin| admin.account)
+            .collect()
+    }
+
+    assert_eq!(admins(&store, bootstrap).await, ["root"]);
+    let mut sibling = provision("root-sibling");
+    sibling.tenant = ProvisionWorkspaceTenant::Existing {
+        tenant_id: tenant.id,
+    };
+    let sibling = store
+        .provision_workspace(&sibling)
+        .await
+        .unwrap()
+        .workspace
+        .id;
+    let acme = store
+        .provision_workspace(&provision("acme"))
+        .await
+        .unwrap()
+        .workspace
+        .id;
+    for workspace_id in [sibling, acme] {
+        store
+            .grant_or_activate_workspace_membership(&GrantWorkspaceMembershipInput {
+                workspace_id,
+                user_id: root.id,
+                role_codes: vec!["member".into()],
+                actor_user_id: None,
+            })
+            .await
+            .unwrap();
+        assert!(admins(&store, workspace_id).await.is_empty());
+    }
+    store
+        .grant_or_activate_workspace_membership(&GrantWorkspaceMembershipInput {
+            workspace_id: acme,
+            user_id: root.id,
+            role_codes: vec!["admin".into()],
+            actor_user_id: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(admins(&store, acme).await, ["root"]);
+    assert!(admins(&store, sibling).await.is_empty());
+    store
+        .onboard_new_user_to_workspace(&OnboardNewUserInput {
+            workspace_id: bootstrap,
+            user: new_user("alice"),
+            role_codes: vec!["admin".into()],
+            actor_user_id: Some(root.id),
+        })
+        .await
+        .unwrap();
+    assert_denied(
+        store
+            .revoke_workspace_admin(bootstrap, root.id, Some(root.id))
+            .await
+            .unwrap_err(),
+        "root_admin_immutable",
+    );
+    assert_eq!(admins(&store, bootstrap).await, ["root", "alice"]);
+}

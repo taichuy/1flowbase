@@ -30,6 +30,9 @@ for line in sys.stdin:
         result = {"type": "verified_identity", "subject_type": "provider-user-id", "subject_value": "42",
                   "issuer": "https://provider.example", "realm": None,
                   "profile": {"email": "external-fixture@example.com", "email_verified": True}}
+        if payload["code"] == "new_external_identity":
+            result["subject_value"] = "43"
+            result["profile"]["email"] = "new-external@example.com"
         if payload["code"].startswith("pause_after_response:"):
             # Keep synchronization files outside verified installation bytes.
             path = pathlib.Path(payload["code"].split(":", 1)[1])
@@ -39,6 +42,8 @@ for line in sys.stdin:
                 if time.monotonic() >= deadline:
                     raise RuntimeError("fixture response barrier timed out")
                 time.sleep(0.005)
+    elif operation == "registration_eligibility" and payload["profile"]["email"] == "new-external@example.com":
+        result = {"type": "registration_eligibility", "allowed": True, "reason_code": None}
     else:
         # A bound identity with self-registration disabled must never reach this.
         raise RuntimeError("unexpected registration eligibility invocation")

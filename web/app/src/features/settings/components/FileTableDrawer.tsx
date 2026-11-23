@@ -6,7 +6,7 @@ import {
   type SettingsFileTable
 } from '../api/file-management';
 import { useAuthStore } from '../../../state/auth-store';
-import { useConsoleOperationAccess } from '../../../state/console-operation-access';
+import { useConsoleOperationAccess, useProjectedConsoleOperationAccess } from '../../../state/console-operation-access';
 import { i18nText } from '../../../shared/i18n/text';
 
 type DrawerMode = 'create' | 'view' | 'edit';
@@ -44,7 +44,9 @@ export function FileTableDrawer({
   const isView = mode === 'view';
   const can = useConsoleOperationAccess();
   const canCreate = can('file_tables.create');
-  const canBind = can('file_tables.storage.bind');
+  const canUseHostOperation = useProjectedConsoleOperationAccess();
+  const canBind = canUseHostOperation('file_tables.storage.bind');
+  const canChooseStorageOnCreate = canUseHostOperation('file_storages.list');
   const canWrite = !isView && (mode === 'create' ? canCreate : canBind);
 
   useEffect(() => {
@@ -75,7 +77,7 @@ export function FileTableDrawer({
         {
           code: values.code,
           title: values.title,
-          bound_storage_id: values.bound_storage_id || null
+          bound_storage_id: canChooseStorageOnCreate ? values.bound_storage_id || null : null
         },
         csrfToken
       );
@@ -201,7 +203,7 @@ export function FileTableDrawer({
             options={storageOptions}
             placeholder={i18nText('settings', 'auto.follow_default_storage')}
             allowClear
-            disabled={!canWrite || isView}
+            disabled={!canWrite || (mode === 'create' && !canChooseStorageOnCreate)}
           />
         </Form.Item>
         {mode !== 'create' && (

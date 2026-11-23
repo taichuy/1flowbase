@@ -365,7 +365,7 @@ pub(crate) fn compile_migrated_console_operation_registry_with_managed(
         .map(|(order, spec)| {
             let routes = routes_for_core_operation_spec(spec, bindings);
             ConsoleOperationRegistration {
-                root_workspace_only: false,
+                root_workspace_only: spec.root_workspace_only,
                 operation_id: spec.operation_id.to_string(),
                 authorization_profile_id: (spec.route_selector
                     == CoreConsoleRouteSelector::OwnedOperation)

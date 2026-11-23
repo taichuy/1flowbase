@@ -22,6 +22,7 @@ pub(crate) enum CoreConsoleRouteSelector {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CoreConsoleOperationSpec {
+    pub(crate) root_workspace_only: bool,
     pub(crate) operation_id: &'static str,
     pub(crate) policy_group: CoreConsolePolicyGroupSpec,
     pub(crate) authorization: CoreConsoleAuthorizationSpec,
@@ -33,6 +34,7 @@ const fn authenticated_routes(
     other_group_id: &'static str,
 ) -> CoreConsoleOperationSpec {
     CoreConsoleOperationSpec {
+        root_workspace_only: false,
         operation_id,
         policy_group: CoreConsolePolicyGroupSpec::Other(other_group_id),
         authorization: CoreConsoleAuthorizationSpec::Authenticated,
@@ -45,6 +47,7 @@ const fn authenticated_operation(
     other_group_id: &'static str,
 ) -> CoreConsoleOperationSpec {
     CoreConsoleOperationSpec {
+        root_workspace_only: false,
         operation_id,
         policy_group: CoreConsolePolicyGroupSpec::Other(other_group_id),
         authorization: CoreConsoleAuthorizationSpec::Authenticated,
@@ -57,6 +60,7 @@ const fn settings(
     feature_id: &'static str,
 ) -> CoreConsoleOperationSpec {
     CoreConsoleOperationSpec {
+        root_workspace_only: false,
         operation_id,
         policy_group: CoreConsolePolicyGroupSpec::SettingsFeature(feature_id),
         authorization: CoreConsoleAuthorizationSpec::Simple,
@@ -64,8 +68,19 @@ const fn settings(
     }
 }
 
+const fn root_only_settings(
+    operation_id: &'static str,
+    feature_id: &'static str,
+) -> CoreConsoleOperationSpec {
+    CoreConsoleOperationSpec {
+        root_workspace_only: true,
+        ..settings(operation_id, feature_id)
+    }
+}
+
 const fn other(operation_id: &'static str, group_id: &'static str) -> CoreConsoleOperationSpec {
     CoreConsoleOperationSpec {
+        root_workspace_only: false,
         operation_id,
         policy_group: CoreConsolePolicyGroupSpec::Other(group_id),
         authorization: CoreConsoleAuthorizationSpec::Simple,
@@ -80,6 +95,7 @@ const fn resource_action(
     action_code: &'static str,
 ) -> CoreConsoleOperationSpec {
     CoreConsoleOperationSpec {
+        root_workspace_only: false,
         operation_id,
         policy_group: CoreConsolePolicyGroupSpec::SettingsFeature(feature_id),
         authorization: CoreConsoleAuthorizationSpec::ResourceAction {
@@ -246,14 +262,14 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
         "data_source_instances",
         "view",
     ),
-    settings("file_storages.create", "system.files"),
-    settings("file_storages.delete", "system.files"),
-    settings("file_storages.list", "system.files"),
-    settings("file_storages.update", "system.files"),
+    root_only_settings("file_storages.create", "system.files"),
+    root_only_settings("file_storages.delete", "system.files"),
+    root_only_settings("file_storages.list", "system.files"),
+    root_only_settings("file_storages.update", "system.files"),
     settings("file_tables.create", "system.files"),
     settings("file_tables.delete", "system.files"),
     settings("file_tables.list", "system.files"),
-    settings("file_tables.storage.bind", "system.files"),
+    root_only_settings("file_tables.storage.bind", "system.files"),
     settings("files.access_links.create", "system.files"),
     other(
         "frontend_blocks.type_declarations.view",

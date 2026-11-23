@@ -19,3 +19,9 @@ export function useConsoleOperationAccess() {
     [role, permissions]
   );
 }
+
+/** Host-scoped operations require an explicit server grant, including for root. */
+export function useProjectedConsoleOperationAccess() {
+  const permissions = useAuthStore((state) => state.me?.permissions);
+  return useCallback((operationId: string) => Boolean(permissions?.includes(operationId)), [permissions]);
+}

@@ -230,6 +230,14 @@ pub(crate) async fn apply_console_policy_permissions_to_actor(
     if actor.is_root {
         if outside_bootstrap {
             remove_platform_permissions(actor, inventory, features);
+        } else {
+            // Clients must use the explicit projection, not the root role alone,
+            // to distinguish platform operations available in this session.
+            actor.permissions.extend(inventory.operations.iter().filter_map(|operation| {
+                (operation.root_workspace_only
+                    && operation.lifecycle == access_control::SettingsFeatureLifecycle::Active)
+                    .then(|| operation.operation_id.clone())
+            }));
         }
         return Ok(());
     }

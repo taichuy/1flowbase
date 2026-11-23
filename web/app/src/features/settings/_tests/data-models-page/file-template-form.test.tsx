@@ -31,6 +31,11 @@ beforeEach(() => {
       account: 'root',
       effective_display_role: 'root',
       current_workspace_id: 'workspace-1'
+    },
+    me: {
+      id: 'root-1', account: 'root', email: '', phone: null, nickname: '', name: '',
+      avatar_url: null, introduction: '', effective_display_role: 'root',
+      permissions: ['file_storages.list']
     }
   });
   vi.mocked(fetchSettingsFileStorages).mockResolvedValue([
