@@ -146,6 +146,11 @@ pub(crate) async fn runtime_internal_tool_invoker_factory(
                 state.infrastructure.cache_store(),
                 state.provider_secret_master_key.clone(),
             )
+            .with_console_workspace_gate(
+                state.bootstrap_workspace_id,
+                state.console_operation_registry.inventory(),
+                &state.api_docs,
+            )
             .with_managed_services(state.console_surface_registry.managed_services().to_vec()),
             Arc::new(
                 routes::mcp_protocol::virtual_ui::McpInterfaceCatalogSnapshot::new(

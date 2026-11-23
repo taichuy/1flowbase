@@ -224,14 +224,19 @@ pub(crate) async fn apply_console_policy_permissions_to_actor(
     state: &ApiState,
     actor: &mut ActorContext,
 ) -> Result<(), ApiError> {
+    let outside_bootstrap = actor.current_workspace_id != state.bootstrap_workspace_id;
+    let inventory = state.console_operation_registry.inventory();
+    let features = &state.settings_feature_registry.inventory().features;
     if actor.is_root {
+        if outside_bootstrap {
+            remove_platform_permissions(actor, inventory, features);
+        }
         return Ok(());
     }
     let policies = state
         .console_policy_reader
         .load_role_console_policies_for_user(actor)
         .await?;
-    let inventory = state.console_operation_registry.inventory();
     // Project the same effective operations consumed by the invocation boundary. Legacy
     // role grants cannot retain stale operation IDs after a group or operation is revoked.
     actor
@@ -264,7 +269,30 @@ pub(crate) async fn apply_console_policy_permissions_to_actor(
             &policies,
             &state.settings_feature_registry.inventory().features,
         ));
+    if outside_bootstrap {
+        remove_platform_permissions(actor, inventory, features);
+    }
     Ok(())
+}
+
+fn remove_platform_permissions(
+    actor: &mut ActorContext,
+    inventory: &access_control::ConsoleOperationCompiledInventory,
+    features: &[access_control::SettingsFeatureInventoryEntry],
+) {
+    for operation in inventory
+        .operations
+        .iter()
+        .filter(|op| op.root_workspace_only)
+    {
+        actor.permissions.remove(&operation.operation_id);
+    }
+    for feature in features
+        .iter()
+        .filter(|feature| feature.root_workspace_only)
+    {
+        actor.permissions.remove(&feature.permission_code);
+    }
 }
 
 /// A settings surface is discoverable if at least one active operation is granted.

@@ -7,7 +7,7 @@ use anyhow::{bail, Result};
 use control_plane::plugin_management::mcp_projection::{
     input_mapping, media_result_schema, parameter_schema,
 };
-use control_plane_contracts::ports::{PluginRepository, RoleConsolePolicyReader};
+use control_plane_contracts::ports::{PluginRepository, RoleConsolePolicyReader, RoleRepository};
 use domain::{
     McpCatalogSnapshot, McpGroupRecord, McpInstanceRecord, McpInstanceStatus, McpRiskLevel,
     McpToolBindingRecord, McpToolRecord, McpToolStatus,
@@ -37,12 +37,15 @@ pub(crate) async fn append(
     } else {
         store.load_role_console_policies_for_user(actor).await?
     };
+    let outside_bootstrap = services.iter().any(|service| service.root_workspace_only)
+        && actor.current_workspace_id != store.bootstrap_workspace_id().await?;
     let active_services: Vec<_> = services
         .iter()
         .filter(|service| {
-            installations
-                .iter()
-                .any(|current| current_matches(service, current))
+            !(outside_bootstrap && service.root_workspace_only)
+                && installations
+                    .iter()
+                    .any(|current| current_matches(service, current))
         })
         .collect();
     let mut additions = catalog.clone();
@@ -165,17 +168,19 @@ fn filter_persisted_operations(
             }
         }
     }
-    catalog.tools.retain(|tool| {
-        tool.execution_target
-            .interface_id()
-            .is_none_or(|id| !known.contains(id) || allowed.contains(id))
-    });
+    retain_interfaces(catalog, |id| !known.contains(id) || allowed.contains(id));
+    Ok(())
+}
+
+pub(crate) fn retain_interfaces(catalog: &mut McpCatalogSnapshot, keep: impl Fn(&str) -> bool) {
+    catalog
+        .tools
+        .retain(|tool| tool.execution_target.interface_id().is_none_or(&keep));
     let retained: std::collections::BTreeSet<_> =
         catalog.tools.iter().map(|tool| tool.id).collect();
     catalog
         .bindings
         .retain(|binding| retained.contains(&binding.tool_record_id));
-    Ok(())
 }
 
 fn operation_accessible(

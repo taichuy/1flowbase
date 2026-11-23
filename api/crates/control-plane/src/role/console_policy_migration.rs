@@ -43,6 +43,7 @@ pub fn compiled_catalog_from_inventory(
 
     let mut groups =
         BTreeMap::<ConsolePolicyGroup, BTreeMap<ConsoleOperationId, ConsoleOperationPolicy>>::new();
+    let mut root_groups = std::collections::BTreeSet::new();
     for operation in &inventory.operations {
         if operation.lifecycle != SettingsFeatureLifecycle::Active {
             return Err(ConsolePolicyMigrationError::new(format!(
@@ -64,6 +65,9 @@ pub fn compiled_catalog_from_inventory(
             RegisteredConsolePolicyGroup::Other(group_id) => ConsolePolicyGroup::other(group_id)
                 .map_err(|_| ConsolePolicyMigrationError::new("compiled Other group is invalid"))?,
         };
+        if operation.root_workspace_only {
+            root_groups.insert(group.clone());
+        }
         let operation_id =
             ConsoleOperationId::try_from(operation.operation_id.as_str()).map_err(|_| {
                 ConsolePolicyMigrationError::new(format!(
@@ -133,6 +137,7 @@ pub fn compiled_catalog_from_inventory(
         groups: groups
             .into_iter()
             .map(|(group, operations)| CompiledConsolePolicyGroup {
+                root_workspace_only: root_groups.contains(&group),
                 group,
                 full_operations: operations.into_values().collect(),
             })

@@ -85,6 +85,11 @@ impl Adapter {
             .state
             .upgrade()
             .ok_or(Error::UpstreamUnavailable("managed_service_host"))?;
+        if self.registration.root_workspace_only
+            && principal.actor().current_workspace_id != state.bootstrap_workspace_id
+        {
+            return Err(Error::PermissionDenied("permission_denied").into());
+        }
         let op = self
             .operations
             .get(&input.interface_id)

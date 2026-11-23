@@ -629,3 +629,209 @@ async fn simultaneous_onboarding_of_one_external_subject_has_one_winner() {
         ]
     );
 }
+
+#[tokio::test]
+async fn flat_governance_is_atomic_and_workspace_status_is_independent() {
+    let store = store().await;
+    let root_tenant = root_tenant_id(&store).await;
+    let mut root_input = provision("platform");
+    root_input.tenant = ProvisionWorkspaceTenant::Existing {
+        tenant_id: root_tenant,
+    };
+    let root = store
+        .provision_workspace(&root_input)
+        .await
+        .unwrap()
+        .workspace
+        .id;
+    let root_user = Uuid::now_v7();
+    insert_user(&store, root_user, "root-admin", "root").await;
+    bind_role(&store, root_user, insert_root_role(&store).await).await;
+    assert_denied(
+        store
+            .set_workspace_status(root, TenantStatus::Suspended, None)
+            .await
+            .unwrap_err(),
+        "root_workspace_immutable",
+    );
+    assert_denied(
+        store
+            .revoke_workspace_admin(root, root_user, None)
+            .await
+            .unwrap_err(),
+        "root_admin_immutable",
+    );
+
+    let a = store
+        .provision_workspace(&provision("flat-a"))
+        .await
+        .unwrap();
+    let mut sibling = provision("flat-b");
+    sibling.tenant = ProvisionWorkspaceTenant::Existing {
+        tenant_id: a.tenant.id,
+    };
+    let b = store.provision_workspace(&sibling).await.unwrap();
+    let (a_id, b_id) = (a.workspace.id, b.workspace.id);
+    let candidate = ProvisionWorkspaceUser::New(new_user("flat-admin"));
+    assert!(store
+        .assign_workspace_admins(&[], &candidate, None)
+        .await
+        .is_err());
+    assert!(store
+        .assign_workspace_admins(&[a_id, Uuid::now_v7()], &candidate, None)
+        .await
+        .is_err());
+    let updated = store
+        .set_workspace_status(b_id, TenantStatus::Suspended, None)
+        .await
+        .unwrap();
+    assert_eq!(updated.status, TenantStatus::Suspended);
+    assert!(!updated.is_root_workspace);
+    assert_denied(
+        store
+            .assign_workspace_admins(&[a_id, b_id], &candidate, None)
+            .await
+            .unwrap_err(),
+        "workspace_suspended",
+    );
+    let count: i64 = sqlx::query_scalar("select count(*) from users where account = 'flat-admin'")
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+
+    store
+        .set_workspace_status(b_id, TenantStatus::Active, None)
+        .await
+        .unwrap();
+    let user = store
+        .assign_workspace_admins(&[b_id, a_id, b_id], &candidate, None)
+        .await
+        .unwrap();
+    store
+        .assign_workspace_admins(
+            &[a_id, b_id],
+            &ProvisionWorkspaceUser::Existing {
+                user_id: user.user_id,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let pool = store.pool();
+    let user_id = user.user_id;
+    let roles = |workspace_id| async move {
+        sqlx::query_scalar::<_, String>("select r.code from user_role_bindings b join roles r on r.id = b.role_id where b.user_id = $1 and b.scope_id = $2 order by r.code")
+            .bind(user_id).bind(workspace_id).fetch_all(pool).await.unwrap()
+    };
+    assert_eq!(roles(a_id).await, ["admin"]);
+    assert_eq!(roles(b_id).await, ["admin"]);
+    store
+        .load_actor_context_for_bound_role(user_id, a.tenant.id, b_id, "admin")
+        .await
+        .unwrap();
+    let app = store
+        .create_application(&CreateApplicationInput {
+            actor_user_id: user_id,
+            workspace_id: b_id,
+            application_type: domain::ApplicationType::AgentFlow,
+            workflow_trigger_type: None,
+            workflow_trigger_config: None,
+            name: "Workspace B API".into(),
+            description: String::new(),
+            icon: None,
+            icon_type: None,
+            icon_background: None,
+        })
+        .await
+        .unwrap();
+    assert!(store
+        .get_application_for_api_key(a.tenant.id, b_id, app.id)
+        .await
+        .unwrap()
+        .is_some());
+
+    store
+        .set_workspace_status(b_id, TenantStatus::Suspended, None)
+        .await
+        .unwrap();
+    assert_denied(
+        store
+            .load_actor_context(user.user_id, a.tenant.id, b_id, None)
+            .await
+            .unwrap_err(),
+        "workspace_suspended",
+    );
+    assert_denied(
+        store
+            .load_actor_context_for_bound_role(user_id, a.tenant.id, b_id, "admin")
+            .await
+            .unwrap_err(),
+        "workspace_suspended",
+    );
+    assert_denied(
+        store
+            .get_application_for_api_key(a.tenant.id, b_id, app.id)
+            .await
+            .unwrap_err(),
+        "workspace_suspended",
+    );
+    assert!(store
+        .get_accessible_workspace(root_user, b_id)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(store
+        .load_actor_context(user.user_id, a.tenant.id, a_id, None)
+        .await
+        .is_ok());
+    let summaries = store.list_tenants_and_workspaces().await.unwrap();
+    let workspaces = summaries
+        .iter()
+        .flat_map(|tenant| &tenant.workspaces)
+        .map(|ws| &ws.workspace)
+        .collect::<Vec<_>>();
+    assert!(workspaces
+        .iter()
+        .any(|ws| ws.record.id == root && ws.is_root_workspace));
+    assert!(workspaces
+        .iter()
+        .any(|ws| ws.record.id == b_id && ws.status == TenantStatus::Suspended));
+
+    let version = || async {
+        sqlx::query_scalar::<_, i64>("select session_version::bigint from users where id = $1")
+            .bind(user.user_id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap()
+    };
+    let before = version().await;
+    assert!(store
+        .revoke_workspace_admin(a_id, user.user_id, None)
+        .await
+        .unwrap());
+    assert!(!store
+        .revoke_workspace_admin(a_id, user.user_id, None)
+        .await
+        .unwrap());
+    assert_eq!(version().await, before + 1);
+    assert_eq!(roles(a_id).await, ["member"]);
+    assert_eq!(roles(b_id).await, ["admin"]);
+
+    let single = store
+        .provision_workspace(&provision("single"))
+        .await
+        .unwrap();
+    for status in [TenantStatus::Suspended, TenantStatus::Active] {
+        store
+            .set_workspace_status(single.workspace.id, status, None)
+            .await
+            .unwrap();
+        let tenant_status: String = sqlx::query_scalar("select status from tenants where id = $1")
+            .bind(single.tenant.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+        assert_eq!(tenant_status, status.as_str());
+    }
+}

@@ -85,39 +85,3 @@
   font-size: 13px;
   line-height: 1.5;
 }
-
-.auth-sign-in-invite-field {
-  display: grid;
-  gap: 6px;
-}
-
-.auth-sign-in-invite-label {
-  color: #55645d;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.4;
-}
-
-.auth-sign-in-invite-input {
-  box-sizing: border-box;
-  width: 100%;
-  height: 38px;
-  padding: 0 12px;
-  border: 1px solid #d5ddd8;
-  border-radius: 8px;
-  background: #ffffffe0;
-  color: #16211d;
-  font: 13px / 1.4 monospace;
-  transition: border-color 0.14s, box-shadow 0.14s;
-}
-
-.auth-sign-in-invite-input::placeholder {
-  color: #7b8982;
-  font-family: inherit;
-}
-
-.auth-sign-in-invite-input:focus-visible {
-  outline: none;
-  border-color: #00ab73;
-  box-shadow: 0 0 0 2px #00ab7329;
-}

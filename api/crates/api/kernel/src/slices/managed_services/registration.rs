@@ -3,6 +3,7 @@ use plugin_framework::{ManagedServiceManifest, PluginSettingsPageManifest};
 
 #[derive(Debug, Clone)]
 pub struct ManagedServiceRegistration {
+    pub root_workspace_only: bool,
     pub resource_imports: Vec<control_plane::plugin_management::ResolvedPluginResource>,
     pub installation_id: uuid::Uuid,
     pub publisher_namespace: String,
@@ -65,6 +66,7 @@ impl ManagedServiceRegistration {
         }
         let f = self.declaration.feature.as_ref()?;
         Some(SettingsFeatureRegistration {
+            root_workspace_only: self.root_workspace_only,
             feature_id: f.feature_id.clone(),
             owner: self.owner(),
             lifecycle: SettingsFeatureLifecycle::Active,
@@ -141,6 +143,7 @@ impl ManagedServiceRegistration {
             .iter()
             .enumerate()
             .map(|(index, op)| ConsoleOperationRegistration {
+                root_workspace_only: self.root_workspace_only,
                 operation_id: op.interface_id.clone(),
                 authorization_profile_id: Some(op.interface_id.clone()),
                 owner: self.owner(),

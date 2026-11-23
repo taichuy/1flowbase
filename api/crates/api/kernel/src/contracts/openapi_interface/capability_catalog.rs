@@ -331,6 +331,37 @@ pub struct OpenApiCapabilityCatalogDependencies {
     pub template_catalog: runtime_core::data_model_template_registry::DataModelTemplateCatalog,
 }
 
+/// Include the documented operation IDs: MCP wrappers can address the same
+/// console route through its OpenAPI ID instead of its compiled interface ID.
+pub fn root_workspace_only_capability_ids<'a>(
+    inventory: &'a access_control::ConsoleOperationCompiledInventory,
+    api_docs: &'a crate::openapi_docs::ApiDocsRegistry,
+) -> BTreeSet<&'a str> {
+    let mut ids = inventory.root_workspace_only_interface_ids();
+    let restricted_routes = inventory
+        .operations
+        .iter()
+        .filter(|operation| operation.root_workspace_only)
+        .flat_map(|operation| &operation.routes)
+        .map(|route| route_identity(&route.method, &route.path))
+        .collect::<BTreeSet<_>>();
+    for category in &api_docs.catalog().categories {
+        if let Some(operations) = api_docs.category_operations(&category.id) {
+            ids.extend(
+                operations
+                    .operations
+                    .iter()
+                    .filter(|operation| {
+                        restricted_routes
+                            .contains(&route_identity(&operation.method, &operation.path))
+                    })
+                    .map(|operation| operation.id.as_str()),
+            );
+        }
+    }
+    ids
+}
+
 pub async fn build_openapi_capability_catalog_with(
     dependencies: &OpenApiCapabilityCatalogDependencies,
     workspace_id: uuid::Uuid,

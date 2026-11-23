@@ -361,7 +361,7 @@ async fn workspace_policy_controls_registration_redemption_and_fallback() {
 }
 
 #[tokio::test]
-async fn disabled_membership_and_suspended_tenant_immediately_block_cookie_and_pat() {
+async fn disabled_membership_and_suspended_scopes_immediately_block_cookie_and_pat() {
     let (mut state, _) = test_api_state_with_database_url().await;
     let store = state.store.clone();
     let policy = Arc::new(Policy {
@@ -410,9 +410,10 @@ async fn disabled_membership_and_suspended_tenant_immediately_block_cookie_and_p
         .await;
         assert_eq!(status, StatusCode::OK, "{body}");
     }
-    for (membership, tenant, reason) in [
-        ("disabled", "active", "workspace_access_denied"),
-        ("active", "suspended", "tenant_suspended"),
+    for (membership, tenant, workspace_status, reason) in [
+        ("disabled", "active", "active", "workspace_access_denied"),
+        ("active", "suspended", "active", "tenant_suspended"),
+        ("active", "active", "suspended", "workspace_suspended"),
     ] {
         sqlx::query("update workspace_memberships set status = $1 where workspace_id = $2")
             .bind(membership)
@@ -421,6 +422,12 @@ async fn disabled_membership_and_suspended_tenant_immediately_block_cookie_and_p
             .await
             .unwrap();
         sqlx::query("update tenants set status = $1 where id = (select tenant_id from workspaces where id = $2)").bind(tenant).bind(workspace).execute(store.pool()).await.unwrap();
+        sqlx::query("update workspaces set status = $1 where id = $2")
+            .bind(workspace_status)
+            .bind(workspace)
+            .execute(store.pool())
+            .await
+            .unwrap();
         for credentials in [
             [("cookie", cookie.as_str())],
             [("authorization", bearer.as_str())],

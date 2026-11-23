@@ -605,6 +605,9 @@ pub trait SelfRegistrationRepository: Send + Sync {
 
 #[async_trait]
 pub trait RoleRepository: Send + Sync {
+    async fn bootstrap_workspace_id(&self) -> anyhow::Result<Uuid> {
+        Ok(domain::DEFAULT_SCOPE_ID)
+    }
     async fn load_actor_context_for_user(
         &self,
         actor_user_id: Uuid,

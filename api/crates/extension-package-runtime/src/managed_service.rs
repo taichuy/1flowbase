@@ -323,6 +323,8 @@ pub struct ManagedServiceMcpInstance {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManagedServiceManifest {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub root_workspace_only: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub record_resources: Vec<ManagedServiceRecordResource>,
     pub scope: ManagedServiceScope,

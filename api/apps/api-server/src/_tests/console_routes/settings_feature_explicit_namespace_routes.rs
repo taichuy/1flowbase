@@ -477,3 +477,188 @@ async fn legacy_actions_and_unregistered_explicit_settings_routes_are_forbidden(
         .unwrap();
     assert_eq!(unregistered.status(), StatusCode::FORBIDDEN);
 }
+
+#[tokio::test]
+async fn platform_feature_requires_both_bootstrap_workspace_and_console_grant() {
+    use control_plane_contracts::ports::workspace_governance::{
+        GrantWorkspaceMembershipInput, ProvisionWorkspaceInput, ProvisionWorkspaceTenant,
+        WorkspaceGovernanceRepository,
+    };
+
+    async fn request(
+        app: &axum::Router,
+        cookie: &str,
+        csrf: &str,
+        method: &str,
+        path: &str,
+        body: Value,
+    ) -> (StatusCode, Value) {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(path)
+                    .header("cookie", cookie)
+                    .header("x-csrf-token", csrf)
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        (status, serde_json::from_slice(&body).unwrap_or(Value::Null))
+    }
+
+    const ROUTE: &str = "/api/console/settings/auth-center/overview";
+    const CATALOG: &str = "/api/console/settings/roles/console-policy-catalog";
+    const MCP_CATALOG: &str = "/api/console/mcp/interface-capabilities";
+    const NAV: &str = "/api/console/navigation";
+    const GROUP: &str = "system.auth-center";
+    const OP: &str = "auth_center.overview.view";
+    let (state, _) = test_api_state_with_database_url().await;
+    let store = state.store.clone();
+    let app = crate::app_with_state_and_config(state, &test_config());
+    let (root, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let user = create_member(&app, &root, &root_csrf, "platform-reader", "temp-pass").await;
+    let (member, member_csrf) =
+        login_and_capture_cookie(&app, "platform-reader", "temp-pass").await;
+    let (status, _) = request(&app, &member, &member_csrf, "GET", ROUTE, Value::Null).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, nav) = request(&app, &member, &member_csrf, "GET", NAV, Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!nav.to_string().contains("settings.auth-center"));
+
+    let (status, catalog) = request(&app, &root, &root_csrf, "GET", CATALOG, Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{catalog}");
+    assert!(catalog["data"]["groups"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|group| group["group_id"] == GROUP));
+    let (status, interfaces) =
+        request(&app, &root, &root_csrf, "GET", MCP_CATALOG, Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{interfaces}");
+    let mcp_id = interfaces["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|interface| interface["path"] == ROUTE && interface["method"] == "GET")
+        .expect("bootstrap must expose the documented route")["interface_id"]
+        .as_str()
+        .unwrap();
+
+    let grant = json!({"groups":[{
+        "kind":"settings_feature", "group_id":GROUP, "enabled":true, "strategy":"custom",
+        "operations":[{"kind":"simple","operation_id":OP,"enabled":true}]
+    }]});
+    create_role(&app, &root, &root_csrf, "platform_reader").await;
+    let (status, body) = request(
+        &app,
+        &root,
+        &root_csrf,
+        "PUT",
+        "/api/console/settings/roles/platform_reader/console-policy",
+        grant.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    replace_member_roles(&app, &root, &root_csrf, &user, &["platform_reader"]).await;
+    let (member, member_csrf) =
+        login_and_capture_cookie(&app, "platform-reader", "temp-pass").await;
+    let (status, body) = request(&app, &member, &member_csrf, "GET", ROUTE, Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (_, nav) = request(&app, &member, &member_csrf, "GET", NAV, Value::Null).await;
+    assert!(nav.to_string().contains("settings.auth-center"));
+
+    let customer = store
+        .provision_workspace(&ProvisionWorkspaceInput {
+            tenant: ProvisionWorkspaceTenant::New {
+                code: "customer-platform-test".into(),
+                name: "Customer".into(),
+            },
+            workspace_name: "Customer".into(),
+            logo_url: None,
+            introduction: String::new(),
+            role_templates: access_control::bootstrap_role_templates(),
+            initial_member: None,
+            actor_user_id: None,
+        })
+        .await
+        .unwrap()
+        .workspace
+        .id;
+    store
+        .grant_or_activate_workspace_membership(&GrantWorkspaceMembershipInput {
+            workspace_id: customer,
+            user_id: user.parse().unwrap(),
+            role_codes: vec!["admin".into()],
+            actor_user_id: None,
+        })
+        .await
+        .unwrap();
+    for (cookie, csrf) in [(root, root_csrf), (member, member_csrf)] {
+        let (status, switched) = request(
+            &app,
+            &cookie,
+            &csrf,
+            "POST",
+            "/api/console/session/actions/switch-workspace",
+            json!({"workspace_id":customer}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{switched}");
+        let csrf = switched["data"]["csrf_token"].as_str().unwrap();
+        let (status, error) = request(&app, &cookie, csrf, "GET", ROUTE, Value::Null).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{error}");
+        assert_eq!(error["code"], "permission_denied");
+        let (status, me) =
+            request(&app, &cookie, csrf, "GET", "/api/console/me", Value::Null).await;
+        assert_eq!(status, StatusCode::OK, "{me}");
+        let permissions = me["data"]["permissions"].as_array().unwrap();
+        assert!(!permissions.contains(&json!(OP)));
+        assert!(!permissions.contains(&json!(AUTH_CENTER_FEATURE)));
+        let (status, nav) = request(&app, &cookie, csrf, "GET", NAV, Value::Null).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(!nav.to_string().contains("settings.auth-center"));
+        let (status, catalog) = request(&app, &cookie, csrf, "GET", CATALOG, Value::Null).await;
+        assert_eq!(status, StatusCode::OK, "{catalog}");
+        assert!(!catalog["data"]["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|group| group["group_id"] == GROUP));
+        let (status, error) = request(
+            &app,
+            &cookie,
+            csrf,
+            "PUT",
+            "/api/console/settings/roles/admin/console-policy",
+            grant.clone(),
+        )
+        .await;
+        assert!(
+            matches!(status, StatusCode::BAD_REQUEST | StatusCode::FORBIDDEN),
+            "{status}: {error}"
+        );
+        let (status, interfaces) =
+            request(&app, &cookie, csrf, "GET", MCP_CATALOG, Value::Null).await;
+        assert_eq!(status, StatusCode::OK, "{interfaces}");
+        assert!(!interfaces.to_string().contains(mcp_id));
+        assert!(!interfaces.to_string().contains(ROUTE));
+        let (status, error) = request(
+            &app,
+            &cookie,
+            csrf,
+            "POST",
+            "/api/console/mcp/debug/execute",
+            json!({
+                "interface_id":mcp_id,"mcp_arguments":{},"input_mapping":{},"output_mapping":{}
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{error}");
+    }
+}

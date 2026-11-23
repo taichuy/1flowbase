@@ -279,6 +279,8 @@ pub struct ConsoleRouteAssemblyBinding {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConsoleOperationRegistration {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub root_workspace_only: bool,
     pub operation_id: String,
     #[serde(default)]
     pub authorization_profile_id: Option<String>,
@@ -322,6 +324,7 @@ pub struct ResourceAccessRegistration {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ConsoleOperationInventoryEntry {
+    pub root_workspace_only: bool,
     pub operation_id: String,
     pub authorization_profile_id: String,
     pub owner: ConsoleOperationOwner,
@@ -340,6 +343,30 @@ pub struct ConsoleOperationCompiledInventory {
     pub resources: Vec<ResourceAccessRegistration>,
     #[serde(skip)]
     pub locale_catalog: Option<ConsoleLocaleCatalog>,
+}
+
+impl ConsoleOperationCompiledInventory {
+    pub fn root_workspace_only_interface_ids(&self) -> BTreeSet<&str> {
+        let mut ids = self
+            .operations
+            .iter()
+            .filter(|op| op.root_workspace_only)
+            .map(|op| op.operation_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let interfaces = self
+            .interfaces
+            .iter()
+            .filter(|interface| {
+                interface
+                    .authorization_operation_id
+                    .as_deref()
+                    .is_some_and(|id| ids.contains(id))
+            })
+            .map(|interface| interface.interface_id.as_str())
+            .collect::<Vec<_>>();
+        ids.extend(interfaces);
+        ids
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -445,7 +472,14 @@ impl ConsoleOperationRegistry {
         }
         validate_settings_feature_operation_coverage(settings_features, &registrations)?;
 
-        for registration in registrations {
+        for mut registration in registrations {
+            if let ConsolePolicyGroup::SettingsFeature(id) = &registration.policy_group {
+                registration.root_workspace_only |= settings_features
+                    .inventory()
+                    .features
+                    .iter()
+                    .any(|feature| feature.feature_id == *id && feature.root_workspace_only);
+            }
             compile_operation(registration, &mut operations, &mut route_owners)?;
         }
 
@@ -588,6 +622,7 @@ impl ConsoleOperationRegistry {
             })?;
 
         Ok(ConsoleRouteAccess {
+            root_workspace_only: operation.root_workspace_only,
             operation_id: &operation.operation_id,
             policy_group: &operation.policy_group,
             authorization: &operation.authorization,
@@ -759,6 +794,7 @@ impl ConsoleOperationRegistry {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsoleRouteAccess<'a> {
+    pub root_workspace_only: bool,
     pub operation_id: &'a str,
     pub policy_group: &'a ConsolePolicyGroup,
     pub authorization: &'a ConsoleAuthorization,
@@ -771,6 +807,7 @@ impl From<ConsoleOperationRegistration> for ConsoleOperationInventoryEntry {
             .authorization_profile_id
             .unwrap_or_else(|| registration.operation_id.clone());
         Self {
+            root_workspace_only: registration.root_workspace_only,
             operation_id: registration.operation_id,
             authorization_profile_id,
             owner: registration.owner,

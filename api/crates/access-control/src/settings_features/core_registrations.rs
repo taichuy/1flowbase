@@ -3,6 +3,7 @@ use super::*;
 pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration> {
     vec![
         SettingsFeatureRegistration {
+            root_workspace_only: false,
             feature_id: "system.events".to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -28,6 +29,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: false,
             feature_id: "system.branding".to_owned(),
             owner: SettingsFeatureOwner { kind: SettingsFeatureOwnerKind::Core, owner_id: "boot-core".to_owned(), version: env!("CARGO_PKG_VERSION").to_owned() },
             lifecycle: SettingsFeatureLifecycle::Active,
@@ -35,6 +37,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             api_routes: settings_api_routes(&[("GET", "/api/console/settings/system"), ("PUT", "/api/console/settings/system")]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: false,
             feature_id:SYSTEM_NOTIFICATIONS_SETTINGS_FEATURE_ID.to_owned(),
             owner:SettingsFeatureOwner{kind:SettingsFeatureOwnerKind::Core,owner_id:"boot-core".to_owned(),version:env!("CARGO_PKG_VERSION").to_owned()},
             lifecycle:SettingsFeatureLifecycle::Active,
@@ -58,6 +61,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: true,
             feature_id: SYSTEM_BACKUPS_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -96,6 +100,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: true,
             feature_id: "system.ui-management".to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -167,6 +172,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: true,
             feature_id: SYSTEM_EXTENSION_CENTER_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -206,6 +212,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: true,
             feature_id: SYSTEM_I18N_CATALOG_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -238,6 +245,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: false,
             feature_id: SYSTEM_DOCS_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -271,6 +279,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: false,
             feature_id: SYSTEM_API_KEY_AUTHENTICATION_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -299,6 +308,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: true,
             feature_id: SYSTEM_SYSTEM_RUNTIME_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -326,6 +336,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: false,
             feature_id: SYSTEM_APPLICATIONS_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -348,6 +359,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             )]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: true,
             feature_id: SYSTEM_AUTH_CENTER_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -393,6 +405,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: false,
             feature_id: SYSTEM_DATA_MODELS_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -501,6 +514,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: false,
             feature_id: SYSTEM_FILES_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -532,6 +546,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: false,
             feature_id: SYSTEM_MEMORY_OBSERVATION_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -595,6 +610,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: false,
             feature_id: SYSTEM_MEMBERS_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -624,6 +640,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: true,
             feature_id: SYSTEM_NETWORK_CENTER_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -673,6 +690,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: false,
             feature_id: SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -786,6 +804,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: false,
             feature_id: SYSTEM_MCP_MANAGEMENT_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -915,6 +934,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             ]),
         },
         SettingsFeatureRegistration {
+            root_workspace_only: false,
             feature_id: SYSTEM_ROLES_SETTINGS_FEATURE_ID.to_string(),
             owner: SettingsFeatureOwner {
                 kind: SettingsFeatureOwnerKind::Core,

@@ -15,7 +15,8 @@ use crate::{
         lifecycle::{identity_audit_payload, lock_canonical_identity, write_audit},
         lock_console_permission_catalog, seed_role_templates,
     },
-    repositories::PgControlPlaneStore,
+    repositories::{is_root_user, PgControlPlaneStore},
+    workspace_repository::bootstrap_workspace_id,
 };
 
 type Tx<'a> = Transaction<'a, Postgres>;
@@ -58,8 +59,8 @@ fn ensure_tenant_active(status: &str) -> Result<()> {
 
 async fn lock_active_workspace(tx: &mut Tx<'_>, workspace_id: Uuid) -> Result<Uuid> {
     // Serialize a grant with tenant suspension and workspace deletion.
-    let (tenant_id, status): (Uuid, String) = sqlx::query_as(
-        "select t.id, t.status from workspaces w join tenants t on t.id = w.tenant_id
+    let (tenant_id, status, workspace_status): (Uuid, String, String) = sqlx::query_as(
+        "select t.id, t.status, w.status from workspaces w join tenants t on t.id = w.tenant_id
          where w.id = $1 for share of t, w",
     )
     .bind(workspace_id)
@@ -67,6 +68,9 @@ async fn lock_active_workspace(tx: &mut Tx<'_>, workspace_id: Uuid) -> Result<Uu
     .await?
     .ok_or(Error::NotFound("workspace"))?;
     ensure_tenant_active(&status)?;
+    if workspace_status != "active" {
+        return Err(Error::PermissionDenied("workspace_suspended").into());
+    }
     Ok(tenant_id)
 }
 
@@ -286,7 +290,9 @@ async fn provision(
     } else {
         None
     };
+    let is_root_workspace = workspace.id == bootstrap_workspace_id(&mut **tx).await?;
     Ok(ProvisionedWorkspaceOutput {
+        is_root_workspace,
         tenant,
         workspace,
         initial_member_user_id,
@@ -351,6 +357,166 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
         Ok(OnboardedUserOutput { user_id })
     }
 
+    async fn set_workspace_status(
+        &self,
+        workspace_id: Uuid,
+        status: TenantStatus,
+        actor_user_id: Option<Uuid>,
+    ) -> Result<GovernanceWorkspace> {
+        let mut tx = self.pool().begin().await?;
+        if workspace_id == bootstrap_workspace_id(&mut *tx).await? {
+            return Err(Error::PermissionDenied("root_workspace_immutable").into());
+        }
+        let (tenant_id, is_root): (Uuid, bool) = sqlx::query_as(
+            "select t.id, t.is_root from workspaces w join tenants t on t.id = w.tenant_id
+             where w.id = $1 for update of t",
+        )
+        .bind(workspace_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(Error::NotFound("workspace"))?;
+        let row = sqlx::query(
+            "update workspaces set status = $2, updated_by = $3, updated_at = now()
+             where id = $1 and tenant_id = $4 returning name, logo_url, introduction",
+        )
+        .bind(workspace_id)
+        .bind(status.as_str())
+        .bind(actor_user_id)
+        .bind(tenant_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(Error::NotFound("workspace"))?;
+        if !is_root {
+            // Holding the tenant lock also serializes provisioning a sibling workspace.
+            sqlx::query("update tenants set status = $2, updated_by = $3, updated_at = now()
+                where id = $1 and not exists (select 1 from workspaces where tenant_id = $1 and id <> $4)")
+                .bind(tenant_id).bind(status.as_str()).bind(actor_user_id).bind(workspace_id)
+                .execute(&mut *tx).await?;
+        }
+        let record = WorkspaceRecord {
+            id: workspace_id,
+            tenant_id,
+            name: row.try_get("name")?,
+            logo_url: row.try_get("logo_url")?,
+            introduction: row.try_get("introduction")?,
+        };
+        tx.commit().await?;
+        Ok(GovernanceWorkspace {
+            record,
+            status,
+            is_root_workspace: false,
+        })
+    }
+
+    async fn assign_workspace_admins(
+        &self,
+        workspace_ids: &[Uuid],
+        user: &ProvisionWorkspaceUser,
+        actor_user_id: Option<Uuid>,
+    ) -> Result<GovernanceUserSummary> {
+        if workspace_ids.is_empty() {
+            return Err(Error::InvalidInput("workspace_ids").into());
+        }
+        let mut tx = self.pool().begin().await?;
+        let mut targets = Vec::new();
+        for workspace_id in workspace_ids
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+        {
+            let tenant_id = lock_active_workspace(&mut tx, workspace_id).await?;
+            let roles = workspace_roles(&mut tx, workspace_id, &["admin".into()]).await?;
+            targets.push((workspace_id, tenant_id, roles));
+        }
+        let user_id = match user {
+            ProvisionWorkspaceUser::Existing { user_id } => *user_id,
+            ProvisionWorkspaceUser::New(user) => {
+                let (workspace_id, tenant_id, roles) = &targets[0];
+                onboard_user(
+                    &mut tx,
+                    *tenant_id,
+                    *workspace_id,
+                    user,
+                    roles,
+                    actor_user_id,
+                )
+                .await
+                .map_err(|error| map_unique_conflict(error, "workspace_onboarding_conflict"))?
+            }
+        };
+        for (workspace_id, _, roles) in targets {
+            grant_membership(&mut tx, workspace_id, user_id, &roles, actor_user_id).await?;
+        }
+        let row = sqlx::query("select id, account, email, name, status, managed_by_tenant_id from users where id = $1")
+            .bind(user_id).fetch_one(&mut *tx).await?;
+        let user = governance_user_from_row(row)?;
+        tx.commit().await?;
+        Ok(user)
+    }
+
+    async fn revoke_workspace_admin(
+        &self,
+        workspace_id: Uuid,
+        user_id: Uuid,
+        actor_user_id: Option<Uuid>,
+    ) -> Result<bool> {
+        let mut tx = self.pool().begin().await?;
+        sqlx::query("select id from workspaces where id = $1 for share")
+            .bind(workspace_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(Error::NotFound("workspace"))?;
+        let admin_roles = workspace_roles(&mut tx, workspace_id, &["admin".into()]).await?;
+        sqlx::query("select id from users where id = $1 for update")
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(Error::NotFound("user"))?;
+        if workspace_id == bootstrap_workspace_id(&mut *tx).await?
+            && is_root_user(&mut *tx, user_id).await?
+        {
+            return Err(Error::PermissionDenied("root_admin_immutable").into());
+        }
+        let membership: Option<String> = sqlx::query_scalar(
+            "select status from workspace_memberships where workspace_id = $1 and user_id = $2 for update",
+        ).bind(workspace_id).bind(user_id).fetch_optional(&mut *tx).await?;
+        let revoked = sqlx::query(
+            "delete from user_role_bindings where user_id = $1 and role_id = $2 and scope_id = $3",
+        )
+        .bind(user_id)
+        .bind(admin_roles[0].0)
+        .bind(workspace_id)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected()
+            > 0;
+        if membership.as_deref() == Some("active") {
+            let has_roles: bool = sqlx::query_scalar(
+                "select exists (select 1 from user_role_bindings b join roles r on r.id = b.role_id
+                 where b.user_id = $1 and b.scope_id = $2 and r.workspace_id = $2 and r.scope_kind = 'workspace')",
+            ).bind(user_id).bind(workspace_id).fetch_one(&mut *tx).await?;
+            if !has_roles {
+                let default_roles = workspace_roles(&mut tx, workspace_id, &[]).await?;
+                grant_membership(
+                    &mut tx,
+                    workspace_id,
+                    user_id,
+                    &default_roles,
+                    actor_user_id,
+                )
+                .await?;
+            }
+        }
+        if revoked {
+            sqlx::query("update users set session_version = session_version + 1 where id = $1")
+                .bind(user_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await?;
+        Ok(revoked)
+    }
+
     async fn set_tenant_status(
         &self,
         tenant_id: Uuid,
@@ -382,10 +548,11 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
     }
 
     async fn list_tenants_and_workspaces(&self) -> Result<Vec<TenantWorkspaceGovernanceSummary>> {
+        let bootstrap = bootstrap_workspace_id(self.pool()).await?;
         let rows = sqlx::query(
             r#"
             select t.id, t.code, t.name, t.is_root, t.is_hidden, t.status, t.cell_id,
-                   w.id as workspace_id, w.name as workspace_name, w.logo_url, w.introduction,
+                   w.id as workspace_id, w.name as workspace_name, w.logo_url, w.introduction, w.status as workspace_status,
                    (select count(*) from workspace_memberships wm join users u on u.id = wm.user_id
                      where wm.workspace_id = w.id and wm.status = 'active' and u.status = 'active') as active_member_count,
                    (select count(*) from applications a where a.workspace_id = w.id) as workspace_application_count,
@@ -420,12 +587,17 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
                     .expect("tenant summary exists")
                     .workspaces
                     .push(WorkspaceGovernanceSummary {
-                        workspace: WorkspaceRecord {
+                        workspace: GovernanceWorkspace {
+                            is_root_workspace: workspace_id == bootstrap,
+                            status: TenantStatus::from_db(row.try_get("workspace_status")?)
+                                .ok_or_else(|| anyhow!("invalid stored workspace status"))?,
+                            record: WorkspaceRecord {
                             id: workspace_id,
                             tenant_id,
                             name: row.try_get("workspace_name")?,
                             logo_url: row.try_get("logo_url")?,
                             introduction: row.try_get("introduction")?,
+                            },
                         },
                         active_member_count: row.try_get("active_member_count")?,
                         workspace_application_count: row.try_get("workspace_application_count")?,
@@ -475,7 +647,11 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
         .bind(email)
         .fetch_optional(self.pool())
         .await?;
-        row.map(|row| {
+        row.map(governance_user_from_row).transpose()
+    }
+}
+
+fn governance_user_from_row(row: PgRow) -> Result<GovernanceUserSummary> {
             let status = match row.try_get::<&str, _>("status")? {
                 "active" => UserStatus::Active,
                 "disabled" => UserStatus::Disabled,
@@ -489,7 +665,4 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
                 status,
                 managed_by_tenant_id: row.try_get("managed_by_tenant_id")?,
             })
-        })
-        .transpose()
-    }
 }

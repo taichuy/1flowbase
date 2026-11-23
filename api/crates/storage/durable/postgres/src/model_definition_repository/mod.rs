@@ -91,13 +91,7 @@ fn platform_runtime_field_records(
 #[async_trait]
 impl ModelDefinitionRepository for PgControlPlaneStore {
     async fn runtime_bootstrap_workspace_id(&self) -> Result<Uuid> {
-        Ok(sqlx::query_scalar(
-            "select w.id from workspaces w join tenants t on t.id = w.tenant_id
-             where t.is_root order by w.created_at, w.id limit 1",
-        )
-        .fetch_optional(self.pool())
-        .await?
-        .unwrap_or(domain::DEFAULT_SCOPE_ID))
+        crate::workspace_repository::bootstrap_workspace_id(self.pool()).await
     }
 
     async fn load_actor_context_for_user(

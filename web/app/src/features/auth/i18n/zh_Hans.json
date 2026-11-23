@@ -7,9 +7,7 @@
     "fallback_submit": "登录",
     "fallback_title": "欢迎",
     "footer": "Powered by 1flowbase",
-    "invitation_detected": "已识别工作空间邀请，登录或注册后将自动加入对应空间。",
-    "invitation_code_label": "邀请码",
-    "invitation_code_placeholder": "输入邀请码以注册或加入工作空间（已有账号直接登录可留空）"
+    "invitation_detected": "已识别工作空间邀请，登录或注册后将自动加入对应空间。"
   },
   "mcp_oauth": {
     "title": "授权 MCP 连接",

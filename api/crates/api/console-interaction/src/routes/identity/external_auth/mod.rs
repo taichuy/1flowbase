@@ -44,6 +44,7 @@ fn failure_redirect(error: &ApiError) -> &'static str {
         .0
         .downcast_ref::<WorkspacePolicyRejection>()
         .and_then(|rejection| match rejection.code.as_str() {
+            "registration_rejected" | "self_registration_disabled" => Some("registration_disabled"),
             "invitation_required" => Some("invitation_required"),
             "invitation_invalid" => Some("invitation_invalid"),
             "invitation_expired" => Some("invitation_expired"),
@@ -55,7 +56,7 @@ fn failure_redirect(error: &ApiError) -> &'static str {
             _ => None,
         });
     let code = safe.or(policy).or_else(|| match error.0.downcast_ref::<E>() {
-        Some(E::PermissionDenied("self_registration_disabled")) => Some("registration_disabled"),
+        Some(E::PermissionDenied("self_registration_disabled" | "registration_rejected")) => Some("registration_disabled"),
         Some(E::PermissionDenied("external_registration_ineligible")) => {
             Some("registration_ineligible")
         }

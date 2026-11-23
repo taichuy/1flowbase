@@ -258,6 +258,8 @@ impl McpInterfaceDispatchPort for ConsoleRouterMcpInterfaceDispatchPort {
 #[derive(Clone)]
 pub struct RuntimeInternalToolInvokerDependencies {
     managed_services: Arc<[crate::managed_services::ManagedServiceRegistration]>,
+    root_workspace_only_interfaces: Arc<std::collections::BTreeSet<String>>,
+    bootstrap_workspace_id: uuid::Uuid,
     store: MainDurableStore,
     provider_secret_master_key: String,
     result_delivery: result_delivery::McpResultDeliveryDependencies,
@@ -271,6 +273,8 @@ impl RuntimeInternalToolInvokerDependencies {
     ) -> Self {
         Self {
             managed_services: Arc::from([]),
+            root_workspace_only_interfaces: Arc::default(),
+            bootstrap_workspace_id: domain::DEFAULT_SCOPE_ID,
             result_delivery: result_delivery::McpResultDeliveryDependencies::new(
                 store.clone(),
                 cache_store,
@@ -279,6 +283,22 @@ impl RuntimeInternalToolInvokerDependencies {
             provider_secret_master_key,
         }
     }
+    pub fn with_console_workspace_gate(
+        mut self,
+        bootstrap: uuid::Uuid,
+        inventory: &access_control::ConsoleOperationCompiledInventory,
+        api_docs: &crate::openapi_docs::ApiDocsRegistry,
+    ) -> Self {
+        self.bootstrap_workspace_id = bootstrap;
+        self.root_workspace_only_interfaces = Arc::new(
+            crate::openapi_interface::root_workspace_only_capability_ids(inventory, api_docs)
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+        );
+        self
+    }
+
     pub fn with_managed_services(
         mut self,
         services: Vec<crate::managed_services::ManagedServiceRegistration>,
@@ -864,6 +884,18 @@ async fn dispatch(
         interface_catalog,
     )
     .await?;
+    if actor.current_workspace_id != dependencies.bootstrap_workspace_id {
+        if (matches!(operation, Some(McpLlmOperation::Call)) || name == MCP_CALL)
+            && string_argument(&arguments, "tool_id").is_some_and(|id| {
+                interface_dispatch::root_workspace_only_tool(dependencies, catalog, &effective_scope, id)
+            })
+        {
+            return Err(control_plane::errors::ControlPlaneError::PermissionDenied("permission_denied").into());
+        }
+        crate::managed_service_mcp::retain_interfaces(&mut projected_catalog, |id| {
+            !dependencies.root_workspace_only_interfaces.contains(id)
+        });
+    }
     let catalog = &projected_catalog;
 
     let allow_assistant_client = match assistant_client {

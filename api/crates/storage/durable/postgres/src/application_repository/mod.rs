@@ -62,6 +62,7 @@ async fn find_application(
         r#"
         select
             t.status as tenant_status,
+            w.status as workspace_status,
             a.id,
             a.workspace_id,
             a.application_type,
@@ -130,6 +131,10 @@ async fn find_application(
     row.map(|row| {
         if api_key_tenant_id.is_some() && row.try_get::<String, _>("tenant_status")? != "active" {
             return Err(ControlPlaneError::PermissionDenied("tenant_suspended").into());
+        }
+        if api_key_tenant_id.is_some() && row.try_get::<String, _>("workspace_status")? != "active"
+        {
+            return Err(ControlPlaneError::PermissionDenied("workspace_suspended").into());
         }
         map_application_record(row)
     })

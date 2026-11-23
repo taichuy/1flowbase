@@ -48,6 +48,21 @@ pub enum WorkspaceGovernanceRequest {
         role_codes: Vec<String>,
         actor_user_id: Option<String>,
     },
+    SetWorkspaceStatus {
+        workspace_id: String,
+        status: String,
+        actor_user_id: Option<String>,
+    },
+    AssignWorkspaceAdmins {
+        workspace_ids: Vec<String>,
+        member: WorkspaceGovernanceInitialMemberDto,
+        actor_user_id: Option<String>,
+    },
+    RevokeWorkspaceAdmin {
+        workspace_id: String,
+        user_id: String,
+        actor_user_id: Option<String>,
+    },
     SetTenantStatus {
         tenant_id: String,
         status: String,
@@ -62,6 +77,9 @@ impl WorkspaceGovernanceRequest {
             Self::ProvisionWorkspace { .. }
                 | Self::GrantWorkspaceMembership { .. }
                 | Self::SetTenantStatus { .. }
+                | Self::SetWorkspaceStatus { .. }
+                | Self::AssignWorkspaceAdmins { .. }
+                | Self::RevokeWorkspaceAdmin { .. }
         )
     }
 }
@@ -92,6 +110,19 @@ pub enum WorkspaceGovernanceResponse {
         user_id: String,
         workspace_id: String,
         already_active_member: bool,
+    },
+    WorkspaceStatusUpdated {
+        workspace: WorkspaceGovernanceWorkspaceDto,
+        status: String,
+    },
+    WorkspaceAdminsAssigned {
+        user: WorkspaceGovernanceUserDto,
+        workspace_ids: Vec<String>,
+    },
+    WorkspaceAdminRevoked {
+        workspace_id: String,
+        user_id: String,
+        revoked: bool,
     },
     TenantUpdated {
         tenant: WorkspaceGovernanceTenantDto,
@@ -155,6 +186,10 @@ pub struct WorkspaceGovernanceTenantDto {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkspaceGovernanceWorkspaceDto {
+    #[serde(default = "active_workspace_status")]
+    pub status: String,
+    #[serde(default)]
+    pub is_root_workspace: bool,
     pub id: String,
     pub tenant_id: String,
     pub name: String,
@@ -180,6 +215,10 @@ pub struct WorkspaceGovernanceUserDto {
     pub name: String,
     pub status: String,
     pub managed_by_tenant_id: Option<String>,
+}
+
+fn active_workspace_status() -> String {
+    "active".into()
 }
 
 pub type WorkspaceGovernanceFuture<'a> = Pin<

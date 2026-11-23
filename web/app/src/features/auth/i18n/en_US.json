@@ -7,9 +7,7 @@
     "fallback_submit": "Sign in",
     "fallback_title": "Welcome",
     "footer": "Powered by 1flowbase",
-    "invitation_detected": "Workspace invitation detected. Sign in or create an account to join.",
-    "invitation_code_label": "Invitation code",
-    "invitation_code_placeholder": "Enter invitation code to join or register (optional for existing accounts)"
+    "invitation_detected": "Workspace invitation detected. Sign in or create an account to join."
   },
   "mcp_oauth": {
     "title": "Authorize MCP connection",

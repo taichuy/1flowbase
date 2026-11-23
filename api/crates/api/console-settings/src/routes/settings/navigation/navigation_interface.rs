@@ -207,6 +207,7 @@ impl InterfaceContract for ConsoleNavigationOutput {
 }
 
 pub struct ConsoleNavigationDependencies {
+    pub bootstrap_workspace_id: uuid::Uuid,
     pub navigation_cache: control_plane::navigation_cache::NavigationCache,
     pub store: MainDurableStore,
     pub surfaces: Arc<ConsoleSurfaceRegistry>,
@@ -230,7 +231,14 @@ impl ConsoleNavigationAdapter {
         let actor = principal.actor();
         match input {
             ConsoleNavigationInput::Get => {
-                let mut unavailable = std::collections::BTreeSet::new();
+                let outside_bootstrap = actor.current_workspace_id != self.0.bootstrap_workspace_id;
+                let mut unavailable = self
+                    .0
+                    .settings_features
+                    .iter()
+                    .filter(|feature| outside_bootstrap && feature.root_workspace_only)
+                    .map(|feature| feature.console_surface.route_id.as_str())
+                    .collect::<std::collections::BTreeSet<_>>();
                 use control_plane::ports::{PluginRepository, UiManagementRepository};
                 let templates = if self.0.surfaces.managed_services().is_empty() {
                     Vec::new()
@@ -326,6 +334,7 @@ impl ConsoleNavigationAdapter {
                             .filter(|feature| {
                                 feature.lifecycle
                                     == access_control::SettingsFeatureLifecycle::Active
+                                    && !(outside_bootstrap && feature.root_workspace_only)
                             })
                             .collect::<Vec<_>>();
                         active_features.sort_by(|left, right| {

@@ -863,6 +863,7 @@ pub fn console_invocation_kernel(
     crate::routes::host_infrastructure::interface_operation::invocation_kernel_with_admission(
         Arc::clone(&state.console_policy_reader),
         Arc::clone(&state.console_operation_registry),
+        state.bootstrap_workspace_id,
         Arc::new(ConsoleProtocolAdmissionPort::new(state, admission)),
     )
 }

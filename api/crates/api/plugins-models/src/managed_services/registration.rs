@@ -145,6 +145,7 @@ pub async fn load_installations(
             }
         }
         registrations.push(ManagedServiceRegistration {
+            root_workspace_only: service.root_workspace_only,
             resource_imports,
             installation_id: installation.id,
             publisher_namespace: manifest.publisher_namespace,

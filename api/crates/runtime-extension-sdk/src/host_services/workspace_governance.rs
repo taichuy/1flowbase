@@ -165,6 +165,66 @@ impl WorkspaceGovernanceClient {
         }
     }
 
+    pub async fn set_workspace_status(
+        &self,
+        workspace_id: String,
+        status: String,
+        actor_user_id: Option<String>,
+    ) -> Result<WorkspaceGovernanceWorkspaceDto> {
+        match self
+            .execute(WorkspaceGovernanceRequest::SetWorkspaceStatus {
+                workspace_id,
+                status,
+                actor_user_id,
+            })
+            .await?
+        {
+            WorkspaceGovernanceResponse::WorkspaceStatusUpdated { workspace, .. } => Ok(workspace),
+            _ => Err(WorkspaceGovernanceClientError::InvalidResponse),
+        }
+    }
+
+    pub async fn assign_workspace_admins(
+        &self,
+        workspace_ids: Vec<String>,
+        member: WorkspaceGovernanceInitialMemberDto,
+        actor_user_id: Option<String>,
+    ) -> Result<(WorkspaceGovernanceUserDto, Vec<String>)> {
+        match self
+            .execute(WorkspaceGovernanceRequest::AssignWorkspaceAdmins {
+                workspace_ids,
+                member,
+                actor_user_id,
+            })
+            .await?
+        {
+            WorkspaceGovernanceResponse::WorkspaceAdminsAssigned {
+                user,
+                workspace_ids,
+            } => Ok((user, workspace_ids)),
+            _ => Err(WorkspaceGovernanceClientError::InvalidResponse),
+        }
+    }
+
+    pub async fn revoke_workspace_admin(
+        &self,
+        workspace_id: String,
+        user_id: String,
+        actor_user_id: Option<String>,
+    ) -> Result<bool> {
+        match self
+            .execute(WorkspaceGovernanceRequest::RevokeWorkspaceAdmin {
+                workspace_id,
+                user_id,
+                actor_user_id,
+            })
+            .await?
+        {
+            WorkspaceGovernanceResponse::WorkspaceAdminRevoked { revoked, .. } => Ok(revoked),
+            _ => Err(WorkspaceGovernanceClientError::InvalidResponse),
+        }
+    }
+
     pub async fn set_tenant_status(
         &self,
         tenant_id: String,

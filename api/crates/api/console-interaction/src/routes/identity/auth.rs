@@ -280,11 +280,16 @@ impl PublicLoginEntriesPort for PublicLoginEntriesAdapter {
                 .await
                 .map_err(ApiError::from)?;
             for entry in &mut login_entries {
-                if onboarding_mode
-                    == Some(extension_contracts::WorkspaceOnboardingModeDto::PersonalWorkspace)
-                    && entry.auth_type == "password-local"
-                {
-                    entry.public_variables["self_registration_enabled"] = Value::Bool(true);
+                use extension_contracts::WorkspaceOnboardingModeDto::*;
+                let allow_registration = match onboarding_mode {
+                    Some(PersonalWorkspace | DefaultWorkspace) => Some(true),
+                    Some(Reject) => Some(false),
+                    Some(InviteOnly) | None => None,
+                };
+                if entry.auth_type == "password-local" {
+                    if let Some(allowed) = allow_registration {
+                        entry.public_variables["self_registration_enabled"] = Value::Bool(allowed);
+                    }
                 }
                 entry.title = crate::app_state::project_canonical_display_with(
                     &store,

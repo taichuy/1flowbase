@@ -21,16 +21,24 @@ async fn old_store() -> (PgControlPlaneStore, Uuid, Uuid) {
     .await
     .unwrap();
     let store = PgControlPlaneStore::new(pool);
-    let tenant = store.upsert_root_tenant().await.unwrap();
-    let workspace = store
-        .upsert_workspace(tenant.id, "plugin-policy-migration")
-        .await
-        .unwrap();
+    // The historical schema predates tenant status and current bootstrap queries.
+    let tenant = Uuid::now_v7();
+    let workspace = Uuid::now_v7();
+    sqlx::query("insert into tenants (id, code, name, is_root, is_hidden) values ($1, 'fixture', 'Fixture', true, true)")
+        .bind(tenant).execute(store.pool()).await.unwrap();
+    sqlx::query(
+        "insert into workspaces (id, tenant_id, name) values ($1, $2, 'plugin-policy-migration')",
+    )
+    .bind(workspace)
+    .bind(tenant)
+    .execute(store.pool())
+    .await
+    .unwrap();
     let owner = Uuid::now_v7();
     sqlx::query("insert into users (id,account,email,password_hash,name,nickname,status) values ($1,$2,$3,'!fixture','','','active')")
         .bind(owner).bind(format!("plugin-{owner}")).bind(format!("{owner}@example.com"))
         .execute(store.pool()).await.unwrap();
-    (store, workspace.id, owner)
+    (store, workspace, owner)
 }
 
 async fn installation(store: &PgControlPlaneStore, owner: Uuid, artifact: &str, feature: &str) {
@@ -158,6 +166,7 @@ async fn inactive_plugin_migration_preserves_policy_ids_denials_and_first_seen_s
     let catalog = CompiledConsolePolicyCatalog {
         complete: true,
         groups: vec![CompiledConsolePolicyGroup {
+            root_workspace_only: false,
             group: plugin.clone(),
             full_operations: vec![
                 ConsoleOperationPolicy::simple(allowed.clone(), true),

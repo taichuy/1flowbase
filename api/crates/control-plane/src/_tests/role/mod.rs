@@ -46,6 +46,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
         interfaces: vec![],
         operations: vec![
             ConsoleOperationInventoryEntry {
+                root_workspace_only: false,
                 operation_id: "applications.create".to_string(),
                 authorization_profile_id: "applications.create".to_string(),
                 owner: owner.clone(),
@@ -56,6 +57,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
                 authorization: ConsoleAuthorization::Simple,
             },
             ConsoleOperationInventoryEntry {
+                root_workspace_only: false,
                 operation_id: "applications.view".to_string(),
                 authorization_profile_id: "applications.view".to_string(),
                 owner: owner.clone(),
@@ -69,6 +71,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
                 },
             },
             ConsoleOperationInventoryEntry {
+                root_workspace_only: false,
                 operation_id: "files.upload".to_string(),
                 authorization_profile_id: "files.upload".to_string(),
                 owner: owner.clone(),
@@ -79,6 +82,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
                 authorization: ConsoleAuthorization::Simple,
             },
             ConsoleOperationInventoryEntry {
+                root_workspace_only: false,
                 operation_id: "files.content.download".to_string(),
                 authorization_profile_id: "files.content.download".to_string(),
                 owner,
@@ -89,6 +93,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
                 authorization: ConsoleAuthorization::Simple,
             },
             ConsoleOperationInventoryEntry {
+                root_workspace_only: false,
                 operation_id: "test-host.inspect".to_string(),
                 authorization_profile_id: "test-host.inspect".to_string(),
                 owner: host_owner,
@@ -131,6 +136,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
 
     let settings = SettingsFeatureRegistry::compile([
         SettingsFeatureRegistration {
+            root_workspace_only: false,
             feature_id: "system.applications".to_string(),
             owner: ConsoleOperationOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -152,6 +158,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
             }],
         },
         SettingsFeatureRegistration {
+            root_workspace_only: false,
             feature_id: "system.files".to_string(),
             owner: ConsoleOperationOwner {
                 kind: SettingsFeatureOwnerKind::Core,
@@ -188,6 +195,7 @@ fn console_policy_inventory() -> ConsoleOperationCompiledInventory {
         .cloned()
         .zip(operation_routes)
         .map(|(entry, (method, path))| ConsoleOperationRegistration {
+            root_workspace_only: false,
             operation_id: entry.operation_id,
             authorization_profile_id: None,
             owner: entry.owner,

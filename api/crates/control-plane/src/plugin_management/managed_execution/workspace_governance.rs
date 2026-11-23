@@ -126,7 +126,11 @@ impl ManagedWorkspaceGovernanceService {
                     .await?;
                 Response::WorkspaceProvisioned {
                     tenant: tenant_dto(output.tenant),
-                    workspace: workspace_dto(output.workspace),
+                    workspace: workspace_dto(GovernanceWorkspace {
+                        record: output.workspace,
+                        status: domain::TenantStatus::Active,
+                        is_root_workspace: output.is_root_workspace,
+                    }),
                     initial_member_user_id: output
                         .initial_member_user_id
                         .map(|id| id.to_string()),
@@ -170,6 +174,68 @@ impl ManagedWorkspaceGovernanceService {
                     user_id: user_id.to_string(),
                     workspace_id: workspace_id.to_string(),
                     already_active_member,
+                }
+            }
+            Request::SetWorkspaceStatus {
+                workspace_id,
+                status,
+                actor_user_id,
+            } => {
+                let status = domain::TenantStatus::from_db(status)
+                    .ok_or(ControlPlaneError::InvalidInput("workspace_status"))?;
+                let workspace = repo
+                    .set_workspace_status(
+                        id(workspace_id)?,
+                        status,
+                        authenticated_actor(binding, actor_user_id.as_deref())?,
+                    )
+                    .await?;
+                Response::WorkspaceStatusUpdated {
+                    workspace: workspace_dto(workspace),
+                    status: status.as_str().into(),
+                }
+            }
+            Request::AssignWorkspaceAdmins {
+                workspace_ids,
+                member,
+                actor_user_id,
+            } => {
+                let workspace_ids = workspace_ids
+                    .iter()
+                    .map(|value| id(value))
+                    .collect::<anyhow::Result<std::collections::BTreeSet<_>>>()?
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                let user = repo
+                    .assign_workspace_admins(
+                        &workspace_ids,
+                        &provision_user(member)?,
+                        authenticated_actor(binding, actor_user_id.as_deref())?,
+                    )
+                    .await?;
+                Response::WorkspaceAdminsAssigned {
+                    user: user_dto(user),
+                    workspace_ids: workspace_ids.into_iter().map(|id| id.to_string()).collect(),
+                }
+            }
+            Request::RevokeWorkspaceAdmin {
+                workspace_id,
+                user_id,
+                actor_user_id,
+            } => {
+                let workspace_id = id(workspace_id)?;
+                let user_id = id(user_id)?;
+                let revoked = repo
+                    .revoke_workspace_admin(
+                        workspace_id,
+                        user_id,
+                        authenticated_actor(binding, actor_user_id.as_deref())?,
+                    )
+                    .await?;
+                Response::WorkspaceAdminRevoked {
+                    workspace_id: workspace_id.to_string(),
+                    user_id: user_id.to_string(),
+                    revoked,
                 }
             }
             Request::SetTenantStatus {
@@ -300,6 +366,25 @@ fn id(value: &str) -> anyhow::Result<Uuid> {
         .map_err(|_| ControlPlaneError::InvalidInput("workspace_governance_id"))?)
 }
 
+fn authenticated_actor(
+    binding: &WorkspaceGovernanceBinding,
+    claimed: Option<&str>,
+) -> anyhow::Result<Option<Uuid>> {
+    let authenticated = binding
+        .caller
+        .as_ref()
+        .map(|caller| id(&caller.user_id))
+        .transpose()?;
+    if let Some(claimed) = claimed {
+        if Some(id(claimed)?) != authenticated {
+            return Err(
+                ControlPlaneError::PermissionDenied("workspace_governance_actor_mismatch").into(),
+            );
+        }
+    }
+    Ok(authenticated)
+}
+
 fn provision_user(
     member: &WorkspaceGovernanceInitialMemberDto,
 ) -> anyhow::Result<ProvisionWorkspaceUser> {
@@ -334,8 +419,11 @@ fn tenant_dto(record: domain::TenantRecord) -> WorkspaceGovernanceTenantDto {
     }
 }
 
-fn workspace_dto(record: domain::WorkspaceRecord) -> WorkspaceGovernanceWorkspaceDto {
+fn workspace_dto(workspace: GovernanceWorkspace) -> WorkspaceGovernanceWorkspaceDto {
+    let record = workspace.record;
     WorkspaceGovernanceWorkspaceDto {
+        status: workspace.status.as_str().into(),
+        is_root_workspace: workspace.is_root_workspace,
         id: record.id.to_string(),
         tenant_id: record.tenant_id.to_string(),
         name: record.name,

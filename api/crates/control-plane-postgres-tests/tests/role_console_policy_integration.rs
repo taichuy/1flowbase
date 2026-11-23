@@ -195,6 +195,7 @@ fn synthetic_migration_plan(
         CompiledConsolePolicyCatalog {
             complete: true,
             groups: vec![CompiledConsolePolicyGroup {
+                root_workspace_only: false,
                 group: ConsolePolicyGroup::other("migration").unwrap(),
                 full_operations: vec![
                     ConsoleOperationPolicy::simple(

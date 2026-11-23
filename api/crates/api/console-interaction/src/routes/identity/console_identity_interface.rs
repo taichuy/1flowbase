@@ -937,6 +937,7 @@ pub(crate) async fn invoke(
     let kernel = api_host_kernel::console_invocation::invocation_kernel(
         Arc::clone(&state.console_policy_reader),
         Arc::clone(&state.console_operation_registry),
+        state.bootstrap_workspace_id,
     );
     match kernel
         .invoke::<ConsoleIdentityInput, ConsoleIdentityOutput, ConsoleIdentityTargetError>(

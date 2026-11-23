@@ -625,27 +625,18 @@ test('AC-002 ?invite= enables invited registration and forwards invitationToken 
   );
 });
 
-test('AC-002 invite_only mode exposes manual invitation code field when URL has no ?invite', async () => {
-  fetchLoginEntries.mockResolvedValue({
-    default_login_entry_id: passwordInstance.id,
-    onboarding_mode: 'invite_only',
-    login_entries: [passwordInstance]
-  });
-  window.history.pushState({}, '', '/sign-in');
+test.each(['invite_only', 'reject', 'default_workspace', 'personal_workspace'] as const)(
+  'AC-013 %s does not render a manual invitation field',
+  async (onboarding_mode) => {
+    fetchLoginEntries.mockResolvedValue({
+      default_login_entry_id: passwordInstance.id,
+      onboarding_mode,
+      login_entries: [passwordInstance]
+    });
+    window.history.pushState({}, '', '/sign-in');
 
-  render(<SignInPage />);
-  const inviteInput = await screen.findByLabelText(/邀请码|Invitation code/i);
-  expect(inviteInput).toBeVisible();
-  expect(renderedBlocks).toHaveBeenCalledWith(passwordInstance, false);
-
-  fireEvent.change(inviteInput, { target: { value: 'inv_manual_99' } });
-  await waitFor(() =>
-    expect(renderedBlocks).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        id: passwordInstance.id,
-        public_variables: { self_registration_enabled: true }
-      }),
-      false
-    )
-  );
-});
+    render(<SignInPage />);
+    await waitFor(() => expect(renderedBlocks).toHaveBeenCalled());
+    expect(screen.queryByLabelText(/邀请码|Invitation code/i)).not.toBeInTheDocument();
+  }
+);

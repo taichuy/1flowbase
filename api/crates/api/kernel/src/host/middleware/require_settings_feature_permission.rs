@@ -117,6 +117,12 @@ pub async fn require_settings_feature_permission(
     )
     .map_err(ControlPlaneError::PermissionDenied)?;
 
+    if access.root_workspace_only
+        && context.actor.current_workspace_id != state.bootstrap_workspace_id
+    {
+        return Err(ControlPlaneError::PermissionDenied("permission_denied").into());
+    }
+
     if matches!(access.authorization, ConsoleAuthorization::Authenticated) || context.actor.is_root
     {
         return Ok(next.run(request).await);

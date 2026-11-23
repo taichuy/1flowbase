@@ -590,6 +590,21 @@ where
         self
     }
 
+    async fn visible_console_inventory<'a>(
+        &self,
+        actor: &domain::ActorContext,
+        inventory: &'a ConsoleOperationCompiledInventory,
+    ) -> Result<std::borrow::Cow<'a, ConsoleOperationCompiledInventory>> {
+        if actor.current_workspace_id == self.repository.bootstrap_workspace_id().await? {
+            return Ok(std::borrow::Cow::Borrowed(inventory));
+        }
+        let mut visible = inventory.clone();
+        visible
+            .operations
+            .retain(|operation| !operation.root_workspace_only);
+        Ok(std::borrow::Cow::Owned(visible))
+    }
+
     pub async fn get_console_policy_catalog(
         &self,
         actor_user_id: Uuid,
@@ -603,6 +618,8 @@ where
             .await?;
         self.ensure_console_operation(&actor, ROLES_CONSOLE_POLICY_CATALOG_VIEW_OPERATION_ID)
             .await?;
+        let visible = self.visible_console_inventory(&actor, inventory).await?;
+        let inventory = visible.as_ref();
         validate_complete_console_policy_catalog(inventory)?;
         let locale_catalog =
             inventory
@@ -635,6 +652,7 @@ where
             .await?;
         self.ensure_console_operation(&actor, ROLES_CONSOLE_SETTINGS_ORDER_REPLACE_OPERATION_ID)
             .await?;
+        let visible = self.visible_console_inventory(&actor, inventory).await?;
         let locale_catalog =
             inventory
                 .locale_catalog
@@ -643,8 +661,8 @@ where
                     "console_policy_locale_catalog",
                 ))?;
         let mut catalog =
-            build_console_policy_catalog_for_locale(inventory, locale_catalog, locale)?;
-        apply_console_settings_order(&mut catalog, inventory, &[], settings_features);
+            build_console_policy_catalog_for_locale(&visible, locale_catalog, locale)?;
+        apply_console_settings_order(&mut catalog, &visible, &[], settings_features);
         let valid_group_ids = catalog
             .groups
             .iter()
@@ -705,7 +723,8 @@ where
             .await?;
         self.ensure_console_operation(&actor, ROLES_CONSOLE_POLICY_VIEW_OPERATION_ID)
             .await?;
-        let operation_index = validate_complete_console_policy_catalog(inventory)?;
+        let visible = self.visible_console_inventory(&actor, inventory).await?;
+        let operation_index = validate_complete_console_policy_catalog(&visible)?;
         let policy = self
             .repository
             .get_role_console_policy(actor.current_workspace_id, role_code)
@@ -728,13 +747,16 @@ where
         self.ensure_console_operation(&actor, ROLES_CONSOLE_POLICY_REPLACE_OPERATION_ID)
             .await?;
 
-        let operation_index = validate_complete_console_policy_catalog(inventory)?;
+        let visible = self.visible_console_inventory(&actor, inventory).await?;
+        let operation_index = validate_complete_console_policy_catalog(&visible)?;
         let groups = role_console_policy_groups_from_input(&command.groups, &operation_index)?;
         let previous = self
             .repository
             .get_role_console_policy(actor.current_workspace_id, &command.role_code)
             .await?;
-        let groups = retain_unpublished_console_policy(groups, &previous, &operation_index);
+        // Retain unpublished plugin policy, but not published host-only grants in a customer workspace.
+        let full_index = validate_complete_console_policy_catalog(inventory)?;
+        let groups = retain_unpublished_console_policy(groups, &previous, &full_index);
         let role_code = command.role_code.clone();
         let policy = self
             .repository

@@ -1,6 +1,10 @@
 import { apiFetch } from './transport/json';
 
-export type PublicOnboardingMode = 'personal_workspace' | 'invite_only';
+export type PublicOnboardingMode =
+  | 'personal_workspace'
+  | 'default_workspace'
+  | 'reject'
+  | 'invite_only';
 
 export interface PasswordSignInInput {
   identifier: string;

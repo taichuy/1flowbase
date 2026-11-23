@@ -59,6 +59,8 @@ pub enum WorkspacePolicyResponse {
 #[serde(rename_all = "snake_case")]
 pub enum WorkspaceOnboardingModeDto {
     PersonalWorkspace,
+    DefaultWorkspace,
+    Reject,
     InviteOnly,
 }
 
@@ -66,6 +68,8 @@ impl WorkspaceOnboardingModeDto {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::PersonalWorkspace => "personal_workspace",
+            Self::DefaultWorkspace => "default_workspace",
+            Self::Reject => "reject",
             Self::InviteOnly => "invite_only",
         }
     }

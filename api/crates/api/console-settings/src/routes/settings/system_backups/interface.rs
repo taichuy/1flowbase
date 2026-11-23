@@ -404,6 +404,7 @@ impl SystemBackupsAdapter {
             )
             .await?;
         let access = access_control::ConsoleRouteAccess {
+            root_workspace_only: true,
             operation_id: &self.0.backup_status_access.operation_id,
             policy_group: &self.0.backup_status_access.policy_group,
             authorization: &self.0.backup_status_access.authorization,

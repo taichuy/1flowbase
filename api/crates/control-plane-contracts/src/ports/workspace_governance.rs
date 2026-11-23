@@ -64,6 +64,7 @@ impl std::fmt::Debug for GovernanceUserCredential {
 pub struct ProvisionedWorkspaceOutput {
     pub tenant: TenantRecord,
     pub workspace: WorkspaceRecord,
+    pub is_root_workspace: bool,
     pub initial_member_user_id: Option<Uuid>,
 }
 
@@ -100,8 +101,15 @@ pub struct TenantWorkspaceGovernanceSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GovernanceWorkspace {
+    pub record: WorkspaceRecord,
+    pub status: TenantStatus,
+    pub is_root_workspace: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceGovernanceSummary {
-    pub workspace: WorkspaceRecord,
+    pub workspace: GovernanceWorkspace,
     pub active_member_count: i64,
     pub workspace_application_count: i64,
     pub admins: Vec<GovernanceUserSummary>,
@@ -147,6 +155,24 @@ pub trait WorkspaceGovernanceRepository: Send + Sync {
         &self,
         input: &OnboardNewUserInput,
     ) -> Result<OnboardedUserOutput>;
+    async fn set_workspace_status(
+        &self,
+        workspace_id: Uuid,
+        status: TenantStatus,
+        actor_user_id: Option<Uuid>,
+    ) -> Result<GovernanceWorkspace>;
+    async fn assign_workspace_admins(
+        &self,
+        workspace_ids: &[Uuid],
+        user: &ProvisionWorkspaceUser,
+        actor_user_id: Option<Uuid>,
+    ) -> Result<GovernanceUserSummary>;
+    async fn revoke_workspace_admin(
+        &self,
+        workspace_id: Uuid,
+        user_id: Uuid,
+        actor_user_id: Option<Uuid>,
+    ) -> Result<bool>;
     async fn set_tenant_status(
         &self,
         tenant_id: Uuid,

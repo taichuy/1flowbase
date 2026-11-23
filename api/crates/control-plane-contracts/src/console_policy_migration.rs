@@ -27,6 +27,7 @@ pub struct CompiledConsolePolicyCatalog {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CompiledConsolePolicyGroup {
+    pub root_workspace_only: bool,
     pub group: ConsolePolicyGroup,
     pub full_operations: Vec<ConsoleOperationPolicy>,
 }
@@ -237,11 +238,18 @@ pub fn compile_console_policy_migration_plan_with_schema(
         ));
     }
     let (catalog_groups, catalog_operations) = canonical_catalog_indexes(&catalog)?;
+    let root_groups = catalog
+        .groups
+        .iter()
+        .filter(|g| g.root_workspace_only)
+        .map(|g| &g.group)
+        .collect::<std::collections::BTreeSet<_>>();
     let canonical_catalog = CompiledConsolePolicyCatalog {
         complete: true,
         groups: catalog_groups
             .into_iter()
             .map(|(group, full_operations)| CompiledConsolePolicyGroup {
+                root_workspace_only: root_groups.contains(&group),
                 group,
                 full_operations,
             })

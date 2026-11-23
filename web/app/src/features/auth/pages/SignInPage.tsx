@@ -98,15 +98,13 @@ export function SignInPage({ loginEntryId, inviteToken }: SignInPageProps) {
   const [onboardingMode, setOnboardingMode] = useState<
     PublicOnboardingMode | undefined
   >(undefined);
-  const [manualInviteCode, setManualInviteCode] = useState('');
   const [loading, setLoading] = useState(true);
   const [discoveryFailed, setDiscoveryFailed] = useState(false);
   const [startingEntryId, setStartingEntryId] = useState<string | null>(null);
   const [startFailed, setStartFailed] = useState(false);
   const startingRef = useRef(false);
   const isStarting = startingEntryId !== null;
-  const effectiveInviteToken =
-    urlInviteToken || manualInviteCode.trim() || undefined;
+  const effectiveInviteToken = urlInviteToken || undefined;
 
   useEffect(() => {
     const reset = () => {
@@ -152,7 +150,9 @@ export function SignInPage({ loginEntryId, inviteToken }: SignInPageProps) {
   const effectiveLoginEntry = useMemo(() => {
     if (!selectedLoginEntry) return null;
     if (
-      (hasInviteToken || onboardingMode === 'personal_workspace') &&
+      (hasInviteToken ||
+        onboardingMode === 'personal_workspace' ||
+        onboardingMode === 'default_workspace') &&
       selectedLoginEntry.auth_type === 'password-local' &&
       selectedLoginEntry.public_variables.self_registration_enabled !== true
     ) {
@@ -281,20 +281,6 @@ export function SignInPage({ loginEntryId, inviteToken }: SignInPageProps) {
             >
               <span>{t('sign_in.invitation_detected')}</span>
             </div>
-          ) : null}
-          {!loading && onboardingMode === 'invite_only' && !urlInviteToken ? (
-            <label className="auth-sign-in-invite-field">
-              <span className="auth-sign-in-invite-label">
-                {t('sign_in.invitation_code_label')}
-              </span>
-              <input
-                autoComplete="off"
-                className="auth-sign-in-invite-input"
-                placeholder={t('sign_in.invitation_code_placeholder')}
-                value={manualInviteCode}
-                onChange={(event) => setManualInviteCode(event.target.value)}
-              />
-            </label>
           ) : null}
           {externalError ? (
             <AuthError>

@@ -583,7 +583,7 @@ pub(crate) async fn default_scope_for_user(
         from workspace_memberships wm
         join workspaces w on w.id = wm.workspace_id
         join tenants t on t.id = w.tenant_id
-        where wm.user_id = $1 and wm.status = 'active' and t.status = 'active'
+        where wm.user_id = $1 and wm.status = 'active' and t.status = 'active' and w.status = 'active'
         order by wm.created_at asc, wm.id asc
         limit 1
         "#,
@@ -607,7 +607,10 @@ pub(crate) async fn default_scope_for_user(
     })
 }
 
-pub(crate) async fn is_root_user(pool: &PgPool, user_id: Uuid) -> Result<bool> {
+pub(crate) async fn is_root_user<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
+    user_id: Uuid,
+) -> Result<bool> {
     sqlx::query_scalar(
         r#"
         select exists(
@@ -621,7 +624,7 @@ pub(crate) async fn is_root_user(pool: &PgPool, user_id: Uuid) -> Result<bool> {
         "#,
     )
     .bind(user_id)
-    .fetch_one(pool)
+    .fetch_one(executor)
     .await
     .map_err(Into::into)
 }

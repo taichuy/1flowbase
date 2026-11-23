@@ -549,9 +549,9 @@ impl AuthRepository for PgControlPlaneStore {
         workspace_id: Uuid,
         is_root: bool,
     ) -> Result<()> {
-        let (tenant_status, has_access): (String, bool) = sqlx::query_as(
+        let (tenant_status, workspace_status, has_access): (String, String, bool) = sqlx::query_as(
             r#"
-            select t.status, $4 or exists (
+            select t.status, w.status, $4 or exists (
                 select 1 from workspace_memberships wm
                 where wm.workspace_id = w.id and wm.user_id = $1 and wm.status = 'active'
             )
@@ -571,6 +571,9 @@ impl AuthRepository for PgControlPlaneStore {
         ))?;
         if tenant_status != "active" {
             return Err(ControlPlaneError::PermissionDenied("tenant_suspended").into());
+        }
+        if workspace_status != "active" {
+            return Err(ControlPlaneError::PermissionDenied("workspace_suspended").into());
         }
         if !has_access {
             return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());

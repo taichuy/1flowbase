@@ -19,14 +19,17 @@ pub(crate) async fn seed_admin_console_policy(
     tx: &mut Transaction<'_, Postgres>,
     role_id: Uuid,
 ) -> Result<()> {
+    let bootstrap = crate::workspace_repository::bootstrap_workspace_id(&mut **tx).await?;
     sqlx::query(
         r#"insert into role_console_group_policies
         (id, role_id, group_kind, group_id, enabled, strategy)
         select gen_random_uuid(), $1, group_kind, group_id, true, 'full'
         from console_permission_catalog_groups
+        where not root_workspace_only or exists (select 1 from roles where id = $1 and workspace_id = $2)
         on conflict (role_id, group_kind, group_id) do nothing"#,
     )
     .bind(role_id)
+    .bind(bootstrap)
     .execute(&mut **tx)
     .await?;
     Ok(())
@@ -79,6 +82,15 @@ pub(crate) async fn sync_console_permission_catalog_in_transaction(
     ).bind(catalog.groups.iter().map(|g| g.group.kind().as_str()).collect::<Vec<_>>())
         .bind(catalog.groups.iter().map(|g| g.group.group_id().as_str()).collect::<Vec<_>>())
         .fetch_all(&mut **tx).await?.into_iter().collect();
+    let bootstrap = crate::workspace_repository::bootstrap_workspace_id(&mut **tx).await?;
+    // Preserve the ledger's insert-only signal: changing a gate must not regrant an old permission.
+    sqlx::query("update console_permission_catalog_groups g set root_workspace_only = v.root_only
+        from unnest($1::text[], $2::text[], $3::bool[]) v(kind, id, root_only)
+        where (g.group_kind, g.group_id) = (v.kind, v.id) and g.root_workspace_only is distinct from v.root_only")
+        .bind(catalog.groups.iter().map(|g| g.group.kind().as_str()).collect::<Vec<_>>())
+        .bind(catalog.groups.iter().map(|g| g.group.group_id().as_str()).collect::<Vec<_>>())
+        .bind(catalog.groups.iter().map(|g| g.root_workspace_only).collect::<Vec<_>>())
+        .execute(&mut **tx).await?;
     let inserted_operations: BTreeSet<String> = sqlx::query_scalar(
         "insert into console_permission_catalog_operations (operation_id) select unnest($1::text[]) on conflict do nothing returning operation_id"
     ).bind(operation_ids.iter().map(|id| id.as_str()).collect::<Vec<_>>())
@@ -100,23 +112,34 @@ pub(crate) async fn sync_console_permission_catalog_in_transaction(
             .collect::<Vec<_>>();
         if !full_operations.is_empty() {
             additions.push(CompiledConsolePolicyGroup {
+                root_workspace_only: group.root_workspace_only,
                 group: group.group.clone(),
                 full_operations,
             });
         }
     }
+    sqlx::query("lock table roles, role_console_group_policies, role_console_operation_policies in share row exclusive mode")
+        .execute(&mut **tx).await?;
+    // Operation rows are deleted by the group-policy foreign key (ON DELETE CASCADE).
+    sqlx::query("delete from role_console_group_policies p using roles r, console_permission_catalog_groups g
+        where p.role_id = r.id and r.scope_kind = 'workspace' and r.workspace_id <> $1
+        and (p.group_kind, p.group_id) = (g.group_kind, g.group_id) and g.root_workspace_only")
+        .bind(bootstrap).execute(&mut **tx).await?;
     let mut granted_operations = 0;
     if initialized && !additions.is_empty() {
         // Role edits use these same tables. Serialize the short publication transaction
         // with opt-in changes and policy replacement so a manual revoke cannot be lost.
-        sqlx::query("lock table roles, role_console_group_policies, role_console_operation_policies in share row exclusive mode")
-            .execute(&mut **tx).await?;
-        let role_ids: Vec<Uuid> = sqlx::query_scalar(
-            "select id from roles where scope_kind = 'workspace' and auto_grant_new_permissions = true order by id"
+        let roles: Vec<(Uuid, Uuid)> = sqlx::query_as(
+            "select id, workspace_id from roles where scope_kind = 'workspace' and auto_grant_new_permissions = true order by id"
         ).fetch_all(&mut **tx).await?;
-        for role_id in role_ids {
+        for (role_id, workspace_id) in roles {
+            let visible = additions
+                .iter()
+                .filter(|g| !g.root_workspace_only || workspace_id == bootstrap)
+                .cloned()
+                .collect::<Vec<_>>();
             let policy = role_console_policy_by_id(&mut **tx, role_id).await?;
-            for group in project_console_permission_additions(&policy, &additions, &new_groups) {
+            for group in project_console_permission_additions(&policy, &visible, &new_groups) {
                 let group_policy_id: Uuid = sqlx::query_scalar(
                     r#"insert into role_console_group_policies
                     (id, role_id, group_kind, group_id, enabled, strategy)
@@ -147,8 +170,6 @@ pub(crate) async fn sync_console_permission_catalog_in_transaction(
     if !initialized {
         // Bootstrap runs before the first catalog publication. Only initialize pristine
         // default Admin roles here; subsequent publications never backfill the baseline.
-        sqlx::query("lock table roles, role_console_group_policies, role_console_operation_policies in share row exclusive mode")
-            .execute(&mut **tx).await?;
         let admin_ids: Vec<Uuid> = sqlx::query_scalar(
             "select id from roles where scope_kind = 'workspace' and code = 'admin' and auto_grant_new_permissions = true and not exists (select 1 from role_console_group_policies where role_id = roles.id) order by id"
         ).fetch_all(&mut **tx).await?;

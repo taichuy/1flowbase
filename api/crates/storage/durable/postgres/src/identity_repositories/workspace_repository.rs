@@ -43,9 +43,10 @@ impl WorkspaceRepository for PgControlPlaneStore {
         let rows = if is_root {
             sqlx::query(
                 r#"
-                select id, tenant_id, name, logo_url, introduction
-                from workspaces
-                order by lower(name), created_at asc, id asc
+                select w.id, w.tenant_id, w.name, w.logo_url, w.introduction
+                from workspaces w join tenants t on t.id = w.tenant_id
+                where w.status = 'active' and t.status = 'active'
+                order by lower(w.name), w.created_at asc, w.id asc
                 "#,
             )
             .fetch_all(self.pool())
@@ -56,7 +57,7 @@ impl WorkspaceRepository for PgControlPlaneStore {
                 select w.id, w.tenant_id, w.name, w.logo_url, w.introduction
                 from workspaces w
                 join tenants t on t.id = w.tenant_id and t.status = 'active'
-                where exists (
+                where w.status = 'active' and exists (
                   select 1
                   from workspace_memberships wm
                   where wm.workspace_id = w.id
@@ -82,9 +83,9 @@ impl WorkspaceRepository for PgControlPlaneStore {
         let row = if is_root_user(self.pool(), user_id).await? {
             sqlx::query(
                 r#"
-                select id, tenant_id, name, logo_url, introduction
-                from workspaces
-                where id = $1
+                select w.id, w.tenant_id, w.name, w.logo_url, w.introduction
+                from workspaces w join tenants t on t.id = w.tenant_id
+                where w.id = $1 and w.status = 'active' and t.status = 'active'
                 "#,
             )
             .bind(workspace_id)
@@ -96,7 +97,7 @@ impl WorkspaceRepository for PgControlPlaneStore {
                 select w.id, w.tenant_id, w.name, w.logo_url, w.introduction
                 from workspaces w
                 join tenants t on t.id = w.tenant_id and t.status = 'active'
-                where w.id = $2
+                where w.id = $2 and w.status = 'active'
                   and exists (
                     select 1
                     from workspace_memberships wm
@@ -145,4 +146,17 @@ impl WorkspaceRepository for PgControlPlaneStore {
 
         Ok(map_workspace_record(row))
     }
+}
+
+/// Resolve the host workspace, not the system data scope or the root tenant's ID.
+pub(crate) async fn bootstrap_workspace_id<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
+) -> anyhow::Result<uuid::Uuid> {
+    Ok(sqlx::query_scalar(
+        "select w.id from workspaces w join tenants t on t.id = w.tenant_id
+         where t.is_root order by w.created_at, w.id limit 1",
+    )
+    .fetch_optional(executor)
+    .await?
+    .unwrap_or(domain::DEFAULT_SCOPE_ID))
 }

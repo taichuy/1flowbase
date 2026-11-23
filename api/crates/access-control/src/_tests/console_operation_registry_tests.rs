@@ -18,6 +18,7 @@ fn owner(kind: SettingsFeatureOwnerKind, owner_id: &str) -> ConsoleOperationOwne
 
 fn settings_feature(feature_id: &str, method: &str, path: &str) -> SettingsFeatureRegistration {
     SettingsFeatureRegistration {
+        root_workspace_only: false,
         feature_id: feature_id.to_string(),
         owner: SettingsFeatureOwner {
             kind: SettingsFeatureOwnerKind::Core,
@@ -80,6 +81,7 @@ fn operation(
     routes: Vec<ConsoleRouteBinding>,
 ) -> ConsoleOperationRegistration {
     ConsoleOperationRegistration {
+        root_workspace_only: false,
         operation_id: operation_id.to_string(),
         authorization_profile_id: None,
         owner: owner(SettingsFeatureOwnerKind::Core, "boot-core"),
