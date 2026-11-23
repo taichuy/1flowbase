@@ -1,8 +1,12 @@
 import { startDocumentAuthDiscovery } from '../../api/document-start-discovery';
 import { fetchPublicSystemMetadata } from '@1flowbase/api-client/auth';
 import { getInitialAppLocale } from '../../../../shared/i18n/initial-locale';
-import { auto as enBrand, sign_in as enPage } from '../../i18n/en_US.json';
-import { auto as zhBrand, sign_in as zhPage } from '../../i18n/zh_Hans.json';
+import {
+  enFooter,
+  enTagline,
+  zhFooter,
+  zhTagline
+} from 'virtual:1flowbase-opening-copy';
 import {
   findDocumentArtwork,
   setDocumentBrand,
@@ -19,11 +23,11 @@ if (art) {
   );
 
   const chinese = getInitialAppLocale() === 'zh_Hans';
-  const slogan = chinese ? zhBrand.product_tagline : enBrand.product_tagline;
+  const slogan = chinese ? zhTagline : enTagline;
   const scene = document.getElementById(documentSceneId)!;
   scene.querySelector('.auth-sign-in-footer a')!.textContent = chinese
-    ? zhPage.footer
-    : enPage.footer;
+    ? zhFooter
+    : enFooter;
   // The public response, not the core bundle or auth decision, owns this reveal.
   art.metadataFlight = fetchPublicSystemMetadata();
   void art.metadataFlight

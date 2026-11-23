@@ -10,6 +10,7 @@ import {
   type NativeReactModuleDefinition
 } from '@1flowbase/page-runtime/browser';
 
+import { resolveRuntimeConcurrencyProfile } from '../utils/runtime-concurrency-profile';
 import nativeReactCompilerWorkerUrl from './native-react-compiler.worker?worker&url';
 
 export const NATIVE_REACT_COMPILER_WORKER_NAME =
@@ -61,7 +62,9 @@ export function compileNativeReactComponentInBrowser({
   moduleDefinitions,
   signal,
   workerFactory,
-  flightKey
+  flightKey,
+  priority,
+  slotIndex
 }: {
   source: string;
   requestId: string;
@@ -69,18 +72,21 @@ export function compileNativeReactComponentInBrowser({
   workerFactory?: NativeReactBrowserCompilerWorkerFactory;
   signal?: AbortSignal;
   flightKey?: string;
+  priority?: number;
+  slotIndex?: number;
 }): Promise<NativeReactBrowserCompileResult> {
   if (!workerFactory) {
-    defaultCompilerPool ??= new NativeReactBrowserCompilerPool(
-      createNativeReactBrowserCompilerWorkerFactory()
+    return ensureDefaultNativeReactBrowserCompilerPool().then((pool) =>
+      pool.compile({
+        source,
+        requestId,
+        moduleDefinitions,
+        signal,
+        flightKey,
+        priority,
+        slotIndex
+      })
     );
-    return defaultCompilerPool.compile({
-      source,
-      requestId,
-      moduleDefinitions,
-      signal,
-      flightKey
-    });
   }
   return new Promise((resolve) => {
     if (signal?.aborted) {
@@ -137,21 +143,124 @@ interface CompileInput {
   signal?: AbortSignal;
   /** Scoped source + compiler/module policy identity. Omit for a fresh debug compilation. */
   flightKey?: string;
+  /** Viewport demand priority (`0` selected, `1` visible, `2` near-viewport preload). Lower runs first. */
+  priority?: number;
+  slotIndex?: number;
 }
 interface CompilerConsumer {
   finish(result: NativeReactBrowserCompileResult): void;
 }
 interface CompilerJob {
   input: CompileInput;
+  priority: number;
+  slotIndex: number;
+  order: number;
   consumers: Set<CompilerConsumer>;
   worker?: NativeReactBrowserCompilerWorker;
 }
 let defaultCompilerPool: NativeReactBrowserCompilerPool | undefined;
+let defaultCompilerPoolFlight: Promise<NativeReactBrowserCompilerPool> | undefined;
+let resolvedWorkerBlobUrl: string | undefined;
+
+export function promoteDefaultNativeReactCompilerFlight(
+  flightKey: string,
+  priority: number
+): void {
+  defaultCompilerPool?.promote(flightKey, priority);
+}
+
+async function resolveSingleFetchWorkerScriptUrl(): Promise<{
+  url: string;
+  inMemoryBlob: boolean;
+}> {
+  if (resolvedWorkerBlobUrl) {
+    return { url: resolvedWorkerBlobUrl, inMemoryBlob: true };
+  }
+  const canonicalUrl = getNativeReactCompilerWorkerUrl();
+  const profile = resolveRuntimeConcurrencyProfile();
+  if (
+    profile.isDev ||
+    import.meta.env.VITEST ||
+    typeof globalThis.fetch !== 'function' ||
+    typeof URL?.createObjectURL !== 'function' ||
+    typeof Blob !== 'function'
+  ) {
+    return { url: canonicalUrl, inMemoryBlob: false };
+  }
+  try {
+    const response = await globalThis.fetch(canonicalUrl, {
+      credentials: 'same-origin'
+    });
+    if (!response.ok) {
+      return { url: canonicalUrl, inMemoryBlob: false };
+    }
+    const scriptText = await response.text();
+    if (!scriptText) {
+      return { url: canonicalUrl, inMemoryBlob: false };
+    }
+    resolvedWorkerBlobUrl = URL.createObjectURL(
+      new Blob([scriptText], { type: 'text/javascript' })
+    );
+    return { url: resolvedWorkerBlobUrl, inMemoryBlob: true };
+  } catch {
+    return { url: canonicalUrl, inMemoryBlob: false };
+  }
+}
+
+function ensureDefaultNativeReactBrowserCompilerPool(): Promise<NativeReactBrowserCompilerPool> {
+  if (defaultCompilerPool) {
+    return Promise.resolve(defaultCompilerPool);
+  }
+  defaultCompilerPoolFlight ??= resolveSingleFetchWorkerScriptUrl().then(
+    ({ url, inMemoryBlob }) => {
+      if (defaultCompilerPool) return defaultCompilerPool;
+      const profile = resolveRuntimeConcurrencyProfile();
+      defaultCompilerPool = new NativeReactBrowserCompilerPool(
+        createNativeReactBrowserCompilerWorkerFactory({ workerUrl: url }),
+        profile.compilerMaxWorkers,
+        {
+          cacheGateInitialWorker:
+            !inMemoryBlob && profile.compilerCacheGateInitialWorker
+        }
+      );
+      return defaultCompilerPool;
+    }
+  );
+  return defaultCompilerPoolFlight;
+}
+
+export function warmDefaultNativeReactCompilerWorker(): void {
+  if (typeof globalThis.Worker !== 'function') return;
+  void ensureDefaultNativeReactBrowserCompilerPool().then((pool) => {
+    pool.warm();
+  });
+}
+
+export interface NativeReactBrowserCompilerPoolOptions {
+  /**
+   * When true and `maxWorkers > 1`, cold start spawns only 1 lead Worker until
+   * either `markScriptCacheWarm()` is called or the lead Worker completes its
+   * first compile, preventing duplicate cold-cache script downloads in Chromium.
+   */
+  cacheGateInitialWorker?: boolean;
+  /**
+   * Idle lifetime in ms for burst subordinate Workers (`workers.size > 1`).
+   * Keeps at most 1 resident warm Worker so subsequent single-block edits compile
+   * with zero Worker boot cost while reclaiming peak multi-core Workers when idle.
+   */
+  idleWorkerTtlMs?: number;
+}
+
+const DEFAULT_IDLE_SUBORDINATE_WORKER_TTL_MS = 15_000;
 
 /** A bounded pool with one request per Worker and cancellation owned by each consumer. */
 export class NativeReactBrowserCompilerPool {
   private readonly workers = new Set<NativeReactBrowserCompilerWorker>();
   private readonly idle: NativeReactBrowserCompilerWorker[] = [];
+  private readonly idleTimers = new Map<
+    NativeReactBrowserCompilerWorker,
+    ReturnType<typeof setTimeout>
+  >();
   private readonly queue: CompilerJob[] = [];
   private readonly flights = new Map<string, CompilerJob>();
   private readonly running = new Map<
@@ -160,13 +269,39 @@ export class NativeReactBrowserCompilerPool {
   >();
   private serial = 0;
   private disposed = false;
+  private scriptCacheWarm: boolean;
+  private readonly idleWorkerTtlMs: number;
 
   constructor(
     private readonly factory: NativeReactBrowserCompilerWorkerFactory,
-    private readonly maxWorkers = 2
+    private readonly maxWorkers = resolveRuntimeConcurrencyProfile()
+      .compilerMaxWorkers,
+    options: NativeReactBrowserCompilerPoolOptions = {}
   ) {
     if (!Number.isSafeInteger(maxWorkers) || maxWorkers < 1)
       throw new Error('Compiler concurrency must be a positive integer.');
+    this.scriptCacheWarm = !(
+      (options.cacheGateInitialWorker ?? false) && maxWorkers > 1
+    );
+    this.idleWorkerTtlMs =
+      options.idleWorkerTtlMs ?? DEFAULT_IDLE_SUBORDINATE_WORKER_TTL_MS;
+  }
+
+  markScriptCacheWarm(): void {
+    if (this.disposed || this.scriptCacheWarm) return;
+    this.scriptCacheWarm = true;
+    this.pump();
+  }
+
+  warm(): void {
+    if (this.disposed || this.workers.size > 0) return;
+    try {
+      const worker = this.factory();
+      this.workers.add(worker);
+      this.idle.push(worker);
+    } catch {
+      // Ignore prewarm failures; compile() surfaces actionable diagnostics on demand.
+    }
   }
 
   compile(input: CompileInput): Promise<NativeReactBrowserCompileResult> {
@@ -174,18 +309,28 @@ export class NativeReactBrowserCompilerPool {
       return Promise.resolve(
         compilerFailure('Native React compilation cancelled.')
       );
+    const nextPriority = input.priority ?? 1;
+    const nextSlotIndex = input.slotIndex ?? 0;
     // The owner supplies a full scoped identity. Debug compilation never supplies a flight key.
     let job = input.flightKey ? this.flights.get(input.flightKey) : undefined;
     if (!job) {
+      const order = ++this.serial;
       job = {
         input: {
           ...input,
-          requestId: `${input.requestId}:worker:${++this.serial}`
+          requestId: `${input.requestId}:worker:${order}`
         },
+        priority: nextPriority,
+        slotIndex: nextSlotIndex,
+        order,
         consumers: new Set()
       };
-      this.queue.push(job);
+      this.enqueueSorted(job);
       if (input.flightKey) this.flights.set(input.flightKey, job);
+    } else if (!job.worker && nextPriority < job.priority) {
+      job.priority = nextPriority;
+      job.slotIndex = Math.min(job.slotIndex, nextSlotIndex);
+      this.resortQueue();
     }
     const current = job;
     const promise = new Promise<NativeReactBrowserCompileResult>((resolve) => {
@@ -211,6 +356,29 @@ export class NativeReactBrowserCompilerPool {
     return promise;
   }
 
+  promote(flightKey: string, priority: number): void {
+    if (this.disposed) return;
+    const job = this.flights.get(flightKey);
+    if (!job || job.worker || priority >= job.priority) return;
+    job.priority = priority;
+    this.resortQueue();
+  }
+
+  private enqueueSorted(job: CompilerJob): void {
+    this.queue.push(job);
+    this.resortQueue();
+  }
+
+  private resortQueue(): void {
+    if (this.queue.length <= 1) return;
+    this.queue.sort(
+      (left, right) =>
+        left.priority - right.priority ||
+        left.slotIndex - right.slotIndex ||
+        left.order - right.order
+    );
+  }
+
   dispose(): void {
     this.disposed = true;
     const jobs = new Set([...this.queue, ...this.running.values()]);
@@ -223,15 +391,20 @@ export class NativeReactBrowserCompilerPool {
     for (const worker of this.workers) this.retire(worker);
   }
 
+  private effectiveMaxWorkers(): number {
+    return this.scriptCacheWarm ? this.maxWorkers : 1;
+  }
+
   private pump() {
     while (
       this.queue.length &&
-      (this.idle.length || this.workers.size < this.maxWorkers) &&
+      (this.idle.length || this.workers.size < this.effectiveMaxWorkers()) &&
       !this.disposed
     ) {
       const job = this.queue.shift()!;
       if (!job.consumers.size) continue;
       let worker = this.idle.pop();
+      if (worker) this.clearIdleTimer(worker);
       try {
         worker ??= this.factory();
       } catch (error) {
@@ -253,6 +426,9 @@ export class NativeReactBrowserCompilerPool {
         const validResponse =
           isCompilerResponse(event.data) &&
           event.data.requestId === job.input.requestId;
+        if (validResponse) {
+          this.scriptCacheWarm = true;
+        }
         this.complete(job, result, validResponse);
         this.pump();
       };
@@ -290,11 +466,37 @@ export class NativeReactBrowserCompilerPool {
       const worker = job.worker;
       worker.onmessage = worker.onerror = null;
       this.running.delete(worker);
-      if (reusable && !this.disposed) this.idle.push(worker);
-      else this.retire(worker);
+      if (reusable && !this.disposed) {
+        this.idle.push(worker);
+        this.scheduleIdleReclamation(worker);
+      } else {
+        this.retire(worker);
+      }
     }
     this.forget(job);
     for (const consumer of [...job.consumers]) consumer.finish(result);
+  }
+
+  private scheduleIdleReclamation(worker: NativeReactBrowserCompilerWorker) {
+    this.clearIdleTimer(worker);
+    if (this.maxWorkers <= 1 || this.idleWorkerTtlMs <= 0) return;
+    const timer = setTimeout(() => {
+      this.idleTimers.delete(worker);
+      if (this.disposed || !this.idle.includes(worker)) return;
+      // Retain at most 1 resident warm Worker; reclaim idle burst subordinate Workers.
+      if (this.workers.size <= 1) return;
+      this.retire(worker);
+    }, this.idleWorkerTtlMs);
+    (timer as { unref?: () => void }).unref?.();
+    this.idleTimers.set(worker, timer);
+  }
+
+  private clearIdleTimer(worker: NativeReactBrowserCompilerWorker) {
+    const timer = this.idleTimers.get(worker);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.idleTimers.delete(worker);
+    }
   }
 
   private forget(job: CompilerJob) {
@@ -305,6 +507,7 @@ export class NativeReactBrowserCompilerPool {
   }
 
   private retire(worker: NativeReactBrowserCompilerWorker) {
+    this.clearIdleTimer(worker);
     worker.onmessage = worker.onerror = null;
     worker.terminate();
     this.workers.delete(worker);

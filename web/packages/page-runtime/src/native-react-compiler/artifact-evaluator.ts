@@ -105,9 +105,13 @@ export async function evaluateNativeReactComponentArtifactWithRegistry(
     );
   }
   try {
-    const modules = await registry.resolveModuleMap(
-      artifact.program.injectedModules.map(({ source }) => source)
-    );
+    const modules = registry.resolveInjectedModuleMap
+      ? await registry.resolveInjectedModuleMap(
+          artifact.program.injectedModules
+        )
+      : await registry.resolveModuleMap(
+          artifact.program.injectedModules.map(({ source }) => source)
+        );
     return evaluateNativeReactComponentArtifact(artifact, modules, bindings);
   } catch (error) {
     return error instanceof NativeReactModuleRegistryError

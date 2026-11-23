@@ -658,6 +658,15 @@ impl crate::ports::FrontstagePageRepository for MemoryRoleRepository {
         Ok(None)
     }
 
+    async fn list_frontstage_block_codes_by_refs(
+        &self,
+        _workspace_id: Uuid,
+        _page_id: Uuid,
+        _code_refs: &[String],
+    ) -> Result<Vec<domain::frontstage::FrontstageBlockCodeRecord>> {
+        Ok(Vec::new())
+    }
+
     async fn append_audit_log(&self, event: &AuditLogRecord) -> Result<()> {
         self.audit_events
             .write()

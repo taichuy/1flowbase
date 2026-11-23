@@ -22,6 +22,7 @@ const sessionApi = vi.hoisted(() => ({
 }));
 
 vi.mock('../../features/auth/api/session', () => sessionApi);
+vi.mock('../../features/auth/api/session-actions', () => sessionApi);
 
 const actor: ConsoleSessionActor = {
   id: 'user-1',

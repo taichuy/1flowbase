@@ -1,13 +1,19 @@
 import { Alert, Modal, Typography } from 'antd';
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { i18nText } from '../../../../shared/i18n/text';
+import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 import type { MoveFrontstageNodeInput } from '../../api/page-tree';
 import type { FrontStageTreeNode } from '../../lib/page-tree';
 import {
   resolveNavigationMove,
   type NavigationMoveDraft
 } from '../../lib/navigation-drag/move-plan';
-import { NavigationMoveTree } from './NavigationMoveTree';
+
+const NavigationMoveTree = lazy(() =>
+  import('./NavigationMoveTree').then((module) => ({
+    default: module.NavigationMoveTree
+  }))
+);
 
 export function MovePageModal({
   node,
@@ -78,16 +84,18 @@ export function MovePageModal({
           title={i18nText('frontstage', 'auto.operation_failed')}
         />
       ) : null}
-      <NavigationMoveTree
-        sourceNode={node}
-        pageTree={pageTree}
-        disabled={pending}
-        onDraggingChange={setIsDragging}
-        onSelectMove={(_, _input, nextDraft) => {
-          setDraft(nextDraft);
-          setMoveError(false);
-        }}
-      />
+      <Suspense fallback={<LoadingState compact />}>
+        <NavigationMoveTree
+          sourceNode={node}
+          pageTree={pageTree}
+          disabled={pending}
+          onDraggingChange={setIsDragging}
+          onSelectMove={(_, _input, nextDraft) => {
+            setDraft(nextDraft);
+            setMoveError(false);
+          }}
+        />
+      </Suspense>
     </Modal>
   );
 }

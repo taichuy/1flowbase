@@ -13,20 +13,19 @@ import {
 
 const SCENARIO_CHUNK_NAMES = new Set([
   'react-runtime',
-  'auth-surface',
-  'auth-route',
+  'app-runtime',
   'auth-anonymous',
   'auth-discovery',
   'auth-visual',
-  'auth-form',
   'antd-core',
-  'antd-overlay',
+  'antd-form',
   'antd-data',
-  'antd-feedback',
-  'antd-navigation',
-  'antd-input',
+  'antd-picker',
   'antd-display',
-  'antd-icons',
+  'shell-core',
+  'frontstage-shell',
+  'frontstage-canvas',
+  'native-host',
   'workflow-canvas',
   'assistant-core',
   'assistant-activity',
@@ -55,9 +54,12 @@ function installedAntDesignChunk(id: string): string | undefined {
   if (index < 0) return undefined;
   const modulePath = id.slice(index + marker.length);
   if (/^(?:es|lib)\/index\.js$/u.test(modulePath)) return undefined;
-  const component = /^(?:es|lib)\/([^/]+)/u.exec(modulePath)?.[1];
-  return component
-    ? productAntDesignChunk(`antd/es/${component}`)
+  if (/^(?:es|lib)\/color-picker\/(?:util|color)\.js$/u.test(modulePath)) {
+    return 'antd-overlay';
+  }
+  const normalizedSubpath = modulePath.replace(/^lib\//u, 'es/');
+  return /^es\/[^/]+/u.test(normalizedSubpath)
+    ? productAntDesignChunk(`antd/${normalizedSubpath}`)
     : 'antd-core';
 }
 
@@ -82,8 +84,26 @@ export function planScenarioChunk(
   return undefined;
 }
 
+const ANTD_SHELL_EQUIVALENCE_GROUPS = new Set([
+  'antd-core',
+  'antd-icons',
+  'antd-overlay',
+  'antd-feedback',
+  'antd-navigation'
+]);
+
+const ANTD_DEMAND_PRIORITIES: ReadonlyArray<readonly [string, number]> = [
+  ['antd-form', 3],
+  ['antd-display', 2],
+  ['antd-data', 1],
+  ['antd-picker', 0]
+];
+
 // Rolldown assigns a static dependency closure to its highest-priority consumer.
 // Keep React shared; never traverse dynamic form/route imports for the visual group.
+// Coalesce modules by true scenario co-occurrence equivalence classes so production
+// builds saturate parallel channels with coarse cache-stable chunks instead of
+// queueing 20+ fragmented micro-chunks behind HTTP/1.1 connection limits.
 export const scenarioCodeSplitting = {
   groups: [
     {
@@ -93,37 +113,92 @@ export const scenarioCodeSplitting = {
     },
     {
       name: 'auth-visual',
-      test: /[\\/]antd[\\/]es[\\/](?:app|config-provider|skeleton|spin|alert)[\\/]index\.js$|[\\/]icons[\\/]es[\\/]icons[\\/]LoadingOutlined\.js$/u,
+      test: /[\\/]antd[\\/]es[\\/](?:app|config-provider)[\\/]index\.js$/u,
       priority: 20
     },
+    // Quotient equivalence class for pure node_modules authenticated runtimes
+    // (TanStack Query/Router, i18next, Dayjs core/plugins without locales, active
+    // zh_CN/en_US Antd string tables without antd-picker widget, and shared Babel helper).
     {
-      name: 'auth-form',
-      test: /[\\/]antd[\\/]es[\\/](?:button|input|space)[\\/]index\.js$|[\\/]icons[\\/]es[\\/]icons[\\/]ArrowLeftOutlined\.js$/u,
-      priority: 10
+      name: 'app-runtime',
+      test: /[\\/]@babel[\\/]runtime[\\/]helpers[\\/](?:esm[\\/])?objectWithoutProperties\.js$|[\\/]node_modules[\\/]dayjs[\\/](?!esm[\\/]locale[\\/]|locale[\\/])|[\\/]node_modules[\\/]@tanstack[\\/](?:react-query|query-core|react-router|router-core|history)[\\/]|[\\/]node_modules[\\/](?:i18next|react-i18next)[\\/]|[\\/](?:antd[\\/](?:es|lib)[\\/](?:locale|date-picker[\\/]locale|time-picker[\\/]locale|calendar[\\/]locale)|@rc-component[\\/](?:picker|pagination)[\\/](?:es|lib)[\\/]locale)[\\/].*(?:zh_CN|en_US|common)\.js$/u,
+      priority: 7
     },
-    // antd-style's ShadowRoot provider uses exactly these Ant Design roots.
-    // Preserve that provider (including transitive style hooks), without bundling
-    // its imports together with unrelated tables, displays and overlays.
-    // A Babel destructuring helper is shared by antd-style and display widgets.
-    // Isolate this helper, not the antd-style barrel, before generic widget partitions claim it.
+    // Coalesce core shell dictionaries per locale (quotient equivalence class on shell)
+    // while keeping route-only settings/backstage dictionaries independently lazy.
     {
-      name: 'shared-object-rest',
-      test: /[\\/]@babel[\\/]runtime[\\/]helpers[\\/](?:esm[\\/])?objectWithoutProperties\.js$/u,
+      name: 'i18n-shell-zh',
+      test: /[\\/]src[\\/](?:app[\\/]i18n|app-shell[\\/]i18n|shared[\\/]i18n[\\/]resources|shared[\\/]ui[\\/]i18n)[\\/]zh_Hans\.json$/u,
       priority: 7
     },
     {
-      name: 'auth-surface',
-      test: /[\\/]antd[\\/]es[\\/](?:theme|grid|modal|message|notification|version)[\\/]index\.js$/u,
-      priority: 8
+      name: 'i18n-shell-en',
+      test: /[\\/]src[\\/](?:app[\\/]i18n|app-shell[\\/]i18n|shared[\\/]i18n[\\/]resources|shared[\\/]ui[\\/]i18n)[\\/]en_US\.json$/u,
+      priority: 7
+    },
+    // Layer 1: Quotient equivalence class for authenticated startup + Topbar shell + route frame
+    // (priority 5.5 < antd-core 8 so shell-core never swallows AntD widget groups).
+    {
+      name: 'shell-core',
+      test: /[\\/]packages[\\/]ui[\\/]src[\\/]|[\\/]src[\\/](?:app[\\/](?:bootstrap[\\/]|AuthenticatedAppRuntime|AppProviders|AppI18nProvider|router)|app-shell[\\/](?!TopbarNavigationDesigner\.tsx$|_tests[\\/])|routes[\\/](?!LazyRouteResult\.tsx$|_tests[\\/])|state[\\/]navigation-query-scope\.ts$|features[\\/](?:auth[\\/](?:api[\\/]session-actions\.ts$|components[\\/]anonymous-loading[\\/]WorkspaceShellSkeleton\.tsx$)|frontstage[\\/](?:api[\\/]|(?:hooks|lib)[\\/]runtime-i18n[\\/])|settings[\\/]api[\\/]console-navigation\.ts$)|shared[\\/](?:api[\\/]system-metadata\.ts$|i18n[\\/](?:text|app-i18n|application-i18n-demand|application-i18n-resources|application-resource-loader)\.ts$|ui[\\/]window-workspace[\\/](?:WindowWorkspaceProvider|window-workspace-context)))/u,
+      priority: 5.5
+    },
+    // Layer 2: Quotient equivalence class for Frontstage Left Sidebar + Page Tree shell
+    // (renders immediately alongside Topbar; zero PageCanvas, react-grid-layout, or native-host!).
+    {
+      name: 'frontstage-shell',
+      test: /[\\/]src[\\/]features[\\/]frontstage[\\/](?:pages[\\/](?:FrontstageWorkspacePage\.tsx$|frontstage-page[\\/](?:workspace-shell[\\/]|runtime-session[\\/]|use-page-tree-workspace\.ts$|page-tree-operations\.ts$|page-tree-form-modal\.tsx$|refresh-current-page\.ts$|page-constants\.ts$))|hooks[\\/]use-frontstage-page-tree-mutations\.ts$|components[\\/](?:FrontStagePageTreeSidebar\.tsx$|FrontstageNodeActionButton\.tsx$)|lib[\\/](?:page-tree\.ts$|page-tree-(?:icons[\\/]registry\.tsx$|state[\\/])|navigation-drag[\\/]|api-errors\.ts$|page-canvas[\\/](?:runtime-activity|runtime-assembly)\.ts$))/u,
+      priority: 5
+    },
+    // Layer 3a: Quotient equivalence class for browser-side Native React host, cache,
+    // lightweight host overlay/style facades, and virtual product/icon loader tables
+    // (explicitly excluding main-thread Acorn/Sucrase compiler, Monaco Studio, editor declarations, charts, and sign-in sha256).
+    {
+      name: 'native-host',
+      test: /^\0virtual:1flowbase-native-(?:antd-product-loaders|ant-design-icons-loaders)$|[\\/]packages[\\/](?:block-renderer[\\/]src[\\/]BlockUiLoadingShell\.tsx$|page-runtime[\\/]src[\\/](?:entrypoints[\\/]browser\.ts$|native-react-compiler[\\/](?:artifact-contract|artifact-evaluator|source-contract|module-registry[\\/])|native-block-context[\\/]|native-trusted-block-host|native-trusted-block-portal|native-trusted-block[\\/](?:runtime-error|source-policy-constants)|js-block-diagnostics|isolated-frontend-block-realm))|[\\/]src[\\/](?:shared[\\/]code-block[\\/](?:fetched-modules[\\/]|native-react-compiler-browser\.ts$|native-react-source-preparation\.ts$)|features[\\/]frontstage[\\/]lib[\\/](?:native-adapter[\\/](?!.*runtime-factory)|native-trusted-block[\\/]|runtime-cache[\\/]|native-modules[\\/](?:registry\.ts$|ant-design-colors-runtime\.ts$|antd-style-runtime\.ts$|native-block-surface-context\.ts$|native-dropdown-runtime\.tsx$|native-message-runtime\.tsx$|native-motion-runtime\.ts$|native-overlay-(?:host|layer)\.ts$|affix-anchor[\\/]|block-design[\\/]|menu[\\/]|modal[\\/]|notification[\\/]|surface[\\/]|overlay[\\/](?!native-(?:select|cascader|tree-select)-runtime))))/u,
+      priority: 4
+    },
+    // Layer 3b: Quotient equivalence class for right-hand Frontstage Block Canvas orchestration
+    // (loaded inside FrontstageWorkspaceShell's right pane without blocking Topbar or Sidebar).
+    {
+      name: 'frontstage-canvas',
+      test: /[\\/]src[\\/]features[\\/]frontstage[\\/](?:pages[\\/](?:FrontStagePage\.tsx$|frontstage-page[\\/](?:controllers[\\/]|block-catalog-helpers\.ts$|page-action-helpers\.ts$))|state[\\/]|hooks[\\/](?!_tests|runtime-i18n[\\/]|use-frontstage-page-tree-mutations\.ts$)|components[\\/](?:PageCanvas\.tsx$|FrontstagePageTabs\.tsx$|canvas[\\/]|page-canvas[\\/]|data-blocks[\\/]DataBlockPageProvider\.tsx$))/u,
+      priority: 4
     },
     // HTML starts discovery independently. Co-locate the lightweight anonymous
     // entry; authenticated/MCP/custom imports remain real dynamic boundaries.
     {
       name: 'auth-anonymous',
-      test: /[\\/]src[\\/](?:bootstrap\.ts|main\.tsx|app[\\/](?:AnonymousAppRuntime|ApplicationRuntimeBootstrap)\.tsx)$|vite[\\/]modulepreload-polyfill(?:\.js)?$/u,
+      test: /[\\/]src[\\/](?:bootstrap\.ts|main\.tsx|app[\\/](?:AnonymousAppRuntime|ApplicationRuntimeBootstrap)\.tsx|shared[\\/]api[\\/]system-metadata-seed\.ts|features[\\/]auth[\\/]api[\\/]early-console-startup-flight\.ts)$|vite[\\/]modulepreload-polyfill(?:\.js)?$/u,
       priority: 25
     },
-    { name: (id: string) => planScenarioChunk(id) ?? null }
+    // Coalesced authenticated Ant Design shell/chrome primitives (zero table/list/tour/picker).
+    {
+      name: (id: string) => {
+        const planned = planScenarioChunk(id);
+        return planned && ANTD_SHELL_EQUIVALENCE_GROUPS.has(planned)
+          ? 'antd-core'
+          : null;
+      },
+      debugName: 'antd-core',
+      priority: 8
+    },
+    ...ANTD_DEMAND_PRIORITIES.map(([groupName, priority]) => ({
+      name: (id: string) =>
+        planScenarioChunk(id) === groupName ? groupName : null,
+      debugName: groupName,
+      priority
+    })),
+    {
+      name: (id: string) => {
+        const planned = planScenarioChunk(id);
+        if (!planned) return null;
+        return ANTD_SHELL_EQUIVALENCE_GROUPS.has(planned)
+          ? 'antd-core'
+          : planned;
+      },
+      debugName: 'scenario-fallback'
+    }
   ]
 };
 
@@ -154,6 +229,78 @@ export function scenarioChunkManifestPlugin(): Plugin {
           type: 'asset',
           fileName: 'scenario-chunk-manifest.json',
           source: `${JSON.stringify({ ...manifest, partitions }, null, 2)}\n`
+        });
+        const signInSet = new Set(manifest.scenes.signIn?.staticClosure ?? []);
+        const startupTierSet = new Set(
+          (manifest.scenes.authenticatedStartup?.staticClosure ?? []).filter(
+            (file) => file.endsWith('.js') && !signInSet.has(file)
+          )
+        );
+        const shellI18nFiles = manifest.chunks
+          .map((chunk) => chunk.file)
+          .filter((file) => /\/i18n-shell-(?:zh|en)-[^/]+\.js$/u.test(`/${file}`));
+        const shellTierSet = new Set(
+          [
+            ...(manifest.scenes.shell?.staticClosure ?? []),
+            ...shellI18nFiles
+          ].filter(
+            (file) =>
+              file.endsWith('.js') &&
+              !signInSet.has(file) &&
+              !startupTierSet.has(file)
+          )
+        );
+        const workspaceShellTierSet = new Set(
+          (manifest.scenes.workspaceShell?.staticClosure ?? []).filter(
+            (file) =>
+              file.endsWith('.js') &&
+              !signInSet.has(file) &&
+              !startupTierSet.has(file) &&
+              !shellTierSet.has(file)
+          )
+        );
+        const browseTierSet = new Set(
+          (manifest.scenes.browse?.staticClosure ?? []).filter(
+            (file) =>
+              file.endsWith('.js') &&
+              !signInSet.has(file) &&
+              !startupTierSet.has(file) &&
+              !shellTierSet.has(file) &&
+              !workspaceShellTierSet.has(file)
+          )
+        );
+        // Utility-tiered Shortest-Processing-Time First (SPT) paired with K=1 BDP pacing:
+        // 1) authenticatedStartup (control-plane prefetch owner) first,
+        // 2) shell (Topbar + active locale dictionaries) second,
+        // 3) workspaceShell (Left Sidebar) third,
+        // 4) browse (Right-hand Block Canvas) fourth.
+        // Note: DedicatedWorker scripts are intentionally excluded from <link rel="modulepreload">
+        // because Chromium's Window script module map does not share in-flight streams with new Worker().
+        const byteLengthOf = (file: string): number => {
+          const item = bundle[file];
+          if (!item) return 0;
+          if (item.type === 'chunk') return Buffer.byteLength(item.code ?? '');
+          const src = item.source;
+          return typeof src === 'string'
+            ? Buffer.byteLength(src)
+            : (src?.byteLength ?? 0);
+        };
+        const sortBySpt = (items: Iterable<string>): string[] =>
+          [...items].sort(
+            (left, right) =>
+              byteLengthOf(left) - byteLengthOf(right) ||
+              left.localeCompare(right)
+          );
+        const orderedPrewarmFiles = [
+          ...sortBySpt(startupTierSet),
+          ...sortBySpt(shellTierSet),
+          ...sortBySpt(workspaceShellTierSet),
+          ...sortBySpt(browseTierSet)
+        ];
+        this.emitFile({
+          type: 'asset',
+          fileName: 'authenticated-prewarm.json',
+          source: `${JSON.stringify({ version: 1, files: orderedPrewarmFiles })}\n`
         });
       }
     }

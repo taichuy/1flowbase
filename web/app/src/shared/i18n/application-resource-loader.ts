@@ -6,21 +6,45 @@ type ResourceLoaders<Namespace extends string> = Record<
   Record<AppLocale, () => Promise<object>>
 >;
 
+interface ApplicationResourceLoaderOptions {
+  scheduleBackground?: (task: () => void) => void;
+}
+
 // Factory-scoped flights also let cold fixtures use an empty i18next instance,
 // independent of test/setup.ts (which intentionally registers all dictionaries).
 export function createApplicationResourceLoader<Namespace extends string>(
   instance: i18n,
-  loaders: ResourceLoaders<Namespace>
+  loaders: ResourceLoaders<Namespace>,
+  options: ApplicationResourceLoaderOptions = {}
 ) {
   const flights = new Map<string, Promise<void>>();
   const demanded = new Set<Namespace>();
+  const customScheduleBackground = options.scheduleBackground;
   let activation = 0;
+
+  if (!customScheduleBackground && typeof instance.on === 'function') {
+    instance.on('missingKey', (_lngs, namespace) => {
+      const ns = namespace as Namespace;
+      if (
+        ns &&
+        ns in loaders &&
+        instance.language !== FALLBACK_APP_LOCALE &&
+        !instance.hasResourceBundle(FALLBACK_APP_LOCALE, ns)
+      ) {
+        void loadBundle(FALLBACK_APP_LOCALE, ns).catch(() => undefined);
+      }
+    });
+  }
+
+  function readyPrimary(locale: AppLocale, namespaces: readonly Namespace[]) {
+    return namespaces.every((namespace) =>
+      instance.hasResourceBundle(locale, namespace)
+    );
+  }
 
   function ready(locale: AppLocale, namespaces: readonly Namespace[]) {
     return [locale, FALLBACK_APP_LOCALE].every((language) =>
-      namespaces.every((namespace) =>
-        instance.hasResourceBundle(language, namespace)
-      )
+      readyPrimary(language, namespaces)
     );
   }
 
@@ -38,6 +62,15 @@ export function createApplicationResourceLoader<Namespace extends string>(
       });
     flights.set(key, flight);
     return flight;
+  }
+
+  async function loadSingleLocale(
+    locale: AppLocale,
+    namespaces: readonly Namespace[]
+  ) {
+    await Promise.all(
+      namespaces.map((namespace) => loadBundle(locale, namespace))
+    );
   }
 
   async function load(locale: AppLocale, namespaces: readonly Namespace[]) {
@@ -65,5 +98,31 @@ export function createApplicationResourceLoader<Namespace extends string>(
     return true;
   }
 
-  return { load, ready, activate };
+  async function activatePrimary(
+    locale: AppLocale,
+    namespaces: readonly Namespace[] = []
+  ) {
+    const request = ++activation;
+    namespaces.forEach((namespace) => demanded.add(namespace));
+    do {
+      await loadSingleLocale(locale, [...demanded]);
+      if (request !== activation) return false;
+    } while (!readyPrimary(locale, [...demanded]));
+    if (instance.language !== locale) await instance.changeLanguage(locale);
+    if (
+      customScheduleBackground &&
+      locale !== FALLBACK_APP_LOCALE &&
+      !readyPrimary(FALLBACK_APP_LOCALE, [...demanded])
+    ) {
+      const snapshotNamespaces = [...demanded];
+      customScheduleBackground(() => {
+        void loadSingleLocale(FALLBACK_APP_LOCALE, snapshotNamespaces).catch(
+          () => undefined
+        );
+      });
+    }
+    return true;
+  }
+
+  return { load, ready, readyPrimary, activate, activatePrimary };
 }

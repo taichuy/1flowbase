@@ -1,6 +1,28 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { expect, test } from 'vitest';
 import { publicSignInPlugin } from '../public-sign-in';
+
+test('default password virtual module hashes canonical LF template bytes across OS checkouts', async () => {
+  const plugin = publicSignInPlugin(process.cwd());
+  const load =
+    typeof plugin.load === 'function' ? plugin.load : plugin.load!.handler;
+  const templatePath = path.resolve(
+    process.cwd(),
+    '../../api/crates/control-plane/src/auth/public_ui_blocks/password_local.tsx'
+  );
+  const expectedLfSha = createHash('sha256')
+    .update(readFileSync(templatePath, 'utf8').replace(/\r\n/gu, '\n'))
+    .digest('hex');
+  const loaded = (await load.call(
+    { addWatchFile: () => undefined, warn: () => undefined } as never,
+    '\0virtual:1flowbase-default-password'
+  )) as { code: string };
+  expect(loaded.code).toContain(
+    `export const sourceSha256 = ${JSON.stringify(expectedLfSha)};`
+  );
+});
 
 test('the public document never substitutes a speculative sign-in frame for session discovery', () => {
   const plugin = publicSignInPlugin(process.cwd());

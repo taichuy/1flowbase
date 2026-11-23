@@ -56,6 +56,11 @@ export async function prepareNativeReactSource({
   } catch (error) {
     return registryFailure(error);
   }
+  (
+    registry as NativeReactModuleRegistry & {
+      prewarmSource?: (source: string) => void;
+    }
+  ).prewarmSource?.(frozenSource);
   const compiled = await compiler({
     source: frozenSource,
     requestId,
@@ -72,9 +77,13 @@ export async function prepareNativeReactSource({
   if (!evaluated.ok) return evaluated;
 
   try {
-    const moduleAssets = await registry.resolveModuleAssets(
-      evaluated.artifact.program.injectedModules.map(({ source }) => source)
-    );
+    const moduleAssets = registry.resolveInjectedModuleAssets
+      ? await registry.resolveInjectedModuleAssets(
+          evaluated.artifact.program.injectedModules
+        )
+      : await registry.resolveModuleAssets(
+          evaluated.artifact.program.injectedModules.map(({ source }) => source)
+        );
     return {
       ok: true,
       artifact: evaluated.artifact,

@@ -274,43 +274,34 @@ export function pageTreeIconPreviewHref(name) {
 }
 
 function generateRuntimeModule(inventory: PageTreeIconInventory) {
-  const loaders: string[] = [];
-  for (const { icons } of inventory.packs) {
-    for (const { componentSource, name } of icons) {
-      loaders.push(
-        `${JSON.stringify(name)}: () => import(${JSON.stringify(componentSource)}).then((module) => module.default)`
-      );
-    }
-  }
-  return singleFlightRuntimeSource(
-    `const iconLoaders = {${loaders.join(',\n')}};`,
-    `return Boolean(iconLoaders[name]);`,
-    `const load = iconLoaders[name];
-  if (!load) return null;
-  return load();`
+  const iconNames = inventory.packs.flatMap(({ icons }) =>
+    icons.map(({ name }) => name)
   );
-}
-
-function singleFlightRuntimeSource(
-  domain: string,
-  containsBody: string,
-  loadBody: string
-) {
   return `
-${domain}
-const iconFlights = new Map();
-export function hasPageTreeIconComponent(name) {
-  ${containsBody}
-}
-export function loadPageTreeIconComponent(name) {
-  const current = iconFlights.get(name);
-  if (current) return current;
-  const flight = Promise.resolve().then(async () => {
-    ${loadBody}
-  }).catch((error) => {
-    if (iconFlights.get(name) === flight) iconFlights.delete(name);
+const iconNames = new Set(${JSON.stringify(iconNames)});
+let loaderDomainPromise;
+function loadIconDomain() {
+  loaderDomainPromise ??= import("virtual:1flowbase-native-ant-design-icons-loaders").catch((error) => {
+    loaderDomainPromise = undefined;
     throw error;
   });
+  return loaderDomainPromise;
+}
+const iconFlights = new Map();
+export function hasPageTreeIconComponent(name) {
+  return iconNames.has(name);
+}
+export function loadPageTreeIconComponent(name) {
+  if (!iconNames.has(name)) return Promise.resolve(null);
+  const current = iconFlights.get(name);
+  if (current) return current;
+  const flight = loadIconDomain()
+    .then((domain) => domain.loadAntDesignIconsModuleFromDomain("@ant-design/icons/" + name))
+    .then((module) => module.default)
+    .catch((error) => {
+      if (iconFlights.get(name) === flight) iconFlights.delete(name);
+      throw error;
+    });
   iconFlights.set(name, flight);
   return flight;
 }

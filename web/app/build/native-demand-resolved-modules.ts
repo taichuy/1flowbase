@@ -13,12 +13,22 @@ export function createDemandResolvedModuleDomain({
   modules: readonly DemandResolvedModuleSource[];
   virtualPrefix: string;
 }) {
-  const moduleByVirtualId = new Map(
-    modules.map(({ devLoaderSource, loaderSource, moduleSource }) => [
-      `${virtualPrefix}${moduleSource}`,
-      { devLoaderSource, loaderSource }
-    ])
-  );
+  const moduleByVirtualId = new Map<
+    string,
+    { devLoaderSource?: string; loaderSource: string }
+  >();
+  for (const { devLoaderSource, loaderSource, moduleSource } of modules) {
+    moduleByVirtualId.set(`${virtualPrefix}${moduleSource}`, {
+      devLoaderSource,
+      loaderSource
+    });
+    if (!moduleByVirtualId.has(`${virtualPrefix}${loaderSource}`)) {
+      moduleByVirtualId.set(`${virtualPrefix}${loaderSource}`, {
+        devLoaderSource,
+        loaderSource
+      });
+    }
+  }
 
   return {
     devImportUrl(moduleSource: string) {
@@ -66,18 +76,24 @@ export function generateDemandResolvedLoaderRuntime({
     virtualPrefix
   });
   const moduleSources = modules.map(({ moduleSource }) => moduleSource);
+  const canonicalSources = [
+    ...new Set(modules.map(({ loaderSource }) => loaderSource))
+  ].sort((left, right) => left.localeCompare(right));
+  const aliasPairs = modules
+    .filter(({ loaderSource, moduleSource }) => moduleSource !== loaderSource)
+    .map(({ loaderSource, moduleSource }) => [moduleSource, loaderSource] as const);
   const loaderIndex =
     command === 'build'
-      ? `const loaders = {${modules
+      ? `const canonicalLoaders = {${canonicalSources
           .map(
-            ({ moduleSource }) =>
-              `\n  ${JSON.stringify(moduleSource)}: () => import(${JSON.stringify(demandDomain.importId(moduleSource))}).then(({ moduleNamespace }) => moduleNamespace),`
+            (loaderSource) =>
+              `\n  ${JSON.stringify(loaderSource)}: () => import(${JSON.stringify(demandDomain.importId(loaderSource))}).then(({ moduleNamespace }) => moduleNamespace),`
           )
-          .join('')}\n};`
+          .join('')}\n};\nconst aliasToCanonical = ${JSON.stringify(Object.fromEntries(aliasPairs))};`
       : `const moduleSourceSet = new Set(${JSON.stringify(moduleSources)});`;
   const loadSelection =
     command === 'build'
-      ? `const load = loaders[moduleSource];
+      ? `const canonical = aliasToCanonical[moduleSource] ?? moduleSource;\n  const load = canonicalLoaders[canonical];
   if (!load) throw new Error(${JSON.stringify(`${errorLabel} is not installed or resolvable: `)} + moduleSource + '.');`
       : `if (!moduleSourceSet.has(moduleSource)) throw new Error(${JSON.stringify(`${errorLabel} is not installed or resolvable: `)} + moduleSource + '.');
   const moduleId = ${JSON.stringify(demandDomain.devImportUrl(''))} + moduleSource;
@@ -96,4 +112,22 @@ export function generateDemandResolvedLoaderRuntime({
     moduleSources,
     preamble: `${loaderIndex}\n\nconst moduleFlights = new Map();`
   };
+}
+
+export function generateDemandResolvedLoadersModule({
+  errorLabel,
+  modules,
+  virtualPrefix
+}: {
+  errorLabel: string;
+  modules: readonly DemandResolvedModuleSource[];
+  virtualPrefix: string;
+}): string {
+  const runtime = generateDemandResolvedLoaderRuntime({
+    command: 'build',
+    errorLabel,
+    modules,
+    virtualPrefix
+  });
+  return `${runtime.preamble}\n\nexport async function loadDemandResolvedModule(moduleSource) {\n  ${runtime.loadBody}\n}\n`;
 }

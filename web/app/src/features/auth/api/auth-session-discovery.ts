@@ -2,6 +2,10 @@ import {
   takeDocumentSessionDiscovery,
   discardDocumentSessionDiscovery
 } from './document-start-discovery';
+import {
+  clearEarlyConsoleStartupState,
+  startEarlyConsoleStartupFlight
+} from './early-console-startup-flight';
 import type { AuthSnapshot } from '../../../state/auth-store';
 import { fetchCurrentMe, fetchCurrentSession } from './session';
 
@@ -20,75 +24,53 @@ export function startAuthSessionDiscovery(): Promise<AuthSessionDiscovery> {
 export function resetAuthSessionDiscovery() {
   discoveryFlight = undefined;
   resetPrewarmCallback?.();
+  clearEarlyConsoleStartupState();
   discardDocumentSessionDiscovery();
 }
 
-function isAnonymousSignInPathname(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    /^\/sign-in\/?$/u.test(window.location.pathname)
-  );
-}
-
-function startEarlyAuthenticatedStartup(snapshot: AuthSnapshot): void {
-  if (import.meta.env.VITEST) return;
-  void Promise.all([
-    import('../../../app/bootstrap/frontstage-startup-prefetch').then(
-      (module) => {
-        resetPrewarmCallback = module.discardPrewarmedAuthenticatedQueryClient;
-        module.prewarmAuthenticatedStartup(snapshot);
-      }
-    ),
-    import('../../../app/bootstrap/AuthenticatedStartup')
-  ]).catch(() => undefined);
+function finishAuthenticated(
+  session: Awaited<ReturnType<typeof fetchCurrentSession>>,
+  me: Awaited<ReturnType<typeof fetchCurrentMe>>
+): AuthSessionDiscovery {
+  const snapshot: AuthSnapshot = {
+    csrfToken: session.csrf_token,
+    actor: session.actor,
+    me,
+    availableRoles: session.available_roles
+  };
+  if (!import.meta.env.VITEST) {
+    startEarlyConsoleStartupFlight(snapshot);
+    void Promise.all([
+      import('../../../app/bootstrap/frontstage-startup-prefetch').then((m) => {
+        resetPrewarmCallback = m.discardPrewarmedAuthenticatedQueryClient;
+        m.prewarmAuthenticatedStartup(snapshot);
+      }),
+      import('../../../app/bootstrap/AuthenticatedStartup')
+    ]).catch(() => undefined);
+  }
+  return { status: 'authenticated', snapshot };
 }
 
 async function discoverAuthSession(): Promise<AuthSessionDiscovery> {
   try {
-    const documentSessionFlight = takeDocumentSessionDiscovery();
-    if (documentSessionFlight || isAnonymousSignInPathname()) {
-      const session = await (documentSessionFlight ?? fetchCurrentSession());
-      const me = await fetchCurrentMe();
-      const snapshot: AuthSnapshot = {
-        csrfToken: session.csrf_token,
-        actor: session.actor,
-        me,
-        availableRoles: session.available_roles
-      };
-      startEarlyAuthenticatedStartup(snapshot);
-      return {
-        status: 'authenticated',
-        snapshot
-      };
+    const docSession = takeDocumentSessionDiscovery();
+    if (typeof window !== 'undefined' && /^\/sign-in\/?$/u.test(window.location.pathname)) {
+      const session = await (docSession ?? fetchCurrentSession());
+      return finishAuthenticated(session, await fetchCurrentMe());
     }
-
-    const sessionFlight = Promise.resolve().then(() => fetchCurrentSession());
-    const meFlight = Promise.resolve().then(() => fetchCurrentMe());
-    const [sessionResult, meResult] = await Promise.allSettled([
-      sessionFlight,
-      meFlight
+    const [sRes, mRes] = await Promise.allSettled([
+      docSession ?? Promise.resolve().then(() => fetchCurrentSession()),
+      Promise.resolve().then(() => fetchCurrentMe())
     ]);
     if (
-      sessionResult.status !== 'fulfilled' ||
-      meResult.status !== 'fulfilled' ||
-      !sessionResult.value ||
-      !meResult.value
+      sRes.status !== 'fulfilled' ||
+      mRes.status !== 'fulfilled' ||
+      !sRes.value ||
+      !mRes.value
     ) {
       return { status: 'anonymous' };
     }
-    const session = sessionResult.value;
-    const me = meResult.value;
-    const snapshot: AuthSnapshot = {
-      csrfToken: session.csrf_token,
-      actor: session.actor,
-      me,
-      availableRoles: session.available_roles
-    };
-    startEarlyAuthenticatedStartup(snapshot);
-    return {
-      status: 'authenticated',
-      snapshot
-    };
+    return finishAuthenticated(sRes.value, mRes.value);
   } catch {
     return { status: 'anonymous' };
   }

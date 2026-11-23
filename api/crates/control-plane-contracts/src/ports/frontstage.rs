@@ -180,6 +180,13 @@ pub trait FrontstagePageRepository: Send + Sync {
         code_ref: &str,
     ) -> anyhow::Result<Option<domain::frontstage::FrontstageBlockCodeRecord>>;
 
+    async fn list_frontstage_block_codes_by_refs(
+        &self,
+        workspace_id: Uuid,
+        page_id: Uuid,
+        code_refs: &[String],
+    ) -> anyhow::Result<Vec<domain::frontstage::FrontstageBlockCodeRecord>>;
+
     /// Digest-only read: implementations must not load the source body.
     async fn get_frontstage_block_source_sha256(
         &self,

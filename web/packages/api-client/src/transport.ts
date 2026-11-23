@@ -76,7 +76,8 @@ export async function apiFetchIfModified<T>({
   signal,
   headers
 }: Pick<ApiRequestOptions, 'path' | 'baseUrl' | 'signal' | 'headers'>): Promise<
-  { status: 'modified'; value: T } | { status: 'not_modified' }
+  | { status: 'modified'; value: T; etag?: string | null }
+  | { status: 'not_modified'; etag?: string | null }
 > {
   const response = await fetch(`${baseUrl}${path}`, {
     method: 'GET',
@@ -87,11 +88,15 @@ export async function apiFetchIfModified<T>({
     // satisfy an authorization/version check without contacting the server.
     cache: 'no-store'
   });
-  if (response.status === 304) return { status: 'not_modified' };
+  const etag = response.headers?.get?.('etag') ?? null;
+  if (response.status === 304) {
+    return etag ? { status: 'not_modified', etag } : { status: 'not_modified' };
+  }
   if (!response.ok) throw await ApiClientError.fromResponse(response);
   return {
     status: 'modified',
-    value: unwrapApiSuccess<T>(await response.json())
+    value: unwrapApiSuccess<T>(await response.json()),
+    ...(etag ? { etag } : {})
   };
 }
 

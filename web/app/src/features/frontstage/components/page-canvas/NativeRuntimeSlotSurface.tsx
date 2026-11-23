@@ -1,8 +1,8 @@
 import { Alert, Button } from 'antd';
-import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
+import { BlockUiLoadingShell } from '@1flowbase/block-renderer/loading-shell';
 import type { BlockContextSeed, BlockContextSizing, BlockProtocolError } from '@1flowbase/page-protocol';
-import { NATIVE_TRUSTED_BLOCK_PERMISSION, NATIVE_TRUSTED_BLOCK_RUNTIME, type NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { NATIVE_TRUSTED_BLOCK_PERMISSION, NATIVE_TRUSTED_BLOCK_RUNTIME, type NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime/browser';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import type { FrontstagePageContent } from '../../api/page-content';
 import type { FrontstagePageCanvasRuntimeContext } from '../PageCanvas';
 import type { FrontstageBlockRenderPlanItem } from '../../lib/page-canvas/render-plan';
@@ -13,6 +13,13 @@ import { FrontstageNativeTrustedBlockPortalHost, type FrontstageNativeTrustedBlo
 import { createFrontstageUnavailableBlockContext } from '../../lib/native-trusted-block/unavailable-context';
 import { createFrontstageNativeBlockContextCapabilities, type FrontstageNativeBlockContextHost } from '../../lib/page-canvas/native-block-context-host';
 import { i18nText } from '../../../../shared/i18n/text';
+
+export type FrontstageNativeSlotLayoutPhase =
+  | 'loading'
+  | 'initial_api_pending'
+  | 'settled';
+
+const INITIAL_API_RATCHET_SAFETY_TIMEOUT_MS = 5_000;
 
 export function NativeRuntimeSlotSurface({
   item,
@@ -26,6 +33,7 @@ export function NativeRuntimeSlotSurface({
   surfaceLayoutEpoch,
   fillsAvailableHeight,
   onIntrinsicSizeReport,
+  onLayoutPhaseChange,
   onRetry
 }: {
   item: FrontstageBlockRenderPlanItem;
@@ -40,6 +48,7 @@ export function NativeRuntimeSlotSurface({
   pageContent?: FrontstagePageContent;
   fillsAvailableHeight: boolean;
   onIntrinsicSizeReport?: (height: number) => void;
+  onLayoutPhaseChange?: (phase: FrontstageNativeSlotLayoutPhase) => void;
 }) {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
@@ -48,10 +57,20 @@ export function NativeRuntimeSlotSurface({
     null
   );
   const [retryGeneration, setRetryGeneration] = useState(0);
+  const [committedInstanceKey, setCommittedInstanceKey] = useState<
+    string | null
+  >(null);
   const readyPreparation = preparation.status === 'ready' ? preparation : null;
   const renderIdentity = readyPreparation?.mountIntent
     ? frontstageNativeInstanceRenderKey(readyPreparation.mountIntent)
     : null;
+  const instanceKey = `${renderIdentity}:${preparation.generation}:${retryGeneration}`;
+  const isInitialContentCommitted = Boolean(
+    readyPreparation?.mountIntent && committedInstanceKey === instanceKey
+  );
+  const handleInitialContentReady = useCallback(() => {
+    setCommittedInstanceKey(instanceKey);
+  }, [instanceKey]);
   useLayoutEffect(() => {
     if (!viewport) return;
     const updateSize = ({
@@ -173,12 +192,14 @@ export function NativeRuntimeSlotSurface({
           width: '100%',
           maxWidth: '100%',
           minWidth: 0,
-          height: fillsAvailableHeight ? '100%' : undefined
+          ...(isInitialContentCommitted
+            ? { height: fillsAvailableHeight ? '100%' : undefined }
+            : { height: 0, overflow: 'hidden' })
         }}
       />
       {root ? (
         <FrontstageNativeRuntimeInstance
-          key={`${renderIdentity}:${preparation.generation}:${retryGeneration}`}
+          key={instanceKey}
           root={root}
           item={item}
           plan={plan}
@@ -190,11 +211,12 @@ export function NativeRuntimeSlotSurface({
           pageContent={pageContent}
           runtimeSizing={runtimeSizing}
           surfaceLayoutEpoch={surfaceLayoutEpoch}
+          onInitialContentReady={handleInitialContentReady}
+          onLayoutPhaseChange={onLayoutPhaseChange}
           onRuntimeError={setRuntimeError}
         />
-      ) : (
-        <BlockUiLoadingShell />
-      )}
+      ) : null}
+      {!root || !isInitialContentCommitted ? <BlockUiLoadingShell /> : null}
     </div>
   );
 }
@@ -216,6 +238,8 @@ function FrontstageNativeRuntimeInstance({
   pageContent,
   runtimeSizing,
   surfaceLayoutEpoch,
+  onInitialContentReady,
+  onLayoutPhaseChange,
   onRuntimeError
 }: {
   root: Element;
@@ -232,8 +256,108 @@ function FrontstageNativeRuntimeInstance({
   pageContent?: FrontstagePageContent;
   runtimeSizing: BlockContextSizing;
   surfaceLayoutEpoch: string;
+  onInitialContentReady(): void;
+  onLayoutPhaseChange?: (phase: FrontstageNativeSlotLayoutPhase) => void;
   onRuntimeError(error: BlockProtocolError): void;
 }) {
+  const contentCommittedRef = useRef(false);
+  const initialWindowClosedRef = useRef(false);
+  const pendingInitialApiCallsRef = useRef(new Set<string>());
+  const commitCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onInitialContentReadyRef = useRef(onInitialContentReady);
+  const onLayoutPhaseChangeRef = useRef(onLayoutPhaseChange);
+  useLayoutEffect(() => {
+    onInitialContentReadyRef.current = onInitialContentReady;
+    onLayoutPhaseChangeRef.current = onLayoutPhaseChange;
+  }, [onInitialContentReady, onLayoutPhaseChange]);
+  useEffect(
+    () => () => {
+      if (commitCheckTimerRef.current !== null) {
+        clearTimeout(commitCheckTimerRef.current);
+      }
+      if (settleTimerRef.current !== null) {
+        clearTimeout(settleTimerRef.current);
+      }
+      if (safetyTimerRef.current !== null) {
+        clearTimeout(safetyTimerRef.current);
+      }
+    },
+    []
+  );
+  const finalizeInitialWindow = useCallback(() => {
+    if (initialWindowClosedRef.current) return;
+    initialWindowClosedRef.current = true;
+    pendingInitialApiCallsRef.current.clear();
+    if (commitCheckTimerRef.current !== null) {
+      clearTimeout(commitCheckTimerRef.current);
+      commitCheckTimerRef.current = null;
+    }
+    if (settleTimerRef.current !== null) {
+      clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = null;
+    }
+    if (safetyTimerRef.current !== null) {
+      clearTimeout(safetyTimerRef.current);
+      safetyTimerRef.current = null;
+    }
+    onLayoutPhaseChangeRef.current?.('settled');
+  }, []);
+  const handleInitialContentCommit = useCallback(() => {
+    if (contentCommittedRef.current) return;
+    contentCommittedRef.current = true;
+    onInitialContentReadyRef.current();
+    commitCheckTimerRef.current = setTimeout(() => {
+      commitCheckTimerRef.current = null;
+      if (initialWindowClosedRef.current) return;
+      if (pendingInitialApiCallsRef.current.size > 0) {
+        onLayoutPhaseChangeRef.current?.('initial_api_pending');
+        safetyTimerRef.current = setTimeout(
+          finalizeInitialWindow,
+          INITIAL_API_RATCHET_SAFETY_TIMEOUT_MS
+        );
+      } else {
+        finalizeInitialWindow();
+      }
+    }, 0);
+  }, [finalizeInitialWindow]);
+  const observedHost = useMemo<FrontstageNativeBlockContextHost | undefined>(
+    () => {
+      if (!nativeContextHost) return undefined;
+      return {
+        ...nativeContextHost,
+        observeApiCall: (observation) => {
+          nativeContextHost.observeApiCall?.(observation);
+          if (initialWindowClosedRef.current) return;
+          if (observation.status === 'pending') {
+            pendingInitialApiCallsRef.current.add(observation.callId);
+            if (settleTimerRef.current !== null) {
+              clearTimeout(settleTimerRef.current);
+              settleTimerRef.current = null;
+            }
+            return;
+          }
+          pendingInitialApiCallsRef.current.delete(observation.callId);
+          if (
+            contentCommittedRef.current &&
+            pendingInitialApiCallsRef.current.size === 0 &&
+            settleTimerRef.current === null
+          ) {
+            settleTimerRef.current = setTimeout(() => {
+              settleTimerRef.current = null;
+              if (pendingInitialApiCallsRef.current.size === 0) {
+                finalizeInitialWindow();
+              }
+            }, 0);
+          }
+        }
+      };
+    },
+    [finalizeInitialWindow, nativeContextHost]
+  );
   const { instanceEpoch, isCurrentInstance } = useFrontstageNativeBlockInstance(
     {
       blockId: item.blockId,
@@ -272,9 +396,9 @@ function FrontstageNativeRuntimeInstance({
   const outputs = signalCoordinator
     ? signalCoordinator.outputsFor(item.blockId, instanceEpoch)
     : unavailable.outputs;
-  const capabilities = nativeContextHost
+  const capabilities = observedHost
     ? createFrontstageNativeBlockContextCapabilities({
-        host: nativeContextHost,
+        host: observedHost,
         pageId: pageContent?.page.id ?? unavailable.page.id,
         tabId: pageContent?.tab.id ?? '',
         blockId: item.blockId,
@@ -325,6 +449,7 @@ function FrontstageNativeRuntimeInstance({
       moduleSources={preparation.prepared.moduleSources}
       contribution={preparation.prepared.contribution}
       surfaceLayoutEpoch={surfaceLayoutEpoch}
+      onInitialContentCommit={handleInitialContentCommit}
       onRuntimeError={onRuntimeError}
     />
   );

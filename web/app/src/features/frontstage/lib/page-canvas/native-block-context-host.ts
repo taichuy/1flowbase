@@ -9,7 +9,7 @@ import {
   type BlockHostInterfaceEffect,
   type NativeBlockContextApiCallObservation,
   type NativeBlockContextEventInput
-} from '@1flowbase/page-runtime';
+} from '@1flowbase/page-runtime/browser';
 
 export interface FrontstageNativeBlockContextHost {
   interface: BlockHostEffectHandler<BlockHostInterfaceEffect>;

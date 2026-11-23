@@ -1,7 +1,14 @@
 import { StrictMode, useRef } from 'react';
-import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { useAuthenticatedPrewarm } from '../authenticated-prewarm';
+import {
+  pauseAuthenticatedPrewarm,
+  useAuthenticatedPrewarm
+} from '../authenticated-prewarm';
+import {
+  resolveRuntimeConcurrencyProfile,
+  type RuntimeConcurrencyProfile
+} from '../../../../shared/utils/runtime-concurrency-profile';
 
 const { imported, preloadUrl } = vi.hoisted(() => ({
   imported: vi.fn(),
@@ -19,13 +26,15 @@ vi.mock('../../components/default-password/DefaultPasswordSignIn', () => ({
 }));
 function Host({
   ready,
-  identity = 'same-entry'
+  identity = 'same-entry',
+  concurrencyProfile
 }: {
   ready: boolean;
   identity?: string;
+  concurrencyProfile?: RuntimeConcurrencyProfile;
 }) {
   const host = useRef<HTMLDivElement>(null);
-  useAuthenticatedPrewarm(host, identity);
+  useAuthenticatedPrewarm(host, identity, concurrencyProfile);
   return (
     <div ref={host}>
       {ready ? (
@@ -66,7 +75,6 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
-  cleanup();
   preloads().forEach((link) => link.remove());
   if (originalMark) Object.defineProperty(performance, 'mark', originalMark);
   else Reflect.deleteProperty(performance, 'mark');
@@ -219,4 +227,127 @@ test('an existing modulepreload for the resolved URL is reused without claiming 
   expect(preloads()).toEqual([existing]);
   expect(mark).not.toHaveBeenCalledWith('anonymous:authenticated-prewarm-start');
   expect(imported).not.toHaveBeenCalled();
+});
+
+test('streams transition delta chunks with K=1 BDP pacing, prioritizes active locale, and halts at 0 ms on form submit', async () => {
+  const previousLang = document.documentElement.lang;
+  document.documentElement.lang = 'zh-CN';
+  const allPreloads = () => [
+    ...document.querySelectorAll<HTMLLinkElement>('link[rel="modulepreload"]')
+  ];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        files: [
+          'assets/auth-startup-11111111.js',
+          'assets/i18n-shell-en-22222222.js',
+          'assets/i18n-shell-zh-33333333.js',
+          'assets/shell-core-44444444.js',
+          'assets/frontstage-core-55555555.js'
+        ]
+      })
+    }))
+  );
+  try {
+    const view = render(<Host ready />);
+    await runIdle();
+    const entryLink = preloads()[0]!;
+    await act(async () => {
+      fireEvent.load(entryLink);
+    });
+    await waitFor(() => {
+      const deltaLinks = allPreloads().filter((l) => l !== entryLink);
+      expect(deltaLinks).toHaveLength(1);
+    });
+    const firstLink = allPreloads().find((l) => l !== entryLink)!;
+    expect(new URL(firstLink.href).pathname).toBe(
+      '/assets/auth-startup-11111111.js'
+    );
+    await act(async () => {
+      fireEvent.load(firstLink);
+    });
+    const afterFirst = allPreloads().filter((l) => l !== entryLink);
+    // Inactive English dictionary is deferred behind shell-core so zh-CN shell warms first
+    expect(afterFirst.map((l) => new URL(l.href).pathname)).toEqual([
+      '/assets/auth-startup-11111111.js',
+      '/assets/i18n-shell-zh-33333333.js'
+    ]);
+    // Submitting the form halts prewarming in capture phase and removes unsettled pending link
+    const formElement = view.container.querySelector('form')!;
+    fireEvent.submit(formElement);
+    expect(
+      allPreloads()
+        .filter((l) => l !== entryLink)
+        .map((l) => new URL(l.href).pathname)
+    ).toEqual(['/assets/auth-startup-11111111.js']);
+    pauseAuthenticatedPrewarm();
+  } finally {
+    document.documentElement.lang = previousLang;
+    allPreloads().forEach((l) => l.remove());
+  }
+});
+
+test('PROD profile uncaps static delta chunk prewarm (K=Infinity) and retains in-flight static links on submit', async () => {
+  const previousLang = document.documentElement.lang;
+  document.documentElement.lang = 'zh-CN';
+  const prodProfile = resolveRuntimeConcurrencyProfile({
+    isDev: false,
+    hardwareConcurrency: 8
+  });
+  const allPreloads = () => [
+    ...document.querySelectorAll<HTMLLinkElement>('link[rel="modulepreload"]')
+  ];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        files: [
+          'assets/auth-startup-11111111.js',
+          'assets/i18n-shell-zh-22222222.js',
+          'assets/i18n-shell-en-99999999.js',
+          'assets/shell-core-33333333.js',
+          'assets/frontstage-shell-44444444.js',
+          'assets/frontstage-canvas-55555555.js',
+          'assets/native-host-66666666.js',
+          'assets/tail-extra-77777777.js'
+        ]
+      })
+    }))
+  );
+  try {
+    const view = render(<Host ready concurrencyProfile={prodProfile} />);
+    await runIdle();
+    const entryLink = preloads()[0]!;
+    await act(async () => {
+      fireEvent.load(entryLink);
+    });
+    await waitFor(() => {
+      const deltaLinks = allPreloads().filter((l) => l !== entryLink);
+      expect(deltaLinks).toHaveLength(7);
+    });
+    const formElement = view.container.querySelector('form')!;
+    fireEvent.submit(formElement);
+    // In PROD static builds, all static delta chunks burst immediately via native HTTP/2
+    // multiplexing and stay intact on submit so AuthenticatedStartup reuses their streams.
+    expect(
+      allPreloads()
+        .filter((l) => l !== entryLink)
+        .map((l) => new URL(l.href).pathname)
+    ).toEqual([
+      '/assets/auth-startup-11111111.js',
+      '/assets/i18n-shell-zh-22222222.js',
+      '/assets/shell-core-33333333.js',
+      '/assets/frontstage-shell-44444444.js',
+      '/assets/frontstage-canvas-55555555.js',
+      '/assets/native-host-66666666.js',
+      '/assets/tail-extra-77777777.js'
+    ]);
+    pauseAuthenticatedPrewarm({ removePendingLinks: true });
+  } finally {
+    document.documentElement.lang = previousLang;
+    allPreloads().forEach((l) => l.remove());
+  }
 });

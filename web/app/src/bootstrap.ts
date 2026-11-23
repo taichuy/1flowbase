@@ -44,12 +44,27 @@ function renderBootFailure(error: unknown) {
   root.replaceChildren(alert);
 }
 
-void startAuthSessionDiscovery().catch(() => undefined);
+const sessionFlight = startAuthSessionDiscovery();
+const hasFastStartScene =
+  typeof document !== 'undefined' &&
+  document.getElementById('sign-in-document-scene') !== null;
 
-if (/^\/sign-in\/?$/.test(location.pathname)) {
+if (/^\/sign-in\/?$/.test(location.pathname) || hasFastStartScene) {
   // Prepare the route in parallel. Session discovery alone decides whether it mounts.
   void import('./app/AnonymousAppRuntime').catch(() => undefined);
   startLoginEntryDiscovery();
+} else {
+  void sessionFlight
+    .then((discovery) => {
+      if (
+        discovery.status === 'anonymous' &&
+        !/^\/mcp\/authorize\/?$/.test(location.pathname)
+      ) {
+        void import('./app/AnonymousAppRuntime').catch(() => undefined);
+        startLoginEntryDiscovery();
+      }
+    })
+    .catch(() => undefined);
 }
 
 void import('./main').catch(renderBootFailure);

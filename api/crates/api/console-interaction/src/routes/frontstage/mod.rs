@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 pub mod block_context_contract;
 pub mod block_tree;
+pub mod bootstrap;
 pub mod callable_interface_catalog;
 pub mod callable_interface_dispatch;
 pub mod callable_interfaces;
@@ -278,6 +279,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::{Authenticated, ConsoleOperation};
 
     block_tree::route_assembly()
+        .route(
+            "/frontstage/bootstrap",
+            console_get(
+                bootstrap::get_frontstage_bootstrap,
+                ConsoleOperation("frontstage.pages.view".to_string()),
+            ),
+        )
         .route(
             "/frontstage/pages",
             console_get(

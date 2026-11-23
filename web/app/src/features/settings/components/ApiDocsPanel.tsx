@@ -3,10 +3,8 @@ import { useCallback, useEffect } from 'react';
 import { useRouterState } from '@tanstack/react-router';
 import { App } from 'antd';
 
-import {
-  fetchCurrentSession,
-  getScalarApiBaseUrl
-} from '../../auth/api/session';
+import { fetchCurrentSession } from '../../auth/api/session';
+import { getScalarApiBaseUrl } from '../../auth/api/session-actions';
 import { ApiDocsExplorer } from '../../../shared/ui/api-docs/ApiDocsExplorer';
 import { installScalarClipboardPatch } from '../lib/scalar-clipboard';
 

@@ -62,10 +62,10 @@ export function signInResourceHintsPlugin(): Plugin {
     load(id) {
       if (id !== '\0' + prewarmId) return;
       if (!building)
-        return `export default ${JSON.stringify(`${base}src/app/AuthenticatedAppRuntime.tsx`)};`;
+        return `export default ${JSON.stringify(`${base}src/app/bootstrap/AuthenticatedStartup.tsx`)};`;
       const reference = this.emitFile({
         type: 'chunk',
-        id: path.join(root, 'src/app/AuthenticatedAppRuntime.tsx')
+        id: path.join(root, 'src/app/bootstrap/AuthenticatedStartup.tsx')
       });
       // A URL, not an import: idle modulepreload fetches/parses without evaluating
       // authenticated providers or initializing i18next in the anonymous state.

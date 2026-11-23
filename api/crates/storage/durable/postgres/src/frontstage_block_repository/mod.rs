@@ -339,6 +339,7 @@ fn map_record(row: &PgRow) -> Result<domain::FrontstageBlockNodeRecord> {
         title: summary.title,
         description: summary.description,
         code_ref: row.get("code_ref"),
+        source_sha256: row.try_get("source_sha256").ok().flatten(),
         schema_version: summary.schema_version,
         input_mapping: serde_json::from_value(input_mapping)?,
         output_mapping: serde_json::from_value(output_mapping)?,
@@ -364,12 +365,17 @@ async fn get_record_in_transaction(
     // SQL safety: DETAIL_COLUMNS is static SQL; block selectors and paging values remain bound.
     let row = sqlx::query(sqlx::AssertSqlSafe(format!(
         r#"
-        select {DETAIL_COLUMNS}, node.input_mapping, node.output_mapping, node.runtime_descriptor
+        select {DETAIL_COLUMNS}, node.input_mapping, node.output_mapping,
+               node.runtime_descriptor, source.source_sha256
         from frontstage_block_nodes node
         left join frontstage_block_nodes parent
           on parent.scope_id = node.scope_id
          and parent.tree_partition_id = node.tree_partition_id
          and parent.id = node.parent_id
+        left join frontstage_block_codes source
+          on source.workspace_id = node.scope_id
+         and source.page_id = node.tree_partition_id
+         and source.code_ref = node.code_ref
         where node.scope_id = $1 and node.tree_partition_id = $2 and node.block_id = $3
         "#,
     )))

@@ -1,5 +1,5 @@
 import type { ConsoleFrontstageBlockNodeCode } from '@1flowbase/api-client';
-import { sha256Text } from '@1flowbase/page-runtime';
+import { sha256Text } from '@1flowbase/page-runtime/browser';
 import { LRUCache } from 'lru-cache';
 
 export const FRONTSTAGE_NATIVE_BLOCK_SOURCE_CACHE_SCHEMA_VERSION = 1 as const;

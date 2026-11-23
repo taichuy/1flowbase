@@ -18,6 +18,11 @@ export function CustomAuthRuntime(props: PublicAuthBlockProps) {
       />
     );
   }
+  if (!props.nativeModuleRegistryFactory) {
+    void import('../../../frontstage/lib/native-modules/registry').catch(
+      () => undefined
+    );
+  }
   return (
     <PublicAuthProviders>
       <PublicAuthRouter>

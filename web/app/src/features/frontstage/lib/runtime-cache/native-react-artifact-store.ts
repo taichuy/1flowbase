@@ -1,7 +1,7 @@
 import {
   NATIVE_REACT_COMPILER_ABI,
   NATIVE_REACT_RUNTIME_ABI
-} from '@1flowbase/page-runtime';
+} from '@1flowbase/page-runtime/browser';
 
 import { IndexedDbUnavailableError } from './indexeddb-store';
 import type { FrontstageNativeReactArtifactCacheRecord } from './native-react-artifact-cache';

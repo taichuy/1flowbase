@@ -532,6 +532,9 @@ fn app_with_state_and_config_and_console_route_assembly(
     publish_external_endpoint_catalog(&state, &mounted, include_docs, openapi_document)
         .expect("external endpoint catalog must publish before router construction");
     router
+        .layer(axum_middleware::from_fn(
+            api_host_kernel::middleware::response_compression::compress_bounded_http_response,
+        ))
         .layer(cors_layer(config))
         .layer(TraceLayer::new_for_http().make_span_with(safe_http_trace_span))
 }

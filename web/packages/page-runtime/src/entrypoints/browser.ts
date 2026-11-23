@@ -26,6 +26,13 @@ export * from '../native-block-context/external-assets';
 export * from '../native-trusted-block-host';
 export * from '../native-trusted-block-portal';
 export * from '../native-trusted-block/runtime-error';
+export {
+  NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS,
+  NATIVE_TRUSTED_BLOCK_PERMISSION,
+  NATIVE_TRUSTED_BLOCK_RUNTIME
+} from '../native-trusted-block/source-policy-constants';
+export * from '../js-block-diagnostics';
+export * from '../isolated-frontend-block-realm';
 export type * from '../native-trusted-block/source-evaluator-types';
 export type { NativeTrustedBlockPreparePlan } from '../native-trusted-block-manifest';
 export type {

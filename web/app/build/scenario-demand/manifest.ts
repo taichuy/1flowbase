@@ -20,7 +20,12 @@ type Bundle = Record<string, Chunk | Asset>;
 const sceneOwners = {
   discovery: ['/src/bootstrap.ts'],
   signIn: ['/features/auth/pages/SignInPage.tsx'],
+  authenticatedStartup: [
+    '/app/bootstrap/AuthenticatedStartup.tsx',
+    '/app/AuthenticatedAppRuntime.tsx'
+  ],
   shell: ['/app-shell/AppShellFrame.tsx'],
+  workspaceShell: ['/features/frontstage/pages/FrontstageWorkspacePage.tsx'],
   browse: ['/features/frontstage/pages/FrontStagePage.tsx'],
   studio: ['/features/frontstage/components/jsx-studio/FrontstageJsxStudioDrawer.tsx'],
   loginStudio: ['/features/settings/components/auth-center/LoginEntryUiBlockStudio.tsx']
@@ -59,7 +64,7 @@ export function collectScenarioDemandManifest(bundle: Bundle) {
 
   // Genuine runtime compiler Workers remain legal. Only authoring modules are
   // excluded; a published/custom Block must retain its actual runtime demand.
-  for (const scene of ['signIn', 'shell', 'browse']) {
+  for (const scene of ['signIn', 'shell', 'workspaceShell', 'browse']) {
     for (const file of scenes[scene]!.staticClosure) {
       for (const id of owners.get(file)!) {
         if (
@@ -70,6 +75,29 @@ export function collectScenarioDemandManifest(bundle: Bundle) {
         ) {
           throw new Error(`[scenario-demand] ${scene} eagerly includes authoring module ${id} in ${file}`);
         }
+        if (
+          /\/node_modules\/(?:acorn|sucrase)\//u.test(id) ||
+          /\/native-trusted-block\/source-scanner\.ts$/u.test(id) ||
+          /\/native-react-compiler\/component-compiler\.ts$/u.test(id)
+        ) {
+          throw new Error(`[scenario-demand] ${scene} eagerly includes main-thread compiler ${id} in ${file}`);
+        }
+      }
+    }
+  }
+
+  // Progressive concentric boundary: workspaceShell (left page-tree sidebar) must
+  // never eagerly pull in FrontStagePage, PageCanvas, react-grid-layout, or page-runtime.
+  for (const file of scenes.workspaceShell!.staticClosure) {
+    for (const id of owners.get(file)!) {
+      if (
+        /\/features\/frontstage\/(?:pages\/FrontStagePage\.tsx$|components\/PageCanvas\.tsx$)/u.test(id) ||
+        /\/node_modules\/react-grid-layout\//u.test(id) ||
+        /\/packages\/page-runtime\/src\/(?!sha256\.ts$)/u.test(id)
+      ) {
+        throw new Error(
+          `[scenario-demand] workspaceShell eagerly includes canvas/runtime module ${id} in ${file}`
+        );
       }
     }
   }

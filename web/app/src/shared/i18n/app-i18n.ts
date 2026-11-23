@@ -9,7 +9,10 @@ import {
   applicationTranslationLoaders,
   type ApplicationNamespace
 } from './application-i18n-resources';
-import { applicationNamespacesForPath } from './application-i18n-demand';
+import {
+  applicationNamespacesForPath,
+  applicationTopbarNamespacesForPath
+} from './application-i18n-demand';
 import { createApplicationResourceLoader } from './application-resource-loader';
 import type { AppLocale } from './locales';
 
@@ -41,11 +44,38 @@ export const applicationI18nLoader = createApplicationResourceLoader(
   applicationTranslationLoaders
 );
 
+export function isShellTopbarI18nReady(
+  locale: AppLocale,
+  pathname: string
+): boolean {
+  const namespaces = applicationTopbarNamespacesForPath(pathname);
+  return import.meta.env.VITEST
+    ? applicationI18nLoader.ready(locale, namespaces)
+    : applicationI18nLoader.readyPrimary(locale, namespaces);
+}
+
+export function prepareShellTopbarI18n(locale: AppLocale, pathname: string) {
+  const namespaces = applicationTopbarNamespacesForPath(pathname);
+  return import.meta.env.VITEST
+    ? applicationI18nLoader.activate(locale, namespaces)
+    : applicationI18nLoader.activatePrimary(locale, namespaces);
+}
+
+export function isApplicationI18nReady(
+  locale: AppLocale,
+  pathname: string
+): boolean {
+  const namespaces = applicationNamespacesForPath(pathname);
+  return import.meta.env.VITEST
+    ? applicationI18nLoader.ready(locale, namespaces)
+    : applicationI18nLoader.readyPrimary(locale, namespaces);
+}
+
 export function prepareApplicationI18n(locale: AppLocale, pathname: string) {
-  return applicationI18nLoader.activate(
-    locale,
-    applicationNamespacesForPath(pathname)
-  );
+  const namespaces = applicationNamespacesForPath(pathname);
+  return import.meta.env.VITEST
+    ? applicationI18nLoader.activate(locale, namespaces)
+    : applicationI18nLoader.activatePrimary(locale, namespaces);
 }
 
 // Explicit full registration for tests/catalog tooling only. Production entry and

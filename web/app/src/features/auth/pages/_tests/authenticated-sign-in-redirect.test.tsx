@@ -21,7 +21,9 @@ vi.mock('@tanstack/react-router', () => ({
 }));
 
 vi.mock('../../api/session', () => ({
-  fetchCurrentMe,
+  fetchCurrentMe
+}));
+vi.mock('../../api/session-actions', () => ({
   redeemWorkspaceInvitation
 }));
 

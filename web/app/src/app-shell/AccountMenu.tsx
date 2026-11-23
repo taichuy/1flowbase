@@ -4,12 +4,12 @@ import { App, Menu } from 'antd';
 import type { MenuProps } from 'antd';
 import { useState } from 'react';
 
+import { fetchCurrentMe } from '../features/auth/api/session';
 import {
   fetchAccessibleWorkspaces,
-  fetchCurrentMe,
   switchActiveRole,
   switchWorkspace
-} from '../features/auth/api/session';
+} from '../features/auth/api/session-actions';
 import { i18nText } from '../shared/i18n/text';
 import { useAuthStore } from '../state/auth-store';
 import { navigationQueryStaleTime } from '../state/navigation-query-scope';

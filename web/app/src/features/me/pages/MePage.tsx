@@ -9,7 +9,7 @@ import { useConsoleOperationAccess } from '../../../state/console-operation-acce
 import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import { SectionPageLayout } from '../../../shared/ui/section-page-layout/SectionPageLayout';
 import { changeMyPassword, fetchMyProfile, updateMyProfile } from '../api/me';
-import { signOut } from '../../auth/api/session';
+import { signOut } from '../../auth/api/session-actions';
 import { ProfileForm } from '../components/ProfileForm';
 import { AuthenticationMethodsPanel } from '../components/AuthenticationMethodsPanel';
 import { getMeSections, type MeSectionKey } from '../lib/me-sections';

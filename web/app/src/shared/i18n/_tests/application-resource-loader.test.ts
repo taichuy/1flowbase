@@ -199,3 +199,62 @@ test('authenticated /sign-in prepares the home shell before redirect, not an emp
     false
   );
 });
+
+test('activatePrimary resolves active locale immediately without blocking on fallback locale', async () => {
+  const instance = coldInstance();
+  const english = deferred<object>();
+  const scheduled: Array<() => void> = [];
+  const loaders = {
+    page: {
+      zh_Hans: vi.fn(async () => ({ greeting: '你好' })),
+      en_US: vi.fn(() => english.promise)
+    }
+  };
+  const loader = createApplicationResourceLoader(instance, loaders, {
+    scheduleBackground: (task) => {
+      scheduled.push(task);
+    }
+  });
+
+  expect(loader.readyPrimary('zh_Hans', ['page'])).toBe(false);
+  await loader.activatePrimary('zh_Hans', ['page']);
+
+  expect(loaders.page.zh_Hans).toHaveBeenCalledTimes(1);
+  expect(loaders.page.en_US).not.toHaveBeenCalled();
+  expect(loader.readyPrimary('zh_Hans', ['page'])).toBe(true);
+  expect(instance.language).toBe('zh_Hans');
+  expect(instance.t('greeting', { ns: 'page' })).toBe('你好');
+  expect(scheduled).toHaveLength(1);
+
+  scheduled[0]!();
+  expect(loaders.page.en_US).toHaveBeenCalledTimes(1);
+  english.resolve({ greeting: 'Hello', fallback: 'Fallback text' });
+  await waitForBundle(english.promise);
+  expect(instance.t('fallback', { ns: 'page' })).toBe('Fallback text');
+});
+
+test('default activatePrimary avoids eager fallback bundle downloads and loads fallback only on missingKey', async () => {
+  const instance = coldInstance();
+  const loaders = {
+    page: {
+      zh_Hans: vi.fn(async () => ({ greeting: '你好' })),
+      en_US: vi.fn(async () => ({ greeting: 'Hello', onlyInEn: 'Fallback value' }))
+    }
+  };
+  const loader = createApplicationResourceLoader(instance, loaders);
+
+  await loader.activatePrimary('zh_Hans', ['page']);
+  expect(loaders.page.zh_Hans).toHaveBeenCalledTimes(1);
+  expect(loaders.page.en_US).not.toHaveBeenCalled();
+  expect(instance.t('greeting', { ns: 'page' })).toBe('你好');
+  expect(loaders.page.en_US).not.toHaveBeenCalled();
+
+  instance.emit('missingKey', ['zh_Hans'], 'page', 'onlyInEn', 'onlyInEn');
+  await waitForBundle(Promise.resolve());
+  expect(loaders.page.en_US).toHaveBeenCalledTimes(1);
+});
+
+async function waitForBundle(promise: Promise<unknown>) {
+  await promise;
+  await Promise.resolve();
+}

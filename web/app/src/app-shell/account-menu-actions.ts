@@ -1,7 +1,7 @@
 import type { MenuProps } from 'antd';
 import type { ConsoleMe, ConsoleSessionActor } from '@1flowbase/api-client';
 
-import { signOut } from '../features/auth/api/session';
+import { signOut } from '../features/auth/api/session-actions';
 import { i18nText } from '../shared/i18n/text';
 
 interface AccountMenuClickHandlerOptions {

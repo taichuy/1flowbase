@@ -5,8 +5,9 @@ import {
 } from '../../../state/navigation-query-scope';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, useNavigate } from '@tanstack/react-router';
-import { Result } from 'antd';
-import { Suspense, useEffect, useMemo, useRef } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef } from 'react';
+
+import { LazyRouteResult } from '../../../routes/LazyRouteResult';
 
 import {
   FRONTSTAGE_SLUG_PAGE_BLOCK_PATH,
@@ -15,7 +16,7 @@ import {
   FRONTSTAGE_SLUG_PATH
 } from '../../../routes/route-config';
 import { i18nText } from '../../../shared/i18n/text';
-import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
+import { WorkspaceShellSkeleton } from '../../auth/components/anonymous-loading/WorkspaceShellSkeleton';
 import {
   fetchFrontstagePageContent,
   frontstagePageContentQueryKey
@@ -45,10 +46,16 @@ import {
   resolveSelectedPageId
 } from '../lib/page-tree';
 import { createFrontstageBlockRouteInputs } from '../lib/page-canvas/runtime-assembly';
-import { FrontStagePage } from './FrontStagePage';
+import type { FrontStagePageProps } from './frontstage-page/page-props';
 import { FrontstageWorkspaceShell } from './frontstage-page/workspace-shell/FrontstageWorkspaceShell';
 import { RetainedFrontstagePages } from './frontstage-page/runtime-session/RetainedFrontstagePages';
 import { refreshCurrentFrontstagePage } from './frontstage-page/refresh-current-page';
+
+const LazyFrontStagePage = lazy(() =>
+  import('./FrontStagePage').then((module) => ({
+    default: module.FrontStagePage
+  }))
+);
 
 export interface FrontstageWorkspacePageProps {
   workspaceId: string;
@@ -310,7 +317,7 @@ export function FrontstageWorkspacePage({
     defaultTabs.length !== 1
   ) {
     return (
-      <Result
+      <LazyRouteResult
         status="error"
         title={i18nText('frontstage', 'auto.page_tabs_invalid_default_title')}
         subTitle={i18nText(
@@ -323,169 +330,177 @@ export function FrontstageWorkspacePage({
 
   if (blockId && isNotFoundResponseError(blockRuntimeAssemblyQuery.error)) {
     return (
-      <Result status="404" title={i18nText('app', 'auto.page_not_found')} />
+      <LazyRouteResult
+        status="404"
+        title={i18nText('app', 'auto.page_not_found')}
+      />
     );
   }
 
-  const page = (
-    <FrontStagePage
-      workspaceId={workspaceId}
-      pageId={effectivePageId}
-      tabId={resolvedTab?.id ?? runtimeTarget?.tab_id}
-      blockRuntimeAssembly={blockRuntimeAssemblyQuery.data}
-      blockRuntimeInputs={blockRuntimeInputs}
-      isBlockRuntimeRoute={Boolean(blockId)}
-      isBlockRuntimeLoading={Boolean(
-        blockId && blockRuntimeAssemblyQuery.isLoading
-      )}
-      hasBlockRuntimeLoadError={Boolean(
-        blockId && blockRuntimeAssemblyQuery.isError
-      )}
-      isBlockRuntimePermissionDenied={Boolean(
-        blockId && isForbiddenResponseError(blockRuntimeAssemblyQuery.error)
-      )}
-      onRetryLoadBlockRuntime={() => {
-        void blockRuntimeAssemblyQuery.refetch();
-      }}
-      onNavigateBlock={(nextBlockId, options) => {
-        if (!rootNode?.slug || !selectedPageId) return;
-        void navigate(
-          nextBlockId
-            ? {
-                to: FRONTSTAGE_SLUG_PAGE_BLOCK_PATH,
-                params: {
-                  slug: rootNode.slug,
-                  pageId: selectedPageId,
-                  blockId: nextBlockId
-                },
-                search: { ...(options?.inputs ?? {}) },
-                replace: options?.replace ?? false
-              }
-            : {
-                to: FRONTSTAGE_SLUG_PAGE_PATH,
-                params: { slug: rootNode.slug, pageId: selectedPageId },
-                replace: options?.replace ?? false
-              }
-        );
-      }}
-      showSidebar={rootNode?.kind !== 'page'}
-      autoSelectFirstPage={rootNode?.kind !== 'group' || Boolean(pageId)}
-      initialPageTree={pageTreeFromApi}
-      navigationPageTree={pageTreeQuery.data}
-      pageTreeRootId={scopedPageTreeRootId}
-      isPageTreeLoading={pageTreeQuery.isLoading}
-      hasPageTreeLoadError={pageTreeQuery.isError}
-      pageContent={pageContentQuery.data}
-      blockRoots={blockRootsQuery.data}
-      isBlockRootsLoading={blockRootsQuery.isLoading}
-      hasBlockRootsLoadError={blockRootsQuery.isError}
-      isPageContentLoading={pageContentQuery.isLoading}
-      hasPageContentLoadError={pageContentQuery.isError}
-      isPageContentPermissionDenied={isForbiddenResponseError(
-        pageContentQuery.error
-      )}
-      isPageTreeMutating={pageTreeMutations.isPending}
-      pageTreeMutationError={pageTreeMutations.error}
-      onCreateGroupNode={(input) =>
-        pageTreeMutations.createGroup({
-          ...input,
-          parentId: resolvePageTreeParentId(input.parentId)
-        })
-      }
-      onCreatePageNode={(input) =>
-        pageTreeMutations.createPage({
-          ...input,
-          parentId: resolvePageTreeParentId(input.parentId)
-        })
-      }
-      onRenamePageNode={pageTreeMutations.renameNode}
-      onUpdatePageNodeMetadata={pageTreeMutations.updateNodeMetadata}
-      onMovePageNode={pageTreeMutations.moveNode}
-      onDeletePageNode={pageTreeMutations.deleteNode}
-      onRetryLoadPageTree={() => {
-        void pageTreeQuery.refetch();
-      }}
-      onRetryLoadPageContent={() => {
-        void pageContentQuery.refetch();
-      }}
-      onRefreshPage={async () => {
-        await refreshCurrentFrontstagePage({
-          refreshPageContent: () =>
-            pageContentQuery.refetch({
-              cancelRefetch: true,
-              throwOnError: true
-            }),
-          refreshBlockRoots: () =>
-            blockRootsQuery.refetch({
-              cancelRefetch: true,
-              throwOnError: true
-            }),
-          refreshBlockRuntimeAssembly: blockId
-            ? () =>
-                blockRuntimeAssemblyQuery.refetch({
-                  cancelRefetch: true,
-                  throwOnError: true
-                })
-            : undefined
-        });
-      }}
-      onNavigatePage={(nextPageId) => {
-        if (!rootNode?.slug) return;
-        void navigate(
-          nextPageId
-            ? {
-                to: FRONTSTAGE_SLUG_PAGE_PATH,
-                params: { slug: rootNode.slug, pageId: nextPageId }
-              }
-            : {
-                to: FRONTSTAGE_SLUG_PATH,
-                params: { slug: rootNode.slug }
-              }
-        );
-      }}
-      onNavigateTab={(nextTab: FrontstagePageTab) => {
-        if (!selectedPageId) return;
-        if (!rootNode?.slug) return;
-        if (nextTab.is_default) {
-          void navigate({
-            to: FRONTSTAGE_SLUG_PAGE_PATH,
-            params: { slug: rootNode.slug, pageId: selectedPageId }
-          });
-          return;
-        }
-        if (!nextTab.route_segment) return;
+  const workspacePageProps: FrontStagePageProps = {
+    workspaceId,
+    pageId: effectivePageId,
+    tabId: resolvedTab?.id ?? runtimeTarget?.tab_id,
+    blockRuntimeAssembly: blockRuntimeAssemblyQuery.data,
+    blockRuntimeInputs,
+    isBlockRuntimeRoute: Boolean(blockId),
+    isBlockRuntimeLoading: Boolean(
+      blockId && blockRuntimeAssemblyQuery.isLoading
+    ),
+    hasBlockRuntimeLoadError: Boolean(
+      blockId && blockRuntimeAssemblyQuery.isError
+    ),
+    isBlockRuntimePermissionDenied: Boolean(
+      blockId && isForbiddenResponseError(blockRuntimeAssemblyQuery.error)
+    ),
+    onRetryLoadBlockRuntime: () => {
+      void blockRuntimeAssemblyQuery.refetch();
+    },
+    onNavigateBlock: (nextBlockId, options) => {
+      if (!rootNode?.slug || !selectedPageId) return;
+      void navigate(
+        nextBlockId
+          ? {
+              to: FRONTSTAGE_SLUG_PAGE_BLOCK_PATH,
+              params: {
+                slug: rootNode.slug,
+                pageId: selectedPageId,
+                blockId: nextBlockId
+              },
+              search: { ...(options?.inputs ?? {}) },
+              replace: options?.replace ?? false
+            }
+          : {
+              to: FRONTSTAGE_SLUG_PAGE_PATH,
+              params: { slug: rootNode.slug, pageId: selectedPageId },
+              replace: options?.replace ?? false
+            }
+      );
+    },
+    showSidebar: rootNode?.kind !== 'page',
+    autoSelectFirstPage: rootNode?.kind !== 'group' || Boolean(pageId),
+    initialPageTree: pageTreeFromApi,
+    navigationPageTree: pageTreeQuery.data,
+    pageTreeRootId: scopedPageTreeRootId,
+    isPageTreeLoading: pageTreeQuery.isLoading,
+    hasPageTreeLoadError: pageTreeQuery.isError,
+    pageContent: pageContentQuery.data,
+    blockRoots: blockRootsQuery.data,
+    isBlockRootsLoading: blockRootsQuery.isLoading,
+    hasBlockRootsLoadError: blockRootsQuery.isError,
+    isPageContentLoading: Boolean(
+      (!selectedPageId && pageTreeQuery.isLoading) ||
+        (selectedPageId && pageTabsQuery.isLoading) ||
+        pageContentQuery.isLoading
+    ),
+    hasPageContentLoadError: pageContentQuery.isError,
+    isPageContentPermissionDenied: isForbiddenResponseError(
+      pageContentQuery.error
+    ),
+    isPageTreeMutating: pageTreeMutations.isPending,
+    pageTreeMutationError: pageTreeMutations.error,
+    onCreateGroupNode: (input) =>
+      pageTreeMutations.createGroup({
+        ...input,
+        parentId: resolvePageTreeParentId(input.parentId)
+      }),
+    onCreatePageNode: (input) =>
+      pageTreeMutations.createPage({
+        ...input,
+        parentId: resolvePageTreeParentId(input.parentId)
+      }),
+    onRenamePageNode: pageTreeMutations.renameNode,
+    onUpdatePageNodeMetadata: pageTreeMutations.updateNodeMetadata,
+    onMovePageNode: pageTreeMutations.moveNode,
+    onDeletePageNode: pageTreeMutations.deleteNode,
+    onRetryLoadPageTree: () => {
+      void pageTreeMutations;
+      void pageTreeQuery.refetch();
+    },
+    onRetryLoadPageContent: () => {
+      void pageContentQuery.refetch();
+    },
+    onRefreshPage: async () => {
+      await refreshCurrentFrontstagePage({
+        refreshPageContent: () =>
+          pageContentQuery.refetch({
+            cancelRefetch: true,
+            throwOnError: true
+          }),
+        refreshBlockRoots: () =>
+          blockRootsQuery.refetch({
+            cancelRefetch: true,
+            throwOnError: true
+          }),
+        refreshBlockRuntimeAssembly: blockId
+          ? () =>
+              blockRuntimeAssemblyQuery.refetch({
+                cancelRefetch: true,
+                throwOnError: true
+              })
+          : undefined
+      });
+    },
+    onNavigatePage: (nextPageId) => {
+      if (!rootNode?.slug) return;
+      void navigate(
+        nextPageId
+          ? {
+              to: FRONTSTAGE_SLUG_PAGE_PATH,
+              params: { slug: rootNode.slug, pageId: nextPageId }
+            }
+          : {
+              to: FRONTSTAGE_SLUG_PATH,
+              params: { slug: rootNode.slug }
+            }
+      );
+    },
+    onNavigateTab: (nextTab: FrontstagePageTab) => {
+      if (!selectedPageId) return;
+      if (!rootNode?.slug) return;
+      if (nextTab.is_default) {
         void navigate({
-          to: FRONTSTAGE_SLUG_PAGE_TAB_PATH,
-          params: {
-            slug: rootNode.slug,
-            pageId: selectedPageId,
-            tabRef: nextTab.route_segment
-          }
+          to: FRONTSTAGE_SLUG_PAGE_PATH,
+          params: { slug: rootNode.slug, pageId: selectedPageId }
         });
-      }}
-    />
-  );
+        return;
+      }
+      if (!nextTab.route_segment) return;
+      void navigate({
+        to: FRONTSTAGE_SLUG_PAGE_TAB_PATH,
+        params: {
+          slug: rootNode.slug,
+          pageId: selectedPageId,
+          tabRef: nextTab.route_segment
+        }
+      });
+    }
+  };
+
+  const page = <LazyFrontStagePage {...workspacePageProps} />;
 
   return (
-    <Suspense fallback={<LoadingState fullscreen />}>
+    <>
       {canonicalTabRedirect}
       <FrontstageWorkspaceShell
         key={JSON.stringify([navigationScope, sessionIdentity, workspaceId])}
-        {...page.props}
+        {...workspacePageProps}
       >
-        <RetainedFrontstagePages
-          statisticsScope={
-            actorId ? JSON.stringify([actorId, workspaceId]) : undefined
-          }
-          activeKey={JSON.stringify([
-            selectedPageId,
-            resolvedTabId ?? runtimeTarget?.tab_id ?? tabReference
-          ])}
-          pageTree={pageTreeQuery.data ?? pageTreeFromApi}
-        >
-          {page}
-        </RetainedFrontstagePages>
+        <Suspense fallback={<WorkspaceShellSkeleton mode="canvas-only" />}>
+          <RetainedFrontstagePages
+            statisticsScope={
+              actorId ? JSON.stringify([actorId, workspaceId]) : undefined
+            }
+            activeKey={JSON.stringify([
+              selectedPageId,
+              resolvedTabId ?? runtimeTarget?.tab_id ?? tabReference
+            ])}
+            pageTree={pageTreeQuery.data ?? pageTreeFromApi}
+          >
+            {page}
+          </RetainedFrontstagePages>
+        </Suspense>
       </FrontstageWorkspaceShell>
-    </Suspense>
+    </>
   );
 }

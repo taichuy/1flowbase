@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { build } from 'vite';
+import { publicSignInPlugin } from './public-sign-in';
 import {
   HeroArtwork,
   HeroTagline
@@ -24,6 +25,7 @@ export async function motionDocument(
     publicDir: false,
     root,
     logLevel: 'silent',
+    plugins: [publicSignInPlugin(root)],
     build: {
       write: false,
       copyPublicDir: false,

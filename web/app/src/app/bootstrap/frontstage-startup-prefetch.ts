@@ -1,5 +1,18 @@
+import {
+  getConsoleFrontstageBootstrap,
+  type ConsoleFrontstageBootstrapQuery,
+  type ConsoleFrontstageBootstrapResponse
+} from '@1flowbase/api-client';
 import { fetchPublicSystemMetadata } from '@1flowbase/api-client/auth';
 import type { QueryClient } from '@tanstack/react-query';
+
+import {
+  DEFAULT_BOOTSTRAP_VIEWPORT_CODE_LIMIT,
+  consumeEarlyConsoleNavigationFlight,
+  consumeEarlyFrontstageBootstrapFlight,
+  fetchWithConditionalBootstrapCache,
+  type EarlyBootstrapQuery
+} from './early-console-startup-handoff';
 
 import {
   fetchFrontstageBlockCatalog,
@@ -15,34 +28,57 @@ import {
 } from '../../features/frontstage/api/block-tree';
 import {
   fetchFrontstagePageContent,
-  frontstagePageContentQueryKey
+  frontstagePageContentQueryKey,
+  mapFrontstagePageContent
 } from '../../features/frontstage/api/page-content';
 import {
   fetchFrontstagePageTabs,
   frontstagePageTabsQueryKey
 } from '../../features/frontstage/api/page-tabs';
 import {
+  frontstagePageTreeQueryKey,
   frontstagePageTreeQueryOptions,
+  getFrontstageApiBaseUrl,
   type FrontstagePageTreeNode
 } from '../../features/frontstage/api/page-tree';
 import { fetchFrontstageRuntimeI18nCatalog } from '../../features/frontstage/api/runtime-i18n';
+import {
+  clearStartupPrefetchedBlockNodeCodes,
+  prefetchStartupBlockCodeEntries,
+  seedStartupPrefetchedBlockNodeCodes,
+  type StartupPrefetchedBlockCodeEntry
+} from '../../features/frontstage/api/startup-block-code-cache';
 import {
   getFirstTopLevelPageId,
   resolveSelectedPageId
 } from '../../features/frontstage/lib/page-tree';
 import { settingsConsoleNavigationQueryOptions } from '../../features/settings/api/console-navigation';
 import { systemMetadataQueryKey } from '../../shared/api/system-metadata';
+import {
+  getSeededPublicSystemMetadata,
+  getSeededPublicSystemMetadataUpdatedAt
+} from '../../shared/api/system-metadata-seed';
 import { resolveAuthenticatedLocale } from '../../shared/i18n/initial-locale';
 import { resolveAppLocale } from '../../shared/i18n/locales';
+import {
+  resolveRuntimeConcurrencyProfile,
+  type RuntimeConcurrencyProfile
+} from '../../shared/utils/runtime-concurrency-profile';
 import { useAuthStore, type AuthSnapshot } from '../../state/auth-store';
 import { selectNavigationQueryScope } from '../../state/navigation-query-scope';
 import { createApplicationQueryClient } from './authenticated-navigation';
+import {
+  loadFrontstageWorkspacePageModule,
+  preloadAuthenticatedStartupRuntime
+} from './authenticated-shell-preload';
 
 const NON_FRONTSTAGE_PATHNAME_RE =
   /^\/(?:settings|applications|me|sign-in|mcp|console|oauth)(?:\/|$)/u;
+const SIGN_IN_PATHNAME_RE = /^\/sign-in\/?$/u;
 
-const FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS = 5_000;
+const FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS = 30_000;
 const FRONTSTAGE_PAGE_TABS_STALE_TIME_MS = 30_000;
+const DEFAULT_CONTROL_GATE_TIMEOUT_MS = 5_000;
 
 interface ParsedFrontstageRoute {
   kind: 'home' | 'slug';
@@ -59,7 +95,40 @@ interface PrewarmedAuthenticatedClientSlot {
   cancelled: boolean;
 }
 
+interface FrontstageStartupHydrationResult {
+  targetPath: string;
+  prefetchedCodeEntries: ReadonlyArray<StartupPrefetchedBlockCodeEntry>;
+}
+
+interface ActiveHydrationRecord {
+  keys: Set<string>;
+  promise: Promise<FrontstageStartupHydrationResult>;
+}
+
 let prewarmedSlot: PrewarmedAuthenticatedClientSlot | null = null;
+const activeHydrationFlights = new WeakMap<
+  QueryClient,
+  ActiveHydrationRecord
+>();
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Startup transition stage timed out'));
+    }, timeoutMs);
+    (timer as { unref?: () => void }).unref?.();
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
 
 function safeDecodeSegment(value: string): string {
   try {
@@ -71,6 +140,44 @@ function safeDecodeSegment(value: string): string {
 
 export function isFrontstageCandidatePathname(pathname: string): boolean {
   return !NON_FRONTSTAGE_PATHNAME_RE.test(pathname);
+}
+
+function normalizeAuthenticatedStartupPathname(pathname: string): string {
+  return SIGN_IN_PATHNAME_RE.test(pathname) ? '/' : pathname;
+}
+
+export function isFrontstageBootstrapOwnedForState(
+  state: Pick<
+    ReturnType<typeof useAuthStore.getState>,
+    'sessionStatus' | 'actor' | 'me'
+  >,
+  pathname = typeof window !== 'undefined' ? window.location.pathname : '/'
+): boolean {
+  const effectivePathname = normalizeAuthenticatedStartupPathname(pathname);
+  return Boolean(
+    state.sessionStatus === 'authenticated' &&
+      state.actor?.current_workspace_id &&
+      state.me &&
+      isFrontstageCandidatePathname(effectivePathname)
+  );
+}
+
+export function clearFrontstageStartupHydrationState(
+  queryClient?: QueryClient
+): void {
+  if (queryClient) {
+    activeHydrationFlights.delete(queryClient);
+  }
+  clearStartupPrefetchedBlockNodeCodes();
+}
+
+function buildHydrationKey(
+  scope: string,
+  workspaceId: string,
+  actorId: string,
+  pathname: string
+): string {
+  return JSON.stringify([scope, workspaceId, actorId, pathname]);
 }
 
 function parseFrontstagePathname(
@@ -118,13 +225,336 @@ function resolvePrefetchTargetPage(
   if (!parsed.pageId) {
     return getFirstTopLevelPageId(scopedTree);
   }
+  if (!containsPageNode(scopedTree, parsed.pageId)) {
+    return null;
+  }
   return resolveSelectedPageId({
     pageId: parsed.pageId,
     pageTree: scopedTree
   }).selectedPageId;
 }
 
-function runFrontstagePrefetchPass({
+function resolveCanonicalFrontstageLanding(
+  nodes: readonly FrontstagePageTreeNode[]
+): { targetPath: string; selectedPageId: string | null } {
+  const rootNode = nodes.find(
+    (node) => node.placement === 'topbar' && Boolean(node.slug)
+  );
+  if (!rootNode?.slug) {
+    return { targetPath: '/me', selectedPageId: null };
+  }
+  const encodedSlug = encodeURIComponent(rootNode.slug);
+  if (rootNode.kind === 'page') {
+    return { targetPath: `/${encodedSlug}`, selectedPageId: rootNode.id };
+  }
+  const firstPageId = getFirstTopLevelPageId(rootNode.children);
+  if (firstPageId) {
+    return {
+      targetPath: `/${encodedSlug}/pages/${encodeURIComponent(firstPageId)}`,
+      selectedPageId: firstPageId
+    };
+  }
+  return { targetPath: `/${encodedSlug}`, selectedPageId: null };
+}
+
+function extractRootBlockIds(roots: unknown): string[] {
+  if (!Array.isArray(roots)) return [];
+  return roots
+    .map((item) =>
+      item && typeof item === 'object' && 'block_id' in item
+        ? (item as { block_id?: unknown }).block_id
+        : undefined
+    )
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+}
+
+function seedSupportingFrontstageQueries({
+  queryClient,
+  workspaceId,
+  actorId,
+  me,
+  deferSupportingCatalogs = false
+}: {
+  queryClient: QueryClient;
+  workspaceId: string;
+  actorId: string;
+  me: NonNullable<AuthSnapshot['me']>;
+  deferSupportingCatalogs?: boolean;
+}): () => void {
+  const permissionFingerprint =
+    createFrontstageBlockCatalogPermissionFingerprint(me);
+  const sortedPermissions = me.permissions.slice().sort().join(',');
+  const locale = resolveAppLocale(resolveAuthenticatedLocale(me));
+
+  const seededMetadata = getSeededPublicSystemMetadata();
+  if (
+    seededMetadata?.system_name !== undefined &&
+    seededMetadata?.hide_login_tagline !== undefined &&
+    getSeededPublicSystemMetadataUpdatedAt() > 0
+  ) {
+    if (!queryClient.getQueryData(systemMetadataQueryKey)) {
+      queryClient.setQueryData(systemMetadataQueryKey, seededMetadata, {
+        updatedAt: getSeededPublicSystemMetadataUpdatedAt()
+      });
+    }
+  } else {
+    void queryClient.prefetchQuery({
+      queryKey: systemMetadataQueryKey,
+      queryFn: fetchPublicSystemMetadata,
+      staleTime: 60_000
+    });
+  }
+
+  let catalogStarted = false;
+  const runSupportingCatalogs = () => {
+    if (catalogStarted) return;
+    catalogStarted = true;
+    void queryClient.prefetchQuery({
+      queryKey: frontstageBlockCatalogQueryKey({
+        workspaceId,
+        actorId,
+        permissionFingerprint
+      }),
+      queryFn: () => fetchFrontstageBlockCatalog(),
+      staleTime: frontstageBlockCatalogQueryStaleTime
+    });
+
+    void queryClient.prefetchQuery({
+      queryKey: [
+        'frontstage',
+        workspaceId,
+        'runtime-i18n',
+        actorId,
+        sortedPermissions,
+        locale
+      ],
+      queryFn: () => fetchFrontstageRuntimeI18nCatalog(locale),
+      staleTime: 5 * 60 * 1000
+    });
+  };
+
+  if (!deferSupportingCatalogs) {
+    runSupportingCatalogs();
+  }
+  return runSupportingCatalogs;
+}
+
+function toBootstrapQuery(
+  parsed: ParsedFrontstageRoute | null
+): ConsoleFrontstageBootstrapQuery & EarlyBootstrapQuery {
+  if (!parsed || parsed.kind === 'home') {
+    return { code_limit: DEFAULT_BOOTSTRAP_VIEWPORT_CODE_LIMIT };
+  }
+  return {
+    ...(parsed.slug ? { slug: parsed.slug } : {}),
+    ...(parsed.pageId ? { page_id: parsed.pageId } : {}),
+    ...(parsed.tabRef ? { tab_reference: parsed.tabRef } : {}),
+    code_limit: DEFAULT_BOOTSTRAP_VIEWPORT_CODE_LIMIT
+  };
+}
+
+function prefetchSettingsConsoleNavigationWithEarlyHandoff(
+  queryClient: QueryClient,
+  actor: NonNullable<AuthSnapshot['actor']>,
+  scope: string
+): void {
+  const baseOptions = settingsConsoleNavigationQueryOptions(scope);
+  const earlyNavFlight = consumeEarlyConsoleNavigationFlight<
+    Awaited<ReturnType<NonNullable<typeof baseOptions.queryFn>>>
+  >(actor.id, actor.current_workspace_id, actor.effective_display_role ?? '');
+  if (earlyNavFlight) {
+    void queryClient.prefetchQuery({
+      ...baseOptions,
+      queryFn: () => earlyNavFlight
+    });
+    return;
+  }
+  void queryClient.prefetchQuery(baseOptions);
+}
+
+async function tryHydrateFromBootstrapEndpoint({
+  queryClient,
+  actorId,
+  workspaceId,
+  role,
+  locale,
+  scope,
+  parsedRoute,
+  isCancelled
+}: {
+  queryClient: QueryClient;
+  actorId: string;
+  workspaceId: string;
+  role: string;
+  locale: string;
+  scope: string;
+  parsedRoute: ParsedFrontstageRoute | null;
+  isCancelled: () => boolean;
+}): Promise<{
+  hydrated: boolean;
+  targetPath: string;
+  prefetchedCodeEntries: ReadonlyArray<StartupPrefetchedBlockCodeEntry>;
+}> {
+  try {
+    const query = toBootstrapQuery(parsedRoute);
+    const earlyFlight =
+      consumeEarlyFrontstageBootstrapFlight<ConsoleFrontstageBootstrapResponse>(
+        actorId,
+        workspaceId,
+        role,
+        query
+      );
+    const payload = earlyFlight
+      ? await earlyFlight
+      : import.meta.env.VITEST
+        ? await getConsoleFrontstageBootstrap(query, getFrontstageApiBaseUrl())
+        : await fetchWithConditionalBootstrapCache<ConsoleFrontstageBootstrapResponse>(
+            {
+              actorId,
+              workspaceId,
+              role,
+              locale,
+              query,
+              baseUrl: getFrontstageApiBaseUrl()
+            }
+          );
+    if (isCancelled() || !Array.isArray(payload?.pages)) {
+      return { hydrated: false, targetPath: '/', prefetchedCodeEntries: [] };
+    }
+    const pageTree = payload.pages as FrontstagePageTreeNode[];
+    const treeKey = frontstagePageTreeQueryKey(workspaceId, scope);
+    queryClient.setQueryDefaults(treeKey, {
+      staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
+    });
+    queryClient.setQueryData(treeKey, pageTree);
+
+    const landing = resolveCanonicalFrontstageLanding(pageTree);
+    const targetPath = landing.targetPath;
+    const selectedPageId = payload.resolved_page_id;
+
+    if (!selectedPageId) {
+      // Requested slug/page_id was invisible or missing: never write empty payload.tabs
+      // onto landing.selectedPageId. If a default landing page exists, let fallback
+      // hydrate that landing page cleanly using the already-seeded pageTree cache.
+      return {
+        hydrated: !landing.selectedPageId,
+        targetPath,
+        prefetchedCodeEntries: []
+      };
+    }
+
+    const resolvedTargetPath =
+      parsedRoute && parsedRoute.kind !== 'home'
+        ? targetPathFromResolvedSelection(pageTree, selectedPageId) ?? targetPath
+        : targetPath;
+
+    const tabsKey = frontstagePageTabsQueryKey(workspaceId, selectedPageId);
+    queryClient.setQueryDefaults(tabsKey, {
+      staleTime: FRONTSTAGE_PAGE_TABS_STALE_TIME_MS
+    });
+    if (Array.isArray(payload.tabs)) {
+      queryClient.setQueryData(tabsKey, payload.tabs);
+    }
+
+    if (payload.page_detail) {
+      const mappedContent = mapFrontstagePageContent(payload.page_detail);
+      const tabId = payload.page_detail.tab.id;
+      const contentKeyById = frontstagePageContentQueryKey(
+        workspaceId,
+        selectedPageId,
+        tabId
+      );
+      queryClient.setQueryDefaults(contentKeyById, {
+        staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
+      });
+      queryClient.setQueryData(contentKeyById, mappedContent);
+      if (parsedRoute?.tabRef && parsedRoute.tabRef !== tabId) {
+        const contentKeyByRef = frontstagePageContentQueryKey(
+          workspaceId,
+          selectedPageId,
+          parsedRoute.tabRef
+        );
+        queryClient.setQueryDefaults(contentKeyByRef, {
+          staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
+        });
+        queryClient.setQueryData(contentKeyByRef, mappedContent);
+      }
+    }
+
+    const resolvedTabId = payload.resolved_tab_id;
+    let prefetchedCodeEntries: ReadonlyArray<StartupPrefetchedBlockCodeEntry> =
+      [];
+    if (resolvedTabId && Array.isArray(payload.block_roots)) {
+      const rootsKey = frontstageBlockTreeQueryKeys.roots(
+        workspaceId,
+        selectedPageId,
+        { tab_id: resolvedTabId }
+      );
+      queryClient.setQueryDefaults(rootsKey, {
+        staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
+      });
+      queryClient.setQueryData(rootsKey, payload.block_roots);
+
+      if (Array.isArray(payload.block_codes)) {
+        prefetchedCodeEntries = seedStartupPrefetchedBlockNodeCodes({
+          actorId,
+          workspaceId,
+          pageId: selectedPageId,
+          codes: payload.block_codes
+        });
+      }
+    }
+
+    return {
+      hydrated: true,
+      targetPath: resolvedTargetPath,
+      prefetchedCodeEntries
+    };
+  } catch {
+    return { hydrated: false, targetPath: '/', prefetchedCodeEntries: [] };
+  }
+}
+
+function targetPathFromResolvedSelection(
+  nodes: readonly FrontstagePageTreeNode[],
+  pageId: string
+): string | null {
+  for (const rootNode of nodes) {
+    if (rootNode.placement !== 'topbar' || !rootNode.slug) continue;
+    const encodedSlug = encodeURIComponent(rootNode.slug);
+    if (rootNode.kind === 'page' && rootNode.id === pageId) {
+      return `/${encodedSlug}`;
+    }
+    if (containsPageNode(rootNode.children, pageId)) {
+      return `/${encodedSlug}/pages/${encodeURIComponent(pageId)}`;
+    }
+  }
+  return null;
+}
+
+function containsPageNode(
+  nodes: readonly FrontstagePageTreeNode[],
+  pageId: string
+): boolean {
+  for (const node of nodes) {
+    if (node.kind === 'page' && node.id === pageId) return true;
+    if (node.children.length > 0 && containsPageNode(node.children, pageId)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Single authoritative Frontstage startup control-plane owner shared across
+ * `prewarmAuthenticatedStartup` (session discovery), `startFrontstageStartupPrefetch`
+ * (`AuthenticatedStartup` `useLayoutEffect`), and `prepareAuthenticatedStartupMount`
+ * (`AuthenticatedStartup` `useEffect`).
+ *
+ * Uses 1-RTT `GET /api/console/frontstage/bootstrap` first and falls back to
+ * stepwise `/pages -> /tabs -> /document + /blocks -> /code` only on error.
+ */
+function ensureFrontstageStartupHydration({
   queryClient,
   actor,
   me,
@@ -132,7 +562,10 @@ function runFrontstagePrefetchPass({
   pathname,
   isCurrent,
   preloadWorkspaceRoute,
-  preloadHomeRoute
+  preloadHomeRoute,
+  deferRoutePreloads = false,
+  deferSupportingCatalogs = false,
+  useBootstrapEndpoint = true
 }: {
   queryClient: QueryClient;
   actor: AuthSnapshot['actor'];
@@ -142,58 +575,144 @@ function runFrontstagePrefetchPass({
   isCurrent: () => boolean;
   preloadWorkspaceRoute: () => Promise<unknown>;
   preloadHomeRoute: () => Promise<unknown>;
-}): void {
+  deferRoutePreloads?: boolean;
+  deferSupportingCatalogs?: boolean;
+  useBootstrapEndpoint?: boolean;
+}): Promise<FrontstageStartupHydrationResult> {
+  const effectivePathname = normalizeAuthenticatedStartupPathname(pathname);
   const workspaceId = actor.current_workspace_id;
-  if (!workspaceId || !isFrontstageCandidatePathname(pathname)) return;
-
-  const permissionFingerprint =
-    createFrontstageBlockCatalogPermissionFingerprint(me);
-  const sortedPermissions = me.permissions.slice().sort().join(',');
-  const locale = resolveAppLocale(resolveAuthenticatedLocale(me));
-
-  void preloadWorkspaceRoute().catch(() => undefined);
-  if (pathname === '/') {
-    void preloadHomeRoute().catch(() => undefined);
+  if (!workspaceId || !isFrontstageCandidatePathname(effectivePathname)) {
+    return Promise.resolve({
+      targetPath: workspaceId ? effectivePathname : '/me',
+      prefetchedCodeEntries: []
+    });
   }
 
-  void queryClient.prefetchQuery({
-    queryKey: systemMetadataQueryKey,
-    queryFn: fetchPublicSystemMetadata,
-    staleTime: 60_000
+  const initialKey = buildHydrationKey(
+    scope,
+    workspaceId,
+    actor.id,
+    effectivePathname
+  );
+  const existing = activeHydrationFlights.get(queryClient);
+  if (existing?.keys.has(initialKey)) {
+    let preloaded = false;
+    if (!deferRoutePreloads && isCurrent()) {
+      preloaded = true;
+      void preloadWorkspaceRoute().catch(() => undefined);
+      if (effectivePathname === '/') {
+        void preloadHomeRoute().catch(() => undefined);
+      }
+    }
+    if (!preloaded) {
+      void existing.promise.finally(() => {
+        if (!isCurrent()) return;
+        void preloadWorkspaceRoute().catch(() => undefined);
+        if (effectivePathname === '/') {
+          void preloadHomeRoute().catch(() => undefined);
+        }
+      });
+    }
+    return existing.promise;
+  }
+
+  let preloadedRoutes = false;
+  const triggerRoutePreloads = () => {
+    if (preloadedRoutes || !isCurrent()) return;
+    preloadedRoutes = true;
+    void preloadWorkspaceRoute().catch(() => undefined);
+    if (effectivePathname === '/') {
+      void preloadHomeRoute().catch(() => undefined);
+    }
+  };
+  if (!deferRoutePreloads) {
+    triggerRoutePreloads();
+  }
+
+  const flushSupportingCatalogs = seedSupportingFrontstageQueries({
+    queryClient,
+    workspaceId,
+    actorId: actor.id,
+    me,
+    deferSupportingCatalogs
   });
 
-  void queryClient.prefetchQuery({
-    queryKey: frontstageBlockCatalogQueryKey({
-      workspaceId,
-      actorId: actor.id,
-      permissionFingerprint
-    }),
-    queryFn: () => fetchFrontstageBlockCatalog(),
-    staleTime: frontstageBlockCatalogQueryStaleTime
-  });
+  const parsedRoute = parseFrontstagePathname(effectivePathname);
+  if (!parsedRoute) {
+    flushSupportingCatalogs();
+    triggerRoutePreloads();
+    return Promise.resolve({
+      targetPath: effectivePathname,
+      prefetchedCodeEntries: []
+    });
+  }
 
-  void queryClient.prefetchQuery({
-    queryKey: [
-      'frontstage',
-      workspaceId,
-      'runtime-i18n',
-      actor.id,
-      sortedPermissions,
-      locale
-    ],
-    queryFn: () => fetchFrontstageRuntimeI18nCatalog(locale),
-    staleTime: 5 * 60 * 1000
-  });
+  const keys = new Set<string>([initialKey]);
+  const promise = (async (): Promise<FrontstageStartupHydrationResult> => {
+    try {
+      if (useBootstrapEndpoint) {
+        const bootstrapResult = await tryHydrateFromBootstrapEndpoint({
+          queryClient,
+          actorId: actor.id,
+          workspaceId,
+          role: actor.effective_display_role ?? '',
+          locale: me.preferred_locale ?? 'default',
+          scope,
+          parsedRoute,
+          isCancelled: () => !isCurrent()
+        });
+        if (bootstrapResult.hydrated) {
+          keys.add(
+            buildHydrationKey(
+              scope,
+              workspaceId,
+              actor.id,
+              bootstrapResult.targetPath
+            )
+          );
+          if (
+            bootstrapResult.prefetchedCodeEntries.length > 0 &&
+            !import.meta.env.VITEST &&
+            isCurrent()
+          ) {
+            void import(
+              '../../features/frontstage/lib/runtime-cache/block-code-prefetch'
+            )
+              .then(({ prewarmStartupBlockRuntime }) => {
+                if (isCurrent()) {
+                  prewarmStartupBlockRuntime(
+                    bootstrapResult.prefetchedCodeEntries
+                  );
+                }
+              })
+              .catch(() => undefined);
+          }
+          return {
+            targetPath: bootstrapResult.targetPath,
+            prefetchedCodeEntries: bootstrapResult.prefetchedCodeEntries
+          };
+        }
+      }
 
-  const parsedRoute = parseFrontstagePathname(pathname);
-  if (!parsedRoute) return;
+      const pageTree = await queryClient.fetchQuery(
+        frontstagePageTreeQueryOptions(workspaceId, scope)
+      );
+      if (!isCurrent()) {
+        return { targetPath: effectivePathname, prefetchedCodeEntries: [] };
+      }
+      const landing = resolveCanonicalFrontstageLanding(pageTree);
+      const selectedPageId =
+        resolvePrefetchTargetPage(pageTree, parsedRoute) ??
+        landing.selectedPageId;
+      const targetPath =
+        (selectedPageId
+          ? targetPathFromResolvedSelection(pageTree, selectedPageId)
+          : null) ?? landing.targetPath;
+      keys.add(buildHydrationKey(scope, workspaceId, actor.id, targetPath));
 
-  void queryClient
-    .fetchQuery(frontstagePageTreeQueryOptions(workspaceId, scope))
-    .then(async (pageTree) => {
-      if (!isCurrent()) return;
-      const selectedPageId = resolvePrefetchTargetPage(pageTree, parsedRoute);
-      if (!selectedPageId) return;
+      if (!selectedPageId) {
+        return { targetPath, prefetchedCodeEntries: [] };
+      }
 
       const tabsKey = frontstagePageTabsQueryKey(workspaceId, selectedPageId);
       queryClient.setQueryDefaults(tabsKey, {
@@ -204,7 +723,9 @@ function runFrontstagePrefetchPass({
         queryFn: () => fetchFrontstagePageTabs(workspaceId, selectedPageId),
         staleTime: FRONTSTAGE_PAGE_TABS_STALE_TIME_MS
       });
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return { targetPath, prefetchedCodeEntries: [] };
+      }
 
       const defaultTabs = tabs.filter((tab) => tab.is_default);
       const defaultTab = defaultTabs.length === 1 ? defaultTabs[0] : undefined;
@@ -217,6 +738,7 @@ function runFrontstagePrefetchPass({
         : defaultTab;
       const tabReference = parsedRoute.tabRef ?? defaultTab?.id;
 
+      const dataFlights: Array<Promise<unknown>> = [];
       if (tabReference) {
         const contentKey = frontstagePageContentQueryKey(
           workspaceId,
@@ -226,18 +748,22 @@ function runFrontstagePrefetchPass({
         queryClient.setQueryDefaults(contentKey, {
           staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
         });
-        void queryClient.prefetchQuery({
-          queryKey: contentKey,
-          queryFn: () =>
-            fetchFrontstagePageContent(
-              workspaceId,
-              selectedPageId,
-              tabReference
-            ),
-          staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
-        });
+        dataFlights.push(
+          queryClient.fetchQuery({
+            queryKey: contentKey,
+            queryFn: () =>
+              fetchFrontstagePageContent(
+                workspaceId,
+                selectedPageId,
+                tabReference
+              ),
+            staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
+          })
+        );
       }
 
+      let prefetchedCodeEntries: ReadonlyArray<StartupPrefetchedBlockCodeEntry> =
+        [];
       if (matchedTab?.id) {
         const rootsKey = frontstageBlockTreeQueryKeys.roots(
           workspaceId,
@@ -247,31 +773,59 @@ function runFrontstagePrefetchPass({
         queryClient.setQueryDefaults(rootsKey, {
           staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
         });
-        void queryClient.prefetchQuery({
-          queryKey: rootsKey,
-          queryFn: () =>
-            fetchFrontstageBlockRoots(workspaceId, selectedPageId, {
-              tab_id: matchedTab.id
-            }),
-          staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
-        });
+        dataFlights.push(
+          queryClient
+            .fetchQuery({
+              queryKey: rootsKey,
+              queryFn: () =>
+                fetchFrontstageBlockRoots(workspaceId, selectedPageId, {
+                  tab_id: matchedTab.id
+                }),
+              staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
+            })
+            .then((roots) => {
+              if (!isCurrent()) return;
+              const blockIds = extractRootBlockIds(roots);
+              if (blockIds.length === 0) return;
+              prefetchedCodeEntries = prefetchStartupBlockCodeEntries({
+                actorId: actor.id,
+                workspaceId,
+                pageId: selectedPageId,
+                blockIds
+              });
+              if (!import.meta.env.VITEST) {
+                void import(
+                  '../../features/frontstage/lib/runtime-cache/block-code-prefetch'
+                )
+                  .then(({ prewarmStartupBlockRuntime }) => {
+                    if (isCurrent()) {
+                      prewarmStartupBlockRuntime(prefetchedCodeEntries);
+                    }
+                  })
+                  .catch(() => undefined);
+              }
+            })
+        );
       }
-    })
-    .catch(() => undefined);
+
+      await Promise.allSettled(dataFlights);
+      return { targetPath, prefetchedCodeEntries };
+    } finally {
+      if (isCurrent()) {
+        flushSupportingCatalogs();
+        triggerRoutePreloads();
+      }
+    }
+  })();
+
+  const record: ActiveHydrationRecord = { keys, promise };
+  activeHydrationFlights.set(queryClient, record);
+  return promise;
 }
 
-/**
- * Starts authenticated navigation + frontstage prefetches as soon as session
- * discovery settles, overlapping network I/O with React/Antd chunk evaluation.
- */
-export function prewarmAuthenticatedStartup(
-  snapshot: AuthSnapshot,
-  options: {
-    getPathname?: () => string;
-    preloadWorkspaceRoute?: () => Promise<unknown>;
-    preloadHomeRoute?: () => Promise<unknown>;
-  } = {}
-): QueryClient {
+function createPrewarmedSlot(
+  snapshot: AuthSnapshot
+): { slot: PrewarmedAuthenticatedClientSlot; scope: string } {
   discardPrewarmedAuthenticatedQueryClient();
   const queryClient = createApplicationQueryClient();
   const workspaceId = snapshot.actor.current_workspace_id ?? '';
@@ -283,7 +837,6 @@ export function prewarmAuthenticatedStartup(
     cancelled: false
   };
   prewarmedSlot = slot;
-
   const scope = selectNavigationQueryScope({
     ...useAuthStore.getState(),
     sessionStatus: 'authenticated',
@@ -292,23 +845,175 @@ export function prewarmAuthenticatedStartup(
     me: snapshot.me,
     availableRoles: snapshot.availableRoles ?? []
   });
-  void queryClient.prefetchQuery(settingsConsoleNavigationQueryOptions(scope));
-  if (workspaceId) {
-    void queryClient.prefetchQuery(
-      frontstagePageTreeQueryOptions(workspaceId, scope)
-    );
+  return { slot, scope };
+}
+
+export interface PrepareAuthenticatedStartupMountOptions {
+  getPathname?: () => string;
+  controlTimeoutMs?: number;
+  concurrencyProfile?: RuntimeConcurrencyProfile;
+  preloadShellAndRoute?: (targetPath: string) => Promise<void>;
+  preloadWorkspaceRoute?: () => Promise<unknown>;
+  preloadHomeRoute?: () => Promise<unknown>;
+  useBootstrapEndpoint?: boolean;
+}
+
+export async function prepareAuthenticatedStartupMount(
+  queryClient: QueryClient,
+  isCancelled: () => boolean,
+  options: PrepareAuthenticatedStartupMountOptions = {}
+): Promise<{ targetPath: string }> {
+  const state = useAuthStore.getState();
+  if (state.sessionStatus !== 'authenticated' || !state.actor) {
+    return { targetPath: '/sign-in' };
   }
 
-  if (snapshot.me && workspaceId) {
-    const pathname =
-      options.getPathname?.() ??
-      (typeof window !== 'undefined' ? window.location.pathname : '/');
+  const profile =
+    options.concurrencyProfile ?? resolveRuntimeConcurrencyProfile();
+  const rawPathname =
+    options.getPathname?.() ??
+    (typeof window !== 'undefined' ? window.location.pathname : '/');
+  let targetPathname = normalizeAuthenticatedStartupPathname(rawPathname);
+  const locale = resolveAppLocale(resolveAuthenticatedLocale(state.me));
+  const scope = selectNavigationQueryScope(state);
+  const isFrontstageTarget = isFrontstageCandidatePathname(targetPathname);
+  const preloadWorkspaceRoute =
+    options.preloadWorkspaceRoute ?? (() => loadFrontstageWorkspacePageModule());
+  const preloadHomeRoute =
+    options.preloadHomeRoute ?? (() => import('../../routes/HomeRedirect'));
+
+  prefetchSettingsConsoleNavigationWithEarlyHandoff(
+    queryClient,
+    state.actor,
+    scope
+  );
+
+  // SRPT Two-Stage Static Loading in PROD:
+  // Stage-A (`preloadAuthenticatedStartupRuntime`: shell-core + active locale dictionary +
+  // frontstage-shell) enters the HTTP/2 pipe FIRST alongside the 1-RTT bootstrap API so tiny
+  // ~0.6 kB i18n and JSON responses never queue behind 160 kB `native-host`.
+  // Stage-B (`preloadWorkspaceRoute`: frontstage-canvas + native-host) chains immediately
+  // after Stage-A settles. Compiler Worker stays 100% lazy until an `artifactCache` miss.
+  let parallelRuntimeFlight: Promise<unknown> | null = null;
+  if (profile.parallelStartupAssetAndControl) {
+    parallelRuntimeFlight = options.preloadShellAndRoute
+      ? options.preloadShellAndRoute(targetPathname)
+      : preloadAuthenticatedStartupRuntime(locale, targetPathname);
+    if (isFrontstageTarget) {
+      void parallelRuntimeFlight.finally(() => {
+        if (!isCancelled()) {
+          void preloadWorkspaceRoute().catch(() => undefined);
+        }
+      });
+    }
+  }
+
+  if (isFrontstageTarget && state.me) {
+    const hydrationFlight = ensureFrontstageStartupHydration({
+      queryClient,
+      actor: state.actor,
+      me: state.me,
+      scope,
+      pathname: rawPathname,
+      isCurrent: () => !isCancelled(),
+      preloadWorkspaceRoute,
+      preloadHomeRoute,
+      deferRoutePreloads: true,
+      deferSupportingCatalogs: !profile.parallelStartupAssetAndControl,
+      useBootstrapEndpoint: options.useBootstrapEndpoint ?? true
+    });
+    const settled = await withTimeout(
+      hydrationFlight,
+      options.controlTimeoutMs ?? DEFAULT_CONTROL_GATE_TIMEOUT_MS
+    ).catch(() => null);
+    if (isCancelled()) return { targetPath: targetPathname };
+
+    if (settled?.targetPath) {
+      if (
+        !options.getPathname &&
+        typeof window !== 'undefined' &&
+        (window.location.pathname === '/' ||
+          SIGN_IN_PATHNAME_RE.test(window.location.pathname)) &&
+        settled.targetPath !== window.location.pathname
+      ) {
+        window.history.replaceState(
+          window.history.state,
+          '',
+          settled.targetPath
+        );
+      }
+      targetPathname = settled.targetPath;
+    }
+  } else if (state.actor.current_workspace_id) {
+    await withTimeout(
+      queryClient.prefetchQuery(
+        frontstagePageTreeQueryOptions(state.actor.current_workspace_id, scope)
+      ),
+      options.controlTimeoutMs ?? DEFAULT_CONTROL_GATE_TIMEOUT_MS
+    ).catch(() => undefined);
+    if (isCancelled()) return { targetPath: targetPathname };
+  }
+
+  if (options.preloadShellAndRoute) {
+    if (parallelRuntimeFlight) {
+      await parallelRuntimeFlight;
+    } else {
+      await options.preloadShellAndRoute(targetPathname);
+    }
+    return { targetPath: targetPathname };
+  }
+
+  if (isFrontstageCandidatePathname(targetPathname) && state.me) {
+    void preloadWorkspaceRoute().catch(() => undefined);
+  }
+  if (parallelRuntimeFlight) {
+    await parallelRuntimeFlight;
+    return { targetPath: targetPathname };
+  }
+  await preloadAuthenticatedStartupRuntime(locale, targetPathname);
+  return { targetPath: targetPathname };
+}
+
+/**
+ * Starts authenticated navigation + 1-RTT Frontstage bootstrap as soon as session
+ * discovery settles, overlapping network I/O with React/Antd chunk evaluation.
+ */
+export function prewarmAuthenticatedStartup(
+  snapshot: AuthSnapshot,
+  options: {
+    getPathname?: () => string;
+    preloadWorkspaceRoute?: () => Promise<unknown>;
+    preloadHomeRoute?: () => Promise<unknown>;
+    concurrencyProfile?: RuntimeConcurrencyProfile;
+    useBootstrapEndpoint?: boolean;
+  } = {}
+): QueryClient {
+  const profile =
+    options.concurrencyProfile ?? resolveRuntimeConcurrencyProfile();
+  const { slot, scope } = createPrewarmedSlot(snapshot);
+  const { queryClient, workspaceId } = slot;
+  const pathname =
+    options.getPathname?.() ??
+    (typeof window !== 'undefined' ? window.location.pathname : '/');
+  const effectivePathname = normalizeAuthenticatedStartupPathname(pathname);
+
+  prefetchSettingsConsoleNavigationWithEarlyHandoff(
+    queryClient,
+    snapshot.actor,
+    scope
+  );
+
+  if (
+    snapshot.me &&
+    workspaceId &&
+    isFrontstageCandidatePathname(effectivePathname)
+  ) {
     const preloadWorkspaceRoute =
       options.preloadWorkspaceRoute ??
       (() => import('../../features/frontstage/pages/FrontstageWorkspacePage'));
     const preloadHomeRoute =
       options.preloadHomeRoute ?? (() => import('../../routes/HomeRedirect'));
-    runFrontstagePrefetchPass({
+    void ensureFrontstageStartupHydration({
       queryClient,
       actor: snapshot.actor,
       me: snapshot.me,
@@ -316,8 +1021,18 @@ export function prewarmAuthenticatedStartup(
       pathname,
       isCurrent: () => !slot.cancelled,
       preloadWorkspaceRoute,
-      preloadHomeRoute
+      preloadHomeRoute,
+      deferRoutePreloads: !options.preloadWorkspaceRoute && !import.meta.env.VITEST,
+      deferSupportingCatalogs:
+        !profile.parallelStartupAssetAndControl &&
+        !options.preloadWorkspaceRoute &&
+        !import.meta.env.VITEST,
+      useBootstrapEndpoint: options.useBootstrapEndpoint ?? true
     });
+  } else if (workspaceId) {
+    void queryClient.prefetchQuery(
+      frontstagePageTreeQueryOptions(workspaceId, scope)
+    );
   }
 
   return queryClient;
@@ -351,10 +1066,12 @@ export function commitPrewarmedAuthenticatedQueryClient(
 }
 
 export function discardPrewarmedAuthenticatedQueryClient(): void {
+  clearStartupPrefetchedBlockNodeCodes();
   if (!prewarmedSlot) return;
   const slot = prewarmedSlot;
   prewarmedSlot = null;
   slot.cancelled = true;
+  activeHydrationFlights.delete(slot.queryClient);
   slot.queryClient.clear();
 }
 
@@ -364,8 +1081,12 @@ export function startFrontstageStartupPrefetch(
     getPathname?: () => string;
     preloadWorkspaceRoute?: () => Promise<unknown>;
     preloadHomeRoute?: () => Promise<unknown>;
+    concurrencyProfile?: RuntimeConcurrencyProfile;
+    useBootstrapEndpoint?: boolean;
   } = {}
 ): () => void {
+  const profile =
+    options.concurrencyProfile ?? resolveRuntimeConcurrencyProfile();
   const getPathname =
     options.getPathname ??
     (() => (typeof window !== 'undefined' ? window.location.pathname : '/'));
@@ -380,12 +1101,14 @@ export function startFrontstageStartupPrefetch(
 
   const synchronize = () => {
     const state = useAuthStore.getState();
-    const pathname = getPathname();
+    const rawPathname = getPathname();
+    const effectivePathname =
+      normalizeAuthenticatedStartupPathname(rawPathname);
     if (
       state.sessionStatus !== 'authenticated' ||
       !state.actor ||
       !state.me ||
-      !isFrontstageCandidatePathname(pathname)
+      !isFrontstageCandidatePathname(effectivePathname)
     ) {
       if (previousFingerprint !== null) {
         activeGeneration += 1;
@@ -407,7 +1130,7 @@ export function startFrontstageStartupPrefetch(
       workspaceId,
       permissionFingerprint,
       locale,
-      pathname
+      effectivePathname
     ]);
     if (fingerprint === previousFingerprint) return;
     previousFingerprint = fingerprint;
@@ -422,15 +1145,24 @@ export function startFrontstageStartupPrefetch(
       );
     };
 
-    runFrontstagePrefetchPass({
+    void ensureFrontstageStartupHydration({
       queryClient,
       actor,
       me,
       scope,
-      pathname,
+      pathname: rawPathname,
       isCurrent,
       preloadWorkspaceRoute,
-      preloadHomeRoute
+      preloadHomeRoute,
+      deferRoutePreloads:
+        !profile.parallelStartupAssetAndControl &&
+        !options.preloadWorkspaceRoute &&
+        !import.meta.env.VITEST,
+      deferSupportingCatalogs:
+        !profile.parallelStartupAssetAndControl &&
+        !options.preloadWorkspaceRoute &&
+        !import.meta.env.VITEST,
+      useBootstrapEndpoint: options.useBootstrapEndpoint ?? true
     });
   };
 

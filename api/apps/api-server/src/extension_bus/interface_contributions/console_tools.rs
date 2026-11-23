@@ -114,6 +114,8 @@ pub(super) fn contributions(
             crate::routes::frontstage::interface_pages::compile_registry(
                 crate::routes::frontstage::interface_pages::FrontstagePagesDependencies {
                     navigation_cache: control_plane::navigation_cache::NavigationCache(state.infrastructure.cache_store()),
+                    block_code_cache: control_plane::frontstage::BlockCodeCache(state.infrastructure.cache_store()),
+                    console_operation_registry: Arc::clone(&state.console_operation_registry),
                     store: state.store.clone(),
                     bootstrap_workspace_id: state.bootstrap_workspace_id,
                     api_node_id: state.api_node_id.clone(),

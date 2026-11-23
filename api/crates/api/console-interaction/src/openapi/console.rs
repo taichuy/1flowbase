@@ -110,6 +110,7 @@ struct Paths136;
 
 #[derive(OpenApi)]
 #[openapi(paths(
+    crate::routes::frontstage::bootstrap::get_frontstage_bootstrap,
     crate::routes::frontstage::list_frontstage_pages,
     crate::routes::frontstage::create_frontstage_group,
     crate::routes::frontstage::create_frontstage_page,
@@ -227,6 +228,7 @@ struct Schemas84;
     crate::routes::session::SwitchActiveRoleBody,
     crate::routes::session::AvailableRoleResponse,
     crate::routes::session::SessionResponse,
+    crate::routes::frontstage::bootstrap::FrontstageBootstrapResponse,
     crate::routes::frontstage::CreateFrontstageGroupBody,
     crate::routes::frontstage::CreateFrontstagePageBody,
     crate::routes::frontstage::FrontstageUiTemplateResponse,

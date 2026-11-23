@@ -6,9 +6,11 @@ import QuestionCircleOutlined from '@ant-design/icons/es/icons/QuestionCircleOut
 import SafetyCertificateOutlined from '@ant-design/icons/es/icons/SafetyCertificateOutlined';
 import { fetchConsoleReleaseStatus } from '@1flowbase/api-client';
 import { useQuery } from '@tanstack/react-query';
-import { useState, type ReactNode } from 'react';
-import { Menu, Spin } from 'antd';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
+import { Menu } from 'antd';
 import { i18nText } from '../shared/i18n/text';
+
+const LazySpin = lazy(() => import('antd/es/spin'));
 
 const HELP_LINKS = [
   {
@@ -131,7 +133,13 @@ export function HelpChromeMenu() {
               label: (
                 <HelpPopupText
                   icon={<CloudDownloadOutlined />}
-                  label={currentVersion ?? <Spin size="small" />}
+                  label={
+                    currentVersion ?? (
+                      <Suspense fallback="...">
+                        <LazySpin size="small" />
+                      </Suspense>
+                    )
+                  }
                 />
               )
             },

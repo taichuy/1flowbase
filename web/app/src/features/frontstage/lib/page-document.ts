@@ -51,6 +51,7 @@ export interface FrontstageBlockInstance {
   sourceId: string | null;
   codeRef: string;
   sourceCodeRef: string | null;
+  source_sha256?: string | null;
   catalog: FrontstageBlockCatalogRef;
   contribution: FrontstageBlockContributionRef;
   props: Record<string, unknown>;

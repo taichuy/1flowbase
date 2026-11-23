@@ -1195,6 +1195,32 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         Ok(row.map(map_frontstage_block_code_row))
     }
 
+    async fn list_frontstage_block_codes_by_refs(
+        &self,
+        workspace_id: Uuid,
+        page_id: Uuid,
+        code_refs: &[String],
+    ) -> Result<Vec<domain::frontstage::FrontstageBlockCodeRecord>> {
+        if code_refs.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = sqlx::query(
+            r#"
+            select workspace_id, page_id, code_ref, code as source_code, source_sha256,
+                   created_at, updated_at
+            from frontstage_block_codes
+            where workspace_id = $1 and page_id = $2 and code_ref = any($3)
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(page_id)
+        .bind(code_refs)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows.into_iter().map(map_frontstage_block_code_row).collect())
+    }
+
     async fn get_frontstage_block_source_sha256(
         &self,
         workspace_id: Uuid,

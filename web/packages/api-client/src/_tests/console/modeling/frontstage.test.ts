@@ -12,6 +12,7 @@ import {
   type FrontstageCallableBinaryResource,
   getFrontstageInterfaceCapability,
   getFrontstageComponent,
+  getConsoleFrontstageBootstrap,
   getFrontstagePageTabDetail,
   frontstageComponentModuleAssetPath,
   listFrontstagePageTabs,
@@ -455,4 +456,22 @@ describe('console-frontstage client', () => {
       await expect(request()).resolves.toMatchObject(expected);
     }
   );
+
+  test('reads 1-RTT frontstage bootstrap with optional slug/page/tab query parameters', async () => {
+    await expect(getConsoleFrontstageBootstrap()).resolves.toMatchObject({
+      path: '/api/console/frontstage/bootstrap',
+      method: 'GET'
+    });
+    await expect(
+      getConsoleFrontstageBootstrap({
+        slug: 'route',
+        page_id: 'page-1',
+        tab_reference: 'overview',
+        limit: 50
+      })
+    ).resolves.toMatchObject({
+      path: '/api/console/frontstage/bootstrap?slug=route&page_id=page-1&tab_reference=overview&limit=50',
+      method: 'GET'
+    });
+  });
 });

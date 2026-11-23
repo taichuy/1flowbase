@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
-import { createFrontstageNativeReactModuleRegistry } from '../../frontstage/lib/native-modules/registry';
+import {
+  createFrontstageNativeReactModuleRegistry,
+  extractNativeSourceImports
+} from '../../frontstage/lib/native-modules/registry';
 import { createDefaultLoginRegistry } from '../lib/default-login-registry';
 import { matchingDefaultLoginArtifact } from '../lib/default-login-artifact';
 import {
@@ -55,6 +58,39 @@ test('the small registry supplies the actual host components and does not advert
   expect((await slim.load('antd')).Table).toBeUndefined();
 });
 
+test('custom TSX blocks selectively load named antd and icon bindings without pulling Table or unrelated exports', async () => {
+  const full = createFrontstageNativeReactModuleRegistry();
+  const selective = await full.resolveInjectedModuleMap!([
+    {
+      source: 'antd',
+      bindings: [
+        { kind: 'named', source: 'antd', imported: 'Button', local: 'Button' },
+        { kind: 'named', source: 'antd', imported: 'Input', local: 'Input' },
+        { kind: 'named', source: 'antd', imported: 'Select', local: 'Select' }
+      ]
+    },
+    {
+      source: '@ant-design/icons',
+      bindings: [
+        {
+          kind: 'named',
+          source: '@ant-design/icons',
+          imported: 'ArrowLeftOutlined',
+          local: 'ArrowLeftOutlined'
+        }
+      ]
+    }
+  ]);
+  expect(selective.antd?.Button).toBeDefined();
+  expect(selective.antd?.Input).toBeDefined();
+  expect(selective.antd?.Select).toBeDefined();
+  expect(selective.antd?.Table).toBeUndefined();
+  expect(selective['@ant-design/icons']?.ArrowLeftOutlined).toBe(
+    (await full.load('@ant-design/icons/ArrowLeftOutlined')).default
+  );
+  expect(selective['@ant-design/icons']?.HomeOutlined).toBeUndefined();
+});
+
 test('an early resolved response is handed to one visit, never reused on revisit', async () => {
   const payload = {
     default_login_entry_id: 'password-local',
@@ -83,4 +119,21 @@ test('failed discovery reaches the page error handler and the next visit can ret
     default_login_entry_id: 'password-local',
     login_entries: []
   });
+});
+
+test('extracts static TSX import specifiers and named bindings for parallel Worker prewarming while ignoring comments', () => {
+  const source = [
+    "// import { Table } from 'antd';",
+    "/* import * as charts from '@1flowbase/charts'; */",
+    "import { Button, Select as AntSelect, type SelectProps } from 'antd';",
+    "import { TokenTrendChart } from '@1flowbase/ui';",
+    "import { createStyles } from 'antd-style';",
+    "import dayjs from 'dayjs';"
+  ].join('\n');
+  expect(extractNativeSourceImports(source)).toEqual([
+    { source: 'antd', named: ['Button', 'Select'], hasDefaultOrNamespace: false },
+    { source: '@1flowbase/ui', named: ['TokenTrendChart'], hasDefaultOrNamespace: false },
+    { source: 'antd-style', named: ['createStyles'], hasDefaultOrNamespace: false },
+    { source: 'dayjs', named: [], hasDefaultOrNamespace: true }
+  ]);
 });

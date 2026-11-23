@@ -15,8 +15,16 @@ export function createApplicationQueryClient() {
   return client;
 }
 
+export interface StartAuthenticatedNavigationOptions {
+  shouldSkipPageTreePrefetch?: (
+    state: ReturnType<typeof useAuthStore.getState>
+  ) => boolean;
+  onClear?: (queryClient: QueryClient) => void;
+}
+
 export function startAuthenticatedNavigation(
-  queryClient: QueryClient
+  queryClient: QueryClient,
+  options: StartAuthenticatedNavigationOptions = {}
 ): () => void {
   let previousScope: string | null = null;
   const synchronize = () => {
@@ -28,14 +36,17 @@ export function startAuthenticatedNavigation(
     if (scope === previousScope) return;
     // Cancel/remove the previous identity before publishing its replacement.
     // Query removal also prevents late, non-abortable transports repopulating it.
-    if (previousScope !== null) queryClient.clear();
+    if (previousScope !== null) {
+      queryClient.clear();
+      options.onClear?.(queryClient);
+    }
     previousScope = scope;
     if (scope === null) return;
     void queryClient.prefetchQuery(
       settingsConsoleNavigationQueryOptions(scope)
     );
     const workspaceId = state.actor?.current_workspace_id;
-    if (workspaceId) {
+    if (workspaceId && !options.shouldSkipPageTreePrefetch?.(state)) {
       void queryClient.prefetchQuery(
         frontstagePageTreeQueryOptions(workspaceId, scope)
       );
@@ -46,5 +57,6 @@ export function startAuthenticatedNavigation(
   return () => {
     unsubscribe();
     queryClient.clear();
+    options.onClear?.(queryClient);
   };
 }

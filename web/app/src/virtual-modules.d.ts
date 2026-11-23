@@ -40,3 +40,10 @@ declare module 'virtual:1flowbase-auth-translations' {
   export const en_US: Auth;
   export const zh_Hans: Auth;
 }
+
+declare module 'virtual:1flowbase-opening-copy' {
+  export const enTagline: string;
+  export const zhTagline: string;
+  export const enFooter: string;
+  export const zhFooter: string;
+}

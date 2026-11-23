@@ -1,12 +1,11 @@
 import { FrontstageWorkspaceContext } from './workspace-context';
 import { Typography } from 'antd';
-import { useState, type ReactNode } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 
 import { i18nText } from '../../../../../shared/i18n/text';
 import { SectionPageLayout } from '../../../../../shared/ui/section-page-layout/SectionPageLayout';
 import { useAuthStore } from '../../../../../state/auth-store';
 import { useFrontstageDesignModeStore } from '../../../../../state/frontstage-design-mode-store';
-import { MovePageModal } from '../../../components/page-tree-actions/MovePageModal';
 import { FrontStagePageTreeSidebar } from '../../../components/FrontStagePageTreeSidebar';
 import { useBlockI18n } from '../../../hooks/runtime-i18n/use-block-i18n';
 import { findNodeById } from '../../../lib/page-tree';
@@ -15,6 +14,12 @@ import type { FrontStagePageProps } from '../page-props';
 import { PageTreeFormModal } from '../page-tree-form-modal';
 import { usePageTreeWorkspace } from '../use-page-tree-workspace';
 import './workspace-shell.css';
+
+const MovePageModal = lazy(() =>
+  import('../../../components/page-tree-actions/MovePageModal').then(
+    (module) => ({ default: module.MovePageModal })
+  )
+);
 
 /** One tree, form and navigation shell outside all retained page bodies. */
 export function FrontstageWorkspaceShell({
@@ -95,14 +100,16 @@ export function FrontstageWorkspaceShell({
         </SectionPageLayout>
       </div>
       {canEdit && movePage ? (
-        <MovePageModal
-          key={movePage.id}
-          node={movePage}
-          pageTree={props.navigationPageTree ?? workspace.pageTree}
-          isOperationPending={workspace.isOperationPending}
-          onMove={workspace.handleMovePageDraft}
-          onCancel={() => setMovePageId(null)}
-        />
+        <Suspense fallback={null}>
+          <MovePageModal
+            key={movePage.id}
+            node={movePage}
+            pageTree={props.navigationPageTree ?? workspace.pageTree}
+            isOperationPending={workspace.isOperationPending}
+            onMove={workspace.handleMovePageDraft}
+            onCancel={() => setMovePageId(null)}
+          />
+        </Suspense>
       ) : null}
       <PageTreeFormModal
         dialog={workspace.pageTreeFormDialog}

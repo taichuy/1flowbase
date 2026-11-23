@@ -1,14 +1,9 @@
 import {
-  deleteConsoleSession as requestDeleteConsoleSession,
   fetchConsoleMe as requestFetchConsoleMe,
   fetchConsoleSession as requestFetchConsoleSession,
-  fetchConsoleWorkspaces as requestFetchConsoleWorkspaces,
   fetchPublicLoginEntries as requestFetchPublicLoginEntries,
   getDefaultApiBaseUrl,
-  redeemConsoleWorkspaceInvitation as requestRedeemConsoleWorkspaceInvitation,
   signInWithPassword as requestSignInWithPassword,
-  switchConsoleSessionRole as requestSwitchConsoleSessionRole,
-  switchConsoleSessionWorkspace as requestSwitchConsoleSessionWorkspace,
   type ApiBaseUrlLocation,
   type ConsoleMe,
   type ConsoleSessionSnapshot,
@@ -40,26 +35,6 @@ export function getAuthApiBaseUrl(
   return (
     import.meta.env.VITE_API_BASE_URL ?? getDefaultApiBaseUrl(locationLike)
   );
-}
-
-export function getScalarApiBaseUrl(
-  locationLike: ApiBaseUrlLocation | undefined = typeof window !== 'undefined'
-    ? window.location
-    : undefined
-): string {
-  if (import.meta.env.VITE_SCALAR_API_BASE_URL) {
-    return import.meta.env.VITE_SCALAR_API_BASE_URL;
-  }
-
-  if (locationLike?.origin) {
-    return locationLike.origin;
-  }
-
-  const protocol = locationLike?.protocol === 'https:' ? 'https:' : 'http:';
-  const hostname = locationLike?.hostname || '127.0.0.1';
-  const port = locationLike?.port;
-
-  return port ? `${protocol}//${hostname}:${port}` : `${protocol}//${hostname}`;
 }
 
 export function signInWithPassword(
@@ -94,45 +69,4 @@ export function fetchCurrentMe(
   baseUrl = getAuthApiBaseUrl()
 ): Promise<ConsoleMe> {
   return requestFetchConsoleMe(baseUrl);
-}
-
-export function signOut(
-  csrfToken: string,
-  baseUrl = getAuthApiBaseUrl()
-): Promise<void> {
-  return requestDeleteConsoleSession(csrfToken, baseUrl);
-}
-
-export function switchActiveRole(
-  roleCode: string,
-  csrfToken: string,
-  baseUrl = getAuthApiBaseUrl()
-): Promise<ConsoleSessionSnapshot> {
-  return requestSwitchConsoleSessionRole(roleCode, csrfToken, baseUrl);
-}
-
-export function fetchAccessibleWorkspaces(
-  baseUrl = getAuthApiBaseUrl()
-): Promise<ConsoleWorkspaceSummary[]> {
-  return requestFetchConsoleWorkspaces(baseUrl);
-}
-
-export function switchWorkspace(
-  workspaceId: string,
-  csrfToken: string,
-  baseUrl = getAuthApiBaseUrl()
-): Promise<ConsoleSessionSnapshot> {
-  return requestSwitchConsoleSessionWorkspace(workspaceId, csrfToken, baseUrl);
-}
-
-export function redeemWorkspaceInvitation(
-  invitationToken: string,
-  csrfToken: string,
-  baseUrl = getAuthApiBaseUrl()
-): Promise<ConsoleSessionSnapshot> {
-  return requestRedeemConsoleWorkspaceInvitation(
-    invitationToken,
-    csrfToken,
-    baseUrl
-  );
 }

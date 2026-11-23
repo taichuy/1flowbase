@@ -54,6 +54,16 @@ test('starts session and entries together, exactly once per document, outside Re
   expect(fetchCurrentSession).toHaveBeenCalledTimes(1);
 });
 
+test('starts session and entries on root / when served the credential-free opening document', () => {
+  window.history.replaceState({}, '', '/');
+  vi.mocked(fetchCurrentSession).mockReturnValue(new Promise(() => {}));
+  startDocumentAuthDiscovery();
+  expect(fetchCurrentSession).toHaveBeenCalledTimes(1);
+  expect(fetchLoginEntries).toHaveBeenCalledTimes(1);
+  expect(takeDocumentSessionDiscovery()).toBeDefined();
+  expect(takeDocumentLoginEntryDiscovery()).toBeDefined();
+});
+
 test('does not speculate session or entries for unrelated routes', () => {
   window.history.replaceState({}, '', '/mcp/authorize?request_id=one');
   startDocumentAuthDiscovery();

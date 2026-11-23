@@ -10,25 +10,11 @@ where
         workspace_id: Uuid,
         page_id: Uuid,
     ) -> Result<Vec<domain::frontstage::FrontstagePageTabRecord>> {
-        let actor = self.load_actor_context(actor_user_id, workspace_id).await?;
-        self.ensure_page_visible(&actor, actor_user_id, workspace_id, page_id)
+        let (_, snapshot) = self
+            .load_visible_page_tree_with_snapshot(actor_user_id, workspace_id)
             .await?;
-        let tabs = self
-            .repository
-            .list_frontstage_page_tabs(workspace_id, page_id)
-            .await?;
-        if actor.is_root {
-            return Ok(tabs);
-        }
-        let pages = self.repository.list_frontstage_pages(workspace_id).await?;
-        let rules = self
-            .visibility_rules_for_actor(&actor, actor_user_id, workspace_id)
-            .await?;
-        let visibility = FrontstagePageVisibilityContext::new(&pages, &rules);
-        Ok(tabs
-            .into_iter()
-            .filter(|tab| visibility.is_tab_visible(page_id, tab.id))
-            .collect())
+        self.list_visible_tabs_in_snapshot(&snapshot, workspace_id, page_id)
+            .await
     }
 
     pub async fn create_page_tab(

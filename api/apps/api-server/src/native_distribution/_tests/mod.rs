@@ -47,10 +47,15 @@ async fn serves_spa_and_files_without_hiding_api_errors() {
         ("/api", StatusCode::NOT_FOUND, ""),
         ("/v1/missing", StatusCode::NOT_FOUND, ""),
         ("/.well-known/missing", StatusCode::NOT_FOUND, ""),
+        ("/healthz", StatusCode::NOT_FOUND, ""),
+        ("/readyz", StatusCode::NOT_FOUND, ""),
+        ("/metrics", StatusCode::NOT_FOUND, ""),
         ("/assets/missing.js", StatusCode::NOT_FOUND, ""),
         ("/external-npm/missing", StatusCode::NOT_FOUND, ""),
         ("/%2e%2e/settings.json", StatusCode::NOT_FOUND, ""),
         ("/C:%5csettings.json", StatusCode::NOT_FOUND, ""),
+        ("/%01probe", StatusCode::NOT_FOUND, ""),
+        ("/%7fprobe", StatusCode::NOT_FOUND, ""),
     ] {
         let response = router
             .clone()
@@ -149,6 +154,166 @@ async fn preserves_canonical_dispatch_fallback_and_backend_error_body() {
         assert_eq!(response.status(), status);
         assert_eq!(to_bytes(response.into_body(), 1024).await.unwrap(), body);
     }
+}
+
+#[tokio::test]
+async fn serves_precompressed_sidecars_and_immutable_hashed_asset_headers_without_touching_backend()
+{
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+
+    let directory = Directory::new();
+    let assets = directory.0.join("assets");
+    fs::create_dir_all(&assets).unwrap();
+    fs::write(directory.0.join("index.html"), "<html>spa</html>").unwrap();
+    fs::write(directory.0.join("icon.svg"), "<svg/>").unwrap();
+    fs::write(
+        directory.0.join("authenticated-prewarm.json"),
+        "{\"files\":[]}",
+    )
+    .unwrap();
+    let hashed_js = assets.join("shell-core-Ab12_-9Z.js");
+    fs::write(&hashed_js, "console.log('uncompressed');").unwrap();
+    fs::write(
+        assets.join("shell-core-Ab12_-9Z.js.br"),
+        b"br-compressed-bytes",
+    )
+    .unwrap();
+    fs::write(
+        assets.join("shell-core-Ab12_-9Z.js.gz"),
+        b"gz-compressed-bytes",
+    )
+    .unwrap();
+
+    let backend_hits = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&backend_hits);
+    let backend = Router::new().fallback(move || {
+        let counter = Arc::clone(&counter);
+        async move {
+            counter.fetch_add(1, Ordering::SeqCst);
+            (StatusCode::NOT_FOUND, "backend fallback")
+        }
+    });
+    let router = static_web::mount(backend, &directory.0).unwrap();
+
+    // 1. Brotli negotiation serves .br sidecar + immutable Cache-Control without invoking backend
+    let br_res = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/assets/shell-core-Ab12_-9Z.js")
+                .header("accept-encoding", "gzip, deflate, br")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(br_res.status(), StatusCode::OK);
+    assert_eq!(br_res.headers().get("content-encoding").unwrap(), "br");
+    assert_eq!(
+        br_res.headers().get("cache-control").unwrap(),
+        "public, max-age=31536000, immutable"
+    );
+    assert_eq!(
+        to_bytes(br_res.into_body(), 1024).await.unwrap().as_ref(),
+        b"br-compressed-bytes"
+    );
+    assert_eq!(
+        backend_hits.load(Ordering::SeqCst),
+        0,
+        "fast-path static asset hit must not traverse backend router"
+    );
+
+    // 2. Gzip negotiation serves .gz sidecar
+    let gz_res = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/assets/shell-core-Ab12_-9Z.js")
+                .header("accept-encoding", "gzip")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(gz_res.status(), StatusCode::OK);
+    assert_eq!(gz_res.headers().get("content-encoding").unwrap(), "gzip");
+    assert_eq!(
+        to_bytes(gz_res.into_body(), 1024).await.unwrap().as_ref(),
+        b"gz-compressed-bytes"
+    );
+    assert_eq!(backend_hits.load(Ordering::SeqCst), 0);
+
+    // 3. /icon.svg gets 1-day cache and /authenticated-prewarm.json gets no-cache without hitting backend
+    let icon_res = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/icon.svg")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(icon_res.status(), StatusCode::OK);
+    assert_eq!(
+        icon_res.headers().get("cache-control").unwrap(),
+        "public, max-age=86400"
+    );
+    let prewarm_res = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/authenticated-prewarm.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(prewarm_res.status(), StatusCode::OK);
+    assert_eq!(
+        prewarm_res.headers().get("cache-control").unwrap(),
+        "no-cache"
+    );
+    assert_eq!(backend_hits.load(Ordering::SeqCst), 0);
+
+    // 4. Missing /assets/ file returns fast 404 directly without traversing the backend router
+    let missing_res = router
+        .oneshot(
+            Request::builder()
+                .uri("/assets/does-not-exist-12345678.js")
+                .header("accept", "text/html")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(missing_res.status(), StatusCode::NOT_FOUND);
+    assert!(to_bytes(missing_res.into_body(), 1024)
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        backend_hits.load(Ordering::SeqCst),
+        0,
+        "missing hashed static asset must fail fast without traversing API router"
+    );
+
+    // 5. apply_default_cache_control preserves any pre-existing explicit Cache-Control header
+    let mut explicit_response = axum::response::IntoResponse::into_response((
+        [(axum::http::header::CACHE_CONTROL, "private, max-age=60")],
+        "custom",
+    ));
+    static_web::apply_default_cache_control(
+        &mut explicit_response,
+        "public, max-age=31536000, immutable",
+    );
+    assert_eq!(
+        explicit_response.headers().get("cache-control").unwrap(),
+        "private, max-age=60"
+    );
 }
 
 #[test]

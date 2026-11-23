@@ -39,6 +39,7 @@ export function createFrontstageRuntimeAssemblyBlocks(
       sourceId: layer.block_id,
       codeRef: layer.code_ref,
       sourceCodeRef: layer.block_id,
+      source_sha256: optionalString(layer.source_revision),
       catalog: {
         providerCode:
           optionalString(catalog.providerCode) ??
@@ -164,7 +165,7 @@ export function createFrontstageRootNodeBlocks(
       output_mapping: node.output_mapping,
       runtime_descriptor: node.runtime_descriptor,
       code_ref: node.code_ref,
-      source_revision: null
+      source_revision: node.source_sha256 ?? null
     }))
   );
 }

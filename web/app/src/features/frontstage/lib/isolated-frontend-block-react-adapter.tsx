@@ -4,7 +4,7 @@ import {
   prepareIsolatedFrontendBlockRealm,
   type IsolatedFrontendBlockCapabilityHandlers,
   type IsolatedFrontendBlockRealmHandle
-} from '@1flowbase/page-runtime';
+} from '@1flowbase/page-runtime/browser';
 
 import type { PreparedFrontstageIsolatedContribution } from './isolated-frontend-block-contribution';
 

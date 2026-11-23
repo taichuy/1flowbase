@@ -1,0 +1,2 @@
+# Backend-shipped TSX templates are content-hashed verbatim across Rust and Vite builds.
+api/crates/control-plane/src/auth/public_ui_blocks/*.tsx text eol=lf

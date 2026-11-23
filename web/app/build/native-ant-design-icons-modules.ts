@@ -98,8 +98,8 @@ export function nativeAntDesignIconsModulesPlugin({
     load: {
       filter: {
         id: [
-          /^\x00virtual:1flowbase-native-ant-design-icons-(?:modules|loaders)$/u,
-          /^\x00virtual:1flowbase-native-ant-design-icon-leaf\//u
+          /virtual:1flowbase-native-ant-design-icons-(?:modules|loaders)$/u,
+          /virtual:1flowbase-native-ant-design-icon-leaf\//u
         ]
       },
       handler(id) {
@@ -251,6 +251,10 @@ export const ANT_DESIGN_ICONS_PACKAGE = Object.freeze(${JSON.stringify({
     package_version: inventory.packageVersion,
     module_count: inventory.modules.length
   })});
+
+export function prewarmAntDesignIconsDomain() {
+  return loadLoaderDomain();
+}
 
 export async function loadAntDesignIconsModule(moduleSource) {
   const loaderDomain = await loadLoaderDomain();

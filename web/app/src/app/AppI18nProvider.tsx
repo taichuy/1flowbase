@@ -7,13 +7,13 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { I18nextProvider } from 'react-i18next';
 
 import { useAuthStore } from '../state/auth-store';
+import { WorkspaceShellSkeleton } from '../features/auth/components/anonymous-loading/WorkspaceShellSkeleton';
 import {
   appI18n,
-  applicationI18nLoader,
-  prepareApplicationI18n
+  isShellTopbarI18nReady,
+  prepareApplicationI18n,
+  prepareShellTopbarI18n
 } from '../shared/i18n/app-i18n';
-import { applicationNamespacesForPath } from '../shared/i18n/application-i18n-demand';
-import { LoadingState } from '../shared/ui/loading-state/LoadingState';
 import { resolveAppLocale, type AppLocale } from '../shared/i18n/locales';
 import {
   LOCALE_PREFERENCE_CHANGE_EVENT,
@@ -75,16 +75,14 @@ export function AppI18nProvider({ children }: PropsWithChildren) {
   const [ready, setReady] = useState(
     () =>
       appliedLocale === appLocale &&
-      applicationI18nLoader.ready(
-        appLocale,
-        applicationNamespacesForPath(window.location.pathname)
-      )
+      isShellTopbarI18nReady(appLocale, window.location.pathname)
   );
   const [initialError, setInitialError] = useState<unknown>(null);
 
   useEffect(() => {
     let active = true;
-    void prepareApplicationI18n(appLocale, window.location.pathname)
+    const loader = ready ? prepareApplicationI18n : prepareShellTopbarI18n;
+    void loader(appLocale, window.location.pathname)
       .then((applied) => {
         if (active && applied) setReady(true);
       })
@@ -106,7 +104,7 @@ export function AppI18nProvider({ children }: PropsWithChildren) {
   }, [userLocalePreference]);
 
   if (initialError) throw initialError;
-  if (!ready) return <LoadingState fullscreen />;
+  if (!ready) return <WorkspaceShellSkeleton mode="full" />;
 
   return (
     <I18nextProvider i18n={appI18n}>

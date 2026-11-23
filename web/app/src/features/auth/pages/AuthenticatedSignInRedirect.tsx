@@ -6,10 +6,8 @@ import { useEffect, useState } from 'react';
 import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import { i18nText } from '../../../shared/i18n/text';
 import { useAuthStore } from '../../../state/auth-store';
-import {
-  fetchCurrentMe,
-  redeemWorkspaceInvitation
-} from '../api/session';
+import { fetchCurrentMe } from '../api/session';
+import { redeemWorkspaceInvitation } from '../api/session-actions';
 
 const activeInvitationRedemptions = new Map<
   string,

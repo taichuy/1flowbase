@@ -1,4 +1,4 @@
-import { sha256Text } from '@1flowbase/page-runtime';
+import { sha256Text } from '@1flowbase/page-runtime/browser';
 
 import type {
   FrontstageBlockRenderPlanItem,
@@ -13,6 +13,7 @@ export interface FrontstagePageCanvasBlockCodeReadRequest {
   sourceBlockId: string | null;
   codeRef: string;
   sourceCodeRef: string | null;
+  source_sha256?: string | null;
   runtimeEntry: string;
   runtimeKind: string;
   order: number;
@@ -88,6 +89,9 @@ function createReadRequest(
     sourceBlockId: slot.sourceBlockId,
     codeRef,
     sourceCodeRef: slot.sourceCodeRef,
+    ...(slot.source_sha256 !== undefined
+      ? { source_sha256: slot.source_sha256 }
+      : {}),
     runtimeEntry,
     runtimeKind: slot.runtime.kind,
     order: slot.order,

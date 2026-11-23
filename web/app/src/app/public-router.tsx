@@ -31,10 +31,9 @@ export function PublicRouterProvider() {
         <McpAuthRuntime requestId={requestId} />
       </Suspense>
     );
-  if (!signIn) return <AnonymousLoadingState fullscreen />;
   return (
     <SignInPage
-      loginEntryId={loginEntryId?.trim() ? loginEntryId : undefined}
+      loginEntryId={signIn && loginEntryId?.trim() ? loginEntryId : undefined}
       inviteToken={inviteToken?.trim() ? inviteToken.trim() : undefined}
     />
   );

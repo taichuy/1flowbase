@@ -1,50 +1,96 @@
-import { Suspense, lazy, useLayoutEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useLayoutEffect, useState } from 'react';
 
-import { prepareApplicationI18n } from '../../shared/i18n/app-i18n';
+import { WorkspaceShellSkeleton } from '../../features/auth/components/anonymous-loading/WorkspaceShellSkeleton';
 import { resolveAuthenticatedLocale } from '../../shared/i18n/initial-locale';
-import { LoadingState } from '../../shared/ui/loading-state/LoadingState';
 import { useAuthStore } from '../../state/auth-store';
 import {
   createApplicationQueryClient,
   startAuthenticatedNavigation
 } from './authenticated-navigation';
 import {
+  getResolvedAuthenticatedRuntime,
+  preloadAuthenticatedStartupRuntime
+} from './authenticated-shell-preload';
+import {
   claimPrewarmedAuthenticatedQueryClient,
+  clearFrontstageStartupHydrationState,
   commitPrewarmedAuthenticatedQueryClient,
+  isFrontstageBootstrapOwnedForState,
+  prepareAuthenticatedStartupMount,
   startFrontstageStartupPrefetch
 } from './frontstage-startup-prefetch';
 
-const AuthenticatedRuntime = lazy(async () => {
-  const [runtimeModule] = await Promise.all([
-    import('../AuthenticatedAppRuntime'),
-    prepareApplicationI18n(
+const LazyAuthenticatedRuntime = lazy(async () => {
+  const [Component] = await Promise.all([
+    preloadAuthenticatedStartupRuntime(
       resolveAuthenticatedLocale(useAuthStore.getState().me),
       window.location.pathname
     ),
     import('../../app-shell/AppShellFrame')
   ]);
-  return { default: runtimeModule.AuthenticatedAppRuntime };
+  return { default: Component };
 });
 
-export function AuthenticatedStartup() {
+export interface AuthenticatedStartupProps {
+  /**
+   * Defaults to true in browser runtimes (`!import.meta.env.VITEST`) and can be
+   * explicitly enabled in startup integration tests to exercise the full
+   * `useLayoutEffect` + `useEffect` mount gate together.
+   */
+  enforceStartupMountGate?: boolean;
+}
+
+export function AuthenticatedStartup({
+  enforceStartupMountGate = !import.meta.env.VITEST
+}: AuthenticatedStartupProps = {}) {
   const [queryClient] = useState(
     () =>
       claimPrewarmedAuthenticatedQueryClient() ?? createApplicationQueryClient()
   );
-  // Commit the lightweight owner even while the runtime is suspended. Navigation
-  // transports run in parallel with shell code/dictionaries, not after its mount.
+  const [runtimeReady, setRuntimeReady] = useState(() =>
+    Boolean(!enforceStartupMountGate || getResolvedAuthenticatedRuntime())
+  );
+
+  // Single 1-RTT control-plane owner: `/navigation` + `/frontstage/bootstrap`
+  // (with automatic fallback to `/pages -> /tabs -> /blocks -> /code` only on error).
   useLayoutEffect(() => {
     commitPrewarmedAuthenticatedQueryClient(queryClient);
-    const stopNavigation = startAuthenticatedNavigation(queryClient);
+    const stopNavigation = startAuthenticatedNavigation(queryClient, {
+      shouldSkipPageTreePrefetch: isFrontstageBootstrapOwnedForState,
+      onClear: clearFrontstageStartupHydrationState
+    });
     const stopFrontstagePrefetch = startFrontstageStartupPrefetch(queryClient);
     return () => {
       stopFrontstagePrefetch();
       stopNavigation();
     };
   }, [queryClient]);
+
+  useEffect(() => {
+    if (!enforceStartupMountGate || runtimeReady) return undefined;
+    let cancelled = false;
+    void prepareAuthenticatedStartupMount(queryClient, () => cancelled)
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) {
+          setRuntimeReady(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enforceStartupMountGate, queryClient, runtimeReady]);
+
+  const ActiveRuntime =
+    getResolvedAuthenticatedRuntime() ?? LazyAuthenticatedRuntime;
+
   return (
-    <Suspense fallback={<LoadingState fullscreen />}>
-      <AuthenticatedRuntime queryClient={queryClient} />
+    <Suspense fallback={<WorkspaceShellSkeleton mode="full" />}>
+      {runtimeReady ? (
+        <ActiveRuntime queryClient={queryClient} />
+      ) : (
+        <WorkspaceShellSkeleton mode="full" />
+      )}
     </Suspense>
   );
 }

@@ -1,4 +1,3 @@
-import { McpAuthorizePage } from '../features/auth/pages/mcp-authorization/McpAuthorizePage';
 import {
   navigationQueryStaleTime,
   selectNavigationQueryScope
@@ -14,7 +13,6 @@ import {
   useRouterState
 } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Result } from 'antd';
 import { Suspense, lazy, useState, type ReactNode } from 'react';
 
 import {
@@ -29,6 +27,7 @@ import {
 } from '../features/frontstage/api/page-tree';
 import type { MeSectionKey } from '../features/me/lib/me-sections';
 import { RouteGuard } from '../routes/route-guards';
+import { LazyRouteResult } from '../routes/LazyRouteResult';
 import { SessionGuard } from '../routes/session-guard';
 import {
   FRONTSTAGE_PAGE_BLOCK_CHILD_PATH,
@@ -36,14 +35,23 @@ import {
   FRONTSTAGE_SLUG_PAGE_PATH,
   FRONTSTAGE_SLUG_PATH
 } from '../routes/route-config';
-import { LoadingState } from '../shared/ui/loading-state/LoadingState';
+import { WorkspaceShellSkeleton } from '../features/auth/components/anonymous-loading/WorkspaceShellSkeleton';
 import { useAuthStore } from '../state/auth-store';
 import { i18nText } from '../shared/i18n/text';
 import type { RolePermissionTab } from '../features/settings/components/RolePermissionPanel';
 import type { SettingsExtensionCenterCategory } from '../features/settings/api/extensions/extensions';
 import type { NetworkCenterPage } from '../features/settings/pages/network-center/NetworkCenterSection';
-import { prepareApplicationI18n } from '../shared/i18n/app-i18n';
+import {
+  isShellTopbarI18nReady,
+  prepareShellTopbarI18n
+} from '../shared/i18n/app-i18n';
 import { resolveAuthenticatedLocale } from '../shared/i18n/initial-locale';
+import {
+  getResolvedAppShellFrame,
+  getResolvedFrontstageWorkspacePage,
+  loadAppShellFrameModule,
+  loadFrontstageWorkspacePageModule
+} from './bootstrap/authenticated-shell-preload';
 import { recoverDevModuleGraph } from './bootstrap/dev-module-recovery';
 
 let applicationDetailPageFlight:
@@ -68,7 +76,7 @@ if (/^\/applications\/[^/]+(?:\/|$)/u.test(window.location.pathname)) {
   void loadApplicationDetailPage();
 }
 const AppShellFrame = lazy(() =>
-  import('../app-shell/AppShellFrame').then((module) => ({
+  loadAppShellFrameModule().then((module) => ({
     default: module.AppShellFrame
   }))
 );
@@ -85,9 +93,9 @@ const AuthenticatedSignInRedirect = lazy(() =>
   )
 );
 const FrontstageWorkspacePage = lazy(() =>
-  import('../features/frontstage/pages/FrontstageWorkspacePage').then(
-    (module) => ({ default: module.FrontstageWorkspacePage })
-  )
+  loadFrontstageWorkspacePageModule().then((module) => ({
+    default: module.FrontstageWorkspacePage
+  }))
 );
 const MePage = lazy(() =>
   import('../features/me/pages/MePage').then((module) => ({
@@ -99,13 +107,27 @@ const SettingsPage = lazy(() =>
     default: module.SettingsPage
   }))
 );
+const McpAuthorizePage = lazy(() =>
+  import('../features/auth/pages/mcp-authorization/McpAuthorizePage').then(
+    (module) => ({ default: module.McpAuthorizePage })
+  )
+);
 
 function NotFoundPage() {
-  return <Result status="404" title={i18nText('app', 'auto.page_not_found')} />;
+  return (
+    <LazyRouteResult
+      status="404"
+      title={i18nText('app', 'auto.page_not_found')}
+    />
+  );
+}
+
+function ShellLoadingFallback() {
+  return <WorkspaceShellSkeleton mode="full" />;
 }
 
 function RouteLoadingFallback() {
-  return <LoadingState fullscreen />;
+  return <WorkspaceShellSkeleton mode="canvas-only" />;
 }
 
 function LazyRouteBoundary({ children }: { children: ReactNode }) {
@@ -116,14 +138,17 @@ function ShellLayout() {
   const pathname = useRouterState({
     select: (state) => state.location.pathname
   });
+  const ActiveShellFrame = getResolvedAppShellFrame() ?? AppShellFrame;
 
   return (
     <SessionGuard>
-      <LazyRouteBoundary>
-        <AppShellFrame pathname={pathname} useRouterLinks>
-          <Outlet />
-        </AppShellFrame>
-      </LazyRouteBoundary>
+      <Suspense fallback={<ShellLoadingFallback />}>
+        <ActiveShellFrame pathname={pathname} useRouterLinks>
+          <LazyRouteBoundary>
+            <Outlet />
+          </LazyRouteBoundary>
+        </ActiveShellFrame>
+      </Suspense>
     </SessionGuard>
   );
 }
@@ -135,10 +160,10 @@ function ApplicationIndexRedirect() {
     queryKey: applicationDetailQueryKey(applicationId),
     queryFn: () => fetchApplicationDetail(applicationId)
   });
-  if (detail.isPending) return <LoadingState />;
+  if (detail.isPending) return <RouteLoadingFallback />;
   if (detail.isError)
     return (
-      <Result
+      <LazyRouteResult
         status="error"
         title={i18nText('applications', 'auto.application_load_failed')}
       />
@@ -176,10 +201,13 @@ function ApplicationSectionRoute({
 }
 
 const rootRoute = createRootRoute({
-  beforeLoad: async ({ location }) => {
-    await prepareApplicationI18n(
-      resolveAuthenticatedLocale(useAuthStore.getState().me),
-      location.pathname
+  beforeLoad: ({ location }) => {
+    const locale = resolveAuthenticatedLocale(useAuthStore.getState().me);
+    if (isShellTopbarI18nReady(locale, location.pathname)) {
+      return undefined;
+    }
+    return prepareShellTopbarI18n(locale, location.pathname).then(
+      () => undefined
     );
   },
   component: () => <Outlet />,
@@ -216,9 +244,9 @@ const homeRoute = createRoute({
     }
     return (
       <RouteGuard routeId="home">
-        <LazyRouteBoundary>
+        <Suspense fallback={<WorkspaceShellSkeleton mode="below-topbar" />}>
           <HomeRedirect />
-        </LazyRouteBoundary>
+        </Suspense>
       </RouteGuard>
     );
   }
@@ -405,12 +433,15 @@ function FrontStageSlugRoute({
     );
   }
   if (!workspaceId) return <Navigate to="/" replace />;
-  if (pageTreeQuery.isLoading) return <RouteLoadingFallback />;
+  if (pageTreeQuery.isLoading)
+    return <WorkspaceShellSkeleton mode="below-topbar" />;
   if (!rootNode) return <NotFoundPage />;
+  const ActiveWorkspacePage =
+    getResolvedFrontstageWorkspacePage() ?? FrontstageWorkspacePage;
   return (
     <SessionGuard>
-      <LazyRouteBoundary>
-        <FrontstageWorkspacePage
+      <Suspense fallback={<WorkspaceShellSkeleton mode="below-topbar" />}>
+        <ActiveWorkspacePage
           workspaceId={workspaceId}
           pageId={pageId}
           tabRef={tabRef}
@@ -418,7 +449,7 @@ function FrontStageSlugRoute({
           blockInputSearch={blockInputSearch}
           rootNode={rootNode}
         />
-      </LazyRouteBoundary>
+      </Suspense>
     </SessionGuard>
   );
 }
@@ -879,7 +910,11 @@ const mcpAuthorizeRoute = createRoute({
   }),
   component: () => {
     const { request_id } = mcpAuthorizeRoute.useSearch();
-    return <McpAuthorizePage requestId={request_id} />;
+    return (
+      <LazyRouteBoundary>
+        <McpAuthorizePage requestId={request_id} />
+      </LazyRouteBoundary>
+    );
   }
 });
 

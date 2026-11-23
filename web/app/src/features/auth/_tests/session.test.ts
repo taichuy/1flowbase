@@ -20,12 +20,12 @@ vi.mock('@1flowbase/api-client/auth', () => ({
   switchConsoleSessionWorkspace: apiClient.switchConsoleSessionWorkspace
 }));
 
+import { fetchLoginEntries } from '../api/session';
 import {
   fetchAccessibleWorkspaces,
-  fetchLoginEntries,
   redeemWorkspaceInvitation,
   switchWorkspace
-} from '../api/session';
+} from '../api/session-actions';
 
 describe('public login instance discovery', () => {
   beforeEach(() => {

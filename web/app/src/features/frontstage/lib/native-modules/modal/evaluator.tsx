@@ -37,9 +37,13 @@ export async function evaluateFrontstageReactArtifact(
     ReturnType<NativeReactModuleRegistry['resolveModuleMap']>
   >;
   try {
-    modules = await registry.resolveModuleMap(
-      artifact.program.injectedModules.map(({ source }) => source)
-    );
+    modules = registry.resolveInjectedModuleMap
+      ? await registry.resolveInjectedModuleMap(
+          artifact.program.injectedModules
+        )
+      : await registry.resolveModuleMap(
+          artifact.program.injectedModules.map(({ source }) => source)
+        );
   } catch (error) {
     return {
       ok: false,

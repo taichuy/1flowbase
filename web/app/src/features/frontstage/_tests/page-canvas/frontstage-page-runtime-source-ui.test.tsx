@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { createNativePreparationSource } from './fixtures/native-preparation-source';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import type { ConsoleFrontstageBlockNode } from '@1flowbase/api-client';
@@ -234,6 +235,279 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
       within(blockSlot).getByTestId('block-ui-loading-shell')
     ).toHaveAttribute('aria-busy', 'true');
     expect(blockSlot).not.toHaveTextContent('区块加载中...');
+    expect(blockSlot).toHaveAttribute(
+      'data-flowbase-frontstage-intrinsic-height',
+      '320'
+    );
+  });
+
+  test('preserves pre-drawn 320px grid slot height while loading shell is mounted even if ResizeObserver fires small skeleton height', async () => {
+    const OriginalResizeObserver = globalThis.ResizeObserver;
+    const intrinsicObservers: Array<{
+      cb: ResizeObserverCallback;
+      el: Element;
+    }> = [];
+    globalThis.ResizeObserver = class WrappingResizeObserver {
+      private inner: ResizeObserver;
+      private cb: ResizeObserverCallback;
+      constructor(cb: ResizeObserverCallback) {
+        this.cb = cb;
+        this.inner = new OriginalResizeObserver(cb);
+      }
+      observe(el: Element, options?: ResizeObserverOptions) {
+        if (
+          el instanceof HTMLElement &&
+          el.hasAttribute('data-flowbase-frontstage-intrinsic-content')
+        ) {
+          intrinsicObservers.push({ cb: this.cb, el });
+          return;
+        }
+        this.inner.observe(el, options);
+      }
+      unobserve(el: Element) {
+        this.inner.unobserve(el);
+      }
+      disconnect() {
+        for (let i = intrinsicObservers.length - 1; i >= 0; i -= 1) {
+          if (intrinsicObservers[i]?.cb === this.cb) {
+            intrinsicObservers.splice(i, 1);
+          }
+        }
+        this.inner.disconnect();
+      }
+    } as unknown as typeof ResizeObserver;
+
+    try {
+      mockNativePreparations([
+        {
+          status: 'compile',
+          blockId: 'hero',
+          slotIndex: 0,
+          priority: 1,
+          generation: 1
+        }
+      ]);
+
+      render(
+        <AppProviders>
+          <FrontStagePage
+            workspaceId="workspace-1"
+            pageId="page-1"
+            initialPageTree={[{ id: 'page-1', title: 'Landing', kind: 'page' }]}
+            pageContent={createPageContent()}
+            blockRoots={[
+              createRootNode(),
+              { ...createRootNode(), block_id: 'secondary', rank: '002000' }
+            ]}
+          />
+        </AppProviders>
+      );
+
+      const blockSlot = await screen.findByTestId('block-slot-hero');
+      for (const { cb, el } of intrinsicObservers) {
+        cb(
+          [
+            {
+              target: el,
+              contentRect: { height: 64, width: 800 }
+            } as unknown as ResizeObserverEntry
+          ],
+          {} as ResizeObserver
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      expect(blockSlot).toHaveAttribute(
+        'data-flowbase-frontstage-intrinsic-height',
+        '320'
+      );
+    } finally {
+      globalThis.ResizeObserver = OriginalResizeObserver;
+    }
+  });
+
+  test('monotonic height ratchet: ready block with pending initial ctx.api request never shrinks below 320px, then settles once API finishes', async () => {
+    const OriginalResizeObserver = globalThis.ResizeObserver;
+    const intrinsicObservers: Array<{
+      cb: ResizeObserverCallback;
+      el: Element;
+    }> = [];
+    globalThis.ResizeObserver = class RatchetResizeObserver {
+      private inner: ResizeObserver;
+      private cb: ResizeObserverCallback;
+      constructor(cb: ResizeObserverCallback) {
+        this.cb = cb;
+        this.inner = new OriginalResizeObserver(cb);
+      }
+      observe(el: Element, options?: ResizeObserverOptions) {
+        if (
+          el instanceof HTMLElement &&
+          el.hasAttribute('data-flowbase-frontstage-intrinsic-content')
+        ) {
+          intrinsicObservers.push({ cb: this.cb, el });
+          return;
+        }
+        this.inner.observe(el, options);
+      }
+      unobserve(el: Element) {
+        this.inner.unobserve(el);
+      }
+      disconnect() {
+        for (let i = intrinsicObservers.length - 1; i >= 0; i -= 1) {
+          if (intrinsicObservers[i]?.cb === this.cb) {
+            intrinsicObservers.splice(i, 1);
+          }
+        }
+        this.inner.disconnect();
+      }
+    } as unknown as typeof ResizeObserver;
+
+    let resolveBlockApi!: (val: unknown) => void;
+    const apiPromise = new Promise((resolve) => {
+      resolveBlockApi = resolve;
+    });
+
+    try {
+      vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) =>
+        window.setTimeout(() => cb(performance.now()), 16)
+      );
+      const capabilityModule = await import(
+        '../../lib/js-block-capability-handlers'
+      );
+      vi.spyOn(
+        capabilityModule,
+        'createFrontstageJsBlockCapabilityHandlers'
+      ).mockReturnValue({
+        interface: async () => apiPromise,
+        disposeRequest: vi.fn(),
+        prepareDraftRun: async () => undefined,
+        revokeDraftRun: vi.fn()
+      });
+
+      const ApiSpinThenCardBlock = ({
+        ctx
+      }: {
+        ctx: { api: { get: (path: string) => Promise<unknown> } };
+      }) => {
+        const [done, setDone] = useState(false);
+        useEffect(() => {
+          void ctx.api.get('/api/console/demo').then(() => setDone(true));
+        }, [ctx.api]);
+        return <div data-testid="ratchet-block">{done ? 'settled-card' : 'tiny-spin'}</div>;
+      };
+
+      mockNativePreparations([
+        {
+          status: 'ready',
+          blockId: 'hero',
+          slotIndex: 0,
+          priority: 1,
+          generation: 1,
+          mountIntent: {
+            blockId: 'hero',
+            slotIndex: 0,
+            identityInput: {
+              sourceSha256: 'b'.repeat(64),
+              compilerAbi: 'compiler-a',
+              runtimeAbi: 'runtime-a'
+            }
+          },
+          prepared: {
+            artifact: {} as never,
+            component: ApiSpinThenCardBlock as never,
+            identityInput: {
+              sourceSha256: 'b'.repeat(64),
+              compilerAbi: 'compiler-a',
+              runtimeAbi: 'runtime-a'
+            },
+            artifactCacheTier: 'l1',
+            moduleAssets: [],
+            moduleSources: []
+          }
+        }
+      ]);
+
+      render(
+        <AppProviders>
+          <FrontStagePage
+            workspaceId="workspace-1"
+            pageId="page-1"
+            tabId="tab-1"
+            initialPageTree={[{ id: 'page-1', title: 'Landing', kind: 'page' }]}
+            pageContent={createPageContent()}
+            blockRoots={[
+              createRootNode(),
+              { ...createRootNode(), block_id: 'secondary', rank: '002000' }
+            ]}
+          />
+        </AppProviders>
+      );
+
+      const blockSlot = await screen.findByTestId('block-slot-hero');
+      const nativeRoot = await screen.findByTestId(
+        'frontstage-native-block-root-hero'
+      );
+      await waitFor(() => {
+        expect(nativeRoot.shadowRoot).not.toBeNull();
+      });
+      await waitFor(
+        () => {
+          expect(
+            within(nativeRoot.shadowRoot as unknown as HTMLElement).getByTestId(
+              'ratchet-block'
+            )
+          ).toHaveTextContent('tiny-spin');
+        },
+        { timeout: 8000 }
+      );
+      await waitFor(() => {
+        expect(intrinsicObservers.length).toBeGreaterThan(0);
+      });
+
+      // Fire 48px measurement while initial ctx.api.get is still pending: must NOT shrink below 320px!
+      for (const { cb, el } of intrinsicObservers) {
+        cb(
+          [
+            {
+              target: el,
+              contentRect: { height: 48, width: 800 }
+            } as unknown as ResizeObserverEntry
+          ],
+          {} as ResizeObserver
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      expect(blockSlot).toHaveAttribute(
+        'data-flowbase-frontstage-intrinsic-height',
+        '320'
+      );
+
+      // Settle initial API call, then fire 230px measurement: now allowed to settle cleanly!
+      resolveBlockApi({ ok: true });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      for (const { cb, el } of intrinsicObservers) {
+        cb(
+          [
+            {
+              target: el,
+              contentRect: { height: 230, width: 800 }
+            } as unknown as ResizeObserverEntry
+          ],
+          {} as ResizeObserver
+        );
+      }
+      await waitFor(
+        () => {
+          const h = Number(
+            blockSlot.getAttribute('data-flowbase-frontstage-intrinsic-height')
+          );
+          expect(h >= 225 && h < 260).toBe(true);
+        },
+        { timeout: 2000 }
+      );
+    } finally {
+      globalThis.ResizeObserver = OriginalResizeObserver;
+      vi.restoreAllMocks();
+    }
   });
 
   test('connects a ready Native preparation to the real PageCanvas Host surface', async () => {

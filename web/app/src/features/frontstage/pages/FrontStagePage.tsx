@@ -1,4 +1,3 @@
-import { CreateDataBlockMenu } from '../components/data-blocks/CreateDataBlockMenu';
 import { DataBlockPageProvider } from '../components/data-blocks/DataBlockPageProvider';
 import {
   createTableBlockConfig,
@@ -22,7 +21,7 @@ import {
   useMemo,
   useState
 } from 'react';
-import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime';
+import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime/browser';
 import type { ConsoleFrontstageBlockRuntimeLayer } from '@1flowbase/api-client';
 
 import { useAuthStore } from '../../../state/auth-store';
@@ -86,7 +85,6 @@ import { findMatchingFrontstageBlockCatalogEntry } from './frontstage-page/block
 import { toDisplayErrorMessage } from './frontstage-page/page-action-helpers';
 import { DESIGN_MODE_PERMISSION } from './frontstage-page/page-constants';
 import type { FrontStagePageProps } from './frontstage-page/page-props';
-import { PageWorkspaceActionMenu } from './frontstage-page/PageWorkspaceActionMenu';
 import { FrontstageWorkspaceShell } from './frontstage-page/workspace-shell/FrontstageWorkspaceShell';
 import {
   useFrontstageWorkspace,
@@ -103,6 +101,16 @@ const FrontstageJsxStudioDrawer = lazy(() =>
 const JsxStudioRunPanel = lazy(() =>
   loadFrontstageStudioRunPanel().then((module) => ({
     default: module.JsxStudioRunPanel
+  }))
+);
+const CreateDataBlockMenu = lazy(() =>
+  import('../components/data-blocks/CreateDataBlockMenu').then((module) => ({
+    default: module.CreateDataBlockMenu
+  }))
+);
+const PageWorkspaceActionMenu = lazy(() =>
+  import('./frontstage-page/PageWorkspaceActionMenu').then((module) => ({
+    default: module.PageWorkspaceActionMenu
   }))
 );
 
@@ -1114,17 +1122,19 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       ) : null}
       {renderAssemblyOverlays()}
       {canEnterDesignMode && isDesignMode && selectedPageNode ? (
-        <CreateDataBlockMenu
-          workspaceId={workspaceId}
-          entries={creatableBlockCatalog.items}
-          error={creatableBlockCatalog.error}
-          onRetry={() => {
-            void creatableBlockCatalog.refetch();
-          }}
-          disabled={!canAddBlock || creatableBlockCatalog.loading}
-          loading={isBlockSavePending || creatableBlockCatalog.loading}
-          onCreate={handleAddBlock}
-        />
+        <Suspense fallback={null}>
+          <CreateDataBlockMenu
+            workspaceId={workspaceId}
+            entries={creatableBlockCatalog.items}
+            error={creatableBlockCatalog.error}
+            onRetry={() => {
+              void creatableBlockCatalog.refetch();
+            }}
+            disabled={!canAddBlock || creatableBlockCatalog.loading}
+            loading={isBlockSavePending || creatableBlockCatalog.loading}
+            onCreate={handleAddBlock}
+          />
+        </Suspense>
       ) : null}
     </FrontstageRuntimeActivityContext>
   );
@@ -1183,22 +1193,24 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
                 ) : null}
                 {canEditPageTree ? (
                   <div className="frontstage-page-workspace__page-action">
-                    <PageWorkspaceActionMenu
-                      show_title={selectedPageNode.show_title}
-                      onTitleChange={handlePageTitleChange}
-                      disabled={isOperationPending || isPageContentSavePending}
-                      refreshing={isPageRefreshPending}
-                      tabsEnabled={
-                        selectedPageNode.content_presentation === 'tabs'
-                      }
-                      layoutMode={
-                        blockCompositionState?.document.layoutMode ?? 'auto'
-                      }
-                      onEdit={() => handleRenameNode(selectedPageNode)}
-                      onRefresh={() => void handlePageRefresh()}
-                      onTabsEnabledChange={handlePageTabsEnabledChange}
-                      onLayoutModeChange={handlePageLayoutModeChange}
-                    />
+                    <Suspense fallback={null}>
+                      <PageWorkspaceActionMenu
+                        show_title={selectedPageNode.show_title}
+                        onTitleChange={handlePageTitleChange}
+                        disabled={isOperationPending || isPageContentSavePending}
+                        refreshing={isPageRefreshPending}
+                        tabsEnabled={
+                          selectedPageNode.content_presentation === 'tabs'
+                        }
+                        layoutMode={
+                          blockCompositionState?.document.layoutMode ?? 'auto'
+                        }
+                        onEdit={() => handleRenameNode(selectedPageNode)}
+                        onRefresh={() => void handlePageRefresh()}
+                        onTabsEnabledChange={handlePageTabsEnabledChange}
+                        onLayoutModeChange={handlePageLayoutModeChange}
+                      />
+                    </Suspense>
                   </div>
                 ) : null}
               </header>

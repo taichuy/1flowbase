@@ -15,7 +15,9 @@ import {
 } from '../lib/anonymous-navigation';
 
 import { AnonymousLoadingState as LoadingState } from '../components/anonymous-loading/AnonymousLoadingState';
+import { AUTH_ERROR_ICON_PATH } from '../components/anonymous-loading/AnonymousLoadingView';
 import { useAuthStore } from '../../../state/auth-store';
+import { startEarlyConsoleStartupFlight } from '../api/early-console-startup-flight';
 import {
   fetchCurrentMe,
   fetchCurrentSession,
@@ -36,7 +38,10 @@ import {
   DefaultPasswordSignIn,
   matchesDefaultPasswordSource
 } from '../components/default-password/DefaultPasswordSignIn';
-import { useAuthenticatedPrewarm } from '../lib/authenticated-prewarm';
+import {
+  pauseAuthenticatedPrewarm,
+  useAuthenticatedPrewarm
+} from '../lib/authenticated-prewarm';
 
 const CustomAuthRuntime = lazy(() =>
   import('../components/public-runtime/CustomAuthRuntime').then((module) => ({
@@ -65,26 +70,29 @@ export function SignInPage({ loginEntryId, inviteToken }: SignInPageProps) {
     inviteToken?.trim() ||
     locationUrl.searchParams.get('invite')?.trim() ||
     undefined;
-  const externalErrorMessages: Record<string, string> = {
-    registration_disabled: t('external_auth.registration_disabled'),
-    account_too_new: t('external_auth.account_too_new'),
-    email_required: t('external_auth.email_required'),
-    identity_exists: t('external_auth.identity_exists'),
-    identity_unlinked: t('external_auth.identity_unlinked'),
-    registration_ineligible: t('external_auth.registration_ineligible'),
-    cancelled: t('external_auth.cancelled'),
-    invalid_state: t('external_auth.invalid_state'),
-    entry_unavailable: t('external_auth.entry_unavailable'),
-    provider_unavailable: t('external_auth.provider_unavailable'),
-    session_expired: t('external_auth.session_expired'),
-    user_disabled: t('external_auth.user_disabled'),
-    invitation_required: t('external_auth.invitation_required'),
-    invitation_invalid: t('external_auth.invitation_invalid'),
-    invitation_expired: t('external_auth.invitation_invalid'),
-    invitation_exhausted: t('external_auth.invitation_invalid'),
-    invitation_revoked: t('external_auth.invitation_invalid'),
-    invitation_email_mismatch: t('external_auth.invitation_invalid')
-  };
+  const invInvalid = t('external_auth.invitation_invalid');
+  const externalErrorMessages: Record<string, string> = externalError
+    ? {
+        registration_disabled: t('external_auth.registration_disabled'),
+        account_too_new: t('external_auth.account_too_new'),
+        email_required: t('external_auth.email_required'),
+        identity_exists: t('external_auth.identity_exists'),
+        identity_unlinked: t('external_auth.identity_unlinked'),
+        registration_ineligible: t('external_auth.registration_ineligible'),
+        cancelled: t('external_auth.cancelled'),
+        invalid_state: t('external_auth.invalid_state'),
+        entry_unavailable: t('external_auth.entry_unavailable'),
+        provider_unavailable: t('external_auth.provider_unavailable'),
+        session_expired: t('external_auth.session_expired'),
+        user_disabled: t('external_auth.user_disabled'),
+        invitation_required: t('external_auth.invitation_required'),
+        invitation_invalid: invInvalid,
+        invitation_expired: invInvalid,
+        invitation_exhausted: invInvalid,
+        invitation_revoked: invInvalid,
+        invitation_email_mismatch: invInvalid
+      }
+    : {};
   const setAuthenticated = useAuthStore((state) => state.setAuthenticated);
   const [loginEntries, setLoginEntries] = useState<PublicLoginEntry[]>([]);
   const [onboardingMode, setOnboardingMode] = useState<
@@ -235,17 +243,20 @@ export function SignInPage({ loginEntryId, inviteToken }: SignInPageProps) {
       current_workspace_id: string;
     }) => {
       if (!authOwner.active) return;
+      pauseAuthenticatedPrewarm();
       const [me, currentSession] = await Promise.all([
         fetchCurrentMe(),
         fetchCurrentSession()
       ]);
       if (!authOwner.active) return;
-      setAuthenticated({
+      const snapshot = {
         csrfToken: currentSession.csrf_token,
         actor: currentSession.actor,
         me,
         availableRoles: currentSession.available_roles
-      });
+      };
+      startEarlyConsoleStartupFlight(snapshot, '/');
+      setAuthenticated(snapshot);
       await navigate({ to: '/' });
     },
     [authOwner, navigate, setAuthenticated]
@@ -392,7 +403,7 @@ function AuthError({ children }: { children: string }) {
         fill="currentColor"
         fillRule="evenodd"
       >
-        <path d="M512 64c247.4 0 448 200.6 448 448S759.4 960 512 960 64 759.4 64 512 264.6 64 512 64zm127.98 274.82h-.04l-.08.06L512 466.75 384.14 338.88c-.04-.05-.06-.06-.08-.06a.12.12 0 00-.07 0c-.03 0-.05.01-.09.05l-45.02 45.02a.2.2 0 00-.05.09.12.12 0 000 .07v.02a.27.27 0 00.06.06L466.75 512 338.88 639.86c-.05.04-.06.06-.06.08a.12.12 0 000 .07c0 .03.01.05.05.09l45.02 45.02a.2.2 0 00.09.05.12.12 0 00.07 0c.02 0 .04-.01.08-.05L512 557.25l127.86 127.87c.04.04.06.05.08.05a.12.12 0 00.07 0c.03 0 .05-.01.09-.05l45.02-45.02a.2.2 0 00.05-.09.12.12 0 000-.07v-.02a.27.27 0 00-.05-.06L557.25 512l127.87-127.86c.04-.04.05-.06.05-.08a.12.12 0 000-.07c0-.03-.01-.05-.05-.09l-45.02-45.02a.2.2 0 00-.09-.05.12.12 0 00-.07 0z" />
+        <path d={AUTH_ERROR_ICON_PATH} />
       </svg>
       <span>{children}</span>
     </div>

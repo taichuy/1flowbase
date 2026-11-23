@@ -1,18 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
 import { Navigate } from '@tanstack/react-router';
-import { Button, Result } from 'antd';
+import { Button } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 import {
   fetchFrontstagePageTree,
   frontstagePageTreeQueryKey
 } from '../features/frontstage/api/page-tree';
-import { LoadingState } from '../shared/ui/loading-state/LoadingState';
+import { WorkspaceShellSkeleton } from '../features/auth/components/anonymous-loading/WorkspaceShellSkeleton';
 import { useAuthStore } from '../state/auth-store';
 import {
   navigationQueryStaleTime,
   selectNavigationQueryScope
 } from '../state/navigation-query-scope';
+import { LazyRouteResult } from './LazyRouteResult';
 
 export function HomeRedirect() {
   const { t } = useTranslation('appShell');
@@ -29,10 +30,11 @@ export function HomeRedirect() {
   });
 
   if (!workspaceId) return <Navigate to="/me" replace />;
-  if (pageTreeQuery.isPending) return <LoadingState />;
+  if (pageTreeQuery.isPending)
+    return <WorkspaceShellSkeleton mode="below-topbar" />;
   if (pageTreeQuery.isError) {
     return (
-      <Result
+      <LazyRouteResult
         status="error"
         title={t('auto.console_navigation_load_failed')}
         extra={

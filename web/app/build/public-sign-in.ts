@@ -9,6 +9,7 @@ import { defaultLoginImports } from '../src/features/auth/lib/default-login-impo
 const virtualId = 'virtual:1flowbase-default-login-artifact';
 const passwordId = 'virtual:1flowbase-default-password';
 const translationsId = 'virtual:1flowbase-auth-translations';
+const openingCopyId = 'virtual:1flowbase-opening-copy';
 
 export function publicSignInPlugin(root: string): Plugin {
   const template = path.resolve(
@@ -23,7 +24,12 @@ export function publicSignInPlugin(root: string): Plugin {
       // real Antd before this importer-scoped fast-path alias is considered.
       order: 'pre',
       handler(id, importer) {
-        if (id === virtualId || id === passwordId || id === translationsId)
+        if (
+          id === virtualId ||
+          id === passwordId ||
+          id === translationsId ||
+          id === openingCopyId
+        )
           return '\0' + id;
         // This alias belongs ONLY to the build-time official template. Custom
         // providers and the legacy artifact registry still receive real Antd.
@@ -39,6 +45,24 @@ export function publicSignInPlugin(root: string): Plugin {
       }
     },
     async load(id) {
+      if (id === '\0' + openingCopyId) {
+        const readLocale = (locale: string) => {
+          const file = path.resolve(root, `src/features/auth/i18n/${locale}.json`);
+          this.addWatchFile(file);
+          return JSON.parse(readFileSync(file, 'utf8')) as {
+            auto: { product_tagline: string };
+            sign_in: { footer: string };
+          };
+        };
+        const en = readLocale('en_US');
+        const zh = readLocale('zh_Hans');
+        return [
+          `export const enTagline = ${JSON.stringify(en.auto.product_tagline)};`,
+          `export const zhTagline = ${JSON.stringify(zh.auto.product_tagline)};`,
+          `export const enFooter = ${JSON.stringify(en.sign_in.footer)};`,
+          `export const zhFooter = ${JSON.stringify(zh.sign_in.footer)};`
+        ].join('\n');
+      }
       if (id === '\0' + translationsId) {
         // A build-time projection of the same catalogs, not a second dictionary.
         // The full auth namespace (including MCP) stays in the lazy appI18n graph.

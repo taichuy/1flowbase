@@ -22,13 +22,17 @@ export function ApplicationRuntimeBootstrap() {
     return <AnonymousLoadingState fullscreen />;
   }
 
+  if (sessionStatus === 'authenticated') {
+    return (
+      <Suspense fallback={<AnonymousLoadingState fullscreen />}>
+        <AuthenticatedStartup />
+      </Suspense>
+    );
+  }
+
   return (
     <Suspense fallback={<AnonymousLoadingState fullscreen />}>
-      {sessionStatus === 'authenticated' ? (
-        <AuthenticatedStartup />
-      ) : (
-        <AnonymousRuntime />
-      )}
+      <AnonymousRuntime />
     </Suspense>
   );
 }

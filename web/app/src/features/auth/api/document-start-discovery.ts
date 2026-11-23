@@ -18,7 +18,7 @@ function owner(): DiscoveryWindow | undefined {
 
 export function startDocumentAuthDiscovery() {
   const target = owner();
-  if (!target || !/^\/sign-in\/?$/.test(target.location.pathname)) return;
+  if (!target || !/^(?:\/|\/sign-in\/?)$/.test(target.location.pathname)) return;
   if (target[handoffKey]) return;
   const handoff: DocumentDiscovery = {
     session: fetchCurrentSession(),

@@ -9,12 +9,17 @@ impl PgControlPlaneStore {
     ) -> Result<Option<domain::FrontstageBlockNodeRecord>> {
         let row = sqlx::query(sqlx::AssertSqlSafe(format!(
             r#"
-            select {DETAIL_COLUMNS}, node.input_mapping, node.output_mapping, node.runtime_descriptor
+            select {DETAIL_COLUMNS}, node.input_mapping, node.output_mapping,
+                   node.runtime_descriptor, source.source_sha256
             from frontstage_block_nodes node
             left join frontstage_block_nodes parent
               on parent.scope_id = node.scope_id
              and parent.tree_partition_id = node.tree_partition_id
              and parent.id = node.parent_id
+            left join frontstage_block_codes source
+              on source.workspace_id = node.scope_id
+             and source.page_id = node.tree_partition_id
+             and source.code_ref = node.code_ref
             where node.scope_id = $1 and node.tree_partition_id = $2 and node.block_id = $3
             "#,
         )))
@@ -58,7 +63,8 @@ impl PgControlPlaneStore {
                   and not parent_node.id = any(ancestry.path)
             )
             select {DETAIL_COLUMNS}, node.input_mapping, node.output_mapping,
-                   node.runtime_descriptor, source.source_sha256 as source_revision
+                   node.runtime_descriptor, source.source_sha256,
+                   source.source_sha256 as source_revision
             from ancestry
             join frontstage_block_nodes node
               on node.scope_id = $1
@@ -92,12 +98,17 @@ impl PgControlPlaneStore {
     ) -> Result<Vec<domain::FrontstageBlockNodeRecord>> {
         let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
             r#"
-            select {DETAIL_COLUMNS}, node.input_mapping, node.output_mapping, node.runtime_descriptor
+            select node.block_id, node.scope_id, node.tree_partition_id, node.tab_id,
+                   null::text as parent_block_id, node.sibling_rank, node.presentation,
+                   node.title, node.description, node.code_ref, node.schema_version,
+                   node.created_at, node.updated_at,
+                   node.input_mapping, node.output_mapping, node.runtime_descriptor,
+                   source.source_sha256
             from frontstage_block_nodes node
-            left join frontstage_block_nodes parent
-              on parent.scope_id = node.scope_id
-             and parent.tree_partition_id = node.tree_partition_id
-             and parent.id = node.parent_id
+            left join frontstage_block_codes source
+              on source.workspace_id = node.scope_id
+             and source.page_id = node.tree_partition_id
+             and source.code_ref = node.code_ref
             where node.scope_id = $1
               and node.tree_partition_id = $2
               and node.tab_id = $3

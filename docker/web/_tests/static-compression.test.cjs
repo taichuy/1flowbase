@@ -21,6 +21,8 @@ function location(header) {
 
 test('server compression is negotiated, inherited, thresholded and does not assume a Brotli module', () => {
   for (const directive of [
+    'sendfile on;', 'tcp_nopush on;', 'tcp_nodelay on;',
+    'open_file_cache max=4096 inactive=60s;',
     'gzip on;', 'gzip_static on;', 'gzip_vary on;', 'gzip_proxied any;',
     'gzip_min_length 512;', 'gzip_comp_level 5;',
   ]) assert.ok(serverDirectives.includes(directive), directive);
@@ -36,11 +38,13 @@ test('sign-in selection and private caching remain independent of content encodi
   const selection = uncommented.match(/map "\$args:\$http_cookie:\$http_authorization" \$sign_in_document \{([^}]+)\}/);
   assert.ok(selection);
   assert.equal(selection[1].trim().replace(/\s+/g, ' '), '"::" /sign-in-preload.html; default /index.html;');
-  const signIn = location('location = /sign-in {');
-  assert.match(signIn, /try_files \$sign_in_document \/index\.html;/);
-  assert.match(signIn, /add_header Cache-Control "private, no-store" always;/);
-  assert.match(signIn, /add_header Vary "Cookie, Authorization" always;/);
-  assert.doesNotMatch(signIn, /immutable|rewrite|\$http_accept_encoding/);
+  for (const header of ['location = / {', 'location = /sign-in {']) {
+    const entry = location(header);
+    assert.match(entry, /try_files \$sign_in_document \/index\.html;/);
+    assert.match(entry, /add_header Cache-Control "private, no-store" always;/);
+    assert.match(entry, /add_header Vary "Cookie, Authorization" always;/);
+    assert.doesNotMatch(entry, /immutable|rewrite|\$http_accept_encoding/);
+  }
   assert.match(location('location = /index.html {'), /add_header Cache-Control "no-cache";/);
 });
 

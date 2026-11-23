@@ -1,14 +1,17 @@
 import * as ReactModule from 'react';
 import * as ReactJsxRuntimeModule from 'react/jsx-runtime';
 import {
+  ANTD_PRODUCT_EXPORT_PATHS,
   ANTD_ROOT_EXPORTS,
   ANTD_ES_MODULE_DEFINITIONS,
   loadAntDesignRootModule,
-  loadAntDesignEsModule
+  loadAntDesignEsModule,
+  prewarmAntDesignProductDomain
 } from 'virtual:1flowbase-native-antd-es-modules';
 import {
   ANT_DESIGN_ICONS_MODULE_DEFINITIONS,
-  loadAntDesignIconsModule
+  loadAntDesignIconsModule,
+  prewarmAntDesignIconsDomain
 } from 'virtual:1flowbase-native-ant-design-icons-modules';
 import {
   DND_KIT_MODULE_DEFINITIONS,
@@ -86,6 +89,108 @@ async function loadNativeAntDesignModule(): Promise<ModuleNamespace> {
   };
 }
 
+const ANTD_HOST_EXPORT_LOADERS: Readonly<
+  Record<string, () => Promise<unknown>>
+> = {
+  Affix: () =>
+    import('./affix-anchor/native-affix-runtime').then(
+      ({ NativeBlockAffix }) => NativeBlockAffix
+    ),
+  Anchor: () =>
+    import('./affix-anchor/native-anchor-runtime').then(
+      ({ NativeBlockAnchor }) => NativeBlockAnchor
+    ),
+  Cascader: () =>
+    import('./overlay/native-cascader-runtime').then(
+      ({ NativeBlockCascader }) => NativeBlockCascader
+    ),
+  DatePicker: () =>
+    import('./overlay/native-date-picker-runtime').then(
+      ({ NativeBlockDatePicker }) => NativeBlockDatePicker
+    ),
+  Dropdown: () =>
+    import('./native-dropdown-runtime').then(
+      ({ NativeBlockDropdown }) => NativeBlockDropdown
+    ),
+  Menu: () =>
+    import('./menu/native-menu-runtime').then(
+      ({ NativeBlockMenu }) => NativeBlockMenu
+    ),
+  Popover: () =>
+    import('./overlay/native-popover-runtime').then(
+      ({ NativeBlockPopover }) => NativeBlockPopover
+    ),
+  Select: () =>
+    import('./overlay/native-select-runtime').then(
+      ({ NativeBlockSelect }) => NativeBlockSelect
+    ),
+  Tooltip: () =>
+    import('./overlay/native-tooltip-runtime').then(
+      ({ NativeBlockTooltip }) => NativeBlockTooltip
+    ),
+  TreeSelect: () =>
+    import('./overlay/native-tree-select-runtime').then(
+      ({ NativeBlockTreeSelect }) => NativeBlockTreeSelect
+    ),
+  message: () =>
+    import('./native-message-runtime').then(
+      ({ NativeBlockMessage }) => NativeBlockMessage
+    ),
+  notification: () =>
+    import('./notification/facade').then(
+      ({ NativeBlockNotification }) => NativeBlockNotification
+    )
+};
+
+async function loadSelectiveNativeAntDesignModule(
+  requestedExports: readonly string[]
+): Promise<NativeReactFrontendModuleLoadResult> {
+  if (
+    requestedExports.some(
+      (name) =>
+        !Object.hasOwn(ANTD_HOST_EXPORT_LOADERS, name) &&
+        !Object.hasOwn(ANTD_PRODUCT_EXPORT_PATHS, name)
+    )
+  ) {
+    return { module: await loadNativeAntDesignModule() };
+  }
+  const entries = await Promise.all(
+    requestedExports.map(async (name) => {
+      const hostLoader = ANTD_HOST_EXPORT_LOADERS[name];
+      if (hostLoader) {
+        return [name, await hostLoader()] as const;
+      }
+      const subpath = ANTD_PRODUCT_EXPORT_PATHS[name]!;
+      const loaded = await loadAntDesignEsModule(subpath);
+      return [name, loaded.default] as const;
+    })
+  );
+  return { module: Object.fromEntries(entries) };
+}
+
+const ICON_ROOT_HELPER_EXPORTS = new Set([
+  'default',
+  'IconProvider',
+  'createFromIconfontCN',
+  'getTwoToneColor',
+  'setTwoToneColor'
+]);
+
+async function loadSelectiveAntDesignIconsRootModule(
+  requestedExports: readonly string[]
+): Promise<NativeReactFrontendModuleLoadResult> {
+  if (requestedExports.some((name) => ICON_ROOT_HELPER_EXPORTS.has(name))) {
+    return { module: await loadAntDesignIconsModule('@ant-design/icons') };
+  }
+  const entries = await Promise.all(
+    requestedExports.map(async (name) => {
+      const leaf = await loadAntDesignIconsModule(`@ant-design/icons/${name}`);
+      return [name, leaf.default] as const;
+    })
+  );
+  return { module: Object.fromEntries(entries) };
+}
+
 const ANT_DESIGN_X_EXPORTS = [
   'Actions',
   'Attachments',
@@ -117,9 +222,14 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
     Object.keys(ReactJsxRuntimeModule),
     async () => ({ module: ReactJsxRuntimeModule })
   ),
-  registration('antd', ANTD_ROOT_EXPORTS, async () => ({
-    module: await loadNativeAntDesignModule()
-  })),
+  registration(
+    'antd',
+    ANTD_ROOT_EXPORTS,
+    async () => ({
+      module: await loadNativeAntDesignModule()
+    }),
+    loadSelectiveNativeAntDesignModule
+  ),
   ...ANTD_ES_MODULE_DEFINITIONS.map(({ module_source, exports }) =>
     registration(module_source, exports, async () => ({
       module: await loadAntDesignEsModule(module_source)
@@ -276,6 +386,38 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
           })
         )
       };
+    },
+    async (requestedExports) => {
+      const needsTable = requestedExports.includes('TableBlock');
+      const needsForm = requestedExports.includes('FormBlock');
+      const [table, form, tableStyle, formStyle, designStyle, nodeActionStyle] =
+        await Promise.all([
+          needsTable
+            ? import('../../components/data-blocks/table/TableBlock')
+            : null,
+          needsForm
+            ? import('../../components/data-blocks/form/FormBlock')
+            : null,
+          needsTable
+            ? import('../../components/data-blocks/table/table-block.css?inline')
+            : null,
+          needsForm
+            ? import('../../components/data-blocks/form/form-block.css?inline')
+            : null,
+          import('./block-design/block-design.css?inline'),
+          import('../../components/frontstage-node-action-button.css?inline')
+        ]);
+      return {
+        module: {
+          ...(table ? { TableBlock: table.TableBlock } : {}),
+          ...(form ? { FormBlock: form.FormBlock } : {})
+        },
+        styles: [tableStyle, formStyle, designStyle, nodeActionStyle]
+          .filter((style): style is { default: string } => style !== null)
+          .map((style) => ({
+            css: style.default
+          }))
+      };
     }
   ),
   registration('@1flowbase/block-sdk', ['blockSdkVersion'], async () => ({
@@ -324,6 +466,32 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
           ...workspace
         }
       };
+    },
+    async (requestedExports) => {
+      const needsViewer = requestedExports.includes('ApplicationRunLogViewer');
+      const needsWorkspace = requestedExports.some(
+        (name) => name === 'ApplicationLogs' || name === 'AllAgentFlowLogs'
+      );
+      const [viewer, workspace] = await Promise.all([
+        needsViewer
+          ? import(
+              '../../../applications/components/logs/ApplicationRunLogViewer'
+            )
+          : null,
+        needsWorkspace
+          ? import(
+              '../../../applications/components/logs/workspace/ApplicationLogs'
+            )
+          : null
+      ]);
+      return {
+        module: {
+          ...(viewer
+            ? { ApplicationRunLogViewer: viewer.ApplicationRunLogViewer }
+            : {}),
+          ...(workspace ?? {})
+        }
+      };
     }
   ),
   registration(
@@ -338,16 +506,25 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
     }
   ),
   ...ANT_DESIGN_ICONS_MODULE_DEFINITIONS.map(({ module_source, exports }) =>
-    registration(module_source, exports, async () => ({
-      module: await loadAntDesignIconsModule(module_source)
-    }))
+    registration(
+      module_source,
+      exports,
+      async () => ({
+        module: await loadAntDesignIconsModule(module_source)
+      }),
+      module_source === '@ant-design/icons'
+        ? loadSelectiveAntDesignIconsRootModule
+        : undefined
+    )
   ),
-  registration('@1flowbase/token-trend', ['TokenTrendChart'], async () => ({
-    module: await import('../../../../shared/ui/token-trend/TokenTrendChart')
-  })),
-  registration('@1flowbase/charts', ['EChart'], async () => ({
-    module: await import('@1flowbase/charts')
-  })),
+  registration('@1flowbase/token-trend', ['TokenTrendChart'], async () => {
+    const { NativeBlockTokenTrendChart } = await import('./charts/runtime');
+    return { module: { TokenTrendChart: NativeBlockTokenTrendChart } };
+  }),
+  registration('@1flowbase/charts', ['EChart'], async () => {
+    const { NativeBlockEChart } = await import('./charts/runtime');
+    return { module: { EChart: NativeBlockEChart } };
+  }),
   registration(
     '@1flowbase/rich-text',
     ['VditorEditor', 'VditorPreview'],
@@ -360,6 +537,26 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
       ]);
       return {
         module: { ...module, VditorEditor: host.UserPreferenceVditorEditor },
+        styles: [{ css: vditorStyle.default }, { css: richTextStyle.default }]
+      };
+    },
+    async (requestedExports) => {
+      const needsEditor = requestedExports.includes('VditorEditor');
+      const [module, host, vditorStyle, richTextStyle] = await Promise.all([
+        import('@1flowbase/rich-text'),
+        needsEditor
+          ? import(
+              '../../../../shared/ui/markdown-ir-editor/UserPreferenceVditorEditor'
+            )
+          : null,
+        import('vditor/dist/index.css?inline'),
+        import('@1flowbase/rich-text/styles.css?inline')
+      ]);
+      return {
+        module: {
+          ...module,
+          ...(host ? { VditorEditor: host.UserPreferenceVditorEditor } : {})
+        },
         styles: [{ css: vditorStyle.default }, { css: richTextStyle.default }]
       };
     }
@@ -392,7 +589,7 @@ export function createFrontstageNativeReactModuleRegistry(
   additionalRegistrations: readonly NativeReactFrontendModuleRegistration[] = []
 ): NativeReactModuleRegistry {
   // Each artifact evaluation owns its module flights and generated style assets.
-  return createNativeReactModuleRegistry([
+  const registry = createNativeReactModuleRegistry([
     ...registrations.map((entry) => {
       const override = overrides[entry.module_source];
       if (!override) return entry;
@@ -401,19 +598,128 @@ export function createFrontstageNativeReactModuleRegistry(
         async load(): Promise<NativeReactFrontendModuleLoadResult> {
           const loaded = await entry.load();
           return { ...loaded, module: { ...loaded.module, ...override } };
-        }
+        },
+        ...(entry.loadExports
+          ? {
+              async loadExports(
+                requestedExports: readonly string[]
+              ): Promise<NativeReactFrontendModuleLoadResult> {
+                const loaded = await entry.loadExports!(requestedExports);
+                return { ...loaded, module: { ...loaded.module, ...override } };
+              }
+            }
+          : {})
       };
     }),
     ...additionalRegistrations
   ]);
+  return Object.assign(registry, {
+    prewarmSource: prewarmNativeModuleSources
+  });
+}
+
+export interface ExtractedNativeSourceImport {
+  source: string;
+  named: string[];
+  hasDefaultOrNamespace: boolean;
+}
+
+/**
+ * Linear O(|S|) comment-stripping import clause scanner used to start fetching
+ * heavy runtime dependencies (charts, styles, selective antd/icon leaves) in
+ * parallel with Web Worker TSX compilation.
+ */
+export function extractNativeSourceImports(
+  source: string
+): ExtractedNativeSourceImport[] {
+  const uncommented = source
+    .replace(/\/\*[\s\S]*?\*\//gu, ' ')
+    .replace(/(^|[^:\\])\/\/[^\r\n]*/gu, '$1 ');
+  const bySource = new Map<
+    string,
+    { named: Set<string>; hasDefaultOrNamespace: boolean }
+  >();
+  const importPattern =
+    /\bimport\s+(?!type\s)([\s\S]*?)\s+from\s*['"]([^'"]+)['"]/gu;
+  for (const match of uncommented.matchAll(importPattern)) {
+    const clause = match[1]?.trim() ?? '';
+    const moduleSource = match[2]?.trim() ?? '';
+    if (!clause || !moduleSource) continue;
+    let bucket = bySource.get(moduleSource);
+    if (!bucket) {
+      bucket = { named: new Set<string>(), hasDefaultOrNamespace: false };
+      bySource.set(moduleSource, bucket);
+    }
+    const braceStart = clause.indexOf('{');
+    const braceEnd = clause.lastIndexOf('}');
+    const outsideBraces =
+      braceStart >= 0 && braceEnd > braceStart
+        ? `${clause.slice(0, braceStart)}${clause.slice(braceEnd + 1)}`
+        : clause;
+    if (/[A-Za-z0-9_$*]/u.test(outsideBraces.replace(/,/gu, '').trim())) {
+      bucket.hasDefaultOrNamespace = true;
+    }
+    if (braceStart >= 0 && braceEnd > braceStart) {
+      const inner = clause.slice(braceStart + 1, braceEnd);
+      for (const rawPart of inner.split(',')) {
+        const part = rawPart.trim();
+        if (!part || /^type\s+/u.test(part)) continue;
+        const imported = part.split(/\s+as\s+/u)[0]?.trim();
+        if (imported) bucket.named.add(imported);
+      }
+    }
+  }
+  return [...bySource.entries()].map(([moduleSource, info]) => ({
+    source: moduleSource,
+    named: [...info.named],
+    hasDefaultOrNamespace: info.hasDefaultOrNamespace
+  }));
+}
+
+const registrationBySource = new Map(
+  registrations.map((entry) => [entry.module_source, entry])
+);
+
+export function prewarmNativeModuleSources(source: string): void {
+  for (const item of extractNativeSourceImports(source)) {
+    if (item.source === 'react' || item.source === 'react/jsx-runtime') continue;
+    if (item.source === 'antd' || item.source.startsWith('antd/es/')) {
+      void prewarmAntDesignProductDomain()?.catch(() => undefined);
+    }
+    if (
+      item.source === '@ant-design/icons' ||
+      item.source.startsWith('@ant-design/icons/')
+    ) {
+      void prewarmAntDesignIconsDomain()?.catch(() => undefined);
+    }
+    const entry = registrationBySource.get(item.source);
+    if (!entry) continue;
+    if (
+      entry.loadExports &&
+      !item.hasDefaultOrNamespace &&
+      item.named.length > 0
+    ) {
+      void entry.loadExports(item.named).catch(() => undefined);
+    } else {
+      void entry.load().catch(() => undefined);
+    }
+  }
 }
 
 function registration(
   moduleSource: string,
   exports: readonly string[],
-  load: () => Promise<NativeReactFrontendModuleLoadResult>
+  load: () => Promise<NativeReactFrontendModuleLoadResult>,
+  loadExports?: (
+    requestedExports: readonly string[]
+  ) => Promise<NativeReactFrontendModuleLoadResult>
 ): NativeReactFrontendModuleRegistration {
-  return { module_source: moduleSource, exports: [...exports], load };
+  return {
+    module_source: moduleSource,
+    exports: [...exports],
+    load,
+    ...(loadExports ? { loadExports } : {})
+  };
 }
 
 function reactModule(): ModuleNamespace {

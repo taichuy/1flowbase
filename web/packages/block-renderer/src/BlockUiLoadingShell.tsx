@@ -5,12 +5,11 @@ export function BlockUiLoadingShell() {
     <div
       aria-busy="true"
       data-testid="block-ui-loading-shell"
-      style={{ width: '100%' }}
+      style={{ width: '100%', padding: '8px 4px', opacity: 0.85 }}
     >
       <Skeleton
-        active
-        title={{ width: '32%' }}
-        paragraph={{ rows: 3, width: ['94%', '78%', '58%'] }}
+        title={{ width: '30%' }}
+        paragraph={{ rows: 4, width: ['92%', '80%', '64%', '44%'] }}
       />
     </div>
   );
