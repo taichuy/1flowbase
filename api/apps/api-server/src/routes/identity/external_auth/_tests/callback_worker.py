@@ -11,6 +11,15 @@ import sys
 import time
 import urllib.parse
 
+# Leave the existing bound identity and barrier cases unchanged. Each sign-up
+# code represents a distinct, previously unbound provider identity.
+SIGNUP_IDENTITIES = {
+    "new_external_identity": ("43", "new-external@example.com"),
+    "personal_workspace_signup": ("44", "personal-oauth@example.com"),
+    "default_workspace_signup": ("45", "default-oauth@example.com"),
+}
+SIGNUP_EMAILS = {email for _, email in SIGNUP_IDENTITIES.values()}
+
 for line in sys.stdin:
     envelope = json.loads(line)
     if envelope.get("kind") != "call":
@@ -30,9 +39,8 @@ for line in sys.stdin:
         result = {"type": "verified_identity", "subject_type": "provider-user-id", "subject_value": "42",
                   "issuer": "https://provider.example", "realm": None,
                   "profile": {"email": "external-fixture@example.com", "email_verified": True}}
-        if payload["code"] == "new_external_identity":
-            result["subject_value"] = "43"
-            result["profile"]["email"] = "new-external@example.com"
+        if payload["code"] in SIGNUP_IDENTITIES:
+            result["subject_value"], result["profile"]["email"] = SIGNUP_IDENTITIES[payload["code"]]
         if payload["code"].startswith("pause_after_response:"):
             # Keep synchronization files outside verified installation bytes.
             path = pathlib.Path(payload["code"].split(":", 1)[1])
@@ -42,7 +50,7 @@ for line in sys.stdin:
                 if time.monotonic() >= deadline:
                     raise RuntimeError("fixture response barrier timed out")
                 time.sleep(0.005)
-    elif operation == "registration_eligibility" and payload["profile"]["email"] == "new-external@example.com":
+    elif operation == "registration_eligibility" and payload["profile"]["email"] in SIGNUP_EMAILS:
         result = {"type": "registration_eligibility", "allowed": True, "reason_code": None}
     else:
         # A bound identity with self-registration disabled must never reach this.

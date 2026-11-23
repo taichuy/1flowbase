@@ -448,22 +448,43 @@ async fn disabled_membership_and_suspended_scopes_immediately_block_cookie_and_p
 
 #[tokio::test]
 async fn external_oauth_callback_registration_rejected_has_no_signup_effects() {
+    assert_external_oauth_signup(WorkspaceOnboardingModeDto::Reject).await;
+}
+
+#[tokio::test]
+async fn external_oauth_callback_provisions_personal_workspace_and_admin_session() {
+    assert_external_oauth_signup(WorkspaceOnboardingModeDto::PersonalWorkspace).await;
+}
+
+#[tokio::test]
+async fn external_oauth_callback_joins_default_workspace_with_member_session() {
+    assert_external_oauth_signup(WorkspaceOnboardingModeDto::DefaultWorkspace).await;
+}
+
+async fn assert_external_oauth_signup(mode: WorkspaceOnboardingModeDto) {
+    use WorkspaceOnboardingModeDto::{DefaultWorkspace, InviteOnly, PersonalWorkspace, Reject};
     use control_plane::ports::SessionStore;
+    use control_plane_contracts::ports::{ProvisionWorkspaceInput, ProvisionWorkspaceTenant};
     use std::sync::atomic::AtomicUsize;
 
-    #[derive(Default)]
-    struct RejectRegistration(AtomicUsize);
+    struct SignupPolicy {
+        mode: WorkspaceOnboardingModeDto,
+        email: &'static str,
+        default_workspace: Option<Uuid>,
+        resolutions: AtomicUsize,
+    }
 
     #[async_trait::async_trait]
-    impl WorkspacePolicyPort for RejectRegistration {
+    impl WorkspacePolicyPort for SignupPolicy {
         async fn decide(
             &self,
             request: WorkspacePolicyRequest,
         ) -> anyhow::Result<Option<WorkspacePolicyResponse>> {
+            use WorkspaceRegistrationDecisionDto as Decision;
             Ok(Some(match request {
                 WorkspacePolicyRequest::InspectPublicPolicy => {
                     WorkspacePolicyResponse::PublicPolicy {
-                        onboarding_mode: WorkspaceOnboardingModeDto::Reject,
+                        onboarding_mode: self.mode,
                     }
                 }
                 WorkspacePolicyRequest::ResolveRegistration {
@@ -471,14 +492,26 @@ async fn external_oauth_callback_registration_rejected_has_no_signup_effects() {
                     invitation_token,
                     ..
                 } => {
-                    assert_eq!(email, "new-external@example.com");
+                    assert_eq!(email, self.email);
                     assert!(invitation_token.is_none());
-                    self.0.fetch_add(1, Ordering::SeqCst);
-                    WorkspacePolicyResponse::RegistrationDecision {
-                        decision: WorkspaceRegistrationDecisionDto::Deny {
+                    self.resolutions.fetch_add(1, Ordering::SeqCst);
+                    let decision = match self.mode {
+                        Reject => Decision::Deny {
                             reason_code: "registration_rejected".into(),
                         },
-                    }
+                        PersonalWorkspace => Decision::ProvisionPersonalWorkspace {
+                            tenant_code: "personal-oauth".into(),
+                            tenant_name: "Personal OAuth".into(),
+                            workspace_name: "Personal OAuth".into(),
+                        },
+                        DefaultWorkspace => Decision::JoinExistingWorkspace {
+                            workspace_id: self.default_workspace.unwrap().to_string(),
+                            role_codes: vec!["member".into()],
+                            redemption_id: None,
+                        },
+                        InviteOnly => unreachable!("not a sign-up mode in this fixture"),
+                    };
+                    WorkspacePolicyResponse::RegistrationDecision { decision }
                 }
                 _ => panic!("unexpected workspace policy request"),
             }))
@@ -507,9 +540,10 @@ async fn external_oauth_callback_registration_rejected_has_no_signup_effects() {
         }
     }
 
-    async fn signup_counts(store: &MainDurableStore) -> (i64, i64) {
+    async fn signup_counts(store: &MainDurableStore) -> (i64, i64, i64) {
         sqlx::query_as(
-            "select (select count(*) from users), (select count(*) from workspace_memberships)",
+            "select (select count(*) from users), (select count(*) from workspace_memberships),
+                    (select count(*) from workspaces)",
         )
         .fetch_one(store.pool())
         .await
@@ -519,7 +553,42 @@ async fn external_oauth_callback_registration_rejected_has_no_signup_effects() {
     let (initial, _host, entry, _) =
         api_server::test_support::external_auth_verifier::installed_verifier_fixture().await;
     let mut state = (*initial).clone();
-    let policy = Arc::new(RejectRegistration::default());
+    let (code, email) = match mode {
+        Reject => ("new_external_identity", "new-external@example.com"),
+        PersonalWorkspace => ("personal_workspace_signup", "personal-oauth@example.com"),
+        DefaultWorkspace => ("default_workspace_signup", "default-oauth@example.com"),
+        InviteOnly => unreachable!("not a sign-up mode in this fixture"),
+    };
+    let default_workspace = if mode == DefaultWorkspace {
+        let target = state
+            .store
+            .provision_workspace(&ProvisionWorkspaceInput {
+                tenant: ProvisionWorkspaceTenant::New {
+                    code: "oauth-default".into(),
+                    name: "OAuth Default".into(),
+                },
+                workspace_name: "OAuth Default".into(),
+                logo_url: None,
+                introduction: String::new(),
+                actor_user_id: None,
+                role_templates: access_control::bootstrap_role_templates(),
+                initial_member: None,
+            })
+            .await
+            .unwrap()
+            .workspace
+            .id;
+        assert_ne!(target, state.bootstrap_workspace_id);
+        Some(target)
+    } else {
+        None
+    };
+    let policy = Arc::new(SignupPolicy {
+        mode,
+        email,
+        default_workspace,
+        resolutions: AtomicUsize::new(0),
+    });
     state.provider_runtime = Arc::new(
         state
             .provider_runtime
@@ -569,9 +638,10 @@ async fn external_oauth_callback_registration_rejected_has_no_signup_effects() {
         .unwrap();
     let query = url::form_urlencoded::Serializer::new(String::new())
         .append_pair("state", &transaction_state)
-        .append_pair("code", "new_external_identity")
+        .append_pair("code", code)
         .finish();
     let callback = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri(format!("/api/public/auth/external/callback?{query}"))
@@ -582,19 +652,74 @@ async fn external_oauth_callback_registration_rejected_has_no_signup_effects() {
         .await
         .unwrap();
     assert_eq!(callback.status(), StatusCode::SEE_OTHER);
-    assert_eq!(
-        callback.headers()["location"],
-        "/sign-in?auth_error=registration_disabled"
-    );
+    let location = callback.headers()["location"].to_str().unwrap();
     let session_prefix = format!("{}=", state.cookie_name);
-    assert!(
-        callback
-            .headers()
-            .get_all("set-cookie")
-            .iter()
-            .all(|header| { !header.to_str().unwrap().starts_with(&session_prefix) })
+    let session_cookie = callback
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .map(|header| header.to_str().unwrap().split(';').next().unwrap())
+        .find(|cookie| cookie.starts_with(&session_prefix));
+    assert_eq!(policy.resolutions.load(Ordering::SeqCst), 1, "{location}");
+    let (users, memberships, workspaces) = before;
+    if mode == Reject {
+        assert_eq!(location, "/sign-in?auth_error=registration_disabled");
+        assert!(session_cookie.is_none());
+        assert_eq!(sessions.puts.load(Ordering::SeqCst), 0);
+        assert_eq!(signup_counts(&state.store).await, before);
+        return;
+    }
+
+    assert_eq!(location, "/");
+    let session_cookie = session_cookie.expect("successful callback must issue a console session");
+    assert_ne!(session_cookie, session_prefix);
+    assert_eq!(sessions.puts.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        signup_counts(&state.store).await,
+        (
+            users + 1,
+            memberships + 1,
+            workspaces + i64::from(mode == PersonalWorkspace),
+        )
     );
-    assert_eq!(policy.0.load(Ordering::SeqCst), 1);
-    assert_eq!(sessions.puts.load(Ordering::SeqCst), 0);
-    assert_eq!(signup_counts(&state.store).await, before);
+
+    let (status, session, _) = call(
+        &app,
+        Method::GET,
+        "/api/console/session",
+        Value::Null,
+        &[("cookie", session_cookie)],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{session}");
+    let actor = &session["data"]["actor"];
+    let workspace_id: Uuid = actor["current_workspace_id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert_eq!(
+        session["data"]["session"]["current_workspace_id"],
+        workspace_id.to_string()
+    );
+    let expected_role = if let Some(target) = default_workspace {
+        assert_eq!(workspace_id, target);
+        "member"
+    } else {
+        assert_ne!(workspace_id, state.bootstrap_workspace_id);
+        let personal_workspace_id: Uuid = sqlx::query_scalar(
+            "select w.id from workspaces w join tenants t on t.id = w.tenant_id
+             where t.code = 'personal-oauth' and w.name = 'Personal OAuth'",
+        )
+        .fetch_one(state.store.pool())
+        .await
+        .unwrap();
+        assert_eq!(workspace_id, personal_workspace_id);
+        "admin"
+    };
+    assert_eq!(actor["effective_display_role"], expected_role);
+    assert_eq!(
+        session["data"]["session"]["active_role_code"],
+        expected_role
+    );
 }
