@@ -37,13 +37,29 @@ test_support_item! { , [/// Finite UI vocabulary. Neither plugin reason text nor
 /// a query parameter; every redirect target below is a host-owned constant.
 ]
 fn failure_redirect(error: &ApiError) -> &'static str {
+    use control_plane::auth::WorkspacePolicyRejection;
     use control_plane::errors::ControlPlaneError as E;
     let safe = error.0.downcast_ref::<SafeFailure>().map(|error| error.0);
-    let code = safe.or_else(|| match error.0.downcast_ref::<E>() {
+    let policy = error
+        .0
+        .downcast_ref::<WorkspacePolicyRejection>()
+        .and_then(|rejection| match rejection.code.as_str() {
+            "invitation_required" => Some("invitation_required"),
+            "invitation_invalid" => Some("invitation_invalid"),
+            "invitation_expired" => Some("invitation_expired"),
+            "invitation_exhausted" | "invitation_max_uses_reached" => {
+                Some("invitation_exhausted")
+            }
+            "invitation_revoked" => Some("invitation_revoked"),
+            "invitation_email_mismatch" => Some("invitation_email_mismatch"),
+            _ => None,
+        });
+    let code = safe.or(policy).or_else(|| match error.0.downcast_ref::<E>() {
         Some(E::PermissionDenied("self_registration_disabled")) => Some("registration_disabled"),
         Some(E::PermissionDenied("external_registration_ineligible")) => {
             Some("registration_ineligible")
         }
+        Some(E::PermissionDenied("invitation_unsupported")) => Some("registration_disabled"),
         Some(E::InvalidInput("external_registration_email_required")) => Some("email_required"),
         Some(E::Conflict(
             "external_identity_already_bound" | "external_registration_identity_exists",
@@ -73,6 +89,12 @@ fn failure_redirect(error: &ApiError) -> &'static str {
         Some("provider_unavailable") => "/sign-in?auth_error=provider_unavailable",
         Some("session_expired") => "/sign-in?auth_error=session_expired",
         Some("user_disabled") => "/sign-in?auth_error=user_disabled",
+        Some("invitation_required") => "/sign-in?auth_error=invitation_required",
+        Some("invitation_invalid") => "/sign-in?auth_error=invitation_invalid",
+        Some("invitation_expired") => "/sign-in?auth_error=invitation_expired",
+        Some("invitation_exhausted") => "/sign-in?auth_error=invitation_exhausted",
+        Some("invitation_revoked") => "/sign-in?auth_error=invitation_revoked",
+        Some("invitation_email_mismatch") => "/sign-in?auth_error=invitation_email_mismatch",
         _ => "/sign-in?auth_error=external_auth_failed",
     }
 }

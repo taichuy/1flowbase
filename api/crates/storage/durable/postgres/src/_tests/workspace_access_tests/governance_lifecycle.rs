@@ -612,4 +612,20 @@ async fn simultaneous_onboarding_of_one_external_subject_has_one_winner() {
             .active_member_count,
         1
     );
+
+    let index_names: Vec<String> = sqlx::query_scalar(
+        "select indexname from pg_indexes where schemaname = current_schema() and indexname in ('tenants_status_cell_id', 'workspace_memberships_status', 'workspace_memberships_workspace_status', 'users_managed_by_tenant_id') order by indexname",
+    )
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        index_names,
+        vec![
+            "tenants_status_cell_id",
+            "users_managed_by_tenant_id",
+            "workspace_memberships_status",
+            "workspace_memberships_workspace_status",
+        ]
+    );
 }
