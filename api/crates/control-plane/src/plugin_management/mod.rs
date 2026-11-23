@@ -591,5 +591,6 @@ pub use client_collector::*;
 #[cfg(test)]
 pub(crate) use client_collector::_tests::collector_fixture_archive;
 
+#[path = "managed_execution/workspace_governance.rs"]
 mod managed_workspace_governance;
 pub use managed_workspace_governance::ManagedWorkspaceGovernanceService;

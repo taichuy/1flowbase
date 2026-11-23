@@ -192,11 +192,12 @@ impl InterfaceTargetAdmissionPort for ConsoleProtocolAdmissionPort {
             result.map_err(|error| {
                 InterfaceTargetAdmissionError::with_source("console_protocol_admission", error)
             })?;
-            let interface_id = request.binding().binding_id().as_str();
-            if matches!(
-                interface_id,
-                "http.console.members.create.v1" | "http.console.applications.create.v1"
-            ) {
+            let canonical_interface_id = match request.binding().binding_id().as_str() {
+                "http.console.members.create.v1" => Some("members.create"),
+                "http.console.applications.create.v1" => Some("applications.create"),
+                _ => None,
+            };
+            if let Some(interface_id) = canonical_interface_id {
                 async {
                     let principal = request.principal();
                     let denied = control_plane::errors::ControlPlaneError::PermissionDenied(

@@ -109,10 +109,14 @@ impl IntoResponse for ApiError {
             .0
             .downcast_ref::<crate::managed_services::ManagedServiceFailure>()
         {
+            let status = match error.0.as_str() {
+                "permission_denied" => StatusCode::FORBIDDEN,
+                _ => StatusCode::UNPROCESSABLE_ENTITY,
+            };
             return (
-                StatusCode::UNPROCESSABLE_ENTITY,
+                status,
                 Json(ErrorBody {
-                    status: StatusCode::UNPROCESSABLE_ENTITY.as_u16(),
+                    status: status.as_u16(),
                     code: error.0.clone(),
                     message: error.0.clone(),
                     inventory: None,

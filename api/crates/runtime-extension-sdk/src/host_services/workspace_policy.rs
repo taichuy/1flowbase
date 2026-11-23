@@ -31,5 +31,5 @@ pub fn workspace_policy_output(result: WorkspacePolicyResponse) -> Value {
 }
 
 #[cfg(test)]
-#[path = "_tests/host_services/workspace_policy_sdk_tests.rs"]
+#[path = "../_tests/host_services/workspace_policy_sdk_tests.rs"]
 mod tests;

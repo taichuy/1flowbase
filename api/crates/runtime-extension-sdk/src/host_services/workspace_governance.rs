@@ -213,5 +213,5 @@ pub struct WorkspaceGovernanceQuotaCounts {
 }
 
 #[cfg(test)]
-#[path = "_tests/host_services/workspace_governance_sdk_tests.rs"]
+#[path = "../_tests/host_services/workspace_governance_sdk_tests.rs"]
 mod tests;

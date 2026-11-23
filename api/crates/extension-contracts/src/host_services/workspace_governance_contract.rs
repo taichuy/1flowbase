@@ -199,5 +199,5 @@ pub trait WorkspaceGovernancePort: Send + Sync {
 }
 
 #[cfg(test)]
-#[path = "../_tests/workspace_governance_contract_tests.rs"]
+#[path = "../_tests/managed_contributions/workspace_governance_contract_tests.rs"]
 mod tests;

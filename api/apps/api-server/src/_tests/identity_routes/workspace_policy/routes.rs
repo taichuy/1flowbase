@@ -107,10 +107,10 @@ impl WorkspacePolicyPort for Policy {
                 }
             }
             Request::AdmitOperation { interface_id, .. } => {
-                let reason = if interface_id == "http.console.members.create.v1" {
-                    "member_quota_exceeded"
-                } else {
-                    "application_quota_exceeded"
+                let reason = match interface_id.as_str() {
+                    "members.create" => "member_quota_exceeded",
+                    "applications.create" => "application_quota_exceeded",
+                    other => panic!("unexpected canonical interface_id in AdmitOperation: {other}"),
                 };
                 Response::OperationAdmission {
                     admission: WorkspaceOperationAdmissionDto::Deny {
