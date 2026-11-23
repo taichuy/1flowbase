@@ -51,6 +51,7 @@ pub fn runtime_scope_grant_from_record(
     grant: &domain::ScopeDataModelGrantRecord,
 ) -> runtime_core::runtime_acl::RuntimeScopeGrant {
     runtime_core::runtime_acl::RuntimeScopeGrant {
+        bootstrap_workspace_id: domain::DEFAULT_SCOPE_ID,
         data_model_id: grant.data_model_id,
         scope_kind: grant.scope_kind,
         scope_id: grant.scope_id,
@@ -370,6 +371,12 @@ where
         if !actor.is_root && role_scope.is_none() {
             return Ok(None);
         }
+        let bootstrap_workspace_id =
+            if actor.is_root && actor.current_workspace_id != domain::SYSTEM_SCOPE_ID {
+                self.repository.runtime_bootstrap_workspace_id().await?
+            } else {
+                domain::DEFAULT_SCOPE_ID
+            };
         let may_read_system = matches!(action, RuntimeDataAction::View)
             && role_scope == Some(domain::RoleDataPolicyScope::SystemAll);
         if actor.is_root || may_read_system {
@@ -384,7 +391,23 @@ where
                 if !actor.is_root && !grant.enabled {
                     return Ok(None);
                 }
-                return Ok(Some(runtime_scope_grant_from_record(grant)));
+                let mut grant = runtime_scope_grant_from_record(grant);
+                grant.bootstrap_workspace_id = bootstrap_workspace_id;
+                if !grant.allows_system_rows(actor)
+                    && (actor.is_root
+                        || grant.permission_profile
+                            == domain::ScopeDataModelPermissionProfile::SystemAll)
+                {
+                    grant.scope_kind = DataModelScopeKind::Workspace;
+                    grant.scope_id = actor.current_workspace_id;
+                    if grant.permission_profile
+                        == domain::ScopeDataModelPermissionProfile::SystemAll
+                    {
+                        grant.permission_profile =
+                            domain::ScopeDataModelPermissionProfile::ScopeAll;
+                    }
+                }
+                return Ok(Some(grant));
             }
         }
 
@@ -392,27 +415,15 @@ where
             .repository
             .list_scope_data_model_grants(DataModelScopeKind::Workspace, actor.current_workspace_id)
             .await?;
-        let grant = if let Some(grant) = workspace_grants
+        let Some(grant) = workspace_grants
             .iter()
             .find(|grant| grant.data_model_id == data_model_id)
-        {
-            runtime_scope_grant_from_record(grant)
-        } else {
-            if !actor.is_root {
-                return Ok(None);
-            }
-
-            let system_grants = self
-                .repository
-                .list_scope_data_model_grants(DataModelScopeKind::System, domain::SYSTEM_SCOPE_ID)
-                .await?;
-            let Some(grant) = system_grants
-                .iter()
-                .find(|grant| grant.data_model_id == data_model_id)
-            else {
-                return Ok(None);
-            };
-            runtime_scope_grant_from_record(grant)
+        else {
+            return Ok(None);
+        };
+        let grant = runtime_core::runtime_acl::RuntimeScopeGrant {
+            bootstrap_workspace_id,
+            ..runtime_scope_grant_from_record(grant)
         };
 
         if actor.is_root {

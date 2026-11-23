@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 fn scope_grant(model_id: Uuid, scope_id: Uuid) -> RuntimeScopeGrant {
     RuntimeScopeGrant {
+        bootstrap_workspace_id: domain::DEFAULT_SCOPE_ID,
         data_model_id: model_id,
         scope_kind: domain::DataModelScopeKind::Workspace,
         scope_id,

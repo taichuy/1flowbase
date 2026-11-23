@@ -27,6 +27,7 @@ fn scope_grant(
     permission_profile: domain::ScopeDataModelPermissionProfile,
 ) -> RuntimeScopeGrant {
     RuntimeScopeGrant {
+        bootstrap_workspace_id: domain::DEFAULT_SCOPE_ID,
         data_model_id: Uuid::nil(),
         scope_kind: domain::DataModelScopeKind::Workspace,
         scope_id,
@@ -330,7 +331,7 @@ async fn scope_all_returns_all_records_inside_granted_scope_id() {
 }
 
 #[tokio::test]
-async fn system_all_read_requires_root_or_an_explicit_real_system_grant() {
+async fn system_all_read_is_global_only_for_root_in_the_system_workspace() {
     let model_id = Uuid::nil();
     let scope_a = Uuid::now_v7();
     let scope_b = Uuid::now_v7();
@@ -400,7 +401,8 @@ async fn system_all_read_requires_root_or_an_explicit_real_system_grant() {
         })
         .await
         .unwrap();
-    assert_eq!(delegated.total, listed.total);
+    assert_eq!(delegated.total, 1);
+    assert_eq!(delegated.items[0]["title"], "scope-a");
 
     let error = engine
         .list_records(RuntimeListInput {
@@ -432,7 +434,7 @@ fn delegated_system_grant_is_read_only_and_cannot_be_forged_with_workspace_scope
     grant.scope_kind = domain::DataModelScopeKind::System;
     let scope =
         resolve_access_scope(&actor, RuntimeDataAction::View, model_id, Some(&grant)).unwrap();
-    assert_eq!(scope.scope_id, None);
+    assert_eq!(scope.scope_id, Some(actor.current_workspace_id));
     assert_eq!(scope.owner_user_id, None);
     for action in [
         RuntimeDataAction::Create,
@@ -455,4 +457,33 @@ fn delegated_system_grant_is_read_only_and_cannot_be_forged_with_workspace_scope
     grant.enabled = true;
     grant.data_model_id = Uuid::now_v7();
     assert!(resolve_access_scope(&actor, RuntimeDataAction::View, model_id, Some(&grant)).is_err());
+}
+
+#[test]
+fn root_system_grant_stays_within_the_active_customer_workspace() {
+    use runtime_core::runtime_acl::{resolve_access_scope, RuntimeDataAction};
+    let customer_workspace = Uuid::now_v7();
+    let mut grant = scope_grant(
+        domain::SYSTEM_SCOPE_ID,
+        domain::ScopeDataModelPermissionProfile::SystemAll,
+    );
+    grant.scope_kind = domain::DataModelScopeKind::System;
+    let root_id = Uuid::now_v7();
+    for (workspace, expected) in [
+        (customer_workspace, Some(customer_workspace)),
+        (domain::DEFAULT_SCOPE_ID, None),
+        (domain::SYSTEM_SCOPE_ID, None),
+    ] {
+        let actor = ActorContext::root(root_id, workspace, "root");
+        for action in [
+            RuntimeDataAction::View,
+            RuntimeDataAction::Create,
+            RuntimeDataAction::Update,
+            RuntimeDataAction::Delete,
+        ] {
+            let access =
+                resolve_access_scope(&actor, action, grant.data_model_id, Some(&grant)).unwrap();
+            assert_eq!(access.scope_id, expected, "{workspace} {action:?}");
+        }
+    }
 }

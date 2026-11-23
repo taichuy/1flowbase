@@ -496,6 +496,7 @@ async fn image_preview_projects_upload_list_get_and_obeys_actual_storage_policy(
             actor: actor.clone(),
             model_code: model.code.clone(),
             scope_grant: Some(runtime_core::runtime_acl::RuntimeScopeGrant {
+                bootstrap_workspace_id: domain::DEFAULT_SCOPE_ID,
                 data_model_id: model.id,
                 scope_kind: DataModelScopeKind::Workspace,
                 scope_id: workspace_id,
@@ -538,6 +539,7 @@ async fn image_preview_projects_upload_list_get_and_obeys_actual_storage_policy(
                 actor: actor.clone(),
                 model_code: model.code.clone(),
                 scope_grant: Some(runtime_core::runtime_acl::RuntimeScopeGrant {
+                    bootstrap_workspace_id: domain::DEFAULT_SCOPE_ID,
                     data_model_id: model.id,
                     scope_kind: DataModelScopeKind::Workspace,
                     scope_id: workspace_id,
@@ -564,6 +566,7 @@ async fn image_preview_projects_upload_list_get_and_obeys_actual_storage_policy(
         model_code: model.code.clone(),
         record_id: id.to_string(),
         scope_grant: Some(runtime_core::runtime_acl::RuntimeScopeGrant {
+            bootstrap_workspace_id: domain::DEFAULT_SCOPE_ID,
             data_model_id: model.id,
             scope_kind: DataModelScopeKind::Workspace,
             scope_id: workspace_id,

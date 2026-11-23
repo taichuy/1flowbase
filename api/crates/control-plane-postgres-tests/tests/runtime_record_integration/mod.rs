@@ -275,3 +275,5 @@ async fn seed_runtime_read_model_rows(store: &PgControlPlaneStore) -> RuntimeRea
 mod crud;
 mod read_models;
 mod scopes;
+
+mod workspace_ceiling;

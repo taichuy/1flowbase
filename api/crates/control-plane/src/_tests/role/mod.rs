@@ -1062,7 +1062,7 @@ async fn role_service_tracks_policy_flags_on_create_and_update() {
 }
 
 #[tokio::test]
-async fn workspace_role_system_all_is_configurable_for_view_but_never_for_writes() {
+async fn workspace_role_data_policy_rejects_system_all_for_view_and_writes() {
     use domain::RoleDataPolicyScope::{Own, ScopeAll, SystemAll};
     let repository = MemoryRoleRepository::default();
     let service = RoleService::new(repository.clone());
@@ -1083,14 +1083,14 @@ async fn workspace_role_system_all_is_configurable_for_view_but_never_for_writes
         can_create: false,
         can_update: false,
         can_delete: false,
-        default_view_scope: SystemAll,
+        default_view_scope: ScopeAll,
         default_update_scope: ScopeAll,
         default_delete_scope: Own,
     };
     let model_policy = RoleDataModelPolicyInput {
         data_model_id: model_id,
         can_create_override: None,
-        view_scope_override: Some(SystemAll),
+        view_scope_override: Some(ScopeAll),
         update_scope_override: None,
         delete_scope_override: None,
     };
@@ -1102,11 +1102,13 @@ async fn workspace_role_system_all_is_configurable_for_view_but_never_for_writes
             model_policies: vec![model_policy.clone()],
         })
         .await
-        .expect("explicit system-wide view should be configurable");
-    assert_eq!(saved.default_policy.default_view_scope, SystemAll);
-    assert_eq!(saved.model_policies[0].view_scope_override, Some(SystemAll));
+        .expect("workspace-wide view should be configurable");
+    assert_eq!(saved.default_policy.default_view_scope, ScopeAll);
+    assert_eq!(saved.model_policies[0].view_scope_override, Some(ScopeAll));
 
-    for write_field in [
+    for policy_field in [
+        "default_view",
+        "model_view",
         "default_update",
         "default_delete",
         "model_update",
@@ -1114,7 +1116,9 @@ async fn workspace_role_system_all_is_configurable_for_view_but_never_for_writes
     ] {
         let mut default_policy = defaults.clone();
         let mut model_policy = model_policy.clone();
-        match write_field {
+        match policy_field {
+            "default_view" => default_policy.default_view_scope = SystemAll,
+            "model_view" => model_policy.view_scope_override = Some(SystemAll),
             "default_update" => default_policy.default_update_scope = SystemAll,
             "default_delete" => default_policy.default_delete_scope = SystemAll,
             "model_update" => model_policy.update_scope_override = Some(SystemAll),
@@ -1134,7 +1138,7 @@ async fn workspace_role_system_all_is_configurable_for_view_but_never_for_writes
             error
                 .to_string()
                 .contains("system_all_requires_system_role"),
-            "{write_field}"
+            "{policy_field}"
         );
     }
 
@@ -1146,24 +1150,25 @@ async fn workspace_role_system_all_is_configurable_for_view_but_never_for_writes
     for model_override in [false, true] {
         let mut scoped_defaults = defaults.clone();
         scoped_defaults.default_view_scope = if model_override { ScopeAll } else { SystemAll };
-        let saved = service
+        let error = service
             .replace_data_policy(ReplaceRoleDataPolicyCommand {
                 actor_user_id: manager.user_id,
                 role_code: "editor".into(),
                 default_policy: scoped_defaults,
                 model_policies: if model_override {
-                    vec![model_policy.clone()]
+                    vec![RoleDataModelPolicyInput {
+                        view_scope_override: Some(SystemAll),
+                        ..model_policy.clone()
+                    }]
                 } else {
                     vec![]
                 },
             })
             .await
-            .expect("the role policy operation authorizes system-wide view grants");
-        if model_override {
-            assert_eq!(saved.model_policies[0].view_scope_override, Some(SystemAll));
-        } else {
-            assert_eq!(saved.default_policy.default_view_scope, SystemAll);
-        }
+            .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("system_all_requires_system_role"));
     }
     repository.set_actor_console_policies(vec![]).await;
     let audit_before = repository.audit_events();

@@ -1074,9 +1074,9 @@ pub fn builtin_data_model_contract(code: &str) -> Option<BuiltinDataModelContrac
         "model_pricing_rules" => BuiltinDataModelContract {
             code: "model_pricing_rules",
             physical_table_name: "model_pricing_rules",
-            kind: BuiltinDataModelKind::Core,
+            kind: BuiltinDataModelKind::RuntimeRead,
             system_field_codes: MODEL_PRICING_RULES_FIELDS,
-            capabilities: core_capabilities,
+            capabilities: runtime_read_capabilities,
         },
         "application_run_log_summaries" => BuiltinDataModelContract {
             code: "application_run_log_summaries",
