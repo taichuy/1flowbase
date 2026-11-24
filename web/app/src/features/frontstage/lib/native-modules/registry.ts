@@ -60,7 +60,9 @@ async function loadNativeAntDesignModule(): Promise<ModuleNamespace> {
       NativeBlockSelect,
       NativeBlockTreeSelect
     },
-    { NativeBlockPopover, NativeBlockTooltip }
+    { NativeBlockPopover, NativeBlockTooltip },
+    { NativeBlockDrawer },
+    { NativeBlockPopconfirm }
   ] = await Promise.all([
     loadAntDesignRootModule(),
     import('./affix-anchor/native-affix-runtime'),
@@ -70,7 +72,9 @@ async function loadNativeAntDesignModule(): Promise<ModuleNamespace> {
     import('./notification/facade'),
     import('./menu/native-menu-runtime'),
     import('./overlay/native-generic-overlay-runtime'),
-    import('./overlay/native-tooltip-popover-runtime')
+    import('./overlay/native-tooltip-popover-runtime'),
+    import('./overlay/native-drawer-runtime'),
+    import('./overlay/native-popconfirm-runtime')
   ]);
   return {
     ...antdModule,
@@ -78,8 +82,10 @@ async function loadNativeAntDesignModule(): Promise<ModuleNamespace> {
     Anchor: NativeBlockAnchor,
     Cascader: NativeBlockCascader,
     DatePicker: NativeBlockDatePicker,
+    Drawer: NativeBlockDrawer,
     Dropdown: NativeBlockDropdown,
     Menu: NativeBlockMenu,
+    Popconfirm: NativeBlockPopconfirm,
     Popover: NativeBlockPopover,
     Select: NativeBlockSelect,
     Tooltip: NativeBlockTooltip,
@@ -108,6 +114,10 @@ const ANTD_HOST_EXPORT_LOADERS: Readonly<
     import('./overlay/native-date-picker-runtime').then(
       ({ NativeBlockDatePicker }) => NativeBlockDatePicker
     ),
+  Drawer: () =>
+    import('./overlay/native-drawer-runtime').then(
+      ({ NativeBlockDrawer }) => NativeBlockDrawer
+    ),
   Dropdown: () =>
     import('./native-dropdown-runtime').then(
       ({ NativeBlockDropdown }) => NativeBlockDropdown
@@ -115,6 +125,10 @@ const ANTD_HOST_EXPORT_LOADERS: Readonly<
   Menu: () =>
     import('./menu/native-menu-runtime').then(
       ({ NativeBlockMenu }) => NativeBlockMenu
+    ),
+  Popconfirm: () =>
+    import('./overlay/native-popconfirm-runtime').then(
+      ({ NativeBlockPopconfirm }) => NativeBlockPopconfirm
     ),
   Popover: () =>
     import('./overlay/native-popover-runtime').then(
@@ -231,9 +245,20 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
     loadSelectiveNativeAntDesignModule
   ),
   ...ANTD_ES_MODULE_DEFINITIONS.map(({ module_source, exports }) =>
-    registration(module_source, exports, async () => ({
-      module: await loadAntDesignEsModule(module_source)
-    }))
+    registration(module_source, exports, async () => {
+      const module = await loadAntDesignEsModule(module_source);
+      if (/^antd\/es\/drawer(?:\/index)?(?:\.js)?$/u.test(module_source)) {
+        const { NativeBlockDrawer } =
+          await import('./overlay/native-drawer-runtime');
+        return { module: { ...module, default: NativeBlockDrawer } };
+      }
+      if (/^antd\/es\/popconfirm(?:\/index)?(?:\.js)?$/u.test(module_source)) {
+        const { NativeBlockPopconfirm } =
+          await import('./overlay/native-popconfirm-runtime');
+        return { module: { ...module, default: NativeBlockPopconfirm } };
+      }
+      return { module };
+    })
   ),
   ...DND_KIT_MODULE_DEFINITIONS.map(({ module_source, exports }) =>
     registration(module_source, exports, async () => ({
@@ -474,14 +499,10 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
       );
       const [viewer, workspace] = await Promise.all([
         needsViewer
-          ? import(
-              '../../../applications/components/logs/ApplicationRunLogViewer'
-            )
+          ? import('../../../applications/components/logs/ApplicationRunLogViewer')
           : null,
         needsWorkspace
-          ? import(
-              '../../../applications/components/logs/workspace/ApplicationLogs'
-            )
+          ? import('../../../applications/components/logs/workspace/ApplicationLogs')
           : null
       ]);
       return {
@@ -545,9 +566,7 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
       const [module, host, vditorStyle, richTextStyle] = await Promise.all([
         import('@1flowbase/rich-text'),
         needsEditor
-          ? import(
-              '../../../../shared/ui/markdown-ir-editor/UserPreferenceVditorEditor'
-            )
+          ? import('../../../../shared/ui/markdown-ir-editor/UserPreferenceVditorEditor')
           : null,
         import('vditor/dist/index.css?inline'),
         import('@1flowbase/rich-text/styles.css?inline')
@@ -682,7 +701,8 @@ const registrationBySource = new Map(
 
 export function prewarmNativeModuleSources(source: string): void {
   for (const item of extractNativeSourceImports(source)) {
-    if (item.source === 'react' || item.source === 'react/jsx-runtime') continue;
+    if (item.source === 'react' || item.source === 'react/jsx-runtime')
+      continue;
     if (item.source === 'antd' || item.source.startsWith('antd/es/')) {
       void prewarmAntDesignProductDomain()?.catch(() => undefined);
     }

@@ -20,6 +20,7 @@ import {
   type FrontstageNativeTrustedBlockReactComponent
 } from '../../../frontstage/lib/native-adapter/native-trusted-block-react-adapter';
 import { createFrontstageUnavailableBlockContext } from '../../../frontstage/lib/native-trusted-block/unavailable-context';
+import { evaluateFrontstageReactArtifact } from '../../../frontstage/lib/native-modules/modal/evaluator';
 import { createFrontstageNativeReactModuleRegistry } from '../../../frontstage/lib/native-modules/registry';
 import { pluginSettingsPageQueryOptions } from '../../api/ui-management';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
@@ -153,7 +154,8 @@ function PublishedPluginSettingsPage({
     void prepareNativeReactSource({
       frozenSource: page.source,
       requestId: renderEpoch,
-      registryFactory: () => loader.registry
+      registryFactory: () => loader.registry,
+      evaluateArtifact: evaluateFrontstageReactArtifact
     })
       .then((result) => {
         if (!current) return;
