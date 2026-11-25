@@ -247,7 +247,9 @@ describe('FrontstageNativeBlockSourceCache', () => {
     now = 3;
     await capped.put(record('b'), source);
     expect(indexCursor).toHaveBeenCalledExactlyOnceWith(null, 'next');
-    expect(indexCursor.mock.contexts[0]?.name).toBe('by_updated_at');
+    expect((indexCursor.mock.contexts[0] as IDBIndex | undefined)?.name).toBe(
+      'by_updated_at'
+    );
     expect(deleteEntry).toHaveBeenCalledTimes(3);
     expect(advance).toHaveBeenCalledTimes(2);
     expect(storeCursor).not.toHaveBeenCalled();
