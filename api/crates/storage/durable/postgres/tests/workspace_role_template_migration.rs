@@ -37,12 +37,14 @@ async fn ac_002_historical_workspace_role_templates_become_user_owned() {
         .await
         .unwrap();
     let store = PgControlPlaneStore::new(pool);
-    let tenant = store.upsert_root_tenant().await.unwrap();
+    let tenant_id = postgres_test_support::insert_historical_root_tenant(store.pool())
+        .await
+        .unwrap();
     let workspace_id = domain::DEFAULT_SCOPE_ID;
     postgres_test_support::insert_historical_workspace(
         store.pool(),
         workspace_id,
-        tenant.id,
+        tenant_id,
         "historical-workspace",
     )
     .await

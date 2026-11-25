@@ -15,70 +15,22 @@ use serde_json::{json, Value};
 use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
-const PRE_MAIN_INSTANCE_AGGREGATION_MIGRATIONS: &[&str] = &[
-    include_str!("../../../migrations/20260412183000_create_auth_team_acl_tables.sql"),
-    include_str!("../../../migrations/20260412230000_create_model_definition_tables.sql"),
-    include_str!("../../../migrations/20260413103000_align_model_definition_physical_schema.sql"),
-    include_str!("../../../migrations/20260413220000_add_tenant_workspace_scope.sql"),
-    include_str!("../../../migrations/20260413223000_add_runtime_metadata_health.sql"),
-    include_str!("../../../migrations/20260414203000_add_role_policy_flags.sql"),
-    include_str!("../../../migrations/20260415093000_create_application_tables.sql"),
-    include_str!("../../../migrations/20260415113000_create_flow_tables.sql"),
-    include_str!("../../../migrations/20260416174500_add_application_tags.sql"),
-    include_str!("../../../migrations/20260417173000_create_orchestration_runtime_tables.sql"),
-    include_str!("../../../migrations/20260417210000_add_flow_run_resume_and_callback_tasks.sql"),
-    include_str!("../../../migrations/20260418120000_create_provider_kernel_tables.sql"),
-    include_str!("../../../migrations/20260418123000_create_model_provider_instance_tables.sql"),
-    include_str!("../../../migrations/20260419143000_add_plugin_version_pointer.sql"),
-    include_str!("../../../migrations/20260419183000_add_plugin_install_trust_fields.sql"),
-    include_str!("../../../migrations/20260420120000_add_user_preferred_locale.sql"),
-    include_str!("../../../migrations/20260519120000_add_user_meta.sql"),
-    include_str!("../../../migrations/20260420203000_add_plugin_lifecycle_snapshots.sql"),
-    include_str!("../../../migrations/20260421113000_create_node_contribution_registry_tables.sql"),
-    include_str!("../../../migrations/20260421123000_create_plugin_worker_lease_tables.sql"),
-    include_str!(
-        "../../../migrations/20260422121000_add_model_provider_validation_and_preview_sessions.sql"
-    ),
-    include_str!(
-        "../../../migrations/20260422180000_replace_validation_model_with_enabled_models.sql"
-    ),
-    include_str!("../../../migrations/20260422193000_add_model_provider_configured_models.sql"),
-    include_str!("../../../migrations/20260422223000_create_model_provider_routings.sql"),
-    include_str!("../../../migrations/20260630114000_migrate_authenticator_identity_ids.sql"),
-    include_str!("../../../migrations/20260630114500_remove_authenticator_name_config_key.sql"),
-    include_str!(
-        "../../../migrations/20260630115000_normalize_password_local_authenticator_id.sql"
-    ),
-    // The current auth repository needs the real login-entry split, while the provider
-    // tables must remain before MAIN_INSTANCE_AGGREGATION_MIGRATION_SQL for these tests.
-    include_str!("../../../migrations/20260714230000_create_role_console_policies.sql"),
-    // The activation migration also upgrades the official snapshot tables.
-    include_str!("../../../migrations/20260714234500_add_role_console_policy_migration_safety.sql"),
-    include_str!("../../../migrations/20260724090000_add_authenticator_public_ui_block.sql"),
-    include_str!("../../../migrations/20260728100000_separate_console_policy_activation_and_strategy.sql"),
-    include_str!("../../../migrations/20260903010000_separate_login_entries_from_authentication_connections.sql"),
-    // Current permission seeding needs this independent catalog infrastructure;
-    // the provider aggregation migration under test must remain unapplied.
-    include_str!("../../../migrations/20260910190000_track_console_permission_catalog.sql"),
-];
+const LEGACY_PROVIDER_SCHEMA_VERSION: i64 = 20260422223000;
+const MAIN_INSTANCE_AGGREGATION_VERSION: i64 = 20260423093000;
+const CONTEXT_WINDOW_OVERRIDE_VERSION: i64 = 20260423235000;
 
-const MAIN_INSTANCE_AGGREGATION_MIGRATION_SQL: &str = include_str!(
-    "../../../migrations/20260423093000_replace_manual_primary_with_main_instance_aggregation.sql"
-);
-const ROLE_DATA_POLICIES_MIGRATION_SQL: &str =
-    include_str!("../../../migrations/20260704100000_create_role_data_policies.sql");
-const MAIN_MODEL_DISTRIBUTION_RULES_MIGRATION_SQL: &str = include_str!(
-    "../../../migrations/20260708100000_add_model_provider_main_model_distribution_rules.sql"
-);
-const MAIN_MODEL_ROUTING_POLICY_ORDER_MIGRATION_SQL: &str =
-    include_str!("../../../migrations/20260731170000_add_model_provider_routing_policy_order.sql");
-const MAIN_MODEL_ROUTING_POLICY_EXCLUSIONS_MIGRATION_SQL: &str = include_str!(
-    "../../../migrations/20260731180000_add_model_provider_routing_policy_exclusions.sql"
-);
-const OPEN_PROVIDER_DISTRIBUTION_RULE_IDENTITY_MIGRATION_SQL: &str =
-    include_str!("../../../migrations/20260828160000_open_provider_distribution_rule_identity.sql");
-const PROVIDER_DISTRIBUTION_RULE_VERSION_MIGRATION_SQL: &str =
-    include_str!("../../../migrations/20260828180000_add_provider_distribution_rule_version.sql");
+async fn migrate_provider_history(pool: &sqlx::PgPool, through: i64) {
+    sqlx::migrate::Migrator::with_migrations(
+        sqlx::migrate!("./migrations")
+            .iter()
+            .filter(|migration| migration.version <= through)
+            .cloned()
+            .collect(),
+    )
+    .run(pool)
+    .await
+    .unwrap();
+}
 
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
@@ -173,30 +125,7 @@ async fn seed_store() -> (
 async fn seed_store_before_main_instance_aggregation(
 ) -> (PgControlPlaneStore, domain::WorkspaceRecord, Uuid, Uuid) {
     let pool = isolated_database().await.connect().await.unwrap();
-    for migration_sql in PRE_MAIN_INSTANCE_AGGREGATION_MIGRATIONS {
-        sqlx::raw_sql(*migration_sql).execute(&pool).await.unwrap();
-    }
-    sqlx::raw_sql(ROLE_DATA_POLICIES_MIGRATION_SQL)
-        .execute(&pool)
-        .await
-        .unwrap();
-    sqlx::raw_sql(
-        r#"
-        alter table permission_definitions
-            add column if not exists scope_id uuid not null
-            default '00000000-0000-0000-0000-000000000000'::uuid;
-        alter table roles add column if not exists scope_id uuid;
-        alter table role_permissions add column if not exists scope_id uuid;
-        alter table user_role_bindings add column if not exists scope_id uuid;
-        alter table plugin_installations
-            add column if not exists scope_id uuid not null
-            default '00000000-0000-0000-0000-000000000000'::uuid;
-        alter table plugin_installations add column if not exists updated_by uuid;
-        "#,
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
+    migrate_provider_history(&pool, LEGACY_PROVIDER_SCHEMA_VERSION).await;
 
     // AC009 fixture authenticity: do not accidentally apply the migration under test.
     let aggregation_absent: bool = sqlx::query_scalar(
@@ -208,10 +137,12 @@ async fn seed_store_before_main_instance_aggregation(
     assert!(aggregation_absent);
 
     let store = PgControlPlaneStore::new(pool);
-    let tenant = store.upsert_root_tenant().await.unwrap();
+    let tenant_id = postgres_test_support::insert_historical_root_tenant(store.pool())
+        .await
+        .unwrap();
     let workspace = domain::WorkspaceRecord {
         id: domain::DEFAULT_SCOPE_ID,
-        tenant_id: tenant.id,
+        tenant_id,
         name: "1flowbase".into(),
         logo_url: None,
         introduction: String::new(),
@@ -219,31 +150,11 @@ async fn seed_store_before_main_instance_aggregation(
     postgres_test_support::insert_historical_workspace(
         store.pool(),
         workspace.id,
-        tenant.id,
+        tenant_id,
         &workspace.name,
     )
     .await
     .unwrap();
-    control_plane_test_support::upsert_permission_catalog(&store)
-        .await
-        .unwrap();
-    control_plane_test_support::upsert_builtin_roles(&store, workspace.id)
-        .await
-        .unwrap();
-    store
-        .upsert_login_entry(&domain::LoginEntryRecord {
-            id: domain::BUILTIN_PASSWORD_LOGIN_ENTRY_ID,
-            connection_id: domain::PASSWORD_LOCAL_CONNECTION_ID,
-            auth_type: "password-local".into(),
-            title: "Password".into(),
-            enabled: true,
-            is_builtin: true,
-            sort_order: 0,
-            public_ui_block: String::new(),
-            options: serde_json::json!({}),
-        })
-        .await
-        .unwrap();
     let actor = Uuid::now_v7();
     sqlx::query(
         r#"
@@ -262,7 +173,6 @@ async fn seed_store_before_main_instance_aggregation(
         r#"
         insert into plugin_installations (
             id,
-            scope_id,
             provider_code,
             plugin_id,
             plugin_version,
@@ -279,13 +189,12 @@ async fn seed_store_before_main_instance_aggregation(
             metadata_json,
             created_by
         ) values (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9,
-            $10, $11, $12, $13, $14, $15, $16, $17
+            $1, $2, $3, $4, $5, $6, $7, $8,
+            $9, $10, $11, $12, $13, $14, $15, $16
         )
         "#,
     )
     .bind(installation_id)
-    .bind(domain::SYSTEM_SCOPE_ID)
     .bind("fixture_provider")
     .bind("fixture_provider@0.1.0")
     .bind("0.1.0")
@@ -299,7 +208,7 @@ async fn seed_store_before_main_instance_aggregation(
     .bind("/tmp/fixture-provider")
     .bind("abc123")
     .bind("missing")
-    .bind(json!({}))
+    .bind(json!({"vendor": "test"}))
     .bind(actor)
     .execute(store.pool())
     .await

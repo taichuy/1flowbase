@@ -33,12 +33,14 @@ async fn historical_store() -> (PgControlPlaneStore, Uuid, Uuid, Uuid) {
     let pool = isolated_database().await.connect().await.unwrap();
     before_member_role_migrator().run(&pool).await.unwrap();
     let store = PgControlPlaneStore::new(pool);
-    let tenant = store.upsert_root_tenant().await.unwrap();
+    let tenant_id = postgres_test_support::insert_historical_root_tenant(store.pool())
+        .await
+        .unwrap();
     let workspace_id = domain::DEFAULT_SCOPE_ID;
     postgres_test_support::insert_historical_workspace(
         store.pool(),
         workspace_id,
-        tenant.id,
+        tenant_id,
         "historical-workspace",
     )
     .await
@@ -142,7 +144,7 @@ async fn historical_store() -> (PgControlPlaneStore, Uuid, Uuid, Uuid) {
     .bind(Uuid::now_v7())
     .bind(format!("hash-{user_id}"))
     .bind(user_id)
-    .bind(tenant.id)
+    .bind(tenant_id)
     .bind(workspace_id)
     .execute(store.pool())
     .await

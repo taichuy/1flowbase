@@ -464,6 +464,23 @@ impl Drop for PostgresTestDatabase {
 #[path = "_tests/mod.rs"]
 mod tests;
 
+/// Seed the root tenant using only the columns in the original tenant schema.
+/// Early migrations may already have created it.
+pub async fn insert_historical_root_tenant(pool: &PgPool) -> Result<Uuid, sqlx::Error> {
+    sqlx::query_scalar(
+        r#"
+        insert into tenants (id, code, name, is_root, is_hidden)
+        values ($1, 'root-tenant', 'Root Tenant', true, true)
+        on conflict (code) do update
+          set name = excluded.name, is_root = true, is_hidden = true, updated_at = now()
+        returning id
+        "#,
+    )
+    .bind(uuid::uuid!("00000000-0000-0000-0000-000000000001"))
+    .fetch_one(pool)
+    .await
+}
+
 /// Seed only the workspace row contract available in historical schemas.
 /// Current bootstrap also writes newer feature tables, so it is inappropriate
 /// for a fixture intentionally frozen before those migrations.

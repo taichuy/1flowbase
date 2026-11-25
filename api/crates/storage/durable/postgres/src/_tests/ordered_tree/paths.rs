@@ -800,7 +800,8 @@ async fn path_read_and_subtree_move_emit_explain_buffers_evidence() {
 
 // F1: index construction must also accept pre-column tuple versions still
 // required by an older snapshot. Updating an indexed rank forces a non-HOT
-// version; the snapshot touches another table so it does not block tree DDL.
+// version. Pin the snapshot without reading any table: even an unrelated
+// table may be altered by a later migration in this test.
 #[tokio::test]
 async fn migration_indexes_recently_dead_versions_without_null_array_elements() {
     let (pool, _store, model, scope) = legacy_fixture().await;
@@ -820,8 +821,8 @@ async fn migration_indexes_recently_dead_versions_without_null_array_elements() 
         .execute(&mut *old_snapshot)
         .await
         .unwrap();
-    let _: i64 = sqlx::query_scalar("select count(*) from tenants")
-        .fetch_one(&mut *old_snapshot)
+    sqlx::query("select 1")
+        .execute(&mut *old_snapshot)
         .await
         .unwrap();
     sqlx::query(sqlx::AssertSqlSafe(format!(
@@ -832,9 +833,12 @@ async fn migration_indexes_recently_dead_versions_without_null_array_elements() 
     .execute(&pool)
     .await
     .unwrap();
-    let migrated = run_migrations(&pool).await;
+    let migrated =
+        tokio::time::timeout(std::time::Duration::from_secs(30), run_migrations(&pool)).await;
     old_snapshot.rollback().await.unwrap();
-    migrated.unwrap();
+    migrated
+        .expect("migrations must finish while the old snapshot is held")
+        .unwrap();
     assert_eq!(
         path(&pool, &model.physical_table_name, root).await,
         labels(&[root])
