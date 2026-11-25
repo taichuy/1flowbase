@@ -3,8 +3,10 @@ import { sha256Text } from '@1flowbase/page-runtime/browser';
 import { LRUCache } from 'lru-cache';
 
 export const FRONTSTAGE_NATIVE_BLOCK_SOURCE_CACHE_SCHEMA_VERSION = 1 as const;
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const OBJECT_STORE_NAME = 'sources';
+const META_STORE_NAME = 'frontstage_native_block_sources_meta';
+const ENTRY_COUNT_KEY = 'entry_count';
 const ACTOR_INDEX_NAME = 'by_actor';
 const UPDATED_AT_INDEX_NAME = 'by_updated_at';
 const DEFAULT_L1_BYTE_BUDGET = 2 * 1024 * 1024;
@@ -337,6 +339,9 @@ export class FrontstageNativeBlockSourceCache {
 
 function upgradeDatabase(request: IDBOpenDBRequest, oldVersion: number): void {
   const db = request.result;
+  if (!db.objectStoreNames.contains(META_STORE_NAME)) {
+    db.createObjectStore(META_STORE_NAME, { keyPath: 'key' });
+  }
   const store = db.objectStoreNames.contains(OBJECT_STORE_NAME)
     ? request.transaction!.objectStore(OBJECT_STORE_NAME)
     : db.createObjectStore(OBJECT_STORE_NAME, { keyPath: 'key' });
@@ -373,18 +378,6 @@ function upgradeDatabase(request: IDBOpenDBRequest, oldVersion: number): void {
   }
 }
 
-// Read/write transactions are serialized by IndexedDB. Read the cached count
-// once the transaction is active and publish changes only after commit.
-const entryCounts = new WeakMap<IDBDatabase, number>();
-
-function accountForDeletes(db: IDBDatabase, deleted: number): void {
-  const count = entryCounts.get(db);
-  if (count === undefined) return;
-  if (deleted > count)
-    entryCounts.delete(db); // Another handle added records.
-  else entryCounts.set(db, count - deleted);
-}
-
 function readRecordFromDb(
   db: IDBDatabase,
   key: string
@@ -398,33 +391,72 @@ function readRecordFromDb(
   });
 }
 
-function deleteRecordFromDb(db: IDBDatabase, key: string): Promise<void> {
+type SaveCount<T> = (count: number, value: T) => void;
+
+function mutateRecords<T>(
+  db: IDBDatabase,
+  mutate: (store: IDBObjectStore, saveCount: SaveCount<T>) => void
+): Promise<T> {
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(OBJECT_STORE_NAME, 'readwrite');
-    const store = tx.objectStore(OBJECT_STORE_NAME);
+    // Overlapping write transactions serialize across connections, so the
+    // count and payloads always commit (or roll back) together.
+    const tx = db.transaction(
+      [OBJECT_STORE_NAME, META_STORE_NAME],
+      'readwrite'
+    );
+    const meta = tx.objectStore(META_STORE_NAME);
+    let result: T;
+    tx.oncomplete = () => resolve(result);
+    tx.onabort = tx.onerror = () => reject(tx.error);
+    mutate(tx.objectStore(OBJECT_STORE_NAME), (count, value) => {
+      meta.put({ key: ENTRY_COUNT_KEY, count });
+      result = value;
+    });
+  });
+}
+
+function mutateCountedRecords<T>(
+  db: IDBDatabase,
+  mutate: (
+    store: IDBObjectStore,
+    count: number,
+    saveCount: SaveCount<T>
+  ) => void
+): Promise<T> {
+  return mutateRecords<T>(db, (store, saveCount) => {
+    const request = store.transaction
+      .objectStore(META_STORE_NAME)
+      .get(ENTRY_COUNT_KEY);
+    request.onsuccess = () => {
+      const state = request.result as { count: number } | undefined;
+      if (state) {
+        mutate(store, state.count, saveCount);
+        return;
+      }
+      // Bootstrap a new or upgraded database once. The mutation saves the
+      // resulting count before the same transaction commits.
+      const initialCount = store.count();
+      initialCount.onsuccess = () =>
+        mutate(store, initialCount.result, saveCount);
+    };
+  });
+}
+
+function deleteRecordFromDb(db: IDBDatabase, key: string): Promise<void> {
+  return mutateCountedRecords<void>(db, (store, count, saveCount) => {
     const existing = store.getKey(key);
     existing.onsuccess = () => {
-      if (existing.result !== undefined) store.delete(key);
+      const found = existing.result !== undefined;
+      if (found) store.delete(key);
+      saveCount(Math.max(0, count - (found ? 1 : 0)), undefined);
     };
-    tx.oncomplete = () => {
-      accountForDeletes(db, existing.result === undefined ? 0 : 1);
-      resolve();
-    };
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
   });
 }
 
 function clearRecordsFromDb(db: IDBDatabase): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(OBJECT_STORE_NAME, 'readwrite');
-    tx.objectStore(OBJECT_STORE_NAME).clear();
-    tx.oncomplete = () => {
-      entryCounts.set(db, 0);
-      resolve();
-    };
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
+  return mutateRecords<void>(db, (store, saveCount) => {
+    store.clear();
+    saveCount(0, undefined);
   });
 }
 
@@ -433,49 +465,32 @@ function writeRecordWithCap(
   record: StoredNativeBlockSourceRecord,
   maxEntries: number
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(OBJECT_STORE_NAME, 'readwrite');
-    const store = tx.objectStore(OBJECT_STORE_NAME);
-    let nextCount = 0;
-    tx.oncomplete = () => {
-      entryCounts.set(db, nextCount);
-      resolve();
-    };
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
-
+  return mutateCountedRecords<void>(db, (store, count, saveCount) => {
     const existing = store.getKey(record.key);
     existing.onsuccess = () => {
-      const write = (count: number) => {
-        nextCount = count + (existing.result === undefined ? 1 : 0);
-        store.put(record);
-        const cap = Math.max(0, maxEntries);
-        if (nextCount <= cap) return;
-        const eviction = store
-          .index(UPDATED_AT_INDEX_NAME)
-          .openCursor(null, 'next');
-        eviction.onsuccess = () => {
-          const cursor = eviction.result;
-          if (!cursor) {
-            // Another browser connection may have removed records since the count was cached.
-            const recount = store.count();
-            recount.onsuccess = () => {
-              nextCount = recount.result;
-            };
-            return;
-          }
-          cursor.delete();
-          nextCount -= 1;
-          if (nextCount > cap) cursor.continue();
-        };
-      };
-      const count = entryCounts.get(db);
-      if (count === undefined) {
-        const initialCount = store.count();
-        initialCount.onsuccess = () => write(initialCount.result);
-      } else {
-        write(count);
+      const nextCount = count + (existing.result === undefined ? 1 : 0);
+      store.put(record);
+      const overflow = nextCount - Math.max(0, maxEntries);
+      if (overflow <= 0) {
+        saveCount(nextCount, undefined);
+        return;
       }
+      let evicted = 0;
+      const eviction = store
+        .index(UPDATED_AT_INDEX_NAME)
+        .openCursor(null, 'next');
+      eviction.onsuccess = () => {
+        const cursor = eviction.result;
+        if (!cursor) {
+          // An inconsistent index must not publish a partial eviction.
+          store.transaction.abort();
+          return;
+        }
+        cursor.delete();
+        evicted += 1;
+        if (evicted < overflow) cursor.continue();
+        else saveCount(nextCount - evicted, undefined);
+      };
     };
   });
 }
@@ -485,23 +500,18 @@ function deleteActorRecords(
   actorId: string,
   keepWorkspaceId?: string
 ): Promise<number> {
-  return new Promise((resolve, reject) => {
+  return mutateCountedRecords<number>(db, (store, count, saveCount) => {
     let deleted = 0;
-    const tx = db.transaction(OBJECT_STORE_NAME, 'readwrite');
-    const store = tx.objectStore(OBJECT_STORE_NAME);
-    tx.oncomplete = () => {
-      accountForDeletes(db, deleted);
-      resolve(deleted);
-    };
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
-
+    const finish = () => saveCount(Math.max(0, count - deleted), deleted);
     const index = store.index(ACTOR_INDEX_NAME);
     if (keepWorkspaceId === undefined) {
       const request = index.openKeyCursor(IDBKeyRange.only(actorId));
       request.onsuccess = () => {
         const cursor = request.result;
-        if (!cursor) return;
+        if (!cursor) {
+          finish();
+          return;
+        }
         store.delete(cursor.primaryKey);
         deleted += 1;
         cursor.continue();
@@ -512,7 +522,10 @@ function deleteActorRecords(
     const request = index.openCursor(IDBKeyRange.only(actorId));
     request.onsuccess = () => {
       const cursor = request.result;
-      if (!cursor) return;
+      if (!cursor) {
+        finish();
+        return;
+      }
       const record = cursor.value as StoredNativeBlockSourceRecord;
       if (record.workspaceId !== keepWorkspaceId) {
         cursor.delete();

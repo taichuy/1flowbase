@@ -169,57 +169,71 @@ describe('FrontstageNativeBlockSourceCache', () => {
     expect(getAll).not.toHaveBeenCalled();
   });
 
-  test('upgrades v1 in place and indexes the existing records before eviction', async () => {
-    const indexedDbFactory = new IDBFactory();
-    const databaseName = 'upgrade';
-    const identity = { actorId: 'a', workspaceId: 'w', requestId: 'old' };
-    const source = createValidSource('v1');
-    const v1 = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDbFactory.open(databaseName, 1);
-      request.onupgradeneeded = () => {
-        const store = request.result.createObjectStore('sources', {
-          keyPath: 'key'
-        });
-        store.createIndex('by_actor', 'actorId');
-        store.put({
-          ...identity,
-          key: 'a/w/old',
-          schemaVersion: 1,
-          byteSize: 500,
-          updatedAt: 1,
-          source
-        });
+  test.each([1, 2])(
+    'upgrades a populated v%i database in place and initializes the count once',
+    async (version) => {
+      const indexedDbFactory = new IDBFactory();
+      const databaseName = 'upgrade';
+      const identity = { actorId: 'a', workspaceId: 'w', requestId: 'old' };
+      const source = createValidSource(`v${version}`);
+      const legacy = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDbFactory.open(databaseName, version);
+        request.onupgradeneeded = () => {
+          const store = request.result.createObjectStore('sources', {
+            keyPath: 'key'
+          });
+          store.createIndex('by_actor', version === 1 ? 'actorId' : 'actorKey');
+          if (version === 2) store.createIndex('by_updated_at', 'updatedAtMs');
+          store.put({
+            ...identity,
+            key: 'a/w/old',
+            schemaVersion: 1,
+            byteSize: 500,
+            ...(version === 1
+              ? { updatedAt: 1 }
+              : { actorKey: 'a', updatedAtMs: 1 }),
+            source
+          });
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      legacy.close();
+
+      const options = {
+        indexedDbFactory,
+        databaseName,
+        maxEntries: 1,
+        now: () => 2
       };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    v1.close();
+      const cache = new FrontstageNativeBlockSourceCache(options);
+      expect(await cache.get(identity)).toEqual(source);
+      const upgraded = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDbFactory.open(databaseName);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      expect(upgraded.version).toBe(3);
+      expect(
+        upgraded.objectStoreNames.contains(
+          'frontstage_native_block_sources_meta'
+        )
+      ).toBe(true);
+      const store = upgraded.transaction('sources').objectStore('sources');
+      expect(store.index('by_actor').keyPath).toBe('actorKey');
+      expect(store.index('by_updated_at').keyPath).toBe('updatedAtMs');
+      upgraded.close();
 
-    const options = {
-      indexedDbFactory,
-      databaseName,
-      maxEntries: 1,
-      now: () => 2
-    };
-    const cache = new FrontstageNativeBlockSourceCache(options);
-    expect(await cache.get(identity)).toEqual(source);
-    const v2 = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDbFactory.open(databaseName);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    expect(v2.version).toBe(2);
-    const store = v2.transaction('sources').objectStore('sources');
-    expect(store.index('by_actor').keyPath).toBe('actorKey');
-    expect(store.index('by_updated_at').keyPath).toBe('updatedAtMs');
-    v2.close();
-
-    const latest = { ...identity, requestId: 'new' };
-    await cache.put(latest, source);
-    const reloaded = new FrontstageNativeBlockSourceCache(options);
-    expect(await reloaded.get(identity)).toBeUndefined();
-    expect(await reloaded.get(latest)).toEqual(source);
-  });
+      const count = vi.spyOn(IDBObjectStore.prototype, 'count');
+      const latest = { ...identity, requestId: 'new' };
+      await cache.put(latest, source);
+      const reloaded = new FrontstageNativeBlockSourceCache(options);
+      expect(await reloaded.get(identity)).toBeUndefined();
+      expect(await reloaded.get(latest)).toEqual(source);
+      await reloaded.put(latest, source);
+      expect(count).toHaveBeenCalledTimes(1);
+    }
+  );
 
   test('uses only the oldest index entries on overflow, with primary-key order for ties', async () => {
     let now = 1;
@@ -262,7 +276,7 @@ describe('FrontstageNativeBlockSourceCache', () => {
       expect(await reloaded.get(record(actor))).toEqual(source);
   });
 
-  test('counts once and maintains the cached count across concurrent puts, updates, deletes and clear', async () => {
+  test('counts once and maintains the transactional count across concurrent puts, updates, deletes and clear', async () => {
     const options = { indexedDbFactory: new IDBFactory(), maxEntries: 2 };
     const cache = new FrontstageNativeBlockSourceCache(options);
     const source = createValidSource('steady-state');
@@ -301,30 +315,149 @@ describe('FrontstageNativeBlockSourceCache', () => {
     expect(await reloaded.get(third)).toEqual(source);
   });
 
-  test('resynchronizes the cached count if the eviction index runs out of records', async () => {
-    const indexedDbFactory = new IDBFactory();
-    const databaseName = 'stale-index';
-    const options = { indexedDbFactory, databaseName, maxEntries: 2 };
-    const cache = new FrontstageNativeBlockSourceCache(options);
-    const source = createValidSource('stale-index');
-    const first = { actorId: 'a', workspaceId: 'w', requestId: '1' };
-    await cache.put(first, source);
-    await cache.put({ ...first, requestId: '2' }, source);
-    await new FrontstageNativeBlockSourceCache(options).clear();
+  test('interleaved writes through two connections persist only the newest entries', async () => {
+    let now = 0;
+    const options = {
+      indexedDbFactory: new IDBFactory(),
+      maxEntries: 2,
+      now: () => ++now
+    };
+    const firstHandle = new FrontstageNativeBlockSourceCache(options);
+    const secondHandle = new FrontstageNativeBlockSourceCache(options);
+    const source = createValidSource('interleaved');
+    const oldest = { actorId: 'a', workspaceId: 'w', requestId: '1' };
+    const middle = { ...oldest, requestId: '2' };
+    const newest = { ...oldest, requestId: '3' };
 
     const count = vi.spyOn(IDBObjectStore.prototype, 'count');
-    const openCursor = IDBIndex.prototype.openCursor;
-    const cursor = vi
-      .spyOn(IDBIndex.prototype, 'openCursor')
-      .mockImplementationOnce(function (this: IDBIndex) {
-        return openCursor.call(this, IDBKeyRange.only(-1), 'next');
+    await firstHandle.put(oldest, source);
+    await secondHandle.put(middle, source);
+    await firstHandle.put(newest, source);
+
+    const reloaded = new FrontstageNativeBlockSourceCache(options);
+    expect(await reloaded.get(oldest)).toBeUndefined();
+    expect(await reloaded.get(middle)).toEqual(source);
+    expect(await reloaded.get(newest)).toEqual(source);
+    expect(count).toHaveBeenCalledTimes(1);
+  });
+
+  test.each(['full clear', 'actor deletion'] as const)(
+    '%s through a second connection does not trigger false eviction',
+    async (operation) => {
+      let now = 0;
+      const options = {
+        indexedDbFactory: new IDBFactory(),
+        maxEntries: 2,
+        now: () => ++now
+      };
+      const firstHandle = new FrontstageNativeBlockSourceCache(options);
+      const secondHandle = new FrontstageNativeBlockSourceCache(options);
+      const source = createValidSource('cleared');
+      const first = { actorId: 'a', workspaceId: 'w', requestId: '1' };
+      const second = { ...first, requestId: '2' };
+      const latest = { ...first, requestId: '3' };
+
+      await firstHandle.put(first, source);
+      await firstHandle.put(second, source);
+      const cursor = vi.spyOn(IDBIndex.prototype, 'openCursor');
+      const count = vi.spyOn(IDBObjectStore.prototype, 'count');
+      if (operation === 'full clear') await secondHandle.clear();
+      else expect(await secondHandle.deleteActor('a')).toEqual({ deleted: 2 });
+      await firstHandle.put(latest, source);
+
+      const reloaded = new FrontstageNativeBlockSourceCache(options);
+      expect(await reloaded.get(latest)).toEqual(source);
+      expect(await reloaded.get(first)).toBeUndefined();
+      expect(await reloaded.get(second)).toBeUndefined();
+      expect(cursor).not.toHaveBeenCalled();
+      expect(count).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each(['deleteActor', 'delete'] as const)(
+    '%s through another connection removes only the deleted entries from the count',
+    async (operation) => {
+      let now = 0;
+      const options = {
+        indexedDbFactory: new IDBFactory(),
+        maxEntries: 2,
+        now: () => ++now
+      };
+      const writer = new FrontstageNativeBlockSourceCache(options);
+      const remover = new FrontstageNativeBlockSourceCache(options);
+      const source = createValidSource('partial deletion');
+      const survivor = { actorId: 'a', workspaceId: 'w', requestId: '1' };
+      const victim = { ...survivor, actorId: 'b' };
+      const first = { ...survivor, requestId: '2' };
+      const second = { ...survivor, requestId: '3' };
+      await writer.put(survivor, source);
+      await writer.put(victim, source);
+      if (operation === 'deleteActor') {
+        expect(await remover.deleteActor('b')).toEqual({ deleted: 1 });
+      } else {
+        await remover.delete(victim);
+      }
+      const cursor = vi.spyOn(IDBIndex.prototype, 'openCursor');
+      await writer.put(first, source);
+      expect(cursor).not.toHaveBeenCalled();
+      await writer.put(second, source);
+      expect(cursor).toHaveBeenCalledExactlyOnceWith(null, 'next');
+
+      const reloaded = new FrontstageNativeBlockSourceCache(options);
+      expect(await reloaded.get(victim)).toBeUndefined();
+      expect(await reloaded.get(survivor)).toBeUndefined();
+      expect(await reloaded.get(first)).toEqual(source);
+      expect(await reloaded.get(second)).toEqual(source);
+    }
+  );
+
+  test('aborting after the metadata write rolls back both the count and eviction', async () => {
+    let now = 0;
+    const options = {
+      indexedDbFactory: new IDBFactory(),
+      maxEntries: 2,
+      now: () => ++now
+    };
+    const writer = new FrontstageNativeBlockSourceCache(options);
+    const source = createValidSource('rollback');
+    const first = { actorId: 'a', workspaceId: 'w', requestId: '1' };
+    const second = { ...first, requestId: '2' };
+    const uncommitted = { ...first, requestId: '3' };
+    const next = { ...first, requestId: '4' };
+    await writer.put(first, source);
+    await writer.put(second, source);
+
+    const put = IDBObjectStore.prototype.put;
+    let metadataWritten = false;
+    const abortWrite = vi
+      .spyOn(IDBObjectStore.prototype, 'put')
+      .mockImplementation(function (this: IDBObjectStore, ...args) {
+        const request = put.apply(this, args);
+        if (this.name === 'frontstage_native_block_sources_meta') {
+          request.addEventListener('success', () => {
+            metadataWritten = true;
+            this.transaction.abort();
+          });
+        }
+        return request;
       });
-    await cache.put({ ...first, requestId: '3' }, source);
-    expect(count).toHaveBeenCalledTimes(1);
-    cursor.mockClear();
-    await cache.put(first, source);
-    expect(cursor).not.toHaveBeenCalled();
-    expect(count).toHaveBeenCalledTimes(1);
+    const abortedWriter = new FrontstageNativeBlockSourceCache({
+      ...options,
+      maxEntries: 1
+    });
+    await abortedWriter.put(uncommitted, source);
+    abortWrite.mockRestore();
+    expect(metadataWritten).toBe(true);
+
+    const reloaded = new FrontstageNativeBlockSourceCache(options);
+    expect(await reloaded.get(first)).toEqual(source);
+    expect(await reloaded.get(second)).toEqual(source);
+    expect(await reloaded.get(uncommitted)).toBeUndefined();
+    await reloaded.put(next, source);
+    const afterCommit = new FrontstageNativeBlockSourceCache(options);
+    expect(await afterCommit.get(first)).toBeUndefined();
+    expect(await afterCommit.get(second)).toEqual(source);
+    expect(await afterCommit.get(next)).toEqual(source);
   });
 
   test('an aborted IDB transaction returns the L1 count and still invalidates the write epoch synchronously', async () => {
