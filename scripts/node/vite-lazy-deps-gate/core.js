@@ -235,37 +235,55 @@ function collectModuleGraphDependencies({
   return dependencies;
 }
 
-// Keep helper support narrow: a lazy callback must call a local zero-argument
-// function whose entire body returns an import, directly or through a memoized flight.
-// A typeof import annotation or an unrelated prefetch is not a lazy boundary.
-function collectLazyHelperImports(source) {
-  const entries = [];
-  const lazyHelperPattern = /\b(?:React\.)?lazy\s*\(\s*\(\s*\)\s*=>\s*([A-Za-z_$][\w$]*)\s*\(\s*\)/gu;
-  const functionPattern = /\bfunction\s+([A-Za-z_$][\w$]*)\s*\(\s*\)\s*\{/gu;
+// Resolve only zero-argument loaders used by lazy(), not unconnected prefetches.
+function collectLoaders(source, { exported = false } = {}) {
   const helpers = new Map();
-  let match = functionPattern.exec(source);
-  while (match) {
+  const functionPattern = /\b(export\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(\s*\)\s*\{/gu;
+  for (const match of source.matchAll(functionPattern)) {
+    if (exported && !match[1]) continue;
     const bodyStart = match.index + match[0].length - 1;
     const body = extractDelimitedContent(source, bodyStart, '{', '}');
-    if (body !== null) {
-      const direct = /^\s*return\s+import\s*\(\s*['"]([^'"]+)['"]\s*\)\s*;?\s*$/u.exec(body);
-      const memoized = /^\s*([A-Za-z_$][\w$]*)\s*\?\?=\s*import\s*\(\s*['"]([^'"]+)['"]\s*\)\s*;\s*return\s+\1\s*;?\s*$/u.exec(body);
-      if (direct || memoized) {
-        helpers.set(match[1], {
-          specifier: direct ? direct[1] : memoized[2],
-          index: bodyStart + 1 + body.indexOf('import'),
-        });
+    if (body === null) continue;
+    const direct = /(?:^|[;\n])\s*return\s+(?:Promise\.all\s*\(\s*\[\s*)?import\s*\(\s*['"]([^'"]+)['"]\s*\)/u.exec(body);
+    const memoized = /^\s*([A-Za-z_$][\w$]*)\s*\?\?=\s*import\s*\(\s*['"]([^'"]+)['"]\s*\)\s*;\s*return\s+\1\s*;?\s*$/u.exec(body);
+    if (direct || memoized) helpers.set(match[2], {
+      specifier: direct ? direct[1] : memoized[2],
+      index: bodyStart + 1 + body.indexOf('import', (direct ?? memoized).index),
+    });
+  }
+  const arrowPattern = /\b(export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*\(\s*\)\s*=>\s*import\s*\(\s*['"]([^'"]+)['"]\s*\)/gu;
+  for (const match of source.matchAll(arrowPattern)) {
+    if (!exported || match[1]) helpers.set(match[2], { specifier: match[3], index: match.index });
+  }
+  return helpers;
+}
+
+function collectLazyHelperImports(source, filePath) {
+  const helpers = collectLoaders(source);
+  const lazyHelperPattern = /\b(?:React\.)?lazy\s*\(\s*(?:\(\s*\)\s*=>\s*([A-Za-z_$][\w$]*)\s*\(\s*\)|([A-Za-z_$][\w$]*)\s*(?=\)))/gu;
+  const namedImports = /\bimport\s*\{([^}]+)\}\s*from\s*['"](\.[^'"]+)['"]/gu;
+  const missing = new Set([...source.matchAll(lazyHelperPattern)]
+    .map((match) => match[1] ?? match[2]).filter((name) => !helpers.has(name)));
+  if (missing.size) {
+    for (const [, names, module] of source.matchAll(namedImports)) {
+      const bindings = names.split(',').map((name) => name.trim().split(/\s+as\s+/u));
+      if (!bindings.some(([name, alias]) => missing.has(alias ?? name))) continue;
+      const owner = resolveSourceFile(filePath, module);
+      if (!owner) continue;
+      const exported = collectLoaders(stripComments(readText(owner)), { exported: true });
+      for (const [name, alias = name] of bindings) {
+        const loader = exported.get(name);
+        if (!missing.has(alias) || !loader?.specifier.startsWith('.')) continue;
+        const target = path.resolve(path.dirname(owner), loader.specifier);
+        const relative = normalizeRepoPath(path.relative(path.dirname(filePath), target));
+        helpers.set(alias, { specifier: relative.startsWith('.') ? relative : `./${relative}` });
       }
-      functionPattern.lastIndex = bodyStart + body.length + 2;
     }
-    match = functionPattern.exec(source);
   }
-  match = lazyHelperPattern.exec(source);
-  while (match) {
-    if (helpers.has(match[1])) entries.push(helpers.get(match[1]));
-    match = lazyHelperPattern.exec(source);
-  }
-  return entries;
+  return [...source.matchAll(lazyHelperPattern)].flatMap((match) => {
+    const helper = helpers.get(match[1] ?? match[2]);
+    return helper ? [{ index: match.index, ...helper }] : [];
+  });
 }
 
 function discoverLazyImports({ repoRoot }) {
@@ -287,7 +305,7 @@ function discoverLazyImports({ repoRoot }) {
       });
       match = LAZY_IMPORT_PATTERN.exec(stripped);
     }
-    for (const helper of collectLazyHelperImports(stripped)) {
+    for (const helper of collectLazyHelperImports(stripped, filePath)) {
       entries.push({
         source: toRepoRelative(repoRoot, filePath),
         sourceLine: lineNumberAt(stripped, helper.index),

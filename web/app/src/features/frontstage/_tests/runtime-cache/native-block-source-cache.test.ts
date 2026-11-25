@@ -1,6 +1,12 @@
-import { IDBFactory } from 'fake-indexeddb';
+import {
+  IDBDatabase,
+  IDBFactory,
+  IDBIndex,
+  IDBKeyRange,
+  IDBObjectStore
+} from 'fake-indexeddb';
 import { sha256Text } from '@1flowbase/page-runtime';
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { FrontstageNativeBlockSourceCache } from '../../lib/runtime-cache/native-block-source-cache';
 
@@ -13,6 +19,12 @@ function createValidSource(label: string) {
     source_sha256: sha256Text(code)
   };
 }
+
+beforeEach(() => vi.stubGlobal('IDBKeyRange', IDBKeyRange));
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe('FrontstageNativeBlockSourceCache', () => {
   test('persists across cache instances in IndexedDB and isolates by actor and workspace', async () => {
@@ -99,8 +111,90 @@ describe('FrontstageNativeBlockSourceCache', () => {
 
     // Stale write captured before logout must not re-persist
     expect(
-      await cache.put(identity, createValidSource('stale-after-logout'), staleEpoch)
+      await cache.put(
+        identity,
+        createValidSource('stale-after-logout'),
+        staleEpoch
+      )
     ).toBe(false);
     expect(await cache.get(identity)).toBeUndefined();
+  });
+
+  test('pruneWorkspace deletes only the actor’s other workspaces and commits before reload', async () => {
+    const options = {
+      databaseName: 'multi-actor',
+      indexedDbFactory: new IDBFactory()
+    };
+    const cache = new FrontstageNativeBlockSourceCache(options);
+    const keep = { actorId: 'a', workspaceId: 'keep', requestId: '1' };
+    const remove = { ...keep, workspaceId: 'old' };
+    const otherActor = { ...remove, actorId: 'b' };
+    const source = createValidSource('multi-actor');
+    for (const identity of [
+      keep,
+      remove,
+      { ...remove, requestId: '2' },
+      otherActor
+    ]) {
+      expect(await cache.put(identity, source)).toBe(true);
+    }
+    const reloaded = new FrontstageNativeBlockSourceCache(options);
+    expect(await reloaded.pruneWorkspace(keep)).toEqual({ deleted: 2 });
+    expect(await reloaded.get(keep)).toEqual(source);
+    expect(await reloaded.get(otherActor)).toEqual(source);
+    expect(await reloaded.get(remove)).toBeUndefined();
+    expect(await reloaded.get({ ...remove, requestId: '2' })).toBeUndefined();
+  });
+
+  test('actor invalidations never call getAll and logout uses a keys-only cursor', async () => {
+    const cache = new FrontstageNativeBlockSourceCache({
+      indexedDbFactory: new IDBFactory()
+    });
+    const identity = { actorId: 'a', workspaceId: 'old', requestId: '1' };
+    const source = createValidSource('indexed');
+    await cache.put(identity, source);
+    await cache.put({ ...identity, workspaceId: 'keep' }, source);
+    const getAll = vi.spyOn(IDBObjectStore.prototype, 'getAll');
+    const keys = vi.spyOn(IDBIndex.prototype, 'openKeyCursor');
+    const values = vi.spyOn(IDBIndex.prototype, 'openCursor');
+    expect(
+      await cache.pruneWorkspace({ actorId: 'a', workspaceId: 'keep' })
+    ).toEqual({ deleted: 1 });
+    expect(values).toHaveBeenCalledExactlyOnceWith(IDBKeyRange.only('a'));
+    values.mockClear();
+    expect(await cache.deleteActor('a')).toEqual({ deleted: 1 });
+    expect(keys).toHaveBeenCalledExactlyOnceWith(IDBKeyRange.only('a'));
+    expect(values).not.toHaveBeenCalled();
+    expect(getAll).not.toHaveBeenCalled();
+  });
+
+  test('an aborted IDB transaction returns the L1 count and still invalidates the write epoch synchronously', async () => {
+    const options = {
+      databaseName: 'aborted',
+      indexedDbFactory: new IDBFactory()
+    };
+    const cache = new FrontstageNativeBlockSourceCache(options);
+    const identity = { actorId: 'a', workspaceId: 'old', requestId: '1' };
+    const source = createValidSource('aborted');
+    await cache.put(identity, source);
+    const epoch = cache.captureWriteEpoch('a');
+    const transaction = IDBDatabase.prototype.transaction;
+    vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementationOnce(
+      function (this: IDBDatabase, ...args) {
+        const tx = transaction.apply(this, args);
+        queueMicrotask(() => tx.abort());
+        return tx;
+      }
+    );
+    const pending = cache.deleteActor('a');
+    expect(cache.captureWriteEpoch('a')).toEqual({
+      ...epoch,
+      actor: epoch.actor + 1
+    });
+    expect(await pending).toEqual({ deleted: 1 });
+    expect(await cache.put(identity, source, epoch)).toBe(false);
+    expect(
+      await new FrontstageNativeBlockSourceCache(options).get(identity)
+    ).toEqual(source);
   });
 });

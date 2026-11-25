@@ -34,10 +34,8 @@ import { consumeLoginEntryDiscovery } from '../api/login-entry-discovery';
 import { SignInPanel } from '../components/hero/SignInPanel';
 import { HeroAnimation } from '../components/HeroAnimation';
 
-import {
-  DefaultPasswordSignIn,
-  matchesDefaultPasswordSource
-} from '../components/default-password/DefaultPasswordSignIn';
+import { DefaultPasswordSignIn } from '../components/default-password/DefaultPasswordSignIn';
+import { matchesDefaultPasswordSource } from '../components/default-password/source-identity';
 import {
   pauseAuthenticatedPrewarm,
   useAuthenticatedPrewarm
@@ -177,7 +175,11 @@ export function SignInPage({ loginEntryId, inviteToken }: SignInPageProps) {
 
   const formHost = useRef<HTMLDivElement>(null);
   useAuthenticatedPrewarm(formHost, effectiveLoginEntry);
-  const authOwner = useMemo(() => ({ active: false }), [selectedLoginEntry]);
+  // Each selected entry owns its own authentication callbacks.
+  const authOwner = useMemo(
+    () => ({ active: false, selectedLoginEntry }),
+    [selectedLoginEntry]
+  );
   useEffect(() => {
     authOwner.active = true;
     return () => {
@@ -281,7 +283,9 @@ export function SignInPage({ loginEntryId, inviteToken }: SignInPageProps) {
         <SignInPanel
           inert={isStarting}
           footer={t('sign_in.footer')}
-          hideFooter={metadata === undefined || Boolean(metadata.hide_powered_by)}
+          hideFooter={
+            metadata === undefined || Boolean(metadata.hide_powered_by)
+          }
           filing_html={metadata?.filing_html}
         >
           {urlInviteToken ? (
@@ -303,7 +307,8 @@ export function SignInPage({ loginEntryId, inviteToken }: SignInPageProps) {
             <AuthError>{t('external_auth.failed')}</AuthError>
           ) : null}
           {loading ? <LoadingState compact /> : null}
-          {!loading && effectiveLoginEntry?.entry_action === 'external_login' ? (
+          {!loading &&
+          effectiveLoginEntry?.entry_action === 'external_login' ? (
             <div className="auth-sign-in-selector">
               {loginEntrySelector ? (
                 <button

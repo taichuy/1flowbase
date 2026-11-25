@@ -96,12 +96,18 @@ write_limited_profile() {
     [[ $RUST_CPU_QUOTA != auto ]] || RUST_CPU_QUOTA="${cpu_jobs}00%"
   fi
   local memory_limits reserve_bytes high_bytes max_bytes
-  if [[ $SESSION_MEMORY_LOW == auto || $RUST_MEMORY_HIGH == auto || $RUST_MEMORY_MAX == auto ]]; then
+  if [[ $SESSION_MEMORY_LOW == auto || $RUST_MEMORY_HIGH == auto || $RUST_MEMORY_MAX == auto ||
+        $DEV_MEMORY_HIGH == auto || $DEV_MEMORY_MAX == auto ||
+        $FRONTEND_MEMORY_HIGH == auto || $FRONTEND_MEMORY_MAX == auto ]]; then
     memory_limits=$(node "$budget_source" memory-limits)
     read -r reserve_bytes high_bytes max_bytes <<<"$memory_limits"
     [[ $SESSION_MEMORY_LOW != auto ]] || SESSION_MEMORY_LOW=$reserve_bytes
     [[ $RUST_MEMORY_HIGH != auto ]] || RUST_MEMORY_HIGH=$high_bytes
     [[ $RUST_MEMORY_MAX != auto ]] || RUST_MEMORY_MAX=$max_bytes
+    [[ $DEV_MEMORY_HIGH != auto ]] || DEV_MEMORY_HIGH=$high_bytes
+    [[ $DEV_MEMORY_MAX != auto ]] || DEV_MEMORY_MAX=$max_bytes
+    [[ $FRONTEND_MEMORY_HIGH != auto ]] || FRONTEND_MEMORY_HIGH=$high_bytes
+    [[ $FRONTEND_MEMORY_MAX != auto ]] || FRONTEND_MEMORY_MAX=$max_bytes
   fi
   project_cargo_jobs_json=$PROJECT_CARGO_JOBS
   project_cargo_test_threads_json=$PROJECT_CARGO_TEST_THREADS

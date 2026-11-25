@@ -64,7 +64,9 @@ export function ModelProviderConfiguredModelModal({
 
   const [providerSearch, setProviderSearch] = useState('');
   const [providerPage, setProviderPage] = useState(1);
-  const [providers, setProviders] = useState<SettingsPricingTargetProvider[]>([]);
+  const [providers, setProviders] = useState<SettingsPricingTargetProvider[]>(
+    []
+  );
   const [providersTotalCount, setProvidersTotalCount] = useState(0);
   const [providersLoading, setProvidersLoading] = useState(false);
 
@@ -119,7 +121,9 @@ export function ModelProviderConfiguredModelModal({
           const seen = new Set(current.map((item) => item.provider_code));
           return [
             ...current,
-            ...response.providers.filter((item) => !seen.has(item.provider_code))
+            ...response.providers.filter(
+              (item) => !seen.has(item.provider_code)
+            )
           ];
         });
       })
@@ -140,6 +144,9 @@ export function ModelProviderConfiguredModelModal({
     };
   }, [open, providerPage, providerSearch]);
 
+  const selectedFirstPageModelId =
+    modelPage === 1 ? selectedModelId || undefined : undefined;
+
   useEffect(() => {
     if (!open || !selectedProviderCode) return;
     const seq = ++modelRequestSeq.current;
@@ -148,8 +155,7 @@ export function ModelProviderConfiguredModelModal({
     void listSettingsPricingTargets({
       provider_code: selectedProviderCode,
       upstream_model_id: modelSearch.trim() || undefined,
-      selected_model_id:
-        modelPage === 1 && selectedModelId ? selectedModelId : undefined,
+      selected_model_id: selectedFirstPageModelId,
       page: modelPage,
       page_size: PRICING_TARGETS_PAGE_SIZE
     })
@@ -186,7 +192,13 @@ export function ModelProviderConfiguredModelModal({
     return () => {
       active = false;
     };
-  }, [open, selectedProviderCode, modelPage, modelSearch]);
+  }, [
+    open,
+    selectedProviderCode,
+    modelPage,
+    modelSearch,
+    selectedFirstPageModelId
+  ]);
 
   const providerOptions = useMemo(() => {
     const codes = providers.map((item) => item.provider_code);

@@ -7,6 +7,7 @@ const path = require('node:path');
 const {
   analyzeStaticLazyDeps,
   detectRuntimeFailureSignals,
+  discoverLazyImports,
   main,
   writeRuntimeSmokeReports,
 } = require('../core.js');
@@ -488,4 +489,27 @@ test('main runs the static gate and returns failure for missing lazy optimizeDep
   assert.equal(status, 1);
   assert.match(stderr, /missing-optimize-dep/u);
   assert.match(stderr, /missing-lazy/u);
+});
+
+
+test('resolves local and imported named loaders but never treats an eager import as a lazy boundary', (t) => {
+  const { repoRoot } = createFixtureRepo();
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  writeFile(repoRoot, 'web/app/src/app/router.tsx', `
+    import { lazy } from 'react';
+    import { loadRemote as loadAliased } from './loaders';
+    import Eager from './Eager';
+    const loadFoo = () => import('./Foo');
+    const loadUnused = () => import('./Unused');
+    const Foo = lazy(loadFoo);
+    const Remote = lazy(() => loadAliased().then((module) => ({ default: module.Remote })));
+    const NotLazy = lazy(() => Promise.resolve({ default: Eager }));
+  `);
+  writeFile(repoRoot, 'web/app/src/app/loaders.ts', `
+    export function loadRemote() {
+      return Promise.all([import('./Remote'), i18nReady()]).then(([module]) => module);
+    }
+  `);
+  for (const name of ['Foo', 'Remote', 'Eager', 'Unused']) writeFile(repoRoot, `web/app/src/app/${name}.tsx`, 'export default null;');
+  assert.deepEqual(discoverLazyImports({ repoRoot }).map((entry) => entry.specifier), ['./Foo', './Remote']);
 });

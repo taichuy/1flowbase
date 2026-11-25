@@ -31,7 +31,7 @@ test('buildRustWarmupPlan fetches locked dependencies before staged compilation 
     {
       label: 'locked dependencies',
       args: ['fetch', '--manifest-path', 'api/Cargo.toml', '--target', 'host-tuple', '--locked'],
-      env: { CARGO_BUILD_JOBS: '10', ONEFLOWBASE_CARGO_JOB_LIMIT: '10', CARGO_INCREMENTAL: '1' },
+      env: { CARGO_BUILD_JOBS: '12', ONEFLOWBASE_CARGO_JOB_LIMIT: '12', CARGO_INCREMENTAL: '1' },
     },
     {
       label: 'api-server dev-up target',
@@ -39,7 +39,7 @@ test('buildRustWarmupPlan fetches locked dependencies before staged compilation 
         'build', '--manifest-path', 'api/Cargo.toml', '-p', 'api-server', '--bin', 'api-server',
         '--features', 'tikv-jemallocator/stats', '--locked', '--timings',
       ],
-      env: { CARGO_BUILD_JOBS: '10', ONEFLOWBASE_CARGO_JOB_LIMIT: '10', CARGO_INCREMENTAL: '1' },
+      env: { CARGO_BUILD_JOBS: '12', ONEFLOWBASE_CARGO_JOB_LIMIT: '12', CARGO_INCREMENTAL: '1' },
     },
     {
       label: 'workspace test-profile libraries and binary tests',
@@ -48,7 +48,7 @@ test('buildRustWarmupPlan fetches locked dependencies before staged compilation 
       ],
       env: {
         CARGO_BUILD_JOBS: '1',
-        ONEFLOWBASE_CARGO_JOB_LIMIT: '10',
+        ONEFLOWBASE_CARGO_JOB_LIMIT: '12',
         CARGO_INCREMENTAL: undefined,
         CARGO_PROFILE_TEST_INCREMENTAL: 'true',
         CARGO_PROFILE_TEST_DEBUG: '0',
@@ -61,20 +61,20 @@ test('buildRustWarmupPlan fetches locked dependencies before staged compilation 
       ],
       env: {
         CARGO_BUILD_JOBS: '1',
-        ONEFLOWBASE_CARGO_JOB_LIMIT: '10',
+        ONEFLOWBASE_CARGO_JOB_LIMIT: '12',
         CARGO_INCREMENTAL: undefined,
         CARGO_PROFILE_TEST_INCREMENTAL: 'true',
         CARGO_PROFILE_TEST_DEBUG: '0',
       },
     },
   ]);
-  for (const [availableParallelism, expected] of [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [6, '4']]) {
+  for (const [availableParallelism, expected] of [[1, '1'], [2, '1'], [3, '1'], [4, '2'], [6, '3']]) {
     assert.ok(buildRustWarmupPlan({ env: {}, availableParallelism, incremental: true })
       .every((stage, index) => stage.env.CARGO_BUILD_JOBS === (index >= 2 ? '1' : expected) && stage.env.ONEFLOWBASE_CARGO_JOB_LIMIT === expected));
   }
 });
 
-test('CI warmup uses the entire runner instead of the local half-machine budget', async () => {
+test('CI warmup uses the entire runner instead of the local 60 percent budget', async () => {
   for (const env of [{ CI: 'true' }, { GITHUB_ACTIONS: 'true' }]) {
     assert.ok(buildRustWarmupPlan({ availableParallelism: 20, incremental: false, env })
       .every((stage) => stage.env.CARGO_BUILD_JOBS === '20'));
@@ -99,7 +99,7 @@ test('warmup-only preserves existing cache and completes dependency/test stages 
     loadRuntimeConfigImpl: () => ({ backend: { cargoJobs: 2, incremental: true } }),
     cleanupBackendCacheImpl: () => assert.fail('warmup-only must not stop services or delete caches'),
     runCargoImpl: async ({ label, env }) => {
-      assert.equal(env.CARGO_BUILD_JOBS, label.startsWith('workspace') ? '1' : '2');
+      assert.equal(env.CARGO_BUILD_JOBS, '1');
       events.push(`start:${label}`);
       await new Promise((resolve) => setImmediate(resolve));
       events.push(`end:${label}`);
@@ -223,7 +223,7 @@ test('finite resource policy matches the budget oracle and is monotone in explic
   for (const availableParallelism of [1, 2, 3, 4, 6, 8, 20]) {
     for (const ci of [false, true]) {
       const budget = ci ? availableParallelism
-        : Math.min(availableParallelism, Math.max(4, Math.floor(availableParallelism / 2)));
+        : Math.max(1, Math.floor(availableParallelism * 3 / 5));
       const values = [...new Set([1, Math.min(2, availableParallelism), availableParallelism])];
       const caps = [...values, undefined];
       for (const cargoJobs of values) {
@@ -267,10 +267,10 @@ test('finite resource policy matches the budget oracle and is monotone in explic
 
 test('selected regression assertions reject the controlled original implementation', (t) => {
   const cases = [
-    { name: 'runtime cargoJobs', cargoJobs: 2, env: {}, jobs: 2, quota: 10, index: 1 },
-    { name: 'caller CARGO_BUILD_JOBS', cargoJobs: 10, env: { CARGO_BUILD_JOBS: '1' }, jobs: 1, quota: 10, index: 1 },
+    { name: 'runtime cargoJobs', cargoJobs: 2, env: {}, jobs: 2, quota: 12, index: 1 },
+    { name: 'caller CARGO_BUILD_JOBS', cargoJobs: 10, env: { CARGO_BUILD_JOBS: '1' }, jobs: 1, quota: 12, index: 1 },
     { name: 'caller CPU cap', cargoJobs: 10, env: { ONEFLOWBASE_CARGO_JOB_LIMIT: '2' }, jobs: 2, quota: 2, index: 1 },
-    { name: 'local test serialization', cargoJobs: 10, env: {}, jobs: 1, quota: 10, index: 2 },
+    { name: 'local test serialization', cargoJobs: 10, env: {}, jobs: 1, quota: 12, index: 2 },
   ];
   function check(build, item) {
     const stage = build({ availableParallelism: 20, incremental: false, cargoJobs: item.cargoJobs, env: item.env })[item.index];
@@ -344,7 +344,7 @@ test('wrapper-compatible environment defaults preserve automatic budgets', () =>
       const plan = buildRustWarmupPlan({ env, availableParallelism: 20, cargoJobs: 2, incremental: false });
       plan.forEach((stage, index) => {
         assert.equal(stage.env.CARGO_BUILD_JOBS, index < 2 ? '2' : '1');
-        assert.equal(stage.env.ONEFLOWBASE_CARGO_JOB_LIMIT, '10');
+        assert.equal(stage.env.ONEFLOWBASE_CARGO_JOB_LIMIT, '12');
       });
       cases++;
     }
@@ -386,10 +386,10 @@ require(${JSON.stringify(corePath)}).runRustCacheReset({
 });
 `;
   const scenarios = [
-    { name: 'local-config', ci: false, buildJobs: 'default', cpuCap: 'auto', jobs: [2, 2, 1, 1], cap: '10', status: 0 },
-    { name: 'local-env', ci: false, buildJobs: '1', cpuCap: '', jobs: [1, 1, 1, 1], cap: '10', status: 0 },
+    { name: 'local-config', ci: false, buildJobs: 'default', cpuCap: 'auto', jobs: [2, 2, 1, 1], cap: '12', status: 0 },
+    { name: 'local-env', ci: false, buildJobs: '1', cpuCap: '', jobs: [1, 1, 1, 1], cap: '12', status: 0 },
     { name: 'ci', ci: true, buildJobs: '', cpuCap: 'auto', jobs: [20, 20, 20, 20], cap: '20', status: 0 },
-    { name: 'fail-bins', ci: false, buildJobs: 'default', cpuCap: 'auto', jobs: [2, 2, 1], cap: '10', status: 7 },
+    { name: 'fail-bins', ci: false, buildJobs: 'default', cpuCap: 'auto', jobs: [2, 2, 1], cap: '12', status: 7 },
   ];
   try {
     for (const scenario of scenarios) {

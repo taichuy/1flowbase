@@ -4,7 +4,7 @@ import {
   type ConsoleFrontstageBootstrapResponse
 } from '@1flowbase/api-client';
 import { fetchPublicSystemMetadata } from '@1flowbase/api-client/auth';
-import type { QueryClient } from '@tanstack/react-query';
+import type { QueryClient, QueryKey } from '@tanstack/react-query';
 
 import {
   DEFAULT_BOOTSTRAP_VIEWPORT_CODE_LIMIT,
@@ -77,7 +77,7 @@ const NON_FRONTSTAGE_PATHNAME_RE =
 const SIGN_IN_PATHNAME_RE = /^\/sign-in\/?$/u;
 
 const FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS = 30_000;
-const FRONTSTAGE_PAGE_TABS_STALE_TIME_MS = 30_000;
+
 const DEFAULT_CONTROL_GATE_TIMEOUT_MS = 5_000;
 
 interface ParsedFrontstageRoute {
@@ -156,9 +156,9 @@ export function isFrontstageBootstrapOwnedForState(
   const effectivePathname = normalizeAuthenticatedStartupPathname(pathname);
   return Boolean(
     state.sessionStatus === 'authenticated' &&
-      state.actor?.current_workspace_id &&
-      state.me &&
-      isFrontstageCandidatePathname(effectivePathname)
+    state.actor?.current_workspace_id &&
+    state.me &&
+    isFrontstageCandidatePathname(effectivePathname)
   );
 }
 
@@ -422,11 +422,11 @@ async function tryHydrateFromBootstrapEndpoint({
       return { hydrated: false, targetPath: '/', prefetchedCodeEntries: [] };
     }
     const pageTree = payload.pages as FrontstagePageTreeNode[];
-    const treeKey = frontstagePageTreeQueryKey(workspaceId, scope);
-    queryClient.setQueryDefaults(treeKey, {
-      staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
-    });
-    queryClient.setQueryData(treeKey, pageTree);
+    seedStartupQuery(
+      queryClient,
+      frontstagePageTreeQueryKey(workspaceId, scope),
+      pageTree
+    );
 
     const landing = resolveCanonicalFrontstageLanding(pageTree);
     const targetPath = landing.targetPath;
@@ -445,40 +445,23 @@ async function tryHydrateFromBootstrapEndpoint({
 
     const resolvedTargetPath =
       parsedRoute && parsedRoute.kind !== 'home'
-        ? targetPathFromResolvedSelection(pageTree, selectedPageId) ?? targetPath
+        ? (targetPathFromResolvedSelection(pageTree, selectedPageId) ??
+          targetPath)
         : targetPath;
 
     const tabsKey = frontstagePageTabsQueryKey(workspaceId, selectedPageId);
-    queryClient.setQueryDefaults(tabsKey, {
-      staleTime: FRONTSTAGE_PAGE_TABS_STALE_TIME_MS
-    });
     if (Array.isArray(payload.tabs)) {
-      queryClient.setQueryData(tabsKey, payload.tabs);
+      seedStartupQuery(queryClient, tabsKey, payload.tabs);
     }
 
     if (payload.page_detail) {
-      const mappedContent = mapFrontstagePageContent(payload.page_detail);
-      const tabId = payload.page_detail.tab.id;
-      const contentKeyById = frontstagePageContentQueryKey(
+      seedStartupPageContent(
+        queryClient,
         workspaceId,
         selectedPageId,
-        tabId
+        mapFrontstagePageContent(payload.page_detail),
+        parsedRoute?.tabRef
       );
-      queryClient.setQueryDefaults(contentKeyById, {
-        staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
-      });
-      queryClient.setQueryData(contentKeyById, mappedContent);
-      if (parsedRoute?.tabRef && parsedRoute.tabRef !== tabId) {
-        const contentKeyByRef = frontstagePageContentQueryKey(
-          workspaceId,
-          selectedPageId,
-          parsedRoute.tabRef
-        );
-        queryClient.setQueryDefaults(contentKeyByRef, {
-          staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
-        });
-        queryClient.setQueryData(contentKeyByRef, mappedContent);
-      }
     }
 
     const resolvedTabId = payload.resolved_tab_id;
@@ -490,10 +473,7 @@ async function tryHydrateFromBootstrapEndpoint({
         selectedPageId,
         { tab_id: resolvedTabId }
       );
-      queryClient.setQueryDefaults(rootsKey, {
-        staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
-      });
-      queryClient.setQueryData(rootsKey, payload.block_roots);
+      seedStartupQuery(queryClient, rootsKey, payload.block_roots);
 
       if (Array.isArray(payload.block_codes)) {
         prefetchedCodeEntries = seedStartupPrefetchedBlockNodeCodes({
@@ -512,6 +492,42 @@ async function tryHydrateFromBootstrapEndpoint({
     };
   } catch {
     return { hydrated: false, targetPath: '/', prefetchedCodeEntries: [] };
+  }
+}
+
+function startupQuery(queryClient: QueryClient, queryKey: QueryKey) {
+  const options = {
+    queryKey,
+    staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
+  };
+  queryClient.setQueryDefaults(queryKey, { staleTime: options.staleTime });
+  return options;
+}
+
+function seedStartupQuery<T>(queryClient: QueryClient, key: QueryKey, data: T) {
+  queryClient.setQueryData<T>(
+    startupQuery(queryClient, key).queryKey,
+    () => data
+  );
+}
+
+function seedStartupPageContent(
+  queryClient: QueryClient,
+  workspaceId: string,
+  pageId: string,
+  content: ReturnType<typeof mapFrontstagePageContent>,
+  tabRef?: string | null,
+  fetchedTabRef?: string
+) {
+  const { id } = content.tab;
+  for (const key of new Set([id, tabRef])) {
+    if (key && key !== fetchedTabRef) {
+      seedStartupQuery(
+        queryClient,
+        frontstagePageContentQueryKey(workspaceId, pageId, key),
+        content
+      );
+    }
   }
 }
 
@@ -595,27 +611,6 @@ function ensureFrontstageStartupHydration({
     effectivePathname
   );
   const existing = activeHydrationFlights.get(queryClient);
-  if (existing?.keys.has(initialKey)) {
-    let preloaded = false;
-    if (!deferRoutePreloads && isCurrent()) {
-      preloaded = true;
-      void preloadWorkspaceRoute().catch(() => undefined);
-      if (effectivePathname === '/') {
-        void preloadHomeRoute().catch(() => undefined);
-      }
-    }
-    if (!preloaded) {
-      void existing.promise.finally(() => {
-        if (!isCurrent()) return;
-        void preloadWorkspaceRoute().catch(() => undefined);
-        if (effectivePathname === '/') {
-          void preloadHomeRoute().catch(() => undefined);
-        }
-      });
-    }
-    return existing.promise;
-  }
-
   let preloadedRoutes = false;
   const triggerRoutePreloads = () => {
     if (preloadedRoutes || !isCurrent()) return;
@@ -625,8 +620,10 @@ function ensureFrontstageStartupHydration({
       void preloadHomeRoute().catch(() => undefined);
     }
   };
-  if (!deferRoutePreloads) {
-    triggerRoutePreloads();
+  if (!deferRoutePreloads) triggerRoutePreloads();
+  if (existing?.keys.has(initialKey)) {
+    if (!preloadedRoutes) void existing.promise.finally(triggerRoutePreloads);
+    return existing.promise;
   }
 
   const flushSupportingCatalogs = seedSupportingFrontstageQueries({
@@ -646,6 +643,17 @@ function ensureFrontstageStartupHydration({
       prefetchedCodeEntries: []
     });
   }
+
+  const prewarmRuntime = (
+    entries: ReadonlyArray<StartupPrefetchedBlockCodeEntry>
+  ) => {
+    if (!entries.length || import.meta.env.VITEST || !isCurrent()) return;
+    void import('../../features/frontstage/lib/runtime-cache/block-code-prefetch')
+      .then(({ prewarmStartupBlockRuntime }) => {
+        if (isCurrent()) prewarmStartupBlockRuntime(entries);
+      })
+      .catch(() => undefined);
+  };
 
   const keys = new Set<string>([initialKey]);
   const promise = (async (): Promise<FrontstageStartupHydrationResult> => {
@@ -670,23 +678,7 @@ function ensureFrontstageStartupHydration({
               bootstrapResult.targetPath
             )
           );
-          if (
-            bootstrapResult.prefetchedCodeEntries.length > 0 &&
-            !import.meta.env.VITEST &&
-            isCurrent()
-          ) {
-            void import(
-              '../../features/frontstage/lib/runtime-cache/block-code-prefetch'
-            )
-              .then(({ prewarmStartupBlockRuntime }) => {
-                if (isCurrent()) {
-                  prewarmStartupBlockRuntime(
-                    bootstrapResult.prefetchedCodeEntries
-                  );
-                }
-              })
-              .catch(() => undefined);
-          }
+          prewarmRuntime(bootstrapResult.prefetchedCodeEntries);
           return {
             targetPath: bootstrapResult.targetPath,
             prefetchedCodeEntries: bootstrapResult.prefetchedCodeEntries
@@ -715,13 +707,9 @@ function ensureFrontstageStartupHydration({
       }
 
       const tabsKey = frontstagePageTabsQueryKey(workspaceId, selectedPageId);
-      queryClient.setQueryDefaults(tabsKey, {
-        staleTime: FRONTSTAGE_PAGE_TABS_STALE_TIME_MS
-      });
       const tabs = await queryClient.fetchQuery({
-        queryKey: tabsKey,
-        queryFn: () => fetchFrontstagePageTabs(workspaceId, selectedPageId),
-        staleTime: FRONTSTAGE_PAGE_TABS_STALE_TIME_MS
+        ...startupQuery(queryClient, tabsKey),
+        queryFn: () => fetchFrontstagePageTabs(workspaceId, selectedPageId)
       });
       if (!isCurrent()) {
         return { targetPath, prefetchedCodeEntries: [] };
@@ -745,20 +733,29 @@ function ensureFrontstageStartupHydration({
           selectedPageId,
           tabReference
         );
-        queryClient.setQueryDefaults(contentKey, {
-          staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
-        });
         dataFlights.push(
-          queryClient.fetchQuery({
-            queryKey: contentKey,
-            queryFn: () =>
-              fetchFrontstagePageContent(
-                workspaceId,
-                selectedPageId,
-                tabReference
-              ),
-            staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
-          })
+          queryClient
+            .fetchQuery({
+              ...startupQuery(queryClient, contentKey),
+              queryFn: () =>
+                fetchFrontstagePageContent(
+                  workspaceId,
+                  selectedPageId,
+                  tabReference
+                )
+            })
+            .then((content) => {
+              if (isCurrent()) {
+                seedStartupPageContent(
+                  queryClient,
+                  workspaceId,
+                  selectedPageId,
+                  content,
+                  parsedRoute.tabRef,
+                  tabReference
+                );
+              }
+            })
         );
       }
 
@@ -770,18 +767,14 @@ function ensureFrontstageStartupHydration({
           selectedPageId,
           { tab_id: matchedTab.id }
         );
-        queryClient.setQueryDefaults(rootsKey, {
-          staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
-        });
         dataFlights.push(
           queryClient
             .fetchQuery({
-              queryKey: rootsKey,
+              ...startupQuery(queryClient, rootsKey),
               queryFn: () =>
                 fetchFrontstageBlockRoots(workspaceId, selectedPageId, {
                   tab_id: matchedTab.id
-                }),
-              staleTime: FRONTSTAGE_STARTUP_DATA_STALE_TIME_MS
+                })
             })
             .then((roots) => {
               if (!isCurrent()) return;
@@ -793,17 +786,7 @@ function ensureFrontstageStartupHydration({
                 pageId: selectedPageId,
                 blockIds
               });
-              if (!import.meta.env.VITEST) {
-                void import(
-                  '../../features/frontstage/lib/runtime-cache/block-code-prefetch'
-                )
-                  .then(({ prewarmStartupBlockRuntime }) => {
-                    if (isCurrent()) {
-                      prewarmStartupBlockRuntime(prefetchedCodeEntries);
-                    }
-                  })
-                  .catch(() => undefined);
-              }
+              prewarmRuntime(prefetchedCodeEntries);
             })
         );
       }
@@ -823,9 +806,10 @@ function ensureFrontstageStartupHydration({
   return promise;
 }
 
-function createPrewarmedSlot(
-  snapshot: AuthSnapshot
-): { slot: PrewarmedAuthenticatedClientSlot; scope: string } {
+function createPrewarmedSlot(snapshot: AuthSnapshot): {
+  slot: PrewarmedAuthenticatedClientSlot;
+  scope: string;
+} {
   discardPrewarmedAuthenticatedQueryClient();
   const queryClient = createApplicationQueryClient();
   const workspaceId = snapshot.actor.current_workspace_id ?? '';
@@ -878,7 +862,8 @@ export async function prepareAuthenticatedStartupMount(
   const scope = selectNavigationQueryScope(state);
   const isFrontstageTarget = isFrontstageCandidatePathname(targetPathname);
   const preloadWorkspaceRoute =
-    options.preloadWorkspaceRoute ?? (() => loadFrontstageWorkspacePageModule());
+    options.preloadWorkspaceRoute ??
+    (() => loadFrontstageWorkspacePageModule());
   const preloadHomeRoute =
     options.preloadHomeRoute ?? (() => import('../../routes/HomeRedirect'));
 
@@ -1022,7 +1007,8 @@ export function prewarmAuthenticatedStartup(
       isCurrent: () => !slot.cancelled,
       preloadWorkspaceRoute,
       preloadHomeRoute,
-      deferRoutePreloads: !options.preloadWorkspaceRoute && !import.meta.env.VITEST,
+      deferRoutePreloads:
+        !options.preloadWorkspaceRoute && !import.meta.env.VITEST,
       deferSupportingCatalogs:
         !profile.parallelStartupAssetAndControl &&
         !options.preloadWorkspaceRoute &&

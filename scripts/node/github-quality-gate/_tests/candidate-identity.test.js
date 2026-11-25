@@ -38,7 +38,7 @@ test('full quality jobs execute the resolver snapshot and preserve standalone sc
   const workflow = fs.readFileSync(path.join(repoRoot, '.github/workflows/quality-gate.yml'), 'utf8');
   for (const job of ['repo-tooling-gate', 'repo-frontend-gate', 'repo-frontend-react-doctor-gate',
     'repo-backend-gate', 'coverage-frontend-gate',
-    'coverage-backend-gate', 'coverage-backend-api-server-sharded',
+    'coverage-backend-gate', 'coverage-backend-api-server-build', 'coverage-backend-api-server-sharded',
     'coverage-backend-api-server-sharded-merge', 'container-images-gate',
     'ai-gateway-protocol-conformance', 'aggregate']) {
     const block = workflow.split(`  ${job}:\n`)[1]?.split(/\n  [a-z][a-z0-9-]*:\n/u)[0];

@@ -18,6 +18,9 @@ const VERIFY_COMMANDS = new Set([
   'coverage',
   'repo',
   'state-protocols',
+  'level1',
+  'level2',
+  'level3',
 ]);
 
 function parseVerifyCliArgs(argv) {
@@ -40,7 +43,7 @@ function parseVerifyCliArgs(argv) {
 function usage(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
     'Usage: node scripts/node/verify '
-      + '<backend|backend-consistency|ci|console-operation-registry-hygiene|coverage|repo|state-protocols> [args]\n'
+      + '<backend|backend-consistency|ci|console-operation-registry-hygiene|coverage|repo|state-protocols|level1|level2|level3> [args]\n'
   );
 }
 
@@ -83,7 +86,8 @@ async function main(argv = [], deps = {}) {
     return (deps.runStateProtocolsImpl || runStateProtocols)(options.rest, deps);
   }
 
-  return (deps.runRepoImpl || runRepo)(options.rest, deps);
+  const repoArgs = options.command === 'repo' ? options.rest : [options.command, ...options.rest];
+  return (deps.runRepoImpl || runRepo)(repoArgs, deps);
 }
 
 module.exports = {

@@ -13,10 +13,8 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { apiFetch } from '@1flowbase/api-client/auth';
 import { sourceSha256 } from 'virtual:1flowbase-default-password';
 import { getAuthApiBaseUrl, type PublicLoginEntry } from '../../../api/session';
-import {
-  DefaultPasswordSignIn,
-  matchesDefaultPasswordSource
-} from '../DefaultPasswordSignIn';
+import { DefaultPasswordSignIn } from '../DefaultPasswordSignIn';
+import { matchesDefaultPasswordSource } from '../source-identity';
 
 vi.mock('@1flowbase/api-client/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@1flowbase/api-client/auth')>()),

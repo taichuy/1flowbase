@@ -606,13 +606,21 @@ async function main(argv = [], deps = {}) {
 
   if (options.command === 'plan') {
     const { readChangedFiles } = require('../gate-router/core.js');
-    const changedFiles = deps.changedFiles || readChangedFiles({
-      repoRoot,
-      mode: 'branch',
-      baseRef: options['base-ref'] || 'origin/main',
-      env: deps.env || process.env,
-      spawnSyncImpl: deps.spawnSyncImpl,
-    });
+    let changedFiles = deps.changedFiles;
+    if (!changedFiles) {
+      try {
+        changedFiles = readChangedFiles({
+          repoRoot,
+          mode: ['push', 'pull_request'].includes(options.event) ? 'candidate' : 'branch',
+          baseRef: options['base-ref'] || 'origin/main',
+          env: deps.env || process.env,
+          spawnSyncImpl: deps.spawnSyncImpl,
+        });
+      } catch (error) {
+        if (options.foundation !== 'all') throw error;
+        changedFiles = [];
+      }
+    }
     const plan = buildFoundationPlan({
       changedFiles,
       foundation: options.foundation || 'auto',

@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { HeroArtwork, HeroTagline } from '../HeroArtwork';
 import type { DocumentArtwork } from '../document-motion';
@@ -28,7 +28,6 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  cleanup();
   await resolveFallback();
   document.getElementById('sign-in-document-scene')?.remove();
   vi.doUnmock('../SignInFallbackHero');

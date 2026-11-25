@@ -39,3 +39,21 @@ test('test index rejects unknown subcommands', async () => {
     /Unknown test command: unknown/u
   );
 });
+
+
+test('test-backend skips the Rust static scan only when explicitly requested', async () => {
+  const { runBackend } = require('../index.js');
+  for (const skip of [false, true]) {
+    const status = await runBackend(['--package', 'domain', '--lib', ...(skip ? ['--skip-static-gate'] : [])], {
+      repoRoot: '/repo',
+      runtimeConfig: { backend: { cargoJobs: 2, cargoTestThreads: 1 } },
+      managedRunnerImpl({ commands }) {
+        assert.equal(commands.some((command) => command.args.includes('check-rust-backend')), !skip);
+        assert.equal(commands.at(-1).command, 'cargo');
+        assert.ok(commands.at(-1).args.includes('--lib'));
+        return 0;
+      },
+    });
+    assert.equal(status, 0);
+  }
+});

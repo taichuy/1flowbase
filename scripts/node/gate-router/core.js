@@ -23,6 +23,12 @@ const CHECK_SCOPE_BY_PACKAGE = new Map(BACKEND_SHARDS.flatMap(({ key, packages }
   packages.map((packageName) => [packageName, `repo-backend-check-${key}`])
 ));
 
+const BACKEND_CHECK_SCOPES = ['core-libs', 'runtime-storage', 'apps']
+  .map((shard) => `repo-backend-check-${shard}`);
+const BACKEND_BASE_SCOPES = ['repo-backend-static', 'repo-backend-fmt'];
+const BACKEND_SPECIAL_SCOPES = ['repo-backend-image-llm-vision', 'repo-backend-official-i18n-seed'];
+const ALL_BACKEND_SCOPES = [...BACKEND_BASE_SCOPES, ...BACKEND_SPECIAL_SCOPES, ...BACKEND_CHECK_SCOPES];
+
 const ROUTE_DEFINITIONS = [
   {
     scope: 'repo-tooling',
@@ -118,10 +124,16 @@ function parseCliArgs(argv = []) {
   }
 
   let mode = 'branch';
-  let baseRef = DEFAULT_BASE_REF;
+  let baseRef;
+  let prPlan = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
+
+    if (arg === '--pr-plan-json') {
+      prPlan = true;
+      continue;
+    }
 
     if (arg === '--staged') {
       mode = 'staged';
@@ -149,17 +161,20 @@ function parseCliArgs(argv = []) {
   return {
     help: false,
     mode,
-    baseRef,
+    baseRef: baseRef ?? (prPlan ? null : DEFAULT_BASE_REF),
+    ...(prPlan && { prPlan }),
   };
 }
 
 function buildGitDiffArgs({ mode, baseRef }) {
-  const commonArgs = ['diff', '--name-only', '--diff-filter=ACDMRTUXB'];
+  const commonArgs = ['diff', '--name-only', '--no-renames', '--diff-filter=ACDMRTUXB'];
 
   if (mode === 'staged') {
     return [...commonArgs, '--cached'];
   }
 
+  // CI compares the exact candidate and base trees, including force-pushed changes.
+  if (mode === 'candidate') return [...commonArgs, '-z', baseRef, 'HEAD', '--'];
   return [...commonArgs, `${baseRef}...HEAD`];
 }
 
@@ -170,7 +185,7 @@ function readChangedFiles({
   env = process.env,
   spawnSyncImpl = spawnSync,
 }) {
-  if (env[CHANGED_FILES_ENV] !== undefined) {
+  if (mode !== 'candidate' && env[CHANGED_FILES_ENV] !== undefined) {
     return splitChangedFiles(env[CHANGED_FILES_ENV]);
   }
 
@@ -188,7 +203,9 @@ function readChangedFiles({
     throw new Error(result.stderr || result.stdout || 'git diff failed');
   }
 
-  return splitChangedFiles(result.stdout);
+  return mode === 'candidate'
+    ? uniqueSorted(result.stdout.split('\0').filter(Boolean))
+    : splitChangedFiles(result.stdout);
 }
 
 function addRoute(routes, scope) {
@@ -321,6 +338,50 @@ function routeChangedFiles(changedFiles) {
   return ROUTE_DEFINITIONS.filter((route) => routes.has(route.scope));
 }
 
+function buildPrVerifyPlan({ changedFiles = [] } = {}) {
+  const files = changedFiles.filter((file) => !isIgnoredPath(file));
+  const global = files.length === 0 || files.some((file) =>
+    !/^(?:api|web|docs)\//u.test(file) || /(?:[./-]lock(?:b|file)?(?:\.ya?ml|\.json)?|shrinkwrap\.(?:ya?ml|json))$/iu.test(file)
+    || /^api\/(?:Cargo\.toml|\.cargo\/|rust-toolchain)/u.test(file));
+  const webSeed = files.some((file) => isFrontendFile(file)
+    && /(?:i18n|locales?)[-_.\/].*seed|seed[-_.\/].*(?:i18n|locales?)/iu.test(file));
+  const tooling = global || webSeed || files.some(isToolingFile);
+  const frontend = global || files.some(isFrontendFile);
+  const backendFiles = files.filter((file) => file.startsWith('api/'));
+  let backendScopes = [];
+  if (global || webSeed) {
+    backendScopes = [...ALL_BACKEND_SCOPES];
+  } else if (backendFiles.length) {
+    const routes = new Map();
+    backendFiles.forEach((file) => addBackendCheckRoutes(routes, file));
+    const firstImpacted = BACKEND_CHECK_SCOPES.findIndex((scope) => routes.has(scope));
+    const specialistPaths = backendFiles.some((file) => /i18n|locale|seed|image|llm|vision|model/iu.test(file));
+    backendScopes = [
+      ...BACKEND_BASE_SCOPES,
+      ...(specialistPaths ? BACKEND_SPECIAL_SCOPES : []),
+      ...BACKEND_CHECK_SCOPES.slice(Math.max(0, firstImpacted)),
+    ];
+  }
+  const expectedScopes = [
+    ...(tooling ? ['repo-tooling'] : []),
+    ...(frontend ? ['repo-frontend-pr'] : []),
+    ...backendScopes,
+    // The reusable workflow always produces a SHA-bound receipt, even for no impact.
+    'foundation-contracts',
+  ];
+  return { tooling, frontend, backendScopes, expectedScopes, allFoundations: global,
+    selectedFoundations: buildFoundationPlan({ changedFiles: files, foundation: global ? 'all' : 'auto' }).selectedFoundations };
+}
+
+function readPrVerifyPlan({ baseRef, ...options }) {
+  if (!/^(?!0+$)[0-9a-f]{40}$/u.test(baseRef ?? '')) return buildPrVerifyPlan();
+  try {
+    return buildPrVerifyPlan({ changedFiles: readChangedFiles({ ...options, baseRef, mode: 'candidate' }) });
+  } catch {
+    return buildPrVerifyPlan();
+  }
+}
+
 function buildAdvisoryMessage({ mode, changedFiles, routes }) {
   if (!routes.length) {
     return '';
@@ -353,7 +414,7 @@ function buildReadFailureMessage(error) {
 
 function usage(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
-    'Usage: node scripts/node/tooling.js gate-router [--staged|--branch] [--base-ref <ref>]\n'
+    'Usage: node scripts/node/tooling.js gate-router [--staged|--branch] [--base-ref <ref>] [--pr-plan-json]\n'
       + 'Prints non-blocking quality gate suggestions for changed files.\n'
   );
 }
@@ -369,6 +430,11 @@ async function main(argv = [], deps = {}) {
   const repoRoot = deps.repoRoot || getRepoRoot();
   const env = deps.env || process.env;
   const writeStdout = deps.writeStdout || ((text) => process.stdout.write(text));
+  if (options.prPlan) {
+    const plan = readPrVerifyPlan({ repoRoot, baseRef: options.baseRef, env, spawnSyncImpl: deps.spawnSyncImpl });
+    writeStdout(`${JSON.stringify(plan)}\n`);
+    return 0;
+  }
   let changedFiles = [];
 
   try {
@@ -401,6 +467,8 @@ async function main(argv = [], deps = {}) {
 module.exports = {
   buildAdvisoryMessage,
   buildGitDiffArgs,
+  buildPrVerifyPlan,
+  readPrVerifyPlan,
   main,
   parseCliArgs,
   readChangedFiles,

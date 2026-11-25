@@ -15,7 +15,13 @@ const { systemMetadata } = vi.hoisted(() => ({
 vi.mock('../lib/public-system-metadata', () => ({
   usePublicSystemMetadata: () => ({ data: systemMetadata })
 }));
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const {
@@ -293,6 +299,45 @@ describe('SignInPage', () => {
     expect(
       screen.queryByRole('button', { name: 'Run auth-qr' })
     ).not.toBeInTheDocument();
+  });
+
+  test('changing selection discards a pending authentication result from the old entry', async () => {
+    const qr = {
+      ...passwordInstance,
+      id: 'auth-qr',
+      auth_type: 'qr-code',
+      public_ui_block: 'qr block'
+    };
+    fetchLoginEntries.mockResolvedValue({
+      login_entries: [passwordInstance, qr]
+    });
+    const currentMe = await fetchCurrentMe();
+    let resolveMe!: (me: typeof currentMe) => void;
+    fetchCurrentMe.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveMe = resolve;
+        })
+    );
+    const view = render(<SignInPage loginEntryId={passwordInstance.id} />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Run auth-password-local' })
+    );
+    expect(resolveMe).toBeTypeOf('function');
+
+    view.rerender(<SignInPage loginEntryId={qr.id} />);
+    expect(
+      await screen.findByRole('button', { name: 'Run auth-qr' })
+    ).toBeInTheDocument();
+    await act(async () => resolveMe(currentMe));
+    expect(navigateSpy).not.toHaveBeenCalledWith({ to: '/' });
+    expect(useAuthStore.getState().csrfToken).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run auth-qr' }));
+    await waitFor(() =>
+      expect(navigateSpy).toHaveBeenCalledExactlyOnceWith({ to: '/' })
+    );
+    expect(useAuthStore.getState().csrfToken).toBe('csrf-123');
   });
 
   test('AC-001 restores a valid authenticator from the URL on first render', async () => {
@@ -597,7 +642,9 @@ test('commercial metadata customizes page title, hero title/tagline, and hides p
   systemMetadata.hide_login_tagline = false;
   try {
     const view = render(<SignInPage />);
-    expect(await screen.findByText('Acme Native', { exact: true })).toBeVisible();
+    expect(
+      await screen.findByText('Acme Native', { exact: true })
+    ).toBeVisible();
     expect(document.querySelector('.hero-slogan-line')).toHaveTextContent(
       '专属企业原生底座'
     );
@@ -637,9 +684,7 @@ test('AC-002 ?invite= enables invited registration and forwards invitationToken 
   window.history.pushState({}, '', '/sign-in?invite=inv_team_42');
 
   const view = render(<SignInPage loginEntryId={passwordInstance.id} />);
-  expect(
-    await screen.findByTestId('sign-in-invitation-banner')
-  ).toBeVisible();
+  expect(await screen.findByTestId('sign-in-invitation-banner')).toBeVisible();
   await waitFor(() =>
     expect(renderedBlocks).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -659,7 +704,12 @@ test('AC-002 ?invite= enables invited registration and forwards invitationToken 
   );
 });
 
-test.each(['invite_only', 'reject', 'default_workspace', 'personal_workspace'] as const)(
+test.each([
+  'invite_only',
+  'reject',
+  'default_workspace',
+  'personal_workspace'
+] as const)(
   'AC-013 %s does not render a manual invitation field',
   async (onboarding_mode) => {
     fetchLoginEntries.mockResolvedValue({
@@ -671,6 +721,8 @@ test.each(['invite_only', 'reject', 'default_workspace', 'personal_workspace'] a
 
     render(<SignInPage />);
     await waitFor(() => expect(renderedBlocks).toHaveBeenCalled());
-    expect(screen.queryByLabelText(/邀请码|Invitation code/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/邀请码|Invitation code/i)
+    ).not.toBeInTheDocument();
   }
 );

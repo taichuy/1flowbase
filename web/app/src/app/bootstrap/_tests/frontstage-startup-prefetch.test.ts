@@ -26,81 +26,100 @@ vi.mock('@1flowbase/api-client', async (importOriginal) => {
 vi.mock('@1flowbase/api-client/auth', () => ({
   fetchPublicSystemMetadata: apiMocks.fetchPublicSystemMetadata
 }));
-vi.mock('../../../features/settings/api/console-navigation', async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import('../../../features/settings/api/console-navigation')
-    >();
-  return {
-    ...actual,
-    settingsConsoleNavigationQueryOptions: (scope: string) => ({
-      queryKey: [...actual.settingsConsoleNavigationQueryKey, scope],
-      queryFn: () => apiMocks.fetchSettingsConsoleNavigation(),
-      staleTime: 30_000,
-      retry: false
-    })
-  };
-});
-vi.mock('../../../features/frontstage/api/block-catalog', async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import('../../../features/frontstage/api/block-catalog')
-    >();
-  return {
-    ...actual,
-    fetchFrontstageBlockCatalog: apiMocks.fetchFrontstageBlockCatalog
-  };
-});
+vi.mock(
+  '../../../features/settings/api/console-navigation',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../features/settings/api/console-navigation')
+      >();
+    return {
+      ...actual,
+      settingsConsoleNavigationQueryOptions: (scope: string) => ({
+        queryKey: [...actual.settingsConsoleNavigationQueryKey, scope],
+        queryFn: () => apiMocks.fetchSettingsConsoleNavigation(),
+        staleTime: 30_000,
+        retry: false
+      })
+    };
+  }
+);
+vi.mock(
+  '../../../features/frontstage/api/block-catalog',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../features/frontstage/api/block-catalog')
+      >();
+    return {
+      ...actual,
+      fetchFrontstageBlockCatalog: apiMocks.fetchFrontstageBlockCatalog
+    };
+  }
+);
 vi.mock('../../../features/frontstage/api/runtime-i18n', () => ({
   fetchFrontstageRuntimeI18nCatalog: apiMocks.fetchFrontstageRuntimeI18nCatalog
 }));
-vi.mock('../../../features/frontstage/api/page-tree', async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import('../../../features/frontstage/api/page-tree')
-    >();
-  return {
-    ...actual,
-    frontstagePageTreeQueryOptions: (workspaceId: string, scope: string) => ({
-      queryKey: actual.frontstagePageTreeQueryKey(workspaceId, scope),
-      queryFn: () => apiMocks.fetchFrontstagePageTree(workspaceId),
-      staleTime: 30_000,
-      retry: false
-    })
-  };
-});
-vi.mock('../../../features/frontstage/api/page-tabs', async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import('../../../features/frontstage/api/page-tabs')
-    >();
-  return {
-    ...actual,
-    fetchFrontstagePageTabs: apiMocks.fetchFrontstagePageTabs
-  };
-});
-vi.mock('../../../features/frontstage/api/page-content', async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import('../../../features/frontstage/api/page-content')
-    >();
-  return {
-    ...actual,
-    fetchFrontstagePageContent: apiMocks.fetchFrontstagePageContent
-  };
-});
-vi.mock('../../../features/frontstage/api/block-tree', async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import('../../../features/frontstage/api/block-tree')
-    >();
-  return {
-    ...actual,
-    fetchFrontstageBlockRoots: apiMocks.fetchFrontstageBlockRoots
-  };
-});
+vi.mock(
+  '../../../features/frontstage/api/page-tree',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../features/frontstage/api/page-tree')
+      >();
+    return {
+      ...actual,
+      frontstagePageTreeQueryOptions: (workspaceId: string, scope: string) => ({
+        queryKey: actual.frontstagePageTreeQueryKey(workspaceId, scope),
+        queryFn: () => apiMocks.fetchFrontstagePageTree(workspaceId),
+        staleTime: 30_000,
+        retry: false
+      })
+    };
+  }
+);
+vi.mock(
+  '../../../features/frontstage/api/page-tabs',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../features/frontstage/api/page-tabs')
+      >();
+    return {
+      ...actual,
+      fetchFrontstagePageTabs: apiMocks.fetchFrontstagePageTabs
+    };
+  }
+);
+vi.mock(
+  '../../../features/frontstage/api/page-content',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../features/frontstage/api/page-content')
+      >();
+    return {
+      ...actual,
+      fetchFrontstagePageContent: apiMocks.fetchFrontstagePageContent
+    };
+  }
+);
+vi.mock(
+  '../../../features/frontstage/api/block-tree',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../../../features/frontstage/api/block-tree')
+      >();
+    return {
+      ...actual,
+      fetchFrontstageBlockRoots: apiMocks.fetchFrontstageBlockRoots
+    };
+  }
+);
 
 import { waitFor } from '@testing-library/react';
+import { frontstagePageContentQueryKey } from '../../../features/frontstage/api/page-content';
 import {
   createApplicationQueryClient,
   startAuthenticatedNavigation
@@ -158,7 +177,9 @@ describe('frontstage startup prefetch', () => {
       route_definitions: [],
       permission_bindings: []
     });
-    apiMocks.fetchPublicSystemMetadata.mockResolvedValue({ brand_name: '1flowbase' });
+    apiMocks.fetchPublicSystemMetadata.mockResolvedValue({
+      brand_name: '1flowbase'
+    });
     apiMocks.fetchFrontstageBlockCatalog.mockResolvedValue({ entries: [] });
     apiMocks.fetchFrontstageRuntimeI18nCatalog.mockResolvedValue({
       locale: 'zh_Hans',
@@ -213,7 +234,9 @@ describe('frontstage startup prefetch', () => {
     expect(isFrontstageCandidatePathname('/')).toBe(true);
     expect(isFrontstageCandidatePathname('/route')).toBe(true);
     expect(
-      isFrontstageCandidatePathname('/route/pages/01a073f3-03e9-7030-86a4-371f80ebf522')
+      isFrontstageCandidatePathname(
+        '/route/pages/01a073f3-03e9-7030-86a4-371f80ebf522'
+      )
     ).toBe(true);
     expect(isFrontstageCandidatePathname('/settings/general')).toBe(false);
     expect(isFrontstageCandidatePathname('/applications')).toBe(false);
@@ -337,7 +360,7 @@ describe('frontstage startup prefetch', () => {
           title: 'Overview',
           rank: '001000',
           is_default: true,
-          route_segment: null,
+          route_segment: 'overview',
           document_root_uid: 'root-1'
         }
       ],
@@ -357,7 +380,7 @@ describe('frontstage startup prefetch', () => {
           title: 'Overview',
           rank: '001000',
           is_default: true,
-          route_segment: null,
+          route_segment: 'overview',
           document_root_uid: 'root-1'
         },
         document: { root_uid: 'root-1', payload: { version: 1 } }
@@ -396,7 +419,7 @@ describe('frontstage startup prefetch', () => {
     };
     const preloadWorkspaceRoute = vi.fn(async () => ({}));
     const prewarmed = prewarmAuthenticatedStartup(snapshot, {
-      getPathname: () => '/route/pages/page-reports',
+      getPathname: () => '/route/pages/page-reports/tabs/overview',
       preloadWorkspaceRoute
     });
 
@@ -438,6 +461,19 @@ describe('frontstage startup prefetch', () => {
       }
     );
     expect(mounted.targetPath).toBe('/route/pages/page-reports');
+
+    for (const reference of ['tab-default', 'overview']) {
+      const key = frontstagePageContentQueryKey(
+        'workspace-1',
+        'page-reports',
+        reference
+      );
+      expect(prewarmed.getQueryData(key)).toMatchObject({
+        tab: { id: 'tab-default' },
+        document: { rootUid: 'root-1' }
+      });
+      expect(prewarmed.getQueryDefaults(key).staleTime).toBe(30_000);
+    }
 
     // Zero duplicate /bootstrap and zero legacy waterfall requests across prewarm -> layout -> effect!
     expect(apiMocks.fetchSettingsConsoleNavigation).toHaveBeenCalledTimes(1);
@@ -698,10 +734,7 @@ describe('frontstage startup prefetch', () => {
           payload: { version: 1 }
         }
       },
-      block_roots: [
-        { block_id: 'block-ai-1' },
-        { block_id: 'block-ai-2' }
-      ],
+      block_roots: [{ block_id: 'block-ai-1' }, { block_id: 'block-ai-2' }],
       block_codes: [
         {
           block_id: 'block-ai-1',
@@ -843,9 +876,8 @@ describe('frontstage startup prefetch', () => {
       'workspace-1',
       'page-landing'
     );
-    const { frontstagePageTabsQueryKey } = await import(
-      '../../../features/frontstage/api/page-tabs'
-    );
+    const { frontstagePageTabsQueryKey } =
+      await import('../../../features/frontstage/api/page-tabs');
     expect(
       client.getQueryData(
         frontstagePageTabsQueryKey('workspace-1', 'page-landing')

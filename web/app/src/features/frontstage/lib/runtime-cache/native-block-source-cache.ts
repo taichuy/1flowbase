@@ -20,8 +20,7 @@ export interface FrontstageNativeBlockSourceWriteEpoch {
   actor: number;
 }
 
-interface StoredNativeBlockSourceRecord
-  extends FrontstageNativeBlockSourceCacheIdentity {
+interface StoredNativeBlockSourceRecord extends FrontstageNativeBlockSourceCacheIdentity {
   key: string;
   schemaVersion: typeof FRONTSTAGE_NATIVE_BLOCK_SOURCE_CACHE_SCHEMA_VERSION;
   byteSize: number;
@@ -244,27 +243,7 @@ export class FrontstageNativeBlockSourceCache {
   }
 
   async deleteActor(actorId: string): Promise<{ deleted: number }> {
-    if (!actorId) return { deleted: 0 };
-    this.bumpActorEpoch(actorId);
-    let deleted = 0;
-    for (const [key, record] of this.l1.entries()) {
-      if (record.actorId === actorId) {
-        this.l1.delete(key);
-        deleted += 1;
-      }
-    }
-    const db = await this.openDatabase();
-    if (!db) return { deleted };
-    try {
-      const persistedDeleted = await deleteRecordsWhere(
-        db,
-        actorId,
-        () => true
-      );
-      return { deleted: Math.max(deleted, persistedDeleted) };
-    } catch {
-      return { deleted };
-    }
+    return actorId ? this.invalidateActor(actorId) : { deleted: 0 };
   }
 
   async pruneWorkspace({
@@ -274,11 +253,22 @@ export class FrontstageNativeBlockSourceCache {
     actorId: string;
     workspaceId: string;
   }): Promise<{ deleted: number }> {
-    if (!actorId || !workspaceId) return { deleted: 0 };
+    return actorId && workspaceId
+      ? this.invalidateActor(actorId, workspaceId)
+      : { deleted: 0 };
+  }
+
+  private async invalidateActor(
+    actorId: string,
+    keepWorkspaceId?: string
+  ): Promise<{ deleted: number }> {
     this.bumpActorEpoch(actorId);
     let deleted = 0;
     for (const [key, record] of this.l1.entries()) {
-      if (record.actorId === actorId && record.workspaceId !== workspaceId) {
+      if (
+        record.actorId === actorId &&
+        record.workspaceId !== keepWorkspaceId
+      ) {
         this.l1.delete(key);
         deleted += 1;
       }
@@ -286,10 +276,10 @@ export class FrontstageNativeBlockSourceCache {
     const db = await this.openDatabase();
     if (!db) return { deleted };
     try {
-      const persistedDeleted = await deleteRecordsWhere(
+      const persistedDeleted = await deleteActorRecords(
         db,
         actorId,
-        (record) => record.workspaceId !== workspaceId
+        keepWorkspaceId
       );
       return { deleted: Math.max(deleted, persistedDeleted) };
     } catch {
@@ -394,27 +384,50 @@ function writeRecordWithCap(
   });
 }
 
-function deleteRecordsWhere(
+function deleteActorRecords(
   db: IDBDatabase,
   actorId: string,
-  predicate: (record: StoredNativeBlockSourceRecord) => boolean
+  keepWorkspaceId?: string
 ): Promise<number> {
   return new Promise((resolve, reject) => {
     let deleted = 0;
     const tx = db.transaction(OBJECT_STORE_NAME, 'readwrite');
     const store = tx.objectStore(OBJECT_STORE_NAME);
-    const allReq = store.getAll();
-    allReq.onsuccess = () => {
-      const records = (allReq.result ?? []) as StoredNativeBlockSourceRecord[];
-      for (const record of records) {
-        if (record.actorId === actorId && predicate(record)) {
-          store.delete(record.key);
-          deleted += 1;
-        }
-      }
-    };
     tx.oncomplete = () => resolve(deleted);
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(tx.error);
+
+    const index = store.indexNames?.contains?.(ACTOR_INDEX_NAME)
+      ? store.index(ACTOR_INDEX_NAME)
+      : null;
+    if (index && keepWorkspaceId === undefined) {
+      const request = index.openKeyCursor(IDBKeyRange.only(actorId));
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        store.delete(cursor.primaryKey);
+        deleted += 1;
+        cursor.continue();
+      };
+      return;
+    }
+
+    // The v1 browser store has the index. Minimal IndexedDB mocks may omit it.
+    const request = index
+      ? index.openCursor(IDBKeyRange.only(actorId))
+      : store.openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      const record = cursor.value as StoredNativeBlockSourceRecord;
+      if (
+        (index || record.actorId === actorId) &&
+        record.workspaceId !== keepWorkspaceId
+      ) {
+        cursor.delete();
+        deleted += 1;
+      }
+      cursor.continue();
+    };
   });
 }

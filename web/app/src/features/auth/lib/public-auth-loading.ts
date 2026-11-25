@@ -1,4 +1,4 @@
-import { matchesDefaultPasswordSource } from '../components/default-password/DefaultPasswordSignIn';
+import { matchesDefaultPasswordSource } from '../components/default-password/source-identity';
 
 type PublicAuthModule = typeof import('../components/PublicAuthBlock');
 let runtimeFlight: Promise<PublicAuthModule> | undefined;

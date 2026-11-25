@@ -21,7 +21,7 @@ vi.mock('../../../../app/AuthenticatedAppRuntime', () => {
   imported();
   return { AuthenticatedAppRuntime: () => null };
 });
-vi.mock('../../components/default-password/DefaultPasswordSignIn', () => ({
+vi.mock('../../components/default-password/source-identity', () => ({
   matchesDefaultPasswordSource: () => false
 }));
 function Host({
@@ -68,7 +68,10 @@ beforeEach(() => {
   // Do not clear imported: an accidental startup evaluation must also fail.
   vi.stubGlobal('requestIdleCallback', request);
   vi.stubGlobal('cancelIdleCallback', cancel);
-  Object.defineProperty(performance, 'mark', { configurable: true, value: mark });
+  Object.defineProperty(performance, 'mark', {
+    configurable: true,
+    value: mark
+  });
   Object.defineProperty(navigator, 'connection', {
     configurable: true,
     value: undefined
@@ -104,7 +107,9 @@ test('does not schedule during loading, schedules only after a real form commit,
   await runIdle();
   expect(imported).not.toHaveBeenCalled();
   expect(preloads()).toHaveLength(0);
-  expect(mark).not.toHaveBeenCalledWith('anonymous:authenticated-prewarm-start');
+  expect(mark).not.toHaveBeenCalledWith(
+    'anonymous:authenticated-prewarm-start'
+  );
 });
 test.each([
   { saveData: true },
@@ -171,7 +176,9 @@ test('a preload error is marked without importing the runtime as a fallback', as
   render(<Host ready />);
   await runIdle();
   fireEvent.error(preloads()[0]);
-  expect(mark).toHaveBeenLastCalledWith('anonymous:authenticated-prewarm-failed');
+  expect(mark).toHaveBeenLastCalledWith(
+    'anonymous:authenticated-prewarm-failed'
+  );
   expect(mark).not.toHaveBeenCalledWith('anonymous:authenticated-prewarm-end');
   expect(imported).not.toHaveBeenCalled();
 });
@@ -225,7 +232,9 @@ test('an existing modulepreload for the resolved URL is reused without claiming 
   render(<Host ready />);
   await runIdle();
   expect(preloads()).toEqual([existing]);
-  expect(mark).not.toHaveBeenCalledWith('anonymous:authenticated-prewarm-start');
+  expect(mark).not.toHaveBeenCalledWith(
+    'anonymous:authenticated-prewarm-start'
+  );
   expect(imported).not.toHaveBeenCalled();
 });
 

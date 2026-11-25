@@ -48,7 +48,7 @@ function createGitHubClient({ repository, env = process.env, exec = execFileSync
   };
 }
 
-function selectScheduledBaseline({ client, branch, candidate, currentRunId, maxPages = 2, perPage = 50,
+function selectScheduledBaseline({ client, branch, candidate, currentRunId, maxPages = 5, perPage = 50,
   expectedScopes = DEFAULT_AGGREGATE_SCOPES, onRejected = () => {} }) {
   if (!COMMIT.test(candidate || '')) throw new Error('A full candidate SHA is required');
   if (!branch || /[\r\n]/u.test(branch)) throw new Error('Target branch is required');

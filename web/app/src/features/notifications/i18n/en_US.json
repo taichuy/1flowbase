@@ -150,7 +150,6 @@
   "history_failed": "Could not load or update communication history. Try again.",
   "no_conversations": "No conversations",
   "received_message": "Received message",
-  "retry_delivery": "Retry delivery",
   "processing_pending": "Waiting for processing",
   "processing_active": "Processing",
   "processing_succeeded": "Processed",

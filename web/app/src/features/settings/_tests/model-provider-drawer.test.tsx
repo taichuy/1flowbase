@@ -92,7 +92,15 @@ function buildProgressivePricingTargetsResponse(
 }
 
 beforeEach(() => {
-  useAuthStore.setState({ actor: { id: 'root', account: 'root', effective_display_role: 'root', current_workspace_id: 'workspace' }, me: null });
+  useAuthStore.setState({
+    actor: {
+      id: 'root',
+      account: 'root',
+      effective_display_role: 'root',
+      current_workspace_id: 'workspace'
+    },
+    me: null
+  });
   listSettingsPricingTargetsSpy.mockReset();
   listSettingsPricingTargetsSpy.mockImplementation(async (filter = {}) =>
     buildProgressivePricingTargetsResponse(filter)
@@ -212,7 +220,9 @@ describe('ModelProviderInstanceDrawer', () => {
     );
 
     await screen.findByRole('dialog');
-    expect(screen.queryByRole('button', { name: /检\s*测/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /检\s*测/ })
+    ).not.toBeInTheDocument();
   });
 
   test('uses the shared resizable drawer with the provider width range', async () => {
@@ -287,7 +297,7 @@ describe('ModelProviderInstanceDrawer', () => {
           catalogEntry={catalogEntry}
           instance={null}
           cachedModelCatalog={null}
-            defaultIncludedInMain={true}
+          defaultIncludedInMain={true}
           submitting={false}
           onClose={() => undefined}
           onSubmit={submit}
@@ -364,7 +374,7 @@ describe('ModelProviderInstanceDrawer', () => {
           catalogEntry={modelProviderCatalogEntries[0]}
           instance={null}
           cachedModelCatalog={null}
-            defaultIncludedInMain={true}
+          defaultIncludedInMain={true}
           submitting={false}
           onClose={() => undefined}
           onSubmit={submit}
@@ -564,7 +574,7 @@ describe('ModelProviderInstanceDrawer', () => {
           catalogEntry={modelProviderCatalogEntries[0]}
           instance={instance}
           cachedModelCatalog={null}
-            defaultIncludedInMain={true}
+          defaultIncludedInMain={true}
           submitting={false}
           onClose={() => undefined}
           onSubmit={submit}
@@ -609,7 +619,7 @@ describe('ModelProviderInstanceDrawer', () => {
           catalogEntry={modelProviderCatalogEntries[0]}
           instance={null}
           cachedModelCatalog={null}
-            defaultIncludedInMain={true}
+          defaultIncludedInMain={true}
           submitting={false}
           onClose={() => undefined}
           onSubmit={submit}
@@ -709,7 +719,7 @@ describe('ModelProviderInstanceDrawer', () => {
           catalogEntry={modelProviderCatalogEntries[0]}
           instance={instance}
           cachedModelCatalog={null}
-            defaultIncludedInMain={true}
+          defaultIncludedInMain={true}
           submitting={false}
           onClose={() => undefined}
           onSubmit={submit}
@@ -874,9 +884,6 @@ describe('ModelProviderInstanceDrawer', () => {
 
     await waitFor(() => {
       expect(listSettingsPricingTargetsSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ page: 1, page_size: 50 })
-      );
-      expect(listSettingsPricingTargetsSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           provider_code: 'zero',
           selected_model_id: 'any',
@@ -904,6 +911,15 @@ describe('ModelProviderInstanceDrawer', () => {
     const modelSelect = screen.getByRole('combobox', { name: '上游模型 ID' });
     fireEvent.mouseDown(modelSelect);
     fireEvent.click(await screen.findByTitle('gpt-4o'));
+    await waitFor(() =>
+      expect(listSettingsPricingTargetsSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider_code: 'openai',
+          selected_model_id: 'gpt-4o',
+          page: 1
+        })
+      )
+    );
 
     expect(await screen.findByText('1M / 2.50$')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('模型 ID'), {

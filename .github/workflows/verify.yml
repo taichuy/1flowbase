@@ -31,6 +31,32 @@ env:
   QUALITY_GATE_TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.main_source_sha || github.sha }}
 
 jobs:
+  plan-verify-scopes:
+    runs-on: ubuntu-latest
+    outputs:
+      tooling: ${{ steps.plan.outputs.tooling }}
+      frontend: ${{ steps.plan.outputs.frontend }}
+      backend: ${{ steps.plan.outputs.backend }}
+      all_foundations: ${{ steps.plan.outputs.all_foundations }}
+      expected_scopes: ${{ steps.plan.outputs.expected_scopes }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.QUALITY_GATE_TARGET_SHA }}
+          fetch-depth: 0
+      - id: plan
+        shell: bash
+        env:
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || '' }}
+        run: |
+          set -euo pipefail
+          plan="$(node scripts/node/tooling.js gate-router --pr-plan-json --base-ref "${BASE_REF:-none}")"
+          jq -r '
+            "tooling=\(.tooling)", "frontend=\(.frontend)",
+            "backend=\(.backendScopes | tojson)", "all_foundations=\(.allFoundations)",
+            "expected_scopes=\(.expectedScopes | join(","))"
+          ' <<< "$plan" >> "$GITHUB_OUTPUT"
+
   provider-conformance:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -73,6 +99,8 @@ jobs:
           path: tmp/test-governance
 
   repo-tooling-gate:
+    needs: plan-verify-scopes
+    if: needs.plan-verify-scopes.outputs.tooling == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -106,6 +134,8 @@ jobs:
           path: tmp/test-governance
 
   repo-frontend-gate:
+    needs: plan-verify-scopes
+    if: needs.plan-verify-scopes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -135,18 +165,13 @@ jobs:
           path: tmp/test-governance
 
   repo-backend-gate:
+    needs: plan-verify-scopes
+    if: needs.plan-verify-scopes.outputs.backend != '[]'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        scope:
-          - repo-backend-static
-          - repo-backend-fmt
-          - repo-backend-image-llm-vision
-          - repo-backend-official-i18n-seed
-          - repo-backend-check-core-libs
-          - repo-backend-check-runtime-storage
-          - repo-backend-check-apps
+        scope: ${{ fromJSON(needs.plan-verify-scopes.outputs.backend) }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -167,11 +192,12 @@ jobs:
           path: tmp/test-governance
 
   foundation-contract-gate:
+    needs: plan-verify-scopes
     uses: ./.github/workflows/foundation-contracts.yml
     with:
       target_ref: ${{ github.event_name == 'workflow_dispatch' && inputs.main_source_sha || github.sha }}
       base_ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || '' }}
-      foundation: ${{ github.event_name == 'workflow_dispatch' && 'all' || 'auto' }}
+      foundation: ${{ needs.plan-verify-scopes.outputs.all_foundations == 'true' && 'all' || 'auto' }}
       lane: pr-evidence
 
   collector-runtime:
@@ -189,6 +215,7 @@ jobs:
       - foundation-contract-gate
       - provider-conformance
       - collector-runtime
+      - plan-verify-scopes
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -221,15 +248,39 @@ jobs:
           assert.equal(receipt.plugins_sha, official);
           JS
       - run: node scripts/node/cli/quality/github-quality-gate-aggregate.js
+        if: needs.plan-verify-scopes.result == 'success' && contains(format(',{0},', needs.plan-verify-scopes.outputs.expected_scopes), ',foundation-contracts,')
         env:
           GITHUB_SHA: ${{ env.QUALITY_GATE_TARGET_SHA }}
           INPUT_ARTIFACT_ROOT: tmp/test-governance/parallel
           INPUT_REPORT_TYPE: ci
-          INPUT_EXPECTED_SCOPES: repo-tooling,repo-frontend-pr,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,foundation-contracts${{ github.event_name == 'workflow_dispatch' && ',provider-conformance' || '' }}
+          INPUT_EXPECTED_SCOPES: ${{ needs.plan-verify-scopes.outputs.expected_scopes }}${{ github.event_name == 'workflow_dispatch' && ',provider-conformance' || '' }}
           INPUT_PUBLISH_ISSUE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/latest' }}
           INPUT_PUBLISH_PR_COMMENT: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
           INPUT_PR_NUMBER: ${{ github.event.pull_request.number }}
           INPUT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Require a valid candidate plan and completed selected jobs
+        if: always()
+        env:
+          PLAN_RESULT: ${{ needs.plan-verify-scopes.result }}
+          EXPECTED_SCOPES: ${{ needs.plan-verify-scopes.outputs.expected_scopes }}
+          TOOLING_RESULT: ${{ needs.repo-tooling-gate.result }}
+          FRONTEND_RESULT: ${{ needs.repo-frontend-gate.result }}
+          BACKEND_RESULT: ${{ needs.repo-backend-gate.result }}
+          FOUNDATION_RESULT: ${{ needs.foundation-contract-gate.result }}
+          PROVIDER_RESULT: ${{ needs.provider-conformance.result }}
+        run: |
+          node <<'JS'
+          const assert = require('node:assert/strict');
+          const env = process.env;
+          assert.equal(env.PLAN_RESULT, 'success');
+          const scopes = (env.EXPECTED_SCOPES || '').split(',');
+          assert.ok(scopes.includes('foundation-contracts'), 'candidate must have a foundation receipt');
+          assert.equal(env.FOUNDATION_RESULT, 'success');
+          if (scopes.includes('repo-tooling')) assert.equal(env.TOOLING_RESULT, 'success');
+          if (scopes.includes('repo-frontend-pr')) assert.equal(env.FRONTEND_RESULT, 'success');
+          if (scopes.some((scope) => scope.startsWith('repo-backend-'))) assert.equal(env.BACKEND_RESULT, 'success');
+          if (env.GITHUB_EVENT_NAME === 'workflow_dispatch') assert.equal(env.PROVIDER_RESULT, 'success');
+          JS
       - uses: actions/upload-artifact@v7
         if: always()
         with:

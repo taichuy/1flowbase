@@ -198,22 +198,22 @@ describe('AC-009/012 plugin settings published page', () => {
       );
     const contents = () =>
       screen.getByTestId('plugin-settings-page').shadowRoot?.textContent;
-    const first = mount();
+    const { unmount: unmountFirst } = mount();
     await waitFor(() => expect(contents()).toContain('Published preferences'));
     expect(compile).toHaveBeenCalledTimes(1);
-    first.unmount();
+    unmountFirst();
 
-    const second = mount();
-    expect(second.container.querySelector('.ant-spin')).toBeNull();
+    const { container, unmount: unmountSecond } = mount();
+    expect(container.querySelector('.ant-spin')).toBeNull();
     expect(contents()).toContain('Published preferences');
     expect(compile).toHaveBeenCalledTimes(1);
-    second.unmount();
+    unmountSecond();
 
     client.setQueryData(options.queryKey, { ...current, revision: 3 });
-    const revision = mount();
+    const { unmount: unmountRevision } = mount();
     await waitFor(() => expect(contents()).toContain('Published preferences'));
     expect(compile).toHaveBeenCalledTimes(2);
-    revision.unmount();
+    unmountRevision();
 
     client.setQueryData(options.queryKey, {
       ...current,

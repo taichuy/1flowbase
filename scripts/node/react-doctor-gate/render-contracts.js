@@ -14,41 +14,41 @@ const {
 // A contract is useful only after its export, props and rendered host are proved.
 const RELEASES = {
   antd: {
-    version: "6.6.2",
+    version: "6.7.1",
     integrity:
-      "sha512-aTOPWXsqfWrlSiI0a1qR9UWR4jBCTJ8FNZfZmYQP9/aGGLJSrw9/c5uE+4vSVSt3riQlIPAwR3BcAgEHmE7GMg==",
+      "sha512-InlwUhDGkxOhlUYJAnzWHNLJrjQAuT2cVWIOFzaYAUW9Phr8qU5a0fknPWvAbQtrHCIWGF9LxZ9zO5OMwKoGOg==",
     files: {
       "package.json":
-        "52bd2fd89c7820b91b644815a8576719725f5d5ed4b5d9c35a2e8c310abda2cf",
+        "83b78ce8e7277ed11d62a96d626aab4ac12f024a169f4764cac51c580644a0ff",
       "es/index.js":
-        "50fca853ce602287ff5e95e547648f7f316f3b05e19206d3f068f1a198dd5110",
+        "05030ed411e9836d97d98db8ef11d3a2cd0ae378e0fd8f8dc4d80f9dff21d248",
       "es/spin/index.js":
         "e2e231e07f647d581663337b34d178f0fc08a3a314544b1592c2e10a2b4ed794",
       "es/progress/index.js":
         "db3ead0575005dee37944cf6543e6376a6d691d5f9595e054a13faee33b43e7a",
       "es/progress/progress.js":
-        "6d6a797e2e3c0e2f0cd0ba85e781344cf0e1b3d3aa49bf8e71521177d680adf3",
+        "63d0ba3c70c59d3c2b9b3b9de42072a8c5ba5c5ec55baed6066242c0c0b79720",
       "es/skeleton/index.js":
         "a2579d88e1e4523afe9d1c6fb08bc097a958dad2fb8bfe7b67eb3501919b66e8",
       "es/skeleton/Skeleton.js":
         "df583d64fd02fd835820ce51c565a0814f3ab0fe6cde21f5fe76d35a69f11df4",
       "es/listy/index.js":
-        "3016f4fdd385f2758ca8501b43626cd230c79c230457762e03d5df4c8e77e98a",
+        "331b7f02be97a0f104088a1e1e36127fd88881cc8211de1e645f9a9f558b701e",
     },
   },
   "@rc-component/listy": {
-    version: "1.2.3",
+    version: "1.4.0",
     integrity:
-      "sha512-IXiMjV5s0rczLBlfh7G5nB4M3365mrEeedjwKtf5I+Ns3PqRUsebR2h5u8CeFarsVfLUPC2I5p0h09TNoOWyvQ==",
+      "sha512-enNtH2D3nU00qqP+YFxG3V3rnaXpN6HecFUIc/Q5SjxFmg8Ab20os1odn90Bam5y+ZIiOh52HUqvu4HwZv8pkQ==",
     files: {
       "package.json":
-        "b380aa0ebe490d91e37dc45a6518ed078097c4d96883b347c6f20eb0d8b5ca7d",
+        "934fc82f248493831ddc1fab51ad8bd26deeaffd798c91f8bc0a6d78b30fc4ad",
       "es/index.js":
         "1c5c29149e713001e3f3279b4fb5876b9f0b82a905f6fae75c62da990274a3be",
       "es/List.js":
         "fbb707733e47f1dca24aa3fa5fb7c1ea38964681851e0eced4d8bb3bd6b9b1ab",
       "es/VirtualList/index.js":
-        "9a1eeca96bc77ea02deea1b2dc110a1dacea0c4d0e23d1122e95afa214fff5b8",
+        "90caa6cac3d6d3095075a14f1ab16657b964cf4cd90b9de67d6909b120f5b0ab",
     },
   },
   "@rc-component/virtual-list": {

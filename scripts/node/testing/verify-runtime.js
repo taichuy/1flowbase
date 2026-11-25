@@ -83,31 +83,6 @@ function assertKnownKeys(name, value, allowedKeys) {
   }
 }
 
-function resolveCargoDefaults(availableParallelism) {
-  const parallelism = getLocalCpuBudget(availableParallelism);
-
-  return {
-    cargoJobs: parallelism,
-    cargoTestThreads: parallelism,
-  };
-}
-
-function resolveFrontendDefaults(availableParallelism) {
-  const parallelism = assertPositiveInteger(
-    "availableParallelism",
-    availableParallelism,
-  );
-  const vitestMaxWorkers = Math.max(
-    1,
-    Math.floor(parallelism * LOCAL_NODE_TEST_CPU_SHARE),
-  );
-
-  return {
-    turboConcurrency: parallelism,
-    vitestMaxWorkers,
-  };
-}
-
 function readLocalVerifyConfig(repoRoot) {
   const configPath = path.join(repoRoot, LOCAL_VERIFY_CONFIG_FILE);
 
@@ -630,15 +605,22 @@ async function withHeavyVerifyLock(options = {}, run) {
   }
 }
 
-function resolveRuntimeConfig(config, availableParallelism) {
+function resolveRuntimeConfig(config, availableParallelism, ci = false) {
   assertPlainObject("verify runtime config root", config);
   assertKnownKeys(
     "verify runtime config",
     config,
     new Set(["backend", "frontend", "scripts", "locks"]),
   );
-  const backendDefaults = resolveCargoDefaults(availableParallelism);
-  const frontendDefaults = resolveFrontendDefaults(availableParallelism);
+  const cpuBudget = ci ? availableParallelism : getLocalCpuBudget(availableParallelism);
+  const backendDefaults = {
+    cargoJobs: Math.min(cpuBudget, 6),
+    cargoTestThreads: Math.min(cpuBudget, 4),
+  };
+  const frontendDefaults = {
+    turboConcurrency: Math.min(cpuBudget, 4),
+    vitestMaxWorkers: Math.max(1, Math.floor(cpuBudget * LOCAL_NODE_TEST_CPU_SHARE)),
+  };
   const backendConfig =
     config.backend === undefined
       ? {}
@@ -722,15 +704,15 @@ function resolveRuntimeConfig(config, availableParallelism) {
   }
 
   return {
-    scripts: { testConcurrency },
+    scripts: { testConcurrency: Math.min(testConcurrency, cpuBudget) },
     backend: {
-      cargoJobs,
-      cargoTestThreads,
+      cargoJobs: Math.min(cargoJobs, cpuBudget),
+      cargoTestThreads: Math.min(cargoTestThreads, cpuBudget),
       incremental,
     },
     frontend: {
-      turboConcurrency,
-      vitestMaxWorkers,
+      turboConcurrency: Math.min(turboConcurrency, cpuBudget),
+      vitestMaxWorkers: Math.min(vitestMaxWorkers, cpuBudget),
     },
     locks: {
       waitTimeoutMinutes,
@@ -763,6 +745,7 @@ function loadVerifyRuntimeConfig({
         },
       },
       availableParallelism,
+      true,
     );
   }
 

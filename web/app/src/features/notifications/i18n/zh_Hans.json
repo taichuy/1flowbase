@@ -150,7 +150,6 @@
   "history_failed": "通讯记录加载或更新失败，请重试。",
   "no_conversations": "暂无会话",
   "received_message": "接收消息",
-  "retry_delivery": "重试发送",
   "processing_pending": "等待处理",
   "processing_active": "处理中",
   "processing_succeeded": "已处理",

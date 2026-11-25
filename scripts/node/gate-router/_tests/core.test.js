@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 
 const {
   buildAdvisoryMessage,
+  buildPrVerifyPlan,
+  readPrVerifyPlan,
   main,
   readChangedFiles,
   routeChangedFiles,
@@ -185,5 +187,69 @@ test('current Kernel, Gateway and Applications changes select the API apps check
   ]) {
     assert.deepEqual(routeChangedFiles([file]).filter((route) => route.scope.startsWith('repo-backend-check-'))
       .map((route) => route.scope), ['repo-backend-check-apps']);
+  }
+});
+
+
+test('real Git backend-to-docs rename preserves the source owner and foundation pack', (t) => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { execFileSync } = require('node:child_process');
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-router-rename-'));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const git = (...args) => execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8' }).trim();
+  git('init', '--quiet');
+  git('config', 'user.name', 'Gate fixture');
+  git('config', 'user.email', 'fixture@example.invalid');
+  const source = 'api/crates/api/mcp/src/routes/mcp_protocol.rs';
+  const dest = 'docs/archive/protocol.md';
+  for (const file of [source, dest]) fs.mkdirSync(path.dirname(path.join(repoRoot, file)), { recursive: true });
+  fs.writeFileSync(path.join(repoRoot, source), 'same bytes\n');
+  git('add', '.');
+  git('commit', '--quiet', '-m', 'baseline');
+  const baseRef = git('rev-parse', 'HEAD');
+  git('mv', source, dest);
+  assert.deepEqual(readChangedFiles({ repoRoot, mode: 'staged', env: {} }), [source, dest]);
+  git('commit', '--quiet', '-m', 'move to docs');
+  assert.deepEqual(readChangedFiles({ repoRoot, mode: 'branch', baseRef, env: {} }), [source, dest]);
+  const plan = readPrVerifyPlan({ repoRoot, baseRef, env: { GATE_ROUTER_CHANGED_FILES: dest } });
+  assert.equal(plan.frontend, false);
+  assert.ok(plan.backendScopes.includes('repo-backend-static'));
+  assert.ok(plan.selectedFoundations.includes('mcp-gateway'));
+});
+
+test('CI planner closes reverse dependencies and specializes only affected slices', () => {
+  for (const [file, expected] of [
+    ['api/crates/interface-runtime/src/schema.rs', ['core-libs', 'runtime-storage', 'apps']],
+    ['api/crates/runtime-extension-host/src/executor.rs', ['runtime-storage', 'apps']],
+    ['api/apps/api-server/src/main.rs', ['apps']],
+  ]) {
+    const plan = buildPrVerifyPlan({ changedFiles: [file] });
+    assert.equal(plan.frontend, false);
+    assert.equal(plan.tooling, false);
+    assert.deepEqual(plan.backendScopes, ['repo-backend-static', 'repo-backend-fmt', ...expected.map((key) => `repo-backend-check-${key}`)]);
+  }
+  const model = buildPrVerifyPlan({ changedFiles: ['api/crates/control-plane/src/model/_tests/prices.rs'] });
+  assert.equal(model.tooling, true);
+  assert.ok(model.backendScopes.includes('repo-backend-image-llm-vision'));
+  assert.ok(model.backendScopes.includes('repo-backend-official-i18n-seed'));
+  const web = buildPrVerifyPlan({ changedFiles: ['web/app/src/_tests/routes.test.ts', 'web/app/src/i18n/en_US.json'] });
+  assert.deepEqual(web.expectedScopes, ['repo-tooling', 'repo-frontend-pr', 'foundation-contracts']);
+  const shared = buildPrVerifyPlan({ changedFiles: ['web/packages/shared-types/src/official-i18n-seed.ts'] });
+  assert.equal(shared.tooling, true);
+  assert.equal(shared.frontend, true);
+  assert.deepEqual(shared.backendScopes, buildPrVerifyPlan().backendScopes);
+  assert.deepEqual(buildPrVerifyPlan({ changedFiles: ['docs/guide.md'] }).expectedScopes, ['foundation-contracts']);
+});
+
+test('CI planner fails closed for workflow and lockfile changes, unknown root and unavailable diff', () => {
+  const all = buildPrVerifyPlan();
+  assert.equal(all.backendScopes.length, 7);
+  for (const file of ['.github/workflows/verify.yml', 'web/pnpm-lock.yaml', 'web/npm-shrinkwrap.json', 'api/Cargo.lock', 'scripts/node/tooling.js', 'unknown.conf']) {
+    assert.deepEqual(buildPrVerifyPlan({ changedFiles: [file] }), all);
+  }
+  for (const baseRef of ['', '0'.repeat(40), 'a'.repeat(40)]) {
+    assert.deepEqual(readPrVerifyPlan({ baseRef, spawnSyncImpl: () => ({ status: 128, stderr: 'missing base' }) }), all);
   }
 });

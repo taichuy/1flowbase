@@ -1,18 +1,11 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import PasswordLocalAuth, {
-  sha256Text,
-  sourceSha256
-} from 'virtual:1flowbase-default-password';
+import PasswordLocalAuth from 'virtual:1flowbase-default-password';
+import { matchesDefaultPasswordSource } from './source-identity';
 import {
   createDefaultPasswordContext,
   type DefaultPasswordSignInProps
 } from './context';
 import './default-password.css';
-
-/** No trimming/normalization: a single changed byte belongs to the legacy host. */
-export function matchesDefaultPasswordSource(source: string): boolean {
-  return sha256Text(source) === sourceSha256;
-}
 
 export function DefaultPasswordSignIn({
   instance,

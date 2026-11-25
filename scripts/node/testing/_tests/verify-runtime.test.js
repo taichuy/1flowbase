@@ -29,15 +29,15 @@ test("loadVerifyRuntimeConfig returns defaults when local config is absent", () 
   });
 
   assert.deepEqual(config, {
-    scripts: { testConcurrency: 4 },
+    scripts: { testConcurrency: 2 },
     backend: {
       cargoJobs: 4,
       cargoTestThreads: 4,
       incremental: false,
     },
     frontend: {
-      turboConcurrency: 8,
-      vitestMaxWorkers: 4,
+      turboConcurrency: 4,
+      vitestMaxWorkers: 2,
     },
     locks: {
       waitTimeoutMinutes: 30,
@@ -56,11 +56,11 @@ test("frontend defaults reserve local CPU headroom on large machines", () => {
     availableParallelism: 16,
   });
 
-  assert.equal(config.frontend.vitestMaxWorkers, 8);
-  assert.equal(config.frontend.turboConcurrency, 16);
+  assert.equal(config.frontend.vitestMaxWorkers, 4);
+  assert.equal(config.frontend.turboConcurrency, 4);
 });
 
-test("cargo-jobs prints half the available parallelism by default", () => {
+test("cargo-jobs prints 60 percent of the available parallelism by default", () => {
   const repoRoot = createRepoRoot();
   let stdout = "";
 
@@ -74,7 +74,7 @@ test("cargo-jobs prints half the available parallelism by default", () => {
   });
 
   assert.equal(status, 0);
-  assert.equal(stdout, "5\n");
+  assert.equal(stdout, "6\n");
 });
 
 test("local CPU budgets adapt to the current machine without rewriting config", () => {
@@ -82,10 +82,10 @@ test("local CPU budgets adapt to the current machine without rewriting config", 
   try {
     for (const backend of [{}, { cargoJobs: "auto", cargoTestThreads: "auto" }]) {
       fs.writeFileSync(path.join(repoRoot, LOCAL_VERIFY_CONFIG_FILE), JSON.stringify({ backend }));
-      for (const [availableParallelism, expected] of [[1, 1], [2, 2], [3, 3], [4, 4], [6, 4], [8, 4], [20, 10]]) {
+      for (const [availableParallelism, expected] of [[1, 1], [2, 1], [3, 1], [4, 2], [6, 3], [8, 4], [20, 12]]) {
         const config = loadVerifyRuntimeConfig({ repoRoot, env: {}, availableParallelism });
-        assert.equal(config.backend.cargoJobs, expected);
-        assert.equal(config.backend.cargoTestThreads, expected);
+        assert.equal(config.backend.cargoJobs, Math.min(6, expected));
+        assert.equal(config.backend.cargoTestThreads, Math.min(4, expected));
       }
     }
   } finally {
@@ -126,7 +126,7 @@ test("loadVerifyRuntimeConfig applies local overrides when config file exists", 
   });
 
   assert.deepEqual(config, {
-    scripts: { testConcurrency: 4 },
+    scripts: { testConcurrency: 2 },
     backend: {
       cargoJobs: 3,
       cargoTestThreads: 2,
@@ -310,14 +310,14 @@ test("loadVerifyRuntimeConfig merges backend and lock overrides field by field",
   });
 
   assert.deepEqual(config, {
-    scripts: { testConcurrency: 4 },
+    scripts: { testConcurrency: 2 },
     backend: {
       cargoJobs: 3,
       cargoTestThreads: 4,
       incremental: false,
     },
     frontend: {
-      turboConcurrency: 8,
+      turboConcurrency: 4,
       vitestMaxWorkers: 2,
     },
     locks: {

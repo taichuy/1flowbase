@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const {
+  buildApiServerCoverageArchive,
   collectNextestTestIds,
   mergeApiServerShadow,
   parseNextestSummary,
@@ -336,5 +337,97 @@ for (const owner of ['applications', 'console-settings', 'mcp', 'plugins-models'
     assert.equal(evidence.coverage.lineCoveragePercent, 80);
     assert.equal(evidence.shards.every((shard) => JSON.stringify(shard.packages) === JSON.stringify(['api-server', `api-${owner}`])), true);
     assert.deepEqual(JSON.parse(fs.readFileSync(finalPath, 'utf8')), value);
+  });
+}
+
+
+function archiveFixture(t) {
+  const { repoRoot, root, directory, finalPath } = prepareMerge(t);
+  const archiveDir = path.join(root, 'build');
+  const archivePath = path.join(archiveDir, 'api-server-nextest.tar.zst');
+  const env = { QUALITY_GATE_TARGET_SHA: sha };
+  const calls = [];
+  let currentSha = sha;
+  let result = summary();
+  const source = path.join(repoRoot, 'api/apps/api-server/src/lib.rs');
+  fs.mkdirSync(path.dirname(source), { recursive: true });
+  fs.writeFileSync(source, 'pub fn example() {}');
+  const spawnSyncImpl = (command, args, opts) => {
+    calls.push([command, ...args]);
+    const ok = (stdout = '') => ({ status: 0, stdout });
+    if (command === 'git') return ok(args[0] === 'rev-parse' ? currentSha : '');
+    if (args.includes('show-env')) return ok(llvmEnvironment);
+    if (args[0] === 'clean') return ok();
+    if (args[1] === 'archive') {
+      assert.equal(opts.env.CARGO_LLVM_COV, '1');
+      assert.equal(opts.env.CARGO_PROFILE_TEST_DEBUG, '0');
+      fs.writeFileSync(args.at(-1), 'the producer instrumented executable archive');
+      return ok();
+    }
+    if (args[0] === 'nextest') {
+      assert.equal(args[args.indexOf('--archive-file') + 1], archivePath);
+      assert.equal(args[args.indexOf('--workspace-remap') + 1], path.join(repoRoot, 'api'));
+      const partition = args.find((item) => item.startsWith('hash:'));
+      if (args[1] === 'list') {
+        if (args.includes('binaries-only')) {
+          fs.mkdirSync(path.join(args[args.indexOf('--extract-to') + 1], 'target'), { recursive: true });
+          return ok('{}');
+        }
+        return ok(JSON.stringify(inventory(partition ? [partition[5]] : ['1', '2', '3', '4'], ['later'])));
+      }
+      assert.equal(args[1], 'run');
+      fs.writeFileSync(opts.env.LLVM_PROFILE_FILE.replace(/%\d*m/u, 'binary_0'), 'profile');
+      fs.writeSync(opts.stdio[2], 'Summary [1.0s] 1 test run: 1 passed, 3 skipped\n');
+      return ok();
+    }
+    assert.deepEqual(args.slice(0, 2), ['llvm-cov', 'report']);
+    assert.equal(opts.env.CARGO_TARGET_DIR, opts.env.CARGO_LLVM_COV_TARGET_DIR);
+    assert.deepEqual(fs.readdirSync(opts.env.CARGO_LLVM_COV_TARGET_DIR).filter((name) => name.endsWith('.profraw')).sort(),
+      [1, 2, 3, 4].map((index) => `shard-${index}-binary_0.profraw`));
+    fs.writeFileSync(args.at(-1), JSON.stringify(result));
+    return ok();
+  };
+  const options = { repoRoot, archiveDir, env, spawnSyncImpl };
+  buildApiServerCoverageArchive(options);
+  fs.rmSync(directory, { recursive: true, force: true });
+  fs.mkdirSync(directory);
+  const runShard = (shardIndex) => runApiServerShard({ ...options, shardIndex, shardCount: 4,
+    cargoTestThreads: 2, writeStdout() {}, writeStderr() {} });
+  for (let i = 1; i <= 4; i += 1) {
+    runShard(i);
+    fs.cpSync(path.join(root, `shard-${i}`), directory, { recursive: true });
+  }
+  return { calls, archiveDir, archivePath, root, directory, finalPath, runShard,
+    changeSha: (value) => { currentSha = value; }, setSummary: (value) => { result = value; },
+    merge: () => mergeApiServerShadow({ ...options, shardCount: 4 }) };
+}
+
+test('one instrumented build supplies the exact disjoint four-shard inventory and merge binaries', (t) => {
+  const f = archiveFixture(t);
+  f.merge();
+  const evidence = JSON.parse(fs.readFileSync(path.join(f.root, 'equivalence.json')));
+  assert.equal(evidence.sha, sha);
+  assert.match(evidence.archiveSha256, /^[0-9a-f]{64}$/u);
+  assert.equal(evidence.shards.length, 4);
+  assert.ok(evidence.shards.every((shard) => shard.passedCount === 1 && shard.profileCount === 1));
+  assert.equal(f.calls.filter(([, target, verb]) => target === 'nextest' && verb === 'archive').length, 1);
+  const calls = f.calls.slice(f.calls.findIndex(([, target, verb]) => target === 'nextest' && verb === 'archive') + 1);
+  assert.ok(calls.filter(([command]) => command === 'cargo').every(([, target, verb, ...args]) =>
+    target === 'llvm-cov' ? verb === 'report' : ['list', 'run'].includes(verb) && args.includes('--archive-file')));
+  assert.ok(fs.existsSync(f.finalPath));
+});
+
+for (const [label, invalidate, expected] of [
+  ['stale checkout', (f) => f.changeSha('b'.repeat(40)), /exact frozen SHA checkout/u],
+  ['archive digest', (f) => fs.appendFileSync(f.archivePath, 'changed'), /integrity mismatch/u],
+  ['missing profile', (f) => fs.unlinkSync(path.join(f.directory, 'shard-2-binary_0.profraw')), /no profraw/u],
+  ['overlapping inventory', (f) => fs.copyFileSync(path.join(f.directory, 'inventory-1.json'), path.join(f.directory, 'inventory-2.json')), /duplicat|overlap/u],
+  ['stale source', (f) => { const value = summary(); value.data[0].files[0].filename = '/repo/api/apps/api-server/src/removed.rs'; f.setSummary(value); }, /sources absent from the candidate/u],
+]) {
+  test(`archive mode refuses ${label} without publishing a passing coverage summary`, (t) => {
+    const f = archiveFixture(t);
+    invalidate(f);
+    assert.throws(f.merge, expected);
+    assert.equal(fs.existsSync(f.finalPath), false);
   });
 }

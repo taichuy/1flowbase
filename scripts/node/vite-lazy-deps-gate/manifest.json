@@ -310,6 +310,89 @@
       "smokePaths": [
         "/settings/notifications"
       ]
+    },
+    {
+      "source": "web/app/src/app/router.tsx",
+      "specifier": "../features/auth/pages/AuthenticatedSignInRedirect",
+      "smokePaths": [
+        "/sign-in"
+      ]
+    },
+    {
+      "source": "web/app/src/app/router.tsx",
+      "specifier": "../features/auth/pages/mcp-authorization/McpAuthorizePage",
+      "smokePaths": [
+        {
+          "path": "/mcp/authorize",
+          "requiresFixture": true,
+          "reason": "Requires a pending MCP authorization request."
+        }
+      ]
+    },
+    {
+      "source": "web/app/src/features/auth/pages/SignInPage.tsx",
+      "specifier": "../components/BuiltinPasswordSignIn",
+      "smokePaths": [
+        {
+          "path": "/sign-in",
+          "requiresFixture": true,
+          "reason": "Requires a builtin password entry in its fallback path."
+        }
+      ]
+    },
+    {
+      "source": "web/app/src/features/auth/pages/SignInPage.tsx",
+      "specifier": "../components/public-runtime/CustomAuthRuntime",
+      "smokePaths": [
+        {
+          "path": "/sign-in",
+          "requiresFixture": true,
+          "reason": "Requires a selected custom authenticator."
+        }
+      ]
+    },
+    {
+      "source": "web/app/src/features/frontstage/pages/frontstage-page/workspace-shell/FrontstageWorkspaceShell.tsx",
+      "specifier": "../../../components/page-tree-actions/MovePageModal",
+      "smokePaths": [
+        {
+          "path": "/vite-lazy-deps-frontstage",
+          "requiresFixture": true,
+          "reason": "Open Move Page as a workspace designer."
+        }
+      ]
+    },
+    {
+      "source": "web/app/src/features/frontstage/pages/FrontStagePage.tsx",
+      "specifier": "../components/data-blocks/CreateDataBlockMenu",
+      "smokePaths": [
+        {
+          "path": "/vite-lazy-deps-frontstage",
+          "requiresFixture": true,
+          "reason": "Open the data block creation menu in design mode."
+        }
+      ]
+    },
+    {
+      "source": "web/app/src/features/frontstage/pages/FrontStagePage.tsx",
+      "specifier": "./frontstage-page/PageWorkspaceActionMenu",
+      "smokePaths": [
+        {
+          "path": "/vite-lazy-deps-frontstage",
+          "requiresFixture": true,
+          "reason": "Open the page action menu as a workspace designer."
+        }
+      ]
+    },
+    {
+      "source": "web/app/src/features/frontstage/pages/FrontstageWorkspacePage.tsx",
+      "specifier": "./FrontStagePage",
+      "smokePaths": [
+        {
+          "path": "/vite-lazy-deps-frontstage",
+          "requiresFixture": true
+        }
+      ]
     }
   ]
 }
