@@ -170,4 +170,4 @@ fn validate_authority(
 
 #[cfg(test)]
 #[path = "_tests/managed_data_tests.rs"]
-mod tests;
+mod managed_data_tests;

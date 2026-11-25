@@ -48,12 +48,6 @@ impl PluginEphemeralPort for ManagedPluginEphemeralService {
                 denied,
                 deadline_exceeded,
                 |installation_id, _, _| {
-                    // Recheck after asynchronous lease acquisition, before touching storage.
-                    if i128::from(binding.deadline_unix_ms)
-                        <= time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000
-                    {
-                        return Err(deadline_exceeded());
-                    }
                     let key = format!(
                         "plugin_ephemeral:{installation_id}:{}:{}",
                         domain::SYSTEM_SCOPE_ID,

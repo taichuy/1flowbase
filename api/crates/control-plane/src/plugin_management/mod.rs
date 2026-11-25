@@ -101,6 +101,19 @@ pub use family::*;
 pub use install::*;
 pub use package_router::{catalog_plugin_type, route_plugin_package, RoutedPluginPackageKind};
 
+#[cfg(test)]
+tokio::task_local! {
+    static TEST_SYSTEM_SERVICE_NOW_MS: std::cell::Cell<i64>;
+}
+
+fn system_service_now_ms() -> i128 {
+    #[cfg(test)]
+    if let Ok(now) = TEST_SYSTEM_SERVICE_NOW_MS.try_with(std::cell::Cell::get) {
+        return i128::from(now);
+    }
+    OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000
+}
+
 struct SystemServiceCallback<'a> {
     installation_id: &'a str,
     scope_id: &'a str,
@@ -137,8 +150,7 @@ where
     if scope_id != domain::SYSTEM_SCOPE_ID {
         return Err(denied());
     }
-    let remaining_ms = i128::from(binding.deadline_unix_ms)
-        - OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
+    let remaining_ms = i128::from(binding.deadline_unix_ms) - system_service_now_ms();
     if remaining_ms <= 0 {
         return Err(denied());
     }
@@ -147,7 +159,8 @@ where
         ManagedWorkspaceId::new(binding.scope_id).map_err(|_| denied())?,
         ContributionId::new(binding.contribution_id).map_err(|_| denied())?,
     );
-    tokio::time::timeout(
+    let mut expired_lease = None;
+    let result = tokio::time::timeout(
         std::time::Duration::from_millis(remaining_ms as u64),
         async {
             let lease = authority
@@ -189,13 +202,27 @@ where
             HostContributionGrantPolicy::root_composition()
                 .effective_permissions(installation, scope_id, contribution, lease.snapshot())
                 .map_err(|_| denied())?;
+            // The timeout can poll a ready lease before noticing its timer expired.
+            // Recheck the wall clock immediately before preparing any storage call.
+            if i128::from(binding.deadline_unix_ms) <= system_service_now_ms() {
+                expired_lease = Some(lease);
+                return Err(deadline_exceeded());
+            }
             let result = prepare(installation_id, installation, lease.installations())?.await;
             lease.release().await.map_err(|_| denied())?;
             result
         },
     )
     .await
-    .map_err(|_| deadline_exceeded())?
+    .map_err(|_| deadline_exceeded())?;
+    // A rejected callback has no storage work left to time out. Finish transferring
+    // the late lease back to its owner even if the callback timer has already elapsed.
+    if let Some(lease) = expired_lease {
+        if lease.release().await.is_err() {
+            tracing::warn!("failed to release expired managed service callback authority lease");
+        }
+    }
+    result
 }
 
 pub struct PluginManagementService<R, H> {

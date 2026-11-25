@@ -19,6 +19,7 @@ struct Authority {
     state: Arc<tokio::sync::Mutex<State>>,
     held: Arc<AtomicBool>,
     locks: AtomicUsize,
+    releases: Arc<AtomicUsize>,
     data: Option<Arc<dyn PluginDataPort>>,
 }
 struct Lease {
@@ -26,6 +27,7 @@ struct Lease {
     installations: std::collections::BTreeMap<Uuid, PluginInstallationRecord>,
     state: tokio::sync::OwnedMutexGuard<State>,
     held: Arc<AtomicBool>,
+    releases: Arc<AtomicUsize>,
 }
 impl Drop for Lease {
     fn drop(&mut self) {
@@ -120,6 +122,8 @@ impl ContributionAuthorityLease for Lease {
     }
     fn release(self: Box<Self>) -> TestFuture<()> {
         Box::pin(async move {
+            tokio::task::yield_now().await;
+            self.releases.fetch_add(1, Ordering::SeqCst);
             drop(self);
             Ok(())
         })
@@ -195,6 +199,7 @@ impl PluginContributionAuthorityRepository for Authority {
             data: self.data.clone(),
             state,
             held: self.held.clone(),
+            releases: self.releases.clone(),
         }))
     }
 }
@@ -368,6 +373,7 @@ async fn managed_callbacks_refresh_authority_hold_lease_and_preserve_legacy_path
         state: Arc::new(tokio::sync::Mutex::new(state)),
         held,
         locks: AtomicUsize::new(0),
+        releases: Arc::default(),
         data: Some(inner.clone()),
     });
     let service = ManagedPluginDataService::new(authority.clone(), inner.clone());
@@ -514,6 +520,7 @@ async fn shared_callbacks_remap_only_after_live_caller_grants_and_hold_original_
         state: Arc::new(tokio::sync::Mutex::new(state)),
         held,
         locks: AtomicUsize::new(0),
+        releases: Arc::default(),
         data: Some(inner.clone()),
     });
     let service = ManagedPluginDataService::new(authority.clone(), inner.clone());
@@ -574,6 +581,89 @@ async fn shared_callbacks_remap_only_after_live_caller_grants_and_hold_original_
     assert_eq!(inner.calls.load(Ordering::SeqCst), 2);
 }
 
+fn credential_fixture() -> (State, extension_contracts::PluginCredentialBinding) {
+    let (mut state, data_binding, _) = fixture();
+    state.installation.metadata_json["managed_service_permissions"]["secrets"] =
+        json!("host_managed");
+    state.installation.metadata_json["managed"]["module"]["contributions"][0]
+        ["required_permissions"] = json!(["service.execute", "credential.manage"]);
+    state.snapshot.authorizations[1].permission = "credential.manage".into();
+    state.snapshot.authorizations[1].permission_contract_id = "plugin-credential".into();
+    state.snapshot.authorizations[1].resource_scope = ContributionResourceScope::System;
+    let binding = extension_contracts::PluginCredentialBinding {
+        installation_id: state.installation.id.to_string(),
+        contribution_id: "ssh.list".into(),
+        publisher_namespace: data_binding.publisher_namespace,
+        plugin_code: data_binding.plugin_code,
+        plugin_version: data_binding.plugin_version,
+        scope_id: data_binding.workspace_id,
+        deadline_unix_ms: data_binding.deadline_unix_ms,
+    };
+    (state, binding)
+}
+
+#[tokio::test(start_paused = true)]
+async fn credential_deadline_expired_during_lease_acquisition_releases_without_io() {
+    use crate::plugin_management::{ManagedPluginCredentialService, TEST_SYSTEM_SERVICE_NOW_MS};
+    use extension_contracts::{
+        PluginCredentialBinding, PluginCredentialError, PluginCredentialPort,
+        PluginCredentialRequest, PluginCredentialResponse,
+    };
+    use std::{cell::Cell, future::poll_fn, task::Poll, time::Duration};
+
+    #[derive(Default)]
+    struct Repository(AtomicUsize);
+    #[async_trait::async_trait]
+    impl PluginCredentialRepository for Repository {
+        async fn execute_plugin_credential(
+            &self,
+            _: &PluginCredentialBinding,
+            _: &PluginCredentialRequest,
+        ) -> Result<PluginCredentialResponse, PluginCredentialError> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Ok(PluginCredentialResponse { value: None })
+        }
+    }
+
+    let (state, mut binding) = credential_fixture();
+    binding.deadline_unix_ms = 1_000;
+    let authority = Arc::new(Authority {
+        state: Arc::new(tokio::sync::Mutex::new(state)),
+        held: Arc::default(),
+        locks: AtomicUsize::new(0),
+        releases: Arc::default(),
+        data: None,
+    });
+    let repository = Arc::new(Repository::default());
+    let service = ManagedPluginCredentialService::new(authority.clone(), repository.clone());
+    let request = PluginCredentialRequest::Get {
+        credential_id: "existing-host".into(),
+    };
+
+    TEST_SYSTEM_SERVICE_NOW_MS.scope(Cell::new(0), async {
+        let guard = authority.state.lock().await;
+        let mut callback = service.execute(&binding, &request);
+        let first_poll = poll_fn(|cx| Poll::Ready(callback.as_mut().poll(cx))).await;
+        assert!(first_poll.is_pending());
+        assert_eq!(authority.locks.load(Ordering::SeqCst), 1);
+
+        // Make both the waiting lock and the overdue timer ready for the next poll.
+        tokio::time::advance(Duration::from_millis(1_001)).await;
+        TEST_SYSTEM_SERVICE_NOW_MS.with(|now| now.set(binding.deadline_unix_ms));
+        drop(guard);
+
+        assert!(matches!(callback.await, Err(error) if error.code == "plugin_credential_deadline_exceeded"));
+        assert_eq!(repository.0.load(Ordering::SeqCst), 0);
+        assert_eq!(authority.releases.load(Ordering::SeqCst), 1);
+        assert!(!authority.held.load(Ordering::SeqCst));
+
+        assert!(matches!(service.execute(&binding, &request).await,
+            Err(error) if error.code == "plugin_credential_authority_denied"));
+        assert_eq!(authority.locks.load(Ordering::SeqCst), 1);
+        assert_eq!(repository.0.load(Ordering::SeqCst), 0);
+    }).await;
+}
+
 #[tokio::test]
 async fn shared_credentials_keep_live_consumer_authority_and_read_existing_owner_credentials() {
     use crate::plugin_management::ManagedPluginCredentialService;
@@ -618,28 +708,13 @@ async fn shared_credentials_keep_live_consumer_authority_and_read_existing_owner
             Ok(PluginCredentialResponse { value: Some(value) })
         }
     }
-    let (mut state, data_binding, _) = fixture();
+    let (mut state, binding) = credential_fixture();
     let provider_id = add_provider(&mut state, "read_write");
-    state.installation.metadata_json["managed_service_permissions"]["secrets"] =
-        json!("host_managed");
-    state.installation.metadata_json["managed"]["module"]["contributions"][0]
-        ["required_permissions"] = json!(["service.execute", "credential.manage"]);
-    state.snapshot.authorizations[1].permission = "credential.manage".into();
-    state.snapshot.authorizations[1].permission_contract_id = "plugin-credential".into();
-    state.snapshot.authorizations[1].resource_scope = ContributionResourceScope::System;
-    let binding = PluginCredentialBinding {
-        installation_id: state.installation.id.to_string(),
-        contribution_id: "ssh.list".into(),
-        publisher_namespace: data_binding.publisher_namespace,
-        plugin_code: data_binding.plugin_code,
-        plugin_version: data_binding.plugin_version,
-        scope_id: data_binding.workspace_id,
-        deadline_unix_ms: data_binding.deadline_unix_ms,
-    };
     let authority = Arc::new(Authority {
         state: Arc::new(tokio::sync::Mutex::new(state)),
         held: Arc::new(AtomicBool::new(false)),
         locks: AtomicUsize::new(0),
+        releases: Arc::default(),
         data: None,
     });
     let mut expected_binding = binding.clone();
