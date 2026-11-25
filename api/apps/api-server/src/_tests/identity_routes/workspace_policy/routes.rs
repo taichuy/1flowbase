@@ -96,6 +96,7 @@ impl WorkspacePolicyPort for Policy {
                         workspace_id,
                         user_id: user_id.parse()?,
                         role_codes: vec!["member".into()],
+                        role_templates: access_control::bootstrap_role_templates(),
                         actor_user_id: None,
                     })
                     .await?;

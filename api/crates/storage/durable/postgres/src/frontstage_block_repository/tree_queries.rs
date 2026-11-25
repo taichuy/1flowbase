@@ -96,7 +96,7 @@ impl PgControlPlaneStore {
         tab_id: Uuid,
         limit: u32,
     ) -> Result<Vec<domain::FrontstageBlockNodeRecord>> {
-        let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
+        let rows = sqlx::query(
             r#"
             select node.block_id, node.scope_id, node.tree_partition_id, node.tab_id,
                    null::text as parent_block_id, node.sibling_rank, node.presentation,
@@ -116,7 +116,7 @@ impl PgControlPlaneStore {
             order by node.sibling_rank collate "C", node.id
             limit $4
             "#,
-        )))
+        )
         .bind(workspace_id)
         .bind(page_id)
         .bind(tab_id)

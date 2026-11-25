@@ -95,7 +95,7 @@ async fn provision_seeds_workspace_and_rolls_back_conflicts_and_suspension_block
     let mut input = provision("provisioned");
     input.role_templates[0].permissions = vec!["application.view.own".into()];
     input.initial_member = Some(ProvisionWorkspaceMember {
-        user: ProvisionWorkspaceUser::New(new_user("founder")),
+        user: ProvisionWorkspaceUser::New(Box::new(new_user("founder"))),
         role_codes: vec!["admin".into()],
     });
     let result = store.provision_workspace(&input).await.unwrap();
@@ -312,7 +312,7 @@ async fn workspace_member_mutations_do_not_change_other_tenant_identity_or_acces
     let store = store().await;
     let mut a_input = provision("tenant-a");
     a_input.initial_member = Some(ProvisionWorkspaceMember {
-        user: ProvisionWorkspaceUser::New(new_user("admin-a")),
+        user: ProvisionWorkspaceUser::New(Box::new(new_user("admin-a"))),
         role_codes: vec!["admin".into()],
     });
     let a = store.provision_workspace(&a_input).await.unwrap();
@@ -567,7 +567,7 @@ async fn simultaneous_onboarding_of_one_external_subject_has_one_winner() {
     .unwrap();
     let request = |account| {
         let mut user = new_user(account);
-        user.credential = GovernanceUserCredential::External(identity.clone());
+        user.credential = GovernanceUserCredential::External(Box::new(identity.clone()));
         OnboardNewUserInput {
             workspace_id,
             user,
@@ -676,7 +676,7 @@ async fn flat_governance_is_atomic_and_workspace_status_is_independent() {
     };
     let b = store.provision_workspace(&sibling).await.unwrap();
     let (a_id, b_id) = (a.workspace.id, b.workspace.id);
-    let candidate = ProvisionWorkspaceUser::New(new_user("flat-admin"));
+    let candidate = ProvisionWorkspaceUser::New(Box::new(new_user("flat-admin")));
     assert!(store
         .assign_workspace_admins(&[], &candidate, &[], None)
         .await

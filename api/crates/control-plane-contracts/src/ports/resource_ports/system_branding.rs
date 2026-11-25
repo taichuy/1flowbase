@@ -117,6 +117,12 @@ impl PublicSystemMetadata {
     }
 }
 
+#[async_trait]
+pub trait SystemBrandingRepository: Send + Sync {
+    async fn get_system_branding(&self) -> anyhow::Result<SystemBranding>;
+    async fn save_system_branding(&self, value: &SystemBranding) -> anyhow::Result<()>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::{CommercialBrandingConfig, PublicSystemMetadata, SystemBranding};
@@ -170,10 +176,4 @@ mod tests {
         assert!(!composed.hide_login_tagline);
         assert_eq!(composed.filing_html, "<span>ICP</span>");
     }
-}
-
-#[async_trait]
-pub trait SystemBrandingRepository: Send + Sync {
-    async fn get_system_branding(&self) -> anyhow::Result<SystemBranding>;
-    async fn save_system_branding(&self, value: &SystemBranding) -> anyhow::Result<()>;
 }

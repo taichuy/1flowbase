@@ -142,10 +142,7 @@ async fn http_request_direct_fallback_reuses_client_pool_and_honors_per_request_
             accepted_clone.fetch_add(1, Ordering::SeqCst);
             tokio::spawn(async move {
                 let mut buf = [0_u8; 2048];
-                loop {
-                    let Ok(read) = socket.read(&mut buf).await else {
-                        break;
-                    };
+                while let Ok(read) = socket.read(&mut buf).await {
                     if read == 0 {
                         break;
                     }

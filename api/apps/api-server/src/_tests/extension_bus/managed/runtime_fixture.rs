@@ -9,6 +9,16 @@ pub(crate) struct RuntimeFixture {
 impl RuntimeFixture {
     #[cfg_attr(test, api_test_selection::group(contracts))]
     pub(crate) fn new(state: &crate::app_state::ApiState) -> Self {
+        Self::with_configured_resolver(state, false)
+    }
+
+    /// Opt in to startup_assembly's actual data/credential HostCall adapters.
+    /// Existing fixture callers keep their original missing-port behavior.
+    #[cfg_attr(test, api_test_selection::group(contracts))]
+    pub(crate) fn with_configured_resolver(
+        state: &crate::app_state::ApiState,
+        managed_host_calls: bool,
+    ) -> Self {
         Self::with_artifact_resolver(
             state,
             Arc::new(ApiRuntimeArtifactResolver::new(
@@ -16,32 +26,11 @@ impl RuntimeFixture {
                 &state.api_node_id,
                 &state.provider_install_root,
             )),
-        )
-    }
-
-    /// Opt in to startup_assembly's actual data/credential HostCall adapters.
-    /// Existing fixture callers keep their original missing-port behavior.
-    #[cfg_attr(test, api_test_selection::group(contracts))]
-    pub(crate) fn new_with_managed_host_calls(state: &crate::app_state::ApiState) -> Self {
-        Self::with_artifact_resolver_and_managed_host_calls(
-            state,
-            Arc::new(crate::provider_runtime::ApiRuntimeArtifactResolver::new(
-                state.store.clone(),
-                &state.api_node_id,
-                &state.provider_install_root,
-            )),
-            true,
+            managed_host_calls,
         )
     }
 
     pub(crate) fn with_artifact_resolver(
-        state: &crate::app_state::ApiState,
-        resolver: Arc<dyn runtime_extension_host::RuntimeArtifactResolver>,
-    ) -> Self {
-        Self::with_artifact_resolver_and_managed_host_calls(state, resolver, false)
-    }
-
-    fn with_artifact_resolver_and_managed_host_calls(
         state: &crate::app_state::ApiState,
         resolver: Arc<dyn runtime_extension_host::RuntimeArtifactResolver>,
         managed_host_calls: bool,

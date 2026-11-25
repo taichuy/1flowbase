@@ -82,7 +82,7 @@ impl<
                                 .unwrap_or_else(|| name.clone());
                             let (id, scope) = policy.register(decision, control_plane_contracts::ports::NewGovernanceUser {
                                 account, email, name, nickname, avatar_url: external_registration_avatar(profile),
-                                credential: control_plane_contracts::ports::GovernanceUserCredential::External(command.identity.clone()),
+                                credential: control_plane_contracts::ports::GovernanceUserCredential::External(Box::new(command.identity.clone())),
                             }).await?;
                             registered_scope = Some(scope);
                             registered = Some(

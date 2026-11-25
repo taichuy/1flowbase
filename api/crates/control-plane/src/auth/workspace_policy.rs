@@ -203,7 +203,7 @@ impl WorkspacePolicyContext {
                         actor_user_id: None,
                         role_templates: workspace_role_templates(),
                         initial_member: Some(ProvisionWorkspaceMember {
-                            user: ProvisionWorkspaceUser::New(user),
+                            user: ProvisionWorkspaceUser::New(Box::new(user)),
                             role_codes: vec!["admin".into()],
                         }),
                     })

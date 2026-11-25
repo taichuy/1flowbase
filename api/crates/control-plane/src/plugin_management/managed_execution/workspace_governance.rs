@@ -169,7 +169,7 @@ impl ManagedWorkspaceGovernanceService {
                         let result = repo
                             .onboard_new_user_to_workspace(&OnboardNewUserInput {
                                 workspace_id,
-                                user,
+                                user: *user,
                                 role_codes: role_codes.clone(),
                                 role_templates: crate::auth::workspace_role_templates(),
                                 actor_user_id,
@@ -406,9 +406,9 @@ fn provision_user(
             password,
             name,
             nickname,
-        } => ProvisionWorkspaceUser::New(governance_password_user(
+        } => ProvisionWorkspaceUser::New(Box::new(governance_password_user(
             account, email, password, name, nickname,
-        )?),
+        )?)),
     })
 }
 

@@ -595,6 +595,7 @@ async fn platform_feature_requires_both_bootstrap_workspace_and_console_grant() 
             workspace_id: customer,
             user_id: user.parse().unwrap(),
             role_codes: vec!["admin".into()],
+            role_templates: access_control::bootstrap_role_templates(),
             actor_user_id: None,
         })
         .await

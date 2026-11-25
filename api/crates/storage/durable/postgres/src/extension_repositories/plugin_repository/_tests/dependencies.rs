@@ -92,7 +92,9 @@ fn ac_002_missing_disabled_uninstalled_wrong_publisher_and_other_node_fail_close
     let c = consumer();
     let p = provider();
     assert_dependency(
-        facts(&[c.clone()]).validate(&c, None).unwrap_err(),
+        facts(std::slice::from_ref(&c))
+            .validate(&c, None)
+            .unwrap_err(),
         "plugin_dependency_missing",
     );
     let mut disabled = p.clone();

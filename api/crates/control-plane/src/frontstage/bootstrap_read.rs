@@ -154,8 +154,7 @@ where
         workspace_id: Uuid,
         page_id: Uuid,
         detail_tab_reference: Option<&str>,
-        resolved_tab_id: Option<Uuid>,
-        can_view_blocks: bool,
+        block_roots_tab_id: Option<Uuid>,
         limit: u32,
     ) -> Result<(
         Option<domain::frontstage::FrontstagePageDetail>,
@@ -184,7 +183,7 @@ where
         };
 
         let roots_fut = async {
-            let Some(tab_uuid) = resolved_tab_id.filter(|_| can_view_blocks) else {
+            let Some(tab_uuid) = block_roots_tab_id else {
                 return Ok::<Option<Vec<domain::FrontstageBlockNodeRecord>>, anyhow::Error>(None);
             };
             if !self.is_tab_visible_in_snapshot(snapshot, page_id, tab_uuid) {

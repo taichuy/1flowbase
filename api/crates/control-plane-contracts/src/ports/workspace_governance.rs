@@ -32,7 +32,7 @@ pub struct ProvisionWorkspaceMember {
 #[derive(Debug, Clone)]
 pub enum ProvisionWorkspaceUser {
     Existing { user_id: Uuid },
-    New(NewGovernanceUser),
+    New(Box<NewGovernanceUser>),
 }
 
 #[derive(Debug, Clone)]
@@ -48,7 +48,7 @@ pub struct NewGovernanceUser {
 #[derive(Clone)]
 pub enum GovernanceUserCredential {
     Password { password_hash: String },
-    External(VerifiedExternalIdentity),
+    External(Box<VerifiedExternalIdentity>),
 }
 
 impl std::fmt::Debug for GovernanceUserCredential {

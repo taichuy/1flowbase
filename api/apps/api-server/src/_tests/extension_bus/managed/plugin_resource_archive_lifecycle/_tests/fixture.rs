@@ -48,7 +48,7 @@ impl Fixture {
             std::num::NonZeroU32::new(5).unwrap(),
         )
         .await;
-        let runtime = RuntimeFixture::new_with_managed_host_calls(&initial);
+        let runtime = RuntimeFixture::with_configured_resolver(&initial, true);
         let mut owned = (*initial).clone();
         owned.store = runtime.store.clone();
         owned.provider_runtime = runtime.services.clone();

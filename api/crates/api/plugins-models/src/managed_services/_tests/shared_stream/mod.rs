@@ -206,8 +206,15 @@ fn member(interval: u64) -> Member {
         interval,
     }
 }
-async fn add(key: SourceKey, fake: &Arc<Fake>, member: Member, revision: &str) -> Lease {
-    join(key, Arc::new(fake.clone()), member, revision.to_owned())
+async fn add(
+    broker: &Arc<Broker>,
+    key: SourceKey,
+    fake: &Arc<Fake>,
+    member: Member,
+    revision: &str,
+) -> Lease {
+    broker
+        .join(key, Arc::new(fake.clone()), member, revision.to_owned())
         .await
         .unwrap()
 }

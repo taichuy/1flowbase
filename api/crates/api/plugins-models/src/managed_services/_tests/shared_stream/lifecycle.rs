@@ -2,34 +2,31 @@ use super::*;
 
 #[tokio::test]
 async fn inspection_coalesces_same_source_without_holding_its_live_producer_or_retaining_lanes() {
+    let broker = Broker::new();
     let key = key();
     let fake = Fake::new();
-    let lease = add(key.clone(), &fake, member(1000), "r1").await;
+    let lease = add(&broker, key.clone(), &fake, member(1000), "r1").await;
     fake.started(1).await;
-    let inspection = inspection(&key);
+    let inspection = broker.inspection(&key);
     let weak = Arc::downgrade(&inspection);
     let held = tokio::time::timeout(Duration::from_secs(1), inspection.clone().lock_owned())
         .await
         .expect("a live producer must not hold the separate inspection lane");
     assert!(
-        super::super::broker::inspection(&key)
-            .try_lock_owned()
-            .is_err(),
+        broker.inspection(&key).try_lock_owned().is_err(),
         "a second same-source inspection must queue"
     );
     assert!(
-        serial(&key).try_lock_owned().is_err(),
+        broker.serial(&key).try_lock_owned().is_err(),
         "producer still owns only its separate lifetime permit"
     );
     let mut other = key.clone();
     other.record = "independent-record".into();
     assert!(
-        super::super::broker::inspection(&other)
-            .try_lock_owned()
-            .is_ok(),
+        broker.inspection(&other).try_lock_owned().is_ok(),
         "unrelated records inspect independently"
     );
-    let queued = super::super::broker::inspection(&key);
+    let queued = broker.inspection(&key);
     drop(held);
     let guard = tokio::time::timeout(Duration::from_secs(1), queued.lock_owned())
         .await
@@ -45,9 +42,10 @@ async fn inspection_coalesces_same_source_without_holding_its_live_producer_or_r
 
 #[tokio::test]
 async fn a_terminal_source_waits_for_explicit_membership_refresh_instead_of_retrying_permanently() {
+    let broker = Broker::new();
     let key = key();
     let fake = Fake::new();
-    let first = add(key.clone(), &fake, member(1000), "r1").await;
+    let first = add(&broker, key.clone(), &fake, member(1000), "r1").await;
     let mut notices = first.entry.notices.subscribe();
     fake.started(1)
         .await
@@ -70,7 +68,7 @@ async fn a_terminal_source_waits_for_explicit_membership_refresh_instead_of_retr
     .await
     .unwrap();
     assert_eq!(fake.starts.lock().unwrap().len(), 1);
-    let second = add(key.clone(), &fake, member(1000), "r1").await;
+    let second = add(&broker, key.clone(), &fake, member(1000), "r1").await;
     fake.started(2).await;
     assert_eq!(fake.max_active.load(Ordering::SeqCst), 1);
     drop(first);
@@ -80,9 +78,10 @@ async fn a_terminal_source_waits_for_explicit_membership_refresh_instead_of_retr
 
 #[tokio::test]
 async fn worker_failures_retry_with_one_producer_and_last_leave_cancels_backoff() {
+    let broker = Broker::new();
     let key = key();
     let fake = Fake::new();
-    let lease = add(key.clone(), &fake, member(1000), "r1").await;
+    let lease = add(&broker, key.clone(), &fake, member(1000), "r1").await;
     fake.started(1)
         .await
         .finish
@@ -104,16 +103,65 @@ async fn worker_failures_retry_with_one_producer_and_last_leave_cancels_backoff(
     fake.started(3).await;
     assert_eq!(fake.max_active.load(Ordering::SeqCst), 1);
     lease.leave().await;
-    assert!(active(&key).is_none());
+    assert!(broker.active(&key).is_none());
     assert_eq!(fake.active.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
+async fn retire_all_is_broker_local_while_an_identical_source_retries() {
+    let retiring = Broker::new();
+    let retrying = Broker::new();
+    let source = key();
+    let retired_fake = Fake::new();
+    let other_fake = Fake::new();
+    let retry_fake = Fake::new();
+    let retired = add(&retiring, source.clone(), &retired_fake, member(1000), "r1").await;
+    let other = add(&retiring, key(), &other_fake, member(1000), "r1").await;
+    let retry = add(&retrying, source.clone(), &retry_fake, member(1000), "r1").await;
+    retired_fake.started(1).await;
+    other_fake.started(1).await;
+
+    let mut notices = retry.entry.notices.subscribe();
+    retry_fake
+        .started(1)
+        .await
+        .finish
+        .lock()
+        .unwrap()
+        .take()
+        .unwrap()
+        .send(true)
+        .unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(3),
+        notices.wait_for(|notice| notice.error == Some("managed_service_source_retrying")),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+
+    retiring.retire(None);
+    assert!(retired.authorize().await.is_err());
+    assert!(other.authorize().await.is_err());
+    assert!(retry.authorize().await.is_ok());
+    retry_fake
+        .event(2, json!({"type":"sample","value":1}))
+        .await;
+    assert_eq!(retry_fake.max_active.load(Ordering::SeqCst), 1);
+    retired.leave().await;
+    other.leave().await;
+    retry.leave().await;
+    assert!(retiring.active(&source).is_none());
+    assert!(retrying.active(&source).is_none());
+}
+
+#[tokio::test]
 async fn two_principals_share_one_producer_and_slow_viewers_do_not_hold_source_credit() {
+    let broker = Broker::new();
     let key = key();
     let fake = Fake::new();
-    let first = add(key.clone(), &fake, member(5000), "r1").await;
-    let second = add(key.clone(), &fake, member(5000), "r1").await;
+    let first = add(&broker, key.clone(), &fake, member(5000), "r1").await;
+    let second = add(&broker, key.clone(), &fake, member(5000), "r1").await;
     let _unread = first.entry.notices.subscribe();
     let mut latest = second.entry.notices.subscribe();
     fake.event(1, json!({"type":"sample","value":1})).await;
@@ -127,18 +175,19 @@ async fn two_principals_share_one_producer_and_slow_viewers_do_not_hold_source_c
     drop(first);
     drop(second);
     fake.until(|| fake.active.load(Ordering::SeqCst) == 0).await;
-    assert!(active(&key).is_none());
+    assert!(broker.active(&key).is_none());
 }
 
 #[tokio::test]
 async fn fastest_cadence_revision_and_owner_rotation_join_old_completion_before_restart() {
+    let broker = Broker::new();
     let key = key();
     let fake = Fake::new();
-    let first = add(key.clone(), &fake, member(5000), "r1").await;
+    let first = add(&broker, key.clone(), &fake, member(5000), "r1").await;
     let owner = fake.started(1).await.actor;
     let second_member = member(1000);
     let second_actor = second_member.principal.actor().user_id;
-    let second = add(key.clone(), &fake, second_member, "r1").await;
+    let second = add(&broker, key.clone(), &fake, second_member, "r1").await;
     assert_eq!(fake.started(2).await.interval, 1000);
     assert_eq!(fake.max_active.load(Ordering::SeqCst), 1);
     drop(first);
@@ -154,15 +203,16 @@ async fn fastest_cadence_revision_and_owner_rotation_join_old_completion_before_
 #[tokio::test]
 async fn denied_members_cannot_join_or_read_and_revoked_owner_rotates_without_losing_other_member()
 {
+    let broker = Broker::new();
     let key = key();
     let fake = Fake::new();
     let first_member = member(1000);
     let first_actor = first_member.principal.actor().user_id;
-    let first = add(key.clone(), &fake, first_member, "r1").await;
+    let first = add(&broker, key.clone(), &fake, first_member, "r1").await;
     fake.started(1).await;
     let second_member = member(1000);
     let second_actor = second_member.principal.actor().user_id;
-    let second = add(key.clone(), &fake, second_member, "r1").await;
+    let second = add(&broker, key.clone(), &fake, second_member, "r1").await;
     fake.denied.lock().unwrap().insert(first_actor);
     assert!(first.authorize().await.is_err());
     let denied = member(1000);
@@ -170,11 +220,10 @@ async fn denied_members_cannot_join_or_read_and_revoked_owner_rotates_without_lo
         .lock()
         .unwrap()
         .insert(denied.principal.actor().user_id);
-    assert!(
-        join(key.clone(), Arc::new(fake.clone()), denied, "r1".into())
-            .await
-            .is_err()
-    );
+    assert!(broker
+        .join(key.clone(), Arc::new(fake.clone()), denied, "r1".into())
+        .await
+        .is_err());
     // An arriving raw event forces live owner authority; it cannot be accepted under the old actor.
     let (consumed, received) = oneshot::channel();
     fake.started(1)
@@ -202,21 +251,22 @@ async fn denied_members_cannot_join_or_read_and_revoked_owner_rotates_without_lo
 
 #[tokio::test]
 async fn generation_retirement_and_unary_fallback_use_the_same_serial_permit() {
+    let broker = Broker::new();
     let old_key = key();
     let fake = Fake::new();
     // A raw unary fallback cannot overlap a collector arriving after its cache miss.
-    let unary = serial(&old_key).lock_owned().await;
-    let old = add(old_key.clone(), &fake, member(1000), "r1").await;
+    let unary = broker.serial(&old_key).lock_owned().await;
+    let old = add(&broker, old_key.clone(), &fake, member(1000), "r1").await;
     assert_eq!(fake.starts.lock().unwrap().len(), 0);
     drop(unary);
     fake.started(1).await;
     fake.drain.send_replace(false);
-    retire(Some(old_key.installation));
+    broker.retire(Some(old_key.installation));
     fake.until(|| fake.stopping.load(Ordering::SeqCst) == 1)
         .await;
     let mut new_key = old_key.clone();
     new_key.generation = "generation-2".into();
-    let new = add(new_key.clone(), &fake, member(1000), "r2").await;
+    let new = add(&broker, new_key.clone(), &fake, member(1000), "r2").await;
     assert_eq!(
         fake.starts.lock().unwrap().len(),
         1,

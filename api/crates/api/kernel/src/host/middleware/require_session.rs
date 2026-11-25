@@ -233,13 +233,17 @@ pub(crate) async fn apply_console_policy_permissions_to_actor(
         } else {
             // Clients must use the explicit projection, not the root role alone,
             // to distinguish platform operations available in this session.
-            actor
-                .permissions
-                .extend(inventory.operations.iter().filter_map(|operation| {
-                    (operation.root_workspace_only
-                        && operation.lifecycle == access_control::SettingsFeatureLifecycle::Active)
-                        .then(|| operation.operation_id.clone())
-                }));
+            actor.permissions.extend(
+                inventory
+                    .operations
+                    .iter()
+                    .filter(|operation| {
+                        operation.root_workspace_only
+                            && operation.lifecycle
+                                == access_control::SettingsFeatureLifecycle::Active
+                    })
+                    .map(|operation| operation.operation_id.clone()),
+            );
         }
         return Ok(());
     }

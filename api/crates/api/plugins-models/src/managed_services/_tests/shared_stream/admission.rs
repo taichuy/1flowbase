@@ -4,6 +4,7 @@ use futures_util::StreamExt;
 
 #[tokio::test]
 async fn fast_source_can_publish_while_earlier_resolve_is_still_pending() {
+    let broker = Broker::new();
     let fake = Fake::new();
     let mut slow = key();
     slow.record = "slow".into();
@@ -15,11 +16,12 @@ async fn fast_source_can_publish_while_earlier_resolve_is_still_pending() {
             .into_iter()
             .map(|(key, blocked)| {
                 let fake = fake.clone();
+                let broker = Arc::clone(&broker);
                 async move {
                     if let Some(blocked) = blocked {
                         blocked.await.unwrap();
                     }
-                    add(key, &fake, member(5000), "r1").await
+                    add(&broker, key, &fake, member(5000), "r1").await
                 }
             }),
     );
@@ -35,45 +37,47 @@ async fn fast_source_can_publish_while_earlier_resolve_is_still_pending() {
         lease.entry.notices.borrow().event.as_ref().unwrap()["record"],
         "fast"
     );
-    assert!(active(&slow).is_none());
+    assert!(broker.active(&slow).is_none());
     drop(admissions); // superseded `set`
     assert!(finish_slow.send(()).is_err());
     lease.leave().await;
-    assert!(active(&fast).is_none());
+    assert!(broker.active(&fast).is_none());
     assert_eq!(fake.active.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
 async fn cold_join_replays_current_snapshot_but_live_entry_does_not_reseed() {
+    let broker = Broker::new();
     let fake = Fake::new();
     let key = key();
     let saved = json!({"type":"sample","stream_id":"cached"});
     *fake.snapshot.lock().unwrap() = Some(("r1".into(), saved.clone()));
-    let first = add(key.clone(), &fake, member(5000), "r1").await;
+    let first = add(&broker, key.clone(), &fake, member(5000), "r1").await;
     let notice = first.entry.notices.borrow().clone();
     assert_eq!(notice.sequence, 1);
     assert_eq!(notice.revision, "r1");
     assert_eq!(notice.event, Some(saved));
     let live = json!({"type":"sample","stream_id":"live"});
     fake.event(1, live.clone()).await;
-    let second = add(key.clone(), &fake, member(5000), "r1").await;
+    let second = add(&broker, key.clone(), &fake, member(5000), "r1").await;
     assert_eq!(second.entry.notices.borrow().event, Some(live));
     assert_eq!(fake.reads.load(Ordering::SeqCst), 1);
     first.leave().await;
     second.leave().await;
     assert_eq!(fake.active.load(Ordering::SeqCst), 0);
-    let different = add(key, &fake, member(5000), "r2").await;
+    let different = add(&broker, key, &fake, member(5000), "r2").await;
     assert!(different.entry.notices.borrow().event.is_none());
     different.leave().await;
 }
 
 async fn cold_source_with_startup_status() -> (Arc<Fake>, Lease, Value, Value) {
+    let broker = Broker::new();
     let fake = Fake::new();
     let seed = json!({"type":"sample","stream_id":"cached"});
     let status = json!({"type":"status","state":"connecting"});
     *fake.snapshot.lock().unwrap() = Some(("r1".into(), seed.clone()));
     *fake.startup_event.lock().unwrap() = Some(status.clone());
-    let lease = add(key(), &fake, member(5000), "r1").await;
+    let lease = add(&broker, key(), &fake, member(5000), "r1").await;
     let mut notices = lease.entry.notices.subscribe();
     let published = tokio::time::timeout(
         Duration::from_secs(3),

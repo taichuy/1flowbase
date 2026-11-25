@@ -241,7 +241,8 @@ impl Session {
                 async move {
                     let id = source.key.record.clone();
                     let result = async {
-                        let _inspection = broker::inspection(&source.key).lock_owned().await;
+                        let _inspection =
+                            broker::global().inspection(&source.key).lock_owned().await;
                         let principal = source.admit(&principal, &payload).await?;
                         let revision = source.resolve(&principal, &payload).await?;
                         let member = Member {
@@ -254,14 +255,10 @@ impl Session {
                         {
                             return Ok(None);
                         }
-                        broker::join_admitted(
-                            source.key.clone(),
-                            Arc::new(source),
-                            member,
-                            revision,
-                        )
-                        .await
-                        .map(Some)
+                        broker::global()
+                            .join_admitted(source.key.clone(), Arc::new(source), member, revision)
+                            .await
+                            .map(Some)
                     }
                     .await;
                     (id, result)

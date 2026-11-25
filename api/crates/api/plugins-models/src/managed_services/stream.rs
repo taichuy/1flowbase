@@ -100,7 +100,7 @@ fn streams() -> &'static Mutex<StreamRegistry> {
 }
 }
 pub fn publish_generation(generation: String) {
-    super::shared_stream::retire(None);
+    super::shared_stream::global().retire(None);
     super::record_acl::clear_handles();
     let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
     all.generation = Some(generation);
@@ -113,7 +113,7 @@ pub fn publish_generation(generation: String) {
 }
 test_support_item! { pub(crate), []
 fn revoke_installation(id: uuid::Uuid) {
-    super::shared_stream::retire(Some(id));
+    super::shared_stream::global().retire(Some(id));
     let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
     let entry = all.installations.entry(id).or_default();
     entry.epoch += 1;
@@ -149,7 +149,9 @@ pub(crate) async fn revoke_record_permissions(
     installation: uuid::Uuid,
     key: &domain::RecordPermissionKey,
 ) {
-    super::shared_stream::revoke_record_permissions(installation, key).await;
+    super::shared_stream::global()
+        .revoke_record_permissions(installation, key)
+        .await;
     let candidates = {
         let all = streams().lock().unwrap_or_else(|e| e.into_inner());
         record_candidates(&all, installation, key)
@@ -179,7 +181,7 @@ pub(crate) async fn revoke_record_permissions(
     }
 }
 pub fn revoke_all() {
-    super::shared_stream::retire(None);
+    super::shared_stream::global().retire(None);
     let mut all = streams().lock().unwrap_or_else(|e| e.into_inner());
     for entry in all.installations.values_mut() {
         entry.epoch += 1;
@@ -393,6 +395,11 @@ pub(super) fn route_assembly(
     );
     let post_op = operation.clone();
     let installation = service.installation_id;
+    let upgrade_route = StreamUpgradeRoute {
+        installation,
+        operation,
+        client_validator,
+    };
     ConsoleRouteAssembly::new().route(
         &path,
         console_get(
@@ -401,21 +408,8 @@ pub(super) fn route_assembly(
                   Query(query): Query<BTreeMap<String, String>>,
                   headers: HeaderMap,
                   ws: WebSocketUpgrade| {
-                let operation = operation.clone();
-                let client_validator = client_validator.clone();
-                async move {
-                    upgrade(
-                        state,
-                        installation,
-                        operation,
-                        client_validator,
-                        path,
-                        query,
-                        headers,
-                        ws,
-                    )
-                    .await
-                }
+                let route = upgrade_route.clone();
+                async move { upgrade(state, route, path, query, headers, ws).await }
             },
             access_control::ConsoleRouteOwnership::Authenticated,
         )
@@ -543,11 +537,20 @@ async fn revalidate(
     };
     Ok(admission)
 }
-async fn upgrade(
-    state: Arc<ApiState>,
+#[derive(Clone)]
+struct StreamUpgradeRoute {
     installation: uuid::Uuid,
     operation: Arc<plugin_framework::ManagedServiceOperation>,
     client_validator: Arc<Result<jsonschema::Validator, String>>,
+}
+
+async fn upgrade(
+    state: Arc<ApiState>,
+    StreamUpgradeRoute {
+        installation,
+        operation,
+        client_validator,
+    }: StreamUpgradeRoute,
     path: BTreeMap<String, String>,
     query: BTreeMap<String, String>,
     headers: HeaderMap,

@@ -121,7 +121,7 @@ impl TransportStoreState {
     }
 
     fn pop_stale_heap_heads(&mut self) {
-        while let Some(&Reverse(ref top)) = self.expiry_heap.peek() {
+        while let Some(Reverse(top)) = self.expiry_heap.peek() {
             if self.is_live(top) {
                 break;
             }

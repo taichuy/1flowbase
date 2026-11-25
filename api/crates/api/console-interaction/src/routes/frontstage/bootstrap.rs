@@ -67,7 +67,7 @@ pub struct FrontstageBootstrapResponse {
 pub(crate) enum FrontstageBootstrapRead {
     Modified {
         etag: String,
-        payload: FrontstageBootstrapResponse,
+        payload: Box<FrontstageBootstrapResponse>,
     },
     NotModified(String),
 }
@@ -248,8 +248,7 @@ pub(super) async fn execute_frontstage_bootstrap(
             workspace_id,
             page_uuid,
             detail_tab_ref.as_deref(),
-            optimistic_tab_uuid,
-            can_view_blocks,
+            optimistic_tab_uuid.filter(|_| can_view_blocks),
             limit,
         )
         .await?;
@@ -331,7 +330,6 @@ pub(super) async fn execute_frontstage_bootstrap(
                 page_uuid,
                 None,
                 Some(tab_uuid),
-                true,
                 limit,
             )
             .await?;
@@ -417,7 +415,7 @@ pub(super) async fn execute_frontstage_bootstrap(
 
     Ok(FrontstageBootstrapRead::Modified {
         etag,
-        payload: FrontstageBootstrapResponse {
+        payload: Box::new(FrontstageBootstrapResponse {
             pages,
             resolved_page_id: Some(page_id_str),
             resolved_tab_id,
@@ -425,7 +423,7 @@ pub(super) async fn execute_frontstage_bootstrap(
             page_detail,
             block_roots: Some(block_roots),
             block_codes,
-        },
+        }),
     })
 }
 
@@ -454,7 +452,10 @@ fn finish_bootstrap(
             return Ok(FrontstageBootstrapRead::NotModified(etag));
         }
     }
-    Ok(FrontstageBootstrapRead::Modified { etag, payload })
+    Ok(FrontstageBootstrapRead::Modified {
+        etag,
+        payload: Box::new(payload),
+    })
 }
 
 #[expect(

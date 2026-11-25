@@ -728,10 +728,7 @@ impl FrontstagePagesAdapter {
                 .await?
                 {
                     super::bootstrap::FrontstageBootstrapRead::Modified { etag, payload } => {
-                        Ok(FrontstagePagesOutput::Bootstrap {
-                            etag,
-                            payload: Box::new(payload),
-                        })
+                        Ok(FrontstagePagesOutput::Bootstrap { etag, payload })
                     }
                     super::bootstrap::FrontstageBootstrapRead::NotModified(etag) => {
                         Ok(FrontstagePagesOutput::BootstrapNotModified(etag))
