@@ -151,3 +151,43 @@ test('preserves inline Drawer getContainer={false} and scopes antd/es subpath im
     ).toBeInTheDocument()
   );
 });
+
+test('exposes shared ResizableDrawer to plugins and mounts it inside ShadowRoot overlay', async () => {
+  const Component = await compileBlock(`
+    import React, { useState } from 'react';
+    import { Button } from 'antd';
+    import { ResizableDrawer } from '@1flowbase/resizable-drawer';
+    export default function Block() {
+      const [open, setOpen] = useState(false);
+      return (
+        <div>
+          <Button onClick={() => setOpen(true)}>打开共享抽屉</Button>
+          <ResizableDrawer
+            open={open}
+            title="空间管理员 — 测试空间"
+            resizeLabel="调整抽屉宽度"
+            defaultWidth={520}
+            destroyOnClose
+            footer={<Button type="primary">确认保存</Button>}
+            onClose={() => setOpen(false)}
+          >
+            <div>共享ResizableDrawer正文</div>
+          </ResizableDrawer>
+        </div>
+      );
+    }
+  `);
+
+  const surface = mountShadowSurface(Component);
+  fireEvent.click(
+    surface.rootScope.getByRole('button', { name: '打开共享抽屉' })
+  );
+  await surface.overlayScope.findByText('共享ResizableDrawer正文');
+  expect(
+    surface.overlayScope.getByRole('button', { name: '确认保存' })
+  ).toBeInTheDocument();
+  expect(
+    surface.overlayScope.getByRole('separator', { name: '调整抽屉宽度' })
+  ).toBeInTheDocument();
+  expect(document.body.querySelector('.ant-drawer')).toBeNull();
+});

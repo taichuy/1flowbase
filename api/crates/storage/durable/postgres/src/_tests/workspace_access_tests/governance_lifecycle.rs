@@ -918,7 +918,7 @@ async fn bootstrap_admin_summary_includes_protected_system_root_only_where_appli
         .unwrap();
     assert_eq!(admins(&store, acme).await, ["root"]);
     assert!(admins(&store, sibling).await.is_empty());
-    store
+    let alice = store
         .onboard_new_user_to_workspace(&OnboardNewUserInput {
             workspace_id: bootstrap,
             user: new_user("alice"),
@@ -929,10 +929,38 @@ async fn bootstrap_admin_summary_includes_protected_system_root_only_where_appli
         .unwrap();
     assert_denied(
         store
+            .assign_workspace_admins(
+                &[bootstrap],
+                &ProvisionWorkspaceUser::Existing {
+                    user_id: alice.user_id,
+                },
+                Some(root.id),
+            )
+            .await
+            .unwrap_err(),
+        "root_admin_immutable",
+    );
+    assert_denied(
+        store
             .revoke_workspace_admin(bootstrap, root.id, Some(root.id))
             .await
             .unwrap_err(),
         "root_admin_immutable",
     );
-    assert_eq!(admins(&store, bootstrap).await, ["root", "alice"]);
+    assert_denied(
+        store
+            .revoke_workspace_admin(bootstrap, alice.user_id, Some(root.id))
+            .await
+            .unwrap_err(),
+        "root_admin_immutable",
+    );
+    // Root workspace administrator is strictly locked to the built-in root user.
+    assert_eq!(admins(&store, bootstrap).await, ["root"]);
+
+    let searched = store
+        .search_governance_users(Some("ali"), 20)
+        .await
+        .unwrap();
+    assert_eq!(searched.len(), 1);
+    assert_eq!(searched[0].account, "alice");
 }

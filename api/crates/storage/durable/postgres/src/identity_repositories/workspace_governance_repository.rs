@@ -15,7 +15,7 @@ use crate::{
         lifecycle::{identity_audit_payload, lock_canonical_identity, write_audit},
         lock_console_permission_catalog, seed_role_templates,
     },
-    repositories::{is_root_user, PgControlPlaneStore},
+    repositories::PgControlPlaneStore,
     workspace_repository::bootstrap_workspace_id,
 };
 
@@ -418,6 +418,10 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
             return Err(Error::InvalidInput("workspace_ids").into());
         }
         let mut tx = self.pool().begin().await?;
+        let bootstrap = bootstrap_workspace_id(&mut *tx).await?;
+        if workspace_ids.contains(&bootstrap) {
+            return Err(Error::PermissionDenied("root_admin_immutable").into());
+        }
         let mut targets = Vec::new();
         for workspace_id in workspace_ids
             .iter()
@@ -472,9 +476,7 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
             .fetch_optional(&mut *tx)
             .await?
             .ok_or(Error::NotFound("user"))?;
-        if workspace_id == bootstrap_workspace_id(&mut *tx).await?
-            && is_root_user(&mut *tx, user_id).await?
-        {
+        if workspace_id == bootstrap_workspace_id(&mut *tx).await? {
             return Err(Error::PermissionDenied("root_admin_immutable").into());
         }
         let membership: Option<String> = sqlx::query_scalar(
@@ -564,8 +566,10 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
                    where wm.workspace_id = w.id and wm.status = 'active' and u.status = 'active'
                      and exists (select 1 from user_role_bindings b join roles r on r.id = b.role_id
                                  where b.user_id = u.id and (
-                                     (r.workspace_id = w.id and r.scope_kind = 'workspace' and r.code = 'admin')
-                                     or (w.id = $1 and r.scope_kind = 'system' and r.code = 'root')
+                                     case
+                                         when w.id = $1 then (r.scope_kind = 'system' and r.code = 'root')
+                                         else (r.workspace_id = w.id and r.scope_kind = 'workspace' and r.code = 'admin')
+                                     end
                                  ))
                    ), '[]'::jsonb) as admins
             from tenants t left join workspaces w on w.tenant_id = t.id
@@ -651,6 +655,42 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
         .fetch_optional(self.pool())
         .await?;
         row.map(governance_user_from_row).transpose()
+    }
+
+    async fn search_governance_users(
+        &self,
+        query: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<GovernanceUserSummary>> {
+        let capped_limit = i64::from(limit.clamp(1, 50));
+        let pattern = query
+            .map(str::trim)
+            .filter(|q| !q.is_empty())
+            .map(|q| {
+                let escaped = q
+                    .replace('\\', r"\\")
+                    .replace('%', r"\%")
+                    .replace('_', r"\_");
+                format!("%{escaped}%")
+            });
+        let rows = sqlx::query(
+            r#"
+            select id, account, email, name, status, managed_by_tenant_id
+            from users
+            where ($1::text is null
+                or account ilike $1 escape '\'
+                or email ilike $1 escape '\'
+                or name ilike $1 escape '\'
+                or id::text ilike $1 escape '\')
+            order by (status = 'active') desc, lower(account) asc, id asc
+            limit $2
+            "#,
+        )
+        .bind(pattern)
+        .bind(capped_limit)
+        .fetch_all(self.pool())
+        .await?;
+        rows.into_iter().map(governance_user_from_row).collect()
     }
 }
 

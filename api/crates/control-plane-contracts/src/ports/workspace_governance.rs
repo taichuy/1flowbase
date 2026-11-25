@@ -189,4 +189,9 @@ pub trait WorkspaceGovernanceRepository: Send + Sync {
         &self,
         query: &GovernanceUserLookup,
     ) -> Result<Option<GovernanceUserSummary>>;
+    async fn search_governance_users(
+        &self,
+        query: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<GovernanceUserSummary>>;
 }

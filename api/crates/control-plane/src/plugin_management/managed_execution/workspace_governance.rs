@@ -83,6 +83,14 @@ impl ManagedWorkspaceGovernanceService {
                     user: repo.lookup_governance_user(&query).await?.map(user_dto),
                 }
             }
+            Request::SearchUsers { query, limit } => Response::UsersSearched {
+                items: repo
+                    .search_governance_users(query.as_deref(), *limit)
+                    .await?
+                    .into_iter()
+                    .map(user_dto)
+                    .collect(),
+            },
             Request::ProvisionWorkspace {
                 tenant,
                 workspace_name,

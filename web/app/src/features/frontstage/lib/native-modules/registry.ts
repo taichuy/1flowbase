@@ -314,6 +314,18 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   registration('@1flowbase/ui', UI_MODULE_EXPORTS, async () => ({
     module: await import('@1flowbase/ui')
   })),
+  registration('@1flowbase/resizable-drawer', ['ResizableDrawer'], async () => {
+    const [{ NativeBlockResizableDrawer }, drawerStyle] = await Promise.all([
+      import('./overlay/native-resizable-drawer-runtime'),
+      import('../../../../shared/ui/resizable-drawer/resizable-drawer.css?inline')
+    ]);
+    return {
+      module: {
+        ResizableDrawer: NativeBlockResizableDrawer
+      },
+      styles: [{ css: drawerStyle.default }]
+    };
+  }),
   registration(
     '@1flowbase/plugin-settings',
     [

@@ -34,6 +34,10 @@ pub enum WorkspaceGovernanceRequest {
     LookupUser {
         by: WorkspaceGovernanceUserQueryDto,
     },
+    SearchUsers {
+        query: Option<String>,
+        limit: u32,
+    },
     ProvisionWorkspace {
         tenant: WorkspaceGovernanceTenantTargetDto,
         workspace_name: String,
@@ -100,6 +104,9 @@ pub enum WorkspaceGovernanceResponse {
     },
     UserLookup {
         user: Option<WorkspaceGovernanceUserDto>,
+    },
+    UsersSearched {
+        items: Vec<WorkspaceGovernanceUserDto>,
     },
     WorkspaceProvisioned {
         tenant: WorkspaceGovernanceTenantDto,

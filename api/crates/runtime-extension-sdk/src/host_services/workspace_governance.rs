@@ -108,6 +108,20 @@ impl WorkspaceGovernanceClient {
         }
     }
 
+    pub async fn search_users(
+        &self,
+        query: Option<String>,
+        limit: u32,
+    ) -> Result<Vec<WorkspaceGovernanceUserDto>> {
+        match self
+            .execute(WorkspaceGovernanceRequest::SearchUsers { query, limit })
+            .await?
+        {
+            WorkspaceGovernanceResponse::UsersSearched { items } => Ok(items),
+            _ => Err(WorkspaceGovernanceClientError::InvalidResponse),
+        }
+    }
+
     pub async fn provision_workspace(
         &self,
         input: ProvisionWorkspace,
