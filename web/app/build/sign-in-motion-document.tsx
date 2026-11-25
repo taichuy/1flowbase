@@ -104,7 +104,7 @@ export async function motionDocument(
             </div>
           </HeroArtwork>
         </div>
-        <SignInPanel footer={en.sign_in.footer}>
+        <SignInPanel footer={en.sign_in.footer} openingFooterHidden>
           <AnonymousLoadingState compact />
         </SignInPanel>
       </div>

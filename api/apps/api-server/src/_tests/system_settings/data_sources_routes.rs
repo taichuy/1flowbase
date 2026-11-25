@@ -1171,6 +1171,7 @@ async fn switched_admin_uses_active_workspace_for_model_definitions_and_data_sou
             workspace_id: workspace_b,
             user_id: user.parse().unwrap(),
             role_codes: vec!["admin".into()],
+            role_templates: access_control::bootstrap_role_templates(),
             actor_user_id: None,
         })
         .await

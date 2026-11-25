@@ -99,7 +99,7 @@ function AppShellFrameContent({
                 )}
               </span>
             ))}
-            <HelpChromeMenu />
+            {metadata?.hide_help_menu ? null : <HelpChromeMenu />}
             <LanguageChromeMenu />
           </span>
           <AccountMenu useRouterNavigation={useRouterLinks} />

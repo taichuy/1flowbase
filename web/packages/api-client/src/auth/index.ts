@@ -1,5 +1,6 @@
 export {
   fetchPublicSystemMetadata,
+  type SystemBranding,
   type SystemMetadata
 } from '../public/system-metadata';
 export { ApiClientError } from '../errors';

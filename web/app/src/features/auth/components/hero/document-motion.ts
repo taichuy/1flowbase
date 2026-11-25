@@ -16,9 +16,19 @@ export function discardDocumentScene() {
   document.getElementById(documentSceneId)?.remove();
 }
 
-export function setDocumentBrand(art: HTMLElement, slogan: string | null) {
+export function setDocumentBrand(
+  art: HTMLElement,
+  slogan: string | null,
+  title = '1flowbase'
+) {
   const brand = art.querySelector<HTMLElement>('[data-opening-brand]')!;
-  const line = brand.querySelector('.hero-slogan-line')!;
-  if (slogan !== null && line.textContent !== slogan) line.textContent = slogan;
+  if (slogan !== null) {
+    const titleLine = brand.querySelector('.hero-title-line');
+    if (titleLine && titleLine.textContent !== title) {
+      titleLine.textContent = title;
+    }
+    const line = brand.querySelector('.hero-slogan-line')!;
+    if (line.textContent !== slogan) line.textContent = slogan;
+  }
   brand.hidden = slogan === null;
 }

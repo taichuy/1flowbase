@@ -15,7 +15,29 @@ pub(super) fn contributions(
             "api-server.public-branding",
             &["public.system-metadata.read"],
             &["api-server.public-branding"],
-            crate::routes::branding::public_interface::compile_registry(state.store.clone())?,
+            crate::routes::branding::public_interface::compile_registry(
+                state.store.clone(),
+                state
+                    .console_surface_registry
+                    .managed_services()
+                    .iter()
+                    .find(|service| {
+                        service.publisher_namespace == "taichuy"
+                            && service.plugin_code == "commercial-license"
+                    })
+                    .map(|service| {
+                        let family_dir = std::path::Path::new(&state.provider_install_root)
+                            .join("installed")
+                            .join("commercial-license");
+                        crate::routes::branding::public_interface::CommercialLicenseBrandingSource {
+                            config_path: family_dir.join("config.json"),
+                            packaged_default_path: family_dir
+                                .join(&service.plugin_version)
+                                .join("_assets")
+                                .join("default-config.json"),
+                        }
+                    }),
+            )?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-system",

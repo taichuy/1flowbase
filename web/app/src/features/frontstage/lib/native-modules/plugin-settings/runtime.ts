@@ -5,11 +5,23 @@ import {
   type ManagedServiceStreamOptions,
   type ManagedServiceRequest
 } from '@1flowbase/api-client';
+import { notifySystemMetadataChanged } from '../../../../../shared/api/system-metadata-seed';
 import { useAuthStore } from '../../../../../state/auth-store';
 
 /** Read the current session at call time; never freeze credentials into compiled TSX. */
-export function request<T>(options: ManagedServiceRequest): Promise<T> {
-  return requestManagedService<T>(options, useAuthStore.getState().csrfToken);
+export async function request<T>(options: ManagedServiceRequest): Promise<T> {
+  const result = await requestManagedService<T>(
+    options,
+    useAuthStore.getState().csrfToken
+  );
+  const method = (options.method ?? 'GET').toUpperCase();
+  if (
+    method !== 'GET' &&
+    options.path.startsWith('/api/console/managed-services/commercial-license/')
+  ) {
+    notifySystemMetadataChanged();
+  }
+  return result;
 }
 
 export function openStream(options: ManagedServiceStreamOptions) {

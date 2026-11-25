@@ -5,7 +5,11 @@ const { systemMetadata } = vi.hoisted(() => ({
     hide_login_tagline: false,
     system_description: 'Configured description',
     filing_html:
-      '<a href="https://beian.miit.gov.cn/" data-free="yes">备案号</a>'
+      '<a href="https://beian.miit.gov.cn/" data-free="yes">备案号</a>',
+    page_title: undefined as string | undefined,
+    login_hero_title: undefined as string | undefined,
+    login_hero_tagline: undefined as string | null | undefined,
+    hide_powered_by: undefined as boolean | undefined
   }
 }));
 vi.mock('../lib/public-system-metadata', () => ({
@@ -581,6 +585,36 @@ test('the hide switch removes the fixed login tagline while keeping sign-in and 
     );
     expect(await screen.findByText('1flowbase', { exact: true })).toBeVisible();
   } finally {
+    systemMetadata.hide_login_tagline = false;
+  }
+});
+
+test('commercial metadata customizes page title, hero title/tagline, and hides powered-by without affecting filing or hide_login_tagline', async () => {
+  systemMetadata.page_title = 'Acme AI Platform';
+  systemMetadata.login_hero_title = 'Acme Native';
+  systemMetadata.login_hero_tagline = '专属企业原生底座';
+  systemMetadata.hide_powered_by = true;
+  systemMetadata.hide_login_tagline = false;
+  try {
+    const view = render(<SignInPage />);
+    expect(await screen.findByText('Acme Native', { exact: true })).toBeVisible();
+    expect(document.querySelector('.hero-slogan-line')).toHaveTextContent(
+      '专属企业原生底座'
+    );
+    expect(document.title).toBe('Acme AI Platform');
+    expect(screen.queryByText('Powered by 1flowbase')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '备案号' })).toBeVisible();
+
+    systemMetadata.hide_login_tagline = true;
+    view.rerender(<SignInPage />);
+    expect(document.querySelector('.hero-text-block')).not.toBeInTheDocument();
+    expect(screen.queryByText('Powered by 1flowbase')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '备案号' })).toBeVisible();
+  } finally {
+    systemMetadata.page_title = undefined;
+    systemMetadata.login_hero_title = undefined;
+    systemMetadata.login_hero_tagline = undefined;
+    systemMetadata.hide_powered_by = undefined;
     systemMetadata.hide_login_tagline = false;
   }
 });

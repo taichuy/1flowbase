@@ -529,6 +529,37 @@ pub fn app_with_state_and_config(mut state: Arc<ApiState>, config: &ApiConfig) -
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub fn app_with_state_config_and_managed_assembly(
+    state: Arc<ApiState>,
+    config: &ApiConfig,
+    assembly: routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>>,
+) -> Router {
+    use utoipa::OpenApi;
+    let owner = state.extension_boot_snapshot.as_ref().map(|snapshot| {
+        snapshot
+            .publish_complete_catalog_with_route_assembly(&state, assembly.clone())
+            .expect("complete interface catalog must publish before router construction")
+    });
+    let mut openapi_document = serde_json::to_value(openapi::ApiDoc::openapi())
+        .expect("static OpenAPI document must serialize");
+    managed_services::append_openapi(
+        &mut openapi_document,
+        state.console_surface_registry.managed_services(),
+    );
+    let router = app_with_state_and_config_and_console_route_assembly(
+        state,
+        config,
+        assembly,
+        &openapi_document,
+    );
+    match owner {
+        Some(owner) => generation_dispatch::serving_router(router, owner),
+        None => router,
+    }
+}
+
 fn app_with_state_and_config_and_console_route_assembly(
     state: Arc<ApiState>,
     config: &ApiConfig,

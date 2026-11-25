@@ -1,12 +1,10 @@
+const { publicMetadataMock } = vi.hoisted(() => ({
+  publicMetadataMock: vi.fn()
+}));
+
 vi.mock('@1flowbase/api-client/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@1flowbase/api-client/auth')>()),
-  fetchPublicSystemMetadata: vi.fn().mockResolvedValue({
-    logo_url: '/custom-logo.svg',
-    system_name: 'Configured system',
-    hide_login_tagline: false,
-    system_description: 'Description',
-    filing_html: ''
-  })
+  fetchPublicSystemMetadata: publicMetadataMock
 }));
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import fs from 'node:fs';
@@ -67,6 +65,13 @@ async function renderShell(pathname: string) {
 describe('AppShellFrame', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    publicMetadataMock.mockReset().mockResolvedValue({
+      logo_url: '/custom-logo.svg',
+      system_name: 'Configured system',
+      hide_login_tagline: false,
+      system_description: 'Description',
+      filing_html: ''
+    });
     patchUserPreferences.mockReset();
     preloadDesignModeDemand.mockClear();
     getConsoleNavigation.mockReset();
@@ -427,6 +432,42 @@ describe('AppShellFrame', () => {
     expect(menuRule).toContain('gap: 0;');
     expect(menuItemRule).toContain('padding-inline: 6px !important;');
   });
+
+  test('system branding uses public metadata for the shell title and logo', async () => {
+    window.localStorage.setItem('1flowbase.ui.locale_preference', 'en_US');
+    publicMetadataMock.mockResolvedValue({
+      logo_url: '/custom-logo.svg',
+      system_name: 'Configured system',
+      page_title: 'Commercial Browser Title',
+      hide_login_tagline: false,
+      system_description: 'Description',
+      filing_html: '',
+      hide_help_menu: false
+    });
+    await renderShell('/');
+    expect(await screen.findByText('Configured system')).toBeVisible();
+    expect(document.title).toBe('Commercial Browser Title');
+    expect(screen.getByLabelText('help')).toBeInTheDocument();
+    expect(document.querySelector('.app-shell-logo')).toHaveAttribute(
+      'src',
+      '/custom-logo.svg'
+    );
+  });
+
+  test('commercial hide_help_menu removes the topbar help button and github menu', async () => {
+    window.localStorage.setItem('1flowbase.ui.locale_preference', 'en_US');
+    publicMetadataMock.mockResolvedValue({
+      logo_url: '/custom-logo.svg',
+      system_name: 'Configured system',
+      hide_login_tagline: false,
+      system_description: 'Description',
+      filing_html: '',
+      hide_help_menu: true
+    });
+    await renderShell('/');
+    expect(await screen.findByText('Configured system')).toBeVisible();
+    expect(screen.queryByLabelText('help')).not.toBeInTheDocument();
+  });
 });
 
 async function dispatch<T>(event: () => T) {
@@ -452,13 +493,4 @@ afterEach(async () => {
     resetAuthStore();
     resetFrontstageDesignModeStore();
   });
-});
-
-test('system branding uses public metadata for the shell title and logo', async () => {
-  await renderShell('/');
-  expect(await screen.findByText('Configured system')).toBeVisible();
-  expect(document.querySelector('.app-shell-logo')).toHaveAttribute(
-    'src',
-    '/custom-logo.svg'
-  );
 });

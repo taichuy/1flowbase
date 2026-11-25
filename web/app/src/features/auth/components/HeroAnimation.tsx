@@ -8,17 +8,24 @@ import {
 const SignInFallbackHero = lazy(() => import('./hero/SignInFallbackHero'));
 
 export function HeroAnimation({
-  hide_login_tagline
+  hide_login_tagline,
+  login_hero_title,
+  login_hero_tagline
 }: {
   hide_login_tagline?: boolean;
+  login_hero_title?: string;
+  login_hero_tagline?: string | null;
 }) {
   const { t } = useAuthTranslation();
   const host = useRef<HTMLDivElement>(null);
   const [opening] = useState(findDocumentArtwork);
-  const slogan = hide_login_tagline ? null : t('auto.product_tagline');
+  const title = login_hero_title?.trim() || '1flowbase';
+  const slogan = hide_login_tagline
+    ? null
+    : (login_hero_tagline?.trim() || t('auto.product_tagline'));
   useLayoutEffect(() => {
-    if (opening) setDocumentBrand(opening, slogan);
-  }, [opening, slogan]);
+    if (opening) setDocumentBrand(opening, slogan, title);
+  }, [opening, slogan, title]);
   useLayoutEffect(() => {
     if (opening) {
       const target = host.current!;
@@ -39,7 +46,7 @@ export function HeroAnimation({
   // goes through Suspense: an abandoned mount cannot start a late simulation.
   const fallback = (!opening || !opening.stopMotion) && (
     <Suspense fallback={null}>
-      <SignInFallbackHero opening={opening} slogan={slogan} />
+      <SignInFallbackHero opening={opening} title={title} slogan={slogan} />
     </Suspense>
   );
   return opening ? (

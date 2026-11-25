@@ -495,6 +495,7 @@ async fn customer_sessions_manage_workspace_tables_but_cannot_access_host_storag
             workspace_id: acme,
             user_id: alice.parse().unwrap(),
             role_codes: vec!["admin".into()],
+            role_templates: access_control::bootstrap_role_templates(),
             actor_user_id: None,
         })
         .await

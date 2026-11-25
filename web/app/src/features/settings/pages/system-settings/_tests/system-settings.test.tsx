@@ -132,3 +132,55 @@ test('the exact branding save grant enables a member to save', async () => {
   fireEvent.click(screen.getByRole('button', { name: '保 存' }));
   await waitFor(() => expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({ system_name: 'Member brand' }), 'csrf-test'));
 });
+
+test('saving system settings preserves commercial white-label fields in public metadata cache', async () => {
+  let latestPublicCache: Record<string, unknown> | undefined;
+  function CacheSeedAndProbe() {
+    const queryClient = useQueryClient();
+    return (
+      <>
+        <button
+          onClick={() => {
+            queryClient.setQueryData(systemMetadataQueryKey, {
+              ...initial,
+              page_title: 'Custom Commercial Title',
+              hide_help_menu: true,
+              hide_powered_by: true,
+              login_hero_title: 'Acme AI'
+            });
+          }}
+        >
+          Seed commercial
+        </button>
+        <button
+          onClick={() => {
+            latestPublicCache = queryClient.getQueryData(systemMetadataQueryKey);
+          }}
+        >
+          Inspect cache
+        </button>
+      </>
+    );
+  }
+  render(
+    <AppProviders>
+      <CacheSeedAndProbe />
+      <SystemSettingsPanel />
+    </AppProviders>
+  );
+  await screen.findByDisplayValue('1flowbase');
+  fireEvent.click(screen.getByText('Seed commercial'));
+  fireEvent.change(screen.getByLabelText('系统名称'), {
+    target: { value: 'Updated Console Name' }
+  });
+  fireEvent.click(screen.getByRole('button', { name: '保 存' }));
+  await screen.findByText('系统设置已保存');
+  fireEvent.click(screen.getByText('Inspect cache'));
+  expect(latestPublicCache).toMatchObject({
+    system_name: 'Updated Console Name',
+    page_title: 'Custom Commercial Title',
+    hide_help_menu: true,
+    hide_powered_by: true,
+    login_hero_title: 'Acme AI'
+  });
+});

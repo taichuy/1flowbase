@@ -262,15 +262,26 @@ export function SignInPage({ loginEntryId, inviteToken }: SignInPageProps) {
     [authOwner, navigate, setAuthenticated]
   );
 
+  useEffect(() => {
+    const nextTitle =
+      metadata?.page_title?.trim() || metadata?.system_name?.trim();
+    if (nextTitle && document.title !== nextTitle) {
+      document.title = nextTitle;
+    }
+  }, [metadata?.page_title, metadata?.system_name]);
+
   return (
     <div className="auth-sign-in-page">
       <HeroAnimation
         hide_login_tagline={metadata?.hide_login_tagline !== false}
+        login_hero_title={metadata?.login_hero_title}
+        login_hero_tagline={metadata?.login_hero_tagline}
       />
       <div ref={formHost} style={{ display: 'contents' }}>
         <SignInPanel
           inert={isStarting}
           footer={t('sign_in.footer')}
+          hideFooter={metadata === undefined || Boolean(metadata.hide_powered_by)}
           filing_html={metadata?.filing_html}
         >
           {urlInviteToken ? (

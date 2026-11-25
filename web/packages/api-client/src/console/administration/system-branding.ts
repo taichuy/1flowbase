@@ -1,15 +1,15 @@
 import { apiFetch } from '../../transport';
-import type { SystemMetadata } from '../../public/system-metadata';
+import type { SystemBranding } from '../../public/system-metadata';
 
 export function fetchConsoleSystemSettings() {
-  return apiFetch<SystemMetadata>({ path: '/api/console/settings/system' });
+  return apiFetch<SystemBranding>({ path: '/api/console/settings/system' });
 }
 
 export function saveConsoleSystemSettings(
-  body: SystemMetadata,
+  body: SystemBranding,
   csrfToken: string
 ) {
-  return apiFetch<SystemMetadata>({
+  return apiFetch<SystemBranding>({
     path: '/api/console/settings/system',
     method: 'PUT',
     body,

@@ -20,7 +20,7 @@ test('only the login document gets a self-starting animation before deferred run
   expect(opening).toContain('data-hero-artwork');
   expect(opening).toMatch(/data-opening-brand="" hidden/);
   expect(opening).toContain('<canvas');
-  expect(opening).toContain('class="auth-sign-in-footer"');
+  expect(opening).toMatch(/class="auth-sign-in-footer" hidden/);
   expect(opening).toContain('Powered by 1flowbase');
   expect(opening).toContain('loading-state--compact');
   expect(opening).toContain('role="status"');

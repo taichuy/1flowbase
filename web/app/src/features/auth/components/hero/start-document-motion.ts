@@ -25,19 +25,25 @@ if (art) {
   const chinese = getInitialAppLocale() === 'zh_Hans';
   const slogan = chinese ? zhTagline : enTagline;
   const scene = document.getElementById(documentSceneId)!;
-  scene.querySelector('.auth-sign-in-footer a')!.textContent = chinese
-    ? zhFooter
-    : enFooter;
+  const footer = scene.querySelector<HTMLElement>('.auth-sign-in-footer')!;
+  footer.querySelector('a')!.textContent = chinese ? zhFooter : enFooter;
   // The public response, not the core bundle or auth decision, owns this reveal.
   art.metadataFlight = fetchPublicSystemMetadata();
   void art.metadataFlight
     .then((metadata) => {
       art.metadata = metadata;
+      const nextTitle =
+        metadata.page_title?.trim() || metadata.system_name?.trim();
+      if (nextTitle) document.title = nextTitle;
       if (!scene.isConnected) return;
       setDocumentBrand(
         art,
-        metadata.hide_login_tagline === false ? slogan : null
+        metadata.hide_login_tagline === false
+          ? (metadata.login_hero_tagline?.trim() || slogan)
+          : null,
+        metadata.login_hero_title?.trim() || '1flowbase'
       );
+      footer.hidden = Boolean(metadata.hide_powered_by);
       if (metadata.filing_html) {
         const filing = scene.querySelector<HTMLElement>(
           '[data-opening-filing]'

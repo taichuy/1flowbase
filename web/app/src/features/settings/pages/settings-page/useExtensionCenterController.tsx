@@ -7,6 +7,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { Badge, Button, Modal, Space, Switch, Tag, Tooltip, App } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { settingsConsoleNavigationQueryKey } from '../../api/console-navigation';
+import { systemMetadataQueryKey } from '../../../../shared/api/system-metadata';
 import { useAuthStore } from '../../../../state/auth-store';
 
 import { type DataTableColumn } from '../../../../shared/ui/data-table/DataTable';
@@ -232,7 +233,8 @@ export function useExtensionCenterController({
         queryKey: ['settings', 'console-policy-catalog']
       }),
       queryClient.invalidateQueries({ queryKey: ['settings', 'docs'] }),
-      queryClient.invalidateQueries({ queryKey: settingsI18nCatalogQueryKey })
+      queryClient.invalidateQueries({ queryKey: settingsI18nCatalogQueryKey }),
+      queryClient.invalidateQueries({ queryKey: systemMetadataQueryKey })
     ]);
   }, [queryClient]);
   const closeApplicationFlow = useCallback(

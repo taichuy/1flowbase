@@ -1,8 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchPublicSystemMetadata } from '@1flowbase/api-client/auth';
 import {
   getSeededPublicSystemMetadata,
-  getSeededPublicSystemMetadataUpdatedAt
+  getSeededPublicSystemMetadataUpdatedAt,
+  SYSTEM_METADATA_INVALIDATE_EVENT
 } from './system-metadata-seed';
 
 export const systemMetadataQueryKey = ['public', 'system-metadata'] as const;
@@ -12,6 +14,7 @@ type SystemMetadataResponse = Awaited<
 >;
 
 export function useSystemMetadata() {
+  const queryClient = useQueryClient();
   const seeded = getSeededPublicSystemMetadata();
   const seededAt = getSeededPublicSystemMetadataUpdatedAt();
   const hasCompleteSeed = Boolean(
@@ -20,7 +23,7 @@ export function useSystemMetadata() {
       seededAt > 0
   );
 
-  return useQuery({
+  const query = useQuery({
     queryKey: systemMetadataQueryKey,
     queryFn: fetchPublicSystemMetadata,
     staleTime: 60_000,
@@ -33,4 +36,24 @@ export function useSystemMetadata() {
         : undefined;
     }
   });
+
+  useEffect(() => {
+    const nextTitle =
+      query.data?.page_title?.trim() || query.data?.system_name?.trim();
+    if (nextTitle && document.title !== nextTitle) {
+      document.title = nextTitle;
+    }
+  }, [query.data?.page_title, query.data?.system_name]);
+
+  useEffect(() => {
+    const onInvalidate = () => {
+      void queryClient.invalidateQueries({ queryKey: systemMetadataQueryKey });
+    };
+    window.addEventListener(SYSTEM_METADATA_INVALIDATE_EVENT, onInvalidate);
+    return () => {
+      window.removeEventListener(SYSTEM_METADATA_INVALIDATE_EVENT, onInvalidate);
+    };
+  }, [queryClient]);
+
+  return query;
 }

@@ -6,9 +6,11 @@ import { startLeafMotion } from './leaf-motion';
 // Only the no-opening and missing-motion recovery paths load this module.
 export default function SignInFallbackHero({
   opening,
+  title = '1flowbase',
   slogan
 }: {
   opening: DocumentArtwork | null;
+  title?: string;
   slogan: string | null;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -31,7 +33,7 @@ export default function SignInFallbackHero({
   return opening ? null : (
     <div ref={host} style={{ display: 'contents' }}>
       <HeroArtwork>
-        {slogan !== null && <HeroTagline slogan={slogan} />}
+        {slogan !== null && <HeroTagline title={title} slogan={slogan} />}
       </HeroArtwork>
     </div>
   );
