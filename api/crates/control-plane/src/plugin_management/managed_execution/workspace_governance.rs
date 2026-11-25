@@ -139,9 +139,7 @@ impl ManagedWorkspaceGovernanceService {
                         status: domain::TenantStatus::Active,
                         is_root_workspace: output.is_root_workspace,
                     }),
-                    initial_member_user_id: output
-                        .initial_member_user_id
-                        .map(|id| id.to_string()),
+                    initial_member_user_id: output.initial_member_user_id.map(|id| id.to_string()),
                 }
             }
             Request::GrantWorkspaceMembership {
@@ -160,6 +158,7 @@ impl ManagedWorkspaceGovernanceService {
                                     workspace_id,
                                     user_id,
                                     role_codes: role_codes.clone(),
+                                    role_templates: crate::auth::workspace_role_templates(),
                                     actor_user_id,
                                 },
                             )
@@ -172,6 +171,7 @@ impl ManagedWorkspaceGovernanceService {
                                 workspace_id,
                                 user,
                                 role_codes: role_codes.clone(),
+                                role_templates: crate::auth::workspace_role_templates(),
                                 actor_user_id,
                             })
                             .await?;
@@ -214,10 +214,12 @@ impl ManagedWorkspaceGovernanceService {
                     .collect::<anyhow::Result<std::collections::BTreeSet<_>>>()?
                     .into_iter()
                     .collect::<Vec<_>>();
+                let role_templates = crate::auth::workspace_role_templates();
                 let user = repo
                     .assign_workspace_admins(
                         &workspace_ids,
                         &provision_user(member)?,
+                        &role_templates,
                         authenticated_actor(binding, actor_user_id.as_deref())?,
                     )
                     .await?;
@@ -233,10 +235,12 @@ impl ManagedWorkspaceGovernanceService {
             } => {
                 let workspace_id = id(workspace_id)?;
                 let user_id = id(user_id)?;
+                let role_templates = crate::auth::workspace_role_templates();
                 let revoked = repo
                     .revoke_workspace_admin(
                         workspace_id,
                         user_id,
+                        &role_templates,
                         authenticated_actor(binding, actor_user_id.as_deref())?,
                     )
                     .await?;
@@ -281,18 +285,14 @@ impl WorkspaceGovernancePort for ManagedWorkspaceGovernanceService {
             let remaining = u64::try_from(remaining)
                 .ok()
                 .filter(|ms| *ms > 0)
-                .ok_or_else(|| {
-                    HostServiceError::new("workspace_governance_deadline_exceeded")
-                })?;
+                .ok_or_else(|| HostServiceError::new("workspace_governance_deadline_exceeded"))?;
             if !(binding.can_manage || (!request.requires_manage() && binding.can_read)) {
                 return Err(denied());
             }
             tokio::time::timeout(std::time::Duration::from_millis(remaining), async {
                 let installation_id =
                     id(binding.subject.installation_id().as_str()).map_err(|_| denied())?;
-                if binding.subject.workspace_id().as_str()
-                    != domain::SYSTEM_SCOPE_ID.to_string()
-                {
+                if binding.subject.workspace_id().as_str() != domain::SYSTEM_SCOPE_ID.to_string() {
                     return Err(denied());
                 }
                 let lease = self
@@ -305,10 +305,8 @@ impl WorkspaceGovernancePort for ManagedWorkspaceGovernanceService {
                     || installation.organization != binding.publisher_namespace
                     || installation.provider_code != binding.plugin_code
                     || installation.plugin_version != binding.plugin_version
-                    || domain::managed_installation_scope(
-                        installation,
-                        domain::DEFAULT_SCOPE_ID,
-                    ) != domain::SYSTEM_SCOPE_ID
+                    || domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
+                        != domain::SYSTEM_SCOPE_ID
                 {
                     return Err(denied());
                 }

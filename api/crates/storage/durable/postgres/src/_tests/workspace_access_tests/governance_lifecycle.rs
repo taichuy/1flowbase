@@ -264,6 +264,7 @@ async fn provision_seeds_workspace_and_rolls_back_conflicts_and_suspension_block
                 workspace_id: workspace,
                 user_id: founder,
                 role_codes: vec![],
+                role_templates: vec![],
                 actor_user_id: None,
             })
             .await
@@ -278,6 +279,7 @@ async fn onboard(store: &PgControlPlaneStore, workspace_id: Uuid, account: &str)
             workspace_id,
             user: new_user(account),
             role_codes: vec![],
+            role_templates: vec![],
             actor_user_id: None,
         })
         .await
@@ -334,6 +336,7 @@ async fn workspace_member_mutations_do_not_change_other_tenant_identity_or_acces
         workspace_id: b.workspace.id,
         user_id: shared,
         role_codes: vec![],
+        role_templates: vec![],
         actor_user_id: None,
     };
     assert!(
@@ -504,7 +507,7 @@ async fn workspace_member_mutations_do_not_change_other_tenant_identity_or_acces
 
     let a_grant = GrantWorkspaceMembershipInput {
         workspace_id: a.workspace.id,
-        ..grant
+        ..grant.clone()
     };
     assert!(
         !store
@@ -569,6 +572,7 @@ async fn simultaneous_onboarding_of_one_external_subject_has_one_winner() {
             workspace_id,
             user,
             role_codes: vec![],
+            role_templates: vec![],
             actor_user_id: None,
         }
     };
@@ -656,7 +660,7 @@ async fn flat_governance_is_atomic_and_workspace_status_is_independent() {
     );
     assert_denied(
         store
-            .revoke_workspace_admin(root, root_user, None)
+            .revoke_workspace_admin(root, root_user, &[], None)
             .await
             .unwrap_err(),
         "root_admin_immutable",
@@ -674,11 +678,11 @@ async fn flat_governance_is_atomic_and_workspace_status_is_independent() {
     let (a_id, b_id) = (a.workspace.id, b.workspace.id);
     let candidate = ProvisionWorkspaceUser::New(new_user("flat-admin"));
     assert!(store
-        .assign_workspace_admins(&[], &candidate, None)
+        .assign_workspace_admins(&[], &candidate, &[], None)
         .await
         .is_err());
     assert!(store
-        .assign_workspace_admins(&[a_id, Uuid::now_v7()], &candidate, None)
+        .assign_workspace_admins(&[a_id, Uuid::now_v7()], &candidate, &[], None)
         .await
         .is_err());
     let updated = store
@@ -689,7 +693,7 @@ async fn flat_governance_is_atomic_and_workspace_status_is_independent() {
     assert!(!updated.is_root_workspace);
     assert_denied(
         store
-            .assign_workspace_admins(&[a_id, b_id], &candidate, None)
+            .assign_workspace_admins(&[a_id, b_id], &candidate, &[], None)
             .await
             .unwrap_err(),
         "workspace_suspended",
@@ -705,7 +709,7 @@ async fn flat_governance_is_atomic_and_workspace_status_is_independent() {
         .await
         .unwrap();
     let user = store
-        .assign_workspace_admins(&[b_id, a_id, b_id], &candidate, None)
+        .assign_workspace_admins(&[b_id, a_id, b_id], &candidate, &[], None)
         .await
         .unwrap();
     store
@@ -714,6 +718,7 @@ async fn flat_governance_is_atomic_and_workspace_status_is_independent() {
             &ProvisionWorkspaceUser::Existing {
                 user_id: user.user_id,
             },
+            &[],
             None,
         )
         .await
@@ -807,11 +812,11 @@ async fn flat_governance_is_atomic_and_workspace_status_is_independent() {
     };
     let before = version().await;
     assert!(store
-        .revoke_workspace_admin(a_id, user.user_id, None)
+        .revoke_workspace_admin(a_id, user.user_id, &[], None)
         .await
         .unwrap());
     assert!(!store
-        .revoke_workspace_admin(a_id, user.user_id, None)
+        .revoke_workspace_admin(a_id, user.user_id, &[], None)
         .await
         .unwrap());
     assert_eq!(version().await, before + 1);
@@ -901,6 +906,7 @@ async fn bootstrap_admin_summary_includes_protected_system_root_only_where_appli
                 workspace_id,
                 user_id: root.id,
                 role_codes: vec!["member".into()],
+                role_templates: vec![],
                 actor_user_id: None,
             })
             .await
@@ -912,6 +918,7 @@ async fn bootstrap_admin_summary_includes_protected_system_root_only_where_appli
             workspace_id: acme,
             user_id: root.id,
             role_codes: vec!["admin".into()],
+            role_templates: vec![],
             actor_user_id: None,
         })
         .await
@@ -923,6 +930,7 @@ async fn bootstrap_admin_summary_includes_protected_system_root_only_where_appli
             workspace_id: bootstrap,
             user: new_user("alice"),
             role_codes: vec!["admin".into()],
+            role_templates: vec![],
             actor_user_id: Some(root.id),
         })
         .await
@@ -934,6 +942,7 @@ async fn bootstrap_admin_summary_includes_protected_system_root_only_where_appli
                 &ProvisionWorkspaceUser::Existing {
                     user_id: alice.user_id,
                 },
+                &[],
                 Some(root.id),
             )
             .await
@@ -942,14 +951,14 @@ async fn bootstrap_admin_summary_includes_protected_system_root_only_where_appli
     );
     assert_denied(
         store
-            .revoke_workspace_admin(bootstrap, root.id, Some(root.id))
+            .revoke_workspace_admin(bootstrap, root.id, &[], Some(root.id))
             .await
             .unwrap_err(),
         "root_admin_immutable",
     );
     assert_denied(
         store
-            .revoke_workspace_admin(bootstrap, alice.user_id, Some(root.id))
+            .revoke_workspace_admin(bootstrap, alice.user_id, &[], Some(root.id))
             .await
             .unwrap_err(),
         "root_admin_immutable",
@@ -963,4 +972,88 @@ async fn bootstrap_admin_summary_includes_protected_system_root_only_where_appli
         .unwrap();
     assert_eq!(searched.len(), 1);
     assert_eq!(searched[0].account, "alice");
+}
+
+#[tokio::test]
+async fn legacy_roleless_workspace_self_heals_standard_roles_on_admin_assign_and_revoke() {
+    let store = store().await;
+    let root_tenant = store.upsert_root_tenant().await.unwrap();
+    let _bootstrap = store
+        .upsert_workspace(root_tenant.id, "1flowbase")
+        .await
+        .unwrap();
+    control_plane_test_support::upsert_permission_catalog(&store)
+        .await
+        .unwrap();
+
+    // Simulate a legacy workspace inserted without provision_workspace (0 rows in `roles`).
+    let legacy_ws = store
+        .upsert_workspace(root_tenant.id, "legacy-gateway-diag")
+        .await
+        .unwrap()
+        .id;
+    let initial_role_count: i64 = sqlx::query_scalar(
+        "select count(*) from roles where workspace_id = $1 and scope_kind = 'workspace'",
+    )
+    .bind(legacy_ws)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(initial_role_count, 0);
+
+    let candidate_id = Uuid::now_v7();
+    insert_user(&store, candidate_id, "legacy-admin", "member").await;
+
+    let templates = provision("tpl-source").role_templates;
+    let assigned = store
+        .assign_workspace_admins(
+            &[legacy_ws],
+            &ProvisionWorkspaceUser::Existing {
+                user_id: candidate_id,
+            },
+            &templates,
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(assigned.user_id, candidate_id);
+
+    let seeded_codes: Vec<String> = sqlx::query_scalar(
+        "select code from roles where workspace_id = $1 and scope_kind = 'workspace' order by code",
+    )
+    .bind(legacy_ws)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        seeded_codes,
+        vec!["admin".to_string(), "member".to_string()]
+    );
+
+    let bound_after_assign: Vec<String> = sqlx::query_scalar(
+        "select r.code from user_role_bindings b join roles r on r.id = b.role_id where b.user_id = $1 and b.scope_id = $2 order by r.code",
+    )
+    .bind(candidate_id)
+    .bind(legacy_ws)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(bound_after_assign, vec!["admin".to_string()]);
+
+    // Revoking admin on the healed legacy workspace demotes the active member cleanly to `member`.
+    let revoked = store
+        .revoke_workspace_admin(legacy_ws, candidate_id, &templates, None)
+        .await
+        .unwrap();
+    assert!(revoked);
+
+    let bound_after_revoke: Vec<String> = sqlx::query_scalar(
+        "select r.code from user_role_bindings b join roles r on r.id = b.role_id where b.user_id = $1 and b.scope_id = $2 order by r.code",
+    )
+    .bind(candidate_id)
+    .bind(legacy_ws)
+    .fetch_all(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(bound_after_revoke, vec!["member".to_string()]);
 }

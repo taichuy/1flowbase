@@ -17,10 +17,7 @@ pub struct WorkspacePolicyContext {
     pub repository: Arc<dyn WorkspaceIdentityRepository>,
 }
 
-pub trait WorkspaceIdentityRepository:
-    WorkspaceGovernanceRepository + WorkspaceRepository
-{
-}
+pub trait WorkspaceIdentityRepository: WorkspaceGovernanceRepository + WorkspaceRepository {}
 impl<T: WorkspaceGovernanceRepository + WorkspaceRepository> WorkspaceIdentityRepository for T {}
 
 #[derive(Debug, thiserror::Error)]
@@ -45,9 +42,7 @@ pub fn workspace_policy_denied(code: String) -> anyhow::Error {
     let conflict = code.ends_with("_quota_exceeded")
         || matches!(
             code.as_str(),
-            "invitation_exhausted"
-                | "invitation_already_redeemed"
-                | "invitation_max_uses_reached"
+            "invitation_exhausted" | "invitation_already_redeemed" | "invitation_max_uses_reached"
         );
     WorkspacePolicyRejection { code, conflict }.into()
 }
@@ -159,17 +154,12 @@ impl WorkspacePolicyContext {
             Some(WorkspacePolicyResponse::RegistrationDecision {
                 decision: WorkspaceRegistrationDecisionDto::Deny { reason_code },
             }) => Err(workspace_policy_denied(reason_code)),
-            Some(WorkspacePolicyResponse::RegistrationDecision { decision }) => {
-                Ok(Some(decision))
-            }
+            Some(WorkspacePolicyResponse::RegistrationDecision { decision }) => Ok(Some(decision)),
             _ => Err(invalid_policy()),
         }
     }
 
-    pub(super) async fn release_registration(
-        &self,
-        decision: WorkspaceRegistrationDecisionDto,
-    ) {
+    pub(super) async fn release_registration(&self, decision: WorkspaceRegistrationDecisionDto) {
         if let WorkspaceRegistrationDecisionDto::JoinExistingWorkspace {
             redemption_id: Some(redemption_id),
             ..
@@ -184,9 +174,7 @@ impl WorkspacePolicyContext {
                     .await,
                 Ok(Some(WorkspacePolicyResponse::RedemptionFinalized))
             ) {
-                tracing::warn!(
-                    "workspace invitation reservation rollback could not be finalized"
-                );
+                tracing::warn!("workspace invitation reservation rollback could not be finalized");
             }
         }
     }
@@ -241,6 +229,7 @@ impl WorkspacePolicyContext {
                             workspace_id: scope.workspace_id,
                             user,
                             role_codes,
+                            role_templates: workspace_role_templates(),
                             actor_user_id: None,
                         })
                         .await?;
@@ -252,10 +241,7 @@ impl WorkspacePolicyContext {
                         .policy
                         .decide(WorkspacePolicyRequest::FinalizeInvitationRedemption {
                             redemption_id,
-                            committed_user_id: result
-                                .as_ref()
-                                .ok()
-                                .map(|(id, _)| id.to_string()),
+                            committed_user_id: result.as_ref().ok().map(|(id, _)| id.to_string()),
                         })
                         .await
                         .and_then(|response| match response {
@@ -278,10 +264,7 @@ impl WorkspacePolicyContext {
         }
     }
 
-    pub(super) async fn workspace_scope(
-        &self,
-        workspace_id: Uuid,
-    ) -> Result<domain::ScopeContext> {
+    pub(super) async fn workspace_scope(&self, workspace_id: Uuid) -> Result<domain::ScopeContext> {
         let workspace = self
             .repository
             .get_workspace(workspace_id)

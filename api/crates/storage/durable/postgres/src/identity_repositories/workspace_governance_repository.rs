@@ -74,6 +74,59 @@ async fn lock_active_workspace(tx: &mut Tx<'_>, workspace_id: Uuid) -> Result<Uu
     Ok(tenant_id)
 }
 
+async fn ensure_workspace_role_templates(
+    tx: &mut Tx<'_>,
+    workspace_id: Uuid,
+    role_templates: &[domain::RoleTemplate],
+) -> Result<()> {
+    if role_templates.is_empty() {
+        return Ok(());
+    }
+    let existing: Vec<(String, bool)> = sqlx::query_as(
+        "select code, is_default_member_role from roles where workspace_id = $1 and scope_kind = 'workspace'",
+    )
+    .bind(workspace_id)
+    .fetch_all(&mut **tx)
+    .await?;
+    let has_admin = existing.iter().any(|(code, _)| code == "admin");
+    let has_default = existing.iter().any(|(_, is_default)| *is_default);
+    if has_admin && has_default {
+        return Ok(());
+    }
+    lock_console_permission_catalog(tx).await?;
+    let existing: Vec<(String, bool)> = sqlx::query_as(
+        "select code, is_default_member_role from roles where workspace_id = $1 and scope_kind = 'workspace'",
+    )
+    .bind(workspace_id)
+    .fetch_all(&mut **tx)
+    .await?;
+    let mut has_default = existing.iter().any(|(_, is_default)| *is_default);
+    let mut missing = Vec::new();
+    for tpl in role_templates
+        .iter()
+        .filter(|role| role.scope_kind == RoleScopeKind::Workspace)
+    {
+        if existing.iter().any(|(code, _)| code == &tpl.code) {
+            continue;
+        }
+        if tpl.code != "admin" && !(tpl.is_default_member_role && !has_default) {
+            continue;
+        }
+        let mut adjusted = tpl.clone();
+        if adjusted.is_default_member_role && has_default {
+            adjusted.is_default_member_role = false;
+        }
+        if adjusted.is_default_member_role {
+            has_default = true;
+        }
+        missing.push(adjusted);
+    }
+    if !missing.is_empty() {
+        seed_role_templates(tx, workspace_id, missing, false).await?;
+    }
+    Ok(())
+}
+
 async fn workspace_roles(
     tx: &mut Tx<'_>,
     workspace_id: Uuid,
@@ -321,6 +374,7 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
     ) -> Result<GrantWorkspaceMembershipOutput> {
         let mut tx = self.pool().begin().await?;
         lock_active_workspace(&mut tx, input.workspace_id).await?;
+        ensure_workspace_role_templates(&mut tx, input.workspace_id, &input.role_templates).await?;
         let roles = workspace_roles(&mut tx, input.workspace_id, &input.role_codes).await?;
         let result = grant_membership(
             &mut tx,
@@ -340,6 +394,7 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
     ) -> Result<OnboardedUserOutput> {
         let mut tx = self.pool().begin().await?;
         let tenant_id = lock_active_workspace(&mut tx, input.workspace_id).await?;
+        ensure_workspace_role_templates(&mut tx, input.workspace_id, &input.role_templates).await?;
         let roles = workspace_roles(&mut tx, input.workspace_id, &input.role_codes).await?;
         let user_id = onboard_user(
             &mut tx,
@@ -412,6 +467,7 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
         &self,
         workspace_ids: &[Uuid],
         user: &ProvisionWorkspaceUser,
+        role_templates: &[domain::RoleTemplate],
         actor_user_id: Option<Uuid>,
     ) -> Result<GovernanceUserSummary> {
         if workspace_ids.is_empty() {
@@ -429,6 +485,7 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
             .collect::<std::collections::BTreeSet<_>>()
         {
             let tenant_id = lock_active_workspace(&mut tx, workspace_id).await?;
+            ensure_workspace_role_templates(&mut tx, workspace_id, role_templates).await?;
             let roles = workspace_roles(&mut tx, workspace_id, &["admin".into()]).await?;
             targets.push((workspace_id, tenant_id, roles));
         }
@@ -462,6 +519,7 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
         &self,
         workspace_id: Uuid,
         user_id: Uuid,
+        role_templates: &[domain::RoleTemplate],
         actor_user_id: Option<Uuid>,
     ) -> Result<bool> {
         let mut tx = self.pool().begin().await?;
@@ -470,15 +528,16 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
             .fetch_optional(&mut *tx)
             .await?
             .ok_or(Error::NotFound("workspace"))?;
-        let admin_roles = workspace_roles(&mut tx, workspace_id, &["admin".into()]).await?;
+        if workspace_id == bootstrap_workspace_id(&mut *tx).await? {
+            return Err(Error::PermissionDenied("root_admin_immutable").into());
+        }
         sqlx::query("select id from users where id = $1 for update")
             .bind(user_id)
             .fetch_optional(&mut *tx)
             .await?
             .ok_or(Error::NotFound("user"))?;
-        if workspace_id == bootstrap_workspace_id(&mut *tx).await? {
-            return Err(Error::PermissionDenied("root_admin_immutable").into());
-        }
+        ensure_workspace_role_templates(&mut tx, workspace_id, role_templates).await?;
+        let admin_roles = workspace_roles(&mut tx, workspace_id, &["admin".into()]).await?;
         let membership: Option<String> = sqlx::query_scalar(
             "select status from workspace_memberships where workspace_id = $1 and user_id = $2 for update",
         ).bind(workspace_id).bind(user_id).fetch_optional(&mut *tx).await?;
@@ -599,11 +658,11 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
                             status: TenantStatus::from_db(row.try_get("workspace_status")?)
                                 .ok_or_else(|| anyhow!("invalid stored workspace status"))?,
                             record: WorkspaceRecord {
-                            id: workspace_id,
-                            tenant_id,
-                            name: row.try_get("workspace_name")?,
-                            logo_url: row.try_get("logo_url")?,
-                            introduction: row.try_get("introduction")?,
+                                id: workspace_id,
+                                tenant_id,
+                                name: row.try_get("workspace_name")?,
+                                logo_url: row.try_get("logo_url")?,
+                                introduction: row.try_get("introduction")?,
                             },
                         },
                         active_member_count: row.try_get("active_member_count")?,
@@ -663,16 +722,13 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
         limit: u32,
     ) -> Result<Vec<GovernanceUserSummary>> {
         let capped_limit = i64::from(limit.clamp(1, 50));
-        let pattern = query
-            .map(str::trim)
-            .filter(|q| !q.is_empty())
-            .map(|q| {
-                let escaped = q
-                    .replace('\\', r"\\")
-                    .replace('%', r"\%")
-                    .replace('_', r"\_");
-                format!("%{escaped}%")
-            });
+        let pattern = query.map(str::trim).filter(|q| !q.is_empty()).map(|q| {
+            let escaped = q
+                .replace('\\', r"\\")
+                .replace('%', r"\%")
+                .replace('_', r"\_");
+            format!("%{escaped}%")
+        });
         let rows = sqlx::query(
             r#"
             select id, account, email, name, status, managed_by_tenant_id
@@ -695,17 +751,17 @@ impl WorkspaceGovernanceRepository for PgControlPlaneStore {
 }
 
 fn governance_user_from_row(row: PgRow) -> Result<GovernanceUserSummary> {
-            let status = match row.try_get::<&str, _>("status")? {
-                "active" => UserStatus::Active,
-                "disabled" => UserStatus::Disabled,
-                _ => return Err(anyhow!("invalid stored user status")),
-            };
-            Ok(GovernanceUserSummary {
-                user_id: row.try_get("id")?,
-                account: row.try_get("account")?,
-                email: row.try_get("email")?,
-                name: row.try_get("name")?,
-                status,
-                managed_by_tenant_id: row.try_get("managed_by_tenant_id")?,
-            })
+    let status = match row.try_get::<&str, _>("status")? {
+        "active" => UserStatus::Active,
+        "disabled" => UserStatus::Disabled,
+        _ => return Err(anyhow!("invalid stored user status")),
+    };
+    Ok(GovernanceUserSummary {
+        user_id: row.try_get("id")?,
+        account: row.try_get("account")?,
+        email: row.try_get("email")?,
+        name: row.try_get("name")?,
+        status,
+        managed_by_tenant_id: row.try_get("managed_by_tenant_id")?,
+    })
 }

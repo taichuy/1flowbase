@@ -73,6 +73,7 @@ pub struct GrantWorkspaceMembershipInput {
     pub workspace_id: Uuid,
     pub user_id: Uuid,
     pub role_codes: Vec<String>,
+    pub role_templates: Vec<RoleTemplate>,
     pub actor_user_id: Option<Uuid>,
 }
 
@@ -86,6 +87,7 @@ pub struct OnboardNewUserInput {
     pub workspace_id: Uuid,
     pub user: NewGovernanceUser,
     pub role_codes: Vec<String>,
+    pub role_templates: Vec<RoleTemplate>,
     pub actor_user_id: Option<Uuid>,
 }
 
@@ -165,12 +167,14 @@ pub trait WorkspaceGovernanceRepository: Send + Sync {
         &self,
         workspace_ids: &[Uuid],
         user: &ProvisionWorkspaceUser,
+        role_templates: &[RoleTemplate],
         actor_user_id: Option<Uuid>,
     ) -> Result<GovernanceUserSummary>;
     async fn revoke_workspace_admin(
         &self,
         workspace_id: Uuid,
         user_id: Uuid,
+        role_templates: &[RoleTemplate],
         actor_user_id: Option<Uuid>,
     ) -> Result<bool>;
     async fn set_tenant_status(
