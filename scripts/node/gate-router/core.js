@@ -1,4 +1,6 @@
 const { spawnSync } = require('node:child_process');
+const { readFileSync } = require('node:fs');
+const path = require('node:path');
 const { API_SOURCE_OWNERS } = require('../testing/contracts/api-source-owners.js');
 
 const { getRepoRoot } = require('../testing/warning-capture.js');
@@ -23,8 +25,7 @@ const CHECK_SCOPE_BY_PACKAGE = new Map(BACKEND_SHARDS.flatMap(({ key, packages }
   packages.map((packageName) => [packageName, `repo-backend-check-${key}`])
 ));
 
-const BACKEND_CHECK_SCOPES = ['core-libs', 'runtime-storage', 'apps']
-  .map((shard) => `repo-backend-check-${shard}`);
+const BACKEND_CHECK_SCOPES = BACKEND_SHARDS.map(({ key }) => `repo-backend-check-${key}`);
 const BACKEND_BASE_SCOPES = ['repo-backend-static', 'repo-backend-fmt'];
 const BACKEND_SPECIAL_SCOPES = ['repo-backend-image-llm-vision', 'repo-backend-official-i18n-seed'];
 const ALL_BACKEND_SCOPES = [...BACKEND_BASE_SCOPES, ...BACKEND_SPECIAL_SCOPES, ...BACKEND_CHECK_SCOPES];
@@ -338,7 +339,109 @@ function routeChangedFiles(changedFiles) {
   return ROUTE_DEFINITIONS.filter((route) => routes.has(route.scope));
 }
 
-function buildPrVerifyPlan({ changedFiles = [] } = {}) {
+const dependencyGraphs = new Map();
+
+function parseCargoLock(lock) {
+  // Read Cargo's generated package tables, not the unused patches or metadata.
+  // Dependency references include version and source when needed to disambiguate.
+  const packages = lock.split(/^\[\[package\]\][ \t]*\r?$/mu).slice(1).map((section) => {
+    const block = section.split(/^\[/mu, 1)[0];
+    const readField = (key) => {
+      const literal = new RegExp(`^${key}\\s*=\\s*(.+)$`, 'mu').exec(block)?.[1];
+      if (literal === undefined) return undefined;
+      const value = JSON.parse(literal);
+      if (typeof value !== 'string' || !value) throw new Error(`Invalid lock package ${key}`);
+      return value;
+    };
+    const name = readField('name');
+    const version = readField('version');
+    const source = readField('source');
+    if (!name || !version) throw new Error('Missing lock package identity');
+
+    const dependencies = /^dependencies\s*=\s*\[([^\]]*)\]/mu.exec(block);
+    if (!dependencies && /^dependencies\s*=/mu.test(block)) throw new Error('Invalid lock dependency list');
+    const references = JSON.parse(`[${(dependencies?.[1] ?? '').replace(/,\s*$/u, '')}]`);
+    return { name, version, source, references, dependents: new Set() };
+  });
+
+  const locals = new Map();
+  const byReference = new Map();
+  for (const pkg of packages) {
+    const versioned = `${pkg.name} ${pkg.version}`;
+    const keys = [pkg.name, versioned];
+    if (pkg.source) {
+      const source = pkg.source.startsWith('git+') ? pkg.source.split('#', 1)[0] : pkg.source;
+      keys.push(`${versioned} (${source})`);
+    } else {
+      locals.set(pkg.name, locals.has(pkg.name) ? null : pkg);
+    }
+    for (const key of keys) byReference.set(key, byReference.has(key) ? null : pkg);
+  }
+  if ([...CHECK_SCOPE_BY_PACKAGE.keys()].some((name) => !locals.get(name))) {
+    throw new Error('Lockfile is missing an unambiguous identity for a check-shard package');
+  }
+  for (const pkg of packages) {
+    for (const reference of pkg.references) {
+      const dependency = byReference.get(reference);
+      if (!dependency) throw new Error(`Unresolved lock dependency ${reference}`);
+      dependency.dependents.add(pkg);
+    }
+  }
+  return locals;
+}
+
+function readDependencyGraph(repoRoot) {
+  const root = path.resolve(repoRoot);
+  if (!dependencyGraphs.has(root)) {
+    let graph = null;
+    try {
+      graph = parseCargoLock(readFileSync(path.join(root, 'api/Cargo.lock'), 'utf8'));
+    } catch {
+      // No reliable graph: the PR planner must keep every check shard.
+    }
+    dependencyGraphs.set(root, graph);
+  }
+  return dependencyGraphs.get(root);
+}
+
+function readManifestPackage(repoRoot, file) {
+  // Read the nearest manifest to handle nested owners (e.g. storage/durable/core)
+  // and directories whose names differ from their Cargo package names.
+  for (let directory = path.posix.dirname(file); directory.startsWith('api/'); directory = path.posix.dirname(directory)) {
+    let manifest;
+    try {
+      manifest = readFileSync(path.join(repoRoot, directory, 'Cargo.toml'), 'utf8');
+    } catch (error) {
+      if (error.code !== 'ENOENT') return null;
+      continue;
+    }
+    const packageTable = manifest.split(/^\[package\][ \t]*\r?$/mu)[1]?.split(/^\[/mu, 1)[0];
+    return /^[ \t]*name\s*=\s*(?:"([\w-]+)"|'([\w-]+)')/mu.exec(packageTable ?? '')?.slice(1).find(Boolean) ?? null;
+  }
+  return null;
+}
+
+function getImpactedCheckScopes(repoRoot, backendFiles) {
+  const graph = readDependencyGraph(repoRoot);
+  if (!graph) return BACKEND_CHECK_SCOPES;
+  const pending = new Set();
+  for (const file of backendFiles) {
+    const owner = graph.get(readManifestPackage(repoRoot, file));
+    if (!owner) return BACKEND_CHECK_SCOPES;
+    pending.add(owner);
+  }
+
+  const impacted = new Set();
+  // A Set iterator visits new entries in insertion order, keeping the closure
+  // cycle-safe and traversing packages even if they have no check shard.
+  for (const pkg of pending) {
+    if (!pkg.source) impacted.add(CHECK_SCOPE_BY_PACKAGE.get(pkg.name));
+    for (const dependent of pkg.dependents) pending.add(dependent);
+  }
+  return BACKEND_CHECK_SCOPES.filter((scope) => impacted.has(scope));
+}
+
+function buildPrVerifyPlan({ changedFiles = [], repoRoot = getRepoRoot() } = {}) {
   const files = changedFiles.filter((file) => !isIgnoredPath(file));
   const global = files.length === 0 || files.some((file) =>
     !/^(?:api|web|docs)\//u.test(file) || /(?:[./-]lock(?:b|file)?(?:\.ya?ml|\.json)?|shrinkwrap\.(?:ya?ml|json))$/iu.test(file)
@@ -352,14 +455,11 @@ function buildPrVerifyPlan({ changedFiles = [] } = {}) {
   if (global || webSeed) {
     backendScopes = [...ALL_BACKEND_SCOPES];
   } else if (backendFiles.length) {
-    const routes = new Map();
-    backendFiles.forEach((file) => addBackendCheckRoutes(routes, file));
-    const firstImpacted = BACKEND_CHECK_SCOPES.findIndex((scope) => routes.has(scope));
     const specialistPaths = backendFiles.some((file) => /i18n|locale|seed|image|llm|vision|model/iu.test(file));
     backendScopes = [
       ...BACKEND_BASE_SCOPES,
       ...(specialistPaths ? BACKEND_SPECIAL_SCOPES : []),
-      ...BACKEND_CHECK_SCOPES.slice(Math.max(0, firstImpacted)),
+      ...getImpactedCheckScopes(repoRoot, backendFiles),
     ];
   }
   const expectedScopes = [
@@ -373,10 +473,10 @@ function buildPrVerifyPlan({ changedFiles = [] } = {}) {
     selectedFoundations: buildFoundationPlan({ changedFiles: files, foundation: global ? 'all' : 'auto' }).selectedFoundations };
 }
 
-function readPrVerifyPlan({ baseRef, ...options }) {
+function readPrVerifyPlan({ baseRef, repoRoot, ...options }) {
   if (!/^(?!0+$)[0-9a-f]{40}$/u.test(baseRef ?? '')) return buildPrVerifyPlan();
   try {
-    return buildPrVerifyPlan({ changedFiles: readChangedFiles({ ...options, baseRef, mode: 'candidate' }) });
+    return buildPrVerifyPlan({ repoRoot, changedFiles: readChangedFiles({ ...options, repoRoot, baseRef, mode: 'candidate' }) });
   } catch {
     return buildPrVerifyPlan();
   }

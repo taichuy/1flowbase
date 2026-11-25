@@ -1,5 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { BACKEND_SHARDS } = require('../../verify/backend-targets.js');
 
 const {
   buildAdvisoryMessage,
@@ -9,6 +13,8 @@ const {
   readChangedFiles,
   routeChangedFiles,
 } = require('../core.js');
+
+const realRepoRoot = path.resolve(__dirname, '../../../..');
 
 test('routeChangedFiles recommends related gates for frontend and backend consistency changes', () => {
   const routes = routeChangedFiles([
@@ -192,9 +198,6 @@ test('current Kernel, Gateway and Applications changes select the API apps check
 
 
 test('real Git backend-to-docs rename preserves the source owner and foundation pack', (t) => {
-  const fs = require('node:fs');
-  const os = require('node:os');
-  const path = require('node:path');
   const { execFileSync } = require('node:child_process');
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-router-rename-'));
   t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
@@ -219,17 +222,80 @@ test('real Git backend-to-docs rename preserves the source owner and foundation 
   assert.ok(plan.selectedFoundations.includes('mcp-gateway'));
 });
 
-test('CI planner closes reverse dependencies and specializes only affected slices', () => {
-  for (const [file, expected] of [
-    ['api/crates/interface-runtime/src/schema.rs', ['core-libs', 'runtime-storage', 'apps']],
-    ['api/crates/runtime-extension-host/src/executor.rs', ['runtime-storage', 'apps']],
-    ['api/apps/api-server/src/main.rs', ['apps']],
-  ]) {
-    const plan = buildPrVerifyPlan({ changedFiles: [file] });
-    assert.equal(plan.frontend, false);
-    assert.equal(plan.tooling, false);
-    assert.deepEqual(plan.backendScopes, ['repo-backend-static', 'repo-backend-fmt', ...expected.map((key) => `repo-backend-check-${key}`)]);
+test('CI planner follows the control-plane to test-support back-edge across shards', () => {
+  const plan = buildPrVerifyPlan({
+    repoRoot: realRepoRoot,
+    changedFiles: ['api/crates/control-plane/src/plugin_management/mod.rs'],
+  });
+  assert.equal(plan.frontend, false);
+  assert.equal(plan.tooling, false);
+  assert.ok(plan.backendScopes.includes('repo-backend-check-apps'));
+  assert.ok(plan.backendScopes.includes('repo-backend-check-core-libs'));
+});
+
+test('CI planner selects exactly the shards reachable through the real Cargo.lock graph', () => {
+  const read = (file) => fs.readFileSync(path.join(realRepoRoot, file), 'utf8');
+  const shards = new Map(BACKEND_SHARDS.flatMap(({ key, packages }) =>
+    packages.map((name) => [name, `repo-backend-check-${key}`])));
+  const members = /members = \[([^\]]+)\]/u.exec(read('api/Cargo.toml'))[1];
+  const paths = new Map([...members.matchAll(/"([^"]+)"/gu)].map(([, directory]) => {
+    const name = /^name\s*=\s*"([^"]+)"/mu.exec(read(`api/${directory}/Cargo.toml`))[1];
+    return [name, `api/${directory}/src/lib.rs`];
+  }));
+  const entries = read('api/Cargo.lock').split(/^\[\[package\]\]$/mu).slice(1).map((block) => {
+    const fields = Object.fromEntries([...block.matchAll(/^(name|version|source) = ("[^"]+")$/gmu)]
+      .map(([, key, value]) => [key, JSON.parse(value)]));
+    const deps = /dependencies = \[([^\]]*)\]/u.exec(block)?.[1] ?? '';
+    return { ...fields, refs: [...deps.matchAll(/"([^"]+)"/gu)].map(([, ref]) => ref) };
+  });
+  const local = new Map(entries.filter(({ source }) => !source).map((pkg) => [pkg.name, pkg]));
+  const byRef = new Map();
+  for (const pkg of entries) {
+    for (const ref of [pkg.name, `${pkg.name} ${pkg.version}`,
+      ...(pkg.source ? [`${pkg.name} ${pkg.version} (${pkg.source.replace(/#.*$/u, '')})`] : [])]) {
+      byRef.set(ref, byRef.has(ref) ? null : pkg);
+    }
   }
+  const forwardClosure = (start) => {
+    const reached = new Set();
+    const visit = (pkg) => {
+      assert.ok(pkg, 'Cargo.lock references must resolve unambiguously');
+      if (reached.has(pkg)) return;
+      reached.add(pkg);
+      pkg.refs.forEach((ref) => visit(byRef.get(ref)));
+    };
+    visit(start);
+    return reached;
+  };
+  const closures = new Map([...shards.keys()].map((name) => [name, forwardClosure(local.get(name))]));
+  for (const [name, ownShard] of shards) {
+    assert.ok(paths.has(name), `${name} must have a real workspace path`);
+    const plan = buildPrVerifyPlan({ repoRoot: realRepoRoot, changedFiles: [paths.get(name)] });
+    const expected = new Set([ownShard]);
+    for (const [dependent, closure] of closures) {
+      if (closure.has(local.get(name))) {
+        const dependentShard = shards.get(dependent);
+        assert.ok(plan.backendScopes.includes(dependentShard), `${name} missed ${dependent} (${dependentShard})`);
+        expected.add(dependentShard);
+      }
+    }
+    assert.deepEqual(new Set(plan.backendScopes.filter((scope) => scope.startsWith('repo-backend-check-'))), expected, name);
+  }
+});
+
+test('CI planner checks all shards when the dependency graph or crate owner is unknown', (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-router-no-lock-'));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  for (const [root, file] of [
+    [repoRoot, 'api/apps/api-server/src/main.rs'],
+    [realRepoRoot, 'api/crates/unknown-crate/src/lib.rs'],
+  ]) {
+    assert.deepEqual(buildPrVerifyPlan({ repoRoot: root, changedFiles: [file] }).backendScopes,
+      ['repo-backend-static', 'repo-backend-fmt', ...BACKEND_SHARDS.map(({ key }) => `repo-backend-check-${key}`)]);
+  }
+});
+
+test('CI planner specializes only affected slices', () => {
   const model = buildPrVerifyPlan({ changedFiles: ['api/crates/control-plane/src/model/_tests/prices.rs'] });
   assert.equal(model.tooling, true);
   assert.ok(model.backendScopes.includes('repo-backend-image-llm-vision'));

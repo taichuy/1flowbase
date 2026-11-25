@@ -364,23 +364,47 @@ function writeRecordWithCap(
   return new Promise((resolve, reject) => {
     const tx = db.transaction(OBJECT_STORE_NAME, 'readwrite');
     const store = tx.objectStore(OBJECT_STORE_NAME);
-    store.put(record);
-    const allReq = store.getAll();
-    allReq.onsuccess = () => {
-      const items = (allReq.result ?? []) as StoredNativeBlockSourceRecord[];
-      if (items.length <= maxEntries) return;
-      items.sort((left, right) => left.updatedAt - right.updatedAt);
-      const excess = items.length - maxEntries;
-      for (let index = 0; index < excess; index += 1) {
-        const victim = items[index];
-        if (victim && victim.key !== record.key) {
-          store.delete(victim.key);
-        }
-      }
-    };
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(tx.error);
+
+    const evictOverCap = (count?: number) => {
+      // A partial IndexedDB mock may lack cursors. Real v1 stores have both APIs.
+      if (typeof store.openCursor !== 'function') return;
+      let total = count ?? 0;
+      const victims: { key: IDBValidKey; updatedAt: number }[] = [];
+      const request = store.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          if (count === undefined) total += 1;
+          // Protect the new write even if the clock moved backwards, unless
+          // persistence is capped at zero entries.
+          if (cursor.primaryKey !== record.key || maxEntries === 0) {
+            const { updatedAt } = cursor.value as StoredNativeBlockSourceRecord;
+            victims.push({ key: cursor.primaryKey, updatedAt });
+          }
+          cursor.continue();
+          return;
+        }
+        if (total <= maxEntries) return;
+        // The cursor starts in primary-key order; stable sort preserves ties.
+        victims.sort((left, right) => left.updatedAt - right.updatedAt);
+        for (const { key } of victims.slice(0, total - maxEntries)) {
+          store.delete(key);
+        }
+      };
+    };
+
+    store.put(record);
+    if (typeof store.count === 'function') {
+      const request = store.count();
+      request.onsuccess = () => {
+        if (request.result > maxEntries) evictOverCap(request.result);
+      };
+    } else {
+      evictOverCap();
+    }
   });
 }
 

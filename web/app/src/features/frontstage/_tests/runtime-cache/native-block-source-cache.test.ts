@@ -168,6 +168,58 @@ describe('FrontstageNativeBlockSourceCache', () => {
     expect(getAll).not.toHaveBeenCalled();
   });
 
+  test('put checks the cap without reading records and eviction and invalidation never call getAll', async () => {
+    let now = 1;
+    const options = {
+      indexedDbFactory: new IDBFactory(),
+      maxEntries: 4,
+      now: () => now
+    };
+    const cache = new FrontstageNativeBlockSourceCache(options);
+    const getAll = vi.spyOn(IDBObjectStore.prototype, 'getAll');
+    const count = vi.spyOn(IDBObjectStore.prototype, 'count');
+    const cursor = vi.spyOn(IDBObjectStore.prototype, 'openCursor');
+    const source = createValidSource('cap');
+    const keep = { actorId: 'a', workspaceId: 'keep', requestId: '1' };
+    const prune = { ...keep, workspaceId: 'old' };
+    const evicted = { ...prune, actorId: 'y' };
+    const logout = { ...prune, actorId: 'z' };
+    const other = { ...keep, requestId: '1', actorId: 'b' };
+
+    // Insert the tied records in reverse key order. The newer record has the
+    // lowest key of the original records, so key order alone cannot evict it.
+    expect(await cache.put(logout, source)).toBe(true);
+    expect(await cache.put(evicted, source)).toBe(true);
+    now = 2;
+    expect(await cache.put(prune, source)).toBe(true);
+    expect(await cache.put(other, source)).toBe(true);
+    expect(count).toHaveBeenCalledTimes(4);
+    expect(cursor).not.toHaveBeenCalled();
+    expect(getAll).not.toHaveBeenCalled();
+
+    // Even if the clock goes backwards, keep the just-written record and
+    // evict exactly one older resident, breaking timestamp ties by primary key.
+    now = 0;
+    expect(await cache.put(keep, source)).toBe(true);
+    expect(count).toHaveBeenCalledTimes(5);
+    expect(cursor).toHaveBeenCalledTimes(1);
+    const reloaded = new FrontstageNativeBlockSourceCache(options);
+    expect(await reloaded.get(evicted)).toBeUndefined();
+    for (const survivor of [keep, prune, other, logout]) {
+      expect(await reloaded.get(survivor)).toEqual(source);
+    }
+
+    expect(await reloaded.deleteActor(logout.actorId)).toEqual({ deleted: 1 });
+    expect(await reloaded.pruneWorkspace(keep)).toEqual({ deleted: 1 });
+    const afterInvalidation = new FrontstageNativeBlockSourceCache(options);
+    expect(await afterInvalidation.get(keep)).toEqual(source);
+    expect(await afterInvalidation.get(other)).toEqual(source);
+    for (const removed of [evicted, logout, prune]) {
+      expect(await afterInvalidation.get(removed)).toBeUndefined();
+    }
+    expect(getAll).not.toHaveBeenCalled();
+  });
+
   test('an aborted IDB transaction returns the L1 count and still invalidates the write epoch synchronously', async () => {
     const options = {
       databaseName: 'aborted',
