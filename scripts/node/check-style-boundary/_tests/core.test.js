@@ -5,6 +5,7 @@ const path = require("node:path");
 const {
   buildTemporaryFrontendCommand,
   collectComparisonViolations,
+  collectViolations,
   collectRelationshipViolations,
   createScenePage,
   createProbeUrl,
@@ -397,10 +398,44 @@ test("formatBoundaryFailure labels style boundary regressions explicitly", () =>
   );
 });
 
+test("computed Box Alignment accepts flow aliases but still rejects style drift", () => {
+  const matchedRules = [];
+  const compare = (property, expected, actual) => collectViolations([{
+    node: { id: "actions", selector: ".actions", propertyAssertions: [{ property, expected }] },
+    actual: { [property]: actual },
+    matchedRules,
+  }]);
+  for (const property of [
+    "justify-content", "align-content", "align-items", "align-self", "justify-items", "justify-self",
+    "place-content", "place-items", "place-self",
+  ]) {
+    assert.deepEqual(compare(property, "flex-end", "flow-end"), [], property);
+    assert.deepEqual(compare(property, "flex-start", "flow-start"), [], property);
+  }
+  assert.deepEqual(compare("place-items", "safe flex-start flex-end", "safe flow-start flow-end"), []);
+
+  for (const [property, actual] of [
+    ["justify-content", "center"],
+    ["justify-content", "flex-start"],
+    ["justify-content", "flow-start"],
+    ["justify-content", "end"],
+    ["justify-content", "flow-end-other"],
+    ["--alignment", "flow-end"],
+  ]) {
+    assert.deepEqual(compare(property, "flex-end", actual), [{
+      nodeId: "actions", selector: ".actions", property, expected: "flex-end", actual, matchedRules,
+    }]);
+  }
+});
+
 test("AC-005 comparison assertions detect subject-to-reference computed style drift", async () => {
   const values = {
-    ".subject .ant-btn": { "font-size": "14px", "border-radius": "0px" },
-    ".baseline .ant-btn": { "font-size": "14px", "border-radius": "6px" },
+    ".subject .ant-btn": {
+      "font-size": "14px", "border-radius": "0px", "place-self": "flex-start center", "align-items": "flow-start",
+    },
+    ".baseline .ant-btn": {
+      "font-size": "14px", "border-radius": "6px", "place-self": "flow-start center", "align-items": "flex-end",
+    },
   };
   const page = {
     locator(selector) {
@@ -426,7 +461,7 @@ test("AC-005 comparison assertions detect subject-to-reference computed style dr
       id: "antd-button-baseline",
       subjectSelector: ".subject .ant-btn",
       referenceSelector: ".baseline .ant-btn",
-      properties: ["font-size", "border-radius"],
+      properties: ["font-size", "border-radius", "place-self", "align-items"],
     },
   ]);
 
@@ -438,6 +473,14 @@ test("AC-005 comparison assertions detect subject-to-reference computed style dr
       property: "border-radius",
       expected: "6px",
       actual: "0px",
+    },
+    {
+      assertionId: "antd-button-baseline",
+      subjectSelector: ".subject .ant-btn",
+      referenceSelector: ".baseline .ant-btn",
+      property: "align-items",
+      expected: "flex-end",
+      actual: "flow-start",
     },
   ]);
   assert.match(

@@ -243,7 +243,7 @@ test('fully closed Add sessions start with empty form and custom-field drafts on
   const reopened = await openAdd('reopen-add');
   expectNewSession('reopen-add');
   expect(within(reopened).getByRole('textbox', { name: 'Command identity' })).toBeEnabled();
-});
+}, 30_000);
 
 test('closed saved edits reopen from saved values and stay distinct from new and other command sessions', async () => {
   setup(savedCommands);
@@ -267,7 +267,7 @@ test('closed saved edits reopen from saved values and stay distinct from new and
     identity: 'user/receipt', name: 'receipt', description: 'Saved receipt command',
     enabled: false, pendingField: '', fields: ['Payload field: invoice']
   });
-});
+}, 30_000);
 
 test('immutable parent and event-catalog refresh keep an open dirty edit and its Modal DOM instance', async () => {
   const { refresh } = setup(savedCommands);

@@ -9,6 +9,11 @@ const {
 } = require('../testing/node-runtime.js');
 
 const MODES = new Set(['component', 'page', 'file', 'all-pages', 'all']);
+const BOX_ALIGNMENT_PROPERTIES = new Set([
+  'align-content', 'align-items', 'align-self',
+  'justify-content', 'justify-items', 'justify-self',
+  'place-content', 'place-items', 'place-self'
+]);
 const USER_FRONTEND_PORT = 3100;
 const DEFAULT_STYLE_BOUNDARY_BASE_URL = `http://127.0.0.1:${USER_FRONTEND_PORT}`;
 const DEFAULT_TEMPORARY_FRONTEND_PORT = 3101;
@@ -536,6 +541,15 @@ async function collectNodeResult(page, cdp, styleSheets, node) {
   };
 }
 
+function normalizeBoxAlignment(property, value) {
+  if (!BOX_ALIGNMENT_PROPERTIES.has(property) || typeof value !== 'string') {
+    return value;
+  }
+  // Blink may serialize flex-start/end as flow-start/end (CSSWG #14052).
+  // Match complete tokens so compound values work without broadening other aliases.
+  return value.replace(/(^|\s)flow-(start|end)(?=$|\s)/gu, '$1flex-$2');
+}
+
 async function collectComparisonViolations(page, assertions = []) {
   const violations = [];
   for (const assertion of assertions) {
@@ -557,14 +571,16 @@ async function collectComparisonViolations(page, assertions = []) {
       }, assertion.properties)
     ]);
     for (const property of assertion.properties) {
-      if (subjectStyles[property] === referenceStyles[property]) continue;
+      const actual = subjectStyles[property];
+      const expected = referenceStyles[property];
+      if (normalizeBoxAlignment(property, actual) === normalizeBoxAlignment(property, expected)) continue;
       violations.push({
         assertionId: assertion.id,
         subjectSelector: assertion.subjectSelector,
         referenceSelector: assertion.referenceSelector,
         property,
-        expected: referenceStyles[property],
-        actual: subjectStyles[property]
+        expected,
+        actual
       });
     }
   }
@@ -583,7 +599,9 @@ function formatComparisonFailure(sceneId, violations) {
 function collectViolations(results) {
   return results.flatMap((result) =>
     result.node.propertyAssertions
-      .filter((assertion) => result.actual[assertion.property] !== assertion.expected)
+      .filter(({ property, expected }) =>
+        normalizeBoxAlignment(property, result.actual[property]) !== normalizeBoxAlignment(property, expected)
+      )
       .map((assertion) => ({
         nodeId: result.node.id,
         selector: result.node.selector,
@@ -1176,6 +1194,7 @@ module.exports = {
   buildTemporaryFrontendCommand,
   collectRelationshipViolations,
   collectComparisonViolations,
+  collectViolations,
   createScenePage,
   createProbeUrl,
   formatBoundaryFailure,
