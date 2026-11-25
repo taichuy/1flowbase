@@ -210,6 +210,19 @@ export default defineConfig(({ command, mode }) => {
     ],
     define: reactDraggableBrowserDefines,
     optimizeDeps: {
+      entries: [
+        'index.html',
+        'src/**/*.{ts,tsx}',
+        '!src/**/_tests/**',
+        '!src/test/**',
+        '!src/style-boundary/**',
+        '!src/**/*.test.{ts,tsx}',
+        '!src/**/*.spec.{ts,tsx}',
+        '../packages/*/src/**/*.{ts,tsx}',
+        '!../packages/*/src/**/_tests/**',
+        '!../packages/*/src/**/*.test.{ts,tsx}',
+        '!../packages/*/src/**/*.spec.{ts,tsx}'
+      ],
       rolldownOptions: {
         output: {
           minify: true
@@ -228,7 +241,9 @@ export default defineConfig(({ command, mode }) => {
       include: [
         ...DEV_CRITICAL_INTEROP_SPECIFIERS,
         '@ant-design/icons',
-        // Native icon helpers otherwise trigger re-optimization on first mount.
+        // Native & dev icon helpers share IconContext without per-icon runtime re-optimization.
+        '@ant-design/icons/es/components/AntdIcon',
+        '@ant-design/icons/es/components/AntdIconLight',
         '@ant-design/icons/es/components/Context',
         '@ant-design/icons/es/components/Icon',
         '@ant-design/icons/es/components/IconFont',
@@ -236,7 +251,9 @@ export default defineConfig(({ command, mode }) => {
         '@ant-design/colors',
         '@ant-design/cssinjs',
         '@ant-design/happy-work-theme',
+        '@ant-design/happy-work-theme/es/DotEffect',
         '@rc-component/virtual-list',
+        '@ant-design/x',
         '@ant-design/x/es/bubble',
         '@ant-design/x/es/conversations',
         '@ant-design/x/es/sender',
@@ -265,9 +282,16 @@ export default defineConfig(({ command, mode }) => {
         'clsx',
         'copy-to-clipboard',
         'echarts',
+        'echarts/charts',
+        'echarts/components',
+        'echarts/core',
+        'echarts/renderers',
         'i18next',
         'lexical',
         'lodash',
+        'lodash/debounce',
+        'lodash/difference',
+        'lodash/isEqual',
         'lru-cache',
         'monaco-editor',
         'react-countup',
@@ -275,8 +299,14 @@ export default defineConfig(({ command, mode }) => {
         'react-infinite-scroll-component',
         'react-easy-crop',
         'react-grid-layout',
+        'react-grid-layout/react',
         'react-i18next',
-        'vditor'
+        'vditor',
+        'vditor/dist/js/i18n/en_US.js',
+        'vditor/dist/js/i18n/zh_CN.js',
+        'zustand',
+        'zustand/middleware',
+        'zustand/vanilla'
       ],
       needsInterop: [...DEV_CRITICAL_INTEROP_SPECIFIERS]
     },

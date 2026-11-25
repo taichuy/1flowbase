@@ -3,7 +3,11 @@ import { expect, test, vi } from 'vitest';
 
 import { createApplicationResourceLoader } from '../application-resource-loader';
 import { applicationTranslationLoaders } from '../application-i18n-resources';
-import { applicationNamespacesForPath } from '../application-i18n-demand';
+import {
+  SHELL_TOPBAR_NAMESPACES,
+  applicationNamespacesForPath,
+  applicationTopbarNamespacesForPath
+} from '../application-i18n-demand';
 import { FALLBACK_APP_LOCALE } from '../locales';
 
 function coldInstance() {
@@ -252,6 +256,28 @@ test('default activatePrimary avoids eager fallback bundle downloads and loads f
   instance.emit('missingKey', ['zh_Hans'], 'page', 'onlyInEn', 'onlyInEn');
   await waitForBundle(Promise.resolve());
   expect(loaders.page.en_US).toHaveBeenCalledTimes(1);
+});
+
+test('keeps root topbar namespace demand strictly scoped to SHELL_TOPBAR_NAMESPACES across all authenticated routes', () => {
+  for (const pathname of [
+    '/',
+    '/sales/pages/page-a',
+    '/settings/backups',
+    '/settings/extension-center/installed',
+    '/applications/app-1/orchestration',
+    '/me/security'
+  ]) {
+    expect(applicationTopbarNamespacesForPath(pathname)).toEqual(
+      SHELL_TOPBAR_NAMESPACES
+    );
+  }
+  expect(applicationTopbarNamespacesForPath('/mcp/authorize')).toEqual([]);
+  expect(applicationNamespacesForPath('/settings/backups')).toEqual(
+    expect.arrayContaining(['settings', 'settingsSystemBackups'])
+  );
+  expect(applicationNamespacesForPath('/applications/app-1/orchestration')).toEqual(
+    expect.arrayContaining(['applications', 'agentFlow', 'workflow'])
+  );
 });
 
 async function waitForBundle(promise: Promise<unknown>) {

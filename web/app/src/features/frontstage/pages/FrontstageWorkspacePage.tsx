@@ -16,7 +16,7 @@ import {
   FRONTSTAGE_SLUG_PATH
 } from '../../../routes/route-config';
 import { i18nText } from '../../../shared/i18n/text';
-import { WorkspaceShellSkeleton } from '../../auth/components/anonymous-loading/WorkspaceShellSkeleton';
+import { LoadingState } from '../../../shared/ui/loading-state/LoadingState';
 import {
   fetchFrontstagePageContent,
   frontstagePageContentQueryKey
@@ -51,10 +51,19 @@ import { FrontstageWorkspaceShell } from './frontstage-page/workspace-shell/Fron
 import { RetainedFrontstagePages } from './frontstage-page/runtime-session/RetainedFrontstagePages';
 import { refreshCurrentFrontstagePage } from './frontstage-page/refresh-current-page';
 
+let resolvedFrontStagePage:
+  | (typeof import('./FrontStagePage'))['FrontStagePage']
+  | null = null;
+
 const LazyFrontStagePage = lazy(() =>
-  import('./FrontStagePage').then((module) => ({
-    default: module.FrontStagePage
-  }))
+  import('./FrontStagePage').then((module) => {
+    if (!import.meta.env.VITEST) {
+      resolvedFrontStagePage = module.FrontStagePage;
+    }
+    return {
+      default: module.FrontStagePage
+    };
+  })
 );
 
 export interface FrontstageWorkspacePageProps {
@@ -337,10 +346,12 @@ export function FrontstageWorkspacePage({
     );
   }
 
+  const canonicalTabId =
+    resolvedTab?.id ?? earlyResolvedTabId ?? runtimeTarget?.tab_id;
   const workspacePageProps: FrontStagePageProps = {
     workspaceId,
     pageId: effectivePageId,
-    tabId: resolvedTab?.id ?? runtimeTarget?.tab_id,
+    tabId: canonicalTabId,
     blockRuntimeAssembly: blockRuntimeAssemblyQuery.data,
     blockRuntimeInputs,
     isBlockRuntimeRoute: Boolean(blockId),
@@ -477,7 +488,8 @@ export function FrontstageWorkspacePage({
     }
   };
 
-  const page = <LazyFrontStagePage {...workspacePageProps} />;
+  const ActiveFrontStagePage = resolvedFrontStagePage ?? LazyFrontStagePage;
+  const page = <ActiveFrontStagePage {...workspacePageProps} />;
 
   return (
     <>
@@ -486,14 +498,14 @@ export function FrontstageWorkspacePage({
         key={JSON.stringify([navigationScope, sessionIdentity, workspaceId])}
         {...workspacePageProps}
       >
-        <Suspense fallback={<WorkspaceShellSkeleton mode="canvas-only" />}>
+        <Suspense fallback={<LoadingState compact />}>
           <RetainedFrontstagePages
             statisticsScope={
               actorId ? JSON.stringify([actorId, workspaceId]) : undefined
             }
             activeKey={JSON.stringify([
               selectedPageId,
-              resolvedTabId ?? runtimeTarget?.tab_id ?? tabReference
+              canonicalTabId ?? tabReference
             ])}
             pageTree={pageTreeQuery.data ?? pageTreeFromApi}
           >

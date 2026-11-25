@@ -153,7 +153,13 @@ describe('vite config', () => {
     ];
 
     expect(source).toContain('optimizeDeps');
+    expect(source).toContain('entries:');
+    expect(source).toContain("'src/**/*.{ts,tsx}'");
+    expect(source).toContain("'../packages/*/src/**/*.{ts,tsx}'");
     expect(source).toContain("'@ant-design/icons'");
+    expect(source).toContain("'@ant-design/icons/es/components/AntdIcon'");
+    expect(source).toContain("'@ant-design/icons/es/components/AntdIconLight'");
+    expect(source).toContain("'@ant-design/happy-work-theme/es/DotEffect'");
     expect(source).toContain("'@ant-design/icons-svg'");
     expect(source).toContain("command === 'serve'");
     expect(source).toContain("'@ant-design/icons-svg/es/asn'");

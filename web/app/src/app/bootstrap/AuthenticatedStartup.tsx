@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useLayoutEffect, useState } from 'react';
 
 import { WorkspaceShellSkeleton } from '../../features/auth/components/anonymous-loading/WorkspaceShellSkeleton';
+import { LoadingState } from '../../shared/ui/loading-state/LoadingState';
 import { resolveAuthenticatedLocale } from '../../shared/i18n/initial-locale';
 import { useAuthStore } from '../../state/auth-store';
 import {
@@ -40,6 +41,13 @@ export interface AuthenticatedStartupProps {
   enforceStartupMountGate?: boolean;
 }
 
+function RuntimeCommitMarker({ onCommit }: { onCommit: () => void }) {
+  useLayoutEffect(() => {
+    onCommit();
+  }, [onCommit]);
+  return null;
+}
+
 export function AuthenticatedStartup({
   enforceStartupMountGate = !import.meta.env.VITEST
 }: AuthenticatedStartupProps = {}) {
@@ -49,6 +57,9 @@ export function AuthenticatedStartup({
   );
   const [runtimeReady, setRuntimeReady] = useState(() =>
     Boolean(!enforceStartupMountGate || getResolvedAuthenticatedRuntime())
+  );
+  const [hasCommittedRuntime, setHasCommittedRuntime] = useState(() =>
+    Boolean(getResolvedAuthenticatedRuntime())
   );
 
   // Single 1-RTT control-plane owner: `/navigation` + `/frontstage/bootstrap`
@@ -85,9 +96,22 @@ export function AuthenticatedStartup({
     getResolvedAuthenticatedRuntime() ?? LazyAuthenticatedRuntime;
 
   return (
-    <Suspense fallback={<WorkspaceShellSkeleton mode="full" />}>
+    <Suspense
+      fallback={
+        hasCommittedRuntime ? (
+          <LoadingState fullscreen />
+        ) : (
+          <WorkspaceShellSkeleton mode="full" />
+        )
+      }
+    >
       {runtimeReady ? (
-        <ActiveRuntime queryClient={queryClient} />
+        <>
+          <RuntimeCommitMarker
+            onCommit={() => setHasCommittedRuntime(true)}
+          />
+          <ActiveRuntime queryClient={queryClient} />
+        </>
       ) : (
         <WorkspaceShellSkeleton mode="full" />
       )}

@@ -32,15 +32,6 @@ export function applicationTopbarNamespacesForPath(
   pathname: string
 ): readonly ApplicationNamespace[] {
   if (pathname === '/mcp/authorize') return [];
-  const [, section] = pathname.split('/');
-  if (
-    section === 'me' ||
-    section === 'settings' ||
-    section === 'embedded-apps' ||
-    section === 'applications'
-  ) {
-    return applicationNamespacesForPath(pathname);
-  }
   return SHELL_TOPBAR_NAMESPACES;
 }
 

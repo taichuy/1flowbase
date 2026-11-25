@@ -13,7 +13,13 @@ import {
   useRouterState
 } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Suspense, lazy, useState, type ReactNode } from 'react';
+import {
+  Suspense,
+  lazy,
+  useLayoutEffect,
+  useState,
+  type ReactNode
+} from 'react';
 
 import {
   applicationDetailQueryKey,
@@ -36,13 +42,16 @@ import {
   FRONTSTAGE_SLUG_PATH
 } from '../routes/route-config';
 import { WorkspaceShellSkeleton } from '../features/auth/components/anonymous-loading/WorkspaceShellSkeleton';
+import { LoadingState } from '../shared/ui/loading-state/LoadingState';
 import { useAuthStore } from '../state/auth-store';
 import { i18nText } from '../shared/i18n/text';
 import type { RolePermissionTab } from '../features/settings/components/RolePermissionPanel';
 import type { SettingsExtensionCenterCategory } from '../features/settings/api/extensions/extensions';
 import type { NetworkCenterPage } from '../features/settings/pages/network-center/NetworkCenterSection';
 import {
+  isApplicationI18nReady,
   isShellTopbarI18nReady,
+  prepareApplicationI18n,
   prepareShellTopbarI18n
 } from '../shared/i18n/app-i18n';
 import { resolveAuthenticatedLocale } from '../shared/i18n/initial-locale';
@@ -130,21 +139,58 @@ function RouteLoadingFallback() {
   return <WorkspaceShellSkeleton mode="canvas-only" />;
 }
 
-function LazyRouteBoundary({ children }: { children: ReactNode }) {
-  return <Suspense fallback={<RouteLoadingFallback />}>{children}</Suspense>;
+function LazyRouteBoundary({
+  children,
+  preferCompactFallback = false
+}: {
+  children: ReactNode;
+  preferCompactFallback?: boolean;
+}) {
+  return (
+    <Suspense
+      fallback={
+        preferCompactFallback ? (
+          <LoadingState compact />
+        ) : (
+          <RouteLoadingFallback />
+        )
+      }
+    >
+      {children}
+    </Suspense>
+  );
+}
+
+function ShellCommitMarker({ onCommit }: { onCommit: () => void }) {
+  useLayoutEffect(() => {
+    onCommit();
+  }, [onCommit]);
+  return null;
 }
 
 function ShellLayout() {
   const pathname = useRouterState({
     select: (state) => state.location.pathname
   });
+  const [hasCommittedShell, setHasCommittedShell] = useState(() =>
+    Boolean(getResolvedAppShellFrame())
+  );
   const ActiveShellFrame = getResolvedAppShellFrame() ?? AppShellFrame;
 
   return (
     <SessionGuard>
-      <Suspense fallback={<ShellLoadingFallback />}>
+      <Suspense
+        fallback={
+          hasCommittedShell ? (
+            <LoadingState fullscreen />
+          ) : (
+            <ShellLoadingFallback />
+          )
+        }
+      >
+        <ShellCommitMarker onCommit={() => setHasCommittedShell(true)} />
         <ActiveShellFrame pathname={pathname} useRouterLinks>
-          <LazyRouteBoundary>
+          <LazyRouteBoundary preferCompactFallback={hasCommittedShell}>
             <Outlet />
           </LazyRouteBoundary>
         </ActiveShellFrame>
@@ -160,7 +206,7 @@ function ApplicationIndexRedirect() {
     queryKey: applicationDetailQueryKey(applicationId),
     queryFn: () => fetchApplicationDetail(applicationId)
   });
-  if (detail.isPending) return <RouteLoadingFallback />;
+  if (detail.isPending) return <LoadingState compact />;
   if (detail.isError)
     return (
       <LazyRouteResult
@@ -190,13 +236,25 @@ function ApplicationSectionRoute({
 }) {
   return (
     <RouteGuard routeId="application-detail">
-      <LazyRouteBoundary>
-        <ApplicationDetailPage
-          applicationId={applicationId}
-          requestedSectionKey={requestedSectionKey}
-        />
-      </LazyRouteBoundary>
+      <ApplicationDetailPage
+        applicationId={applicationId}
+        requestedSectionKey={requestedSectionKey}
+      />
     </RouteGuard>
+  );
+}
+
+function ensureRouteApplicationI18n({
+  location
+}: {
+  location: { pathname: string };
+}) {
+  const locale = resolveAuthenticatedLocale(useAuthStore.getState().me);
+  if (isApplicationI18nReady(locale, location.pathname)) {
+    return undefined;
+  }
+  return prepareApplicationI18n(locale, location.pathname).then(
+    () => undefined
   );
 }
 
@@ -244,9 +302,7 @@ const homeRoute = createRoute({
     }
     return (
       <RouteGuard routeId="home">
-        <Suspense fallback={<WorkspaceShellSkeleton mode="below-topbar" />}>
-          <HomeRedirect />
-        </Suspense>
+        <HomeRedirect />
       </RouteGuard>
     );
   }
@@ -371,17 +427,15 @@ function renderSettingsRoute(
 ) {
   return (
     <RouteGuard routeId="settings">
-      <LazyRouteBoundary>
-        <SettingsPage
-          requestedSectionKey={requestedSectionKey}
-          modelProviderTab={modelProviderTab}
-          rolePermissionTab={rolePermissionTab}
-          networkCenterPage={networkCenterPage}
-          extensionCenterCategory={extensionCenterCategory}
-          extensionCenterCursor={extensionCenterCursor}
-          extensionCenterQ={extensionCenterQ}
-        />
-      </LazyRouteBoundary>
+      <SettingsPage
+        requestedSectionKey={requestedSectionKey}
+        modelProviderTab={modelProviderTab}
+        rolePermissionTab={rolePermissionTab}
+        networkCenterPage={networkCenterPage}
+        extensionCenterCategory={extensionCenterCategory}
+        extensionCenterCursor={extensionCenterCursor}
+        extensionCenterQ={extensionCenterQ}
+      />
     </RouteGuard>
   );
 }
@@ -389,9 +443,7 @@ function renderSettingsRoute(
 function renderMeRoute(requestedSectionKey?: MeSectionKey) {
   return (
     <RouteGuard routeId="me">
-      <LazyRouteBoundary>
-        <MePage requestedSectionKey={requestedSectionKey} />
-      </LazyRouteBoundary>
+      <MePage requestedSectionKey={requestedSectionKey} />
     </RouteGuard>
   );
 }
@@ -424,32 +476,29 @@ function FrontStageSlugRoute({
   const rootNode = pageTreeQuery.data?.find(
     (node) => node.placement === 'topbar' && node.slug === slug
   );
-  if (sessionStatus === 'unknown') return <RouteLoadingFallback />;
+  if (sessionStatus === 'unknown') return <LoadingState compact />;
   if (sessionStatus === 'anonymous') {
     return (
       <SessionGuard>
-        <RouteLoadingFallback />
+        <LoadingState compact />
       </SessionGuard>
     );
   }
   if (!workspaceId) return <Navigate to="/" replace />;
-  if (pageTreeQuery.isLoading)
-    return <WorkspaceShellSkeleton mode="below-topbar" />;
+  if (pageTreeQuery.isLoading) return <LoadingState compact />;
   if (!rootNode) return <NotFoundPage />;
   const ActiveWorkspacePage =
     getResolvedFrontstageWorkspacePage() ?? FrontstageWorkspacePage;
   return (
     <SessionGuard>
-      <Suspense fallback={<WorkspaceShellSkeleton mode="below-topbar" />}>
-        <ActiveWorkspacePage
-          workspaceId={workspaceId}
-          pageId={pageId}
-          tabRef={tabRef}
-          blockId={blockId}
-          blockInputSearch={blockInputSearch}
-          rootNode={rootNode}
-        />
-      </Suspense>
+      <ActiveWorkspacePage
+        workspaceId={workspaceId}
+        pageId={pageId}
+        tabRef={tabRef}
+        blockId={blockId}
+        blockInputSearch={blockInputSearch}
+        rootNode={rootNode}
+      />
     </SessionGuard>
   );
 }
@@ -918,63 +967,71 @@ const mcpAuthorizeRoute = createRoute({
   }
 });
 
+const shellChildRoutes = [
+  homeRoute,
+  applicationIndexRoute,
+  applicationCollectorRoute,
+  applicationOrchestrationRoute,
+  applicationApiRoute,
+  applicationLogsRoute,
+  applicationMonitoringRoute,
+  applicationStatisticsRoute,
+  // Keep embedded apps hidden because the roadmap is distant and may change.
+  settingsIndexRoute,
+  settingsDocsRoute,
+  settingsApiKeyAuthenticationRoute,
+  settingsAuthCenterRoute,
+  settingsSystemRoute,
+  settingsSystemRuntimeRoute,
+  settingsHostInfrastructureRoute,
+  settingsMemoryObservationRoute,
+  settingsI18nRoute,
+  settingsApplicationsRoute,
+  settingsBackupsRoute,
+  settingsExtensionCenterRoute,
+  settingsExtensionCenterCategoryRoute,
+  settingsFilesRoute,
+  settingsDataModelsRoute,
+  settingsModelProvidersRoute,
+  settingsModelProviderInstancesRoute,
+  settingsModelProviderRequestLogsRoute,
+  settingsModelProviderPricingRoute,
+  settingsNetworkCenterProxyTypesRoute,
+  settingsNetworkCenterProxyPoolsRoute,
+  settingsNetworkCenterRoutingRulesRoute,
+  settingsMcpManagementRoute,
+  settingsUiManagementRoute,
+  settingsUiManagementBlocksRoute,
+  settingsUiManagementTemplatesRoute,
+  settingsUiManagementComponentsRoute,
+  settingsUiManagementRoutesRoute,
+  settingsMembersRoute,
+  settingsRolesRoute,
+  settingsRolesDynamicRoutesRoute,
+  settingsRolesTableGeneralPolicyRoute,
+  settingsRolesTableSinglePolicyRoute,
+  settingsRolesConsolePolicyRoute,
+  settingsRolesPluginPolicyRoute,
+  settingsRolesOtherPolicyRoute,
+  settingsDynamicRoute,
+  meIndexRoute,
+  meProfileRoute,
+  meSecurityRoute,
+  frontstageSlugRoute,
+  frontstageSlugPageRoute.addChildren([
+    frontstageSlugPageBlockRoute,
+    frontstageSlugPageTabRoute
+  ])
+] as const;
+
+for (const route of shellChildRoutes) {
+  (
+    route.options as { beforeLoad?: typeof ensureRouteApplicationI18n }
+  ).beforeLoad ??= ensureRouteApplicationI18n;
+}
+
 const routeTree = rootRoute.addChildren([
-  shellRoute.addChildren([
-    homeRoute,
-    applicationIndexRoute,
-    applicationCollectorRoute,
-    applicationOrchestrationRoute,
-    applicationApiRoute,
-    applicationLogsRoute,
-    applicationMonitoringRoute,
-    applicationStatisticsRoute,
-    // Keep embedded apps hidden because the roadmap is distant and may change.
-    settingsIndexRoute,
-    settingsDocsRoute,
-    settingsApiKeyAuthenticationRoute,
-    settingsAuthCenterRoute,
-    settingsSystemRoute,
-    settingsSystemRuntimeRoute,
-    settingsHostInfrastructureRoute,
-    settingsMemoryObservationRoute,
-    settingsI18nRoute,
-    settingsApplicationsRoute,
-    settingsBackupsRoute,
-    settingsExtensionCenterRoute,
-    settingsExtensionCenterCategoryRoute,
-    settingsFilesRoute,
-    settingsDataModelsRoute,
-    settingsModelProvidersRoute,
-    settingsModelProviderInstancesRoute,
-    settingsModelProviderRequestLogsRoute,
-    settingsModelProviderPricingRoute,
-    settingsNetworkCenterProxyTypesRoute,
-    settingsNetworkCenterProxyPoolsRoute,
-    settingsNetworkCenterRoutingRulesRoute,
-    settingsMcpManagementRoute,
-    settingsUiManagementRoute,
-    settingsUiManagementBlocksRoute,
-    settingsUiManagementTemplatesRoute,
-    settingsUiManagementComponentsRoute,
-    settingsUiManagementRoutesRoute,
-    settingsMembersRoute,
-    settingsRolesRoute,
-    settingsRolesDynamicRoutesRoute,
-    settingsRolesTableGeneralPolicyRoute,
-    settingsRolesTableSinglePolicyRoute,
-    settingsRolesConsolePolicyRoute,
-    settingsRolesPluginPolicyRoute,
-    settingsRolesOtherPolicyRoute,
-    settingsDynamicRoute,
-    meIndexRoute,
-    meProfileRoute,
-    meSecurityRoute,
-    frontstageSlugRoute,
-    frontstageSlugPageRoute.addChildren([
-      frontstageSlugPageBlockRoute,
-      frontstageSlugPageTabRoute
-    ])
-  ]),
+  shellRoute.addChildren([...shellChildRoutes]),
   signInRoute,
   mcpAuthorizeRoute
 ]);

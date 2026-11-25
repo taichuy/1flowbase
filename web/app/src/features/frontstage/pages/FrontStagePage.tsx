@@ -999,6 +999,9 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       </section>
     );
   };
+  const effectiveContentPresentation =
+    activePageContent?.page.contentPresentation ??
+    selectedPageNode?.content_presentation;
   const frontstageTabContent = (
     <FrontstageRuntimeActivityContext value={Boolean(runtimeVisible)}>
       {runtimeValidationError ? (
@@ -1041,7 +1044,10 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
       ) : null}
       <div
         style={{
-          visibility: !runtimeVisible ? 'hidden' : undefined
+          visibility:
+            (activePageContent || nestedAssemblyPageLayer) && !runtimeVisible
+              ? 'hidden'
+              : undefined
         }}
       >
         {nestedAssemblyPageLayer ? (
@@ -1254,12 +1260,15 @@ const FrontStagePageBody: FC<FrontStagePageProps> = ({
                 {operationStatusText}
               </Typography.Text>
             ) : null}
-            {selectedPageId && tabId && onNavigateTab && activePageContent ? (
+            {selectedPageId &&
+            tabId &&
+            onNavigateTab &&
+            effectiveContentPresentation ? (
               <FrontstagePageTabs
                 workspaceId={workspaceId}
                 pageId={selectedPageId}
                 tabId={tabId}
-                presentation={activePageContent.page.contentPresentation}
+                presentation={effectiveContentPresentation}
                 isDesignMode={canEnterDesignMode && isDesignMode}
                 onNavigateTab={onNavigateTab}
               >

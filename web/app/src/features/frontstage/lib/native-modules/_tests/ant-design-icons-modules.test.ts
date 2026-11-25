@@ -58,6 +58,71 @@ describe('@ant-design/icons native module inventory', () => {
     ).rejects.toThrow(/not installed or public/u);
   });
 
+  test('rewrites dev-server icon leaf and subpath imports to pre-optimized wrapper + excluded asn without bare icon imports', async () => {
+    const inventory = collectAntDesignIconModuleSources({
+      projectRoot: process.cwd()
+    });
+    const plugin = nativeAntDesignIconsModulesPlugin({ inventory });
+    const configResolved = plugin.configResolved as (config: {
+      command: 'build' | 'serve';
+      mode: string;
+    }) => void;
+    configResolved({ command: 'serve', mode: 'development' });
+
+    const resolveHook = plugin.resolveId;
+    const loadHook = plugin.load;
+    if (!resolveHook || typeof resolveHook !== 'object') {
+      throw new Error('Expected a filtered resolveId hook');
+    }
+    if (!loadHook || typeof loadHook !== 'object') {
+      throw new Error('Expected a filtered load hook');
+    }
+    const resolveId = resolveHook.handler as (
+      id: string,
+      importer?: string
+    ) => Promise<string | undefined>;
+    const load = loadHook.handler as (id: string) => string | undefined;
+
+    const outlinedId = await resolveId(
+      '@ant-design/icons/es/icons/CalculatorOutlined',
+      '/app/src/Page.tsx'
+    );
+    const bareLeafId = await resolveId(
+      '@ant-design/icons/CompassOutlined',
+      '/app/src/Block.tsx'
+    );
+    const twoToneLeafId = await resolveId(
+      `${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}AccountBookTwoTone`
+    );
+
+    expect(outlinedId).toBe(
+      `\0${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}CalculatorOutlined`
+    );
+    expect(bareLeafId).toBe(
+      `\0${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}CompassOutlined`
+    );
+    expect(twoToneLeafId).toBe(
+      `\0${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}AccountBookTwoTone`
+    );
+
+    const outlinedCode = load(outlinedId!) ?? '';
+    expect(outlinedCode).toContain(
+      '@ant-design/icons-svg/es/asn/CalculatorOutlined'
+    );
+    expect(outlinedCode).toContain(
+      '@ant-design/icons/es/components/AntdIconLight'
+    );
+    expect(outlinedCode).not.toContain(
+      '@ant-design/icons/CalculatorOutlined'
+    );
+
+    const twoToneCode = load(twoToneLeafId!) ?? '';
+    expect(twoToneCode).toContain(
+      '@ant-design/icons-svg/es/asn/AccountBookTwoTone'
+    );
+    expect(twoToneCode).toContain('@ant-design/icons/es/components/AntdIcon');
+  });
+
   test('I1953-AC-001/003 keeps the dev loader import edge count independent from catalog size', () => {
     const inventory = collectAntDesignIconModuleSources({
       projectRoot: process.cwd()
