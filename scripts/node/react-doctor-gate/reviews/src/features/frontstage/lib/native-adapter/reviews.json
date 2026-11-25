@@ -1,7 +1,7 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx","sha256":"85df665888a037be266f7c12da7d417e03768e876ff6d278b620702e9d184753"},{"file":"web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx","sha256":"32627cff3a7505a895696556a6979a49670fb187062645ba090d88353216fa88"}]
+    [{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx","sha256":"981e819dfa452f4166320c322e43a0f42df7d09ebf49914ab085b76fc5faa6a3"},{"file":"web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx","sha256":"1b130cca1a334085bdc43dd27f03e8d0005b77d3bbdb5e0a1117cf8cb59267b8"}]
   ],
   "reviews": [
     {
@@ -21,7 +21,7 @@
     {
       "file": "web/app/src/features/frontstage/lib/native-adapter/native-trusted-block-react-adapter.tsx",
       "rule": "react-doctor/no-react19-deprecated-apis",
-      "sourceSha256": "32627cff3a7505a895696556a6979a49670fb187062645ba090d88353216fa88",
+      "sourceSha256": "1b130cca1a334085bdc43dd27f03e8d0005b77d3bbdb5e0a1117cf8cb59267b8",
       "reason": "The installed rule labels this a migration hint. The API remains supported; ref/context ABI is intentional. Native portal host deliberately separates surface mount/disposal from lifecycle.update and advanceLayoutEpoch. renderInput updates a retained contribution; layout epochs advance the existing runtime. useContext is supported in React 19. Async antd-style loading errors are resource completion failures and must be stored after the promise settles. Reassessed 2026-11-03: Every native surface now mounts AntdStyleSurfaceProvider, including transitive fetched dependencies. Retained surface/portal lifecycle and layout-epoch update boundaries remain separate; style isolation tests now cover direct, indirect and fetched module sources.",
       "evidenceSet": 0
     },

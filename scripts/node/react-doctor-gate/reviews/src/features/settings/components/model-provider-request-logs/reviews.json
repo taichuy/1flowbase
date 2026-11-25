@@ -7,7 +7,7 @@
     {
       "file": "web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx",
       "rule": "react-doctor/jsx-no-jsx-as-prop",
-      "sourceSha256": "f1072816b4db223b0da1ff8686e9acb767753ece49e42911c9a52d7af0391cf0",
+      "sourceSha256": "f52654b03c9450a70f01fd8d5740148a295dd0bf2c6554a4adb411583152720a",
       "reason": "web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx:480（react-doctor/jsx-no-jsx-as-prop）：JSX 作为 antd/共享布局的 title/toolbar/emptyText/indicator slot 是该组件的公开 ReactNode 合同。节点被 React 正常按 type/key 对账，创建 element 不等于重挂载或完整子树重算；调用方本次状态改变本来也要更新 slot 内容，不能无依赖地 hoist 活数据。 web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx:493（react-doctor/jsx-no-jsx-as-prop）：JSX 作为 antd/共享布局的 title/toolbar/emptyText/indicator slot 是该组件的公开 ReactNode 合同。节点被 React 正常按 type/key 对账，创建 element 不等于重挂载或完整子树重算；调用方本次状态改变本来也要更新 slot 内容，不能无依赖地 hoist 活数据。 Reassessed 2026-11-03: Request-log delete and clear are separate operations; continuation batch receipts remain retained, and filter/table/confirmation/progress owners remain distinct.",
       "evidenceSet": 0
     },

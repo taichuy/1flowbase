@@ -209,6 +209,7 @@ test('real Git backend-to-docs rename preserves the source owner and foundation 
   const dest = 'docs/archive/protocol.md';
   for (const file of [source, dest]) fs.mkdirSync(path.dirname(path.join(repoRoot, file)), { recursive: true });
   fs.writeFileSync(path.join(repoRoot, source), 'same bytes\n');
+  fs.writeFileSync(path.join(repoRoot, 'api/crates/api/mcp/Cargo.toml'), '[package]\nname = "api-mcp"\n');
   git('add', '.');
   git('commit', '--quiet', '-m', 'baseline');
   const baseRef = git('rev-parse', 'HEAD');
@@ -283,15 +284,65 @@ test('CI planner selects exactly the shards reachable through the real Cargo.loc
   }
 });
 
-test('CI planner checks all shards when the dependency graph or crate owner is unknown', (t) => {
+test('CI planner follows each vendored websocket package version to the apps shard only', () => {
+  for (const vendor of [
+    'tungstenite-0.27.0-openai-memory',
+    'tungstenite-0.29.0-memory',
+    'tokio-tungstenite-0.28.0-openai-memory',
+  ]) {
+    const plan = buildPrVerifyPlan({
+      repoRoot: realRepoRoot,
+      changedFiles: [`api/vendor/${vendor}/src/lib.rs`],
+    });
+    assert.deepEqual(plan.backendScopes, ['repo-backend-static', 'repo-backend-fmt', 'repo-backend-check-apps'], vendor);
+    assert.equal(plan.allFoundations, false);
+  }
+});
+
+test('CI planner fans out name-only edges and narrows versioned and source-qualified edges', (t) => {
+  const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-router-vendor-'));
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  const source = 'registry+https://example.invalid/index';
+  const refs = {
+    'core-libs': 'dual',
+    'runtime-storage': 'dual 1.0.0',
+    apps: `dual 2.0.0 (${source})`,
+  };
+  const entry = (name, version, fields = []) => ['[[package]]',
+    `name = "${name}"`, `version = "${version}"`, ...fields].join('\n');
+  const packages = BACKEND_SHARDS.flatMap(({ key, packages }) => packages.map((name, index) =>
+    entry(name, '0.1.0', index ? [] : [`dependencies = ["${refs[key]}"]`])));
+  packages.push(entry('dual', '1.0.0'), entry('dual', '2.0.0'),
+    entry('dual', '2.0.0', [`source = "${source}"`]));
+  for (const version of ['1.0.0', '2.0.0']) {
+    const vendor = path.join(repoRoot, `api/vendor/dual-${version}`);
+    fs.mkdirSync(vendor, { recursive: true });
+    fs.writeFileSync(path.join(vendor, 'Cargo.toml'), `[package]\nname = "dual"\nversion = "${version}"\n`);
+  }
+  fs.writeFileSync(path.join(repoRoot, 'api/Cargo.lock'), packages.join('\n\n'));
+  for (const [version, expected] of [
+    ['1.0.0', ['repo-backend-check-core-libs', 'repo-backend-check-runtime-storage']],
+    ['2.0.0', ['repo-backend-check-core-libs']],
+  ]) {
+    const plan = buildPrVerifyPlan({ repoRoot, changedFiles: [`api/vendor/dual-${version}/src/lib.rs`] });
+    assert.deepEqual(plan.backendScopes.filter((scope) => scope.startsWith('repo-backend-check-')), expected);
+  }
+});
+
+test('CI planner checks all shards when a known crate has no lockfile graph', (t) => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-router-no-lock-'));
   t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
-  for (const [root, file] of [
-    [repoRoot, 'api/apps/api-server/src/main.rs'],
-    [realRepoRoot, 'api/crates/unknown-crate/src/lib.rs'],
-  ]) {
-    assert.deepEqual(buildPrVerifyPlan({ repoRoot: root, changedFiles: [file] }).backendScopes,
-      ['repo-backend-static', 'repo-backend-fmt', ...BACKEND_SHARDS.map(({ key }) => `repo-backend-check-${key}`)]);
+  const owner = path.join(repoRoot, 'api/apps/api-server');
+  fs.mkdirSync(owner, { recursive: true });
+  fs.writeFileSync(path.join(owner, 'Cargo.toml'), '[package]\nname = "api-server"\n');
+  assert.deepEqual(buildPrVerifyPlan({ repoRoot, changedFiles: ['api/apps/api-server/src/main.rs'] }).backendScopes,
+    ['repo-backend-static', 'repo-backend-fmt', ...BACKEND_SHARDS.map(({ key }) => `repo-backend-check-${key}`)]);
+});
+
+test('CI planner treats unowned api paths exactly like unowned root paths', () => {
+  const all = buildPrVerifyPlan({ changedFiles: ['unknown.conf'] });
+  for (const file of ['api/unknown-file.txt', 'api/crates/unknown-crate/src/lib.rs']) {
+    assert.deepEqual(buildPrVerifyPlan({ repoRoot: realRepoRoot, changedFiles: [file] }), all);
   }
 });
 

@@ -1,9 +1,9 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/build/_tests/scenario-chunk-planner.test.ts","sha256":"33d4c0230261bb35d8fc624812d44d971b050df5b1e52a21b23d7eaf27ab0963"},{"file":"web/app/build/native-ant-design-icons-modules.ts","sha256":"a144c1db4437c111cc93f24cce356fbe9538bfa6a8330c547c4400265e9c985c"},{"file":"web/app/build/scenario-chunk-planner.ts","sha256":"6f98ecf7fcb1fcea6275e6ced321f2ba9c484b4a7c0b7526670a0b8a74c2eaa5"},{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-runtime-factory.test.tsx","sha256":"9af4d6d58059f5c566bfbc5fcead4f20bdce67bb641a66cbcaedcbcaf6c86518"},{"file":"web/app/src/features/frontstage/lib/native-modules/_tests/ant-design-icons-modules.test.ts","sha256":"3b391ba4de5342f8390b3fa9f108b53a10abc0c410592f97befc5d894a063898"},{"file":"web/app/vite.config.ts","sha256":"b8465d554205a27870b200897fdf455eb99dca0767ed1e04f49b8047f8507997"}],
-    [{"file":"web/app/build/native-module-declarations.ts","sha256":"43b529ae63776a5bb521961f751291c7f4f830d971c8979d29e8339ad86acae2"},{"file":"web/app/src/features/frontstage/lib/native-modules/_tests/declarations.test.ts","sha256":"6a0644159df5a1dd9cce1dd279878f40e0d9bf7e37c221ab549a495f24422f63"},{"file":"web/app/vite.config.ts","sha256":"b8465d554205a27870b200897fdf455eb99dca0767ed1e04f49b8047f8507997"}],
-    [{"file":"web/app/build/_tests/page-tree-icon-assets.test.ts","sha256":"2d47f4776f56076b659cd4df5742db42448ea5abecceeda6e5977e6cf6f385f2"},{"file":"web/app/build/page-tree-icon-assets.ts","sha256":"d4a409bccd00c243ea4b61b4bee0ec0a84bfb3e921c6472ebf1542e5a4b66413"},{"file":"web/app/vite.config.ts","sha256":"b8465d554205a27870b200897fdf455eb99dca0767ed1e04f49b8047f8507997"}],
+    [{"file":"web/app/build/_tests/scenario-chunk-planner.test.ts","sha256":"a5002e54e3aa2fbaa830efa49b9d78d56cbc8457b68c54cd0bccd0e6c40e2f6b"},{"file":"web/app/build/native-ant-design-icons-modules.ts","sha256":"6b2d48e439da5b0f24f76959dbfc7d861185d71808951cb05cb43ca2ceeaca00"},{"file":"web/app/build/scenario-chunk-planner.ts","sha256":"61cd8ab6223f1f3b78937632cfa4095e3da0832d46464dc2ad7aa0ac1ccfd4e7"},{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-runtime-factory.test.tsx","sha256":"9af4d6d58059f5c566bfbc5fcead4f20bdce67bb641a66cbcaedcbcaf6c86518"},{"file":"web/app/src/features/frontstage/lib/native-modules/_tests/ant-design-icons-modules.test.ts","sha256":"6ad72cc8c4d1dad60d58029370d0e93ed2ae0887b00d91ffe282bddbbfc32715"},{"file":"web/app/vite.config.ts","sha256":"07e6ec07dbded6a8304c5f3f5064c0859a421380c043a6390873fd7cbd7ca2b6"}],
+    [{"file":"web/app/build/native-module-declarations.ts","sha256":"9459235002fe9b6ef113c82bc80c797451de1f90dd8ef44e7b37153bbfd7bfe9"},{"file":"web/app/src/features/frontstage/lib/native-modules/_tests/declarations.test.ts","sha256":"8c6a42b77fe3871d6626a4ffcb907cdf75bf03698d8f56eccdb0c092d077abe4"},{"file":"web/app/vite.config.ts","sha256":"07e6ec07dbded6a8304c5f3f5064c0859a421380c043a6390873fd7cbd7ca2b6"}],
+    [{"file":"web/app/build/_tests/page-tree-icon-assets.test.ts","sha256":"2d47f4776f56076b659cd4df5742db42448ea5abecceeda6e5977e6cf6f385f2"},{"file":"web/app/build/page-tree-icon-assets.ts","sha256":"f4de156064378d2c2b1ca9826e9cfaa9c87de11c2d9cf7d5569b0d3e4065183e"},{"file":"web/app/vite.config.ts","sha256":"07e6ec07dbded6a8304c5f3f5064c0859a421380c043a6390873fd7cbd7ca2b6"}],
     [{"file":"web/app/build/native-module-declarations/_tests/index-plugin.test.ts","sha256":"5def2cd467b19de474e0acb2d1ded4664651e957036e921f459c3923c3dbe554"}],
     [{"file":"web/app/build/_tests/native-hook-filters.test.ts","sha256":"e923e2353cd5475faa0998d17d882956339c3c363f90e7c5e4714d74562f7ea7"}],
     [{"file":"web/app/build/_tests/native-antd-product-imports.test.ts","sha256":"4c008847a515ef2f1fd2ba8e6c8504a4b6b63c202386c68258c5e56476d6377a"}],
@@ -19,16 +19,16 @@
     {
       "file": "web/app/build/native-dayjs-modules.ts",
       "rule": "react-doctor/js-tosorted-immutable",
-      "sourceSha256": "e50d5ef0a167602856624e13a7847ebc6aa9e0932fbe40e2846e348952e088b4",
+      "sourceSha256": "8ff4fc5249d82b5305559c172bc83943cabffc64de9fad680332ec470e9ecacf",
       "reason": "The sort receiver is a new array made from spread/Map values/Set values, not an aliased input prop or shared state array. Sorting this owned temporary already preserves source immutability; the exact allocation/sort chain is captured below. P21d reassessed 2026-11-17: The only new witness delta is Vite test.css.include adding block-design and node-action-button inline CSS. Build plugins themselves and their deterministic inventory/pack tests are unchanged: package file guards, Node createRequire of validated installed paths, copied-array sorting and ordered filter/project inventories remain. No module resolution, plugin installation or build algorithm is changed by this test CSS inclusion.",
       "evidence": [
         {
           "file": "web/app/build/native-dayjs-modules.ts",
-          "sha256": "e50d5ef0a167602856624e13a7847ebc6aa9e0932fbe40e2846e348952e088b4"
+          "sha256": "8ff4fc5249d82b5305559c172bc83943cabffc64de9fad680332ec470e9ecacf"
         },
         {
           "file": "web/app/build/native-demand-resolved-modules.ts",
-          "sha256": "7142501f8374d7cddb99a526492febb2e8833e6ca5c60abbc22bfe7414605a4a"
+          "sha256": "81f01d67625ed7a59ba586a4ebc6b17551197a2129743a29e450d1846f4c5f00"
         },
         {
           "file": "web/app/src/features/frontstage/lib/native-modules/_tests/countup.test.tsx",
@@ -40,27 +40,27 @@
         },
         {
           "file": "web/app/src/features/frontstage/lib/native-modules/_tests/declarations.test.ts",
-          "sha256": "6a0644159df5a1dd9cce1dd279878f40e0d9bf7e37c221ab549a495f24422f63"
+          "sha256": "8c6a42b77fe3871d6626a4ffcb907cdf75bf03698d8f56eccdb0c092d077abe4"
         },
         {
           "file": "web/app/vite.config.ts",
-          "sha256": "b8465d554205a27870b200897fdf455eb99dca0767ed1e04f49b8047f8507997"
+          "sha256": "07e6ec07dbded6a8304c5f3f5064c0859a421380c043a6390873fd7cbd7ca2b6"
         }
       ]
     },
     {
       "file": "web/app/build/native-dnd-kit-modules.ts",
       "rule": "react-doctor/js-tosorted-immutable",
-      "sourceSha256": "abcc69c184a72434dfb0978976375c98d18f502bc32761e91c28f7590e6f8b87",
+      "sourceSha256": "7f88f1ba369a334644b9814b01b332675f69e1267b15df41e4f016e42d466dab",
       "reason": "The sort receiver is a new array made from spread/Map values/Set values, not an aliased input prop or shared state array. Sorting this owned temporary already preserves source immutability; the exact allocation/sort chain is captured below. P21d reassessed 2026-11-17: The only new witness delta is Vite test.css.include adding block-design and node-action-button inline CSS. Build plugins themselves and their deterministic inventory/pack tests are unchanged: package file guards, Node createRequire of validated installed paths, copied-array sorting and ordered filter/project inventories remain. No module resolution, plugin installation or build algorithm is changed by this test CSS inclusion.",
       "evidence": [
         {
           "file": "web/app/build/native-demand-resolved-modules.ts",
-          "sha256": "7142501f8374d7cddb99a526492febb2e8833e6ca5c60abbc22bfe7414605a4a"
+          "sha256": "81f01d67625ed7a59ba586a4ebc6b17551197a2129743a29e450d1846f4c5f00"
         },
         {
           "file": "web/app/build/native-dnd-kit-modules.ts",
-          "sha256": "abcc69c184a72434dfb0978976375c98d18f502bc32761e91c28f7590e6f8b87"
+          "sha256": "7f88f1ba369a334644b9814b01b332675f69e1267b15df41e4f016e42d466dab"
         },
         {
           "file": "web/app/src/features/frontstage/lib/native-modules/_tests/countup.test.tsx",
@@ -68,7 +68,7 @@
         },
         {
           "file": "web/app/src/features/frontstage/lib/native-modules/_tests/declarations.test.ts",
-          "sha256": "6a0644159df5a1dd9cce1dd279878f40e0d9bf7e37c221ab549a495f24422f63"
+          "sha256": "8c6a42b77fe3871d6626a4ffcb907cdf75bf03698d8f56eccdb0c092d077abe4"
         },
         {
           "file": "web/app/src/features/frontstage/lib/native-modules/_tests/dnd-kit-modules.test.ts",
@@ -76,7 +76,7 @@
         },
         {
           "file": "web/app/vite.config.ts",
-          "sha256": "b8465d554205a27870b200897fdf455eb99dca0767ed1e04f49b8047f8507997"
+          "sha256": "07e6ec07dbded6a8304c5f3f5064c0859a421380c043a6390873fd7cbd7ca2b6"
         }
       ]
     },
@@ -99,7 +99,7 @@
     {
       "file": "web/app/build/scenario-chunk-planner.ts",
       "rule": "react-doctor/js-tosorted-immutable",
-      "sourceSha256": "6f98ecf7fcb1fcea6275e6ced321f2ba9c484b4a7c0b7526670a0b8a74c2eaa5",
+      "sourceSha256": "61cd8ab6223f1f3b78937632cfa4095e3da0832d46464dc2ad7aa0ac1ccfd4e7",
       "reason": "The sort receiver is a new array made from spread/Map values/Set values, not an aliased input prop or shared state array. Sorting this owned temporary already preserves source immutability; the exact allocation/sort chain is captured below. P21d reassessed 2026-11-17: The only new witness delta is Vite test.css.include adding block-design and node-action-button inline CSS. Build plugins themselves and their deterministic inventory/pack tests are unchanged: package file guards, Node createRequire of validated installed paths, copied-array sorting and ordered filter/project inventories remain. No module resolution, plugin installation or build algorithm is changed by this test CSS inclusion.",
       "evidence": [
         {
@@ -108,43 +108,43 @@
         },
         {
           "file": "web/app/build/_tests/scenario-chunk-planner.test.ts",
-          "sha256": "33d4c0230261bb35d8fc624812d44d971b050df5b1e52a21b23d7eaf27ab0963"
+          "sha256": "a5002e54e3aa2fbaa830efa49b9d78d56cbc8457b68c54cd0bccd0e6c40e2f6b"
         },
         {
           "file": "web/app/build/native-ant-design-icons-modules.ts",
-          "sha256": "a144c1db4437c111cc93f24cce356fbe9538bfa6a8330c547c4400265e9c985c"
+          "sha256": "6b2d48e439da5b0f24f76959dbfc7d861185d71808951cb05cb43ca2ceeaca00"
         },
         {
           "file": "web/app/build/native-antd-es-modules.ts",
-          "sha256": "8e66843441f86d2154ee8f97b3be1377b614d68ccd4a860ac66bf105f01bb598"
+          "sha256": "3e5b8a05bf15763df52c761d59681bcc3a4b0d11508d2976e6f8fff1076f452f"
         },
         {
           "file": "web/app/build/scenario-chunk-planner.ts",
-          "sha256": "6f98ecf7fcb1fcea6275e6ced321f2ba9c484b4a7c0b7526670a0b8a74c2eaa5"
+          "sha256": "61cd8ab6223f1f3b78937632cfa4095e3da0832d46464dc2ad7aa0ac1ccfd4e7"
         },
         {
           "file": "web/app/src/features/agent-flow/_tests/scenario-demand-islands.test.ts",
-          "sha256": "67bbbae8da2f7795298b32ac670079a2cb02389918ab28fd8763625fafece471"
+          "sha256": "852e6d36bc2d0a79d4af2901743dee664712280de41200f61c289d8e7c0b1fb2"
         },
         {
           "file": "web/app/vite.config.ts",
-          "sha256": "b8465d554205a27870b200897fdf455eb99dca0767ed1e04f49b8047f8507997"
+          "sha256": "07e6ec07dbded6a8304c5f3f5064c0859a421380c043a6390873fd7cbd7ca2b6"
         }
       ]
     },
     {
       "file": "web/app/build/native-module-declarations.ts",
       "rule": "react-doctor/js-set-map-lookups",
-      "sourceSha256": "bb4a6eeb894ae4d5d7787ab3de1937191425390782bc18621981efde91ba420e",
+      "sourceSha256": "9459235002fe9b6ef113c82bc80c797451de1f90dd8ef44e7b37153bbfd7bfe9",
       "reason": "The includes receiver is a normalized path string, not an array. It detects the /node_modules/ path segment in compiler-resolved declaration filenames. A Set membership test would not test substring containment.",
       "evidence": [
         {
           "file": "web/app/src/features/frontstage/lib/native-modules/_tests/declarations.test.ts",
-          "sha256": "6a0644159df5a1dd9cce1dd279878f40e0d9bf7e37c221ab549a495f24422f63"
+          "sha256": "8c6a42b77fe3871d6626a4ffcb907cdf75bf03698d8f56eccdb0c092d077abe4"
         },
         {
           "file": "web/app/vite.config.ts",
-          "sha256": "26f708ce3f75c5d2374fe696652c65171831000ac62f93f2f3f8e4a85f0a75ab"
+          "sha256": "07e6ec07dbded6a8304c5f3f5064c0859a421380c043a6390873fd7cbd7ca2b6"
         }
       ]
     },

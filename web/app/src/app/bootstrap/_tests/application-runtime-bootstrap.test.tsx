@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 import type { PropsWithChildren } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -110,16 +110,19 @@ function Consumer() {
   return <div>{pages.data?.[0]?.title ?? 'Waiting for pages'}</div>;
 }
 
-afterEach(resetAuthStore);
+afterEach(() => {
+  cleanup();
+  resetAuthStore();
+});
 
 test('anonymous startup never starts private navigation queries', async () => {
   resetAuthStore();
   useAuthStore.getState().setAnonymous();
+  render(<ApplicationRuntimeBootstrap />);
   await act(async () => {
-    render(<ApplicationRuntimeBootstrap />);
-    await import('../../AnonymousAppRuntime');
+    await vi.dynamicImportSettled();
   });
-  expect(await screen.findByText('Public sign in')).toBeInTheDocument();
+  expect(screen.getByText('Public sign in')).toBeInTheDocument();
   expect(fixture.pages).not.toHaveBeenCalled();
   expect(fixture.navigation).not.toHaveBeenCalled();
   expect(fixture.clients).toHaveLength(0);
@@ -142,8 +145,8 @@ test('prefetches while heavy runtime is unresolved, hands the same client to con
       current_workspace_id: 'workspace'
     }
   });
+  render(<ApplicationRuntimeBootstrap />);
   await act(async () => {
-    render(<ApplicationRuntimeBootstrap />);
     await import('../AuthenticatedStartup');
   });
   await waitFor(() => expect(fixture.pages).toHaveBeenCalledTimes(1));
@@ -159,7 +162,10 @@ test('prefetches while heavy runtime is unresolved, hands the same client to con
   expect(fixture.pages).toHaveBeenCalledTimes(1);
   expect(fixture.navigation).toHaveBeenCalledTimes(1);
   await act(async () => useAuthStore.getState().setAnonymous());
-  expect(await screen.findByText('Public sign in')).toBeInTheDocument();
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+  expect(screen.getByText('Public sign in')).toBeInTheDocument();
   expect(client.getQueryCache().getAll()).toHaveLength(0);
 });
 

@@ -703,6 +703,7 @@ function resolveRuntimeConfig(config, availableParallelism, ci = false) {
     throw new Error("scripts.testConcurrency must not exceed availableParallelism");
   }
 
+  const boundedTurboConcurrency = Math.min(turboConcurrency, cpuBudget);
   return {
     scripts: { testConcurrency: Math.min(testConcurrency, cpuBudget) },
     backend: {
@@ -711,8 +712,8 @@ function resolveRuntimeConfig(config, availableParallelism, ci = false) {
       incremental,
     },
     frontend: {
-      turboConcurrency: Math.min(turboConcurrency, cpuBudget),
-      vitestMaxWorkers: Math.min(vitestMaxWorkers, cpuBudget),
+      turboConcurrency: boundedTurboConcurrency,
+      vitestMaxWorkers: Math.min(vitestMaxWorkers, Math.floor(cpuBudget / boundedTurboConcurrency)),
     },
     locks: {
       waitTimeoutMinutes,
@@ -740,7 +741,8 @@ function loadVerifyRuntimeConfig({
           cargoTestThreads: availableParallelism,
         },
         frontend: {
-          turboConcurrency: availableParallelism,
+          // Keep the CI app and coverage suites fully parallel within one Turbo slot.
+          turboConcurrency: 1,
           vitestMaxWorkers: availableParallelism,
         },
       },

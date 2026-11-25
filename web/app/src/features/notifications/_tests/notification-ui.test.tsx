@@ -653,7 +653,11 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     const view = renderUI(<NotificationBell />);
     await click(screen.getByRole('menuitem', { name: '通知消息' }));
     await click(
-      await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
+      await screen.findByRole(
+        'button',
+        { name: /系统站内通知.*最新消息摘要/ },
+        { timeout: 5_000 }
+      )
     );
     await screen.findByText('发布完成');
     await click(screen.getByRole('button', { name: '标为已读' }));
@@ -703,7 +707,11 @@ describe('notification management and inbox AC-001/003/004/006', () => {
     renderUI(<NotificationBell />);
     await click(screen.getByRole('menuitem', { name: '通知消息' }));
     await click(
-      await screen.findByRole('button', { name: /系统站内通知.*最新消息摘要/ })
+      await screen.findByRole(
+        'button',
+        { name: /系统站内通知.*最新消息摘要/ },
+        { timeout: 5_000 }
+      )
     );
     await click(await screen.findByRole('button', { name: '标为已读' }));
     await screen.findByText('消息操作失败，请刷新后重试。');

@@ -49,9 +49,9 @@
     {
       "file": "web/app/src/features/settings/pages/notifications/communications/communication-presentation.tsx",
       "rule": "react-doctor/query-mutation-missing-invalidation",
-      "sourceSha256": "bcf94ce6082039a20986f3a3eb01485d341a077c437de54ecfb3676ea16603f6",
+      "sourceSha256": "2f134cb713ca74b64436f88d17fa02ef4be47d71aafd17ad05552ea46612190b",
       "reason": "CommunicationFile uses useMutation as an explicitly clicked access-link request: getCommunicationFile is a GET returning a temporary download URL, not a write to a cached entity. The result is consumed from link.data and errors are rendered locally. Invalidating message/conversation lists would not update a modified record because this request modifies none.",
-      "evidence": [{"file":"web/app/src/features/notifications/api/communications.ts","sha256":"c4af9b3d3c0cad1d580b4625258e69a477bd814844cd4a661f2fb1c5292b6db0"},{"file":"web/packages/api-client/src/console/notifications/communications.ts","sha256":"c0479944d6ace16157ec21029587825fef5f10bbd8b5eadedfae00b6f3e9dbcf"}]
+      "evidence": [{"file":"web/app/src/features/notifications/api/communications.ts","sha256":"f8f60594fd7f4d2012f029f4819993a70b1e1b586db4f45a179cf354778ab893"},{"file":"web/packages/api-client/src/console/notifications/communications.ts","sha256":"6ed48634f6e29f8b45e0d135ba6894dcfca75abc5ebf2953517d61525d4dd0f4"}]
     }
   ]
 }

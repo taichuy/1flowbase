@@ -7,16 +7,16 @@
     {
       "file": "web/app/src/features/frontstage/hooks/use-frontstage-block-catalog.ts",
       "rule": "react-doctor/js-tosorted-immutable",
-      "sourceSha256": "882856a3bcfa54c521f7c7c0584d2ed056628a5bc841d29528600157ff4f955d",
+      "sourceSha256": "c5bdb0312fcd12e8e229a7be939ce613d82641869287ffc33b3d667edf9c174a",
       "reason": "web/app/src/features/frontstage/hooks/use-frontstage-block-catalog.ts:42（react-doctor/js-tosorted-immutable）：[...array].sort() 对原始输入先复制，保证不原地改变调用方数据/权限集合/排序编辑计划；toSorted() 也必须分配一个结果数组，并不消除排序的复制成本。当前写法已满足不变性，改 ES2023 方法不是修复源码中可见的重复副作用。 P21b reassessed 2026-11-17: Catalog hook adds optional registrationTarget to both query key and backend fetch. Permission fingerprint still sorts a copied permission array; actor/workspace/permission scope and anonymous-query cleanup are unchanged. Creation persistence forwards selected catalog/data props through the same awaited transaction. Tree mutations still reach query invalidation helpers; isolated/native preparation owners retain abort/generation fencing, source-change subscriptions and external visibility scheduler synchronization. Registry additions do not turn scheduler callbacks into parent React-state lifting.",
       "evidence": [
         {
           "file": "web/app/src/features/frontstage/_tests/frontstage-page/BlockArrange.test.tsx",
-          "sha256": "a48d30faf2ab753b5470b46747a8fca3c52f81c718d5bf7294319c6ccedabb63"
+          "sha256": "660fea1479b54d2526d04757c5beec170ca9584a0daa0f9a75a3208b68c921d3"
         },
         {
           "file": "web/app/src/features/frontstage/_tests/frontstage-page/TrialPanelLink.test.tsx",
-          "sha256": "3533ed7a99fc1739aa38bb0abf8944eaa95e961716e32988b06fce4ec543a04a"
+          "sha256": "93e3ecac61fd11802614fcd033f7358c83906e68cacb02e339ec0a3c78c9ca5e"
         },
         {
           "file": "web/app/src/features/frontstage/_tests/frontstage-page/page-tree-crud.test.tsx",
@@ -24,23 +24,23 @@
         },
         {
           "file": "web/app/src/features/frontstage/_tests/frontstage-page/page-tree-move.test.tsx",
-          "sha256": "4f36ef1f23afaa83b9a27790222a397cf3e7ce377e140507c43da9b316150da0"
+          "sha256": "012d446a493ca1719f989ea8dd3585a7a44840e1519e111c7f6cf9c18d559663"
         },
         {
           "file": "web/app/src/features/frontstage/_tests/frontstage-page/runtime-canvas-state.test.tsx",
-          "sha256": "1cc3d33ed600f09d11f0a0ac2b78f0d9572265922d81ad775b7c8bf5d053968b"
+          "sha256": "3d035d2c484f8b8dff9b935052901f985d7b3d166ec41c3b9017265101e9bfac"
         },
         {
           "file": "web/app/src/features/frontstage/_tests/use-frontstage-block-catalog.test.tsx",
-          "sha256": "0ef19ebc2571f52d6f874e01405301f7150aefb171d8bfe5146dce5b461922f3"
+          "sha256": "c2bb5403a5753f9847e758a1ec79feb5e9a4486879c52798af808f8c9acb5ae4"
         },
         {
           "file": "web/app/src/features/frontstage/hooks/use-frontstage-block-catalog.ts",
-          "sha256": "882856a3bcfa54c521f7c7c0584d2ed056628a5bc841d29528600157ff4f955d"
+          "sha256": "c5bdb0312fcd12e8e229a7be939ce613d82641869287ffc33b3d667edf9c174a"
         },
         {
           "file": "web/app/src/features/frontstage/pages/FrontStagePage.tsx",
-          "sha256": "cca190944629006d7efee99ac19ff2ee9d0629a0faa870813685f862de059bac"
+          "sha256": "7b5711e6aa885a578f8189aae9ec9e7a139815964e23a3c9eb45c90f631ab79d"
         },
         {
           "file": "web/app/src/features/frontstage/pages/frontstage-page/controllers/use-frontstage-design-persistence.ts",
@@ -48,7 +48,7 @@
         },
         {
           "file": "web/app/src/features/settings/components/ui-management/UiCodeTemplateStudio.tsx",
-          "sha256": "d309c60af028b647d7f678a26e1ac56582f79aba1960761e18565e1d2efb9c38"
+          "sha256": "51512dfda4ea2392e9c87db7801ed196b460c37465e3b88a3473534982b58440"
         }
       ]
     },
@@ -199,7 +199,7 @@
     {
       "file": "web/app/src/features/frontstage/hooks/use-frontstage-page-canvas-native-preparations.ts",
       "rule": "react-doctor/js-tosorted-immutable",
-      "sourceSha256": "2b8a49ac70ba001f7a222d3fbf2f3c1572a528d79ebbaebe85d9f3d9c30f5a3f",
+      "sourceSha256": "bcfed9a9cbd6f473dd6a8c3822af7a20777882b885998a7e92402f0f806e8fb9",
       "reason": "The sort receiver is a new array made from spread/Map values/Set values, not an aliased input prop or shared state array. Sorting this owned temporary already preserves source immutability; the exact allocation/sort chain is captured below. Reassessed 2026-11-03: Fetched code_modules now create an owner-scoped contribution loader; policy digest includes module policy and definitions, and cleanup disposes the loader. Scheduler suspension/validation still follows external active/validation inputs and generation fencing.",
       "evidenceSet": 0
     },
@@ -236,7 +236,7 @@
         },
         {
           "file": "web/app/src/features/frontstage/api/page-tree.ts",
-          "sha256": "c618f9198a09ab695fe014f66e9b8faa7c3553edf8778f67a22a9be20501a52c"
+          "sha256": "8870dc1afdf78c69da987bdf6567454a1b90d0ceb474bc4da5acb1e73c0801cb"
         }
       ]
     }

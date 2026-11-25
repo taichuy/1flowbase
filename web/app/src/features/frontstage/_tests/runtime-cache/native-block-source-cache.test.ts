@@ -1,4 +1,5 @@
 import {
+  IDBCursor,
   IDBDatabase,
   IDBFactory,
   IDBIndex,
@@ -168,56 +169,160 @@ describe('FrontstageNativeBlockSourceCache', () => {
     expect(getAll).not.toHaveBeenCalled();
   });
 
-  test('put checks the cap without reading records and eviction and invalidation never call getAll', async () => {
-    let now = 1;
+  test('upgrades v1 in place and indexes the existing records before eviction', async () => {
+    const indexedDbFactory = new IDBFactory();
+    const databaseName = 'upgrade';
+    const identity = { actorId: 'a', workspaceId: 'w', requestId: 'old' };
+    const source = createValidSource('v1');
+    const v1 = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDbFactory.open(databaseName, 1);
+      request.onupgradeneeded = () => {
+        const store = request.result.createObjectStore('sources', {
+          keyPath: 'key'
+        });
+        store.createIndex('by_actor', 'actorId');
+        store.put({
+          ...identity,
+          key: 'a/w/old',
+          schemaVersion: 1,
+          byteSize: 500,
+          updatedAt: 1,
+          source
+        });
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    v1.close();
+
     const options = {
-      indexedDbFactory: new IDBFactory(),
-      maxEntries: 4,
-      now: () => now
+      indexedDbFactory,
+      databaseName,
+      maxEntries: 1,
+      now: () => 2
     };
     const cache = new FrontstageNativeBlockSourceCache(options);
-    const getAll = vi.spyOn(IDBObjectStore.prototype, 'getAll');
-    const count = vi.spyOn(IDBObjectStore.prototype, 'count');
-    const cursor = vi.spyOn(IDBObjectStore.prototype, 'openCursor');
-    const source = createValidSource('cap');
-    const keep = { actorId: 'a', workspaceId: 'keep', requestId: '1' };
-    const prune = { ...keep, workspaceId: 'old' };
-    const evicted = { ...prune, actorId: 'y' };
-    const logout = { ...prune, actorId: 'z' };
-    const other = { ...keep, requestId: '1', actorId: 'b' };
+    expect(await cache.get(identity)).toEqual(source);
+    const v2 = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDbFactory.open(databaseName);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    expect(v2.version).toBe(2);
+    const store = v2.transaction('sources').objectStore('sources');
+    expect(store.index('by_actor').keyPath).toBe('actorKey');
+    expect(store.index('by_updated_at').keyPath).toBe('updatedAtMs');
+    v2.close();
 
-    // Insert the tied records in reverse key order. The newer record has the
-    // lowest key of the original records, so key order alone cannot evict it.
-    expect(await cache.put(logout, source)).toBe(true);
-    expect(await cache.put(evicted, source)).toBe(true);
-    now = 2;
-    expect(await cache.put(prune, source)).toBe(true);
-    expect(await cache.put(other, source)).toBe(true);
-    expect(count).toHaveBeenCalledTimes(4);
-    expect(cursor).not.toHaveBeenCalled();
-    expect(getAll).not.toHaveBeenCalled();
-
-    // Even if the clock goes backwards, keep the just-written record and
-    // evict exactly one older resident, breaking timestamp ties by primary key.
-    now = 0;
-    expect(await cache.put(keep, source)).toBe(true);
-    expect(count).toHaveBeenCalledTimes(5);
-    expect(cursor).toHaveBeenCalledTimes(1);
+    const latest = { ...identity, requestId: 'new' };
+    await cache.put(latest, source);
     const reloaded = new FrontstageNativeBlockSourceCache(options);
-    expect(await reloaded.get(evicted)).toBeUndefined();
-    for (const survivor of [keep, prune, other, logout]) {
-      expect(await reloaded.get(survivor)).toEqual(source);
-    }
+    expect(await reloaded.get(identity)).toBeUndefined();
+    expect(await reloaded.get(latest)).toEqual(source);
+  });
 
-    expect(await reloaded.deleteActor(logout.actorId)).toEqual({ deleted: 1 });
-    expect(await reloaded.pruneWorkspace(keep)).toEqual({ deleted: 1 });
-    const afterInvalidation = new FrontstageNativeBlockSourceCache(options);
-    expect(await afterInvalidation.get(keep)).toEqual(source);
-    expect(await afterInvalidation.get(other)).toEqual(source);
-    for (const removed of [evicted, logout, prune]) {
-      expect(await afterInvalidation.get(removed)).toBeUndefined();
-    }
+  test('uses only the oldest index entries on overflow, with primary-key order for ties', async () => {
+    let now = 1;
+    const options = { indexedDbFactory: new IDBFactory(), now: () => now };
+    const source = createValidSource('cap');
+    const record = (actorId: string) => ({
+      actorId,
+      workspaceId: 'w',
+      requestId: '1'
+    });
+    const seed = new FrontstageNativeBlockSourceCache(options);
+    for (const actor of ['z', 'y', 'x']) await seed.put(record(actor), source);
+    now = 2;
+    await seed.put(record('a'), source);
+
+    const getAll = vi.spyOn(IDBObjectStore.prototype, 'getAll');
+    const storeCursor = vi.spyOn(IDBObjectStore.prototype, 'openCursor');
+    const indexCursor = vi.spyOn(IDBIndex.prototype, 'openCursor');
+    const deleteEntry = vi.spyOn(IDBCursor.prototype, 'delete');
+    const advance = vi.spyOn(IDBCursor.prototype, 'continue');
+    const capped = new FrontstageNativeBlockSourceCache({
+      ...options,
+      maxEntries: 2
+    });
+    now = 3;
+    await capped.put(record('b'), source);
+    expect(indexCursor).toHaveBeenCalledExactlyOnceWith(null, 'next');
+    expect(indexCursor.mock.contexts[0]?.name).toBe('by_updated_at');
+    expect(deleteEntry).toHaveBeenCalledTimes(3);
+    expect(advance).toHaveBeenCalledTimes(2);
+    expect(storeCursor).not.toHaveBeenCalled();
     expect(getAll).not.toHaveBeenCalled();
+    const reloaded = new FrontstageNativeBlockSourceCache(options);
+    for (const actor of ['x', 'y', 'z']) {
+      expect(await reloaded.get(record(actor))).toBeUndefined();
+    }
+    for (const actor of ['a', 'b'])
+      expect(await reloaded.get(record(actor))).toEqual(source);
+  });
+
+  test('counts once and maintains the cached count across concurrent puts, updates, deletes and clear', async () => {
+    const options = { indexedDbFactory: new IDBFactory(), maxEntries: 2 };
+    const cache = new FrontstageNativeBlockSourceCache(options);
+    const source = createValidSource('steady-state');
+    const first = { actorId: 'a', workspaceId: 'w', requestId: '1' };
+    const second = { ...first, requestId: '2' };
+    const third = { ...first, workspaceId: 'old' };
+    const count = vi.spyOn(IDBObjectStore.prototype, 'count');
+    const getKey = vi.spyOn(IDBObjectStore.prototype, 'getKey');
+    const cursor = vi.spyOn(IDBIndex.prototype, 'openCursor');
+    await Promise.all([cache.put(first, source), cache.put(second, source)]);
+    await cache.put(first, source);
+    expect(getKey).toHaveBeenCalledTimes(3);
+    expect(count).toHaveBeenCalledTimes(1);
+    expect(cursor).not.toHaveBeenCalled();
+
+    await cache.delete(first);
+    await cache.delete(first);
+    await cache.put(third, source);
+    expect(cursor).not.toHaveBeenCalled();
+    expect(await cache.pruneWorkspace(second)).toEqual({ deleted: 1 });
+    cursor.mockClear();
+    await cache.put(first, source);
+    expect(cursor).not.toHaveBeenCalled();
+    expect(await cache.deleteActor('a')).toEqual({ deleted: 2 });
+    await Promise.all([cache.put(first, source), cache.put(second, source)]);
+    expect(cursor).not.toHaveBeenCalled();
+    const epoch = cache.captureWriteEpoch('a');
+    await cache.clear();
+    expect(await cache.get(first)).toBeUndefined();
+    expect(await cache.put(first, source, epoch)).toBe(false);
+    await cache.put(third, source);
+    expect(cursor).not.toHaveBeenCalled();
+    expect(count).toHaveBeenCalledTimes(1);
+    const reloaded = new FrontstageNativeBlockSourceCache(options);
+    expect(await reloaded.get(second)).toBeUndefined();
+    expect(await reloaded.get(third)).toEqual(source);
+  });
+
+  test('resynchronizes the cached count if the eviction index runs out of records', async () => {
+    const indexedDbFactory = new IDBFactory();
+    const databaseName = 'stale-index';
+    const options = { indexedDbFactory, databaseName, maxEntries: 2 };
+    const cache = new FrontstageNativeBlockSourceCache(options);
+    const source = createValidSource('stale-index');
+    const first = { actorId: 'a', workspaceId: 'w', requestId: '1' };
+    await cache.put(first, source);
+    await cache.put({ ...first, requestId: '2' }, source);
+    await new FrontstageNativeBlockSourceCache(options).clear();
+
+    const count = vi.spyOn(IDBObjectStore.prototype, 'count');
+    const openCursor = IDBIndex.prototype.openCursor;
+    const cursor = vi
+      .spyOn(IDBIndex.prototype, 'openCursor')
+      .mockImplementationOnce(function (this: IDBIndex) {
+        return openCursor.call(this, IDBKeyRange.only(-1), 'next');
+      });
+    await cache.put({ ...first, requestId: '3' }, source);
+    expect(count).toHaveBeenCalledTimes(1);
+    cursor.mockClear();
+    await cache.put(first, source);
+    expect(cursor).not.toHaveBeenCalled();
+    expect(count).toHaveBeenCalledTimes(1);
   });
 
   test('an aborted IDB transaction returns the L1 count and still invalidates the write epoch synchronously', async () => {

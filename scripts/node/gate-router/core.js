@@ -364,30 +364,35 @@ function parseCargoLock(lock) {
     return { name, version, source, references, dependents: new Set() };
   });
 
-  const locals = new Map();
-  const byReference = new Map();
+  const byIdentity = new Map();
+  const keyFor = (name, version) => version ? `${name}@${version}` : name;
   for (const pkg of packages) {
-    const versioned = `${pkg.name} ${pkg.version}`;
-    const keys = [pkg.name, versioned];
-    if (pkg.source) {
-      const source = pkg.source.startsWith('git+') ? pkg.source.split('#', 1)[0] : pkg.source;
-      keys.push(`${versioned} (${source})`);
-    } else {
-      locals.set(pkg.name, locals.has(pkg.name) ? null : pkg);
+    for (const key of [pkg.name, keyFor(pkg.name, pkg.version)]) {
+      const matches = byIdentity.get(key) ?? [];
+      matches.push(pkg);
+      byIdentity.set(key, matches);
     }
-    for (const key of keys) byReference.set(key, byReference.has(key) ? null : pkg);
   }
-  if ([...CHECK_SCOPE_BY_PACKAGE.keys()].some((name) => !locals.get(name))) {
+  function resolveLocal({ name, version }) {
+    const matches = (byIdentity.get(keyFor(name, version)) ?? []).filter((pkg) => !pkg.source);
+    return matches.length === 1 ? matches[0] : null;
+  }
+  if ([...CHECK_SCOPE_BY_PACKAGE.keys()].some((name) => !resolveLocal({ name }))) {
     throw new Error('Lockfile is missing an unambiguous identity for a check-shard package');
   }
   for (const pkg of packages) {
     for (const reference of pkg.references) {
-      const dependency = byReference.get(reference);
-      if (!dependency) throw new Error(`Unresolved lock dependency ${reference}`);
-      dependency.dependents.add(pkg);
+      const parts = /^(\S+)(?: (\S+)(?: \((.+)\))?)?$/u.exec(reference);
+      if (!parts) throw new Error(`Invalid lock dependency ${reference}`);
+      const [, name, version, source] = parts;
+      const matches = (byIdentity.get(keyFor(name, version)) ?? []).filter((candidate) =>
+        !source || (candidate.source?.startsWith('git+')
+          ? candidate.source.split('#', 1)[0] : candidate.source) === source);
+      if (!matches.length) throw new Error(`Unresolved lock dependency ${reference}`);
+      for (const dependency of matches) dependency.dependents.add(pkg);
     }
   }
-  return locals;
+  return { resolveLocal };
 }
 
 function readDependencyGraph(repoRoot) {
@@ -416,20 +421,21 @@ function readManifestPackage(repoRoot, file) {
       continue;
     }
     const packageTable = manifest.split(/^\[package\][ \t]*\r?$/mu)[1]?.split(/^\[/mu, 1)[0];
-    return /^[ \t]*name\s*=\s*(?:"([\w-]+)"|'([\w-]+)')/mu.exec(packageTable ?? '')?.slice(1).find(Boolean) ?? null;
+    const readString = (key) => new RegExp(`^[ \t]*${key}[ \t]*=[ \t]*(?:"([^"\n]+)"|'([^'\n]+)')`, 'mu')
+      .exec(packageTable ?? '')?.slice(1).find(Boolean);
+    const name = readString('name');
+    return name ? { name, version: readString('version') } : null;
   }
   return null;
 }
 
 function getImpactedCheckScopes(repoRoot, backendFiles) {
+  const manifests = backendFiles.map((file) => readManifestPackage(repoRoot, file));
+  if (manifests.some((manifest) => !manifest)) return null;
   const graph = readDependencyGraph(repoRoot);
   if (!graph) return BACKEND_CHECK_SCOPES;
-  const pending = new Set();
-  for (const file of backendFiles) {
-    const owner = graph.get(readManifestPackage(repoRoot, file));
-    if (!owner) return BACKEND_CHECK_SCOPES;
-    pending.add(owner);
-  }
+  const pending = new Set(manifests.map(graph.resolveLocal));
+  if (pending.has(null)) return null;
 
   const impacted = new Set();
   // A Set iterator visits new entries in insertion order, keeping the closure
@@ -443,14 +449,16 @@ function getImpactedCheckScopes(repoRoot, backendFiles) {
 
 function buildPrVerifyPlan({ changedFiles = [], repoRoot = getRepoRoot() } = {}) {
   const files = changedFiles.filter((file) => !isIgnoredPath(file));
-  const global = files.length === 0 || files.some((file) =>
+  const backendFiles = files.filter((file) => file.startsWith('api/'));
+  const globalPath = files.length === 0 || files.some((file) =>
     !/^(?:api|web|docs)\//u.test(file) || /(?:[./-]lock(?:b|file)?(?:\.ya?ml|\.json)?|shrinkwrap\.(?:ya?ml|json))$/iu.test(file)
     || /^api\/(?:Cargo\.toml|\.cargo\/|rust-toolchain)/u.test(file));
+  const impacted = !globalPath && backendFiles.length ? getImpactedCheckScopes(repoRoot, backendFiles) : [];
+  const global = globalPath || impacted === null;
   const webSeed = files.some((file) => isFrontendFile(file)
     && /(?:i18n|locales?)[-_.\/].*seed|seed[-_.\/].*(?:i18n|locales?)/iu.test(file));
   const tooling = global || webSeed || files.some(isToolingFile);
   const frontend = global || files.some(isFrontendFile);
-  const backendFiles = files.filter((file) => file.startsWith('api/'));
   let backendScopes = [];
   if (global || webSeed) {
     backendScopes = [...ALL_BACKEND_SCOPES];
@@ -459,7 +467,7 @@ function buildPrVerifyPlan({ changedFiles = [], repoRoot = getRepoRoot() } = {})
     backendScopes = [
       ...BACKEND_BASE_SCOPES,
       ...(specialistPaths ? BACKEND_SPECIAL_SCOPES : []),
-      ...getImpactedCheckScopes(repoRoot, backendFiles),
+      ...impacted,
     ];
   }
   const expectedScopes = [

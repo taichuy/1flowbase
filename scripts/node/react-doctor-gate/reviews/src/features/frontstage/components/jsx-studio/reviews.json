@@ -189,7 +189,7 @@
     {
       "file": "web/app/src/features/frontstage/components/jsx-studio/JsxStudioRunPanel.tsx",
       "rule": "react-doctor/async-defer-await",
-      "sourceSha256": "eb6903aee2ccbd8f10cfd57f1ace21939b067ca187aeb0a646e5f39b5489e115",
+      "sourceSha256": "072be2a354a91dc635d85e0c6a6a7f04499b8a801050b7370f1207e5d6548acd",
       "reason": "The awaited result is consumed by the immediately following validation/preparation step; it is a data dependency. JsxStudioRunPanel awaits compilation before reading compiler diagnostics and prepared source. Moving this await later would access an unresolved compile result and cannot preserve diagnostic/preview ordering. Reassessed 2026-11-03: Default preview now fetches the block catalog and creates a contribution module loader, fenced by generation and disposed on revoke. Compilation/preparation still must finish before its diagnostics or component can be read.",
       "evidence": [
         {

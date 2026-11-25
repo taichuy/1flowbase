@@ -826,7 +826,7 @@ describe('section shell routing', () => {
         await screen.findByRole(
           'tab',
           { name: '后台设置', selected: true },
-          SECTION_REDIRECT_WAIT_OPTIONS
+          { timeout: 5_000 }
         )
       ).toBeInTheDocument();
     },

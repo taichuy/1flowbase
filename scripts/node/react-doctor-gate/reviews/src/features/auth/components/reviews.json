@@ -81,7 +81,7 @@
         },
         {
           "file": "api/apps/api-server/src/_tests/system_settings/system_branding_routes.rs",
-          "sha256": "afc787880d87e3d8257d6fc4f364a9984d7512434e964efb24603ddb2db853d1"
+          "sha256": "5a2ab3f2474f9ed9755993b69505c33d831228caab79dadebcc47aee6029b3b8"
         }
       ]
     },

@@ -137,7 +137,7 @@
     {
       "file": "web/app/src/features/settings/pages/settings-page/useExtensionCenterController.tsx",
       "rule": "react-doctor/async-defer-await",
-      "sourceSha256": "84caeaf3ace8be21daea447c86ace04756caab136ba5e8b876d4c463d870a243",
+      "sourceSha256": "90d706a4ca591e8665d86dcaa9ecf63297dfa3d670618421797baf0920cfd4e9",
       "reason": "The next step consumes the awaited grouped server result and checks request generation before applying it; postponing the await would use unresolved/stale data. GenericExtensionCenterSection owns the category-scoped installed/installable catalog and selected extension operation lifecycle. Navigation invalidates outstanding update-check generation, detail selection and filter draft. operation/delete/activation invalidate the broad application state helper; update checks await grouped server results before generation checking and applying per-row states. Reassessed at the migrated owner: Category/cursor/q changes increment updateCheckRequestRef and invalidate selected detail, update receipts and filter draft together. Update checks await grouped server results before checking generation and applying row outcomes. Committed operation/delete/activation success awaits invalidateExtensionApplicationState(), including extension, navigation, MCP, template, docs/policy and i18n cache keys; a risk challenge return has not committed an operation. Warning filtering selects only explicitly overridable backend warning codes. Reassessed 2026-11-03: Update checks and installed/installable actions use exact grants, including can in memo/callback dependencies. Generation-fenced update receipts and committed-success invalidateExtensionApplicationState remain unchanged.",
       "evidenceSet": 4
     },

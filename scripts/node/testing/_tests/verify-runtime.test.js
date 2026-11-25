@@ -37,7 +37,7 @@ test("loadVerifyRuntimeConfig returns defaults when local config is absent", () 
     },
     frontend: {
       turboConcurrency: 4,
-      vitestMaxWorkers: 2,
+      vitestMaxWorkers: 1,
     },
     locks: {
       waitTimeoutMinutes: 30,
@@ -45,6 +45,18 @@ test("loadVerifyRuntimeConfig returns defaults when local config is absent", () 
       pollIntervalMs: 5000,
     },
   });
+});
+
+test("frontend caps the product of requested workers at the effective CPU budget", (t) => {
+  const repoRoot = createRepoRoot();
+  t.after(() => fs.rmSync(repoRoot, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(repoRoot, LOCAL_VERIFY_CONFIG_FILE), JSON.stringify({
+    frontend: { turboConcurrency: 4, vitestMaxWorkers: 4 },
+  }));
+  const effectiveCpuCount = 8;
+  const { frontend } = loadVerifyRuntimeConfig({ repoRoot, env: {}, availableParallelism: effectiveCpuCount });
+  assert.ok(frontend.turboConcurrency * frontend.vitestMaxWorkers <= 4);
+  assert.deepEqual(frontend, { turboConcurrency: 4, vitestMaxWorkers: 1 });
 });
 
 test("frontend defaults reserve local CPU headroom on large machines", () => {
@@ -56,7 +68,7 @@ test("frontend defaults reserve local CPU headroom on large machines", () => {
     availableParallelism: 16,
   });
 
-  assert.equal(config.frontend.vitestMaxWorkers, 4);
+  assert.equal(config.frontend.vitestMaxWorkers, 2);
   assert.equal(config.frontend.turboConcurrency, 4);
 });
 
@@ -134,7 +146,7 @@ test("loadVerifyRuntimeConfig applies local overrides when config file exists", 
     },
     frontend: {
       turboConcurrency: 2,
-      vitestMaxWorkers: 3,
+      vitestMaxWorkers: 2,
     },
     locks: {
       waitTimeoutMinutes: 12,
@@ -318,7 +330,7 @@ test("loadVerifyRuntimeConfig merges backend and lock overrides field by field",
     },
     frontend: {
       turboConcurrency: 4,
-      vitestMaxWorkers: 2,
+      vitestMaxWorkers: 1,
     },
     locks: {
       waitTimeoutMinutes: 12,
@@ -363,7 +375,7 @@ test("loadVerifyRuntimeConfig uses full runner capacity and ignores local config
       incremental: false,
     },
     frontend: {
-      turboConcurrency: 10,
+      turboConcurrency: 1,
       vitestMaxWorkers: 10,
     },
     locks: {

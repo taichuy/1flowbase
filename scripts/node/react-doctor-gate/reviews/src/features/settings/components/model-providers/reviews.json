@@ -17,7 +17,7 @@
     {
       "file": "web/app/src/features/settings/components/model-providers/ModelProviderConfiguredModelModal.tsx",
       "rule": "react-doctor/js-combine-iterations",
-      "sourceSha256": "8670480af1970ad89ac75ddd7c721ff741a66eeedc0fe42265a131d310518e69",
+      "sourceSha256": "b17d3788d29fd4c98d65688f62a527b25dd7dd6b8bdc78fd9a2fcb2201ec2022",
       "reason": "open/initialValue 初始化 AntD Form 和 pricingProvider/model 草稿；handleSave 必须 await validateFields 后才能读取校验结果并提交。 逐阶段线性选择/投影保持顺序与类型缩窄，后续过滤可能依赖前一步计算；没有由组合产生重复副作用或错误结果。",
       "evidenceSet": 0
     },
