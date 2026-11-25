@@ -1,5 +1,5 @@
 //! Live authority facade for plugin-owned ephemeral JSON state.
-use super::HostContributionGrantPolicy;
+use super::{execute_with_leased_system_service_authority, SystemServiceCallback};
 use control_plane_contracts::ports::{EphemeralKvStore, PluginContributionAuthorityRepository};
 use extension_contracts::{
     PluginEphemeralBinding, PluginEphemeralError, PluginEphemeralFuture, PluginEphemeralPort,
@@ -22,6 +22,9 @@ impl ManagedPluginEphemeralService {
 fn denied() -> PluginEphemeralError {
     PluginEphemeralError::new("plugin_ephemeral_authority_denied")
 }
+fn deadline_exceeded() -> PluginEphemeralError {
+    PluginEphemeralError::new("plugin_ephemeral_deadline_exceeded")
+}
 impl PluginEphemeralPort for ManagedPluginEphemeralService {
     fn execute<'a>(
         &'a self,
@@ -30,97 +33,36 @@ impl PluginEphemeralPort for ManagedPluginEphemeralService {
     ) -> PluginEphemeralFuture<'a> {
         Box::pin(async move {
             request.validate()?;
-            let installation_id =
-                uuid::Uuid::parse_str(&binding.installation_id).map_err(|_| denied())?;
-            let scope_id = uuid::Uuid::parse_str(&binding.scope_id).map_err(|_| denied())?;
-            if scope_id != domain::SYSTEM_SCOPE_ID {
-                return Err(denied());
-            }
-            let now_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
-            let remaining_ms = i128::from(binding.deadline_unix_ms) - now_ms;
-            if remaining_ms <= 0 {
-                return Err(denied());
-            }
-            let subject = plugin_framework::extension_bus::ManagedContributionSubject::new(
-                plugin_framework::extension_bus::ManagedInstallationId::new(
-                    &binding.installation_id,
-                )
-                .map_err(|_| denied())?,
-                plugin_framework::extension_bus::ManagedWorkspaceId::new(&binding.scope_id)
-                    .map_err(|_| denied())?,
-                plugin_framework::extension_bus::ContributionId::new(&binding.contribution_id)
-                    .map_err(|_| denied())?,
-            );
-            tokio::time::timeout(
-                std::time::Duration::from_millis(remaining_ms as u64),
-                async {
-                    let lease = self
-                        .authority
-                        .lock_managed_callback_authority(&subject)
-                        .await
-                        .map_err(|_| denied())?;
-                    let installation = lease.installation(installation_id).ok_or_else(denied)?;
-                    if installation.desired_state != domain::PluginDesiredState::ActiveRequested
-                        || installation.organization != binding.publisher_namespace
-                        || installation.provider_code != binding.plugin_code
-                        || installation.plugin_version != binding.plugin_version
-                        || domain::managed_installation_scope(
-                            installation,
-                            domain::DEFAULT_SCOPE_ID,
-                        ) != scope_id
-                        || installation
-                            .metadata_json
-                            .pointer("/managed_service_permissions/secrets")
-                            .and_then(serde_json::Value::as_str)
-                            != Some("host_managed")
-                    {
-                        return Err(denied());
-                    }
-                    let managed: plugin_framework::ManagedManifest =
-                        serde_json::from_value(installation.metadata_json["managed"].clone())
-                            .map_err(|_| denied())?;
-                    let contribution = managed
-                        .module
-                        .contributions
-                        .iter()
-                        .find(|c| c.contribution_id.as_str() == binding.contribution_id)
-                        .ok_or_else(denied)?;
-                    if contribution.point_id.as_str() != plugin_framework::MANAGED_SERVICE_POINT
-                        || !contribution
-                            .required_permissions
-                            .iter()
-                            .any(|p| p.as_str() == "ephemeral.manage")
-                    {
-                        return Err(denied());
-                    }
-                    HostContributionGrantPolicy::root_composition()
-                        .effective_permissions(
-                            installation,
-                            scope_id,
-                            contribution,
-                            lease.snapshot(),
-                        )
-                        .map_err(|_| denied())?;
-                    // Revocation and disable cannot cross the actual storage access.
-                    // Recheck after the asynchronous lease acquisition, before touching storage.
+            execute_with_leased_system_service_authority(
+                self.authority.as_ref(),
+                SystemServiceCallback {
+                    installation_id: &binding.installation_id,
+                    scope_id: &binding.scope_id,
+                    contribution_id: &binding.contribution_id,
+                    publisher_namespace: &binding.publisher_namespace,
+                    plugin_code: &binding.plugin_code,
+                    plugin_version: &binding.plugin_version,
+                    deadline_unix_ms: binding.deadline_unix_ms,
+                    permission: "ephemeral.manage",
+                },
+                denied,
+                deadline_exceeded,
+                |installation_id, _, _| {
+                    // Recheck after asynchronous lease acquisition, before touching storage.
                     if i128::from(binding.deadline_unix_ms)
                         <= time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000
                     {
-                        return Err(PluginEphemeralError::new(
-                            "plugin_ephemeral_deadline_exceeded",
-                        ));
+                        return Err(deadline_exceeded());
                     }
                     let key = format!(
-                        "plugin_ephemeral:{installation_id}:{scope_id}:{}",
+                        "plugin_ephemeral:{installation_id}:{}:{}",
+                        domain::SYSTEM_SCOPE_ID,
                         request.key()
                     );
-                    let result = execute_storage(self.store.as_ref(), &key, request).await;
-                    lease.release().await.map_err(|_| denied())?;
-                    result
+                    Ok(async move { execute_storage(self.store.as_ref(), &key, request).await })
                 },
             )
             .await
-            .map_err(|_| PluginEphemeralError::new("plugin_ephemeral_deadline_exceeded"))?
         })
     }
 }

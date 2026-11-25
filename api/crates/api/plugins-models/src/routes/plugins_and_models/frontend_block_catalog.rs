@@ -7,9 +7,13 @@ use axum::{
     http::{header, HeaderMap, HeaderValue, Response, StatusCode},
     Router,
 };
-use control_plane::frontend_block_catalog::{
-    FrontendBlockCatalogService, FrontendBlockTypeDeclarationEntry, FrontendContributionBinding,
-    ListFrontendBlockCatalogQuery,
+use control_plane::{
+    errors::ControlPlaneError,
+    frontend_block_catalog::{
+        custom_blocks::{resolve_custom_blocks, CustomFrontendBlockService},
+        FrontendBlockCatalogService, FrontendBlockTypeDeclarationEntry, FrontendContributionBinding,
+        ListFrontendBlockCatalogQuery,
+    },
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::Serialize;
@@ -20,7 +24,10 @@ use crate::{
     app_state::ApiState,
     error_response::ApiError,
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
+    routes::{
+        console_interface::{self, ConsoleInterfaceFuture, ConsoleInterfacePort, ConsoleInterfaceTargetError},
+        console_route_assembly::{console_get, ConsoleRouteAssembly},
+    },
 };
 
 const FRONTEND_BLOCKS_CACHE_CONTROL: &str = "private, no-cache";
@@ -240,9 +247,8 @@ fn to_type_declaration_response(
     }
 }
 
-fn extract_if_none_match(headers: &HeaderMap) -> Option<String> {
+fn extract_if_none_match(headers: &[HeaderValue]) -> Option<String> {
     let values = headers
-        .get_all(header::IF_NONE_MATCH)
         .iter()
         .filter_map(|value| value.to_str().ok())
         .collect::<Vec<_>>();
@@ -273,27 +279,25 @@ fn conditional_json_response<T: Serialize>(
         base16ct::HexDisplay(&Sha256::digest(&body_bytes))
     );
     let not_modified = if_none_match_matches(if_none_match, &etag);
-    let mut response = Response::builder().status(if not_modified {
-        StatusCode::NOT_MODIFIED
+    let mut response = if not_modified {
+        let mut response = Response::new(Body::empty());
+        *response.status_mut() = StatusCode::NOT_MODIFIED;
+        response
     } else {
-        StatusCode::OK
-    });
-    let response_headers = response
-        .headers_mut()
-        .ok_or_else(|| anyhow::anyhow!("frontend blocks response builder has no headers"))?;
-    response_headers.insert(
+        let mut response = Response::new(Body::from(body_bytes));
+        response.headers_mut().insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/json"),
+        );
+        response
+    };
+    let headers = response.headers_mut();
+    headers.insert(
         header::CACHE_CONTROL,
         HeaderValue::from_static(FRONTEND_BLOCKS_CACHE_CONTROL),
     );
-    response_headers.insert(header::ETAG, HeaderValue::from_str(&etag)?);
-    if not_modified {
-        return Ok(response.body(Body::empty())?);
-    }
-    response_headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/json"),
-    );
-    Ok(response.body(Body::from(body_bytes))?)
+    headers.insert(header::ETAG, HeaderValue::from_str(&etag)?);
+    Ok(response)
 }
 
 #[utoipa::path(
@@ -314,19 +318,7 @@ pub async fn list_frontend_blocks(
     headers: HeaderMap,
     Query(query): Query<FrontendBlocksInput>,
 ) -> Result<Response<Body>, ApiError> {
-    let if_none_match = extract_if_none_match(&headers);
-    let snapshot_state = Arc::clone(&state);
-    let output: FrontendBlocksOutput = crate::routes::console_interface::invoke(
-        snapshot_state,
-        "http.console.frontend-blocks.get.v1",
-        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
-        FrontendBlocksRequest::Catalog(query),
-    )
-    .await?;
-    let FrontendBlocksOutput::Catalog(items) = output else {
-        return Err(anyhow::anyhow!("unexpected frontend blocks catalog output variant").into());
-    };
-    conditional_json_response(if_none_match.as_deref(), items)
+    invoke_frontend_blocks(state, headers, FrontendBlocksRequest::Catalog(query)).await
 }
 
 #[utoipa::path(
@@ -345,21 +337,43 @@ pub async fn list_frontend_block_type_declarations(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Response<Body>, ApiError> {
-    let if_none_match = extract_if_none_match(&headers);
-    let snapshot_state = Arc::clone(&state);
-    let output: FrontendBlocksOutput = crate::routes::console_interface::invoke(
-        snapshot_state,
-        "http.console.frontend-blocks.type-declarations.get.v1",
+    invoke_frontend_blocks(state, headers, FrontendBlocksRequest::TypeDeclarations).await
+}
+
+async fn invoke_frontend_blocks(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    request: FrontendBlocksRequest,
+) -> Result<Response<Body>, ApiError> {
+    let catalog = matches!(request, FrontendBlocksRequest::Catalog(_));
+    let binding_id = if catalog {
+        "http.console.frontend-blocks.get.v1"
+    } else {
+        "http.console.frontend-blocks.type-declarations.get.v1"
+    };
+    // Retain only the conditional headers when transferring the request headers to authentication.
+    let conditional_headers: Vec<_> = headers.get_all(header::IF_NONE_MATCH).iter().cloned().collect();
+    // Authentication and the per-operation ACL must run even for a matching ETag.
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        binding_id,
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
-        FrontendBlocksRequest::TypeDeclarations,
+        request,
     )
     .await?;
-    let FrontendBlocksOutput::TypeDeclarations(items) = output else {
-        return Err(
+    let if_none_match = extract_if_none_match(&conditional_headers);
+    match (catalog, output) {
+        (true, FrontendBlocksOutput::Catalog(items)) => {
+            conditional_json_response(if_none_match.as_deref(), items)
+        }
+        (false, FrontendBlocksOutput::TypeDeclarations(items)) => {
+            conditional_json_response(if_none_match.as_deref(), items)
+        }
+        (true, _) => Err(anyhow::anyhow!("unexpected frontend blocks catalog output variant").into()),
+        (false, _) => Err(
             anyhow::anyhow!("unexpected frontend block type declarations output variant").into(),
-        );
-    };
-    conditional_json_response(if_none_match.as_deref(), items)
+        ),
+    }
 }
 
 pub use api_host_kernel::frontend_block_dependencies::FrontendBlockDependencies;
@@ -709,113 +723,82 @@ impl InterfaceContract for FrontendBlocksOutput {
 
 struct FrontendBlocksAdapter(FrontendBlockDependencies);
 
-impl
-    crate::routes::console_interface::ConsoleInterfacePort<
-        FrontendBlocksRequest,
-        FrontendBlocksOutput,
-    > for FrontendBlocksAdapter
-{
+impl FrontendBlocksAdapter {
+    async fn execute_inner(
+        &self,
+        principal: &UserPrincipal,
+        input: FrontendBlocksRequest,
+    ) -> Result<FrontendBlocksOutput, ApiError> {
+        if matches!(&input, FrontendBlocksRequest::Catalog(query)
+            if query.registration_target.as_deref().is_some_and(|target| {
+                !matches!(target, "block" | "component" | "code_template")
+            })
+        ) {
+            return Err(ControlPlaneError::InvalidInput("invalid_frontend_registration_target").into());
+        }
+
+        let actor = principal.actor();
+        let store = self.0.store.for_actor(actor.clone());
+        let service = FrontendBlockCatalogService::new(
+            store.clone(),
+            self.0.api_node_id.clone(),
+            Arc::clone(&self.0.graph),
+        )?;
+        let query = ListFrontendBlockCatalogQuery { actor_user_id: actor.user_id };
+        match input {
+            FrontendBlocksRequest::Catalog(input) => {
+                let entries = service.list_frontend_blocks(query).await?;
+                let definitions = CustomFrontendBlockService(store)
+                    .list(actor.current_workspace_id)
+                    .await?;
+                let custom = resolve_custom_blocks(&entries.entries, definitions);
+                let mut output = entries
+                    .entries
+                    .into_iter()
+                    .filter(|binding| {
+                        input.registration_target.as_ref().is_none_or(|target| {
+                            binding.catalog_entry.registration_targets().contains(target)
+                        })
+                    })
+                    .map(to_response)
+                    .collect::<Result<Vec<_>, _>>()?;
+                for (definition, binding) in custom {
+                    if input
+                        .registration_target
+                        .as_deref()
+                        .is_some_and(|target| target != "block")
+                    {
+                        continue;
+                    }
+                    let mut response = to_response(binding)?;
+                    response.custom_block_id = Some(definition.id.to_string());
+                    response.registration_targets = vec!["block".to_owned()];
+                    output.push(response);
+                }
+                Ok(FrontendBlocksOutput::Catalog(output))
+            }
+            FrontendBlocksRequest::TypeDeclarations => Ok(FrontendBlocksOutput::TypeDeclarations(
+                service.list_frontend_block_type_declarations(query)
+                    .await?
+                    .entries
+                    .into_iter()
+                    .map(to_type_declaration_response)
+                    .collect(),
+            )),
+        }
+    }
+}
+
+impl ConsoleInterfacePort<FrontendBlocksRequest, FrontendBlocksOutput> for FrontendBlocksAdapter {
     fn execute<'a>(
         &'a self,
         principal: &'a UserPrincipal,
         input: FrontendBlocksRequest,
-    ) -> crate::routes::console_interface::ConsoleInterfaceFuture<'a, FrontendBlocksOutput> {
+    ) -> ConsoleInterfaceFuture<'a, FrontendBlocksOutput> {
         Box::pin(async move {
-            match input {
-                FrontendBlocksRequest::Catalog(input) => {
-                    if input.registration_target.as_deref().is_some_and(|target| {
-                        !matches!(target, "block" | "component" | "code_template")
-                    }) {
-                        return Err(
-                            crate::routes::console_interface::ConsoleInterfaceTargetError(
-                                ApiError(
-                                    control_plane::errors::ControlPlaneError::InvalidInput(
-                                        "invalid_frontend_registration_target",
-                                    )
-                                    .into(),
-                                ),
-                            ),
-                        );
-                    }
-                    let entries = FrontendBlockCatalogService::new(
-                        self.0.store.for_actor(principal.actor().clone()),
-                        self.0.api_node_id.clone(),
-                        Arc::clone(&self.0.graph),
-                    )
-                    .map_err(ApiError)
-                    .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?
-                    .list_frontend_blocks(ListFrontendBlockCatalogQuery {
-                        actor_user_id: principal.actor().user_id,
-                    })
-                    .await
-                    .map_err(ApiError)
-                    .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
-                    let definitions = control_plane::frontend_block_catalog::custom_blocks::CustomFrontendBlockService(
-                        self.0.store.for_actor(principal.actor().clone()),
-                    )
-                    .list(principal.actor().current_workspace_id)
-                    .await
-                    .map_err(ApiError)
-                    .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
-                    let custom =
-                        control_plane::frontend_block_catalog::custom_blocks::resolve_custom_blocks(
-                            &entries.entries,
-                            definitions,
-                        );
-                    let mut output = entries
-                        .entries
-                        .into_iter()
-                        .filter(|binding| {
-                            input.registration_target.as_ref().is_none_or(|target| {
-                                binding
-                                    .catalog_entry
-                                    .registration_targets()
-                                    .contains(target)
-                            })
-                        })
-                        .map(to_response)
-                        .collect::<Result<Vec<_>, _>>()
-                        .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
-                    for (definition, binding) in custom {
-                        if input
-                            .registration_target
-                            .as_deref()
-                            .is_some_and(|target| target != "block")
-                        {
-                            continue;
-                        }
-                        let mut response = to_response(binding).map_err(
-                            crate::routes::console_interface::ConsoleInterfaceTargetError,
-                        )?;
-                        response.custom_block_id = Some(definition.id.to_string());
-                        response.registration_targets = vec!["block".to_owned()];
-                        output.push(response);
-                    }
-                    Ok(FrontendBlocksOutput::Catalog(output))
-                }
-                FrontendBlocksRequest::TypeDeclarations => {
-                    let declarations = FrontendBlockCatalogService::new(
-                        self.0.store.for_actor(principal.actor().clone()),
-                        self.0.api_node_id.clone(),
-                        Arc::clone(&self.0.graph),
-                    )
-                    .map_err(ApiError)
-                    .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?
-                    .list_frontend_block_type_declarations(ListFrontendBlockCatalogQuery {
-                        actor_user_id: principal.actor().user_id,
-                    })
-                    .await
-                    .map_err(ApiError)
-                    .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
-                    Ok(FrontendBlocksOutput::TypeDeclarations(
-                        declarations
-                            .entries
-                            .into_iter()
-                            .map(to_type_declaration_response)
-                            .collect(),
-                    ))
-                }
-            }
+            self.execute_inner(principal, input)
+                .await
+                .map_err(ConsoleInterfaceTargetError)
         })
     }
 }
