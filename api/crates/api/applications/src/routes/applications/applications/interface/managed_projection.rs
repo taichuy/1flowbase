@@ -2,11 +2,10 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use super::{
-    ApplicationCatalogResponse, ApplicationCollectorResponse,
-    ApplicationDetailResponse, ApplicationJsDependencySelectionResponse,
-    ApplicationSummaryResponse, ApplicationTypeDto, ApplicationsInput, ApplicationsOutput,
-    CreateApplicationBody, WorkflowExtensionHttpMethodBody, WorkflowExtensionResponseModeBody,
-    WorkflowTriggerTypeDto,
+    ApplicationCatalogResponse, ApplicationCollectorResponse, ApplicationDetailResponse,
+    ApplicationJsDependencySelectionResponse, ApplicationSummaryResponse, ApplicationTypeDto,
+    ApplicationsInput, ApplicationsOutput, CreateApplicationBody, WorkflowExtensionHttpMethodBody,
+    WorkflowExtensionResponseModeBody, WorkflowTriggerTypeDto,
 };
 use crate::extension_bus::managed_projection as mp;
 use crate::routes::applications_group::applications::{
@@ -145,7 +144,8 @@ pub(super) fn input_schema() -> Value {
         "icon": opt_s(bytes_s()), "icon_type": opt_s(mp::text_schema()), "icon_background": opt_s(bytes_s()),
     };
     let env_var = obj_s! { "name": bytes_s(), "value_type": mp::text_schema(), "value": mp::json_summary_schema(), "description": bytes_s() };
-    let js_body = obj_s! { "installation_id": mp::text_schema(), "alias": bytes_s(), "target": bytes_s() };
+    let js_body =
+        obj_s! { "installation_id": mp::text_schema(), "alias": bytes_s(), "target": bytes_s() };
     mp::union_schema(vec![
         tag_s("List"),
         tag_s("Catalog"),
@@ -210,9 +210,7 @@ pub(super) fn project_input(input: &ApplicationsInput) -> Option<Value> {
         ApplicationsInput::List => tag_v("List"),
         ApplicationsInput::Catalog { .. } => tag_v("Catalog"),
         ApplicationsInput::Create(b) => project_create(b)?,
-        ApplicationsInput::CreateTag(b) => {
-            var_v("CreateTag", obj_v! { "name": bytes_v(&b.name) })
-        }
+        ApplicationsInput::CreateTag(b) => var_v("CreateTag", obj_v! { "name": bytes_v(&b.name) }),
         ApplicationsInput::Get { application_id } => id_v("Get", application_id),
         ApplicationsInput::Patch {
             application_id,

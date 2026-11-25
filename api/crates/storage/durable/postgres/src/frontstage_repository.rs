@@ -1218,7 +1218,10 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         .fetch_all(self.pool())
         .await?;
 
-        Ok(rows.into_iter().map(map_frontstage_block_code_row).collect())
+        Ok(rows
+            .into_iter()
+            .map(map_frontstage_block_code_row)
+            .collect())
     }
 
     async fn get_frontstage_block_source_sha256(

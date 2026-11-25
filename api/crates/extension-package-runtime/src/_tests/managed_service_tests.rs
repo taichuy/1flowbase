@@ -1,5 +1,5 @@
 use crate::parse_plugin_manifest;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 #[path = "shared_stream_tests.rs"]
 mod shared_stream_tests;
 fn fixture() -> Value {
@@ -114,8 +114,8 @@ fn managed_mcp_rejects_ambiguous_flat_parameters_and_unsafe_route_identity() {
         "service schemas must not inherit hook summary string limits"
     );
     let mut duplicate = valid.clone();
-    duplicate["managed_service"]["operations"][0]["input_schema"]["properties"]["body"]["properties"]
-        ["host_id"] = json!({"type":"string"});
+    duplicate["managed_service"]["operations"][0]["input_schema"]["properties"]["body"]
+        ["properties"]["host_id"] = json!({"type":"string"});
     assert!(parse(&duplicate).is_err());
     for (pointer, value) in [
         (
@@ -307,12 +307,10 @@ fn managed_mcp_media_mapping_roundtrips_and_rejects_invalid_declarations() {
         .clone()
         .unwrap();
     assert!(mcp.output_mapping.is_none());
-    assert!(
-        serde_json::to_value(mcp)
-            .unwrap()
-            .get("output_mapping")
-            .is_none()
-    );
+    assert!(serde_json::to_value(mcp)
+        .unwrap()
+        .get("output_mapping")
+        .is_none());
 }
 
 #[test]
@@ -356,12 +354,10 @@ fn standard_content_declarations_validate_paths_and_resource_read() {
         json!({"type":"resource_link","uri_path":"relative","name_path":"/name"}),
         json!({"type":"text","text_path":"/text","annotations_path":"/text"}),
     ] {
-        assert!(
-            ManagedMcpMediaMapping::parse(
-                &json!({"mcp_content":[block],"structured_content_path":"/metadata"})
-            )
-            .is_err()
-        );
+        assert!(ManagedMcpMediaMapping::parse(
+            &json!({"mcp_content":[block],"structured_content_path":"/metadata"})
+        )
+        .is_err());
     }
 }
 
@@ -388,14 +384,12 @@ fn actor_workspace_scope_is_opt_in_and_accepts_shared_retention() {
 #[test]
 fn managed_mcp_instance_is_optional_owned_and_requires_mcp_operation() {
     let mut value = fixture();
-    assert!(
-        parse(&value)
-            .unwrap()
-            .managed_service
-            .unwrap()
-            .mcp_instance
-            .is_none()
-    );
+    assert!(parse(&value)
+        .unwrap()
+        .managed_service
+        .unwrap()
+        .mcp_instance
+        .is_none());
     value["managed_service"]["mcp_instance"] = json!({"instance_id":"managed_fixture_tools", "name":"Fixture", "description":"Fixture tools"});
     assert!(
         parse(&value).is_err(),
@@ -621,14 +615,12 @@ fn record_fixture() -> Value {
 
 #[test]
 fn record_resources_validate_owned_collection_and_leave_legacy_packages_unchanged() {
-    assert!(
-        parse(&fixture())
-            .unwrap()
-            .managed_service
-            .unwrap()
-            .record_resources
-            .is_empty()
-    );
+    assert!(parse(&fixture())
+        .unwrap()
+        .managed_service
+        .unwrap()
+        .record_resources
+        .is_empty());
     let parsed = parse(&record_fixture()).unwrap();
     assert_eq!(
         parsed.managed_service.unwrap().record_resources[0].id_field,

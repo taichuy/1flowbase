@@ -110,7 +110,9 @@ pub enum WorkspaceUserInvitationRedemptionDto {
 pub enum WorkspaceOperationAdmissionDto {
     #[serde(deserialize_with = "deserialize_empty_variant")]
     Allow,
-    Deny { reason_code: String },
+    Deny {
+        reason_code: String,
+    },
 }
 
 /// Host services have their own durable grants, separate from the policy decision contract.

@@ -1,13 +1,13 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane_contracts::{
-    ControlPlaneContractError,
     ports::{
         CommitPluginInstallationInput, PluginInstallationAdmission,
         PluginInstallationContentIdentity, PluginInstallationLease, UpsertPluginInstallationInput,
     },
+    ControlPlaneContractError,
 };
-use sqlx::{Connection, PgConnection, Postgres, Row, pool::PoolConnection};
+use sqlx::{pool::PoolConnection, Connection, PgConnection, Postgres, Row};
 use uuid::Uuid;
 
 use crate::{plugin_repository::map_installation, repositories::PgControlPlaneStore};

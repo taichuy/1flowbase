@@ -173,8 +173,8 @@ fn collection_imports_reject_overrequest_and_preserve_requested_subset() {
             let (mut consumer, mut providers, binding) = fixture();
             consumer.metadata_json["resource_imports"][0]["collections"][0]["access"] =
                 json!(import);
-            providers.values_mut().next().unwrap().metadata_json["resource_exports"][0]["collections"]
-                [0]["access"] = json!(export);
+            providers.values_mut().next().unwrap().metadata_json["resource_exports"][0]
+                ["collections"][0]["access"] = json!(export);
             if import == "read_write" && export == "read_only" {
                 assert_import_denied(resolve_resource_imports(&consumer, &providers).unwrap_err());
                 assert_import_denied(
@@ -218,8 +218,8 @@ fn credential_imports_reject_overrequest_and_keep_original_owner_for_requested_s
         for export in ["read_only", "read_write"] {
             let (mut consumer, mut providers, _) = fixture();
             consumer.metadata_json["resource_imports"][0]["credentials"] = json!(import);
-            providers.values_mut().next().unwrap().metadata_json["resource_exports"][0]["credentials"] =
-                json!(export);
+            providers.values_mut().next().unwrap().metadata_json["resource_exports"][0]
+                ["credentials"] = json!(export);
             let overrequest = import == "read_write" && export == "read_only";
             if overrequest {
                 assert_import_denied(resolve_resource_imports(&consumer, &providers).unwrap_err());

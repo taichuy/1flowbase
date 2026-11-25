@@ -3,7 +3,7 @@ use super::{
     inputs::Inputs,
     loopback_ssh::LoopbackSsh,
 };
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use axum::http::StatusCode;
 use control_plane::{plugin_management::*, ports::*};
 use control_plane_contracts::ControlPlaneContractError;

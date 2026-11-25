@@ -109,10 +109,9 @@ pub async fn get_frontstage_bootstrap(
     .await?;
 
     let (etag, mut response) = match output {
-        interface_pages::FrontstagePagesOutput::Bootstrap { etag, payload } => (
-            etag,
-            Json(ApiSuccess::new(*payload)).into_response(),
-        ),
+        interface_pages::FrontstagePagesOutput::Bootstrap { etag, payload } => {
+            (etag, Json(ApiSuccess::new(*payload)).into_response())
+        }
         interface_pages::FrontstagePagesOutput::BootstrapNotModified(etag) => {
             (etag, StatusCode::NOT_MODIFIED.into_response())
         }
@@ -352,11 +351,8 @@ pub(super) async fn execute_frontstage_bootstrap(
         0
     };
 
-    let block_roots: Vec<FrontstageBlockNodeResponse> = root_records
-        .iter()
-        .cloned()
-        .map(to_node_response)
-        .collect();
+    let block_roots: Vec<FrontstageBlockNodeResponse> =
+        root_records.iter().cloned().map(to_node_response).collect();
 
     let etag = compute_bootstrap_etag(
         actor,
@@ -381,7 +377,8 @@ pub(super) async fn execute_frontstage_bootstrap(
         if effective_code_limit == 0 || root_records.is_empty() {
             Some(Vec::new())
         } else {
-            let ordered_indices = prioritize_viewport_block_indices(&root_records, effective_code_limit);
+            let ordered_indices =
+                prioritize_viewport_block_indices(&root_records, effective_code_limit);
             let mut unique_refs = Vec::with_capacity(ordered_indices.len());
             let mut seen_refs = HashSet::with_capacity(ordered_indices.len());
             for &idx in &ordered_indices {
@@ -460,7 +457,10 @@ fn finish_bootstrap(
     Ok(FrontstageBootstrapRead::Modified { etag, payload })
 }
 
-#[expect(clippy::too_many_arguments, reason = "explicit bootstrap revision envelope")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "explicit bootstrap revision envelope"
+)]
 fn compute_bootstrap_etag(
     actor: &domain::ActorContext,
     can_view_blocks: bool,

@@ -27,12 +27,7 @@ fn test_router() -> Router {
             "/json-large",
             get(move || {
                 let payload = large_json.clone();
-                async move {
-                    (
-                        [(header::CONTENT_TYPE, "application/json")],
-                        payload,
-                    )
-                }
+                async move { ([(header::CONTENT_TYPE, "application/json")], payload) }
             }),
         )
         .route(
@@ -85,16 +80,17 @@ async fn compresses_bounded_large_json_when_gzip_accepted_and_preserves_identity
         .await
         .unwrap();
     assert_eq!(res_gz.status(), StatusCode::OK);
-    assert_eq!(res_gz.headers().get(header::CONTENT_ENCODING).unwrap(), "gzip");
-    assert!(
-        res_gz
-            .headers()
-            .get(header::VARY)
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .contains("Accept-Encoding")
+    assert_eq!(
+        res_gz.headers().get(header::CONTENT_ENCODING).unwrap(),
+        "gzip"
     );
+    assert!(res_gz
+        .headers()
+        .get(header::VARY)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .contains("Accept-Encoding"));
     let gz_bytes = to_bytes(res_gz.into_body(), 1024 * 1024).await.unwrap();
     let mut decoded = String::new();
     GzDecoder::new(&gz_bytes[..])
@@ -111,8 +107,13 @@ async fn compresses_bounded_large_json_when_gzip_accepted_and_preserves_identity
         )
         .await
         .unwrap();
-    assert!(res_identity.headers().get(header::CONTENT_ENCODING).is_none());
-    let raw_bytes = to_bytes(res_identity.into_body(), 1024 * 1024).await.unwrap();
+    assert!(res_identity
+        .headers()
+        .get(header::CONTENT_ENCODING)
+        .is_none());
+    let raw_bytes = to_bytes(res_identity.into_body(), 1024 * 1024)
+        .await
+        .unwrap();
     assert_eq!(std::str::from_utf8(&raw_bytes).unwrap(), decoded);
 }
 

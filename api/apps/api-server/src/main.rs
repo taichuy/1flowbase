@@ -81,8 +81,8 @@ async fn run(
         if !check_startup {
             native.announce_ready();
         }
-    } else if let Some(static_root) = std::env::var_os("API_STATIC_WEB_ROOT")
-        .filter(|value| !value.is_empty())
+    } else if let Some(static_root) =
+        std::env::var_os("API_STATIC_WEB_ROOT").filter(|value| !value.is_empty())
     {
         app = native_distribution::static_web::mount(app, std::path::Path::new(&static_root))?;
     }

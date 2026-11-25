@@ -1,12 +1,12 @@
 use super::{broker::*, cache};
 use crate::{error_response::ApiError, managed_services::stream::StreamEvent};
 use interface_runtime::UserPrincipal;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     collections::BTreeSet,
     sync::{
-        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
     },
     time::Duration,
 };

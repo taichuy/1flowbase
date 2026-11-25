@@ -264,7 +264,10 @@ fn prepare_installation_commit_blocking(
     let policy_uses_data = manifest.managed.as_ref().is_some_and(|managed| {
         managed.module.contributions.iter().any(|contribution| {
             contribution.point_id.as_str() == extension_contracts::WORKSPACE_POLICY_POINT
-                && contribution.required_permissions.iter().any(|permission| permission.as_str() == "plugin_data.owned.write")
+                && contribution
+                    .required_permissions
+                    .iter()
+                    .any(|permission| permission.as_str() == "plugin_data.owned.write")
         })
     });
     if manifest.managed_service.is_some() || policy_uses_data {

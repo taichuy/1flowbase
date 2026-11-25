@@ -9,11 +9,9 @@ fn routes_only_the_policy_handler_and_unwraps_managed_payload() {
         workspace_policy_input(&call, "resolve-policy").unwrap(),
         Some(WorkspacePolicyRequest::InspectPublicPolicy)
     ));
-    assert!(
-        workspace_policy_input(&call, "managed-service")
-            .unwrap()
-            .is_none()
-    );
+    assert!(workspace_policy_input(&call, "managed-service")
+        .unwrap()
+        .is_none());
     call["input"]["input_payload"]["subject"] = json!("forged");
     assert!(workspace_policy_input(&call, "resolve-policy").is_err());
     assert_eq!(

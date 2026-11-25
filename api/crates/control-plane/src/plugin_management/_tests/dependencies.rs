@@ -142,8 +142,8 @@ fn provider_disable_and_family_removal_report_enabled_consumer_identity() {
     provider_change_preflight(&p, None, &[p.clone(), c]).unwrap();
 }
 #[test]
-fn provider_version_preflight_accepts_compatible_but_rejects_missing_export_or_changed_acl_identity()
- {
+fn provider_version_preflight_accepts_compatible_but_rejects_missing_export_or_changed_acl_identity(
+) {
     let p = provider();
     let c = consumer();
     let mut next = p.clone();
@@ -186,10 +186,12 @@ fn lifecycle_rejects_rights_above_export_even_if_runtime_resolution_intersects()
         next.id = Uuid::now_v7();
         next.desired_state = domain::PluginDesiredState::Disabled;
         let old = provider();
-        assert!(
-            provider_change_preflight(&old, Some(&next), &[old.clone(), c.clone(), next.clone()])
-                .is_err()
-        );
+        assert!(provider_change_preflight(
+            &old,
+            Some(&next),
+            &[old.clone(), c.clone(), next.clone()]
+        )
+        .is_err());
     }
 }
 

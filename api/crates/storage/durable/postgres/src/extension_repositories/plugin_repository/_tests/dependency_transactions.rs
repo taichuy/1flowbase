@@ -198,13 +198,11 @@ async fn provider_disable_waits_for_enable_then_preserves_state_and_uninstall_ar
             .is_err()
     );
     transaction.commit().await.unwrap();
-    assert!(
-        tokio::time::timeout(Duration::from_secs(5), pending)
-            .await
-            .unwrap()
-            .unwrap()
-            .is_err()
-    );
+    assert!(tokio::time::timeout(Duration::from_secs(5), pending)
+        .await
+        .unwrap()
+        .unwrap()
+        .is_err());
     assert_eq!(
         store
             .get_installation(p.id)
@@ -262,15 +260,13 @@ async fn provider_disable_waits_for_enable_then_preserves_state_and_uninstall_ar
         error.downcast_ref::<ControlPlaneError>(),
         Some(ControlPlaneError::PluginDependency { .. })
     ));
-    assert!(
-        store
-            .get_artifact_instance("node-a", p.id)
-            .await
-            .unwrap()
-            .unwrap()
-            .artifact_status
-            .is_ready()
-    );
+    assert!(store
+        .get_artifact_instance("node-a", p.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .artifact_status
+        .is_ready());
     desired(&store, c.id, actor, domain::PluginDesiredState::Disabled)
         .await
         .unwrap();
@@ -304,17 +300,15 @@ async fn locked_switch_guard_checks_candidate_exports_and_target_prerequisites()
     .await
     .unwrap();
     sqlx::query("update extension_installations set metadata_json=jsonb_set(metadata_json,'{resource_exports}','[]'::jsonb) where id=$1").bind(next.id).execute(&mut *transaction).await.unwrap();
-    assert!(
-        validate_managed_dependency_switch(
-            &mut transaction,
-            p.id,
-            next.id,
-            "node-a",
-            domain::SYSTEM_SCOPE_ID
-        )
-        .await
-        .is_err()
-    );
+    assert!(validate_managed_dependency_switch(
+        &mut transaction,
+        p.id,
+        next.id,
+        "node-a",
+        domain::SYSTEM_SCOPE_ID
+    )
+    .await
+    .is_err());
     let mut missing_prerequisite = next.metadata_json.clone();
     missing_prerequisite["plugin_dependencies"] =
         serde_json::json!([{"publisher_namespace":"fixture.publisher","plugin_code":"missing"}]);
@@ -404,15 +398,13 @@ async fn low_level_provider_writers_fence_before_row_locks_and_roll_back_incompa
             current.desired_state,
             domain::PluginDesiredState::ActiveRequested
         );
-        assert!(
-            store
-                .get_artifact_instance("node-a", p.id)
-                .await
-                .unwrap()
-                .unwrap()
-                .artifact_status
-                .is_ready()
-        );
+        assert!(store
+            .get_artifact_instance("node-a", p.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .artifact_status
+            .is_ready());
     }
     desired(&store, c.id, actor, domain::PluginDesiredState::Disabled)
         .await
@@ -499,15 +491,13 @@ async fn artifact_upsert_cannot_publish_an_ambiguous_enabled_provider_version() 
             .is_none(),
         "the candidate artifact insert must roll back, not become visible in reader inventory"
     );
-    assert!(
-        store
-            .get_artifact_instance("node-a", p.id)
-            .await
-            .unwrap()
-            .unwrap()
-            .artifact_status
-            .is_ready()
-    );
+    assert!(store
+        .get_artifact_instance("node-a", p.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .artifact_status
+        .is_ready());
 }
 
 fn managed_commit_input(
@@ -610,15 +600,13 @@ async fn installation_lease_commit_fences_before_rows_rolls_back_and_reuses_admi
     let error = rejected.unwrap_err();
     assert!(matches!(error.downcast_ref::<ControlPlaneError>(),
         Some(ControlPlaneError::PluginDependency { code, .. }) if code == "plugin_dependency_in_use"));
-    assert!(
-        store
-            .get_artifact_instance("node-a", installed.id)
-            .await
-            .unwrap()
-            .unwrap()
-            .artifact_status
-            .is_ready()
-    );
+    assert!(store
+        .get_artifact_instance("node-a", installed.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .artifact_status
+        .is_ready());
     assert_eq!(
         store
             .get_installation(installed.id)
@@ -669,26 +657,22 @@ async fn installation_commit_rolls_back_new_ready_provider_that_would_ambiguate_
         store.get_installation(next.id).await.unwrap().is_none(),
         "installation insert rolls back with readiness publication"
     );
-    assert!(
-        store
-            .get_artifact_instance("node-a", next.id)
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(store
+        .get_artifact_instance("node-a", next.id)
+        .await
+        .unwrap()
+        .is_none());
     next.desired_state = domain::PluginDesiredState::Disabled;
     let uploaded = store
         .commit_plugin_installation(&managed_commit_input(&next, actor))
         .await
         .unwrap();
     assert_eq!(uploaded.desired_state, domain::PluginDesiredState::Disabled);
-    assert!(
-        store
-            .get_artifact_instance("node-a", next.id)
-            .await
-            .unwrap()
-            .unwrap()
-            .artifact_status
-            .is_ready()
-    );
+    assert!(store
+        .get_artifact_instance("node-a", next.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .artifact_status
+        .is_ready());
 }

@@ -11,8 +11,8 @@ use control_plane::{
     errors::ControlPlaneError,
     frontend_block_catalog::{
         custom_blocks::{resolve_custom_blocks, CustomFrontendBlockService},
-        FrontendBlockCatalogService, FrontendBlockTypeDeclarationEntry, FrontendContributionBinding,
-        ListFrontendBlockCatalogQuery,
+        FrontendBlockCatalogService, FrontendBlockTypeDeclarationEntry,
+        FrontendContributionBinding, ListFrontendBlockCatalogQuery,
     },
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
@@ -25,7 +25,9 @@ use crate::{
     error_response::ApiError,
     response::ApiSuccess,
     routes::{
-        console_interface::{self, ConsoleInterfaceFuture, ConsoleInterfacePort, ConsoleInterfaceTargetError},
+        console_interface::{
+            self, ConsoleInterfaceFuture, ConsoleInterfacePort, ConsoleInterfaceTargetError,
+        },
         console_route_assembly::{console_get, ConsoleRouteAssembly},
     },
 };
@@ -352,7 +354,11 @@ async fn invoke_frontend_blocks(
         "http.console.frontend-blocks.type-declarations.get.v1"
     };
     // Retain only the conditional headers when transferring the request headers to authentication.
-    let conditional_headers: Vec<_> = headers.get_all(header::IF_NONE_MATCH).iter().cloned().collect();
+    let conditional_headers: Vec<_> = headers
+        .get_all(header::IF_NONE_MATCH)
+        .iter()
+        .cloned()
+        .collect();
     // Authentication and the per-operation ACL must run even for a matching ETag.
     let output = console_interface::invoke(
         Arc::clone(&state),
@@ -369,10 +375,13 @@ async fn invoke_frontend_blocks(
         (false, FrontendBlocksOutput::TypeDeclarations(items)) => {
             conditional_json_response(if_none_match.as_deref(), items)
         }
-        (true, _) => Err(anyhow::anyhow!("unexpected frontend blocks catalog output variant").into()),
-        (false, _) => Err(
-            anyhow::anyhow!("unexpected frontend block type declarations output variant").into(),
-        ),
+        (true, _) => {
+            Err(anyhow::anyhow!("unexpected frontend blocks catalog output variant").into())
+        }
+        (false, _) => Err(anyhow::anyhow!(
+            "unexpected frontend block type declarations output variant"
+        )
+        .into()),
     }
 }
 
@@ -476,7 +485,9 @@ impl InterfaceContract for FrontendBlocksOutput {
                                             "registration_targets",
                                             mp::object_value([(
                                                 "item_count",
-                                                serde_json::json!((item).registration_targets.len()),
+                                                serde_json::json!((item)
+                                                    .registration_targets
+                                                    .len()),
                                             )]),
                                         ),
                                         ("installation_id", mp::text(&(item).installation_id)?),
@@ -548,9 +559,9 @@ impl InterfaceContract for FrontendBlocksOutput {
                                                         "integrity",
                                                         mp::object_value([(
                                                             "byte_count",
-                                                            serde_json::json!(
-                                                                (item).integrity.len()
-                                                            ),
+                                                            serde_json::json!((item)
+                                                                .integrity
+                                                                .len()),
                                                         )]),
                                                     ),
                                                 ]),
@@ -585,18 +596,20 @@ impl InterfaceContract for FrontendBlocksOutput {
                                                     "network",
                                                     mp::object_value([(
                                                         "byte_count",
-                                                        serde_json::json!(
-                                                            (item).permissions.network.len()
-                                                        ),
+                                                        serde_json::json!((item)
+                                                            .permissions
+                                                            .network
+                                                            .len()),
                                                     )]),
                                                 ),
                                                 (
                                                     "storage",
                                                     mp::object_value([(
                                                         "byte_count",
-                                                        serde_json::json!(
-                                                            (item).permissions.storage.len()
-                                                        ),
+                                                        serde_json::json!((item)
+                                                            .permissions
+                                                            .storage
+                                                            .len()),
                                                     )]),
                                                 ),
                                             ]),
@@ -635,18 +648,18 @@ impl InterfaceContract for FrontendBlocksOutput {
                                             "isolation_requirement",
                                             mp::object_value([(
                                                 "byte_count",
-                                                serde_json::json!(
-                                                    (item).isolation_requirement.len()
-                                                ),
+                                                serde_json::json!((item)
+                                                    .isolation_requirement
+                                                    .len()),
                                             )]),
                                         ),
                                         (
                                             "requested_permissions",
                                             mp::object_value([(
                                                 "item_count",
-                                                serde_json::json!(
-                                                    (item).requested_permissions.len()
-                                                ),
+                                                serde_json::json!((item)
+                                                    .requested_permissions
+                                                    .len()),
                                             )]),
                                         ),
                                         (
@@ -686,9 +699,10 @@ impl InterfaceContract for FrontendBlocksOutput {
                                                     "module_kind",
                                                     mp::object_value([(
                                                         "byte_count",
-                                                        serde_json::json!(
-                                                            (item).provenance.module_kind.len()
-                                                        ),
+                                                        serde_json::json!((item)
+                                                            .provenance
+                                                            .module_kind
+                                                            .len()),
                                                     )]),
                                                 ),
                                             ]),
@@ -734,7 +748,9 @@ impl FrontendBlocksAdapter {
                 !matches!(target, "block" | "component" | "code_template")
             })
         ) {
-            return Err(ControlPlaneError::InvalidInput("invalid_frontend_registration_target").into());
+            return Err(
+                ControlPlaneError::InvalidInput("invalid_frontend_registration_target").into(),
+            );
         }
 
         let actor = principal.actor();
@@ -744,7 +760,9 @@ impl FrontendBlocksAdapter {
             self.0.api_node_id.clone(),
             Arc::clone(&self.0.graph),
         )?;
-        let query = ListFrontendBlockCatalogQuery { actor_user_id: actor.user_id };
+        let query = ListFrontendBlockCatalogQuery {
+            actor_user_id: actor.user_id,
+        };
         match input {
             FrontendBlocksRequest::Catalog(input) => {
                 let entries = service.list_frontend_blocks(query).await?;
@@ -757,7 +775,10 @@ impl FrontendBlocksAdapter {
                     .into_iter()
                     .filter(|binding| {
                         input.registration_target.as_ref().is_none_or(|target| {
-                            binding.catalog_entry.registration_targets().contains(target)
+                            binding
+                                .catalog_entry
+                                .registration_targets()
+                                .contains(target)
                         })
                     })
                     .map(to_response)
@@ -778,7 +799,8 @@ impl FrontendBlocksAdapter {
                 Ok(FrontendBlocksOutput::Catalog(output))
             }
             FrontendBlocksRequest::TypeDeclarations => Ok(FrontendBlocksOutput::TypeDeclarations(
-                service.list_frontend_block_type_declarations(query)
+                service
+                    .list_frontend_block_type_declarations(query)
                     .await?
                     .entries
                     .into_iter()

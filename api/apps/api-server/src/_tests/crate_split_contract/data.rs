@@ -2,7 +2,7 @@
 //! application_public_api_repository publication fixture. No HTTP sign-in.
 use crate::{app_state::ApiState, managed_services::ManagedServiceRegistration};
 use anyhow::Result;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use uuid::Uuid;
 
 pub(super) fn managed_service() -> ManagedServiceRegistration {

@@ -48,32 +48,33 @@ pub use extension_package_runtime::managed_service::*;
 pub use frontend_module_asset::*;
 pub use host_contract::{HostContractCode, RuntimeSlotCode, StorageImplementationKind};
 pub use host_extension_contribution::{
-    AuthProviderContributionManifest, HostExtensionBootstrapPhase,
-    HostExtensionContributionManifest, HostExtensionInterfaceAuthenticationManifest,
+    parse_host_extension_contribution_manifest, AuthProviderContributionManifest,
+    HostExtensionBootstrapPhase, HostExtensionContributionManifest,
+    HostExtensionInterfaceAuthenticationManifest,
     HostExtensionInterfaceAuthenticationPrincipalProfile,
     HostExtensionInterfaceOperationAuditPolicy, HostExtensionInterfaceOperationAuthPolicy,
     HostExtensionInterfaceOperationContractManifest, HostExtensionInterfaceOperationErrorPolicy,
     HostExtensionInterfaceOperationManifest, HostExtensionInterfaceOperationMethod,
     HostExtensionMigrationManifest, HostExtensionNativeEntrypointManifest,
     HostExtensionRouteActionManifest, HostExtensionRouteManifest, HostExtensionWorkerManifest,
-    HostInfrastructureProviderManifest, parse_host_extension_contribution_manifest,
+    HostInfrastructureProviderManifest,
 };
 pub use host_extension_dropin::*;
 pub use host_extension_registry::{HostExtensionRegistry, RegisteredHostExtension};
 pub use installation::*;
 pub use managed_schema::*;
 pub use manifest_v1::{
-    FrontendBlockCodeModuleManifest, FrontendBlockContextContractManifest,
-    FrontendBlockContributionManifest, FrontendBlockPermissionsManifest,
-    FrontendModuleAssetManifest, FrontendModuleAssetRoleManifest, FrontendModuleBindingManifest,
-    LegacyInstalledManifestEligibility, NodeContributionDependencyManifest,
-    NodeContributionManifest, PluginExecutionMode, PluginManifestV1, PluginPermissionManifest,
-    PluginRuntimeLimits, PluginRuntimeManifest, parse_legacy_installed_plugin_manifest,
-    parse_plugin_manifest, resolve_frontend_code_modules, resolve_plugin_frontend_sources,
+    parse_legacy_installed_plugin_manifest, parse_plugin_manifest, resolve_frontend_code_modules,
+    resolve_plugin_frontend_sources, FrontendBlockCodeModuleManifest,
+    FrontendBlockContextContractManifest, FrontendBlockContributionManifest,
+    FrontendBlockPermissionsManifest, FrontendModuleAssetManifest, FrontendModuleAssetRoleManifest,
+    FrontendModuleBindingManifest, LegacyInstalledManifestEligibility,
+    NodeContributionDependencyManifest, NodeContributionManifest, PluginExecutionMode,
+    PluginManifestV1, PluginPermissionManifest, PluginRuntimeLimits, PluginRuntimeManifest,
 };
 pub use network_egress_provider_contract::*;
 pub use network_egress_provider_package::{
-    NETWORK_EGRESS_PROVIDER_CONTRACT, NetworkEgressProviderDefinition, NetworkEgressProviderPackage,
+    NetworkEgressProviderDefinition, NetworkEgressProviderPackage, NETWORK_EGRESS_PROVIDER_CONTRACT,
 };
 pub use package_intake::*;
 pub use provider_contract::*;
@@ -89,5 +90,5 @@ pub fn crate_name() -> &'static str {
 pub mod _tests;
 
 pub use extension_package_runtime::plugin_settings_page::{
-    PluginSettingsPageManifest, read_plugin_settings_page_source, validate_plugin_settings_pages,
+    read_plugin_settings_page_source, validate_plugin_settings_pages, PluginSettingsPageManifest,
 };

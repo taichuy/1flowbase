@@ -56,7 +56,8 @@ async fn workspace_governance_callback_does_not_accept_worker_authority() {
         },
         port.clone(),
     ));
-    let request = json!({"operation":"inspect_quota_counts","tenant_id":"tenant","workspace_id":"workspace"});
+    let request =
+        json!({"operation":"inspect_quota_counts","tenant_id":"tenant","workspace_id":"workspace"});
     let denied = execute_callback(
         MultiplexHostService::WorkspaceGovernanceV1,
         request.clone(),

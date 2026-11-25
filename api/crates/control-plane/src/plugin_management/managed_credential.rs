@@ -61,7 +61,9 @@ impl PluginCredentialPort for ManagedPluginCredentialService {
                     )
                     .map_err(|_| denied())?;
                     Ok(async move {
-                        self.repository.execute_plugin_credential(&resolved, request).await
+                        self.repository
+                            .execute_plugin_credential(&resolved, request)
+                            .await
                     })
                 },
             )

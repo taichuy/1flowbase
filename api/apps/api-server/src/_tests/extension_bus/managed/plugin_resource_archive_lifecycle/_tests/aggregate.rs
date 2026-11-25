@@ -5,9 +5,9 @@ use super::{
     fixture::{Fixture, Preserved},
     loopback_ssh::LoopbackSsh,
 };
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use futures_util::{SinkExt, StreamExt};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
     time::Duration,
@@ -18,8 +18,8 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_tungstenite::{
+    tungstenite::{client::IntoClientRequest, Message},
     WebSocketStream,
-    tungstenite::{Message, client::IntoClientRequest},
 };
 
 const PATH: &str = "/api/console/managed-services/compute-monitor/monitor/stream";
@@ -110,14 +110,23 @@ async fn open(f: &Fixture, server: &Server, records: Value, member: bool) -> Res
     let ticket = wire["data"]["ticket"]
         .as_str()
         .context("actual aggregate ticket missing")?;
-    let mut request =
-        format!("{}{PATH}?ticket={ticket}", server.base.replacen("http://", "ws://", 1)).into_client_request()?;
+    let mut request = format!(
+        "{}{PATH}?ticket={ticket}",
+        server.base.replacen("http://", "ws://", 1)
+    )
+    .into_client_request()?;
     request.headers_mut().insert("cookie", cookie.parse()?);
     request.headers_mut().insert("origin", server.base.parse()?);
-    let (socket, response) = tokio::time::timeout(Duration::from_secs(10), tokio_tungstenite::connect_async(request))
-        .await
-        .context("aggregate WS upgrade timed out")??;
-    ensure!(response.status().as_u16() == 101, "actual aggregate WS did not upgrade");
+    let (socket, response) = tokio::time::timeout(
+        Duration::from_secs(10),
+        tokio_tungstenite::connect_async(request),
+    )
+    .await
+    .context("aggregate WS upgrade timed out")??;
+    ensure!(
+        response.status().as_u16() == 101,
+        "actual aggregate WS did not upgrade"
+    );
     Ok(socket)
 }
 async fn event(socket: &mut Socket) -> Result<Value> {
@@ -128,16 +137,23 @@ async fn event(socket: &mut Socket) -> Result<Value> {
             .context("aggregate WS closed before expected event")??;
         match message {
             Message::Text(text) => {
-                ensure!(text.len() <= 64 * 1024, "oversize production aggregate frame");
+                ensure!(
+                    text.len() <= 64 * 1024,
+                    "oversize production aggregate frame"
+                );
                 let frame: Value = serde_json::from_str(&text)?;
                 ensure!(
                     frame["type"] == "event",
                     "aggregate error/terminal instead of sample: {}",
                     frame["type"]
                 );
-                let id = frame["id"].as_u64().context("aggregate event credit ID missing")?;
+                let id = frame["id"]
+                    .as_u64()
+                    .context("aggregate event credit ID missing")?;
                 socket
-                    .send(Message::Text(json!({"type":"ack","id":id}).to_string().into()))
+                    .send(Message::Text(
+                        json!({"type":"ack","id":id}).to_string().into(),
+                    ))
                     .await?;
                 return Ok(frame["event"].clone());
             }
@@ -168,7 +184,10 @@ async fn samples(
     strict_after: i64,
 ) -> Result<BTreeMap<String, Vec<i64>>> {
     tokio::time::timeout(Duration::from_secs(35), async {
-        let mut times: BTreeMap<String, Vec<i64>> = wanted.iter().map(|(id, _)| ((*id).into(), Vec::new())).collect();
+        let mut times: BTreeMap<String, Vec<i64>> = wanted
+            .iter()
+            .map(|(id, _)| ((*id).into(), Vec::new()))
+            .collect();
         loop {
             let value = event(socket).await?;
             p.no_secrets(&value)?;
@@ -189,7 +208,10 @@ async fn samples(
                 // count as chart samples, and retry/error states cannot pass this fixture.
                 ensure!(
                     value["event"]["host_id"] == id
-                        && matches!(value["event"]["state"].as_str(), Some("queued" | "connecting"))
+                        && matches!(
+                            value["event"]["state"].as_str(),
+                            Some("queued" | "connecting")
+                        )
                         && value["event"]["error_code"].is_null(),
                     "unexpected or cross-host source status: {value}"
                 );
@@ -204,11 +226,16 @@ async fn samples(
                 sample["host_id"] == id,
                 "aggregate envelope/sample cross-host contamination"
             );
-            let at = sample["captured_at_unix_ms"].as_i64().context("sample time missing")?;
+            let at = sample["captured_at_unix_ms"]
+                .as_i64()
+                .context("sample time missing")?;
             if !times.contains_key(id) {
                 // Only in-flight pre-selection samples may drain after set; a detached
                 // deselected producer emitting new samples is never accepted.
-                ensure!(at <= strict_after, "deselected host continued emitting fresh samples");
+                ensure!(
+                    at <= strict_after,
+                    "deselected host continued emitting fresh samples"
+                );
                 continue;
             }
             if at < since || sample["warming_up"] == true {
@@ -273,7 +300,12 @@ async fn close(mut socket: Socket) -> Result<()> {
     drop(socket);
     Ok(())
 }
-pub async fn accept(f: &Fixture, p: &Preserved, ssh: &LoopbackSsh, browser: &BrowserConfig) -> Result<()> {
+pub async fn accept(
+    f: &Fixture,
+    p: &Preserved,
+    ssh: &LoopbackSsh,
+    browser: &BrowserConfig,
+) -> Result<()> {
     let mut server = Server::start(f).await?;
     let result = exercise(f, p, ssh, browser, &server).await;
     let cleanup = server.shutdown().await;
@@ -305,9 +337,18 @@ async fn exercise(
     let before = ssh.sessions()?;
     connections(ssh, 0).await?;
     let started = now_ms();
-    let records = json!([{"record_id":visible,"interval_ms":500},{"record_id":hidden,"interval_ms":1500}]);
+    let records =
+        json!([{"record_id":visible,"interval_ms":500},{"record_id":hidden,"interval_ms":1500}]);
     let mut socket = open(f, server, records, false).await?;
-    let observed = samples(&mut socket, p, ssh, &[(visible, 500), (hidden, 1500)], started, started).await?;
+    let observed = samples(
+        &mut socket,
+        p,
+        ssh,
+        &[(visible, 500), (hidden, 1500)],
+        started,
+        started,
+    )
+    .await?;
     ensure!(
         ssh.sessions()? >= before + 8,
         "aggregate did not perform genuine multi-host SSH probes"
@@ -319,8 +360,20 @@ async fn exercise(
 
     // A real same-socket selection update removes one source and changes the other's cadence.
     let changed = now_ms();
-    set(&mut socket, json!([{"record_id":visible,"interval_ms":1250}])).await?;
-    samples(&mut socket, p, ssh, &[(visible, 1250)], changed + 1500, changed + 1500).await?;
+    set(
+        &mut socket,
+        json!([{"record_id":visible,"interval_ms":1250}]),
+    )
+    .await?;
+    samples(
+        &mut socket,
+        p,
+        ssh,
+        &[(visible, 1250)],
+        changed + 1500,
+        changed + 1500,
+    )
+    .await?;
     connections(ssh, 1).await?;
     let changed = now_ms();
     set(
@@ -375,7 +428,11 @@ async fn exercise(
     // Reopen on the same subscription, rejecting stale/deselected-host frames in samples(),
     // and prove transport cancellation also joins its source.
     let restarted = now_ms();
-    set(&mut socket, json!([{"record_id":visible,"interval_ms":500}])).await?;
+    set(
+        &mut socket,
+        json!([{"record_id":visible,"interval_ms":500}]),
+    )
+    .await?;
     samples(&mut socket, p, ssh, &[(visible, 500)], restarted, restarted).await?;
     connections(ssh, 1).await?;
     close(socket).await?;
@@ -413,22 +470,32 @@ async fn exercise(
             "port":ssh.port, "username":ssh.username, "auth_type":"private_key", "enabled":false,
             "timeout_ms":30000, "max_output_bytes":1048576, "jump_hosts":[]
         });
-        super::management_authority::accept(f, &server.base, management_host_id, rename, &browser.output_dir)
-            .await?;
-        browser.run(json!({
-            "api_base_url":server.base,
-            "visible_host_id":visible,
-            "hidden_host_id":hidden,
-            "management_host_id":management_host_id,
-            "expected_hostname":std::fs::read_to_string("/proc/sys/kernel/hostname")?.trim(),
-            "output_dir":browser.output_dir,
-        })).await
+        super::management_authority::accept(
+            f,
+            &server.base,
+            management_host_id,
+            rename,
+            &browser.output_dir,
+        )
+        .await?;
+        browser
+            .run(json!({
+                "api_base_url":server.base,
+                "visible_host_id":visible,
+                "hidden_host_id":hidden,
+                "management_host_id":management_host_id,
+                "expected_hostname":std::fs::read_to_string("/proc/sys/kernel/hostname")?.trim(),
+                "output_dir":browser.output_dir,
+            }))
+            .await
     }
     .await;
     // Always attempt deletion after the subprocess, including browser startup/assertion
     // failures. Retain the original failure; normal deletion uses the same real SSH API.
     let deletion = f
-        .delete(&format!("/api/console/managed-services/ssh/hosts/{management_host_id}"))
+        .delete(&format!(
+            "/api/console/managed-services/ssh/hosts/{management_host_id}"
+        ))
         .await;
     browser_result?;
     let (status, _) = deletion?;

@@ -1,7 +1,7 @@
 //! Root owns the business assertions. This runner only supplies a live API and enforces
 //! mandatory completion, bounded output/time, and ownership-scoped process cleanup.
 use super::loopback_ssh::{identity, observe, signal_owned};
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use serde_json::Value;
 use std::{
     collections::BTreeMap,

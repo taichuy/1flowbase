@@ -446,12 +446,10 @@ async fn customer_sessions_manage_workspace_tables_but_cannot_access_host_storag
     let root = (root_cookie.as_str(), root_csrf.as_str());
     let (status, me) = request(&app, root, "GET", "/api/console/me", Value::Null).await;
     assert_eq!(status, StatusCode::OK, "{me}");
-    assert!(
-        me["data"]["permissions"]
-            .as_array()
-            .unwrap()
-            .contains(&json!("file_storages.list"))
-    );
+    assert!(me["data"]["permissions"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("file_storages.list")));
     let (status, storages) = request(&app, root, "GET", STORAGES, Value::Null).await;
     assert_eq!(status, StatusCode::OK, "{storages}");
     let storage = storages["data"]
@@ -544,15 +542,12 @@ async fn customer_sessions_manage_workspace_tables_but_cannot_access_host_storag
         let rows = listed["data"].as_array().unwrap();
         let acme_table = rows.iter().find(|row| row["id"] == acme_table_id).unwrap();
         assert_eq!(acme_table["bound_storage_title"], storage["title"]);
-        assert!(
-            rows.iter()
-                .all(|row| row["id"] != bootstrap_table["data"]["id"])
-        );
-        assert!(
-            rows.iter().all(|row| {
-                row["scope_kind"] == "system" || row["scope_id"] == acme.to_string()
-            })
-        );
+        assert!(rows
+            .iter()
+            .all(|row| row["id"] != bootstrap_table["data"]["id"]));
+        assert!(rows
+            .iter()
+            .all(|row| { row["scope_kind"] == "system" || row["scope_id"] == acme.to_string() }));
         let attachments = rows
             .iter()
             .find(|row| row["code"] == "attachments")

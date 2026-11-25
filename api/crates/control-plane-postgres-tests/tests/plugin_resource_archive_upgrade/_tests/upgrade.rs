@@ -1,9 +1,9 @@
 use super::{
-    fixture::{Fixture, assert_permission_denied},
+    fixture::{assert_permission_denied, Fixture},
     inputs::*,
     preservation::{self, Snapshot},
 };
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use control_plane::{plugin_management::*, ports::*};
 use domain::ContributionAuthorizationStatus;
 use std::fs;

@@ -294,9 +294,8 @@ impl BillingAdapter {
                 let selected_target = match selected_model_id {
                     None => None,
                     Some(model_id) => {
-                        if let Some(found) = items
-                            .iter()
-                            .find(|item| item.upstream_model_id == model_id)
+                        if let Some(found) =
+                            items.iter().find(|item| item.upstream_model_id == model_id)
                         {
                             Some(found.clone())
                         } else {

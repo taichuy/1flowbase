@@ -1,15 +1,15 @@
 //! Seed through actual durable ports and record-permission service. SQL below only
 //! observes complete physical rows/catalog identities; it does not fabricate runtime facts.
 use super::{
-    fixture::{Fixture, Installed, assert_permission_denied},
+    fixture::{assert_permission_denied, Fixture, Installed},
     inputs::{OLD_VERSION, OWNER},
 };
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use control_plane::{ports::*, record_permissions::RecordPermissionService};
 use control_plane_contracts::PluginCredentialRepository;
 use domain::*;
 use extension_contracts::*;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sqlx::PgPool;
 use std::collections::{BTreeMap, BTreeSet};
 use storage_durable_postgres::PgPluginCredentialRepository;

@@ -111,7 +111,11 @@ pub fn copy_staged(
         fs::create_dir_all(destination)?;
         for entry in fs::read_dir(source)? {
             let entry = entry?;
-            copy_staged(&entry.path(), &destination.join(entry.file_name()), dirty_dirs)?;
+            copy_staged(
+                &entry.path(),
+                &destination.join(entry.file_name()),
+                dirty_dirs,
+            )?;
         }
         fs::set_permissions(destination, info.permissions())?;
         dirty_dirs.insert(destination.to_path_buf());
@@ -161,8 +165,7 @@ pub fn matches_managed_file(
     {
         use std::os::unix::fs::PermissionsExt;
 
-        if (dest_meta.permissions().mode() & 0o7777)
-            != (source_meta.permissions().mode() & 0o7777)
+        if (dest_meta.permissions().mode() & 0o7777) != (source_meta.permissions().mode() & 0o7777)
         {
             return Ok(false);
         }

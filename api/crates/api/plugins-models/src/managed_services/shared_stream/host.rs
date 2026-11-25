@@ -1,7 +1,7 @@
 use super::super::{
-    ManagedServiceRegistration,
     interface::{ManagedServiceInput, ManagedServiceOutput},
     stream::{StreamEvent, StreamInput},
+    ManagedServiceRegistration,
 };
 use super::{
     authority,
@@ -18,7 +18,7 @@ use interface_runtime::{
     CompiledInterfaceRegistry, InterfaceContract, InvocationEnvelope, UserPrincipal,
 };
 use plugin_framework::{ManagedServiceOperation, ManagedServiceRecordSelector};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 

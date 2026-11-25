@@ -229,16 +229,11 @@ pub async fn redeem_invitation(
     headers: HeaderMap,
     Json(body): Json<RedeemWorkspaceInvitationBody>,
 ) -> Result<Json<ApiSuccess<SessionResponse>>, ApiError> {
-    use super::console_identity_interface::{
-        ConsoleIdentityInput, ConsoleIdentityOutput, invoke,
-    };
+    use super::console_identity_interface::{invoke, ConsoleIdentityInput, ConsoleIdentityOutput};
     let output = invoke(
         Arc::clone(&state),
         "http.console.workspaces.invitations.redeem.v1",
-        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
-            state,
-            headers,
-        },
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
         ConsoleIdentityInput::RedeemWorkspaceInvitation {
             invitation_token: body.invitation_token,
         },

@@ -20,10 +20,10 @@ use std::{
 };
 use tower::ServiceExt;
 
-use crate::test_support::external_auth_verifier::{CONTRIBUTION, package_with_second_provider};
 pub(crate) use crate::test_support::external_auth_verifier::{
     installed_verifier_fixture, installed_verifier_fixture_with_second_provider,
 };
+use crate::test_support::external_auth_verifier::{package_with_second_provider, CONTRIBUTION};
 
 struct CountingSessions {
     inner: Arc<dyn SessionStore>,

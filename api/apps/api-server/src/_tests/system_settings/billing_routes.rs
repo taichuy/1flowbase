@@ -886,8 +886,12 @@ async fn pricing_targets_progressively_pages_providers_models_selected_target_an
     assert_eq!(s2["data"]["items"][0]["upstream_model_id"], "model-a");
     assert_eq!(s2["data"]["items"][1]["upstream_model_id"], "model-b");
     assert_eq!(
-        Decimal::from_str(s2["data"]["items"][1]["input_token_unit_price"].as_str().unwrap())
-            .unwrap(),
+        Decimal::from_str(
+            s2["data"]["items"][1]["input_token_unit_price"]
+                .as_str()
+                .unwrap()
+        )
+        .unwrap(),
         Decimal::from_str("2.5").unwrap()
     );
 

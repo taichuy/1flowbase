@@ -12,11 +12,9 @@ fn plugin_resources_do_not_require_or_parse_a_deployment_participant_registry() 
         ("BOOTSTRAP_ROOT_PASSWORD", "fixture"),
         ("BOOTSTRAP_WORKSPACE_NAME", "fixture"),
     ];
-    assert!(
-        standard_env
-            .iter()
-            .all(|(key, _)| *key != "PLUGIN_SHARED_RESOURCE_CONTRACTS_JSON")
-    );
+    assert!(standard_env
+        .iter()
+        .all(|(key, _)| *key != "PLUGIN_SHARED_RESOURCE_CONTRACTS_JSON"));
     ApiConfig::from_env_map(&standard_env)
         .expect("standard deployment needs no resource allowlist");
 

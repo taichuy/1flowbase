@@ -28,7 +28,10 @@ impl InterfaceContract for BillingOutput {
                             "providers",
                             mp::object_schema([("item_count", mp::count_schema())]),
                         ),
-                        ("providers_total_count", serde_json::json!({"type":"integer"})),
+                        (
+                            "providers_total_count",
+                            serde_json::json!({"type":"integer"}),
+                        ),
                         (
                             "items",
                             mp::object_schema([("item_count", mp::count_schema())]),

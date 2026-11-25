@@ -1,7 +1,7 @@
 use super::*;
 use control_plane_contracts::ports::*;
 use domain::{AuditLogRecord, PluginContributionAuthorization};
-use extension_contracts::{PluginDataOperationResult, PluginDataResponse, extension_bus::*};
+use extension_contracts::{extension_bus::*, PluginDataOperationResult, PluginDataResponse};
 use serde_json::json;
 use std::{
     future::Future,
@@ -622,8 +622,8 @@ async fn shared_credentials_keep_live_consumer_authority_and_read_existing_owner
     let provider_id = add_provider(&mut state, "read_write");
     state.installation.metadata_json["managed_service_permissions"]["secrets"] =
         json!("host_managed");
-    state.installation.metadata_json["managed"]["module"]["contributions"][0]["required_permissions"] =
-        json!(["service.execute", "credential.manage"]);
+    state.installation.metadata_json["managed"]["module"]["contributions"][0]
+        ["required_permissions"] = json!(["service.execute", "credential.manage"]);
     state.snapshot.authorizations[1].permission = "credential.manage".into();
     state.snapshot.authorizations[1].permission_contract_id = "plugin-credential".into();
     state.snapshot.authorizations[1].resource_scope = ContributionResourceScope::System;

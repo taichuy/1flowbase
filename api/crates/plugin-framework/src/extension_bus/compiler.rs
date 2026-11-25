@@ -483,9 +483,7 @@ fn validate_permissions(
         let policy_callback = point.point_id.as_str()
             == extension_contracts::WORKSPACE_POLICY_POINT
             && authority.is_some_and(|facts| facts.managed_modules.contains(&module.module_id))
-            && extension_contracts::is_workspace_policy_callback_permission(
-                permission.as_str(),
-            );
+            && extension_contracts::is_workspace_policy_callback_permission(permission.as_str());
         if !granted_permissions.contains(permission)
             || (!point.allowed_permissions.contains(permission) && !policy_callback)
         {

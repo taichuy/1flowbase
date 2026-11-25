@@ -256,18 +256,20 @@ fn unchanged_managed_files_skip_rewrite_clean_stale_temps_and_respect_mode_chang
         fs::set_permissions(f.old.join("start.sh"), fs::Permissions::from_mode(0o644)).unwrap();
         fs::set_permissions(f.new.join("start.sh"), fs::Permissions::from_mode(0o755)).unwrap();
     }
-    old_manifest
-        .files
-        .insert("start.sh".into(), files::hash(&f.old.join("start.sh")).unwrap());
+    old_manifest.files.insert(
+        "start.sh".into(),
+        files::hash(&f.old.join("start.sh")).unwrap(),
+    );
     files::json(&f.old.join(manifest::NAME), &old_manifest).unwrap();
 
     // New nested directory asset must be created, synced, and verified.
     fs::create_dir_all(f.new.join("web/assets/nested")).unwrap();
     fs::write(f.new.join("web/assets/nested/app.js"), "console.log('ok');").unwrap();
     let mut new_manifest = Manifest::read(&f.new).unwrap();
-    new_manifest
-        .files
-        .insert("start.sh".into(), files::hash(&f.new.join("start.sh")).unwrap());
+    new_manifest.files.insert(
+        "start.sh".into(),
+        files::hash(&f.new.join("start.sh")).unwrap(),
+    );
     new_manifest.files.insert(
         "web/assets/nested/app.js".into(),
         files::hash(&f.new.join("web/assets/nested/app.js")).unwrap(),
@@ -319,9 +321,7 @@ fn staged_copy_and_replace_refuse_symlinks_and_sync_unique_directories() {
         }
     }
 
-    let root = Scratch(
-        std::env::temp_dir().join(format!("native-files-{}", uuid::Uuid::now_v7())),
-    );
+    let root = Scratch(std::env::temp_dir().join(format!("native-files-{}", uuid::Uuid::now_v7())));
     fs::create_dir_all(root.0.join("src/sub/deep")).unwrap();
     fs::write(root.0.join("src/sub/deep/file.txt"), "payload").unwrap();
 

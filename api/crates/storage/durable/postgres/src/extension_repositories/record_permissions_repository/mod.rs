@@ -3,7 +3,7 @@ use crate::repositories::PgControlPlaneStore;
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane_contracts::{
-    ControlPlaneContractError as Error, ports::RecordPermissionRepository,
+    ports::RecordPermissionRepository, ControlPlaneContractError as Error,
 };
 use domain::{
     ActorContext, RecordPermissionGrant, RecordPermissionKey, RecordPermissionMode,

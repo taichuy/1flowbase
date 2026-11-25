@@ -423,15 +423,14 @@ pub(super) fn target_failure(
         ("outcome".to_string(), json!("failed")),
         ("retry_original".to_string(), json!(false)),
     ]);
-    let message = if target_code.as_deref()
-        == Some(crate::error_response::LOCAL_TERMINAL_DISABLED_CODE)
-    {
-        let message = crate::error_response::LOCAL_TERMINAL_DISABLED_MESSAGE;
-        data.insert("reason".to_string(), json!(message));
-        message
-    } else {
-        "Tool execution failed"
-    };
+    let message =
+        if target_code.as_deref() == Some(crate::error_response::LOCAL_TERMINAL_DISABLED_CODE) {
+            let message = crate::error_response::LOCAL_TERMINAL_DISABLED_MESSAGE;
+            data.insert("reason".to_string(), json!(message));
+            message
+        } else {
+            "Tool execution failed"
+        };
     if let Some(code) = target_code {
         data.insert("target_code".to_string(), json!(code));
     }

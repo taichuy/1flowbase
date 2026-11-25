@@ -222,9 +222,7 @@ impl HostContributionGrantPolicy {
         }
         let is_policy =
             contribution.point_id.as_str() == extension_contracts::WORKSPACE_POLICY_POINT;
-        if is_policy
-            || contribution.point_id.as_str() == plugin_framework::MANAGED_SERVICE_POINT
-        {
+        if is_policy || contribution.point_id.as_str() == plugin_framework::MANAGED_SERVICE_POINT {
             use extension_contracts::*;
             let is_system =
                 domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)

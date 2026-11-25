@@ -1,5 +1,5 @@
 use super::{parse, record_fixture};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 fn provider() -> Value {
     let mut value = record_fixture();
@@ -45,20 +45,16 @@ fn resource_provider_is_standalone_and_importer_has_no_duplicate_schema() {
 fn resource_declarations_reject_undeclared_prerequisites_and_owned_schema_copies() {
     let mut value = consumer();
     value["plugin_dependencies"] = json!([]);
-    assert!(
-        parse(&value)
-            .unwrap_err()
-            .to_string()
-            .contains("dependency")
-    );
+    assert!(parse(&value)
+        .unwrap_err()
+        .to_string()
+        .contains("dependency"));
     let mut value = consumer();
     value["data_models"] = record_fixture()["data_models"].clone();
-    assert!(
-        parse(&value)
-            .unwrap_err()
-            .to_string()
-            .contains("duplicate owned schema")
-    );
+    assert!(parse(&value)
+        .unwrap_err()
+        .to_string()
+        .contains("duplicate owned schema"));
 }
 
 #[test]

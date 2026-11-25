@@ -147,49 +147,53 @@ where
         ManagedWorkspaceId::new(binding.scope_id).map_err(|_| denied())?,
         ContributionId::new(binding.contribution_id).map_err(|_| denied())?,
     );
-    tokio::time::timeout(std::time::Duration::from_millis(remaining_ms as u64), async {
-        let lease = authority
-            .lock_managed_callback_authority(&subject)
-            .await
-            .map_err(|_| denied())?;
-        let installation = lease.installation(installation_id).ok_or_else(denied)?;
-        if installation.desired_state != domain::PluginDesiredState::ActiveRequested
-            || installation.organization != binding.publisher_namespace
-            || installation.provider_code != binding.plugin_code
-            || installation.plugin_version != binding.plugin_version
-            || domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID) != scope_id
-            || installation
-                .metadata_json
-                .pointer("/managed_service_permissions/secrets")
-                .and_then(serde_json::Value::as_str)
-                != Some("host_managed")
-        {
-            return Err(denied());
-        }
-        let managed: plugin_framework::ManagedManifest =
-            serde_json::from_value(installation.metadata_json["managed"].clone())
+    tokio::time::timeout(
+        std::time::Duration::from_millis(remaining_ms as u64),
+        async {
+            let lease = authority
+                .lock_managed_callback_authority(&subject)
+                .await
                 .map_err(|_| denied())?;
-        let contribution = managed
-            .module
-            .contributions
-            .iter()
-            .find(|c| c.contribution_id.as_str() == binding.contribution_id)
-            .ok_or_else(denied)?;
-        if contribution.point_id.as_str() != plugin_framework::MANAGED_SERVICE_POINT
-            || !contribution
-                .required_permissions
+            let installation = lease.installation(installation_id).ok_or_else(denied)?;
+            if installation.desired_state != domain::PluginDesiredState::ActiveRequested
+                || installation.organization != binding.publisher_namespace
+                || installation.provider_code != binding.plugin_code
+                || installation.plugin_version != binding.plugin_version
+                || domain::managed_installation_scope(installation, domain::DEFAULT_SCOPE_ID)
+                    != scope_id
+                || installation
+                    .metadata_json
+                    .pointer("/managed_service_permissions/secrets")
+                    .and_then(serde_json::Value::as_str)
+                    != Some("host_managed")
+            {
+                return Err(denied());
+            }
+            let managed: plugin_framework::ManagedManifest =
+                serde_json::from_value(installation.metadata_json["managed"].clone())
+                    .map_err(|_| denied())?;
+            let contribution = managed
+                .module
+                .contributions
                 .iter()
-                .any(|p| p.as_str() == binding.permission)
-        {
-            return Err(denied());
-        }
-        HostContributionGrantPolicy::root_composition()
-            .effective_permissions(installation, scope_id, contribution, lease.snapshot())
-            .map_err(|_| denied())?;
-        let result = prepare(installation_id, installation, lease.installations())?.await;
-        lease.release().await.map_err(|_| denied())?;
-        result
-    })
+                .find(|c| c.contribution_id.as_str() == binding.contribution_id)
+                .ok_or_else(denied)?;
+            if contribution.point_id.as_str() != plugin_framework::MANAGED_SERVICE_POINT
+                || !contribution
+                    .required_permissions
+                    .iter()
+                    .any(|p| p.as_str() == binding.permission)
+            {
+                return Err(denied());
+            }
+            HostContributionGrantPolicy::root_composition()
+                .effective_permissions(installation, scope_id, contribution, lease.snapshot())
+                .map_err(|_| denied())?;
+            let result = prepare(installation_id, installation, lease.installations())?.await;
+            lease.release().await.map_err(|_| denied())?;
+            result
+        },
+    )
     .await
     .map_err(|_| deadline_exceeded())?
 }

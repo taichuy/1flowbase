@@ -1,5 +1,5 @@
 //! Plugin declaration only. Host supplies actor, workspace and policy evaluation.
-use super::{ManagedServiceManifest, invalid};
+use super::{invalid, ManagedServiceManifest};
 use crate::{FrameworkResult, PluginManifestV1};
 use extension_contracts::PluginDataFieldType;
 use serde::{Deserialize, Serialize};

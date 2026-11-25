@@ -1,7 +1,7 @@
 use super::super::{
-    ManagedServiceRegistration,
     interface::{ManagedServiceOutput, Operation},
-    stream::{FRAME_BYTES, StreamEvent},
+    stream::{StreamEvent, FRAME_BYTES},
+    ManagedServiceRegistration,
 };
 use super::{
     broker::{self, Lease, Member, Notice},
@@ -13,14 +13,14 @@ use crate::{
     routes::console_interface::ConsoleInterfaceTargetError,
 };
 use control_plane::errors::ControlPlaneError as Error;
-use futures_util::{StreamExt, stream};
+use futures_util::{stream, StreamExt};
 use interface_runtime::{
     InterfaceEventStream, InterfaceStreamPublisher, InterfaceStreamTerminal, UserPrincipal,
 };
 use plugin_framework::ManagedServiceOperation;
 use runtime_core::runtime_backend::{RuntimeManagedDuplex, RuntimeManagedDuplexEvent};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,

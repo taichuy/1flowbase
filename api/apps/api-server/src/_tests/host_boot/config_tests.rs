@@ -46,18 +46,41 @@ fn local_terminal_disabled_defaults_and_explicit_overrides() {
         if let Some(environment) = environment {
             env.push(("API_ENV", environment));
         }
-        assert_eq!(ApiConfig::from_env_map(&env).unwrap().local_terminal_disabled, default, "{environment:?}");
+        assert_eq!(
+            ApiConfig::from_env_map(&env)
+                .unwrap()
+                .local_terminal_disabled,
+            default,
+            "{environment:?}"
+        );
         for (value, expected) in [
-            ("1", true), ("true", true), ("yes", true), ("on", true),
-            ("0", false), ("false", false), ("no", false), ("off", false),
+            ("1", true),
+            ("true", true),
+            ("yes", true),
+            ("on", true),
+            ("0", false),
+            ("false", false),
+            ("no", false),
+            ("off", false),
         ] {
             env.push(("API_LOCAL_TERMINAL_DISABLED", value));
-            assert_eq!(ApiConfig::from_env_map(&env).unwrap().local_terminal_disabled, expected, "{environment:?}: {value}");
+            assert_eq!(
+                ApiConfig::from_env_map(&env)
+                    .unwrap()
+                    .local_terminal_disabled,
+                expected,
+                "{environment:?}: {value}"
+            );
             env.pop();
         }
         env.push(("API_LOCAL_TERMINAL_DISABLED", "maybe"));
         let error = ApiConfig::from_env_map(&env).unwrap_err();
-        assert!(error.to_string().contains("invalid env API_LOCAL_TERMINAL_DISABLED"), "{error}");
+        assert!(
+            error
+                .to_string()
+                .contains("invalid env API_LOCAL_TERMINAL_DISABLED"),
+            "{error}"
+        );
     }
 }
 

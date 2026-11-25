@@ -1,5 +1,5 @@
 //! Generic settings API for plugin-declared record permissions.
-use super::{ManagedServiceRegistration, record_acl};
+use super::{record_acl, ManagedServiceRegistration};
 use crate::openapi_interface::json_contract::{self, JsonApiInput, JsonApiOutput};
 use crate::{
     app_state::ApiState,
@@ -14,14 +14,14 @@ use crate::{
     },
 };
 use axum::{
-    Json,
     extract::{Query, State},
     http::HeaderMap,
+    Json,
 };
 use control_plane::errors::ControlPlaneError as Error;
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::sync::{Arc, Weak};
 
 test_support_item! { pub(crate), [#[derive(Clone, Serialize, Deserialize, utoipa::IntoParams)]

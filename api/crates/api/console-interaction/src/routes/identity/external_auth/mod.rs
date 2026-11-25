@@ -685,12 +685,10 @@ async fn verify_callback(
             .await?
             .is_none()
         && (registration_enabled
-            || api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime::from_state(
-                state,
-            )
-            .public_onboarding_mode()
-            .await?
-            .is_some())
+            || api_host_kernel::workspace_policy_runtime::WorkspacePolicyRuntime::from_state(state)
+                .public_onboarding_mode()
+                .await?
+                .is_some())
     {
         match provider
             .invoke(

@@ -44,11 +44,9 @@ fn user_configuration_wins_and_generated_secrets_persist_in_env_only() {
             first.values["API_PROVIDER_SECRET_MASTER_KEY"]
         );
         assert_eq!(std::fs::read(directory.join(".env")).unwrap(), saved);
-        assert!(
-            String::from_utf8(saved)
-                .unwrap()
-                .starts_with("# keep my comment")
-        );
+        assert!(String::from_utf8(saved)
+            .unwrap()
+            .starts_with("# keep my comment"));
         assert!(!directory.join("data/settings.json").exists());
         std::fs::create_dir_all(first.data.join("postgres")).unwrap();
         std::fs::write(directory.join(".env"), text).unwrap();

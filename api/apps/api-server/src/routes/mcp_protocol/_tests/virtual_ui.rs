@@ -301,10 +301,12 @@ fn required_description_uses_raw_argument_and_current_revision() {
             .last_mut()
             .unwrap()[field] = value;
         assert!(validate_tool_call_controls(&json!({}), &invalid, Some(&invalid)).is_err());
-        assert!(
-            validate_tool_call_controls(&json!({"des_id":"revision"}), &invalid, Some(&invalid))
-                .is_err()
-        );
+        assert!(validate_tool_call_controls(
+            &json!({"des_id":"revision"}),
+            &invalid,
+            Some(&invalid)
+        )
+        .is_err());
     }
     tool.input_mapping["mappings"].as_array_mut().unwrap().pop();
     tool.des_id_required = true;
@@ -346,10 +348,12 @@ fn prerequisite_description_requires_its_current_token_without_disclosing_it() {
         validate_tool_call_controls(&json!({}), tool, description),
         Err("Missing des_id")
     );
-    assert!(
-        validate_tool_call_controls(&json!({"des_id":"instructions-current"}), tool, description)
-            .is_ok()
-    );
+    assert!(validate_tool_call_controls(
+        &json!({"des_id":"instructions-current"}),
+        tool,
+        description
+    )
+    .is_ok());
     let VirtualToolOutcome::Success(result) =
         get(&catalog, &scope, &json!({"tool_id":"lookup"}), false)
     else {
@@ -486,15 +490,13 @@ impl McpInterfaceDispatchPort for MediaFixtureDispatch {
 }
 
 fn media_fixture_interfaces() -> McpInterfaceCatalogSnapshot {
-    McpInterfaceCatalogSnapshot::new(vec![
-        serde_json::from_value(json!({
-            "interface_id":"lookup","source":"static_api","method":"GET","path":"/fixture/image",
-            "name":"Read image","short_description":"Read image","parameter_descriptors":[],
-            "parameter_schema":{},"result_schema":{},"permission_code":null,"security":{},
-            "risk_level":"low","bindable":true,"disabled_reason":null
-        }))
-        .unwrap(),
-    ])
+    McpInterfaceCatalogSnapshot::new(vec![serde_json::from_value(json!({
+        "interface_id":"lookup","source":"static_api","method":"GET","path":"/fixture/image",
+        "name":"Read image","short_description":"Read image","parameter_descriptors":[],
+        "parameter_schema":{},"result_schema":{},"permission_code":null,"security":{},
+        "risk_level":"low","bindable":true,"disabled_reason":null
+    }))
+    .unwrap()])
 }
 
 fn media_fixture_dependencies() -> RuntimeInternalToolInvokerDependencies {
@@ -556,26 +558,18 @@ async fn interface_wrapper_media_preserves_image_under_low_text_budget_and_conti
     assert_eq!(image["data"], data);
     assert_eq!(image["mimeType"], "image/png");
     let content = result["content"].as_array().unwrap();
-    assert!(
-        content
-            .iter()
-            .any(|item| item["type"] == "text" && item["text"] == "native text survives")
-    );
-    assert!(
-        content
-            .iter()
-            .any(|item| item["type"] == "audio" && item["data"] == data)
-    );
-    assert!(
-        content
-            .iter()
-            .any(|item| item["type"] == "resource_link" && item["uri"] == "urn:fixture:media")
-    );
-    assert!(
-        content
-            .iter()
-            .any(|item| item["type"] == "resource" && item["resource"]["blob"] == data)
-    );
+    assert!(content
+        .iter()
+        .any(|item| item["type"] == "text" && item["text"] == "native text survives"));
+    assert!(content
+        .iter()
+        .any(|item| item["type"] == "audio" && item["data"] == data));
+    assert!(content
+        .iter()
+        .any(|item| item["type"] == "resource_link" && item["uri"] == "urn:fixture:media"));
+    assert!(content
+        .iter()
+        .any(|item| item["type"] == "resource" && item["resource"]["blob"] == data));
     let structured = &result["structuredContent"];
     assert!(structured.to_string().chars().count() <= 1600);
     assert!(!structured.to_string().contains(&data));
@@ -683,13 +677,11 @@ async fn interface_wrapper_media_invalid_results_fail_and_plain_text_remains_unc
         result["structuredContent"],
         json!({"stdout":"ordinary text"})
     );
-    assert!(
-        result["content"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|item| item["type"] == "text")
-    );
+    assert!(result["content"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|item| item["type"] == "text"));
 }
 
 #[test]
@@ -1058,14 +1050,12 @@ fn mcp_call_injects_authorized_file_into_opted_in_interface_wrapper() {
     assert_eq!(forwarded["des_id"], "current-description");
     assert_eq!(forwarded["response_fields"], json!(["/record/id"]));
     assert!(forwarded.get("file").is_none());
-    assert!(
-        file_params::merge_call_file(
-            tool,
-            &json!({"tool_id":"file_import","arguments":{"file_table_id":"attachments"}})
-        )
-        .unwrap()
-        .is_none()
-    );
+    assert!(file_params::merge_call_file(
+        tool,
+        &json!({"tool_id":"file_import","arguments":{"file_table_id":"attachments"}})
+    )
+    .unwrap()
+    .is_none());
 }
 
 #[test]
@@ -1125,8 +1115,8 @@ fn mcp_call_rejects_undeclared_conflicting_and_invalid_file_inputs() {
         file_params::merge_call_file(&catalog.tools[0], &missing_args),
         Err("Invalid arguments")
     );
-    catalog.tools[0].parameter_schema["properties"]["body"]["properties"]["file"]["properties"]["mime_type"] =
-        json!({"type":"integer"});
+    catalog.tools[0].parameter_schema["properties"]["body"]["properties"]["file"]["properties"]
+        ["mime_type"] = json!({"type":"integer"});
     assert_eq!(
         file_params::merge_call_file(&catalog.tools[0], &incoming),
         Err("Target tool does not accept file input")
@@ -1296,11 +1286,9 @@ async fn link_only_and_template_reads_use_canonical_dispatch_with_public_replay_
     let calls = dispatch_port.calls.lock().unwrap();
     assert_eq!(calls.len(), 4);
     assert_eq!(calls[0]["link_only"], true);
-    assert!(
-        calls[1..]
-            .iter()
-            .all(|args| args["link_only"] == false && args["query"] == "a")
-    );
+    assert!(calls[1..]
+        .iter()
+        .all(|args| args["link_only"] == false && args["query"] == "a"));
 }
 
 #[test]

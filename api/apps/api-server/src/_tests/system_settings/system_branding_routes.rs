@@ -156,7 +156,8 @@ async fn system_branding_public_read_and_persistence_keep_html_verbatim() {
 }
 
 #[tokio::test]
-async fn public_system_metadata_projects_static_json_only_when_commercial_license_plugin_is_active() {
+async fn public_system_metadata_projects_static_json_only_when_commercial_license_plugin_is_active()
+{
     use crate::_tests::support::test_app_with_commercial_branding_fixture;
     use uuid::Uuid;
 
@@ -217,7 +218,10 @@ async fn public_system_metadata_projects_static_json_only_when_commercial_licens
     assert_eq!(status, StatusCode::OK, "{fallback_res}");
     assert_eq!(fallback_res["data"]["page_title"], "Packaged OEM");
     assert_eq!(fallback_res["data"]["login_hero_title"], "OEM Cloud");
-    assert_eq!(fallback_res["data"]["login_hero_tagline"], "Packaged Tagline");
+    assert_eq!(
+        fallback_res["data"]["login_hero_tagline"],
+        "Packaged Tagline"
+    );
     assert_eq!(fallback_res["data"]["hide_help_menu"], true);
     assert_eq!(fallback_res["data"]["hide_powered_by"], false);
 

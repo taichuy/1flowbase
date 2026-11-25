@@ -162,7 +162,8 @@ impl InterfaceContract for ConsoleIdentityInput {
                 ("workspace_id", mp::text(_field_workspace_id)?),
             ]),
             Self::RedeemWorkspaceInvitation { .. } => mp::object_value([(
-                "variant", serde_json::Value::String("RedeemWorkspaceInvitation".into()),
+                "variant",
+                serde_json::Value::String("RedeemWorkspaceInvitation".into()),
             )]),
             Self::SwitchRole {
                 role_code: _field_role_code,
@@ -409,12 +410,7 @@ impl ConsoleIdentityAdapter {
             service.switch_workspace(command).await?
         };
         Ok(ConsoleIdentityOutput::Session(
-            session::to_session_response(
-                user,
-                &result.actor,
-                &result.session,
-                &self.cookie_name,
-            ),
+            session::to_session_response(user, &result.actor, &result.session, &self.cookie_name),
         ))
     }
 

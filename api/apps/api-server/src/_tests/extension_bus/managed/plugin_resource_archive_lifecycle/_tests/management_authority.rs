@@ -1,9 +1,9 @@
 //! Independent HTTP receipts: no browser cancellation or plugin error projection can hide these results.
 use super::fixture::Fixture;
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use reqwest::{Method, StatusCode};
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{io::Write, os::unix::fs::OpenOptionsExt, path::Path, time::Duration};
 
 const CAPABILITIES: &str = "/api/console/settings/roles/record-capabilities";

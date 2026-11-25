@@ -98,8 +98,7 @@ pub use model_provider_slot::{
 #[derive(Clone)]
 pub struct ApiRuntimeServices {
     #[cfg(any(test, feature = "test-support"))]
-    pub(crate) workspace_policy_fixture:
-        Option<Arc<dyn control_plane::auth::WorkspacePolicyPort>>,
+    pub(crate) workspace_policy_fixture: Option<Arc<dyn control_plane::auth::WorkspacePolicyPort>>,
     managed_composition:
         Option<Arc<dyn crate::extension_bus::managed_activation::ManagedCompositionPort>>,
     runtime_backend: Arc<dyn RuntimeBackend>,

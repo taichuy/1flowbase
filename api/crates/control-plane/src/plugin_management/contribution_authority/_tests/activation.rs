@@ -16,13 +16,11 @@ fn fixture() -> (
         "required_permissions":["service.execute", "credential.manage", "ephemeral.manage", "plugin_data.owned.write"]
     }))
     .unwrap()];
-    manifest.data_models = vec![
-        serde_json::from_value(json!({
-            "contribution_version":"1flowbase.plugin-data-model/v1", "storage_binding":"main",
-            "owned_collections":[{"collection_code":"connections","fields":[]}]
-        }))
-        .unwrap(),
-    ];
+    manifest.data_models = vec![serde_json::from_value(json!({
+        "contribution_version":"1flowbase.plugin-data-model/v1", "storage_binding":"main",
+        "owned_collections":[{"collection_code":"connections","fields":[]}]
+    }))
+    .unwrap()];
     let now = time::OffsetDateTime::now_utc();
     let installation = domain::PluginInstallationRecord {
         id: Uuid::now_v7(),
@@ -62,33 +60,25 @@ fn root_activation_materializes_declared_host_permissions_and_owned_collections(
         .declared_activation_grants(&installation, &manifest)
         .unwrap();
     assert_eq!(grants.len(), 4);
-    assert!(
-        grants
-            .iter()
-            .any(|grant| grant.permission == "service.execute"
-                && grant.resource_scope == ContributionResourceScope::System)
-    );
-    assert!(
-        grants
-            .iter()
-            .any(|grant| grant.permission == "credential.manage"
-                && grant.permission_contract_id == "plugin-credential")
-    );
-    assert!(
-        grants
-            .iter()
-            .any(|grant| grant.permission == "ephemeral.manage"
-                && grant.permission_contract_id == "plugin-ephemeral")
-    );
-    assert!(
-        grants
-            .iter()
-            .any(|grant| grant.permission == "plugin_data.owned.write"
-                && grant.resource_scope
-                    == ContributionResourceScope::OwnedCollection {
-                        collection_code: "connections".into()
-                    })
-    );
+    assert!(grants
+        .iter()
+        .any(|grant| grant.permission == "service.execute"
+            && grant.resource_scope == ContributionResourceScope::System));
+    assert!(grants
+        .iter()
+        .any(|grant| grant.permission == "credential.manage"
+            && grant.permission_contract_id == "plugin-credential"));
+    assert!(grants
+        .iter()
+        .any(|grant| grant.permission == "ephemeral.manage"
+            && grant.permission_contract_id == "plugin-ephemeral"));
+    assert!(grants
+        .iter()
+        .any(|grant| grant.permission == "plugin_data.owned.write"
+            && grant.resource_scope
+                == ContributionResourceScope::OwnedCollection {
+                    collection_code: "connections".into()
+                }));
 }
 
 #[test]
@@ -96,18 +86,14 @@ fn root_activation_does_not_invent_collections_or_override_host_capability_contr
     let (mut installation, mut manifest) = fixture();
     let policy = HostContributionGrantPolicy::root_composition();
     manifest.data_models.clear();
-    assert!(
-        policy
-            .declared_activation_grants(&installation, &manifest)
-            .is_err()
-    );
+    assert!(policy
+        .declared_activation_grants(&installation, &manifest)
+        .is_err());
     let (_, declared) = fixture();
     installation.metadata_json["managed_service_permissions"]["secrets"] = json!("none");
-    assert!(
-        policy
-            .declared_activation_grants(&installation, &declared)
-            .is_err()
-    );
+    assert!(policy
+        .declared_activation_grants(&installation, &declared)
+        .is_err());
 }
 
 fn authentication_fixture() -> (
@@ -117,8 +103,7 @@ fn authentication_fixture() -> (
     let (mut installation, mut manifest) = fixture();
     installation.metadata_json = json!({"binding_targets":["system"]});
     manifest.data_models.clear();
-    manifest.managed.as_mut().unwrap().module.contributions =
-        vec![serde_json::from_value(json!({
+    manifest.managed.as_mut().unwrap().module.contributions = vec![serde_json::from_value(json!({
         "contribution_id":"managed_fixture.auth", "contributor_module_id":"managed_fixture",
         "point_id":"1flowbase.authentication.provider", "contract_version":"1", "mode":"append",
         "required_permissions":["authentication.verify", "network.http.request"]
@@ -135,23 +120,17 @@ fn authentication_activation_grants_exact_system_verification_and_http_permissio
         .declared_activation_grants(&installation, &manifest)
         .unwrap();
     assert_eq!(grants.len(), 2);
-    assert!(
-        grants
-            .iter()
-            .all(|grant| grant.resource_scope == ContributionResourceScope::System)
-    );
-    assert!(
-        grants
-            .iter()
-            .any(|grant| grant.permission == "authentication.verify"
-                && grant.permission_contract_id == "authentication")
-    );
-    assert!(
-        grants
-            .iter()
-            .any(|grant| grant.permission == "network.http.request"
-                && grant.permission_contract_id == "http-egress")
-    );
+    assert!(grants
+        .iter()
+        .all(|grant| grant.resource_scope == ContributionResourceScope::System));
+    assert!(grants
+        .iter()
+        .any(|grant| grant.permission == "authentication.verify"
+            && grant.permission_contract_id == "authentication"));
+    assert!(grants
+        .iter()
+        .any(|grant| grant.permission == "network.http.request"
+            && grant.permission_contract_id == "http-egress"));
     let contribution = &manifest.managed.as_ref().unwrap().module.contributions[0];
     let grant = &grants[0];
     for invalid in [
@@ -177,11 +156,9 @@ fn authentication_activation_grants_exact_system_verification_and_http_permissio
     let mut workspace = installation;
     workspace.scope_id = domain::DEFAULT_SCOPE_ID;
     workspace.metadata_json = json!({"binding_targets":["workspace"]});
-    assert!(
-        policy
-            .declared_activation_grants(&workspace, &manifest)
-            .is_err()
-    );
+    assert!(policy
+        .declared_activation_grants(&workspace, &manifest)
+        .is_err());
 }
 
 #[test]
@@ -263,39 +240,33 @@ fn authentication_effective_authority_rejects_missing_revoked_and_wrong_contribu
     revoked.authorizations[0].status = domain::ContributionAuthorizationStatus::Revoked;
     assert!(validate(&binding, &active, &revoked).is_err());
     snapshot.authorizations[0].status = domain::ContributionAuthorizationStatus::Revoked;
-    assert!(
-        policy
-            .effective_permissions(
-                &installation,
-                domain::SYSTEM_SCOPE_ID,
-                contribution,
-                &snapshot
-            )
-            .is_err()
-    );
+    assert!(policy
+        .effective_permissions(
+            &installation,
+            domain::SYSTEM_SCOPE_ID,
+            contribution,
+            &snapshot
+        )
+        .is_err());
     snapshot.authorizations[0].status = domain::ContributionAuthorizationStatus::Active;
     snapshot.authorizations[0].contribution_id = "different.auth".into();
-    assert!(
-        policy
-            .effective_permissions(
-                &installation,
-                domain::SYSTEM_SCOPE_ID,
-                contribution,
-                &snapshot
-            )
-            .is_err()
-    );
+    assert!(policy
+        .effective_permissions(
+            &installation,
+            domain::SYSTEM_SCOPE_ID,
+            contribution,
+            &snapshot
+        )
+        .is_err());
     snapshot.authorizations.clear();
-    assert!(
-        policy
-            .effective_permissions(
-                &installation,
-                domain::SYSTEM_SCOPE_ID,
-                contribution,
-                &snapshot
-            )
-            .is_err()
-    );
+    assert!(policy
+        .effective_permissions(
+            &installation,
+            domain::SYSTEM_SCOPE_ID,
+            contribution,
+            &snapshot
+        )
+        .is_err());
 }
 
 #[test]
@@ -304,8 +275,7 @@ fn communication_receive_activation_grants_only_its_declared_workspace_contract(
     installation.scope_id = domain::DEFAULT_SCOPE_ID;
     installation.metadata_json = json!({"binding_targets":["workspace"]});
     manifest.data_models.clear();
-    manifest.managed.as_mut().unwrap().module.contributions =
-        vec![serde_json::from_value(json!({
+    manifest.managed.as_mut().unwrap().module.contributions = vec![serde_json::from_value(json!({
         "contribution_id":"managed_fixture.receive", "contributor_module_id":"managed_fixture",
         "point_id":extension_contracts::NOTIFICATION_RECEIVE_POINT,
         "contract_version":extension_contracts::NOTIFICATION_CONTRACT_V1, "mode":"append",
@@ -351,11 +321,9 @@ fn communication_receive_activation_grants_only_its_declared_workspace_contract(
     without_receive
         .rules
         .retain(|rule| rule.point_id != extension_contracts::NOTIFICATION_RECEIVE_POINT);
-    assert!(
-        without_receive
-            .declared_activation_grants(&installation, &manifest)
-            .is_err()
-    );
+    assert!(without_receive
+        .declared_activation_grants(&installation, &manifest)
+        .is_err());
 }
 
 #[test]
@@ -426,11 +394,9 @@ fn frontend_activation_delegates_only_exact_trusted_host_workspace_contract() {
             plugin_framework::extension_bus::ExtensionPointId::new(point).unwrap();
         descriptor.contract_version =
             plugin_framework::extension_bus::ContractVersion::new(version).unwrap();
-        assert!(
-            policy
-                .declared_activation_grants(&installation, &wrong_manifest)
-                .is_err()
-        );
+        assert!(policy
+            .declared_activation_grants(&installation, &wrong_manifest)
+            .is_err());
     }
     let mut old_ceiling = policy.clone();
     old_ceiling
@@ -777,14 +743,12 @@ mod service_activation_tests {
             repository.clone(),
             HostContributionGrantPolicy::root_composition(),
         );
-        assert!(
-            service
-                .query(&root, id)
-                .await
-                .unwrap()
-                .authorizations
-                .is_empty()
-        );
+        assert!(service
+            .query(&root, id)
+            .await
+            .unwrap()
+            .authorizations
+            .is_empty());
         assert!(repository.state.lock().unwrap().snapshot.is_none());
         assert_eq!(repository.state.lock().unwrap().grants, 0);
         let member = ActorContext::scoped(
@@ -880,16 +844,14 @@ mod service_activation_tests {
             ))
         ));
         assert_eq!(repository.state.lock().unwrap().grants, 0);
-        assert!(
-            repository
-                .state
-                .lock()
-                .unwrap()
-                .snapshot
-                .as_ref()
-                .unwrap()
-                .authorizations
-                .is_empty()
-        );
+        assert!(repository
+            .state
+            .lock()
+            .unwrap()
+            .snapshot
+            .as_ref()
+            .unwrap()
+            .authorizations
+            .is_empty());
     }
 }

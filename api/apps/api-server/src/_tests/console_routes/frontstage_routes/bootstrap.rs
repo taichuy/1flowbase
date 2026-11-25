@@ -348,7 +348,10 @@ async fn frontstage_bootstrap_supports_etag_304_viewport_code_limit_and_gzip_com
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{created_page}");
-    let page_id = created_page["data"]["page"]["id"].as_str().unwrap().to_owned();
+    let page_id = created_page["data"]["page"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     let tab_id = created_page["data"]["default_tab"]["id"]
         .as_str()
         .unwrap()
@@ -429,7 +432,9 @@ async fn frontstage_bootstrap_supports_etag_304_viewport_code_limit_and_gzip_com
     let payload: Value = serde_json::from_slice(&decompressed).unwrap();
     let roots = payload["data"]["block_roots"].as_array().unwrap();
     assert_eq!(roots.len(), 2);
-    assert!(roots.iter().all(|node| node["source_sha256"].as_str().is_some()));
+    assert!(roots
+        .iter()
+        .all(|node| node["source_sha256"].as_str().is_some()));
 
     let codes = payload["data"]["block_codes"].as_array().unwrap();
     assert_eq!(codes.len(), 1);

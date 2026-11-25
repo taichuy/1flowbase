@@ -155,7 +155,7 @@ impl EventWorkflowStatuses {
 /// Public observation stores stable classifications only. Detailed owner errors stay in their
 /// existing logs; provider/SQL errors and dynamic fields are never copied into this read model.
 pub fn public_error_code(error: &anyhow::Error, fallback: &'static str) -> &'static str {
-    use control_plane_contracts::{ControlPlaneContractError as Error, ports::EventBusError};
+    use control_plane_contracts::{ports::EventBusError, ControlPlaneContractError as Error};
     match error.downcast_ref::<Error>() {
         Some(Error::NotAuthenticated) => return "not_authenticated",
         Some(

@@ -2,12 +2,12 @@ use crate::PgControlPlaneStore;
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane_contracts::{
-    ControlPlaneContractError as Error,
     ports::{
         ContributionAuthorityLease, GrantContributionAuthorizationInput, ManagedInstallationSwitch,
         ManagedInstallationSwitchLease, PluginContributionAuthorityRepository,
         RevokeContributionAuthorizationInput,
     },
+    ControlPlaneContractError as Error,
 };
 use domain::{
     ContributionAuthorizationStatus, PluginContributionAuthoritySnapshot,

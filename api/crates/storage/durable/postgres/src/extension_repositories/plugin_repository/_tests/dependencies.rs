@@ -157,11 +157,9 @@ fn ac_004_enabled_dependents_block_disable_and_uninstall_but_disabled_upload_doe
     let error = facts(&[p.clone(), c.clone()])
         .guard_removal(&[p.id], None, None)
         .unwrap_err();
-    assert!(
-        error
-            .to_string()
-            .contains("fixture.publisher/consumer@1.0.0")
-    );
+    assert!(error
+        .to_string()
+        .contains("fixture.publisher/consumer@1.0.0"));
     assert_dependency(error, "plugin_dependency_in_use");
     c.desired_state = domain::PluginDesiredState::Disabled;
     facts(&[p.clone(), c])
@@ -251,11 +249,9 @@ fn generic_dependency_alone_blocks_removal_and_malformed_metadata_fails_closed()
         "plugin_dependency_in_use",
     );
     c.metadata_json["plugin_dependencies"] = json!({"invalid":true});
-    assert!(
-        facts(&[p.clone(), c])
-            .guard_removal(&[p.id], None, None)
-            .is_err()
-    );
+    assert!(facts(&[p.clone(), c])
+        .guard_removal(&[p.id], None, None)
+        .is_err());
 }
 
 #[test]

@@ -31,8 +31,8 @@ async fn ssh_archives_explicit_preparation_preserves_full_original_state() -> an
 
 #[tokio::test]
 #[ignore = "also requires freshly built real monitor archive/binary inputs; see _tests/README.md"]
-async fn monitor_archive_enable_rejects_missing_and_disabled_provider_without_authority()
--> anyhow::Result<()> {
+async fn monitor_archive_enable_rejects_missing_and_disabled_provider_without_authority(
+) -> anyhow::Result<()> {
     let inputs = inputs::Inputs::load()?;
     let consumer = inputs::ConsumerInputs::load()?;
     let fixture = fixture::Fixture::new().await?;

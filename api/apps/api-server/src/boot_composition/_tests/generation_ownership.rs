@@ -9,17 +9,17 @@ use crate::{
     },
     routes::{
         mcp_management::{
-            McpDebugResponseMode,
             debug_execute::{McpDebugExecuteBody, McpDebugExecuteError, McpServerBoundInputs},
             interface_catalog::{
                 DynamicMcpInterfaceRegistrySnapshotPort, McpInterfaceRegistrySnapshotPort,
             },
+            McpDebugResponseMode,
         },
         mcp_protocol::virtual_ui::McpInterfaceDispatchPort,
     },
 };
 use axum::{
-    body::{Body, Bytes, to_bytes},
+    body::{to_bytes, Body, Bytes},
     http::Request,
     response::Response,
     routing::get,

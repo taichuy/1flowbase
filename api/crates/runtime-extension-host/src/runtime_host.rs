@@ -90,10 +90,8 @@ pub struct RuntimeExtensionHost {
     pub(crate) file_import: Option<Arc<dyn runtime_core::runtime_backend::FileImportPort>>,
     pub(crate) plugin_credentials: Option<Arc<dyn extension_contracts::PluginCredentialPort>>,
     pub(crate) execution_gate_registry: crate::execution_gate_host::ExecutionGateRegistry,
-    pub(crate) workspace_governance:
-        Option<Arc<dyn extension_contracts::WorkspaceGovernancePort>>,
-    pub(crate) execution_gate:
-        Option<Arc<dyn extension_contracts::PluginExecutionGateAuthority>>,
+    pub(crate) workspace_governance: Option<Arc<dyn extension_contracts::WorkspaceGovernancePort>>,
+    pub(crate) execution_gate: Option<Arc<dyn extension_contracts::PluginExecutionGateAuthority>>,
     pub(crate) plugin_ephemeral: Option<Arc<dyn extension_contracts::PluginEphemeralPort>>,
     managed_hash_budget: Arc<tokio::sync::Semaphore>,
 }

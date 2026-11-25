@@ -263,7 +263,11 @@ fn copy_program(manifest: &Manifest, source: &Path, destination: &Path) -> Resul
         dirty_dirs.insert(parent.to_path_buf());
     }
     for name in manifest.roots() {
-        files::copy_staged(&source.join(&name), &destination.join(&name), &mut dirty_dirs)?;
+        files::copy_staged(
+            &source.join(&name),
+            &destination.join(&name),
+            &mut dirty_dirs,
+        )?;
     }
     files::sync_directories(&dirty_dirs, destination)?;
     Ok(())

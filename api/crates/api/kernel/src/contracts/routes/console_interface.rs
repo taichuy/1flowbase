@@ -159,13 +159,11 @@ struct ConsoleProtocolAdmissionPort {
 }
 
 impl ConsoleProtocolAdmissionPort {
-    fn new(
-        state: &ApiState,
-        admission: crate::extension_bus::ConsoleProtocolAdmission,
-    ) -> Self {
+    fn new(state: &ApiState, admission: crate::extension_bus::ConsoleProtocolAdmission) -> Self {
         Self {
-            workspace_policy:
-                crate::workspace_policy_runtime::WorkspacePolicyRuntime::from_state(state),
+            workspace_policy: crate::workspace_policy_runtime::WorkspacePolicyRuntime::from_state(
+                state,
+            ),
             store: state.store.clone(),
             result: std::sync::Mutex::new(Some(admission.into_result())),
         }

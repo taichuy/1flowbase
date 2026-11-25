@@ -58,9 +58,7 @@ impl WorkspaceGovernanceClient {
         }
     }
 
-    pub async fn list_tenants_and_workspaces(
-        &self,
-    ) -> Result<Vec<WorkspaceGovernanceTenantDto>> {
+    pub async fn list_tenants_and_workspaces(&self) -> Result<Vec<WorkspaceGovernanceTenantDto>> {
         match self
             .execute(WorkspaceGovernanceRequest::ListTenantsAndWorkspaces)
             .await?

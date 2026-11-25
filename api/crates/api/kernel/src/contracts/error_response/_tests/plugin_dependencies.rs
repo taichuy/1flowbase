@@ -48,11 +48,9 @@ async fn plugin_dependency_failures_expose_provider_resource_and_dependents_with
             payload["details"]["dependents"],
             serde_json::json!(dependents)
         );
-        assert!(
-            payload["message"]
-                .as_str()
-                .unwrap()
-                .contains("provider/ssh")
-        );
+        assert!(payload["message"]
+            .as_str()
+            .unwrap()
+            .contains("provider/ssh"));
     }
 }

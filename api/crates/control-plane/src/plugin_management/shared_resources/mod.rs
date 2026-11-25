@@ -1,5 +1,5 @@
 //! Live, installation-owned resource exports. No deployment registry or environment fallback.
-use anyhow::{Result, ensure};
+use anyhow::{ensure, Result};
 use domain::{PluginDesiredState, PluginInstallationRecord};
 use extension_contracts::{
     PluginDataBinding, PluginDataOperation, PluginDataRequest, PluginDataTarget,

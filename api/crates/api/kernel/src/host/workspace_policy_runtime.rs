@@ -5,7 +5,7 @@ use control_plane::{
     errors::ControlPlaneError,
 };
 use extension_contracts::{
-    WORKSPACE_POLICY_POINT, WorkspacePolicyRequest, WorkspacePolicyResponse,
+    WorkspacePolicyRequest, WorkspacePolicyResponse, WORKSPACE_POLICY_POINT,
 };
 use runtime_core::runtime_backend::RuntimeExecutionPrincipal;
 use std::sync::{Arc, Weak};
@@ -30,10 +30,9 @@ impl WorkspacePolicyRuntime {
             Some(WorkspacePolicyResponse::PublicPolicy { onboarding_mode }) => {
                 Ok(Some(onboarding_mode))
             }
-            _ => Err(ControlPlaneError::UpstreamUnavailable(
-                "workspace_policy_invalid_response",
-            )
-            .into()),
+            _ => Err(
+                ControlPlaneError::UpstreamUnavailable("workspace_policy_invalid_response").into(),
+            ),
         }
     }
 
@@ -108,9 +107,7 @@ impl WorkspacePolicyPort for WorkspacePolicyRuntime {
                 serde_json::to_value(request)?,
             )
             .await
-            .map_err(|_| {
-                ControlPlaneError::UpstreamUnavailable("workspace_policy_unavailable")
-            })?;
+            .map_err(|_| ControlPlaneError::UpstreamUnavailable("workspace_policy_unavailable"))?;
         Ok(Some(serde_json::from_value(value).map_err(|_| {
             ControlPlaneError::UpstreamUnavailable("workspace_policy_invalid_response")
         })?))
@@ -138,8 +135,8 @@ pub async fn admit_workspace_operation(
         Some(WorkspacePolicyResponse::OperationAdmission {
             admission: Deny { reason_code },
         }) => Err(control_plane::auth::workspace_policy_denied(reason_code)),
-        _ => Err(
-            ControlPlaneError::UpstreamUnavailable("workspace_policy_invalid_response").into(),
-        ),
+        _ => {
+            Err(ControlPlaneError::UpstreamUnavailable("workspace_policy_invalid_response").into())
+        }
     }
 }

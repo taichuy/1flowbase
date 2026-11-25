@@ -7,8 +7,8 @@ use extension_contracts::{
     PluginDataTarget, PluginDataValue,
 };
 use sha2::{Digest, Sha256};
-use sqlx::{Postgres, QueryBuilder, Row, Transaction, ValueRef, postgres::PgRow};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use sqlx::{postgres::PgRow, Postgres, QueryBuilder, Row, Transaction, ValueRef};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;

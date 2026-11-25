@@ -2,19 +2,19 @@ use crate::_tests::support::{
     default_test_config, login_and_capture_cookie, test_api_state_with_database_url,
 };
 use axum::{
-    Router,
-    body::{Body, to_bytes},
+    body::{to_bytes, Body},
     http::{Method, Request, StatusCode},
+    Router,
 };
 use control_plane::auth::WorkspacePolicyPort;
 use control_plane_contracts::ports::{
     GrantWorkspaceMembershipInput, WorkspaceGovernanceRepository,
 };
 use extension_contracts::*;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::sync::{
-    Arc, Mutex,
     atomic::{AtomicU8, Ordering},
+    Arc, Mutex,
 };
 use storage_durable_postgres::MainDurableStore;
 use tower::ServiceExt;
@@ -151,8 +151,7 @@ async fn call(
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     (
         status,
-        serde_json::from_slice(&bytes)
-            .unwrap_or_else(|_| json!(String::from_utf8_lossy(&bytes))),
+        serde_json::from_slice(&bytes).unwrap_or_else(|_| json!(String::from_utf8_lossy(&bytes))),
         cookie,
     )
 }
@@ -462,10 +461,10 @@ async fn external_oauth_callback_joins_default_workspace_with_member_session() {
 }
 
 async fn assert_external_oauth_signup(mode: WorkspaceOnboardingModeDto) {
-    use WorkspaceOnboardingModeDto::{DefaultWorkspace, InviteOnly, PersonalWorkspace, Reject};
     use control_plane::ports::SessionStore;
     use control_plane_contracts::ports::{ProvisionWorkspaceInput, ProvisionWorkspaceTenant};
     use std::sync::atomic::AtomicUsize;
+    use WorkspaceOnboardingModeDto::{DefaultWorkspace, InviteOnly, PersonalWorkspace, Reject};
 
     struct SignupPolicy {
         mode: WorkspaceOnboardingModeDto,

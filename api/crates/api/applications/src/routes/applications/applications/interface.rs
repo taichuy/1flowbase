@@ -32,8 +32,8 @@ use crate::{
     app_state::resolve_request_text_with,
     error_response::ApiError,
     routes::console_interface::{
-        self, ConsoleInterfaceFuture, ConsoleInterfacePort,
-        ConsoleInterfaceTargetError, ConsoleLocaleHints,
+        self, ConsoleInterfaceFuture, ConsoleInterfacePort, ConsoleInterfaceTargetError,
+        ConsoleLocaleHints,
     },
 };
 

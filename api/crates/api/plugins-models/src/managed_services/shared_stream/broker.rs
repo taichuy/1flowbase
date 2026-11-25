@@ -9,7 +9,7 @@ use std::{
     pin::Pin,
     sync::{Arc, Mutex, OnceLock, Weak},
 };
-use tokio::sync::{Mutex as AsyncMutex, mpsc, watch};
+use tokio::sync::{mpsc, watch, Mutex as AsyncMutex};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub(super) struct SourceKey {

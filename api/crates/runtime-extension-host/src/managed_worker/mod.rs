@@ -34,8 +34,7 @@ struct MountedContribution {
 pub(crate) struct ManagedHostServices {
     pub(crate) plugin_data: Arc<dyn extension_contracts::PluginDataPort>,
     pub(crate) plugin_credentials: Option<Arc<dyn extension_contracts::PluginCredentialPort>>,
-    pub(crate) workspace_governance:
-        Option<Arc<dyn extension_contracts::WorkspaceGovernancePort>>,
+    pub(crate) workspace_governance: Option<Arc<dyn extension_contracts::WorkspaceGovernancePort>>,
     pub(crate) execution_gate: Option<(
         crate::execution_gate_host::ExecutionGateRegistry,
         Arc<dyn extension_contracts::PluginExecutionGateAuthority>,
@@ -382,8 +381,8 @@ impl ManagedWorkers {
                 None
             },
             workspace_governance: workspace_governance.and_then(|port| {
-                let can_read = permissions
-                    .contains(extension_contracts::WORKSPACE_GOVERNANCE_READ_PERMISSION);
+                let can_read =
+                    permissions.contains(extension_contracts::WORKSPACE_GOVERNANCE_READ_PERMISSION);
                 let can_manage = permissions
                     .contains(extension_contracts::WORKSPACE_GOVERNANCE_MANAGE_PERMISSION);
                 (can_read || can_manage).then(|| {

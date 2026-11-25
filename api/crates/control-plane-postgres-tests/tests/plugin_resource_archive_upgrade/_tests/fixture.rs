@@ -1,11 +1,11 @@
-use super::inputs::{Archive, sha256};
-use anyhow::{Context, Result, bail, ensure};
+use super::inputs::{sha256, Archive};
+use anyhow::{bail, ensure, Context, Result};
 use control_plane::{plugin_management::*, ports::*};
 use domain::{ActorContext, PluginDesiredState, PluginRuntimeStatus};
-use plugin_framework::{PluginManifestV1, parse_plugin_manifest, provider_contract::*};
-use sqlx::{PgPool, postgres::PgConnectOptions};
+use plugin_framework::{parse_plugin_manifest, provider_contract::*, PluginManifestV1};
+use sqlx::{postgres::PgConnectOptions, PgPool};
 use std::{fs, os::unix::fs::DirBuilderExt, path::PathBuf, str::FromStr, sync::Arc};
-use storage_durable_postgres::{PgControlPlaneStore, run_migrations};
+use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
 pub const NODE: &str = "archive-upgrade-fixture";

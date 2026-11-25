@@ -334,8 +334,9 @@ where
                     module.source.clone(),
                     module.version.clone(),
                 );
-                deduplicated.entry(key).or_insert_with(|| {
-                    FrontendBlockTypeDeclarationEntry {
+                deduplicated
+                    .entry(key)
+                    .or_insert_with(|| FrontendBlockTypeDeclarationEntry {
                         installation_id: entry.installation_id,
                         plugin_id: entry.plugin_id.clone(),
                         plugin_version: entry.plugin_version.clone(),
@@ -343,8 +344,7 @@ where
                         version: module.version,
                         binding: module.binding,
                         type_declarations,
-                    }
-                });
+                    });
             }
         }
         Ok(FrontendBlockTypeDeclarationsView {

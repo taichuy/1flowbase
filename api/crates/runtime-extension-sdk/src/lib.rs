@@ -140,12 +140,11 @@ pub use plugin_execution_gate::{
 #[path = "host_services/workspace_governance.rs"]
 mod workspace_governance;
 pub use extension_contracts::{
-    WORKSPACE_GOVERNANCE_MANAGE_PERMISSION, WORKSPACE_GOVERNANCE_READ_PERMISSION,
     WorkspaceGovernanceCallerDto, WorkspaceGovernanceInitialMemberDto, WorkspaceGovernanceRequest,
-    WorkspaceGovernanceResponse, WorkspaceGovernanceTenantDto,
-    WorkspaceGovernanceTenantTargetDto, WorkspaceGovernanceUserDto,
-    WorkspaceGovernanceUserQueryDto, WorkspaceGovernanceWorkspaceDto,
-    WorkspaceGovernanceWorkspaceSummaryDto,
+    WorkspaceGovernanceResponse, WorkspaceGovernanceTenantDto, WorkspaceGovernanceTenantTargetDto,
+    WorkspaceGovernanceUserDto, WorkspaceGovernanceUserQueryDto, WorkspaceGovernanceWorkspaceDto,
+    WorkspaceGovernanceWorkspaceSummaryDto, WORKSPACE_GOVERNANCE_MANAGE_PERMISSION,
+    WORKSPACE_GOVERNANCE_READ_PERMISSION,
 };
 pub use workspace_governance::*;
 #[path = "host_services/workspace_policy.rs"]

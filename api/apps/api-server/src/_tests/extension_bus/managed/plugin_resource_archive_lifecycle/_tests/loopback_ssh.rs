@@ -1,6 +1,6 @@
 //! Isolated preinstalled OpenSSH only; never reads or changes a system SSH config/key.
 //! Owned PIDs are start-time checked, including sessions which leave the daemon group.
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use serde_json::Value;
 use std::{
     collections::BTreeMap,

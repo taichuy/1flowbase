@@ -10,14 +10,12 @@ fn governance_wire_rejects_identity_and_nested_unknown_fields() {
         assert!(serde_json::from_value::<WorkspaceGovernanceRequest>(request).is_err());
     }
     assert!(!WorkspaceGovernanceRequest::ListTenantsAndWorkspaces.requires_manage());
-    assert!(
-        WorkspaceGovernanceRequest::SetTenantStatus {
-            tenant_id: "t".into(),
-            status: "active".into(),
-            actor_user_id: None
-        }
-        .requires_manage()
-    );
+    assert!(WorkspaceGovernanceRequest::SetTenantStatus {
+        tenant_id: "t".into(),
+        status: "active".into(),
+        actor_user_id: None
+    }
+    .requires_manage());
 }
 
 #[test]
@@ -25,12 +23,10 @@ fn policy_wire_preserves_redemption_rollback_and_rejects_unknown_fields() {
     let request = json!({"operation":"finalize_invitation_redemption","redemption_id":"r","committed_user_id":null});
     let typed: crate::WorkspacePolicyRequest = serde_json::from_value(request.clone()).unwrap();
     assert_eq!(serde_json::to_value(typed).unwrap(), request);
-    assert!(
-        serde_json::from_value::<crate::WorkspacePolicyRequest>(
-            json!({"operation":"inspect_public_policy","actor_id":"forged"})
-        )
-        .is_err()
-    );
+    assert!(serde_json::from_value::<crate::WorkspacePolicyRequest>(
+        json!({"operation":"inspect_public_policy","actor_id":"forged"})
+    )
+    .is_err());
 }
 
 #[test]
@@ -39,12 +35,10 @@ fn workspace_governance_caller_is_a_strict_read_only_projection() {
     let typed = serde_json::from_value::<WorkspaceGovernanceRequest>(request.clone()).unwrap();
     assert!(!typed.requires_manage());
     assert_eq!(serde_json::to_value(typed).unwrap(), request);
-    assert!(
-        serde_json::from_value::<WorkspaceGovernanceRequest>(json!({
-            "operation":"inspect_caller_context", "caller":{"is_root":true}
-        }))
-        .is_err()
-    );
+    assert!(serde_json::from_value::<WorkspaceGovernanceRequest>(json!({
+        "operation":"inspect_caller_context", "caller":{"is_root":true}
+    }))
+    .is_err());
     let mut response = json!({"operation":"caller_context","caller":null});
     assert!(matches!(
         serde_json::from_value::<WorkspaceGovernanceResponse>(response.clone()).unwrap(),

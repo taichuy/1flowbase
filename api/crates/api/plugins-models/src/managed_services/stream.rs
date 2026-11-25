@@ -1,7 +1,7 @@
 //! Managed duplex admission and socket projection. Runtime frames never touch durable storage.
 use super::{
-    ManagedServiceRegistration,
     interface::{Adapter, ManagedServiceInput, ManagedServiceOutput},
+    ManagedServiceRegistration,
 };
 use crate::{
     app_state::ApiState,
@@ -12,18 +12,18 @@ use crate::{
     },
 };
 use axum::{
-    Json,
     extract::{
-        Path, Query, State, WebSocketUpgrade,
         ws::{Message, WebSocket},
+        Path, Query, State, WebSocketUpgrade,
     },
     http::HeaderMap,
     response::Response,
+    Json,
 };
 use control_plane::errors::ControlPlaneError as Error;
 use interface_runtime::{InterfaceContract, InterfaceStreamTerminal, UserPrincipal};
 use runtime_core::runtime_backend::{RuntimeManagedDuplex, RuntimeManagedDuplexEvent};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex, OnceLock},
@@ -998,6 +998,6 @@ mod test_accessors;
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
 pub use test_accessors::{
-    SocketSessionTestContext, SocketSessionTestTransport, register_test_stream,
-    revalidate_test_stream,
+    register_test_stream, revalidate_test_stream, SocketSessionTestContext,
+    SocketSessionTestTransport,
 };

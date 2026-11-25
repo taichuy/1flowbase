@@ -1,8 +1,8 @@
 use axum::{
-    Json,
     extract::rejection::JsonRejection,
     http::StatusCode,
     response::{IntoResponse, Response},
+    Json,
 };
 use control_plane::errors::ControlPlaneError;
 use plugin_framework::error::PluginFrameworkError;

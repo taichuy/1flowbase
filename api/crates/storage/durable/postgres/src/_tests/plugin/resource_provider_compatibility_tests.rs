@@ -22,13 +22,13 @@ use extension_contracts::{
     PluginDataPage, PluginDataPermission, PluginDataPort, PluginDataRequest, PluginDataTarget,
     PluginDataValue,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::plugin_credential_repository::credential_associated_data;
 use crate::secret_crypto::decrypt_secret_json_with_aad;
-use crate::{PgControlPlaneStore, PgPluginCredentialRepository, run_migrations};
+use crate::{run_migrations, PgControlPlaneStore, PgPluginCredentialRepository};
 
 const OWNER: &str = "taichuy/ssh";
 const OLD_VERSION: &str = "0.1.21";
@@ -410,22 +410,18 @@ async fn ssh_0_1_21_rows_and_credentials_survive_0_1_25_provider_projection() {
                 .kind,
             PluginDataErrorKind::OwnershipDenied
         );
-        assert!(
-            credentials
-                .execute_plugin_credential(&foreign_credential, &get)
-                .await
-                .unwrap()
-                .value
-                .is_none()
-        );
-        assert!(
-            decrypt_secret_json_with_aad(
-                &encrypted,
-                MASTER_KEY,
-                &aad(&foreign_credential, &credential_id)
-            )
-            .is_err()
-        );
+        assert!(credentials
+            .execute_plugin_credential(&foreign_credential, &get)
+            .await
+            .unwrap()
+            .value
+            .is_none());
+        assert!(decrypt_secret_json_with_aad(
+            &encrypted,
+            MASTER_KEY,
+            &aad(&foreign_credential, &credential_id)
+        )
+        .is_err());
     }
     // Neither schema reconciliation, new-version reads nor denied foreign reads
     // may rotate/re-encrypt/copy the historical credential.

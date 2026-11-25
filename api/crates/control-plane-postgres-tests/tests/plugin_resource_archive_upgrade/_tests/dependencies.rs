@@ -1,6 +1,6 @@
 //! Actual enable commands stop at dependency preflight, before any runtime boundary.
 use super::{fixture::Fixture, inputs::*};
-use anyhow::{Context, Result, ensure};
+use anyhow::{ensure, Context, Result};
 use control_plane::{plugin_management::*, ports::*};
 use control_plane_contracts::ControlPlaneContractError;
 use std::{fs, path::Path};

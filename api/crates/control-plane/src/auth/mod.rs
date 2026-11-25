@@ -16,14 +16,14 @@ use uuid::Uuid;
 mod external;
 mod methods;
 mod workspace_policy;
-pub use workspace_policy::{
-    WorkspacePolicyContext, WorkspacePolicyPort, WorkspacePolicyRejection,
-    redeem_workspace_invitation, validate_invitation_token, workspace_policy_denied,
+pub use methods::{
+    AuthenticationMethodsService, AuthenticationMethodsView, ExternalAuthenticationMethod,
 };
 use workspace_policy::RegistrationHints;
 pub(crate) use workspace_policy::{governance_password_user, workspace_role_templates};
-pub use methods::{
-    AuthenticationMethodsService, AuthenticationMethodsView, ExternalAuthenticationMethod,
+pub use workspace_policy::{
+    redeem_workspace_invitation, validate_invitation_token, workspace_policy_denied,
+    WorkspacePolicyContext, WorkspacePolicyPort, WorkspacePolicyRejection,
 };
 pub mod public_ui;
 pub mod settings;
@@ -653,12 +653,7 @@ where
             )
             .await?;
         self.repository
-            .verify_workspace_access(
-                user.id,
-                api_key.tenant_id,
-                api_key.scope_id,
-                actor.is_root,
-            )
+            .verify_workspace_access(user.id, api_key.tenant_id, api_key.scope_id, actor.is_root)
             .await?;
         self.repository.mark_api_key_used(api_key.id).await?;
 

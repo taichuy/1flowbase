@@ -762,10 +762,7 @@ async fn frontend_block_catalog_route_lists_assigned_workspace_blocks() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response.headers()["cache-control"],
-        "private, no-cache"
-    );
+    assert_eq!(response.headers()["cache-control"], "private, no-cache");
     let etag = response.headers()["etag"].to_str().unwrap().to_owned();
     assert!(etag.starts_with('"') && etag.ends_with('"'));
     let payload: Value =
@@ -828,10 +825,7 @@ async fn frontend_block_catalog_route_lists_assigned_workspace_blocks() {
         .await
         .unwrap();
     assert_eq!(revalidated.status(), StatusCode::NOT_MODIFIED);
-    assert_eq!(
-        revalidated.headers()["cache-control"],
-        "private, no-cache"
-    );
+    assert_eq!(revalidated.headers()["cache-control"], "private, no-cache");
     assert_eq!(revalidated.headers()["etag"], etag);
     assert!(to_bytes(revalidated.into_body(), usize::MAX)
         .await
@@ -954,10 +948,7 @@ async fn frontend_block_type_declarations_route_deduplicates_enforces_acl_and_re
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response.headers()["cache-control"],
-        "private, no-cache"
-    );
+    assert_eq!(response.headers()["cache-control"], "private, no-cache");
     let etag = response.headers()["etag"].to_str().unwrap().to_owned();
     assert!(etag.starts_with('"') && etag.ends_with('"'));
     let payload: Value =
@@ -996,10 +987,7 @@ async fn frontend_block_type_declarations_route_deduplicates_enforces_acl_and_re
         .await
         .unwrap();
     assert_eq!(revalidated.status(), StatusCode::NOT_MODIFIED);
-    assert_eq!(
-        revalidated.headers()["cache-control"],
-        "private, no-cache"
-    );
+    assert_eq!(revalidated.headers()["cache-control"], "private, no-cache");
     assert_eq!(revalidated.headers()["etag"], etag);
     assert!(to_bytes(revalidated.into_body(), usize::MAX)
         .await
@@ -1040,5 +1028,8 @@ async fn frontend_block_type_declarations_route_deduplicates_enforces_acl_and_re
     assert_eq!(denied.status(), StatusCode::FORBIDDEN);
     let denied_payload: Value =
         serde_json::from_slice(&to_bytes(denied.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert_eq!(denied_payload["code"], "console_operation_permission_denied");
+    assert_eq!(
+        denied_payload["code"],
+        "console_operation_permission_denied"
+    );
 }

@@ -1,4 +1,4 @@
-use super::{PluginManifestV1, validate_non_empty, validate_publisher_namespace};
+use super::{validate_non_empty, validate_publisher_namespace, PluginManifestV1};
 use crate::{FrameworkResult, PluginFrameworkError};
 use std::collections::BTreeSet;
 

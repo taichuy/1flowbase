@@ -64,15 +64,17 @@ pub async fn compress_bounded_http_response(request: Request, next: Next) -> Res
     }
 
     let mut encoder = GzEncoder::new(Vec::with_capacity(raw_bytes.len() / 2), Compression::fast());
-    let compressed = match encoder.write_all(&raw_bytes).and_then(|()| encoder.finish()) {
+    let compressed = match encoder
+        .write_all(&raw_bytes)
+        .and_then(|()| encoder.finish())
+    {
         Ok(buf) if buf.len() < raw_bytes.len() => buf,
         _ => return Response::from_parts(parts, Body::from(raw_bytes)),
     };
 
-    parts.headers.insert(
-        header::CONTENT_ENCODING,
-        HeaderValue::from_static("gzip"),
-    );
+    parts
+        .headers
+        .insert(header::CONTENT_ENCODING, HeaderValue::from_static("gzip"));
     parts.headers.remove(header::TRANSFER_ENCODING);
     if let Ok(len_val) = HeaderValue::from_str(&compressed.len().to_string()) {
         parts.headers.insert(header::CONTENT_LENGTH, len_val);
@@ -120,10 +122,7 @@ fn accepts_gzip_encoding(accept_encoding: &str) -> bool {
         for param in segments {
             if let Some((key, val)) = param.trim().split_once('=') {
                 if key.trim().eq_ignore_ascii_case("q")
-                    && val
-                        .trim()
-                        .parse::<f32>()
-                        .is_ok_and(|q| q <= 0.0)
+                    && val.trim().parse::<f32>().is_ok_and(|q| q <= 0.0)
                 {
                     rejected_by_qvalue = true;
                 }

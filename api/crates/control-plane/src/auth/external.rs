@@ -98,10 +98,9 @@ impl<
                     user
                 } else {
                     if invitation.is_some() {
-                        return Err(ControlPlaneError::PermissionDenied(
-                            "invitation_unsupported",
-                        )
-                        .into());
+                        return Err(
+                            ControlPlaneError::PermissionDenied("invitation_unsupported").into(),
+                        );
                     }
                     let email = external_registration_email(
                         &entry,
@@ -123,27 +122,18 @@ impl<
                         }),
                     );
                     self.repository
-                        .create_external_registered_member(
-                            &CreateExternalRegisteredMemberInput {
-                                account: external_registration_account(
-                                    command.identity.profile(),
-                                ),
-                                name: external_registration_text(
-                                    command.identity.profile(),
-                                    "name",
-                                ),
-                                nickname: external_registration_text(
-                                    command.identity.profile(),
-                                    "nickname",
-                                ),
-                                avatar_url: external_registration_avatar(
-                                    command.identity.profile(),
-                                ),
-                                identity: command.identity,
-                                email,
-                                audit,
-                            },
-                        )
+                        .create_external_registered_member(&CreateExternalRegisteredMemberInput {
+                            account: external_registration_account(command.identity.profile()),
+                            name: external_registration_text(command.identity.profile(), "name"),
+                            nickname: external_registration_text(
+                                command.identity.profile(),
+                                "nickname",
+                            ),
+                            avatar_url: external_registration_avatar(command.identity.profile()),
+                            identity: command.identity,
+                            email,
+                            audit,
+                        })
                         .await?
                 }
             }

@@ -1269,8 +1269,8 @@ async fn frontend_block_type_declarations_deduplicate_active_modules_and_enforce
             exports: vec!["Calendar".into()],
             binding: domain::FrontendModuleBinding::Fetched,
             assets: vec![],
-            type_declarations: "declare module '@fixture/calendar' { export const Calendar: any; }\n"
-                .into(),
+            type_declarations:
+                "declare module '@fixture/calendar' { export const Calendar: any; }\n".into(),
         },
         domain::FrontendBlockCodeModule {
             source: "react".into(),
