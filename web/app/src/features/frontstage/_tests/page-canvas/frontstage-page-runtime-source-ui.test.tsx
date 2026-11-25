@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createNativePreparationSource } from './fixtures/native-preparation-source';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import type { ConsoleFrontstageBlockNode } from '@1flowbase/api-client';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -288,34 +288,39 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
         }
       ]);
 
-      render(
-        <AppProviders>
-          <FrontStagePage
-            workspaceId="workspace-1"
-            pageId="page-1"
-            initialPageTree={[{ id: 'page-1', title: 'Landing', kind: 'page' }]}
-            pageContent={createPageContent()}
-            blockRoots={[
-              createRootNode(),
-              { ...createRootNode(), block_id: 'secondary', rank: '002000' }
-            ]}
-          />
-        </AppProviders>
-      );
+      await act(async () => {
+        render(
+          <AppProviders>
+            <FrontStagePage
+              workspaceId="workspace-1"
+              pageId="page-1"
+              initialPageTree={[{ id: 'page-1', title: 'Landing', kind: 'page' }]}
+              pageContent={createPageContent()}
+              blockRoots={[
+                createRootNode(),
+                { ...createRootNode(), block_id: 'secondary', rank: '002000' }
+              ]}
+            />
+          </AppProviders>
+        );
+        await vi.dynamicImportSettled();
+      });
 
       const blockSlot = await screen.findByTestId('block-slot-hero');
-      for (const { cb, el } of intrinsicObservers) {
-        cb(
-          [
-            {
-              target: el,
-              contentRect: { height: 64, width: 800 }
-            } as unknown as ResizeObserverEntry
-          ],
-          {} as ResizeObserver
-        );
-      }
-      await new Promise((resolve) => setTimeout(resolve, 350));
+      await act(async () => {
+        for (const { cb, el } of intrinsicObservers) {
+          cb(
+            [
+              {
+                target: el,
+                contentRect: { height: 64, width: 800 }
+              } as unknown as ResizeObserverEntry
+            ],
+            {} as ResizeObserver
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      });
       expect(blockSlot).toHaveAttribute(
         'data-flowbase-frontstage-intrinsic-height',
         '320'
@@ -426,21 +431,24 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
         }
       ]);
 
-      render(
-        <AppProviders>
-          <FrontStagePage
-            workspaceId="workspace-1"
-            pageId="page-1"
-            tabId="tab-1"
-            initialPageTree={[{ id: 'page-1', title: 'Landing', kind: 'page' }]}
-            pageContent={createPageContent()}
-            blockRoots={[
-              createRootNode(),
-              { ...createRootNode(), block_id: 'secondary', rank: '002000' }
-            ]}
-          />
-        </AppProviders>
-      );
+      await act(async () => {
+        render(
+          <AppProviders>
+            <FrontStagePage
+              workspaceId="workspace-1"
+              pageId="page-1"
+              tabId="tab-1"
+              initialPageTree={[{ id: 'page-1', title: 'Landing', kind: 'page' }]}
+              pageContent={createPageContent()}
+              blockRoots={[
+                createRootNode(),
+                { ...createRootNode(), block_id: 'secondary', rank: '002000' }
+              ]}
+            />
+          </AppProviders>
+        );
+        await vi.dynamicImportSettled();
+      });
 
       const blockSlot = await screen.findByTestId('block-slot-hero');
       const nativeRoot = await screen.findByTestId(
@@ -464,37 +472,49 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
       });
 
       // Fire 48px measurement while initial ctx.api.get is still pending: must NOT shrink below 320px!
-      for (const { cb, el } of intrinsicObservers) {
-        cb(
-          [
-            {
-              target: el,
-              contentRect: { height: 48, width: 800 }
-            } as unknown as ResizeObserverEntry
-          ],
-          {} as ResizeObserver
-        );
-      }
-      await new Promise((resolve) => setTimeout(resolve, 450));
+      await act(async () => {
+        for (const { cb, el } of intrinsicObservers) {
+          cb(
+            [
+              {
+                target: el,
+                contentRect: { height: 48, width: 800 }
+              } as unknown as ResizeObserverEntry
+            ],
+            {} as ResizeObserver
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 450));
+      });
       expect(blockSlot).toHaveAttribute(
         'data-flowbase-frontstage-intrinsic-height',
         '320'
       );
 
       // Settle initial API call, then fire 230px measurement: now allowed to settle cleanly!
-      resolveBlockApi({ ok: true });
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      for (const { cb, el } of intrinsicObservers) {
-        cb(
-          [
-            {
-              target: el,
-              contentRect: { height: 230, width: 800 }
-            } as unknown as ResizeObserverEntry
-          ],
-          {} as ResizeObserver
-        );
-      }
+      await act(async () => {
+        resolveBlockApi({ ok: true });
+        await apiPromise;
+        // Let the runtime's zero-delay settle timer publish the new layout phase.
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      });
+      await waitFor(() => {
+        expect(nativeRoot.shadowRoot?.textContent).toContain('settled-card');
+      });
+      await act(async () => {
+        for (const { cb, el } of intrinsicObservers) {
+          cb(
+            [
+              {
+                target: el,
+                contentRect: { height: 230, width: 800 }
+              } as unknown as ResizeObserverEntry
+            ],
+            {} as ResizeObserver
+          );
+        }
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      });
       await waitFor(
         () => {
           const h = Number(

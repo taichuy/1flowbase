@@ -115,7 +115,10 @@ afterEach(resetAuthStore);
 test('anonymous startup never starts private navigation queries', async () => {
   resetAuthStore();
   useAuthStore.getState().setAnonymous();
-  render(<ApplicationRuntimeBootstrap />);
+  await act(async () => {
+    render(<ApplicationRuntimeBootstrap />);
+    await import('../../AnonymousAppRuntime');
+  });
   expect(await screen.findByText('Public sign in')).toBeInTheDocument();
   expect(fixture.pages).not.toHaveBeenCalled();
   expect(fixture.navigation).not.toHaveBeenCalled();
@@ -139,11 +142,17 @@ test('prefetches while heavy runtime is unresolved, hands the same client to con
       current_workspace_id: 'workspace'
     }
   });
-  render(<ApplicationRuntimeBootstrap />);
+  await act(async () => {
+    render(<ApplicationRuntimeBootstrap />);
+    await import('../AuthenticatedStartup');
+  });
   await waitFor(() => expect(fixture.pages).toHaveBeenCalledTimes(1));
   expect(fixture.navigation).toHaveBeenCalledTimes(1);
   expect(fixture.clients).toHaveLength(0);
-  await act(async () => fixture.finishShell());
+  await act(async () => {
+    fixture.finishShell();
+    await vi.dynamicImportSettled();
+  });
   expect(await screen.findByText('Ready page')).toBeInTheDocument();
   const client = fixture.clients[0] as QueryClient;
   expect(client.getQueryCache().getAll()).toHaveLength(2);

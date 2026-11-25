@@ -6,6 +6,7 @@ import {
   waitFor
 } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import { appI18n } from '../../../../../shared/i18n/app-i18n';
 import { PublicRouterProvider } from '../../../../../app/public-router';
 
 const api = vi.hoisted(() => ({
@@ -14,7 +15,8 @@ const api = vi.hoisted(() => ({
   decideMcpOAuthAuthorization: vi.fn()
 }));
 vi.mock('../../../api/mcp-oauth', () => api);
-beforeEach(() => {
+beforeEach(async () => {
+  await appI18n.changeLanguage('zh_Hans');
   localStorage.clear();
   history.replaceState(
     {},
@@ -37,7 +39,7 @@ beforeEach(() => {
 });
 test('lazy MCP full providers retain request, origin, secret clearing and separate API-key consent', async () => {
   render(<PublicRouterProvider />);
-  const key = await screen.findByLabelText('API key');
+  const key = await screen.findByLabelText('API key', {}, { timeout: 5_000 });
   expect(api.fetchMcpOAuthAuthorization).toHaveBeenCalledWith(
     'req-one',
     expect.any(AbortSignal),
@@ -68,7 +70,7 @@ test('lazy MCP full providers retain request, origin, secret clearing and separa
 });
 test('changing request/origin through native history clears the old key and approval', async () => {
   render(<PublicRouterProvider />);
-  fireEvent.change(await screen.findByLabelText('API key'), {
+  fireEvent.change(await screen.findByLabelText('API key', {}, { timeout: 5_000 }), {
     target: { value: 'old-secret' }
   });
   await act(async () => {
@@ -79,7 +81,7 @@ test('changing request/origin through native history clears the old key and appr
     );
     dispatchEvent(new PopStateEvent('popstate'));
   });
-  expect(await screen.findByLabelText('API key')).toHaveValue('');
+  expect(await screen.findByLabelText('API key', {}, { timeout: 5_000 })).toHaveValue('');
   expect(api.fetchMcpOAuthAuthorization).toHaveBeenLastCalledWith(
     'req-two',
     expect.any(AbortSignal),

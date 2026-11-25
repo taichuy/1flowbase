@@ -11,9 +11,9 @@
     {
       "file": "web/app/src/features/settings/components/FileStorageDrawer.tsx",
       "rule": "react-doctor/no-event-handler",
-      "sourceSha256": "809936253a25b4e5ccb8b46bdf04f0071971a3ec98d663e043e47f7c70e53c01",
-      "reason": "FileStorageDrawer 的 record/mode/open 驱动 AntD Form 编辑/查看/创建生命周期，提交动作独立，字段保持 storage DTO。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。 Reassessed 2026-11-03: Storage writes require root and the create/update operation; record/mode/open still hydrates the AntD form lifecycle and preserves DTO field names.",
-      "evidence": [{"file":"web/app/src/features/settings/api/file-management.ts","sha256":"84d3b25bfdfa6e5270c09e8e31490b9efe1b9027f782a9bf06ce3fd5e88b5357"},{"file":"web/app/src/features/settings/components/FileManagementPanel.tsx","sha256":"d170520be37bdf0648a35f601ae6425c034dbc7a16cd235aeac7ac86d631e20c"},{"file":"web/app/src/shared/i18n/text.ts","sha256":"dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"},{"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"}]
+      "sourceSha256": "6f94bdb5590534febf3654275a2862c8f58793cb8485f8c5cbfda027c8213d7b",
+      "reason": "FileStorageDrawer 的 record/mode/open 驱动 AntD Form 编辑/查看/创建生命周期，提交动作独立，字段保持 storage DTO。 实际依赖含外部 Query/路由/流式更新或可编辑草稿 lifecycle，可在无点击时改变；保留外部资源同步/草稿重置，不能机械移到原始点击。 Reassessed 2026-11-03: Storage writes require root and the create/update operation; record/mode/open still hydrates the AntD form lifecycle and preserves DTO field names. Reassessed: The drawer authorization change does not make a clicked control the owner of open or resource lifecycle; an externally opened drawer still initializes from the active storage record.",
+      "evidence": [{"file":"web/app/src/features/settings/api/file-management.ts","sha256":"84d3b25bfdfa6e5270c09e8e31490b9efe1b9027f782a9bf06ce3fd5e88b5357"},{"file":"web/app/src/features/settings/components/FileManagementPanel.tsx","sha256":"adad2477449b8d57feafb9ff4635c1029fd057d67e77ce7b2dc56d4b3a55cdb2"},{"file":"web/app/src/shared/i18n/text.ts","sha256":"dace2793a34fc418af3578bf58dcc37ed6cf5f8e6aebb3d55e98404584b0e0a2"},{"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"}]
     },
     {
       "file": "web/app/src/features/settings/components/FileTableDrawer.tsx",

@@ -1,29 +1,44 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/frontstage/lib/native-modules/notification/_tests/runtime.test.tsx","sha256":"4915fa4a5f3e2e79f18602de78cf20d4b31f5121fb653200341e7b1b9bbb7e34"},{"file":"web/app/src/features/notifications/_tests/notification-ui.test.tsx","sha256":"da4724f55757e2ebbe1e4a61ccc84a3377da82249a7a85dd1183ed6bd67c67cf"},{"file":"web/app/src/features/notifications/api/queries.ts","sha256":"67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"},{"file":"web/app/src/features/notifications/components/NotificationBell.tsx","sha256":"1439185fd977444111825b0ac63f8862d09dd397ed7dc90d7894aadc0f6c3d27"},{"file":"web/app/src/features/notifications/hooks/use-notification-inbox.ts","sha256":"53125ae66c5a0f76118e59267e9d6f70ee35cd1f9dacecee0b5580bcc2bf98e2"},{"file":"web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx","sha256":"3acad05072799d05f1239bf2267108850505d7f4e5e75d86917fb5e95de4aa3c"},{"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"},{"file":"web/app/src/state/navigation-query-scope.ts","sha256":"af4138461cd69a4b47903cdc91f9add885299b9caf837c5ff51675c3e25992f3"}]
+    [{"file":"web/app/src/features/frontstage/lib/native-modules/notification/_tests/runtime.test.tsx","sha256":"4915fa4a5f3e2e79f18602de78cf20d4b31f5121fb653200341e7b1b9bbb7e34"},{"file":"web/app/src/features/notifications/_tests/notification-ui.test.tsx","sha256":"da4724f55757e2ebbe1e4a61ccc84a3377da82249a7a85dd1183ed6bd67c67cf"},{"file":"web/app/src/features/notifications/api/queries.ts","sha256":"67415a4209a7471aa4fc8e3778421f1ed2b2e4b2da814c11c5487e560a427fb6"},{"file":"web/app/src/features/notifications/components/NotificationBell.tsx","sha256":"c1b6187955360129869b231949f812a993a6eb995b4fdd5fb65de7ae7a1fe9ab"},{"file":"web/app/src/features/notifications/hooks/use-notification-inbox.ts","sha256":"1ec8eea7930fe1fd5385596d8ea509fb1b6dfb51bbee990440fad60770ffa98a"},{"file":"web/app/src/features/settings/pages/notifications/_tests/notification-logs.test.tsx","sha256":"98d6b41801b3c67f80455a47bffc28847053fad17fcfe310df731976b96802fe"},{"file":"web/app/src/state/auth-store.ts","sha256":"007f1a44ac49c89de6e7c73ab0ef31e0b7a1f8e18d22df4f1fb7f1df6894916d"},{"file":"web/app/src/state/navigation-query-scope.ts","sha256":"af4138461cd69a4b47903cdc91f9add885299b9caf837c5ff51675c3e25992f3"}],
+    [{"file":"web/app/src/features/notifications/_tests/notification-ui.test.tsx","sha256":"da4724f55757e2ebbe1e4a61ccc84a3377da82249a7a85dd1183ed6bd67c67cf"}]
   ],
   "reviews": [
     {
       "file": "web/app/src/features/notifications/hooks/use-notification-inbox.ts",
       "rule": "react-doctor/no-cascading-set-state",
-      "sourceSha256": "53125ae66c5a0f76118e59267e9d6f70ee35cd1f9dacecee0b5580bcc2bf98e2",
-      "reason": "The inbox fences exposed state synchronously by current scope, then installs an external notification subscription and resets pagination, connection and write state when auth/client/scope changes. Subscription events and session replacement originate outside a user click; cleanup closes the prior subscription. The inbox fixture retains reconnect refetch, unmount cleanup and immediate workspace selection fencing. Reassessed 2026-11-17: The changed inbox witness adds the Antd App fixture provider and updates separate settings save labels. Inbox subscription cleanup, workspace scope fencing, failed-fetch snapshot retention and rejected mutation assertions remain unchanged.",
+      "sourceSha256": "1ec8eea7930fe1fd5385596d8ea509fb1b6dfb51bbee990440fad60770ffa98a",
+      "reason": "The inbox fences exposed state synchronously by current scope, then installs an external notification subscription and resets pagination, connection and write state when auth/client/scope changes. Subscription events and session replacement originate outside a user click; cleanup closes the prior subscription. The inbox fixture retains reconnect refetch, unmount cleanup and immediate workspace selection fencing. Reassessed 2026-11-17: The changed inbox witness adds the Antd App fixture provider and updates separate settings save labels. Inbox subscription cleanup, workspace scope fencing, failed-fetch snapshot retention and rejected mutation assertions remain unchanged. Reassessed: Activation delays background subscription, but the scope reset and external event delivery stay independent of whether the drawer is open.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/notifications/hooks/use-notification-inbox.ts",
       "rule": "react-doctor/no-derived-state",
-      "sourceSha256": "53125ae66c5a0f76118e59267e9d6f70ee35cd1f9dacecee0b5580bcc2bf98e2",
-      "reason": "useSnapshot stores only defined successful data for the current scope/filter identity. This intentionally retains the last successful response when a later fetch fails; current query data alone would lose that retained snapshot. The inbox fixture retains failed-fetch display and workspace selection fencing assertions. Reassessed 2026-11-17: The changed inbox witness adds the Antd App fixture provider and updates separate settings save labels. Inbox subscription cleanup, workspace scope fencing, failed-fetch snapshot retention and rejected mutation assertions remain unchanged.",
+      "sourceSha256": "1ec8eea7930fe1fd5385596d8ea509fb1b6dfb51bbee990440fad60770ffa98a",
+      "reason": "useSnapshot stores only defined successful data for the current scope/filter identity. This intentionally retains the last successful response when a later fetch fails; current query data alone would lose that retained snapshot. The inbox fixture retains failed-fetch display and workspace selection fencing assertions. Reassessed 2026-11-17: The changed inbox witness adds the Antd App fixture provider and updates separate settings save labels. Inbox subscription cleanup, workspace scope fencing, failed-fetch snapshot retention and rejected mutation assertions remain unchanged. Reassessed: Activation delays background subscription, but the scope reset and external event delivery stay independent of whether the drawer is open.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/notifications/hooks/use-notification-inbox.ts",
       "rule": "react-doctor/no-event-handler",
-      "sourceSha256": "53125ae66c5a0f76118e59267e9d6f70ee35cd1f9dacecee0b5580bcc2bf98e2",
-      "reason": "useSnapshot receives asynchronous query results and retains defined successful data by scope/filter identity; the subscription also receives external reconnect and notification signals. A click handler cannot observe every successful background response or session replacement. The inbox fixture retains signal/refetch, unmount cleanup, failed-fetch snapshot and workspace switch assertions. Reassessed 2026-11-17: The changed inbox witness adds the Antd App fixture provider and updates separate settings save labels. Inbox subscription cleanup, workspace scope fencing, failed-fetch snapshot retention and rejected mutation assertions remain unchanged.",
+      "sourceSha256": "1ec8eea7930fe1fd5385596d8ea509fb1b6dfb51bbee990440fad60770ffa98a",
+      "reason": "useSnapshot receives asynchronous query results and retains defined successful data by scope/filter identity; the subscription also receives external reconnect and notification signals. A click handler cannot observe every successful background response or session replacement. The inbox fixture retains signal/refetch, unmount cleanup, failed-fetch snapshot and workspace switch assertions. Reassessed 2026-11-17: The changed inbox witness adds the Antd App fixture provider and updates separate settings save labels. Inbox subscription cleanup, workspace scope fencing, failed-fetch snapshot retention and rejected mutation assertions remain unchanged. Reassessed: Activation delays background subscription, but the scope reset and external event delivery stay independent of whether the drawer is open.",
       "evidenceSet": 0
+    },
+    {
+      "file": "web/app/src/features/notifications/hooks/use-notification-inbox.ts",
+      "rule": "react-doctor/no-adjust-state-on-prop-change",
+      "sourceSha256": "1ec8eea7930fe1fd5385596d8ea509fb1b6dfb51bbee990440fad60770ffa98a",
+      "reason": "Each actor/workspace subscription scope owns its stored messages, connection status and pending write. Scope changes can arrive without any inbox event and must reset that data together before allowing the next subscription.",
+      "evidenceSet": 1
+    },
+    {
+      "file": "web/app/src/features/notifications/hooks/use-notification-inbox.ts",
+      "rule": "react-doctor/no-chain-state-updates",
+      "sourceSha256": "1ec8eea7930fe1fd5385596d8ea509fb1b6dfb51bbee990440fad60770ffa98a",
+      "reason": "Each actor/workspace subscription scope owns its stored messages, connection status and pending write. Scope changes can arrive without any inbox event and must reset that data together before allowing the next subscription.",
+      "evidenceSet": 1
     }
   ]
 }

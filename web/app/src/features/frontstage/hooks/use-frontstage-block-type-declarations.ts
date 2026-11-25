@@ -24,7 +24,7 @@ const HOST_NATIVE_REACT_MODULE_SOURCES = new Set(
   )
 );
 
-export function hasOnDemandPluginTypeDeclarationCandidates(
+function hasOnDemandPluginTypeDeclarationCandidates(
   entries: readonly NormalizedFrontstageBlockCatalogEntry[]
 ): boolean {
   return entries.some(

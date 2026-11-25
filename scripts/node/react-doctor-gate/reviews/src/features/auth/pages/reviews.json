@@ -1,26 +1,44 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [
-      {"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"605d49b5c9e6845b1a2a62c50404382949f1f290fff03ce70ca1027934a44a2c"},
-      {"file":"web/app/src/features/auth/lib/external-login.ts","sha256":"b674ebd3d3143b224b8f9a08baa6d219c10bde5173c0fc97ba389bdbaac9f1f4"},
-      {"file":"web/app/src/features/auth/api/session.ts","sha256":"b463ccfdefa7727d4f6a1ee72e6bf7a2253e534ae560695fb58cbccb8d63193d"}
-    ]
+    [{"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"7970465ac1b332e39d32e4e63712735bd0cf3e15fe789854733d7b6ca40f8039"},{"file":"web/app/src/features/auth/lib/external-login.ts","sha256":"7a018500e405f88c4c7722862417725161ee0d57acf2b3c2a4b2598486b736e4"},{"file":"web/app/src/features/auth/api/session.ts","sha256":"f565be0708ff53597ec31ddedd0c71a835f1b5c125de71f887b2f4ca3875ab40"}],
+    [{"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"7970465ac1b332e39d32e4e63712735bd0cf3e15fe789854733d7b6ca40f8039"}]
   ],
   "reviews": [
     {
       "file": "web/app/src/features/auth/pages/SignInPage.tsx",
       "rule": "react-doctor/no-event-handler",
-      "sourceSha256": "e0d3bc07510654ee45047adab98aea72a685969f8648dc8d53ce99bedd29983e",
-      "reason": "Login entry discovery completes asynchronously. The effect first checks loading/discoveryFailed/loginEntryId, then verifies the requested id against the enabled loginEntries before requesting the selector. A local click handler cannot cover a disabled, removed or invalid entry supplied by the initial URL or a later discovery response. sign-in-page tests retain valid URL restoration, invalid-entry chooser fallback and discovery error handling. The relocated visual components do not own the discovery or external-navigation transitions.",
+      "sourceSha256": "a39cdca48725739dba512f189c0e56259e60cde64554e18bacb0a1ba58584887",
+      "reason": "Login entry discovery completes asynchronously. The effect first checks loading/discoveryFailed/loginEntryId, then verifies the requested id against the enabled loginEntries before requesting the selector. A local click handler cannot cover a disabled, removed or invalid entry supplied by the initial URL or a later discovery response. sign-in-page tests retain valid URL restoration, invalid-entry chooser fallback and discovery error handling. The relocated visual components do not own the discovery or external-navigation transitions. Reassessed: The lazy form islands consume the route-owned selection and invitation state. The selected-entry guard still reconciles a restored URL with asynchronously discovered visible choices.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/auth/pages/SignInPage.tsx",
       "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "e0d3bc07510654ee45047adab98aea72a685969f8648dc8d53ce99bedd29983e",
-      "reason": "The five state axes are the discovered loginEntries, discovery loading/failure and the separately initiated external-entry start id/failure. Discovery resolves asynchronously, while activateLoginEntry and the pageshow listener own external navigation and retry reset. startingRef prevents duplicate starts. A reducer would change representation without repairing a missing transition; sign-in tests cover chooser URL restoration, one-click external start, navigation failure/retry and discovery failures. The relocated visual components do not own the discovery or external-navigation transitions.",
+      "sourceSha256": "a39cdca48725739dba512f189c0e56259e60cde64554e18bacb0a1ba58584887",
+      "reason": "The five state axes are the discovered loginEntries, discovery loading/failure and the separately initiated external-entry start id/failure. Discovery resolves asynchronously, while activateLoginEntry and the pageshow listener own external navigation and retry reset. startingRef prevents duplicate starts. A reducer would change representation without repairing a missing transition; sign-in tests cover chooser URL restoration, one-click external start, navigation failure/retry and discovery failures. The relocated visual components do not own the discovery or external-navigation transitions. Reassessed: The lazy form islands consume the route-owned selection and invitation state. The selected-entry guard still reconciles a restored URL with asynchronously discovered visible choices.",
       "evidenceSet": 0
+    },
+    {
+      "file": "web/app/src/features/auth/pages/SignInPage.tsx",
+      "rule": "react-doctor/no-giant-component",
+      "sourceSha256": "a39cdca48725739dba512f189c0e56259e60cde64554e18bacb0a1ba58584887",
+      "reason": "One route owner coordinates resolved login entry, invitation and authentication handoff. BuiltinPasswordSignIn and CustomAuthRuntime own actual form/runtime mounting independently; splitting the handoff state across islands would lose the shared activation and redirect guard.",
+      "evidenceSet": 1
+    },
+    {
+      "file": "web/app/src/features/auth/pages/SignInPage.tsx",
+      "rule": "react-doctor/async-defer-await",
+      "sourceSha256": "a39cdca48725739dba512f189c0e56259e60cde64554e18bacb0a1ba58584887",
+      "reason": "The second authOwner check is a cancellation fence after concurrent me/session reads. Receiving the values is insufficient if the public route or selected entry was replaced during the read.",
+      "evidenceSet": 1
+    },
+    {
+      "file": "web/app/src/features/auth/pages/SignInPage.tsx",
+      "rule": "react-doctor/prefer-tag-over-role",
+      "sourceSha256": "a39cdca48725739dba512f189c0e56259e60cde64554e18bacb0a1ba58584887",
+      "reason": "The invitation banner reports active route context, not a computed result from form controls. role=status preserves the live announcement without introducing an output form association.",
+      "evidenceSet": 1
     }
   ]
 }

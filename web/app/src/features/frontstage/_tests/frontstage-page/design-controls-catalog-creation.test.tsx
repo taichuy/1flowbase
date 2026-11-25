@@ -39,7 +39,7 @@ beforeEach(() => {
 });
 
 async function chooseCatalogEntry(title = 'JS 区块') {
-  fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+  fireEvent.click(await screen.findByRole('button', { name: '创建区块' }));
   expect(blockTreeApi.createFrontstageBlockNode).not.toHaveBeenCalled();
   fireEvent.click(await screen.findByRole('menuitem', { name: title }));
 }
@@ -227,7 +227,7 @@ describe('FrontStagePage - design controls', () => {
     );
 
     activateDesignMode();
-    fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+    fireEvent.click(await screen.findByRole('button', { name: '创建区块' }));
 
     expect(await screen.findByText('Catalog forbidden')).toBeInTheDocument();
     expect(blockTreeApi.createFrontstageBlockNode).not.toHaveBeenCalled();
@@ -247,7 +247,7 @@ describe('FrontStagePage - design controls', () => {
       </AppProviders>
     );
     activateDesignMode();
-    fireEvent.click(screen.getByRole('button', { name: '创建区块' }));
+    fireEvent.click(await screen.findByRole('button', { name: '创建区块' }));
     expect(
       await screen.findByText('当前没有可用区块目录项，暂时无法新增区块。')
     ).toBeInTheDocument();
@@ -293,7 +293,7 @@ describe('FrontStagePage - design controls', () => {
     );
   });
 
-  test('disables Add Block while page content is saving', () => {
+  test('disables Add Block while page content is saving', async () => {
     authenticate(['frontstage.page.design']);
     mockPageContentSaveState({ saving: true, isPending: true });
 
@@ -310,11 +310,11 @@ describe('FrontStagePage - design controls', () => {
 
     activateDesignMode();
 
-    expect(screen.getByRole('button', { name: '创建区块' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: '创建区块' })).toBeDisabled();
     expect(screen.getByText('区块保存中')).toBeInTheDocument();
   });
 
-  test('R8-AC-003 disables the creation menu while the Catalog is loading', () => {
+  test('R8-AC-003 disables the creation menu while the Catalog is loading', async () => {
     authenticate(['frontstage.page.design']);
     mockFrontstageBlockCatalog([createCatalogEntry()], { loading: true });
 
@@ -330,7 +330,7 @@ describe('FrontStagePage - design controls', () => {
     );
 
     activateDesignMode();
-    expect(screen.getByRole('button', { name: '创建区块' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: '创建区块' })).toBeDisabled();
   });
 
   test('R8-AC-003 prevents duplicate creation while the selected entry is pending', async () => {
@@ -362,7 +362,7 @@ describe('FrontStagePage - design controls', () => {
     );
 
     activateDesignMode();
-    const createButton = screen.getByRole('button', { name: '创建区块' });
+    const createButton = await screen.findByRole('button', { name: '创建区块' });
     fireEvent.click(createButton);
     const entry = await screen.findByRole('menuitem', { name: 'JS 区块' });
     fireEvent.click(entry);
@@ -432,7 +432,7 @@ describe('FrontStagePage - design controls', () => {
     expect(screen.queryByText('1 个区块')).not.toBeInTheDocument();
   });
 
-  test('hides Add Block without a page and disables it without page content', () => {
+  test('hides Add Block without a page and disables it without page content', async () => {
     authenticate(['frontstage.page.design']);
     const view = render(
       <AppProviders>
@@ -456,7 +456,7 @@ describe('FrontStagePage - design controls', () => {
     );
 
     activateDesignMode();
-    expect(screen.getByRole('button', { name: '创建区块' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: '创建区块' })).toBeDisabled();
   });
 
   test(

@@ -6,7 +6,22 @@
       "rule": "react-doctor/no-giant-component",
       "sourceSha256": "1439185fd977444111825b0ac63f8862d09dd397ed7dc90d7894aadc0f6c3d27",
       "reason": "useNotificationBellController已拥有inbox请求、打开状态、ResizeObserver与分栏几何；NotificationBell只渲染一个通知Menu/PopupWorkspace内channel与message两pane及所属交互。没有第二个请求owner、导出混合常量或render内定义组件type；这个单一inbox视图的长度不证明状态/权限/接口归属缺陷。 Reassessed 2026-11-03: Channel read-all and message unread controls now consume their individual grants; opening an owned unread message still uses authenticated self-service. The existing inbox controller and two-pane popup own requests and geometry.",
-      "evidence": [{"file": "web/app/src/features/notifications/components/NotificationBell.tsx", "sha256": "1439185fd977444111825b0ac63f8862d09dd397ed7dc90d7894aadc0f6c3d27"}, {"file": "web/app/src/features/notifications/hooks/use-notification-inbox.ts", "sha256": "53125ae66c5a0f76118e59267e9d6f70ee35cd1f9dacecee0b5580bcc2bf98e2"}]
+      "evidence": [{"file":"web/app/src/features/notifications/components/NotificationBell.tsx","sha256":"1439185fd977444111825b0ac63f8862d09dd397ed7dc90d7894aadc0f6c3d27"},{"file":"web/app/src/features/notifications/hooks/use-notification-inbox.ts","sha256":"53125ae66c5a0f76118e59267e9d6f70ee35cd1f9dacecee0b5580bcc2bf98e2"}]
+    },
+    {
+      "file": "web/app/src/features/notifications/components/NotificationInboxDrawer.tsx",
+      "rule": "react-doctor/no-giant-component",
+      "sourceSha256": "667c40f1c52428effdcd03e6461191fd11272c6c453ed89577ad08cb3b203cea",
+      "reason": "The drawer is the presentation owner for inbox list, selection and detail. Connection, cache, mutation and actor/workspace resets stay in the hook supplied via inbox; moving those concerns into view fragments would duplicate state.",
+      "evidenceSet": 0
     }
+  ],
+  "evidenceSets": [
+    [
+      {
+        "file": "web/app/src/features/notifications/_tests/notification-ui.test.tsx",
+        "sha256": "da4724f55757e2ebbe1e4a61ccc84a3377da82249a7a85dd1183ed6bd67c67cf"
+      }
+    ]
   ]
 }

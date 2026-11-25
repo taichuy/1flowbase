@@ -1,22 +1,30 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/frontstage/_tests/PageCanvas.test.tsx","sha256":"f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"},{"file":"web/app/src/features/frontstage/_tests/isolated-frontend-block/PageCanvas-isolated-frontend-block.test.tsx","sha256":"805af8203aa334f7d686f6fb50d5a8bd6817590cd1904224d7ae355399173d82"},{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx","sha256":"85df665888a037be266f7c12da7d417e03768e876ff6d278b620702e9d184753"},{"file":"web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx","sha256":"f5d883f799e6710fbb088a1e2bf6f656353995c9862ed4fc76778239c5761785"}]
+    [{"file":"web/app/src/features/frontstage/_tests/PageCanvas.test.tsx","sha256":"f6468cb168b54ecaedc00b2f4e659a79536b8a86121ad7b0169d37239028cdcb"},{"file":"web/app/src/features/frontstage/_tests/isolated-frontend-block/PageCanvas-isolated-frontend-block.test.tsx","sha256":"805af8203aa334f7d686f6fb50d5a8bd6817590cd1904224d7ae355399173d82"},{"file":"web/app/src/features/frontstage/_tests/native-trusted-block/native-trusted-block-react-adapter.test.tsx","sha256":"981e819dfa452f4166320c322e43a0f42df7d09ebf49914ab085b76fc5faa6a3"},{"file":"web/app/src/features/frontstage/_tests/page-canvas/PageCanvas-width-lifecycle.test.tsx","sha256":"f5d883f799e6710fbb088a1e2bf6f656353995c9862ed4fc76778239c5761785"}],
+    [{"file":"web/app/src/features/frontstage/_tests/page-canvas/frontstage-page-runtime-source-ui.test.tsx","sha256":"f743a5903ad67f7dee82666c271f5df89d094bf4087f6590c16c06215a2b1ab7"}]
   ],
   "reviews": [
     {
       "file": "web/app/src/features/frontstage/components/page-canvas/NativeRuntimeSlotSurface.tsx",
       "rule": "react-doctor/no-adjust-state-on-prop-change",
-      "sourceSha256": "18551cd227ff3cd3dbfb029a5490aad6ad462bb311cb9f5de79d49e7b2f65d97",
-      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. NativeRuntimeSlotSurface projects an externally recreated renderIdentity into error state. A retry/identity change must clear only the prior runtime error; busy/error/last-ready content have separate ownership and must retain last good DOM during preparation. Reassessed 2026-10-29: The delta gives one automatic block an explicit viewport height and overflow contract, bypassing intrinsic measurement only in that mode. Width-lifecycle tests now assert viewport resizing, design footer allowance, fixed/free/multiple-block fallback and restoration. Page/session identities and runtime-error reset ownership remain unchanged.",
+      "sourceSha256": "c81a2afa4fc8ea1ee7fca5a123790a179ab681235bdc0955c93a2def0d45a14d",
+      "reason": "An explicit owner/session/record input change invalidates retained local resource/draft state; preserving it would leak the previous owner. NativeRuntimeSlotSurface projects an externally recreated renderIdentity into error state. A retry/identity change must clear only the prior runtime error; busy/error/last-ready content have separate ownership and must retain last good DOM during preparation. Reassessed 2026-10-29: The delta gives one automatic block an explicit viewport height and overflow contract, bypassing intrinsic measurement only in that mode. Width-lifecycle tests now assert viewport resizing, design footer allowance, fixed/free/multiple-block fallback and restoration. Page/session identities and runtime-error reset ownership remain unchanged. Reassessed: The first-content receipt now waits for initial native calls and settles only for the active surface; retained already-committed content is tested while another preparation advances.",
       "evidenceSet": 0
     },
     {
       "file": "web/app/src/features/frontstage/components/page-canvas/NativeRuntimeSlotSurface.tsx",
       "rule": "react-doctor/prefer-useReducer",
-      "sourceSha256": "18551cd227ff3cd3dbfb029a5490aad6ad462bb311cb9f5de79d49e7b2f65d97",
-      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. NativeRuntimeSlotSurface projects an externally recreated renderIdentity into error state. A retry/identity change must clear only the prior runtime error; busy/error/last-ready content have separate ownership and must retain last good DOM during preparation. Reassessed 2026-10-29: The delta gives one automatic block an explicit viewport height and overflow contract, bypassing intrinsic measurement only in that mode. Width-lifecycle tests now assert viewport resizing, design footer allowance, fixed/free/multiple-block fallback and restoration. Page/session identities and runtime-error reset ownership remain unchanged.",
+      "sourceSha256": "c81a2afa4fc8ea1ee7fca5a123790a179ab681235bdc0955c93a2def0d45a14d",
+      "reason": "The listed state axes are independently edited and do not encode an identified illegal shared transition; introducing a reducer would not repair a demonstrated behavior defect. NativeRuntimeSlotSurface projects an externally recreated renderIdentity into error state. A retry/identity change must clear only the prior runtime error; busy/error/last-ready content have separate ownership and must retain last good DOM during preparation. Reassessed 2026-10-29: The delta gives one automatic block an explicit viewport height and overflow contract, bypassing intrinsic measurement only in that mode. Width-lifecycle tests now assert viewport resizing, design footer allowance, fixed/free/multiple-block fallback and restoration. Page/session identities and runtime-error reset ownership remain unchanged. Reassessed: The first-content receipt now waits for initial native calls and settles only for the active surface; retained already-committed content is tested while another preparation advances.",
       "evidenceSet": 0
+    },
+    {
+      "file": "web/app/src/features/frontstage/components/page-canvas/NativeRuntimeSlotSurface.tsx",
+      "rule": "react-doctor/rerender-lazy-ref-init",
+      "sourceSha256": "c81a2afa4fc8ea1ee7fca5a123790a179ab681235bdc0955c93a2def0d45a14d",
+      "reason": "A per-mount Set holds opaque in-flight initial API call IDs across updates. It is not derived from props, is not exposed to JSX, and is checked by the first-content readiness path. The discarded allocation is empty, with no external side effects.",
+      "evidenceSet": 1
     }
   ]
 }

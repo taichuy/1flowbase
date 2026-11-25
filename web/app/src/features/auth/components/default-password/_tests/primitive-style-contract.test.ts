@@ -1,5 +1,8 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { render } from '@testing-library/react';
+import { createElement } from 'react';
+import { Alert, ArrowLeftOutlined as BackIcon, Button } from '../primitives';
 import getDesignToken from 'antd/es/theme/getDesignToken';
 import ArrowLeftOutlined from '@ant-design/icons-svg/es/asn/ArrowLeftOutlined';
 import CloseCircleFilled from '@ant-design/icons-svg/es/asn/CloseCircleFilled';
@@ -81,11 +84,19 @@ test('the scoped primitive metrics/colors follow the installed Emerald Antd toke
 });
 
 test('auth icons keep the actual installed Antd SVG geometry without loading its icon framework', () => {
-  for (const icon of [ArrowLeftOutlined, CloseCircleFilled, LoadingOutlined]) {
-    if (typeof icon.icon === 'function')
-      throw new Error('Expected a static icon');
-    for (const child of icon.icon.children ?? []) {
-      expect(primitives).toContain(child.attrs.d);
-    }
+  const fixtures = [
+    [createElement(BackIcon), ArrowLeftOutlined],
+    [createElement(Alert, { message: 'Sign-in failed', showIcon: true, type: 'error' }), CloseCircleFilled],
+    [createElement(Button, { type: 'primary', loading: true }, 'Sign in'), LoadingOutlined]
+  ] as const;
+  for (const [element, icon] of fixtures) {
+    if (typeof icon.icon === 'function') throw new Error('Expected a static icon');
+    const view = render(element);
+    const svg = view.container.querySelector('svg');
+    expect(svg).toHaveAttribute('viewBox', icon.icon.attrs.viewBox);
+    expect(Array.from(svg?.querySelectorAll('path') ?? [], (path) => path.getAttribute('d')))
+      .toEqual(icon.icon.children?.map((child) => child.attrs.d));
+    view.unmount();
   }
+  expect(primitives).not.toMatch(/from ['"](?:antd|@ant-design\/icons)/u);
 });

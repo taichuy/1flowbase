@@ -36,7 +36,7 @@ export function resolveFrontstageViewportDemandPriority({
   return withinEnterMargin ? 2 : 3;
 }
 
-export const DEFAULT_EAGER_PRELOAD_SLOT_LIMIT = 4;
+const DEFAULT_EAGER_PRELOAD_SLOT_LIMIT = 4;
 
 export function resolveFrontstageRuntimeDemand(
   demands: FrontstageRuntimeDemandByBlockId | undefined,

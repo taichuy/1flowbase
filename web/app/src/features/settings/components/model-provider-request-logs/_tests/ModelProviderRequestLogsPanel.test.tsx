@@ -330,7 +330,8 @@ test('AC-002 deletes only selected stable attempt IDs after confirmation', async
   expect(await screen.findByText('Selected App')).toBeInTheDocument();
   const deleteButton = screen.getByRole('button', { name: '删除选中' });
   expect(deleteButton).toBeDisabled();
-  fireEvent.click(screen.getByRole('checkbox', { name: 'Select row 1' }));
+  const row = screen.getByRole('row', { name: /Selected App/u });
+  fireEvent.click(within(row).getByRole('checkbox', { name: /选择请求日志/u }));
   expect(deleteButton).toBeEnabled();
   fireEvent.click(deleteButton);
   fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));

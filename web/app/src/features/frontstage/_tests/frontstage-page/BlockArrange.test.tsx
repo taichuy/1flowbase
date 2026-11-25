@@ -256,16 +256,16 @@ async function clickAndFlush(element: HTMLElement) {
   });
 }
 
-function clickBlockToolbar(blockId: string, buttonName: string) {
+async function clickBlockToolbar(blockId: string, buttonName: string) {
   fireEvent.click(
-    within(screen.getByTestId(`block-slot-${blockId}`)).getByRole('button', {
+    await within(screen.getByTestId(`block-slot-${blockId}`)).findByRole('button', {
       name: buttonName
     })
   );
 }
 
 async function confirmBlockDelete(blockId: string) {
-  clickBlockToolbar(blockId, '更多区块操作');
+  await clickBlockToolbar(blockId, '更多区块操作');
   const deleteAction = (await screen.findByText('删除')).closest('button');
   if (!deleteAction) {
     throw new Error('Missing block delete action');
@@ -326,15 +326,15 @@ describe('FrontStagePage block arrange actions', () => {
     await clickAndFlush(getBlockRow('feature'));
 
     expect(
-      within(getBlockRow('feature')).getByRole('button', {
+      await within(getBlockRow('feature')).findByRole('button', {
         name: '移动或排序区块'
       })
     ).toBeDisabled();
     expect(
-      within(getBlockRow('feature')).getByRole('button', { name: '编辑区块' })
+      await within(getBlockRow('feature')).findByRole('button', { name: '编辑区块' })
     ).toBeDisabled();
     expect(
-      within(getBlockRow('feature')).getByRole('button', {
+      await within(getBlockRow('feature')).findByRole('button', {
         name: '更多区块操作'
       })
     ).toBeDisabled();
@@ -349,13 +349,13 @@ describe('FrontStagePage block arrange actions', () => {
     await activateDesignMode();
     await clickAndFlush(getBlockRow('hero'));
     expect(studioLifecycle.mounts).toBe(0);
-    clickBlockToolbar('hero', '编辑区块');
+    await clickBlockToolbar('hero', '编辑区块');
     const draft = await screen.findByRole('textbox', { name: 'Studio draft' });
     fireEvent.change(draft, { target: { value: 'unsaved draft' } });
     fireEvent.click(screen.getByRole('button', { name: 'Close Studio' }));
     expect(screen.queryByRole('textbox', { name: 'Studio draft' })).not.toBeInTheDocument();
     expect(studioLifecycle.unmounts).toBe(0);
-    clickBlockToolbar('hero', '编辑区块');
+    await clickBlockToolbar('hero', '编辑区块');
     expect(await screen.findByRole('textbox', { name: 'Studio draft' })).toHaveValue('unsaved draft');
     expect(studioLifecycle.mounts).toBe(1);
   });
@@ -366,7 +366,7 @@ describe('FrontStagePage block arrange actions', () => {
 
     await activateDesignMode();
     await clickAndFlush(getBlockRow('hero'));
-    clickBlockToolbar('hero', '编辑区块');
+    await clickBlockToolbar('hero', '编辑区块');
 
     const dialog = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
     expect(dialog).toHaveAttribute('data-initial-section', 'code');

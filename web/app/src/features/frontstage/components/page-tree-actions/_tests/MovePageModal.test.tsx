@@ -38,7 +38,7 @@ const tree: FrontStageTreeNode[] = [
     ]
   }
 ];
-function setup(node = source) {
+async function setup(node = source) {
   const onMove = vi.fn().mockResolvedValue(true);
   const onCancel = vi.fn();
   render(
@@ -52,7 +52,9 @@ function setup(node = source) {
       />
     </AppProviders>
   );
-  return { onMove, onCancel, dialog: screen.getByRole('dialog') };
+  const dialog = screen.getByRole('dialog');
+  await within(dialog).findByText('顶部导航栏');
+  return { onMove, onCancel, dialog };
 }
 function beginDrag() {
   const dataTransfer = {
@@ -96,7 +98,7 @@ function hover(
 afterEach(() => vi.restoreAllMocks());
 
 test('selecting a page stages an after projection and saves its parent and anchor', async () => {
-  const { onMove, dialog } = setup();
+  const { onMove, dialog } = await setup();
   fireEvent.click(
     dialog.querySelector('.move-page-modal__row[data-node-id="destination"]')!
   );
@@ -122,7 +124,7 @@ test('selecting a page stages an after projection and saves its parent and ancho
 });
 
 test('a group is moved as one node and cannot be placed inside its descendants', async () => {
-  const { onMove, dialog } = setup(tree[1]);
+  const { onMove, dialog } = await setup(tree[1]);
   fireEvent.click(
     dialog.querySelector('.move-page-modal__row[data-node-id="destination"]')!
   );
@@ -140,7 +142,7 @@ test('a group is moved as one node and cannot be placed inside its descendants',
 });
 
 test('starts at root level and selecting a group shows its direct children and append projection', async () => {
-  const { onMove, dialog } = setup();
+  const { onMove, dialog } = await setup();
   expect(within(dialog).getByText('顶部导航栏')).toBeInTheDocument();
   expect(within(dialog).queryByText('不分组')).not.toBeInTheDocument();
   expect(within(dialog).getByText('目标分组')).toBeInTheDocument();
@@ -169,7 +171,7 @@ test('starts at root level and selecting a group shows its direct children and a
 test.each(['before', 'after'] as const)(
   'drop keeps the visible %s slot even when release coordinates disagree',
   async (position) => {
-    const { onMove, dialog } = setup();
+    const { onMove, dialog } = await setup();
     fireEvent.click(within(dialog).getByText('目标分组'));
     const transfer = beginDrag();
     hover('second', position === 'before' ? 110 : 190, transfer);
@@ -214,8 +216,8 @@ test.each(['before', 'after'] as const)(
   }
 );
 
-test('dragging onto a collapsed group opens one child layer and cancellation restores the staged projection', () => {
-  const { onMove, onCancel, dialog } = setup();
+test('dragging onto a collapsed group opens one child layer and cancellation restores the staged projection', async () => {
+  const { onMove, onCancel, dialog } = await setup();
   const transfer = beginDrag();
   const row = hover('destination', 150, transfer);
   expect(within(dialog).getByText('嵌套分组')).toBeInTheDocument();
@@ -238,7 +240,7 @@ test('dragging onto a collapsed group opens one child layer and cancellation res
 });
 
 test('the after-group projection follows its visible subtree at the group indentation', async () => {
-  const { onMove, dialog } = setup();
+  const { onMove, dialog } = await setup();
   fireEvent.click(within(dialog).getByText('目标分组'));
   const transfer = beginDrag();
   hover('destination', 190, transfer);
@@ -274,8 +276,8 @@ test('the after-group projection follows its visible subtree at the group indent
   });
 });
 
-test('clicking a group after staging a sibling move selects its inside destination', () => {
-  const { dialog } = setup();
+test('clicking a group after staging a sibling move selects its inside destination', async () => {
+  const { dialog } = await setup();
   fireEvent.click(within(dialog).getByText('目标分组'));
   const transfer = beginDrag();
   hover('destination', 190, transfer);
@@ -289,7 +291,7 @@ test('clicking a group after staging a sibling move selects its inside destinati
   );
 });
 
-test('a destination removed by a tree refresh cannot be confirmed', () => {
+test('a destination removed by a tree refresh cannot be confirmed', async () => {
   const onMove = vi.fn().mockResolvedValue(true);
   const onCancel = vi.fn();
   const content = (pageTree: FrontStageTreeNode[]) => (
@@ -304,7 +306,7 @@ test('a destination removed by a tree refresh cannot be confirmed', () => {
     </AppProviders>
   );
   const view = render(content(tree));
-  fireEvent.click(screen.getByText('目标分组'));
+  fireEvent.click(await screen.findByText('目标分组'));
   expect(screen.getByRole('button', { name: /确\s*定/ })).toBeEnabled();
   view.rerender(content([tree[0]]));
   expect(screen.getByRole('button', { name: /确\s*定/ })).toBeDisabled();

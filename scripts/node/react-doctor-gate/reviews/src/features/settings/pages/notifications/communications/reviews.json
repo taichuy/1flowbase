@@ -1,7 +1,7 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-management.test.tsx","sha256":"34e9ff16237167df007e11cd7b4944b0b9c9ac95a0812ed4f1e3fd53c1c7ff4b"},{"file":"web/app/src/shared/ui/data-table/DataTable.tsx","sha256":"c7fdd19a87c446ec0bcbeaa780a43f187d8e1e519407a85266eb795f97507f9a"}]
+    [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-management.test.tsx","sha256":"acdbbed82b06093779069883082d27ee4b57b5f55269047e44c54298b3550cd4"},{"file":"web/app/src/shared/ui/data-table/DataTable.tsx","sha256":"c7fdd19a87c446ec0bcbeaa780a43f187d8e1e519407a85266eb795f97507f9a"}]
   ],
   "reviews": [
     {
@@ -23,7 +23,7 @@
       "rule": "react-doctor/prefer-module-scope-static-value",
       "sourceSha256": "8415f5437f50cae62d4979b0723d55d5e09dfb4b81d920c27d003f4cef20303f",
       "reason": "resetSelection is a tiny page/conversation reset patch spread into navigateCommunication calls in event handlers. Its object identity is never passed to a memoized child, dependency array, query key or external subscription. Moving it to module scope cannot remove the claimed child redraw; URL restoration and page/filter preservation tests cover the resulting navigation. P21b reassessed 2026-11-17: CommunicationBindingForm replaces command_settings with canonical typed commands and adds event command editing/save failure handling; async binding initialization still stops once dirty, while the parent validates and saves through the supported forwardRef/useImperativeHandle contract after instance persistence. Tests assert canonical registered/event payloads, retained dirty input, reopen/edit/delete, reserved-name validation and read-only permissions. Management tests now read authorized file metadata/preview directly; this real query migration invalidates the old mutation rationale, which stays held. History navigation reset/empty ReactNode slots and standalone empty-status marker remain unchanged.",
-      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-management.test.tsx","sha256":"34e9ff16237167df007e11cd7b4944b0b9c9ac95a0812ed4f1e3fd53c1c7ff4b"}]
+      "evidence": [{"file":"web/app/src/features/settings/pages/notifications/_tests/communication-management.test.tsx","sha256":"acdbbed82b06093779069883082d27ee4b57b5f55269047e44c54298b3550cd4"}]
     },
     {
       "file": "web/app/src/features/settings/pages/notifications/communications/CommunicationHistory.tsx",

@@ -321,7 +321,7 @@ describe('ApplicationLogsPage - layout CSS', () => {
       /\.data-table__scroll-area\s*\{[^}]*flex:\s*1 1 auto;[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*auto;[^}]*\}/s
     );
     expect(cssSource).toMatch(
-      /\.data-table \.ant-table-thead > tr > th\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;[^}]*z-index:\s*2;[^}]*\}/s
+      /\.data-table \.ant-table-thead > tr > th,\s*\.data-table \[class\*='-table-thead'\] > tr > th\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;[^}]*z-index:\s*2;[^}]*\}/s
     );
     expect(cssSource).toMatch(
       /\.data-table__pagination\s*\{[^}]*flex:\s*0 0 auto;[^}]*\}/s

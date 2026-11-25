@@ -1,15 +1,16 @@
 {
   "toolPackage": "react-doctor@0.2.16",
   "evidenceSets": [
-    [{"file":"web/app/src/app-shell/_tests/topbar-navigation-drag.test.tsx","sha256":"bdf6b7c1ae2574cc6617c84702b22862616fcb35c92cc21fabbbbe847e991eb0"},{"file":"web/app/src/app-shell/_tests/topbar-navigation-edit.test.tsx","sha256":"69d1c3dd7aa833407f0288e4ae062eb00119bedd1b1c11797b6d98995ed75f3f"}]
+    [{"file":"web/app/src/app-shell/_tests/topbar-navigation-drag.test.tsx","sha256":"bdf6b7c1ae2574cc6617c84702b22862616fcb35c92cc21fabbbbe847e991eb0"},{"file":"web/app/src/app-shell/_tests/topbar-navigation-edit.test.tsx","sha256":"69d1c3dd7aa833407f0288e4ae062eb00119bedd1b1c11797b6d98995ed75f3f"}],
+    [{"file":"web/app/src/app-shell/_tests/navigation.test.tsx","sha256":"36ec28550b30406c9197ca178ed07a58a2d81bb3a4bed60dd9a397c1a8a93257"}]
   ],
   "reviews": [
     {
       "file": "web/app/src/app-shell/Navigation.tsx",
       "rule": "react-doctor/no-render-in-render",
-      "sourceSha256": "42f400f6a76526bf2e485c3ecc05e439cd4a58fba2264482b33408e0d30c1fef",
-      "reason": "renderNavigationLink 是模块级普通函数，返回 ReactNode；调用处没有声明新组件类型或调用含 Hook 的组件。品牌 metadata 和删除客户端 nodes 参数的改动不改变该 helper 或 React type/key，导航行为仍由 navigation 与拖拽测试覆盖。 Reassessed 2026-10-29: The delta adds show_title to navigation DTO/fixtures; existing drag, selection and component identities are retained.",
-      "evidence": [{"file":"web/app/src/app-shell/_tests/navigation.test.tsx","sha256":"be0acdae71ade46fc5adc24cf1d3fd7a7653b7a83cb108987f24413a05901f42"},{"file":"web/app/src/app-shell/_tests/topbar-navigation-drag.test.tsx","sha256":"bdf6b7c1ae2574cc6617c84702b22862616fcb35c92cc21fabbbbe847e991eb0"}]
+      "sourceSha256": "4590df16f342ea1a55d6737136f328abff254b2b0ed0f14bc91a1445a3f5e2db",
+      "reason": "renderNavigationLink 是模块级普通函数，返回 ReactNode；调用处没有声明新组件类型或调用含 Hook 的组件。品牌 metadata 和删除客户端 nodes 参数的改动不改变该 helper 或 React type/key，导航行为仍由 navigation 与拖拽测试覆盖。 Reassessed 2026-10-29: The delta adds show_title to navigation DTO/fixtures; existing drag, selection and component identities are retained. Reassessed: The async nav and runtime-i18n split leaves renderNavigationLink at module scope and preserves React type and key for the menu item.",
+      "evidence": [{"file":"web/app/src/app-shell/_tests/navigation.test.tsx","sha256":"36ec28550b30406c9197ca178ed07a58a2d81bb3a4bed60dd9a397c1a8a93257"},{"file":"web/app/src/app-shell/_tests/topbar-navigation-drag.test.tsx","sha256":"bdf6b7c1ae2574cc6617c84702b22862616fcb35c92cc21fabbbbe847e991eb0"}]
     },
     {
       "file": "web/app/src/app-shell/TopbarNavigationDesigner.tsx",
@@ -38,6 +39,13 @@
       "sourceSha256": "ac2441875934b1e5a9505f9f2cb69f35cd2b941cf09ef8336187111aa8d45375",
       "reason": "role=status 宣告当前拖拽投影提示，属于 live status 而非表单计算结果；替换为 output 会改变语义。拖拽与编辑测试保留该组件的交互责任。 Reassessed 2026-10-29: The delta adds show_title to navigation DTO/fixtures; existing drag, selection and component identities are retained.",
       "evidenceSet": 0
+    },
+    {
+      "file": "web/app/src/app-shell/Navigation.tsx",
+      "rule": "react-doctor/no-event-handler",
+      "sourceSha256": "4590df16f342ea1a55d6737136f328abff254b2b0ed0f14bc91a1445a3f5e2db",
+      "reason": "Runtime i18n demand advances from the mounted shell, including direct entry, before any menu event. Moving it to clicks would not cover an authenticated landing or restored routes.",
+      "evidenceSet": 1
     }
   ]
 }

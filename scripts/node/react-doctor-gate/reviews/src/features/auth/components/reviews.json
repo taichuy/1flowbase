@@ -4,62 +4,101 @@
     {
       "file": "web/app/src/features/auth/components/PublicAuthBlock.tsx",
       "rule": "react-doctor/async-defer-await",
-      "sourceSha256": "c7b9d211c505f945d257764337fdd787feeec948de92395e4b05d8a229d1fc7d",
-      "reason": "The prepare result is needed to construct the runtime. The guard after awaiting prepare rejects generations invalidated during the wait, including watchdog timeout, retry and unmount. Moving the only guard above await admits the late compile result that the timeout test rejects.",
+      "sourceSha256": "f141b7ec28f8d0145d3e76db3951a4a1c36f985dd22d83449414601813ba2695",
+      "reason": "The prepare result is needed to construct the runtime. The guard after awaiting prepare rejects generations invalidated during the wait, including watchdog timeout, retry and unmount. Moving the only guard above await admits the late compile result that the timeout test rejects. Reassessed: Invitation props are passed to the activation boundary; they neither replace the generation guard after preparation nor transfer cancellation ownership.",
       "evidence": [
-        {"file":"web/app/src/features/auth/_tests/public-auth-block-component.test.tsx","sha256":"d0a209b6915db622c4cddff16b5e88cc7035f328546bf6ffe29d82b7268560f7"}
+        {
+          "file": "web/app/src/features/auth/_tests/public-auth-block-component.test.tsx",
+          "sha256": "921e458033751386446c6cd751b0ba33017f61997e16eecfd41466a7d22eef69"
+        }
       ]
     },
     {
       "file": "web/app/src/features/auth/components/PublicAuthBlock.tsx",
       "rule": "react-doctor/exhaustive-deps",
-      "sourceSha256": "c7b9d211c505f945d257764337fdd787feeec948de92395e4b05d8a229d1fc7d",
-      "reason": "Cleanup invalidates the current generation and clears the current active attempt, including a retry started since setup. The ref is not a DOM node that cleanup needs to capture at setup. The effect depends on prepare and the timeout/retry tests exercise late-result rejection.",
+      "sourceSha256": "f141b7ec28f8d0145d3e76db3951a4a1c36f985dd22d83449414601813ba2695",
+      "reason": "Cleanup invalidates the current generation and clears the current active attempt, including a retry started since setup. The ref is not a DOM node that cleanup needs to capture at setup. The effect depends on prepare and the timeout/retry tests exercise late-result rejection. Reassessed: Invitation props are passed to the activation boundary; they neither replace the generation guard after preparation nor transfer cancellation ownership.",
       "evidence": [
-        {"file":"web/app/src/features/auth/_tests/public-auth-block-component.test.tsx","sha256":"d0a209b6915db622c4cddff16b5e88cc7035f328546bf6ffe29d82b7268560f7"}
+        {
+          "file": "web/app/src/features/auth/_tests/public-auth-block-component.test.tsx",
+          "sha256": "921e458033751386446c6cd751b0ba33017f61997e16eecfd41466a7d22eef69"
+        }
       ]
     },
     {
       "file": "web/app/src/features/auth/components/hero/HeroArtwork.tsx",
       "rule": "react-doctor/no-inline-exhaustive-style",
-      "sourceSha256": "21dff17075dd847edb2f0513a007a5bc9c5454fd90655ff88c6cfe2e83e0c716",
-      "reason": "The hero is rendered in the initial static login document and the live route. Inline decoration keeps the initial document independent of delayed route CSS; preserve it for both consumers.",
+      "sourceSha256": "d06f0a1bd02c64d151bd8086debc3478f4e5f80aad7dc3f03d876212fead7e8a",
+      "reason": "The hero is rendered in the initial static login document and the live route. Inline decoration keeps the initial document independent of delayed route CSS; preserve it for both consumers. Reassessed: Licensed color values change decoration only. Motion and static markup still share the same styling and animated layers.",
       "evidence": [
-        {"file":"web/app/build/sign-in-motion-document.tsx","sha256":"b601874f1dd0e31b9b4c222e93cd1b6867625f7bd5477cc79c5f6b3b902dc50b"},
-        {"file":"web/app/build/_tests/sign-in-motion-document.test.ts","sha256":"8e4dc1b9ad213d7605e21457e8b980e1def8c8830e3e1508c071da3b5c1479fc"},
-        {"file":"DESIGN.md","sha256":"dc95d14bf93aebcec856a725385c27527b5582d58db5473f300b55eaa2ab1632"}
+        {
+          "file": "web/app/build/sign-in-motion-document.tsx",
+          "sha256": "d0899e37448e034bbfa79fb5886f32619be7f731074bc8bb108b92addfc88268"
+        },
+        {
+          "file": "web/app/build/_tests/sign-in-motion-document.test.ts",
+          "sha256": "340c3142dcee54f4f51e2ad2c3702a8dfbf4de41c75bda93a24b8bc28eb397e2"
+        },
+        {
+          "file": "DESIGN.md",
+          "sha256": "0f214a964cd14418404e4262a117fa65b386e84343a77402ed999c535cec220d"
+        }
       ]
     },
     {
       "file": "web/app/src/features/auth/components/hero/HeroArtwork.tsx",
       "rule": "react-doctor/no-large-animated-blur",
-      "sourceSha256": "21dff17075dd847edb2f0513a007a5bc9c5454fd90655ff88c6cfe2e83e0c716",
-      "reason": "The three floating backdrops keep fixed blur values while the animation translates the layers. Keep the Brand Layer decoration used by the static and live renders. This is a deliberate visual trade-off, not an assertion that large blurred layers are cost-free.",
+      "sourceSha256": "d06f0a1bd02c64d151bd8086debc3478f4e5f80aad7dc3f03d876212fead7e8a",
+      "reason": "The three floating backdrops keep fixed blur values while the animation translates the layers. Keep the Brand Layer decoration used by the static and live renders. This is a deliberate visual trade-off, not an assertion that large blurred layers are cost-free. Reassessed: Licensed color values change decoration only. Motion and static markup still share the same styling and animated layers.",
       "evidence": [
-        {"file":"web/app/build/sign-in-motion-document.tsx","sha256":"b601874f1dd0e31b9b4c222e93cd1b6867625f7bd5477cc79c5f6b3b902dc50b"},
-        {"file":"web/app/build/_tests/sign-in-motion-document.test.ts","sha256":"8e4dc1b9ad213d7605e21457e8b980e1def8c8830e3e1508c071da3b5c1479fc"},
-        {"file":"DESIGN.md","sha256":"dc95d14bf93aebcec856a725385c27527b5582d58db5473f300b55eaa2ab1632"}
+        {
+          "file": "web/app/build/sign-in-motion-document.tsx",
+          "sha256": "d0899e37448e034bbfa79fb5886f32619be7f731074bc8bb108b92addfc88268"
+        },
+        {
+          "file": "web/app/build/_tests/sign-in-motion-document.test.ts",
+          "sha256": "340c3142dcee54f4f51e2ad2c3702a8dfbf4de41c75bda93a24b8bc28eb397e2"
+        },
+        {
+          "file": "DESIGN.md",
+          "sha256": "0f214a964cd14418404e4262a117fa65b386e84343a77402ed999c535cec220d"
+        }
       ]
     },
     {
       "file": "web/app/src/features/auth/components/hero/SignInPanel.tsx",
       "rule": "react-doctor/no-danger",
-      "sourceSha256": "366869920652cdd5a88224ebb7966f64e4eaa9f0bf2def847fc255e4010bd2e8",
-      "reason": "filing_html 是拥有 system.branding.save operation 的管理者编写的站点 HTML，既定契约要求原样保存和展示；它不是普通访客、登录输入或聊天消息。后端 branding route 经认证 Kernel 和独立写 operation 授权，route 测试覆盖只读授权不能 PUT、完整授权可写及 public 原文读取；前端测试保留 HTML 元素和属性。这里显式信任具备站点 HTML 发布权限的管理者，dangerouslySetInnerHTML 是该功能的实现。若写权限边界或内容来源改变必须重新审查；不声称任意不可信 HTML 可安全展示。",
+      "sourceSha256": "245d23bc595acb4dd03d50e79095b3db64bf4cf99c394f04fc93802e8c347be2",
+      "reason": "filing_html 是拥有 system.branding.save operation 的管理者编写的站点 HTML，既定契约要求原样保存和展示；它不是普通访客、登录输入或聊天消息。后端 branding route 经认证 Kernel 和独立写 operation 授权，route 测试覆盖只读授权不能 PUT、完整授权可写及 public 原文读取；前端测试保留 HTML 元素和属性。这里显式信任具备站点 HTML 发布权限的管理者，dangerouslySetInnerHTML 是该功能的实现。若写权限边界或内容来源改变必须重新审查；不声称任意不可信 HTML 可安全展示。 Reassessed: The projection now uses licensed public metadata, but the HTML is still the administrator-authored branding field; no auth, query string or viewer-supplied HTML is rendered here.",
       "evidence": [
-        {"file":"web/app/src/features/auth/_tests/sign-in-page.test.tsx","sha256":"605d49b5c9e6845b1a2a62c50404382949f1f290fff03ce70ca1027934a44a2c"},
-        {"file":"api/crates/api/console-settings/src/routes/settings/branding/mod.rs","sha256":"ca7db62774116bd972cab2e305d56b3d7ca55ad7603d9d7c7ac0d574b72de002"},
-        {"file":"api/apps/api-server/src/_tests/system_settings/system_branding_routes.rs","sha256":"ae565962d01ca072f99a09456fc086f2d403f0b3acc6aea1c44f9ff0e7f44ac7"}
+        {
+          "file": "web/app/src/features/auth/_tests/sign-in-page.test.tsx",
+          "sha256": "7970465ac1b332e39d32e4e63712735bd0cf3e15fe789854733d7b6ca40f8039"
+        },
+        {
+          "file": "api/crates/api/console-settings/src/routes/settings/branding/mod.rs",
+          "sha256": "ca7db62774116bd972cab2e305d56b3d7ca55ad7603d9d7c7ac0d574b72de002"
+        },
+        {
+          "file": "api/apps/api-server/src/_tests/system_settings/system_branding_routes.rs",
+          "sha256": "afc787880d87e3d8257d6fc4f364a9984d7512434e964efb24603ddb2db853d1"
+        }
       ]
     },
     {
       "file": "web/app/src/features/auth/components/hero/start-document-motion.ts",
       "rule": "deslop/unused-file",
-      "sourceSha256": "83daa372d7e8238366a09720c49abc140f5d17606619101cc99fd4574462a1e2",
-      "reason": "The static login document builder gives this file path to Vite as an IIFE entry, not as a source import. The build test requires an inline animation script with requestAnimationFrame and no dynamic imports.",
+      "sourceSha256": "c1d0963ceb7db21027874ccf262b22eecfd72d6578cc3b9fb8e5abba28b4c44c",
+      "reason": "The static login document builder gives this file path to Vite as an IIFE entry, not as a source import. The build test requires an inline animation script with requestAnimationFrame and no dynamic imports. Reassessed: The branded static document still resolves this source by build-time entry path and executes its bundled IIFE; direct reachability from the React entry is deliberately absent.",
       "evidence": [
-        {"file":"web/app/build/sign-in-motion-document.tsx","sha256":"b601874f1dd0e31b9b4c222e93cd1b6867625f7bd5477cc79c5f6b3b902dc50b"},
-        {"file":"web/app/build/_tests/sign-in-motion-document.test.ts","sha256":"8e4dc1b9ad213d7605e21457e8b980e1def8c8830e3e1508c071da3b5c1479fc"}
+        {
+          "file": "web/app/build/sign-in-motion-document.tsx",
+          "sha256": "d0899e37448e034bbfa79fb5886f32619be7f731074bc8bb108b92addfc88268"
+        },
+        {
+          "file": "web/app/build/_tests/sign-in-motion-document.test.ts",
+          "sha256": "340c3142dcee54f4f51e2ad2c3702a8dfbf4de41c75bda93a24b8bc28eb397e2"
+        }
       ]
     },
     {
@@ -68,8 +107,14 @@
       "sourceSha256": "36ea4f09174484b57d8d26751b9f4e8069358b119bd83d5a8dd30f8cea2fa299",
       "reason": "The default login path checks the exact source identity before scanning the fixed import set against the four built-in definitions. Building an index for each match adds allocation here and a direct Map construction would replace first-match semantics with last-match semantics.",
       "evidence": [
-        {"file":"web/app/src/features/auth/lib/default-login-imports.ts","sha256":"a59ca5a09107db7a087f02983e0cb21cef0700e67ab1c578df3298b905a73861"},
-        {"file":"web/app/src/features/auth/_tests/sign-in-cold-start.test.ts","sha256":"d2e1ed1ac298a25bd6bba3ab79ad86b50c58372892dd13f8155296133d327359"}
+        {
+          "file": "web/app/src/features/auth/lib/default-login-imports.ts",
+          "sha256": "a59ca5a09107db7a087f02983e0cb21cef0700e67ab1c578df3298b905a73861"
+        },
+        {
+          "file": "web/app/src/features/auth/_tests/sign-in-cold-start.test.ts",
+          "sha256": "264701f02de11857baffc7d716bbf751a096bbf8d118aee84bb224ead300d560"
+        }
       ]
     },
     {
@@ -78,9 +123,84 @@
       "sourceSha256": "36ea4f09174484b57d8d26751b9f4e8069358b119bd83d5a8dd30f8cea2fa299",
       "reason": "The wildcard and named-export checks are membership tests over the fixed built-in module definitions after the artifact identity matches. No per-match set is needed to handle this bounded artifact; missing named exports must continue to select the normal compiler.",
       "evidence": [
-        {"file":"web/app/src/features/auth/lib/default-login-imports.ts","sha256":"a59ca5a09107db7a087f02983e0cb21cef0700e67ab1c578df3298b905a73861"},
-        {"file":"web/app/src/features/auth/_tests/sign-in-cold-start.test.ts","sha256":"d2e1ed1ac298a25bd6bba3ab79ad86b50c58372892dd13f8155296133d327359"}
+        {
+          "file": "web/app/src/features/auth/lib/default-login-imports.ts",
+          "sha256": "a59ca5a09107db7a087f02983e0cb21cef0700e67ab1c578df3298b905a73861"
+        },
+        {
+          "file": "web/app/src/features/auth/_tests/sign-in-cold-start.test.ts",
+          "sha256": "264701f02de11857baffc7d716bbf751a096bbf8d118aee84bb224ead300d560"
+        }
       ]
+    },
+    {
+      "file": "web/app/src/features/auth/components/anonymous-loading/AnonymousLoadingView.tsx",
+      "rule": "react-doctor/heading-has-content",
+      "sourceSha256": "2f377a63fa1edabb98e5afbe377ba346660c49f3d4f5bdac14312112c6261cb7",
+      "reason": "The empty heading is a visual skeleton bar within an aria-hidden container, never a semantic heading exposed to assistive technology. The loading owner remains responsible for the status announcement.",
+      "evidenceSet": 0
+    },
+    {
+      "file": "web/app/src/features/auth/components/default-password/primitives.tsx",
+      "rule": "react-doctor/no-array-index-key",
+      "sourceSha256": "0816060f76855f79a7ddd9f9205c8296228691f63626107a81c6db8c30ba244a",
+      "reason": "These wrappers reproduce the official sign-in template’s fixed ordered Space slots, not user-reorderable records. A keyed fragment change would not replicate the expected wrapper metrics, and the aliases are not exposed to arbitrary login blocks.",
+      "evidenceSet": 1
+    },
+    {
+      "file": "web/app/src/features/auth/components/default-password/primitives.tsx",
+      "rule": "react-doctor/no-array-index-as-key",
+      "sourceSha256": "0816060f76855f79a7ddd9f9205c8296228691f63626107a81c6db8c30ba244a",
+      "reason": "These wrappers reproduce the official sign-in template’s fixed ordered Space slots, not user-reorderable records. A keyed fragment change would not replicate the expected wrapper metrics, and the aliases are not exposed to arbitrary login blocks.",
+      "evidenceSet": 1
+    },
+    {
+      "file": "web/app/src/features/auth/components/default-password/primitives.tsx",
+      "rule": "react-doctor/button-has-type",
+      "sourceSha256": "0816060f76855f79a7ddd9f9205c8296228691f63626107a81c6db8c30ba244a",
+      "reason": "The native button forwards htmlType and defaults it to button; the explicit submit type is selected only by the sign-in form. The checker misses the destructuring default.",
+      "evidenceSet": 2
+    },
+    {
+      "file": "web/app/src/features/auth/components/BuiltinPasswordSignIn.tsx",
+      "rule": "react-doctor/no-adjust-state-on-prop-change",
+      "sourceSha256": "12b1306e84b2796a5309f7c98ce67e8e7799acacf2a229df289376bfb2833935",
+      "reason": "An auth owner change resets failed and pending UI and invalidates the previous request generation. This is independent of a submit click; an obsolete request must not complete into the replacement owner.",
+      "evidenceSet": 3
     }
+  ],
+  "evidenceSets": [
+    [
+      {
+        "file": "web/app/src/features/auth/components/anonymous-loading/_tests/anonymous-loading.test.tsx",
+        "sha256": "3105162b74f5e5c02ee432008326592747ee059efb1004e5b57f605b190c7c5a"
+      }
+    ],
+    [
+      {
+        "file": "web/app/src/features/auth/components/default-password/_tests/default-password-sign-in.test.tsx",
+        "sha256": "3c8bf4a3c5d2af958cb6ff30ea081906d540f6471fc2ed4e1a3826f5c62e4342"
+      },
+      {
+        "file": "web/app/build/_tests/default-password-plugin.test.ts",
+        "sha256": "6ca422fa544a18ad0d9d0073400faa957de4ed054f76c9d47685cb895a9ab113"
+      }
+    ],
+    [
+      {
+        "file": "web/app/src/features/auth/components/default-password/_tests/default-password-sign-in.test.tsx",
+        "sha256": "3c8bf4a3c5d2af958cb6ff30ea081906d540f6471fc2ed4e1a3826f5c62e4342"
+      },
+      {
+        "file": "web/app/src/features/auth/components/default-password/_tests/primitive-style-contract.test.ts",
+        "sha256": "52dbd369675f265b8be7bb2483d9a1b2c1664d042fc8fdab2ba5381048468c48"
+      }
+    ],
+    [
+      {
+        "file": "web/app/src/features/auth/_tests/builtin-password-sign-in.test.tsx",
+        "sha256": "34b551fd835e1dcb70c4d9546009051935368090020b0b5910506e2327250f70"
+      }
+    ]
   ]
 }

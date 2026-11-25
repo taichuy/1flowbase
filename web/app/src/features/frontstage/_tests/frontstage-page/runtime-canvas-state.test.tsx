@@ -678,7 +678,7 @@ describe('FrontStagePage - runtime canvas state', () => {
     );
     fireEvent.click(assemblyContentSlot);
     fireEvent.click(
-      screen.getByRole('button', {
+      await within(assemblyContentSlot).findByRole('button', {
         name: i18nText('frontstage', 'auto.edit_block')
       })
     );
