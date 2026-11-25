@@ -41,7 +41,7 @@
 
 - 删除用户时保留业务资源、会话与账务历史；历史归属 UUID 可指向已删除用户，不通过用户外键阻止删除或级联删除历史。登录身份、角色绑定与凭据仍随用户清理。
 - 历史资源查询不得依赖用户存在的 inner join；查不到用户时姓名 / 账号可为空，保持资源可读。
-- 后端验证在同一 worktree 同时只运行一条 Cargo 命令；本地复用共享预算入口，CPU / 内存取半机与 4 CPU / 8 GiB 的较大值且不超过有效容量，限制只施加 Rust 子组。GitHub Actions 使用全部 runner 资源；保留显式更低的调试预算，不在命令中另写固定并发。
+- 后端验证在同一 worktree 同时只运行一条 Cargo 命令；本地复用共享预算，CPU 为 `max(1, floor(0.60 × 可用 CPU))`；Linux `dev.slice` 对 `dev-rust.slice` / `dev-frontend.slice` 施加共享 CPU 配额和 `min(有效内存容量, 8 GiB)` 的聚合内存上限。GitHub Actions 使用全部 runner CPU，不施加本地内存上限；保留显式更低的调试预算，不在命令中另写固定并发。
 - `crates/api/` 各域的 `src/routes` 协议适配器负责参数解析、认证接入和响应投影；根 `apps/api-server/src/routes` 保留装配与必要 facade。业务调用通过已注册 Binding 进入统一 Kernel，再由 typed Handler 调用 service / action，不从协议入口直接绕过调用计划。
 - API DTO 字段名优先跟领域模型 / 持久化语义一致；不要为了前端展示创建新的语义别名字段。
 - `crates/api/kernel/src/host/middleware` 是请求链路约束层；根 middleware 路径仅作 facade。

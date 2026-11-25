@@ -44,9 +44,9 @@ API coverage 使用 [LLVM 原生 `%Nm` 合并池](https://clang.llvm.org/docs/So
 
 统一治理验收需要冻结候选的全量 Rust 测试和完整 CI：记录通过、失败、忽略/跳过数及核心场景清单，分别量化编译、测试、CI 墙钟时间和累计 runner 时间。根收据须满足前述 candidate、component 与成功条件；局部脚本通过不能结算整体任务。合并重复执行允许执行次数减少，但核心场景不得缺失。历史时间只作注明源码、环境、缓存差异的参考；未测量值保留未知。
 
-本地后端预算使用 `min(CPU 容量, max(4, floor(CPU 容量 / 2)))` 和 `min(有效内存容量, max(8 GiB, 有效内存容量 / 2))`。CPU 和内存配额由 `dev-rust.slice` 聚合，父组和前端默认不限。GitHub Actions 的验证与预热使用全部 runner CPU，不施加本地内存配额。具体安装与系统限制由 [scripts/README](../../../scripts/README.md) 维护，不扩展为跨前端、数据库和其他会话的实时准入系统。
+本地 CPU 预算为 `max(1, floor(可用 CPU × 0.6))`。Linux 受限配置在 `dev.slice` 聚合施加该 CPU 配额和 `min(有效内存容量, 8 GiB)` 的内存硬上限，覆盖 `dev-rust.slice` 和 `dev-frontend.slice`。GitHub Actions 的验证与预热使用全部 runner CPU，不施加本地内存配额。安装与操作系统限制见 [scripts/README](../../../scripts/README.md)；未进入该配置的直接调用不受其内存限制。
 
-Node 脚本测试同样消费 `.1flowbase.verify.local.json`：`scripts.testConcurrency` 控制原生 `node --test-concurrency`，本地默认 `max(1, floor(可用 CPU / 2))`，CI 使用 runner CPU 数；不改变文件选择、测试隔离或失败退出。前端 consumer contracts 复用已有 Vitest 命令构造器与 `frontend.vitestMaxWorkers`。这约束 worker 数，不代替操作系统内存配额。L1 可指定目标文件，L2 保留 PR 契约/构建集合，L3 保留完整回归。
+Node 脚本测试通过 `.1flowbase.verify.local.json` 的 `scripts.testConcurrency` 设置原生 `node --test-concurrency`，本地默认 `max(1, floor(cpuBudget × 0.5))`，独立于前端覆盖值，最终不超过 `cpuBudget`。workspace 验证限制 `turboConcurrency × vitestMaxWorkers ≤ cpuBudget`；前端 consumer contracts 复用 Vitest 命令构造器与解析后的 `frontend.vitestMaxWorkers`。CI 忽略本地配置，脚本并发使用全部 runner CPU；若 `GITHUB_ACTIONS` 未启用，`CI=false` 仍走本地规则。worker 数不代替操作系统内存配额。各级入口见 [三层质量门禁](../quality-gates/README.md)。
 
 迁移拒绝场景使用同一正式迁移集，并让预期失败的迁移独占连接、返回错误后显式关闭，避免失败留下的 session advisory lock 等待连接池淘汰。正常迁移仍走生产入口；保留原子回滚、账务、历史 checksum 等断言，不通过关闭生产迁移锁或删除失败场景加速。
 

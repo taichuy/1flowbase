@@ -108,13 +108,12 @@ not establish overall completion. Deduplication may reduce execution counts but
 must preserve core scenarios. Historical durations are references with explicit
 source/environment/cache differences; unmeasured values remain unknown.
 
-Local backend budgets are `min(CPUs, max(4, floor(CPUs / 2)))` and
-`min(effective memory, max(8 GiB, effective memory / 2))`. Both quotas apply to the
-aggregate `dev-rust.slice`; the parent and frontend sibling remain unrestricted by default. GitHub Actions verification
-and warmup use all runner CPUs and do not apply local memory quotas. Installation
-and operating-system limits are owned by [scripts/README](../../../scripts/README.md);
-this does not introduce admission coordination across frontend, databases, and
-other sessions.
+The local CPU budget is `max(1, floor(0.60 * available CPUs))`. The Linux limited
+profile applies that CPU quota and the hard memory cap `min(effective memory, 8 GiB)`
+to `dev.slice` in aggregate, covering both `dev-rust.slice` and `dev-frontend.slice`.
+GitHub Actions verification and warmup use all runner CPUs without the local
+memory cap. See [scripts/README](../../../scripts/README.md) for installation and
+OS limits. Direct commands outside the profile do not inherit its memory cap.
 
 Migration rejection tests run the formal migration set on a dedicated connection
 and explicitly close that connection after the expected error. This releases any
@@ -147,7 +146,7 @@ The outer quality gate writes stdout directly to the permanent log and stderr to
 The inner synchronous runner retains its existing 16 MiB capture budget. On capture/spawn errors it preserves available diagnostics before failing. Removing the outer 64 MiB duplicate buffer does not remove that inner budget or constrain the RSS of test processes. Record detection retention, PR feedback P50/P95 with sample counts, runner minutes, peak local RSS/OOM and net governance lines; historical runs with different source/cache states are context, not causal controls. Test inventories and the Level 1/2/3 responsibilities remain unchanged.
 
 
-Node script tests use `scripts.testConcurrency` from `.1flowbase.verify.local.json` through native `node --test-concurrency`. Local defaults reserve half the available CPUs (at least one worker); CI uses runner capacity. Selection, process isolation and failure propagation remain unchanged. Consumer contracts reuse the Vitest command builder and `frontend.vitestMaxWorkers`. Worker limits do not replace OS memory limits. Targeted Level 1 tests, the Level 2 PR contract/build set and Level 3 full regression retain their owners.
+Node script tests use native `node --test-concurrency`. Locally, `scripts.testConcurrency` in `.1flowbase.verify.local.json` defaults to `max(1, floor(cpuBudget * 0.5))` independently of frontend overrides and is capped at `cpuBudget`. Workspace verification keeps `turboConcurrency * vitestMaxWorkers <= cpuBudget`. Consumer contracts reuse the Vitest command builder and the resolved `frontend.vitestMaxWorkers`. CI ignores the local file and uses all runner CPUs for script tests; `CI=false` is local unless `GITHUB_ACTIONS` enables CI mode. Worker limits do not replace OS memory limits. See [the three quality gate tiers](../quality-gates/README.md) for entry points.
 
 i18n hygiene shares one file inventory per run. Bootstrap-reachable module bodies serve both namespace and reference analysis; other sources are read individually without retaining the whole repository in memory. Each subsequent run reads fresh files. Locale rules, owner boundaries, finding order and severity remain unchanged.
 

@@ -7,7 +7,7 @@
 | 主题 | 入口 | 阅读目的 |
 | --- | --- | --- |
 | 后端 HTTP 源码与装配 | [宿主与六个协议域](interface-lifecycle.md#http-host-crates) · [English](interface-lifecycle.en.md#http-host-crates) | 找 Router、协议适配、共享 HTTP 内核与 OpenAPI 合并的实际归属；理解拆分如何降低编译峰值、为何最终链接仍是瓶颈 |
-| 质量证据与规则所有权 | [质量分层](testing/README.md) | 候选收据、测试分片、静态规则与真实运行态边界 |
+| 质量证据与规则所有权 | [质量分层](testing/README.md) · [三层质量门禁](quality-gates/README.md) | 候选收据、测试分片、静态规则与真实运行态边界 |
 | 请求与调用生命周期 | [中文](interface-lifecycle.md) · [English](interface-lifecycle.en.md) | 入口装配、认证身份、执行计划、终态交付与等价证据 |
 | AI Gateway 执行证据 | [中文](ai-gateway-observation.md) · [English](ai-gateway-observation.en.md) | 三层职责、Native 必要日志、同调用正文引用与按需读取 |
 | Runtime 回放回收 | [热回放与冷恢复](runtime-replay/README.md) · [English](runtime-replay/README.en.md) | generation 落库证明、短期热缓存、分页恢复与数据库保留边界 |
