@@ -7,6 +7,7 @@ services:
     environment:
       RUST_LOG: ${API_RUST_LOG:-info}
       API_ENV: ${API_ENV:-production}
+      API_LOCAL_TERMINAL_DISABLED: ${API_LOCAL_TERMINAL_DISABLED:-true}
       API_DATABASE_URL: ${API_DATABASE_URL:?API_DATABASE_URL is required for external database compose}
       API_SERVER_ADDR: 0.0.0.0:7800
       API_ALLOWED_ORIGINS: ${API_ALLOWED_ORIGINS:-http://localhost:3100,http://127.0.0.1:3100}

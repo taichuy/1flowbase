@@ -10,6 +10,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 use tower::ServiceExt;
+mod disabled;
 mod download_acl;
 mod managed_projection;
 mod mcp_media;

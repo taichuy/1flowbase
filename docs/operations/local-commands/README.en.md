@@ -12,7 +12,9 @@
 
 Use existing 1flowbase authentication. Cookie requests require the existing `x-csrf-token`. Grant the execution operation under the role's **Other permissions → Local commands** group. Removing that grant or disabling the group denies execution. Existing `full/custom` behavior applies; disabling a group preserves its custom selections. Root keeps its normal system-administrator access; the service has no additional root-only check.
 
-No opt-in configuration or environment variables are required. `API_LOCAL_COMMAND_TIMEOUT_MS` and `API_LOCAL_COMMAND_MAX_OUTPUT_BYTES` have been removed and no longer affect startup or execution. This endpoint imposes no separate command duration or total output limit, and does not truncate output. Without a call deadline it waits until the command ends. One-shot does not mean that an arbitrary command must finish quickly.
+`API_LOCAL_TERMINAL_DISABLED` defaults to `false` in development (including when `API_ENV` is unset) and `true` in production. The Docker image and production Compose default to disabled; development Compose and native packages (including in-place upgrades) default to enabled. An explicit boolean overrides the default; invalid values prevent startup. Native packages read the explicit value from their `.env`. When `true`, this endpoint and all `terminal.*` operations return `403` (`local_terminal_disabled`) before execution, even for `root`, without starting a command or writing command audit entries. MCP tools remain discoverable, but calls report why execution is disabled.
+
+`API_LOCAL_COMMAND_TIMEOUT_MS` and `API_LOCAL_COMMAND_MAX_OUTPUT_BYTES` have been removed and no longer affect startup or execution. This endpoint imposes no separate command duration or total output limit, and does not truncate output. Without a call deadline it waits until the command ends. One-shot does not mean that an arbitrary command must finish quickly.
 
 Commands use the backend service's OS account, working directory, and environment, without elevation. They do not execute on the browser's computer:
 

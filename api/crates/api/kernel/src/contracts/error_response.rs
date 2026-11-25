@@ -14,6 +14,10 @@ use crate::official_extension_catalog::{
 };
 use crate::system_backup::SystemBackupRuntimeError;
 
+pub const LOCAL_TERMINAL_DISABLED_CODE: &str = "local_terminal_disabled";
+pub const LOCAL_TERMINAL_DISABLED_MESSAGE: &str =
+    "Local command and terminal interfaces are disabled because API_LOCAL_TERMINAL_DISABLED=true.";
+
 #[derive(Debug)]
 pub struct ApiError(pub anyhow::Error);
 
@@ -296,6 +300,7 @@ impl IntoResponse for ApiError {
         // Provider runtime errors are upstream passthrough. Surface the message so
         // callers can debug provider and protocol failures without host rewriting.
         let message = match code {
+            LOCAL_TERMINAL_DISABLED_CODE => LOCAL_TERMINAL_DISABLED_MESSAGE.to_owned(),
             "subscription_required" => "No verifiable user message has been received. Send a message to the bound notification account, then refresh and retry.".to_owned(),
             "subscription_expired" => "The notification delivery window has expired. Send a new message to the bound notification account, then refresh and retry.".to_owned(),
             "subscription_unavailable" => "The notification delivery window could not be verified. Refresh the authorization status and retry when the provider is available.".to_owned(),

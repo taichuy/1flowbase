@@ -496,7 +496,11 @@ fn console_router_with_assembly(
     (router, mounted)
 }
 
-pub fn app_with_state_and_config(state: Arc<ApiState>, config: &ApiConfig) -> Router {
+pub fn app_with_state_and_config(mut state: Arc<ApiState>, config: &ApiConfig) -> Router {
+    // Resolve the policy before publishing handlers that capture this state or its flag.
+    if state.local_terminal_disabled != config.local_terminal_disabled {
+        Arc::make_mut(&mut state).local_terminal_disabled = config.local_terminal_disabled;
+    }
     let interface_snapshot = state
         .extension_boot_snapshot
         .as_ref()

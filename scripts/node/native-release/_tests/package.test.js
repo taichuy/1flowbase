@@ -42,6 +42,7 @@ test('stages runtime inputs without copying developer secrets or replacing exist
     assert.ok(!manifest.files['data/settings.json']);
     const env = fs.readFileSync(path.join(stage, '.env'), 'utf8');
     assert.match(env, /^API_ENV=production$/m);
+    assert.match(env, /^API_LOCAL_TERMINAL_DISABLED=false$/m);
     assert.match(env, /^BOOTSTRAP_ROOT_PASSWORD=example-default$/m);
     assert.match(env, /^API_SERVER_ADDR=127\.0\.0\.1:7800$/m);
     assert.match(env, /^API_AUTH_PUBLIC_ORIGIN=http:\/\/127\.0\.0\.1:7800$/m);

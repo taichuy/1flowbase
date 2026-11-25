@@ -88,7 +88,8 @@ ENV MALLOC_ARENA_MAX=8
 ENV API_POSTGRES_PG_DUMP_PATH=/usr/lib/postgresql/18/bin/pg_dump \
     API_POSTGRES_PG_RESTORE_PATH=/usr/lib/postgresql/18/bin/pg_restore \
     API_MODEL_PRICING_BOOTSTRAP_ROOT=/app/api/resources/model-pricing \
-    API_APPLICATION_TEMPLATE_ROOT=/app/api/resources/application-templates
+    API_APPLICATION_TEMPLATE_ROOT=/app/api/resources/application-templates \
+    API_LOCAL_TERMINAL_DISABLED=true
 
 COPY api/plugins /app/api/plugins
 COPY --chmod=0755 docker/deployment/initialize.sh /usr/local/bin/1flowbase-initialize

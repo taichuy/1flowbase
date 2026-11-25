@@ -6,6 +6,7 @@ function nativeEnvironment(repoRoot, platform) {
   const suffix = platform === 'windows' ? '.exe' : '';
   const overrides = new Map(Object.entries({
     API_ENV: 'production',
+    API_LOCAL_TERMINAL_DISABLED: 'false',
     API_SERVER_ADDR: '127.0.0.1:7800',
     API_DATABASE_URL: 'postgres://postgres:__GENERATE__@127.0.0.1:35432/1flowbase',
     API_AUTH_PUBLIC_ORIGIN: 'http://127.0.0.1:7800',

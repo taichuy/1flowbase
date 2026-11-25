@@ -13,6 +13,7 @@ pub trait NativeResourceImportPort: Send + Sync {
 }
 #[async_trait::async_trait]
 pub trait TerminalHostOperations: Send + Sync {
+    fn local_terminal_disabled(&self) -> bool;
     fn jobs(&self) -> Arc<crate::local_command::jobs::JobRegistry>;
     async fn read_file(
         &self,
@@ -29,6 +30,10 @@ pub trait TerminalHostOperations: Send + Sync {
 }
 #[async_trait::async_trait]
 impl TerminalHostOperations for ApiState {
+    fn local_terminal_disabled(&self) -> bool {
+        self.local_terminal_disabled
+    }
+
     fn jobs(&self) -> Arc<crate::local_command::jobs::JobRegistry> {
         self.terminal_jobs.clone()
     }

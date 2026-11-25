@@ -268,6 +268,7 @@ async fn fixture_state() -> (
         ),
         runtime_event_stream_projection: api_server::test_support::runtime_event_stream_projection(
         ),
+        local_terminal_disabled: config.local_terminal_disabled,
         terminal_jobs: Default::default(),
         process_started_at,
         communication_activity: Default::default(),

@@ -40,6 +40,7 @@ pub struct ApiConfig {
     /// Explicit deployment budget; absent keeps event runtime unavailable without guessing capacity.
     pub event_center_policy: Option<control_plane::event_center::EventCenterRuntimePolicy>,
     pub env: ApiEnvironment,
+    pub local_terminal_disabled: bool,
     pub database_url: String,
     pub database_pool_max_connections: u32,
     pub plugin_upload_max_bytes: usize,
@@ -149,6 +150,11 @@ impl ApiConfig {
                 .ok_or_else(|| anyhow!("missing env {key}"))
         };
         let env = ApiEnvironment::parse(map.get("API_ENV").map(String::as_str))?;
+        let local_terminal_disabled = parse_bool_flag(
+            "API_LOCAL_TERMINAL_DISABLED",
+            map.get("API_LOCAL_TERMINAL_DISABLED"),
+            env == ApiEnvironment::Production,
+        )?;
         let runtime_table_auto_prefix_enabled = parse_bool_flag(
             "API_RUNTIME_TABLE_AUTO_PREFIX_ENABLED",
             map.get("API_RUNTIME_TABLE_AUTO_PREFIX_ENABLED"),
@@ -329,6 +335,7 @@ impl ApiConfig {
                 .transpose()
                 .map_err(|error| anyhow!("invalid env API_EVENT_CENTER_POLICY: {error}"))?,
             env,
+            local_terminal_disabled,
             database_url: get("API_DATABASE_URL")?,
             database_pool_max_connections: parse_positive_u32(
                 "API_DATABASE_POOL_MAX_CONNECTIONS",

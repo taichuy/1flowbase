@@ -19,6 +19,7 @@ pub trait LocalCommandExecutor: Send + Sync {
 pub struct LocalCommandService<R, E> {
     repository: R,
     executor: Arc<E>,
+    local_terminal_disabled: bool,
 }
 
 impl<R: AuthRepository, E: LocalCommandExecutor> LocalCommandService<R, E> {
@@ -26,7 +27,13 @@ impl<R: AuthRepository, E: LocalCommandExecutor> LocalCommandService<R, E> {
         Self {
             repository,
             executor,
+            local_terminal_disabled: false,
         }
+    }
+
+    pub fn with_local_terminal_disabled(mut self, disabled: bool) -> Self {
+        self.local_terminal_disabled = disabled;
+        self
     }
 
     pub async fn execute(
@@ -34,6 +41,9 @@ impl<R: AuthRepository, E: LocalCommandExecutor> LocalCommandService<R, E> {
         actor: &ActorContext,
         command: String,
     ) -> anyhow::Result<E::Output> {
+        if self.local_terminal_disabled {
+            return Err(ControlPlaneError::PermissionDenied("local_terminal_disabled").into());
+        }
         // The canonical Console operation is the authorization owner. No extra root gate.
         validate_command(&command)?;
         let execution_id = Uuid::now_v7();

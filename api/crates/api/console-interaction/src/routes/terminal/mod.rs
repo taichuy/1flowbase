@@ -142,6 +142,12 @@ impl TerminalAdapter {
             .host
             .upgrade()
             .ok_or_else(|| invalid("terminal_host_unavailable"))?;
+        if host.local_terminal_disabled() {
+            return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+                crate::error_response::LOCAL_TERMINAL_DISABLED_CODE,
+            )
+            .into());
+        }
         // Resource replay captures the selected MCP scope inside this canonical handler.
         let input = match input {
             TerminalInput::Import(body) => {
