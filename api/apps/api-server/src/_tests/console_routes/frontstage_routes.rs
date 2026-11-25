@@ -265,6 +265,26 @@ async fn switch_workspace(
         .to_owned()
 }
 
+// Console authoring is bootstrap-workspace only. Seed foreign nodes through the
+// service so the HTTP tests can still exercise references to existing foreign IDs.
+async fn frontstage_fixture_author(
+    database_url: &str,
+) -> (
+    control_plane::frontstage::FrontstagePageService<storage_durable_postgres::PgControlPlaneStore>,
+    uuid::Uuid,
+) {
+    let pool = sqlx::PgPool::connect(database_url).await.unwrap();
+    let root_user_id = sqlx::query_scalar("select id from users where account = 'root'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let store = storage_durable_postgres::PgControlPlaneStore::new(pool);
+    (
+        control_plane::frontstage::FrontstagePageService::new(store),
+        root_user_id,
+    )
+}
+
 async fn create_group(
     app: &axum::Router,
     cookie: &str,

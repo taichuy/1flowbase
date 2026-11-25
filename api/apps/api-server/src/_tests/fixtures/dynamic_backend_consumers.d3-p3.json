@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 507,
+  "projected_interface_count": 508,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -1070,6 +1070,12 @@
       "GET",
       "/api/console/settings/billing/pricing-rules",
       "List billing pricing rules"
+    ],
+    [
+      "billing.pricing_targets.list",
+      "GET",
+      "/api/console/settings/billing/pricing-targets",
+      "List billing pricing targets"
     ],
     [
       "data_sources.list",

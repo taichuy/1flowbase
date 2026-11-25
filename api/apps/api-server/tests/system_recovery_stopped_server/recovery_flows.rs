@@ -4,7 +4,7 @@ use super::*;
 fn status_reads_the_external_journal_without_contacting_the_stopped_api_database() {
     let root = std::env::temp_dir().join(format!("system-recovery-cli-{}", Uuid::now_v7()));
     let repository = root.join("repository");
-    let output = Command::new(env!("CARGO_BIN_EXE_system_recovery"))
+    let output = Command::new(system_recovery_binary())
         .args(["status", "--recovery-job-id", &Uuid::now_v7().to_string()])
         .env("API_ENV", "development")
         .env(

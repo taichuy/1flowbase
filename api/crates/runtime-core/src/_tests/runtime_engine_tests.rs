@@ -163,7 +163,7 @@ async fn runtime_engine_rejects_record_writes_when_model_capability_is_read_only
 #[tokio::test]
 async fn runtime_engine_uses_fixed_system_scope_id_for_system_models() {
     let engine = RuntimeEngine::for_tests();
-    let actor = ActorContext::root(Uuid::now_v7(), Uuid::now_v7(), "root");
+    let actor = ActorContext::root(Uuid::now_v7(), domain::DEFAULT_SCOPE_ID, "root");
     let model_code = "system_orders";
     let model_id = Uuid::now_v7();
     engine.registry().rebuild(vec![ModelMetadata {
@@ -186,23 +186,28 @@ async fn runtime_engine_uses_fixed_system_scope_id_for_system_models() {
         resource: ResourceDescriptor::runtime_model(model_code, domain::DataModelScopeKind::System),
     }]);
 
+    let grant = RuntimeScopeGrant {
+        scope_kind: domain::DataModelScopeKind::System,
+        ..scope_grant(model_id, domain::SYSTEM_SCOPE_ID)
+    };
     let created = engine
         .create_record(RuntimeCreateInput {
             actor: actor.clone(),
             model_code: model_code.into(),
             payload: json!({ "title": "system-order" }),
-            scope_grant: Some(scope_grant(model_id, domain::SYSTEM_SCOPE_ID)),
+            scope_grant: Some(grant.clone()),
         })
         .await
         .unwrap();
     let record_id = created["id"].as_str().unwrap().to_string();
 
+    // Read from the system scope, not the workspace that issued the write.
     let fetched = engine
         .get_record(RuntimeGetInput {
-            actor,
+            actor: ActorContext::root(actor.user_id, domain::SYSTEM_SCOPE_ID, "root"),
             model_code: model_code.into(),
             record_id,
-            scope_grant: Some(scope_grant(model_id, domain::SYSTEM_SCOPE_ID)),
+            scope_grant: Some(grant),
         })
         .await
         .unwrap()

@@ -56,6 +56,12 @@ const PROVIDER_SECRET: &str = "stopped-server-provider-secret";
 const SYSTEM_BUILD: &str = "test.stopped-server";
 const NODE_ID: &str = "stopped-server-node";
 
+fn system_recovery_binary() -> PathBuf {
+    std::env::var_os("NEXTEST_BIN_EXE_system_recovery")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_system_recovery")))
+}
+
 fn successful_report(output: &std::process::Output) -> Value {
     assert!(
         output.status.success(),
@@ -147,7 +153,7 @@ fn resolve_docker_from_path() -> PathBuf {
 
 impl RecoveryScenario {
     fn command(&self, action: &str) -> tokio::process::Command {
-        let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_system_recovery"));
+        let mut command = tokio::process::Command::new(system_recovery_binary());
         command
             .args([
                 action,
@@ -189,7 +195,7 @@ impl RecoveryScenario {
         bundle_path: &Path,
         master_key: &str,
     ) -> tokio::process::Command {
-        let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_system_recovery"));
+        let mut command = tokio::process::Command::new(system_recovery_binary());
         command
             .args([action, "--backup-file", &bundle_path.to_string_lossy()])
             .env("API_ENV", "development")

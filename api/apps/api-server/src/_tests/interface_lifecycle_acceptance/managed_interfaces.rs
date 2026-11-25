@@ -157,7 +157,22 @@ async fn root_2014_ac_001_complete_compiled_profiles() {
         "/../../../scripts/node/plugin-composition-test-batch/root-2014-inventory.json"
     )))
     .unwrap();
-    let expected = |baseline: &str, added: &str, removed: &str| -> BTreeSet<String> {
+    // The frozen #2014 inventory predates these API-owned console additions.
+    let console_additions = [
+        (
+            "billing.pricing_targets.list",
+            "http.console.settings.billing.pricing-targets.list.v1",
+        ),
+        (
+            "console.workspaces.invitations.redeem",
+            "http.console.workspaces.invitations.redeem.v1",
+        ),
+        (
+            "frontend_blocks.type_declarations.view",
+            "http.console.frontend-blocks.type-declarations.get.v1",
+        ),
+    ];
+    let expected = |baseline: &str, added: &str, removed: &str, additions: [&str; 3]| {
         let mut ids = inventory[baseline]
             .as_array()
             .unwrap()
@@ -170,6 +185,9 @@ async fn root_2014_ac_001_complete_compiled_profiles() {
         for id in inventory[added].as_array().unwrap() {
             assert!(ids.insert(id.as_str().unwrap().to_string()));
         }
+        for id in additions {
+            assert!(ids.insert(id.to_string()));
+        }
         ids
     };
     assert_eq!(
@@ -180,7 +198,8 @@ async fn root_2014_ac_001_complete_compiled_profiles() {
         expected(
             "definitions",
             "approvedAddedDefinitions",
-            "approvedRemovedDefinitions"
+            "approvedRemovedDefinitions",
+            console_additions.map(|(interface_id, _)| interface_id),
         )
     );
     assert_eq!(
@@ -191,9 +210,18 @@ async fn root_2014_ac_001_complete_compiled_profiles() {
         expected(
             "bindings",
             "approvedAddedBindings",
-            "approvedRemovedBindings"
+            "approvedRemovedBindings",
+            console_additions.map(|(_, binding_id)| binding_id),
         )
     );
+    for (interface_id, binding_id) in console_additions {
+        let plan = registry.plan(&BindingId::new(binding_id).unwrap()).unwrap();
+        assert_eq!(plan.definition().interface_id().as_str(), interface_id);
+        assert_eq!(
+            plan.definition().principal_profile(),
+            PrincipalProfile::User
+        );
+    }
     // Exact identity sets above own definition/binding completeness. New routes
     // can reuse existing managed contract identities; validate those separately.
     let mut ids = BTreeSet::new();
